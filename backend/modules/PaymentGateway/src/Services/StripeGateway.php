@@ -3,12 +3,12 @@
 namespace Modules\PaymentGateway\Services;
 
 use Illuminate\Http\Request;
-use Stripe\Stripe;
+use Modules\PaymentGateway\Models\PaymentGateway;
+use Stripe\Exception\SignatureVerificationException;
 use Stripe\PaymentIntent;
 use Stripe\Refund;
+use Stripe\Stripe;
 use Stripe\Webhook;
-use Stripe\Exception\SignatureVerificationException;
-use Modules\PaymentGateway\Models\PaymentGateway;
 
 class StripeGateway implements PaymentGatewayInterface
 {
@@ -28,11 +28,11 @@ class StripeGateway implements PaymentGatewayInterface
         try {
             // Generate idempotency key to prevent duplicate charges
             // Each payment attempt should have a unique key
-            if (!empty($data['idempotency_key'])) {
+            if (! empty($data['idempotency_key'])) {
                 $idempotencyKey = $data['idempotency_key'];
             } else {
                 // Generate a unique key for each payment attempt
-                $idempotencyKey = md5(uniqid('stripe_', true) . microtime(true) . rand(1000, 9999));
+                $idempotencyKey = md5(uniqid('stripe_', true).microtime(true).rand(1000, 9999));
             }
 
             $paymentIntent = PaymentIntent::create([
@@ -214,6 +214,7 @@ class StripeGateway implements PaymentGatewayInterface
         try {
             // Try to retrieve account info as a connection test
             \Stripe\Account::retrieve();
+
             return true;
         } catch (\Exception $e) {
             return false;

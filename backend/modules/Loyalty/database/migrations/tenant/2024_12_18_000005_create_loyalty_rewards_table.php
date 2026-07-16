@@ -22,7 +22,7 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
             $table->timestamps();
             $table->softDeletes();
-            
+
             $table->index('loyalty_program_id');
             $table->index('is_active');
             $table->index('points_cost');

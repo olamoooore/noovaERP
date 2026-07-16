@@ -2,14 +2,14 @@
 
 namespace Modules\FieldService\Models;
 
+use App\Models\Customer;
+use App\Models\Invoice;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use App\Models\Customer;
-use App\Models\Invoice;
 
 class WorkOrder extends Model
 {
@@ -48,16 +48,16 @@ class WorkOrder extends Model
     ];
 
     protected $casts = [
-        'scheduled_start'      => 'datetime',
-        'scheduled_end'        => 'datetime',
-        'actual_start'         => 'datetime',
-        'actual_end'           => 'datetime',
+        'scheduled_start' => 'datetime',
+        'scheduled_end' => 'datetime',
+        'actual_start' => 'datetime',
+        'actual_end' => 'datetime',
         'technician_signed_at' => 'datetime',
-        'customer_signed_at'   => 'datetime',
-        'completed_at'         => 'datetime',
-        'requires_signature'   => 'boolean',
-        'site_lat'             => 'decimal:7',
-        'site_lng'             => 'decimal:7',
+        'customer_signed_at' => 'datetime',
+        'completed_at' => 'datetime',
+        'requires_signature' => 'boolean',
+        'site_lat' => 'decimal:7',
+        'site_lng' => 'decimal:7',
     ];
 
     // ──────────────── RELATIONSHIPS ────────────────
@@ -118,14 +118,14 @@ class WorkOrder extends Model
 
     public function getTotalPartsAmountAttribute(): float
     {
-        return (float) $this->parts->sum(fn($p) => $p->quantity * $p->unit_price);
+        return (float) $this->parts->sum(fn ($p) => $p->quantity * $p->unit_price);
     }
 
     public function getTotalLaborAmountAttribute(): float
     {
         return (float) $this->timeLogs
             ->where('is_billable', true)
-            ->sum(fn($t) => $t->duration_hours * $t->hourly_rate);
+            ->sum(fn ($t) => $t->duration_hours * $t->hourly_rate);
     }
 
     public function getTotalAmountAttribute(): float
@@ -138,6 +138,7 @@ class WorkOrder extends Model
         if ($this->scheduled_start && $this->scheduled_end) {
             return (int) $this->scheduled_start->diffInMinutes($this->scheduled_end);
         }
+
         return null;
     }
 
@@ -145,21 +146,22 @@ class WorkOrder extends Model
 
     public static function generateReference(): string
     {
-        $year  = now()->format('Y');
+        $year = now()->format('Y');
         $count = static::whereYear('created_at', $year)->withTrashed()->count() + 1;
+
         return sprintf('FS-%s-%05d', $year, $count);
     }
 
     // ──────────────── ALLOWED TRANSITIONS ────────────────
 
     public static array $transitions = [
-        'draft'       => ['scheduled', 'cancelled'],
-        'scheduled'   => ['in_progress', 'cancelled', 'draft'],
+        'draft' => ['scheduled', 'cancelled'],
+        'scheduled' => ['in_progress', 'cancelled', 'draft'],
         'in_progress' => ['completed', 'on_hold', 'cancelled'],
-        'on_hold'     => ['in_progress', 'cancelled'],
-        'completed'   => ['invoiced'],
-        'invoiced'    => [],
-        'cancelled'   => [],
+        'on_hold' => ['in_progress', 'cancelled'],
+        'completed' => ['invoiced'],
+        'invoiced' => [],
+        'cancelled' => [],
     ];
 
     public function canTransitionTo(string $newStatus): bool

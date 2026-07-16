@@ -2,11 +2,11 @@
 
 namespace Database\Seeders;
 
+use App\Modules\ModuleManager;
 use App\SuperAdmin\Application\AdminAuditLogger;
 use App\SuperAdmin\Application\ModuleCatalogSyncService;
 use App\SuperAdmin\Domain\PlanFamily;
 use App\SuperAdmin\Domain\PlanVersion;
-use App\Modules\ModuleManager;
 use Illuminate\Database\Seeder;
 
 class ModuleCatalogSeeder extends Seeder
@@ -25,22 +25,22 @@ class ModuleCatalogSeeder extends Seeder
         // 2. Seed 3 plan families with one version each
         $plans = [
             [
-                'key'         => 'trial',
-                'name'        => 'Trial',
+                'key' => 'trial',
+                'name' => 'Trial',
                 'description' => 'Free trial — full access for 14 days.',
-                'sort_order'  => 0,
+                'sort_order' => 0,
             ],
             [
-                'key'         => 'starter',
-                'name'        => 'Starter',
+                'key' => 'starter',
+                'name' => 'Starter',
                 'description' => 'Essential modules for small businesses.',
-                'sort_order'  => 1,
+                'sort_order' => 1,
             ],
             [
-                'key'         => 'professional',
-                'name'        => 'Professional',
+                'key' => 'professional',
+                'name' => 'Professional',
                 'description' => 'Full platform access with advanced modules.',
-                'sort_order'  => 2,
+                'sort_order' => 2,
             ],
         ];
 
@@ -53,7 +53,7 @@ class ModuleCatalogSeeder extends Seeder
             PlanVersion::updateOrCreate(
                 ['plan_family_id' => $family->id, 'version_label' => 'v1'],
                 [
-                    'is_active'          => true,
+                    'is_active' => true,
                     'is_publicly_listed' => true,
                 ],
             );

@@ -26,16 +26,18 @@ class TenantPlanChange extends Model
     ];
 
     protected $casts = [
-        'effective_date'         => 'date',
-        'applied_at'             => 'datetime',
+        'effective_date' => 'date',
+        'applied_at' => 'datetime',
         'proration_credit_cents' => 'integer',
         'proration_charge_cents' => 'integer',
     ];
 
     // ── Constants ─────────────────────────────────────────────────────────────
 
-    public const STATUS_PENDING   = 'pending';
-    public const STATUS_APPLIED   = 'applied';
+    public const STATUS_PENDING = 'pending';
+
+    public const STATUS_APPLIED = 'applied';
+
     public const STATUS_CANCELLED = 'cancelled';
 
     // ── Relations ─────────────────────────────────────────────────────────────

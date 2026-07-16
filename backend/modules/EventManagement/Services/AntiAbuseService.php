@@ -2,14 +2,12 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
-use Modules\EventManagement\Models\IpRestriction;
-use Modules\EventManagement\Models\FraudAlert;
-use Modules\EventManagement\Models\ManualReviewQueue;
-use Modules\EventManagement\Models\BookingVelocityLog;
 use Modules\EventManagement\Models\Booking;
+use Modules\EventManagement\Models\BookingVelocityLog;
+use Modules\EventManagement\Models\FraudAlert;
+use Modules\EventManagement\Models\IpRestriction;
+use Modules\EventManagement\Models\ManualReviewQueue;
 
 class AntiAbuseService
 {
@@ -35,12 +33,12 @@ class AntiAbuseService
         if ($isLimited) {
             // Apply rate limiting
             $this->applyRateLimitPenalty($tenantId, $context);
-            
+
             return [
                 'limited' => true,
                 'current_count' => $currentCount,
                 'max_attempts' => $rateLimitConfig['max_attempts'],
-                'reset_time' => Cache::get($rateLimitKey . '_reset', now()->addMinutes($rateLimitConfig['window_minutes'])),
+                'reset_time' => Cache::get($rateLimitKey.'_reset', now()->addMinutes($rateLimitConfig['window_minutes'])),
                 'penalty_applied' => true,
             ];
         }
@@ -48,9 +46,9 @@ class AntiAbuseService
         // Increment counter
         $newCount = $currentCount + 1;
         Cache::put($rateLimitKey, $newCount, now()->addMinutes($rateLimitConfig['window_minutes']));
-        
+
         if ($newCount === 1) {
-            Cache::put($rateLimitKey . '_reset', now()->addMinutes($rateLimitConfig['window_minutes']), now()->addMinutes($rateLimitConfig['window_minutes']));
+            Cache::put($rateLimitKey.'_reset', now()->addMinutes($rateLimitConfig['window_minutes']), now()->addMinutes($rateLimitConfig['window_minutes']));
         }
 
         return [
@@ -77,6 +75,7 @@ class AntiAbuseService
             // Extend existing block
             $existingRestriction->extendExpiration($durationHours);
             $existingRestriction->recordViolation();
+
             return $existingRestriction;
         }
 
@@ -139,7 +138,7 @@ class AntiAbuseService
     public function queueForManualReview(string $tenantId, int $bookingId, array $riskFactors, float $riskScore): ManualReviewQueue
     {
         $booking = Booking::findOrFail($bookingId);
-        
+
         // Determine review reason and priority
         $reviewReason = $this->determineReviewReason($riskFactors);
         $priority = $this->calculateReviewPriority($riskScore, $riskFactors);
@@ -359,12 +358,12 @@ class AntiAbuseService
         if (isset($context['customer_id'])) {
             return "rate_limit:{$tenantId}:customer:{$context['customer_id']}";
         }
-        
+
         if (isset($context['ip_address'])) {
-            return "rate_limit:{$tenantId}:ip:" . md5($context['ip_address']);
+            return "rate_limit:{$tenantId}:ip:".md5($context['ip_address']);
         }
-        
-        return "rate_limit:{$tenantId}:session:" . ($context['session_id'] ?? 'unknown');
+
+        return "rate_limit:{$tenantId}:session:".($context['session_id'] ?? 'unknown');
     }
 
     /**
@@ -423,15 +422,15 @@ class AntiAbuseService
         if (in_array('velocity_exceeded', $riskFactors)) {
             return ManualReviewQueue::REASON_VELOCITY_EXCEEDED;
         }
-        
+
         if (in_array('suspicious_pattern', $riskFactors)) {
             return ManualReviewQueue::REASON_SUSPICIOUS_PATTERN;
         }
-        
+
         if (in_array('high_risk_customer', $riskFactors)) {
             return ManualReviewQueue::REASON_HIGH_RISK_CUSTOMER;
         }
-        
+
         return ManualReviewQueue::REASON_MANUAL_FLAG;
     }
 
@@ -443,15 +442,15 @@ class AntiAbuseService
         if ($riskScore >= 90 || in_array('critical_threat', $riskFactors)) {
             return ManualReviewQueue::PRIORITY_URGENT;
         }
-        
+
         if ($riskScore >= 70 || in_array('high_risk_customer', $riskFactors)) {
             return ManualReviewQueue::PRIORITY_HIGH;
         }
-        
+
         if ($riskScore >= 40) {
             return ManualReviewQueue::PRIORITY_MEDIUM;
         }
-        
+
         return ManualReviewQueue::PRIORITY_LOW;
     }
 
@@ -468,7 +467,7 @@ class AntiAbuseService
         // Don't auto-approve if there are critical risk factors
         $criticalFactors = ['identity_verification_failed', 'blacklisted_ip', 'known_fraudster'];
         $riskFactors = $review->risk_factors ?? [];
-        
+
         foreach ($criticalFactors as $factor) {
             if (in_array($factor, $riskFactors)) {
                 return false;

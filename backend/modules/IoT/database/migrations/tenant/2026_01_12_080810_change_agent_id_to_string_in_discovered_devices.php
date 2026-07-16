@@ -14,10 +14,10 @@ return new class extends Migration
         Schema::table('discovered_devices', function (Blueprint $table) {
             // Drop the unique constraint first
             $table->dropUnique('unique_device_per_agent');
-            
+
             // Change agent_id from uuid to string
             $table->string('agent_id', 100)->change();
-            
+
             // Recreate the unique constraint
             $table->unique(['agent_id', 'serial_number', 'port'], 'unique_device_per_agent');
         });
@@ -31,10 +31,10 @@ return new class extends Migration
         Schema::table('discovered_devices', function (Blueprint $table) {
             // Drop the unique constraint first
             $table->dropUnique('unique_device_per_agent');
-            
+
             // Change back to uuid
             $table->uuid('agent_id')->change();
-            
+
             // Recreate the unique constraint
             $table->unique(['agent_id', 'serial_number', 'port'], 'unique_device_per_agent');
         });

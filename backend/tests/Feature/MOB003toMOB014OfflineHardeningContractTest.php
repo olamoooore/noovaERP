@@ -32,8 +32,8 @@ class MOB003toMOB014OfflineHardeningContractTest extends TestCase
         $service = file_get_contents(base_path('modules/POS/src/Services/PosSyncService.php'));
 
         $this->assertStringContainsString('assertCapabilitySnapshotState', $service);
-        $this->assertStringContainsString("offline_capability_snapshot_version", $service);
-        $this->assertStringContainsString("offline_permission_snapshot_version", $service);
+        $this->assertStringContainsString('offline_capability_snapshot_version', $service);
+        $this->assertStringContainsString('offline_permission_snapshot_version', $service);
         $this->assertStringContainsString('Offline capability snapshot is stale.', $service);
         $this->assertStringContainsString('Offline permission snapshot is stale.', $service);
     }

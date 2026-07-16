@@ -22,7 +22,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
     public function __construct(
         private ?SFRSTaxonomyProfile $taxonomyProfile = null
     ) {
-        $this->taxonomyProfile ??= new SFRSTaxonomyProfile();
+        $this->taxonomyProfile ??= new SFRSTaxonomyProfile;
     }
 
     public function exportTrialBalance(\DateTime $asOfDate, array $options = []): array
@@ -158,15 +158,15 @@ class XBRLReportExporter implements StatutoryReportExporterContract
             ? new \DateTime($reportData['period']['start_date'])
             : new \DateTime($asOfDate->format('Y-01-01'));
 
-        if ($type === 'trial_balance' && !isset($reportData['accounts'])) {
+        if ($type === 'trial_balance' && ! isset($reportData['accounts'])) {
             $reportData = $this->exportTrialBalance($asOfDate);
         }
 
-        if ($type === 'balance_sheet' && !isset($reportData['assets'])) {
+        if ($type === 'balance_sheet' && ! isset($reportData['assets'])) {
             $reportData = $this->exportBalanceSheet($asOfDate);
         }
 
-        if ($type === 'income_statement' && !isset($reportData['revenue'])) {
+        if ($type === 'income_statement' && ! isset($reportData['revenue'])) {
             $reportData = $this->exportIncomeStatement($startDate, $asOfDate);
         }
 
@@ -175,7 +175,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
 
         $root = $dom->createElementNS('http://www.xbrl.org/2003/instance', 'xbrli:xbrl');
         $root->setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:link', 'http://www.w3.org/1999/xlink');
-        $root->setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:sg-sfrs', 'urn:noovaerp:sg:sfrs:' . strtolower($this->taxonomyProfile->taxonomyVersion()));
+        $root->setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:sg-sfrs', 'urn:noovaerp:sg:sfrs:'.strtolower($this->taxonomyProfile->taxonomyVersion()));
         $dom->appendChild($root);
 
         $schemaRef = $dom->createElementNS('http://www.w3.org/1999/xlink', 'link:schemaRef');
@@ -210,14 +210,14 @@ class XBRLReportExporter implements StatutoryReportExporterContract
             $validation = $this->validateXbrlXml($xml);
 
             $strictSchemaValidation = (bool) ($reportData['strict_schema_validation'] ?? false);
-            if ($strictSchemaValidation && !$validation['valid']) {
+            if ($strictSchemaValidation && ! $validation['valid']) {
                 $errorMessage = implode('; ', $validation['errors']);
-                throw new \RuntimeException('SG XBRL schema validation failed: ' . $errorMessage);
+                throw new \RuntimeException('SG XBRL schema validation failed: '.$errorMessage);
             }
         } else {
             $schemaPath = $this->resolveTaxonomyEntryPointXsdPath();
             $passiveErrors = [];
-            if (!$schemaPath || !is_file($schemaPath)) {
+            if (! $schemaPath || ! is_file($schemaPath)) {
                 $passiveErrors[] = 'ACRA taxonomy entry point XSD not found at configured path';
             }
             $this->lastXbrlValidation = [
@@ -237,20 +237,20 @@ class XBRLReportExporter implements StatutoryReportExporterContract
     {
         $errors = [];
 
-        if (!isset($report['type'])) {
+        if (! isset($report['type'])) {
             $errors[] = 'Report type is required';
         }
 
         if ($report['type'] === 'trial_balance') {
             if (isset($report['totals'])) {
-                if (!$report['totals']['balanced']) {
+                if (! $report['totals']['balanced']) {
                     $errors[] = 'Trial balance does not balance';
                 }
             }
         }
 
         if (($report['type'] ?? null) === 'balance_sheet') {
-            if (!($report['totals']['balanced'] ?? false)) {
+            if (! ($report['totals']['balanced'] ?? false)) {
                 $errors[] = 'Balance sheet does not balance';
             }
         }
@@ -288,7 +288,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
             'schema_ref_href' => $this->schemaRefHrefForXml(),
         ];
 
-        if (!$schemaPath || !is_file($schemaPath)) {
+        if (! $schemaPath || ! is_file($schemaPath)) {
             $result['errors'][] = 'ACRA taxonomy entry point XSD not found at configured path';
             $this->lastXbrlValidation = $result;
 
@@ -297,8 +297,8 @@ class XBRLReportExporter implements StatutoryReportExporterContract
 
         libxml_use_internal_errors(true);
 
-        $dom = new \DOMDocument();
-        if (!$dom->loadXML($xml)) {
+        $dom = new \DOMDocument;
+        if (! $dom->loadXML($xml)) {
             $result['errors'][] = 'Generated XBRL XML is not well-formed';
             $result['errors'] = array_merge($result['errors'], $this->consumeLibxmlErrors());
             libxml_clear_errors();
@@ -317,7 +317,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
 
         $result['validated'] = true;
         $result['valid'] = (bool) $isValid;
-        if (!$isValid) {
+        if (! $isValid) {
             $result['errors'] = $libxmlMessages;
             Log::warning('SG XBRL failed ACRA taxonomy validation', [
                 'entry_point_xsd' => $schemaPath,
@@ -471,7 +471,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
 
         foreach ($lines as $line) {
             $mapping = $line['mapping'] ?? null;
-            if (!$mapping || ($mapping['statement'] ?? null) !== $statement) {
+            if (! $mapping || ($mapping['statement'] ?? null) !== $statement) {
                 continue;
             }
 
@@ -480,7 +480,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
                 ? (float) ($line['net_balance'] ?? 0)
                 : (float) ($line['amount'] ?? 0);
 
-            if (!isset($grouped[$section])) {
+            if (! isset($grouped[$section])) {
                 $grouped[$section] = [
                     'items' => [],
                     'total' => 0.0,
@@ -514,6 +514,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
             $mapping = $line['mapping'] ?? null;
             if (is_array($mapping) || isset($line['taxonomy_element'])) {
                 $mappedCount++;
+
                 continue;
             }
 
@@ -599,7 +600,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
             : ['assets', 'liabilities', 'equity'];
 
         foreach ($sections as $sectionKey) {
-            if (!isset($reportData[$sectionKey])) {
+            if (! isset($reportData[$sectionKey])) {
                 continue;
             }
 
@@ -613,7 +614,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
                 }
             } else {
                 foreach ($payload as $subSection => $subPayload) {
-                    if (!is_array($subPayload) || !isset($subPayload['items'])) {
+                    if (! is_array($subPayload) || ! isset($subPayload['items'])) {
                         continue;
                     }
 
@@ -744,7 +745,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
             }
         }
 
-        $defaultPackagePath = dirname(__DIR__, 2) . '/Taxonomy/ACRA-SFRS-2024';
+        $defaultPackagePath = dirname(__DIR__, 2).'/Taxonomy/ACRA-SFRS-2024';
 
         return [
             'enabled' => filter_var(getenv('COMPLIANCE_SG_TAXONOMY_VALIDATION_ENABLED') ?: 'true', FILTER_VALIDATE_BOOLEAN),
@@ -766,7 +767,7 @@ class XBRLReportExporter implements StatutoryReportExporterContract
         $entryPoint = $taxonomy['entry_point_xsd'] ?? null;
         $packagePath = $taxonomy['package_path'] ?? null;
 
-        if (!$entryPoint) {
+        if (! $entryPoint) {
             return null;
         }
 
@@ -774,11 +775,11 @@ class XBRLReportExporter implements StatutoryReportExporterContract
             return $entryPoint;
         }
 
-        if (!$packagePath) {
+        if (! $packagePath) {
             return null;
         }
 
-        return rtrim((string) $packagePath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . ltrim((string) $entryPoint, DIRECTORY_SEPARATOR);
+        return rtrim((string) $packagePath, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.ltrim((string) $entryPoint, DIRECTORY_SEPARATOR);
     }
 
     private function consumeLibxmlErrors(): array

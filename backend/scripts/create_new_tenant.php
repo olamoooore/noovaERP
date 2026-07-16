@@ -1,15 +1,14 @@
 <?php
 
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use App\Models\Tenant;
 use App\Models\User;
-use Stancl\Tenancy\Database\Models\Domain;
-use App\Models\TenantSelectedItem;
 use App\SuperAdmin\Application\EntitlementService;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Stancl\Tenancy\Database\Models\Domain;
 
-require __DIR__ . '/../vendor/autoload.php';
-$app = require_once __DIR__ . '/../bootstrap/app.php';
+require __DIR__.'/../vendor/autoload.php';
+$app = require_once __DIR__.'/../bootstrap/app.php';
 $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 $kernel->bootstrap();
 
@@ -31,23 +30,23 @@ try {
 
     // 2. Get source tenant for permission cloning
     $sourceUser = DB::table('users')->where('email', $sourceEmail)->first();
-    if (!$sourceUser) {
+    if (! $sourceUser) {
         throw new Exception("Source user $sourceEmail not found");
     }
-    
+
     $columns = Schema::getColumnListing('user_company_access');
     $tenantIdColumn = in_array('tenant_id', $columns) ? 'tenant_id' : (in_array('company_id', $columns) ? 'company_id' : null);
-    
-    if (!$tenantIdColumn) {
-         throw new Exception("Could not find tenant identifier column in user_company_access.");
+
+    if (! $tenantIdColumn) {
+        throw new Exception('Could not find tenant identifier column in user_company_access.');
     }
 
     $sourceTenantId = DB::table('user_company_access')
         ->where('user_id', $sourceUser->id)
         ->where('is_default', true)
         ->value($tenantIdColumn);
-        
-    if (!$sourceTenantId) {
+
+    if (! $sourceTenantId) {
         throw new Exception("Source tenant not found for $sourceEmail");
     }
 
@@ -59,11 +58,11 @@ try {
         'email' => $targetEmail,
         'plan_id' => 'trial',
         'trial_ends_at' => now()->addDays(14),
-        'data' => ['company_name' => $targetCompany]
+        'data' => ['company_name' => $targetCompany],
     ];
-    
+
     $tenant = Tenant::create($tenantData);
-    
+
     Domain::create([
         'domain' => $targetDomain,
         'tenant_id' => $tenantId,
@@ -77,12 +76,12 @@ try {
         'created_at' => now(),
         'updated_at' => now(),
     ];
-    
+
     $userIdCol = Schema::getColumnType('users', 'id');
     if ($userIdCol === 'string' || $userIdCol === 'guid' || $userIdCol === 'uuid') {
         $publicUserData['id'] = (string) \Illuminate\Support\Str::uuid();
     }
-    
+
     $userId = DB::table('users')->insertGetId($publicUserData);
 
     DB::table('user_company_access')->insert([
@@ -103,17 +102,17 @@ try {
         ['email' => $targetEmail],
         ['name' => $targetName, 'password' => Hash::make($password)]
     );
-    
+
     if (isset($userId)) {
         $tenantUser->id = $userId;
         $tenantUser->save();
     }
-    
+
     $ownerRole = \App\Models\Role::where('name', 'Owner')->first();
     if ($ownerRole) {
         $tenantUser->roles()->sync([$ownerRole->id]);
     }
-    
+
     // Enable ALL features in tenant schema
     DB::connection('tenant')->table('features')->update(['is_active' => true]);
     DB::connection('tenant')->table('tenant_features')->update(['is_active' => true]);
@@ -136,7 +135,7 @@ try {
         }
     } else {
         foreach ($sourceItems as $item) {
-            $newItem = (array)$item;
+            $newItem = (array) $item;
             $newItem['id'] = (string) \Illuminate\Support\Str::uuid();
             $newItem['tenant_id'] = $tenantId;
             DB::table('tenant_selected_items')->insert($newItem);
@@ -147,7 +146,7 @@ try {
     app(EntitlementService::class)->rebuild($tenantId);
 
     // 9. Verification
-    $getSourceModules = function($tid) {
+    $getSourceModules = function ($tid) {
         return DB::table('tenant_entitlements')
             ->join('catalog_items', 'tenant_entitlements.catalog_item_id', '=', 'catalog_items.id')
             ->where('tenant_entitlements.tenant_id', $tid)
@@ -174,6 +173,6 @@ try {
     echo json_encode([
         'status' => 'error',
         'message' => $e->getMessage(),
-        'tenant_id' => $tenantId ?? null
+        'tenant_id' => $tenantId ?? null,
     ]);
 }

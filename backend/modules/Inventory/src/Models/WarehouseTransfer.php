@@ -59,6 +59,7 @@ class WarehouseTransfer extends Model
         $prefix = 'TRF';
         $date = now()->format('Ymd');
         $lastTransfer = static::whereDate('created_at', today())->count() + 1;
+
         return sprintf('%s-%s-%04d', $prefix, $date, $lastTransfer);
     }
 }

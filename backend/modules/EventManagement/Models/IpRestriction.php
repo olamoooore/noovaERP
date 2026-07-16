@@ -34,8 +34,11 @@ class IpRestriction extends Model
 
     // Restriction type constants
     public const TYPE_BLOCKED = 'blocked';
+
     public const TYPE_ALLOWED = 'allowed';
+
     public const TYPE_RATE_LIMITED = 'rate_limited';
+
     public const TYPE_FLAGGED = 'flagged';
 
     /**
@@ -52,10 +55,10 @@ class IpRestriction extends Model
     public function scopeActive($query)
     {
         return $query->where('is_active', true)
-                    ->where(function ($q) {
-                        $q->whereNull('expires_at')
-                          ->orWhere('expires_at', '>', now());
-                    });
+            ->where(function ($q) {
+                $q->whereNull('expires_at')
+                    ->orWhere('expires_at', '>', now());
+            });
     }
 
     /**
@@ -72,7 +75,7 @@ class IpRestriction extends Model
     public function scopeExpired($query)
     {
         return $query->whereNotNull('expires_at')
-                    ->where('expires_at', '<=', now());
+            ->where('expires_at', '<=', now());
     }
 
     /**
@@ -80,7 +83,7 @@ class IpRestriction extends Model
      */
     public function isCurrentlyActive(): bool
     {
-        if (!$this->is_active) {
+        if (! $this->is_active) {
             return false;
         }
 
@@ -118,21 +121,23 @@ class IpRestriction extends Model
             return $ip === $range;
         }
 
-        list($subnet, $bits) = explode('/', $range);
-        
+        [$subnet, $bits] = explode('/', $range);
+
         if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
             // IPv4
             $ip = ip2long($ip);
             $subnet = ip2long($subnet);
             $mask = -1 << (32 - $bits);
             $subnet &= $mask;
+
             return ($ip & $mask) === $subnet;
         } elseif (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
             // IPv6 - simplified check
             $ip = inet_pton($ip);
             $subnet = inet_pton($subnet);
-            $binaryMask = str_repeat('f', $bits / 4) . str_repeat('0', (128 - $bits) / 4);
+            $binaryMask = str_repeat('f', $bits / 4).str_repeat('0', (128 - $bits) / 4);
             $mask = pack('H*', $binaryMask);
+
             return ($ip & $mask) === ($subnet & $mask);
         }
 
@@ -145,11 +150,11 @@ class IpRestriction extends Model
     public function recordViolation(): void
     {
         $this->increment('violation_count');
-        
-        if (!$this->first_violation_at) {
+
+        if (! $this->first_violation_at) {
             $this->update(['first_violation_at' => now()]);
         }
-        
+
         $this->update(['last_violation_at' => now()]);
     }
 
@@ -158,10 +163,10 @@ class IpRestriction extends Model
      */
     public function extendExpiration(int $hours): void
     {
-        $newExpiration = $this->expires_at 
+        $newExpiration = $this->expires_at
             ? $this->expires_at->addHours($hours)
             : now()->addHours($hours);
-            
+
         $this->update(['expires_at' => $newExpiration]);
     }
 
@@ -177,7 +182,7 @@ class IpRestriction extends Model
         } elseif ($this->violation_count >= 2) {
             return 'medium';
         }
-        
+
         return 'low';
     }
 }

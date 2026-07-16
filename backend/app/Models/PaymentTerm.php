@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Carbon\Carbon;
 
 /**
  * Payment Term - Defines payment terms for invoices and bills
@@ -58,11 +58,12 @@ class PaymentTerm extends Model
      */
     public function calculateDiscountDueDate($invoiceDate): ?Carbon
     {
-        if (!$this->discount_percentage || !$this->discount_days) {
+        if (! $this->discount_percentage || ! $this->discount_days) {
             return null;
         }
 
         $date = $invoiceDate instanceof Carbon ? $invoiceDate : Carbon::parse($invoiceDate);
+
         return $date->addDays($this->discount_days);
     }
 
@@ -71,7 +72,7 @@ class PaymentTerm extends Model
      */
     public function calculateDiscountAmount(float $amount): float
     {
-        if (!$this->discount_percentage) {
+        if (! $this->discount_percentage) {
             return 0;
         }
 
@@ -84,12 +85,13 @@ class PaymentTerm extends Model
     public function isDiscountApplicable($invoiceDate, $paymentDate): bool
     {
         $discountDueDate = $this->calculateDiscountDueDate($invoiceDate);
-        
-        if (!$discountDueDate) {
+
+        if (! $discountDueDate) {
             return false;
         }
 
         $payment = $paymentDate instanceof Carbon ? $paymentDate : Carbon::parse($paymentDate);
+
         return $payment->lte($discountDueDate);
     }
 

@@ -2,13 +2,10 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TenantTestCase;
-use App\Models\User;
 use App\Models\ChartOfAccount;
-use App\Models\JournalEntry;
-use App\Models\JournalEntryLine;
-use Carbon\Carbon;
+use App\Models\User;
 use Illuminate\Support\Facades\Artisan;
+use Tests\TenantTestCase;
 
 class FinancialReportsApiTest extends TenantTestCase
 {
@@ -59,7 +56,7 @@ class FinancialReportsApiTest extends TenantTestCase
     public function it_can_generate_profit_loss_report()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/profit-loss?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/profit-loss?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
@@ -74,7 +71,7 @@ class FinancialReportsApiTest extends TenantTestCase
         // Re-enable all middleware for this test to verify auth
         $this->app->instance('middleware.disable', false);
 
-        $response = $this->getJson('/api/v1/reports/financial/profit-loss?' . http_build_query([
+        $response = $this->getJson('/api/v1/reports/financial/profit-loss?'.http_build_query([
             'start_date' => '2024-01-01',
             'end_date' => '2024-01-31',
         ]));
@@ -96,7 +93,7 @@ class FinancialReportsApiTest extends TenantTestCase
     public function it_can_generate_balance_sheet_report()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/balance-sheet?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/balance-sheet?'.http_build_query([
                 'as_of_date' => '2024-01-31',
             ]));
 
@@ -107,7 +104,7 @@ class FinancialReportsApiTest extends TenantTestCase
     public function it_can_generate_cash_flow_report()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/cash-flow?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/cash-flow?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
@@ -119,7 +116,7 @@ class FinancialReportsApiTest extends TenantTestCase
     public function it_can_generate_trial_balance_report()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/trial-balance?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/trial-balance?'.http_build_query([
                 'as_of_date' => '2024-01-31',
             ]));
 
@@ -132,7 +129,7 @@ class FinancialReportsApiTest extends TenantTestCase
         $account = ChartOfAccount::first();
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/general-ledger?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/general-ledger?'.http_build_query([
                 'account_id' => $account->id,
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
@@ -146,13 +143,13 @@ class FinancialReportsApiTest extends TenantTestCase
     {
         // Verify the route is reachable twice (caching layer doesn't crash)
         $r1 = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/profit-loss?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/profit-loss?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
 
         $r2 = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/profit-loss?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/profit-loss?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));

@@ -76,7 +76,7 @@ class DeviceTemplateMatchingService
                 ->byManufacturerModel($device->manufacturer, $device->model)
                 ->first();
 
-            if ($manufacturerMatch && !in_array($manufacturerMatch->id, array_column($matches, 'id'))) {
+            if ($manufacturerMatch && ! in_array($manufacturerMatch->id, array_column($matches, 'id'))) {
                 $matches[] = [
                     'template' => $manufacturerMatch,
                     'confidence' => 90,
@@ -92,7 +92,7 @@ class DeviceTemplateMatchingService
                 ->get();
 
             foreach ($fuzzyMatches as $fuzzyMatch) {
-                if (!in_array($fuzzyMatch->id, array_column($matches, 'id'))) {
+                if (! in_array($fuzzyMatch->id, array_column($matches, 'id'))) {
                     $matches[] = [
                         'template' => $fuzzyMatch,
                         'confidence' => 70,
@@ -103,7 +103,7 @@ class DeviceTemplateMatchingService
         }
 
         // Sort by confidence
-        usort($matches, fn($a, $b) => $b['confidence'] <=> $a['confidence']);
+        usort($matches, fn ($a, $b) => $b['confidence'] <=> $a['confidence']);
 
         return $matches;
     }

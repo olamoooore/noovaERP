@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class DeviceStatusHistory extends Model
 {
     protected $table = 'device_status_history';
-    
+
     public $timestamps = false;
 
     protected $fillable = [

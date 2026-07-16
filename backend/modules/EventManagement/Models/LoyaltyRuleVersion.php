@@ -2,8 +2,8 @@
 
 namespace Modules\EventManagement\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Model;
 
 class LoyaltyRuleVersion extends Model
 {
@@ -15,7 +15,7 @@ class LoyaltyRuleVersion extends Model
         'rule_parameters',
         'is_active',
         'effective_from',
-        'effective_until'
+        'effective_until',
     ];
 
     protected $casts = [
@@ -23,7 +23,7 @@ class LoyaltyRuleVersion extends Model
         'rule_parameters' => 'array',
         'is_active' => 'boolean',
         'effective_from' => 'datetime',
-        'effective_until' => 'datetime'
+        'effective_until' => 'datetime',
     ];
 
     /**
@@ -37,15 +37,15 @@ class LoyaltyRuleVersion extends Model
     /**
      * Scope for rules effective at a given time
      */
-    public function scopeEffectiveAt($query, Carbon $timestamp = null)
+    public function scopeEffectiveAt($query, ?Carbon $timestamp = null)
     {
         $timestamp = $timestamp ?? Carbon::now();
-        
+
         return $query->where('effective_from', '<=', $timestamp)
-                    ->where(function($q) use ($timestamp) {
-                        $q->whereNull('effective_until')
-                          ->orWhere('effective_until', '>', $timestamp);
-                    });
+            ->where(function ($q) use ($timestamp) {
+                $q->whereNull('effective_until')
+                    ->orWhere('effective_until', '>', $timestamp);
+            });
     }
 
     /**
@@ -62,9 +62,9 @@ class LoyaltyRuleVersion extends Model
     public static function getCurrentVersion(string $ruleName): ?self
     {
         return static::forRule($ruleName)
-                    ->active()
-                    ->effectiveAt()
-                    ->orderBy('effective_from', 'desc')
-                    ->first();
+            ->active()
+            ->effectiveAt()
+            ->orderBy('effective_from', 'desc')
+            ->first();
     }
 }

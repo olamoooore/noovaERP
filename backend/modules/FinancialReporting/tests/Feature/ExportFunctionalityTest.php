@@ -2,17 +2,17 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TenantTestCase;
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Storage;
 use App\Models\User;
-use Modules\FinancialReporting\Services\Export\PdfExportService;
-use Modules\FinancialReporting\Services\Export\ExcelExportService;
+use Illuminate\Support\Facades\Artisan;
 use Modules\FinancialReporting\Services\Export\CsvExportService;
+use Modules\FinancialReporting\Services\Export\ExcelExportService;
+use Modules\FinancialReporting\Services\Export\PdfExportService;
+use Tests\TenantTestCase;
 
 class ExportFunctionalityTest extends TenantTestCase
 {
     protected User $user;
+
     protected array $sampleReportData;
 
     protected function setUp(): void
@@ -56,8 +56,8 @@ class ExportFunctionalityTest extends TenantTestCase
     /** @test */
     public function it_exports_report_to_csv_format()
     {
-        $service = new CsvExportService();
-        
+        $service = new CsvExportService;
+
         $filePath = $service->exportReport($this->sampleReportData);
 
         $this->assertFileExists($filePath);
@@ -71,8 +71,8 @@ class ExportFunctionalityTest extends TenantTestCase
     /** @test */
     public function it_exports_report_to_excel_format()
     {
-        $service = new ExcelExportService();
-        
+        $service = new ExcelExportService;
+
         $filePath = $service->exportReport($this->sampleReportData, 'profit-loss');
 
         $this->assertFileExists($filePath);
@@ -83,8 +83,8 @@ class ExportFunctionalityTest extends TenantTestCase
     /** @test */
     public function it_handles_csv_export_with_special_characters()
     {
-        $service = new CsvExportService();
-        
+        $service = new CsvExportService;
+
         $dataWithSpecialChars = [
             'title' => 'Test Report',
             'data' => [
@@ -97,7 +97,7 @@ class ExportFunctionalityTest extends TenantTestCase
         $filePath = $service->exportReport($dataWithSpecialChars);
 
         $this->assertFileExists($filePath);
-        
+
         $content = file_get_contents($filePath);
         // CSV should properly escape special characters
         $this->assertStringContainsString('"Item with, comma"', $content);
@@ -107,8 +107,8 @@ class ExportFunctionalityTest extends TenantTestCase
     /** @test */
     public function it_handles_empty_data_export()
     {
-        $service = new CsvExportService();
-        
+        $service = new CsvExportService;
+
         $emptyData = [
             'title' => 'Empty Report',
             'data' => [],
@@ -123,8 +123,8 @@ class ExportFunctionalityTest extends TenantTestCase
     /** @test */
     public function it_generates_unique_filenames_for_exports()
     {
-        $service = new CsvExportService();
-        
+        $service = new CsvExportService;
+
         $file1 = $service->exportReport($this->sampleReportData);
         sleep(1); // Ensure different timestamp
         $file2 = $service->exportReport($this->sampleReportData);
@@ -137,8 +137,8 @@ class ExportFunctionalityTest extends TenantTestCase
     /** @test */
     public function it_cleans_up_old_export_files()
     {
-        $service = new CsvExportService();
-        
+        $service = new CsvExportService;
+
         // Create some export files
         $file1 = $service->exportReport($this->sampleReportData);
         $file2 = $service->exportReport($this->sampleReportData);
@@ -188,8 +188,8 @@ class ExportFunctionalityTest extends TenantTestCase
     /** @test */
     public function it_handles_large_dataset_export()
     {
-        $service = new CsvExportService();
-        
+        $service = new CsvExportService;
+
         // Create large dataset
         $largeData = [
             'title' => 'Large Report',
@@ -201,7 +201,7 @@ class ExportFunctionalityTest extends TenantTestCase
                 'id' => $i,
                 'account' => "Account {$i}",
                 'amount' => rand(1000, 100000),
-                'date' => '2024-01-' . str_pad(($i % 28) + 1, 2, '0', STR_PAD_LEFT),
+                'date' => '2024-01-'.str_pad(($i % 28) + 1, 2, '0', STR_PAD_LEFT),
             ];
         }
 
@@ -215,17 +215,17 @@ class ExportFunctionalityTest extends TenantTestCase
     public function it_exports_pdf_with_proper_formatting()
     {
         // Skip if DomPDF not installed
-        if (!class_exists('\Barryvdh\DomPDF\Facade\Pdf')) {
+        if (! class_exists('\Barryvdh\DomPDF\Facade\Pdf')) {
             $this->markTestSkipped('DomPDF not installed');
         }
 
-        $service = new PdfExportService();
-        
+        $service = new PdfExportService;
+
         $filePath = $service->exportReport($this->sampleReportData);
 
         $this->assertFileExists($filePath);
         $this->assertStringEndsWith('.pdf', $filePath);
-        
+
         // PDF should have proper header
         $content = file_get_contents($filePath);
         $this->assertStringStartsWith('%PDF', $content);
@@ -235,12 +235,12 @@ class ExportFunctionalityTest extends TenantTestCase
     public function it_exports_pdf_in_landscape_orientation()
     {
         // Skip if DomPDF not installed
-        if (!class_exists('\Barryvdh\DomPDF\Facade\Pdf')) {
+        if (! class_exists('\Barryvdh\DomPDF\Facade\Pdf')) {
             $this->markTestSkipped('DomPDF not installed');
         }
 
-        $service = new PdfExportService();
-        
+        $service = new PdfExportService;
+
         $filePath = $service->exportLandscape($this->sampleReportData);
 
         $this->assertFileExists($filePath);
@@ -250,8 +250,8 @@ class ExportFunctionalityTest extends TenantTestCase
     /** @test */
     public function it_prevents_xss_in_pdf_export()
     {
-        $service = new PdfExportService();
-        
+        $service = new PdfExportService;
+
         $maliciousData = [
             'title' => 'Test Report',
             'data' => [
@@ -275,8 +275,8 @@ class ExportFunctionalityTest extends TenantTestCase
     /** @test */
     public function it_handles_null_values_in_export()
     {
-        $service = new CsvExportService();
-        
+        $service = new CsvExportService;
+
         $dataWithNulls = [
             'title' => 'Test Report',
             'data' => [
@@ -288,7 +288,7 @@ class ExportFunctionalityTest extends TenantTestCase
         $filePath = $service->exportReport($dataWithNulls);
 
         $this->assertFileExists($filePath);
-        
+
         $content = file_get_contents($filePath);
         $this->assertIsString($content);
     }
@@ -296,8 +296,8 @@ class ExportFunctionalityTest extends TenantTestCase
     /** @test */
     public function it_supports_multiple_export_formats_for_same_data()
     {
-        $csvService = new CsvExportService();
-        $excelService = new ExcelExportService();
+        $csvService = new CsvExportService;
+        $excelService = new ExcelExportService;
 
         $csvFile = $csvService->exportReport($this->sampleReportData);
         $excelFile = $excelService->exportReport($this->sampleReportData, 'profit-loss');
@@ -311,8 +311,8 @@ class ExportFunctionalityTest extends TenantTestCase
     /** @test */
     public function it_includes_metadata_in_exports()
     {
-        $service = new CsvExportService();
-        
+        $service = new CsvExportService;
+
         $dataWithMetadata = [
             'title' => 'Financial Report',
             'period' => [
@@ -328,7 +328,7 @@ class ExportFunctionalityTest extends TenantTestCase
         $filePath = $service->exportReport($dataWithMetadata);
 
         $this->assertFileExists($filePath);
-        
+
         $content = file_get_contents($filePath);
         $this->assertStringContainsString('2024-01-01', $content);
         $this->assertStringContainsString('2024-01-31', $content);

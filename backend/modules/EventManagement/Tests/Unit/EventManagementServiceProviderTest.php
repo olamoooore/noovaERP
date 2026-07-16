@@ -2,16 +2,14 @@
 
 namespace Modules\EventManagement\Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Application;
-use Illuminate\Support\Facades\Route;
 use Modules\EventManagement\EventManagementServiceProvider;
-use Modules\EventManagement\Services\EventService;
-use Modules\EventManagement\Services\BookingService;
-use Modules\EventManagement\Services\TicketService;
 use Modules\EventManagement\Services\AuditService;
+use Modules\EventManagement\Services\BookingService;
+use Modules\EventManagement\Services\EventService;
 use Modules\EventManagement\Services\FeatureFlagController;
 use Modules\EventManagement\Services\TenantSchemaManager;
+use Modules\EventManagement\Services\TicketService;
+use Tests\TestCase;
 
 class EventManagementServiceProviderTest extends TestCase
 {
@@ -20,7 +18,7 @@ class EventManagementServiceProviderTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->serviceProvider = new EventManagementServiceProvider($this->app);
     }
 
@@ -58,7 +56,7 @@ class EventManagementServiceProviderTest extends TestCase
         // All routes now use 'entitlement:event_management' via EnsureEntitlementAccess.
         $router = $this->app['router'];
         $middlewareGroups = $router->getMiddleware();
-        
+
         $this->assertArrayNotHasKey('feature.event_management', $middlewareGroups);
     }
 
@@ -67,15 +65,15 @@ class EventManagementServiceProviderTest extends TestCase
     {
         // This test verifies that the service provider attempts to load migrations
         // In a real Laravel environment, this would be tested by checking if migrations are loaded
-        
+
         // For now, we'll test that the service provider boots without errors
         $this->expectNotToPerformAssertions();
-        
+
         try {
             $this->serviceProvider->boot();
             // If we reach here, boot() completed successfully
         } catch (\Exception $e) {
-            $this->fail("Service provider boot failed: " . $e->getMessage());
+            $this->fail('Service provider boot failed: '.$e->getMessage());
         }
     }
 

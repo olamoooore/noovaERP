@@ -5,13 +5,10 @@ namespace Modules\FieldService\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Modules\FieldService\Models\WorkOrder;
-use Modules\FieldService\Models\WorkOrderActivity;
-use Modules\FieldService\Services\WorkOrderService;
 use Modules\FieldService\Services\InvoiceGenerationService;
 use Modules\FieldService\Services\StockDeductionService;
+use Modules\FieldService\Services\WorkOrderService;
 
 class WorkOrderController extends Controller
 {
@@ -33,9 +30,9 @@ class WorkOrderController extends Controller
             $search = $request->input('search');
             $query->where(function ($q) use ($search) {
                 $q->where('reference', 'like', "%{$search}%")
-                  ->orWhere('title', 'like', "%{$search}%")
-                  ->orWhere('site_address', 'like', "%{$search}%")
-                  ->orWhereHas('customer', fn($sq) => $sq->where('name', 'like', "%{$search}%"));
+                    ->orWhere('title', 'like', "%{$search}%")
+                    ->orWhere('site_address', 'like', "%{$search}%")
+                    ->orWhereHas('customer', fn ($sq) => $sq->where('name', 'like', "%{$search}%"));
             });
         }
 
@@ -58,7 +55,7 @@ class WorkOrderController extends Controller
             $tid = $request->input('technician_id');
             $query->where(function ($q) use ($tid) {
                 $q->where('lead_technician_id', $tid)
-                  ->orWhereHas('technicians', fn($sq) => $sq->where('users.id', $tid));
+                    ->orWhereHas('technicians', fn ($sq) => $sq->where('users.id', $tid));
             });
         }
 
@@ -71,7 +68,7 @@ class WorkOrderController extends Controller
         }
 
         if ($request->filled('to_date')) {
-            $query->where('scheduled_start', '<=', $request->input('to_date') . ' 23:59:59');
+            $query->where('scheduled_start', '<=', $request->input('to_date').' 23:59:59');
         }
 
         if ($request->filled('customer_id')) {
@@ -91,23 +88,23 @@ class WorkOrderController extends Controller
     public function calendar(Request $request)
     {
         $from = $request->input('from', now()->startOfMonth()->toDateTimeString());
-        $to   = $request->input('to',   now()->endOfMonth()->toDateTimeString());
+        $to = $request->input('to', now()->endOfMonth()->toDateTimeString());
 
         $workOrders = WorkOrder::with(['type', 'customer', 'leadTechnician'])
             ->whereBetween('scheduled_start', [$from, $to])
             ->whereNotIn('status', ['cancelled'])
             ->get()
-            ->map(fn($wo) => [
-                'id'         => $wo->id,
-                'title'      => "[{$wo->reference}] {$wo->title}",
-                'start'      => $wo->scheduled_start?->toIso8601String(),
-                'end'        => $wo->scheduled_end?->toIso8601String(),
-                'color'      => $wo->type?->color ?? '#3B82F6',
-                'status'     => $wo->status,
-                'priority'   => $wo->priority,
+            ->map(fn ($wo) => [
+                'id' => $wo->id,
+                'title' => "[{$wo->reference}] {$wo->title}",
+                'start' => $wo->scheduled_start?->toIso8601String(),
+                'end' => $wo->scheduled_end?->toIso8601String(),
+                'color' => $wo->type?->color ?? '#3B82F6',
+                'status' => $wo->status,
+                'priority' => $wo->priority,
                 'technician' => $wo->leadTechnician?->name,
-                'customer'   => $wo->customer?->name,
-                'reference'  => $wo->reference,
+                'customer' => $wo->customer?->name,
+                'reference' => $wo->reference,
             ]);
 
         return response()->json($workOrders);
@@ -118,7 +115,7 @@ class WorkOrderController extends Controller
     public function gantt(Request $request)
     {
         $from = $request->input('from', now()->startOfWeek()->toDateTimeString());
-        $to   = $request->input('to',   now()->endOfWeek()->toDateTimeString());
+        $to = $request->input('to', now()->endOfWeek()->toDateTimeString());
 
         $workOrders = WorkOrder::with(['type', 'customer', 'leadTechnician', 'technicians'])
             ->whereBetween('scheduled_start', [$from, $to])
@@ -128,23 +125,23 @@ class WorkOrderController extends Controller
         // Group by technician
         $byTechnician = [];
         foreach ($workOrders as $wo) {
-            $techId   = $wo->lead_technician_id ?? 0;
+            $techId = $wo->lead_technician_id ?? 0;
             $techName = $wo->leadTechnician?->name ?? 'Unassigned';
 
             $byTechnician[$techId]['technician'] = [
-                'id'   => $techId,
+                'id' => $techId,
                 'name' => $techName,
             ];
             $byTechnician[$techId]['tasks'][] = [
-                'id'             => $wo->id,
-                'reference'      => $wo->reference,
-                'title'          => $wo->title,
-                'start'          => $wo->scheduled_start?->toIso8601String(),
-                'end'            => $wo->scheduled_end?->toIso8601String(),
-                'status'         => $wo->status,
-                'priority'       => $wo->priority,
-                'color'          => $wo->type?->color ?? '#3B82F6',
-                'customer'       => $wo->customer?->name,
+                'id' => $wo->id,
+                'reference' => $wo->reference,
+                'title' => $wo->title,
+                'start' => $wo->scheduled_start?->toIso8601String(),
+                'end' => $wo->scheduled_end?->toIso8601String(),
+                'status' => $wo->status,
+                'priority' => $wo->priority,
+                'color' => $wo->type?->color ?? '#3B82F6',
+                'customer' => $wo->customer?->name,
             ];
         }
 
@@ -160,19 +157,19 @@ class WorkOrderController extends Controller
             ->whereNotNull('site_lng')
             ->whereNotIn('status', ['cancelled', 'invoiced'])
             ->get()
-            ->map(fn($wo) => [
-                'id'         => $wo->id,
-                'reference'  => $wo->reference,
-                'title'      => $wo->title,
-                'status'     => $wo->status,
-                'priority'   => $wo->priority,
-                'lat'        => $wo->site_lat,
-                'lng'        => $wo->site_lng,
-                'site_name'  => $wo->site_name,
-                'customer'   => $wo->customer?->name,
+            ->map(fn ($wo) => [
+                'id' => $wo->id,
+                'reference' => $wo->reference,
+                'title' => $wo->title,
+                'status' => $wo->status,
+                'priority' => $wo->priority,
+                'lat' => $wo->site_lat,
+                'lng' => $wo->site_lng,
+                'site_name' => $wo->site_name,
+                'customer' => $wo->customer?->name,
                 'technician' => $wo->leadTechnician?->name,
-                'scheduled'  => $wo->scheduled_start?->toIso8601String(),
-                'color'      => $wo->type?->color ?? '#3B82F6',
+                'scheduled' => $wo->scheduled_start?->toIso8601String(),
+                'color' => $wo->type?->color ?? '#3B82F6',
             ]);
 
         return response()->json($workOrders);
@@ -202,7 +199,7 @@ class WorkOrderController extends Controller
         $data = $workOrder->toArray();
         $data['total_parts_amount'] = $workOrder->total_parts_amount;
         $data['total_labor_amount'] = $workOrder->total_labor_amount;
-        $data['total_amount']       = $workOrder->total_amount;
+        $data['total_amount'] = $workOrder->total_amount;
 
         return response()->json($data);
     }
@@ -212,22 +209,22 @@ class WorkOrderController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'title'              => 'required|string|max:255',
-            'description'        => 'nullable|string',
-            'type_id'            => 'nullable|exists:fs_work_order_types,id',
-            'priority'           => 'nullable|in:low,normal,high,urgent',
-            'customer_id'        => 'nullable|exists:customers,id',
-            'site_name'          => 'nullable|string|max:255',
-            'site_address'       => 'nullable|string',
-            'site_lat'           => 'nullable|numeric|between:-90,90',
-            'site_lng'           => 'nullable|numeric|between:-180,180',
-            'scheduled_start'    => 'nullable|date',
-            'scheduled_end'      => 'nullable|date|after_or_equal:scheduled_start',
-            'team_id'            => 'nullable|exists:fs_teams,id',
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'type_id' => 'nullable|exists:fs_work_order_types,id',
+            'priority' => 'nullable|in:low,normal,high,urgent',
+            'customer_id' => 'nullable|exists:customers,id',
+            'site_name' => 'nullable|string|max:255',
+            'site_address' => 'nullable|string',
+            'site_lat' => 'nullable|numeric|between:-90,90',
+            'site_lng' => 'nullable|numeric|between:-180,180',
+            'scheduled_start' => 'nullable|date',
+            'scheduled_end' => 'nullable|date|after_or_equal:scheduled_start',
+            'team_id' => 'nullable|exists:fs_teams,id',
             'lead_technician_id' => 'nullable|exists:users,id',
-            'technician_ids'     => 'nullable|array',
-            'technician_ids.*'   => 'exists:users,id',
-            'internal_notes'     => 'nullable|string',
+            'technician_ids' => 'nullable|array',
+            'technician_ids.*' => 'exists:users,id',
+            'internal_notes' => 'nullable|string',
             'requires_signature' => 'nullable|boolean',
         ]);
 
@@ -243,22 +240,22 @@ class WorkOrderController extends Controller
         $workOrder = $this->findWorkOrderOrFail($work_order_id);
 
         $validated = $request->validate([
-            'title'              => 'sometimes|required|string|max:255',
-            'description'        => 'nullable|string',
-            'type_id'            => 'nullable|exists:fs_work_order_types,id',
-            'priority'           => 'nullable|in:low,normal,high,urgent',
-            'customer_id'        => 'nullable|exists:customers,id',
-            'site_name'          => 'nullable|string|max:255',
-            'site_address'       => 'nullable|string',
-            'site_lat'           => 'nullable|numeric|between:-90,90',
-            'site_lng'           => 'nullable|numeric|between:-180,180',
-            'scheduled_start'    => 'nullable|date',
-            'scheduled_end'      => 'nullable|date|after_or_equal:scheduled_start',
-            'team_id'            => 'nullable|exists:fs_teams,id',
+            'title' => 'sometimes|required|string|max:255',
+            'description' => 'nullable|string',
+            'type_id' => 'nullable|exists:fs_work_order_types,id',
+            'priority' => 'nullable|in:low,normal,high,urgent',
+            'customer_id' => 'nullable|exists:customers,id',
+            'site_name' => 'nullable|string|max:255',
+            'site_address' => 'nullable|string',
+            'site_lat' => 'nullable|numeric|between:-90,90',
+            'site_lng' => 'nullable|numeric|between:-180,180',
+            'scheduled_start' => 'nullable|date',
+            'scheduled_end' => 'nullable|date|after_or_equal:scheduled_start',
+            'team_id' => 'nullable|exists:fs_teams,id',
             'lead_technician_id' => 'nullable|exists:users,id',
-            'technician_ids'     => 'nullable|array',
-            'technician_ids.*'   => 'exists:users,id',
-            'internal_notes'     => 'nullable|string',
+            'technician_ids' => 'nullable|array',
+            'technician_ids.*' => 'exists:users,id',
+            'internal_notes' => 'nullable|string',
             'requires_signature' => 'nullable|boolean',
         ]);
 
@@ -294,9 +291,9 @@ class WorkOrderController extends Controller
         $workOrder = $this->findWorkOrderOrFail($work_order_id);
 
         $validated = $request->validate([
-            'technician_ids'   => 'required|array|min:1',
+            'technician_ids' => 'required|array|min:1',
             'technician_ids.*' => 'exists:users,id',
-            'lead_id'          => 'nullable|exists:users,id',
+            'lead_id' => 'nullable|exists:users,id',
         ]);
 
         $wo = $this->service->assignTechnicians(
@@ -329,7 +326,7 @@ class WorkOrderController extends Controller
     {
         $workOrder = $this->findWorkOrderOrFail($work_order_id);
 
-        if (!in_array($workOrder->status, ['completed', 'invoiced'])) {
+        if (! in_array($workOrder->status, ['completed', 'invoiced'])) {
             return response()->json([
                 'message' => 'Work Order must be completed before generating an invoice.',
             ], 422);
@@ -352,12 +349,12 @@ class WorkOrderController extends Controller
         $workOrder = $this->findWorkOrderOrFail($work_order_id);
 
         $validated = $request->validate([
-            'rating'   => 'required|integer|min:1|max:5',
+            'rating' => 'required|integer|min:1|max:5',
             'feedback' => 'nullable|string|max:2000',
         ]);
 
         $workOrder->update([
-            'customer_rating'   => $validated['rating'],
+            'customer_rating' => $validated['rating'],
             'customer_feedback' => $validated['feedback'] ?? null,
         ]);
 
@@ -377,18 +374,18 @@ class WorkOrderController extends Controller
         $workOrder = $this->findWorkOrderOrFail($work_order_id);
 
         $newWo = $this->service->create([
-            'title'              => $workOrder->title . ' (Copy)',
-            'description'        => $workOrder->description,
-            'type_id'            => $workOrder->type_id,
-            'priority'           => $workOrder->priority,
-            'customer_id'        => $workOrder->customer_id,
-            'site_name'          => $workOrder->site_name,
-            'site_address'       => $workOrder->site_address,
-            'site_lat'           => $workOrder->site_lat,
-            'site_lng'           => $workOrder->site_lng,
-            'team_id'            => $workOrder->team_id,
+            'title' => $workOrder->title.' (Copy)',
+            'description' => $workOrder->description,
+            'type_id' => $workOrder->type_id,
+            'priority' => $workOrder->priority,
+            'customer_id' => $workOrder->customer_id,
+            'site_name' => $workOrder->site_name,
+            'site_address' => $workOrder->site_address,
+            'site_lat' => $workOrder->site_lat,
+            'site_lng' => $workOrder->site_lng,
+            'team_id' => $workOrder->team_id,
             'lead_technician_id' => $workOrder->lead_technician_id,
-            'internal_notes'     => $workOrder->internal_notes,
+            'internal_notes' => $workOrder->internal_notes,
             'requires_signature' => $workOrder->requires_signature,
         ]);
 
@@ -416,8 +413,8 @@ class WorkOrderController extends Controller
     {
         $workOrder = WorkOrder::query()->find($workOrderId);
 
-        if (!$workOrder) {
-            throw (new ModelNotFoundException())->setModel(WorkOrder::class, [$workOrderId]);
+        if (! $workOrder) {
+            throw (new ModelNotFoundException)->setModel(WorkOrder::class, [$workOrderId]);
         }
 
         return $workOrder;

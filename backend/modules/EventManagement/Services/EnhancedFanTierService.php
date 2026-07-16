@@ -2,22 +2,24 @@
 
 namespace Modules\EventManagement\Services;
 
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 
 /**
  * EnhancedFanTierService - Task 7.4 Integration
- * 
+ *
  * Enhanced fan tier service that integrates with EligibilityAuditService
  * to log all eligibility decisions and provide comprehensive audit trails.
- * 
+ *
  * Requirements: 23.1, 23.4, 23.5
  */
 class EnhancedFanTierService
 {
     protected EligibilityAuditService $eligibilityAuditService;
+
     protected LoyaltyLedgerService $loyaltyLedgerService;
+
     protected AuditService $auditService;
 
     public function __construct(
@@ -32,12 +34,12 @@ class EnhancedFanTierService
 
     /**
      * Check tier access eligibility with comprehensive logging.
-     * 
-     * @param int $customerId Customer ID
-     * @param int $eventId Event ID
-     * @param array $context Request context
+     *
+     * @param  int  $customerId  Customer ID
+     * @param  int  $eventId  Event ID
+     * @param  array  $context  Request context
      * @return array Eligibility result
-     * 
+     *
      * Requirements: 23.1, 23.5
      */
     public function checkTierAccess(int $customerId, int $eventId, array $context = []): array
@@ -45,13 +47,13 @@ class EnhancedFanTierService
         try {
             // Get customer tier information
             $customerTier = $this->getCustomerTier($customerId);
-            
+
             // Get event tier requirements
             $eventTierRequirements = $this->getEventTierRequirements($eventId);
-            
+
             // Perform eligibility evaluation
             $evaluationResult = $this->evaluateTierEligibility($customerTier, $eventTierRequirements, $context);
-            
+
             // Log the eligibility decision
             $decisionData = [
                 'customer_id' => $customerId,
@@ -73,9 +75,9 @@ class EnhancedFanTierService
                 'user_agent' => $context['user_agent'] ?? null,
                 'decided_by_system' => 'fan_tier_service',
             ];
-            
+
             $auditResult = $this->eligibilityAuditService->logEligibilityDecision($decisionData);
-            
+
             return [
                 'success' => true,
                 'eligible' => $evaluationResult['result'] === 'allowed',
@@ -87,14 +89,14 @@ class EnhancedFanTierService
                 'confidence_score' => $evaluationResult['confidence_score'],
                 'additional_benefits' => $evaluationResult['additional_benefits'] ?? [],
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Failed to check tier access', [
                 'customer_id' => $customerId,
                 'event_id' => $eventId,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -104,12 +106,12 @@ class EnhancedFanTierService
 
     /**
      * Check early access eligibility with logging.
-     * 
-     * @param int $customerId Customer ID
-     * @param int $eventId Event ID
-     * @param array $context Request context
+     *
+     * @param  int  $customerId  Customer ID
+     * @param  int  $eventId  Event ID
+     * @param  array  $context  Request context
      * @return array Eligibility result
-     * 
+     *
      * Requirements: 23.1, 23.5
      */
     public function checkEarlyAccess(int $customerId, int $eventId, array $context = []): array
@@ -118,18 +120,18 @@ class EnhancedFanTierService
             // Get customer tier and loyalty status
             $customerTier = $this->getCustomerTier($customerId);
             $loyaltyStatus = $this->getCustomerLoyaltyStatus($customerId);
-            
+
             // Get event early access requirements
             $earlyAccessRequirements = $this->getEventEarlyAccessRequirements($eventId);
-            
+
             // Perform eligibility evaluation
             $evaluationResult = $this->evaluateEarlyAccessEligibility(
-                $customerTier, 
-                $loyaltyStatus, 
-                $earlyAccessRequirements, 
+                $customerTier,
+                $loyaltyStatus,
+                $earlyAccessRequirements,
                 $context
             );
-            
+
             // Log the eligibility decision
             $decisionData = [
                 'customer_id' => $customerId,
@@ -152,9 +154,9 @@ class EnhancedFanTierService
                 'user_agent' => $context['user_agent'] ?? null,
                 'decided_by_system' => 'fan_tier_service',
             ];
-            
+
             $auditResult = $this->eligibilityAuditService->logEligibilityDecision($decisionData);
-            
+
             return [
                 'success' => true,
                 'eligible' => $evaluationResult['result'] === 'allowed',
@@ -164,14 +166,14 @@ class EnhancedFanTierService
                 'decision_id' => $auditResult['decision_id'] ?? null,
                 'confidence_score' => $evaluationResult['confidence_score'],
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Failed to check early access', [
                 'customer_id' => $customerId,
                 'event_id' => $eventId,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -181,12 +183,12 @@ class EnhancedFanTierService
 
     /**
      * Check discount eligibility with logging.
-     * 
-     * @param int $customerId Customer ID
-     * @param int $eventId Event ID
-     * @param array $context Request context
+     *
+     * @param  int  $customerId  Customer ID
+     * @param  int  $eventId  Event ID
+     * @param  array  $context  Request context
      * @return array Eligibility result
-     * 
+     *
      * Requirements: 23.1, 23.5
      */
     public function checkDiscountEligibility(int $customerId, int $eventId, array $context = []): array
@@ -196,10 +198,10 @@ class EnhancedFanTierService
             $customerTier = $this->getCustomerTier($customerId);
             $loyaltyStatus = $this->getCustomerLoyaltyStatus($customerId);
             $purchaseHistory = $this->getCustomerPurchaseHistory($customerId);
-            
+
             // Get available discounts for event
             $availableDiscounts = $this->getEventDiscounts($eventId);
-            
+
             // Evaluate discount eligibility
             $evaluationResult = $this->evaluateDiscountEligibility(
                 $customerTier,
@@ -208,7 +210,7 @@ class EnhancedFanTierService
                 $availableDiscounts,
                 $context
             );
-            
+
             // Log the eligibility decision
             $decisionData = [
                 'customer_id' => $customerId,
@@ -232,9 +234,9 @@ class EnhancedFanTierService
                 'user_agent' => $context['user_agent'] ?? null,
                 'decided_by_system' => 'fan_tier_service',
             ];
-            
+
             $auditResult = $this->eligibilityAuditService->logEligibilityDecision($decisionData);
-            
+
             return [
                 'success' => true,
                 'eligible' => $evaluationResult['result'] === 'allowed',
@@ -245,14 +247,14 @@ class EnhancedFanTierService
                 'decision_id' => $auditResult['decision_id'] ?? null,
                 'confidence_score' => $evaluationResult['confidence_score'],
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Failed to check discount eligibility', [
                 'customer_id' => $customerId,
                 'event_id' => $eventId,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -262,12 +264,12 @@ class EnhancedFanTierService
 
     /**
      * Process points earning with ledger integration.
-     * 
-     * @param int $customerId Customer ID
-     * @param int $bookingId Booking ID
-     * @param array $earningData Earning data
+     *
+     * @param  int  $customerId  Customer ID
+     * @param  int  $bookingId  Booking ID
+     * @param  array  $earningData  Earning data
      * @return array Earning result
-     * 
+     *
      * Requirements: 23.4
      */
     public function processPointsEarning(int $customerId, int $bookingId, array $earningData): array
@@ -275,7 +277,7 @@ class EnhancedFanTierService
         try {
             // Calculate points to earn based on tier and purchase
             $pointsCalculation = $this->calculatePointsEarning($customerId, $earningData);
-            
+
             // Process through loyalty ledger
             $earningContext = [
                 'reference_type' => 'booking',
@@ -289,17 +291,17 @@ class EnhancedFanTierService
                 ],
                 'idempotency_key' => "booking_points_{$bookingId}",
             ];
-            
+
             $ledgerResult = $this->loyaltyLedgerService->earnPoints(
                 $customerId,
                 $pointsCalculation['total_points'],
                 $earningContext
             );
-            
+
             if ($ledgerResult['success']) {
                 // Update customer tier if necessary
                 $this->updateCustomerTierIfNeeded($customerId, $ledgerResult['points_balance']);
-                
+
                 // Log the points earning decision
                 $decisionData = [
                     'customer_id' => $customerId,
@@ -313,10 +315,10 @@ class EnhancedFanTierService
                     'confidence_score' => 1.0,
                     'decided_by_system' => 'fan_tier_service',
                 ];
-                
+
                 $this->eligibilityAuditService->logEligibilityDecision($decisionData);
             }
-            
+
             return [
                 'success' => $ledgerResult['success'],
                 'points_earned' => $pointsCalculation['total_points'],
@@ -325,14 +327,14 @@ class EnhancedFanTierService
                 'transaction_id' => $ledgerResult['transaction_id'] ?? null,
                 'error' => $ledgerResult['error'] ?? null,
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Failed to process points earning', [
                 'customer_id' => $customerId,
                 'booking_id' => $bookingId,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -342,12 +344,12 @@ class EnhancedFanTierService
 
     /**
      * Process points redemption with ledger integration.
-     * 
-     * @param int $customerId Customer ID
-     * @param int $points Points to redeem
-     * @param array $redemptionData Redemption data
+     *
+     * @param  int  $customerId  Customer ID
+     * @param  int  $points  Points to redeem
+     * @param  array  $redemptionData  Redemption data
      * @return array Redemption result
-     * 
+     *
      * Requirements: 23.4
      */
     public function processPointsRedemption(int $customerId, int $points, array $redemptionData): array
@@ -355,15 +357,15 @@ class EnhancedFanTierService
         try {
             // Check redemption eligibility
             $eligibilityCheck = $this->checkPointsRedemptionEligibility($customerId, $points, $redemptionData);
-            
-            if (!$eligibilityCheck['eligible']) {
+
+            if (! $eligibilityCheck['eligible']) {
                 return [
                     'success' => false,
                     'error' => $eligibilityCheck['reason'],
                     'decision_id' => $eligibilityCheck['decision_id'] ?? null,
                 ];
             }
-            
+
             // Process through loyalty ledger
             $redemptionContext = [
                 'reference_type' => $redemptionData['reference_type'] ?? 'manual',
@@ -372,9 +374,9 @@ class EnhancedFanTierService
                 'metadata' => $redemptionData['metadata'] ?? [],
                 'idempotency_key' => $redemptionData['idempotency_key'] ?? null,
             ];
-            
+
             $ledgerResult = $this->loyaltyLedgerService->redeemPoints($customerId, $points, $redemptionContext);
-            
+
             return [
                 'success' => $ledgerResult['success'],
                 'points_redeemed' => $points,
@@ -382,14 +384,14 @@ class EnhancedFanTierService
                 'transaction_id' => $ledgerResult['transaction_id'] ?? null,
                 'error' => $ledgerResult['error'] ?? null,
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Failed to process points redemption', [
                 'customer_id' => $customerId,
                 'points' => $points,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -407,7 +409,7 @@ class EnhancedFanTierService
         $tier = DB::table('customer_tiers')
             ->where('customer_id', $customerId)
             ->first();
-        
+
         return [
             'tier_name' => $tier->tier_name ?? 'bronze',
             'tier_level' => $tier->tier_level ?? 1,
@@ -424,7 +426,7 @@ class EnhancedFanTierService
     {
         $currentBalance = $this->loyaltyLedgerService->getCurrentBalance($customerId);
         $availableBalance = $this->loyaltyLedgerService->getAvailableBalance($customerId);
-        
+
         return [
             'current_balance' => $currentBalance,
             'available_balance' => $availableBalance,
@@ -448,7 +450,7 @@ class EnhancedFanTierService
                 AVG(total_amount) as average_order_value
             ')
             ->first();
-        
+
         return [
             'total_bookings' => $history->total_bookings ?? 0,
             'total_spent' => $history->total_spent ?? 0,
@@ -473,7 +475,7 @@ class EnhancedFanTierService
                 'etr.tier_restrictions',
             ])
             ->first();
-        
+
         return [
             'tier_restricted' => $event->tier_restricted ?? false,
             'minimum_tier' => $event->minimum_tier_level ?? 1,
@@ -491,7 +493,7 @@ class EnhancedFanTierService
             ->where('event_id', $eventId)
             ->where('is_active', true)
             ->first();
-        
+
         return [
             'enabled' => $requirements ? true : false,
             'minimum_tier_level' => $requirements->minimum_tier_level ?? 3,
@@ -511,7 +513,7 @@ class EnhancedFanTierService
             ->where('valid_from', '<=', Carbon::now())
             ->where('valid_until', '>=', Carbon::now())
             ->get();
-        
+
         return $discounts->map(function ($discount) {
             return [
                 'discount_id' => $discount->id,
@@ -532,10 +534,11 @@ class EnhancedFanTierService
     {
         $evaluationSteps = [];
         $confidence = 1.0;
-        
+
         // Check if event is tier restricted
-        if (!$eventRequirements['tier_restricted']) {
+        if (! $eventRequirements['tier_restricted']) {
             $evaluationSteps[] = 'Event is not tier restricted - access allowed';
+
             return [
                 'result' => 'allowed',
                 'reason' => 'Event is open to all tiers',
@@ -543,13 +546,14 @@ class EnhancedFanTierService
                 'confidence_score' => $confidence,
             ];
         }
-        
+
         // Check tier level
         $evaluationSteps[] = "Customer tier level: {$customerTier['tier_level']}";
         $evaluationSteps[] = "Required tier level: {$eventRequirements['minimum_tier']}";
-        
+
         if ($customerTier['tier_level'] >= $eventRequirements['minimum_tier']) {
             $evaluationSteps[] = 'Tier level requirement met - access allowed';
+
             return [
                 'result' => 'allowed',
                 'reason' => "Customer tier '{$customerTier['tier_name']}' meets minimum requirement",
@@ -559,6 +563,7 @@ class EnhancedFanTierService
             ];
         } else {
             $evaluationSteps[] = 'Tier level requirement not met - access blocked';
+
             return [
                 'result' => 'blocked',
                 'reason' => "Customer tier '{$customerTier['tier_name']}' does not meet minimum requirement",
@@ -575,9 +580,10 @@ class EnhancedFanTierService
     {
         $evaluationSteps = [];
         $confidence = 1.0;
-        
-        if (!$requirements['enabled']) {
+
+        if (! $requirements['enabled']) {
             $evaluationSteps[] = 'Early access not enabled for this event';
+
             return [
                 'result' => 'blocked',
                 'reason' => 'Early access not available for this event',
@@ -585,12 +591,13 @@ class EnhancedFanTierService
                 'confidence_score' => $confidence,
             ];
         }
-        
+
         $evaluationSteps[] = "Customer tier level: {$customerTier['tier_level']}";
         $evaluationSteps[] = "Required tier level for early access: {$requirements['minimum_tier_level']}";
-        
+
         if ($customerTier['tier_level'] >= $requirements['minimum_tier_level']) {
             $evaluationSteps[] = 'Early access tier requirement met - access allowed';
+
             return [
                 'result' => 'allowed',
                 'reason' => "Customer tier qualifies for {$requirements['early_access_hours']} hour early access",
@@ -600,6 +607,7 @@ class EnhancedFanTierService
             ];
         } else {
             $evaluationSteps[] = 'Early access tier requirement not met - access blocked';
+
             return [
                 'result' => 'blocked',
                 'reason' => 'Customer tier does not qualify for early access',
@@ -617,10 +625,10 @@ class EnhancedFanTierService
         $evaluationSteps = [];
         $eligibleDiscounts = [];
         $maxDiscount = 0;
-        
+
         foreach ($availableDiscounts as $discount) {
             $evaluationSteps[] = "Evaluating discount: {$discount['discount_type']}";
-            
+
             // Check tier requirement
             if ($customerTier['tier_level'] >= $discount['minimum_tier_level']) {
                 $evaluationSteps[] = "Tier requirement met for {$discount['discount_type']}";
@@ -630,7 +638,7 @@ class EnhancedFanTierService
                 $evaluationSteps[] = "Tier requirement not met for {$discount['discount_type']}";
             }
         }
-        
+
         if (empty($eligibleDiscounts)) {
             return [
                 'result' => 'blocked',
@@ -639,10 +647,10 @@ class EnhancedFanTierService
                 'confidence_score' => 1.0,
             ];
         }
-        
+
         return [
             'result' => 'allowed',
-            'reason' => count($eligibleDiscounts) . ' discount(s) available',
+            'reason' => count($eligibleDiscounts).' discount(s) available',
             'evaluation_steps' => $evaluationSteps,
             'confidence_score' => 1.0,
             'eligible_discounts' => $eligibleDiscounts,
@@ -659,9 +667,9 @@ class EnhancedFanTierService
         $basePoints = $earningData['base_points'] ?? 0;
         $tierMultiplier = $this->getTierMultiplier($customerTier['tier_level']);
         $bonusPoints = $earningData['bonus_points'] ?? 0;
-        
+
         $totalPoints = ($basePoints * $tierMultiplier) + $bonusPoints;
-        
+
         return [
             'base_points' => $basePoints,
             'tier_multiplier' => $tierMultiplier,
@@ -683,12 +691,12 @@ class EnhancedFanTierService
     private function checkPointsRedemptionEligibility(int $customerId, int $points, array $redemptionData): array
     {
         $availableBalance = $this->loyaltyLedgerService->getAvailableBalance($customerId);
-        
+
         $decisionData = [
             'customer_id' => $customerId,
             'decision_type' => 'points_redemption',
             'decision_result' => $availableBalance >= $points ? 'allowed' : 'blocked',
-            'decision_reason' => $availableBalance >= $points 
+            'decision_reason' => $availableBalance >= $points
                 ? "Sufficient balance for {$points} points redemption"
                 : "Insufficient balance: {$availableBalance} available, {$points} requested",
             'rule_name' => 'points_redemption_rule',
@@ -700,14 +708,14 @@ class EnhancedFanTierService
             'evaluation_log' => [
                 "Requested points: {$points}",
                 "Available balance: {$availableBalance}",
-                "Sufficient balance: " . ($availableBalance >= $points ? 'Yes' : 'No'),
+                'Sufficient balance: '.($availableBalance >= $points ? 'Yes' : 'No'),
             ],
             'confidence_score' => 1.0,
             'decided_by_system' => 'fan_tier_service',
         ];
-        
+
         $auditResult = $this->eligibilityAuditService->logEligibilityDecision($decisionData);
-        
+
         return [
             'eligible' => $availableBalance >= $points,
             'reason' => $decisionData['decision_reason'],
@@ -728,7 +736,7 @@ class EnhancedFanTierService
             4 => 2.0,  // Platinum
             5 => 2.5,  // Diamond
         ];
-        
+
         return $multipliers[$tierLevel] ?? 1.0;
     }
 

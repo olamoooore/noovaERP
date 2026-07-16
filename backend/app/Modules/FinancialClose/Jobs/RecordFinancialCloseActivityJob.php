@@ -34,7 +34,7 @@ class RecordFinancialCloseActivityJob implements ShouldQueue
             ->useEvent($this->action);
 
         // Create a simple model stub for logging
-        $subject = new \App\Models\Tenant();
+        $subject = new \App\Models\Tenant;
         $subject->id = $this->tenantId;
 
         $activityLogger->log($subject);

@@ -32,7 +32,7 @@ class CreateEventRequest extends FormRequest
             'ticket_types.*.price' => ['required_with:ticket_types', 'numeric', 'min:0'],
             'ticket_types.*.capacity' => ['required_with:ticket_types', 'integer', 'min:1'],
             'ticket_types.*.description' => ['nullable', 'string', 'max:1000'],
-            
+
             // Phase 4 requirements
             'event_type_id' => ['required', 'integer', 'exists:event_types,id'],
             'ticket_acquisition_mode' => ['required', 'string', 'in:buy,bid'],
@@ -66,7 +66,7 @@ class CreateEventRequest extends FormRequest
             'ticket_types.*.price.min' => 'Ticket type price cannot be negative.',
             'ticket_types.*.capacity.required_with' => 'Ticket type capacity is required.',
             'ticket_types.*.capacity.min' => 'Ticket type capacity must be at least 1.',
-            
+
             // Phase 4 validation messages
             'event_type_id.required' => 'Event type is required. Please select a valid event type.',
             'event_type_id.exists' => 'The selected event type is invalid.',

@@ -26,7 +26,7 @@ class PurchaseOrderController extends Controller
             $search = $request->input('search');
             $query->where(function ($q) use ($search) {
                 $q->where('po_number', 'like', "%{$search}%")
-                    ->orWhereHas('supplier', fn($sq) => $sq->where('name', 'like', "%{$search}%"));
+                    ->orWhereHas('supplier', fn ($sq) => $sq->where('name', 'like', "%{$search}%"));
             });
         }
 
@@ -131,7 +131,7 @@ class PurchaseOrderController extends Controller
     {
         $purchaseOrder = $this->findPurchaseOrderOrFail($purchase_order_id);
 
-        if (!in_array($purchaseOrder->status, ['draft', 'pending'])) {
+        if (! in_array($purchaseOrder->status, ['draft', 'pending'])) {
             return response()->json(['message' => 'Cannot update purchase order in current status'], 422);
         }
 
@@ -159,9 +159,9 @@ class PurchaseOrderController extends Controller
 
             if (isset($validated['items'])) {
                 $existingIds = [];
-                
+
                 foreach ($validated['items'] as $itemData) {
-                    if (!empty($itemData['id'])) {
+                    if (! empty($itemData['id'])) {
                         $item = PurchaseOrderItem::find($itemData['id']);
                         if ($item && $item->purchase_order_id === $purchaseOrder->id) {
                             $item->fill($itemData);
@@ -192,7 +192,7 @@ class PurchaseOrderController extends Controller
     {
         $purchaseOrder = $this->findPurchaseOrderOrFail($purchase_order_id);
 
-        if (!in_array($purchaseOrder->status, ['draft', 'cancelled'])) {
+        if (! in_array($purchaseOrder->status, ['draft', 'cancelled'])) {
             return response()->json(['message' => 'Cannot delete purchase order in current status'], 422);
         }
 
@@ -248,7 +248,7 @@ class PurchaseOrderController extends Controller
     {
         $purchaseOrder = $this->findPurchaseOrderOrFail($purchase_order_id);
 
-        if (!in_array($purchaseOrder->status, ['ordered', 'partial'])) {
+        if (! in_array($purchaseOrder->status, ['ordered', 'partial'])) {
             return response()->json(['message' => 'Order must be in ordered or partial status'], 422);
         }
 
@@ -284,21 +284,21 @@ class PurchaseOrderController extends Controller
                         ];
                     }
 
-                    if (!$item->isFullyReceived()) {
+                    if (! $item->isFullyReceived()) {
                         $allReceived = false;
                     }
                 }
             }
 
-            if (!empty($receivedLines)) {
+            if (! empty($receivedLines)) {
                 // Delegate GRN creation and stock adjustment to GoodsReceiptService
                 // (single canonical path — eliminates competing GRN backbone).
                 $grn = $this->goodsReceiptService->create([
                     'purchase_order_id' => $purchaseOrder->id,
-                    'warehouse_id'      => $purchaseOrder->warehouse_id,
-                    'received_date'     => now()->toDateString(),
-                    'notes'             => $validated['notes'] ?? "Received from PO {$purchaseOrder->po_number}",
-                    'lines'             => $receivedLines,
+                    'warehouse_id' => $purchaseOrder->warehouse_id,
+                    'received_date' => now()->toDateString(),
+                    'notes' => $validated['notes'] ?? "Received from PO {$purchaseOrder->po_number}",
+                    'lines' => $receivedLines,
                 ]);
 
                 $this->goodsReceiptService->confirm($grn);
@@ -331,12 +331,10 @@ class PurchaseOrderController extends Controller
     {
         $purchaseOrder = PurchaseOrder::query()->find($purchaseOrderId);
 
-        if (!$purchaseOrder) {
-            throw (new ModelNotFoundException())->setModel(PurchaseOrder::class, [$purchaseOrderId]);
+        if (! $purchaseOrder) {
+            throw (new ModelNotFoundException)->setModel(PurchaseOrder::class, [$purchaseOrderId]);
         }
 
         return $purchaseOrder;
     }
-
 }
-

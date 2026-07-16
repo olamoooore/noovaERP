@@ -5,12 +5,12 @@ namespace App\Services;
 use App\Models\FiscalPeriod;
 use App\Models\LockDateOverride;
 use App\Models\User;
-use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Fiscal Period Validator
- * 
+ *
  * Validates transactions against fiscal period rules
  * Prevents posting to locked periods unless user has override permission
  */
@@ -23,9 +23,9 @@ class FiscalPeriodValidator
 
     /**
      * Validate if a date can be posted to
-     * 
-     * @param string|Carbon $date The transaction date
-     * @param User|null $user The user attempting to post (null = current user)
+     *
+     * @param  string|Carbon  $date  The transaction date
+     * @param  User|null  $user  The user attempting to post (null = current user)
      * @return array ['allowed' => bool, 'reason' => string|null, 'period' => FiscalPeriod|null]
      */
     public function validateDate($date, ?User $user = null): array
@@ -37,14 +37,14 @@ class FiscalPeriodValidator
         $period = FiscalPeriod::getPeriodForDate($date);
 
         // Auto-provision fiscal periods if none exist for this year
-        if (!$period) {
+        if (! $period) {
             $year = $date->year;
 
             // Only auto-create if there are NO periods at all for this year
             // (avoids creating gaps if user intentionally deleted one month)
             $hasAnyPeriodForYear = FiscalPeriod::forYear($year)->exists();
 
-            if (!$hasAnyPeriodForYear) {
+            if (! $hasAnyPeriodForYear) {
                 Log::info("Auto-creating fiscal periods for year {$year} because none exist.");
                 FiscalPeriod::createMonthlyPeriodsForYear($year);
 
@@ -53,13 +53,13 @@ class FiscalPeriodValidator
             }
         }
 
-        if (!$period) {
+        if (! $period) {
             Log::warning("Posting blocked: no fiscal period defined for date: {$date->toDateString()}");
 
             return [
                 'allowed' => false,
-                'reason'  => "No fiscal period is defined for {$date->toDateString()}. Create or open a fiscal period covering this date before posting.",
-                'period'  => null,
+                'reason' => "No fiscal period is defined for {$date->toDateString()}. Create or open a fiscal period covering this date before posting.",
+                'period' => null,
             ];
         }
 
@@ -68,7 +68,7 @@ class FiscalPeriodValidator
             // Check if user has override permission
             if ($user && $this->userCanOverride($user)) {
                 Log::info("User {$user->id} overriding fiscal lock for period: {$period->code}");
-                
+
                 return [
                     'allowed' => true,
                     'reason' => null,
@@ -121,9 +121,6 @@ class FiscalPeriodValidator
 
     /**
      * Check if user has permission to override fiscal lock
-     * 
-     * @param User $user
-     * @return bool
      */
     private function userCanOverride(User $user): bool
     {
@@ -151,17 +148,17 @@ class FiscalPeriodValidator
 
     /**
      * Validate and throw exception if not allowed
-     * 
-     * @param string|Carbon $date
-     * @param User|null $user
+     *
+     * @param  string|Carbon  $date
      * @return array Validation result
+     *
      * @throws \Exception
      */
     public function validateOrFail($date, ?User $user = null): array
     {
         $result = $this->validateDate($date, $user);
 
-        if (!$result['allowed']) {
+        if (! $result['allowed']) {
             throw new \Exception($result['reason']);
         }
 
@@ -175,37 +172,34 @@ class FiscalPeriodValidator
      * so all accounting overrides are queryable from a single table.
      * The Log::warning() is kept alongside for real-time observability.
      *
-     * @param FiscalPeriod $period
-     * @param User         $user
-     * @param string       $action Description of the action (e.g. 'manual_journal_post')
-     * @return void
+     * @param  string  $action  Description of the action (e.g. 'manual_journal_post')
      */
     public function logOverride(FiscalPeriod $period, User $user, string $action): void
     {
         Log::warning('Fiscal period override', [
-            'period_id'   => $period->id,
+            'period_id' => $period->id,
             'period_code' => $period->code,
             'period_name' => $period->name,
-            'user_id'     => $user->id,
-            'user_email'  => $user->email,
-            'action'      => $action,
-            'timestamp'   => now()->toIso8601String(),
+            'user_id' => $user->id,
+            'user_email' => $user->email,
+            'action' => $action,
+            'timestamp' => now()->toIso8601String(),
         ]);
 
         // Persist to DB via lock_date_overrides (transaction_type = 'fiscal_period')
         LockDateOverride::logOverride(
-            userId:          $user->id,
+            userId: $user->id,
             transactionType: 'fiscal_period',
-            transactionId:   $period->id,
+            transactionId: $period->id,
             transactionDate: $period->period_start,
-            reason:          "Fiscal period override: {$action} on period '{$period->code}'",
-            approvedBy:      null,
+            reason: "Fiscal period override: {$action} on period '{$period->code}'",
+            approvedBy: null,
         );
     }
 
     /**
      * Get all locked periods
-     * 
+     *
      * @return \Illuminate\Database\Eloquent\Collection
      */
     public function getLockedPeriods()
@@ -215,7 +209,7 @@ class FiscalPeriodValidator
 
     /**
      * Get all open periods
-     * 
+     *
      * @return \Illuminate\Database\Eloquent\Collection
      */
     public function getOpenPeriods()
@@ -225,10 +219,9 @@ class FiscalPeriodValidator
 
     /**
      * Check if any period is locked for a date range
-     * 
-     * @param string|Carbon $startDate
-     * @param string|Carbon $endDate
-     * @return bool
+     *
+     * @param  string|Carbon  $startDate
+     * @param  string|Carbon  $endDate
      */
     public function isRangeLocked($startDate, $endDate): bool
     {
@@ -238,11 +231,11 @@ class FiscalPeriodValidator
         $lockedPeriods = FiscalPeriod::locked()
             ->where(function ($query) use ($startDate, $endDate) {
                 $query->whereBetween('period_start', [$startDate, $endDate])
-                      ->orWhereBetween('period_end', [$startDate, $endDate])
-                      ->orWhere(function ($q) use ($startDate, $endDate) {
-                          $q->where('period_start', '<=', $startDate)
+                    ->orWhereBetween('period_end', [$startDate, $endDate])
+                    ->orWhere(function ($q) use ($startDate, $endDate) {
+                        $q->where('period_start', '<=', $startDate)
                             ->where('period_end', '>=', $endDate);
-                      });
+                    });
             })
             ->exists();
 
@@ -251,9 +244,8 @@ class FiscalPeriodValidator
 
     /**
      * Get validation summary for multiple dates
-     * 
-     * @param array $dates Array of dates to validate
-     * @param User|null $user
+     *
+     * @param  array  $dates  Array of dates to validate
      * @return array Summary of validation results
      */
     public function validateMultipleDates(array $dates, ?User $user = null): array
@@ -269,7 +261,7 @@ class FiscalPeriodValidator
             $validation = $this->validateDate($date, $user);
             $results['dates'][$date] = $validation;
 
-            if (!$validation['allowed']) {
+            if (! $validation['allowed']) {
                 $results['all_allowed'] = false;
                 $results['locked_count']++;
             }

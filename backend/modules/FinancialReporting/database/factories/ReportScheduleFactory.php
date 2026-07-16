@@ -2,9 +2,9 @@
 
 namespace Modules\FinancialReporting\Database\Factories;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Modules\FinancialReporting\Models\ReportSchedule;
-use App\Models\User;
 
 class ReportScheduleFactory extends Factory
 {

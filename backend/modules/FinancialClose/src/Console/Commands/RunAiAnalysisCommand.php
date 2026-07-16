@@ -17,8 +17,9 @@ class RunAiAnalysisCommand extends Command
     public function handle(FinancialCloseAiAnalysisService $analysisService): int
     {
         $tenantId = $this->option('tenant') ?? tenant()?->getTenantKey();
-        if (!$tenantId) {
+        if (! $tenantId) {
             $this->error('No tenant specified and no active tenant context.');
+
             return 1;
         }
 
@@ -29,7 +30,7 @@ class RunAiAnalysisCommand extends Command
 
         $result = $analysisService->analyze($tenantId, $entityId, $periodId);
 
-        $this->info("Analysis complete.");
+        $this->info('Analysis complete.');
         $this->info("  Accounts analyzed: {$result['accounts_analyzed']}");
         $this->info("  Findings created:  {$result['findings_created']}");
 

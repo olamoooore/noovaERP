@@ -2,14 +2,14 @@
 
 namespace Modules\Sales\Http\Controllers;
 
+use App\Platform\BulkDelete\BulkDeleteService;
+use App\Platform\Import\ImportService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Modules\Sales\Models\DeliveryOrder;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\DeliveryOrderService;
-use App\Platform\BulkDelete\BulkDeleteService;
-use App\Platform\Import\ImportService;
 
 class DeliveryOrderController extends Controller
 {
@@ -48,12 +48,12 @@ class DeliveryOrderController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('delivery_order_number', 'ILIKE', "%{$search}%")
-                  ->orWhereHas('customer', function ($cq) use ($search) {
-                      $cq->where('name', 'ILIKE', "%{$search}%");
-                  })
-                  ->orWhereHas('salesOrder', function ($sq) use ($search) {
-                      $sq->where('sales_order_number', 'ILIKE', "%{$search}%");
-                  });
+                    ->orWhereHas('customer', function ($cq) use ($search) {
+                        $cq->where('name', 'ILIKE', "%{$search}%");
+                    })
+                    ->orWhereHas('salesOrder', function ($sq) use ($search) {
+                        $sq->where('sales_order_number', 'ILIKE', "%{$search}%");
+                    });
             });
         }
 
@@ -89,6 +89,7 @@ class DeliveryOrderController extends Controller
 
             try {
                 $deliveryOrder = $this->deliveryService->createStandaloneDeliveryOrder($validated);
+
                 return response()->json([
                     'message' => 'Standalone delivery order created',
                     'data' => $deliveryOrder,
@@ -119,12 +120,13 @@ class DeliveryOrderController extends Controller
         ]);
 
         $order = SalesOrder::find($validated['sales_order_id']);
-        if (!$order) {
+        if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
         try {
             $deliveryOrder = $this->deliveryService->createDeliveryOrder($order, $validated);
+
             return response()->json([
                 'message' => 'Delivery order created',
                 'data' => $deliveryOrder,
@@ -145,7 +147,7 @@ class DeliveryOrderController extends Controller
             'confirmedBy',
         ])->find($id);
 
-        if (!$deliveryOrder) {
+        if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
         }
 
@@ -156,12 +158,13 @@ class DeliveryOrderController extends Controller
     {
         $deliveryOrder = DeliveryOrder::find($id);
 
-        if (!$deliveryOrder) {
+        if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
         }
 
         try {
             $deliveryOrder = $this->deliveryService->confirmDeliveryOrder($deliveryOrder);
+
             return response()->json([
                 'message' => 'Delivery order confirmed',
                 'data' => $deliveryOrder,
@@ -179,12 +182,13 @@ class DeliveryOrderController extends Controller
     {
         $deliveryOrder = DeliveryOrder::find($id);
 
-        if (!$deliveryOrder) {
+        if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
         }
 
         try {
             $deliveryOrder = $this->deliveryService->completeDeliveryOrder($deliveryOrder);
+
             return response()->json([
                 'message' => 'Delivery order completed — stock deducted',
                 'data' => $deliveryOrder,
@@ -202,7 +206,7 @@ class DeliveryOrderController extends Controller
     {
         $deliveryOrder = DeliveryOrder::find($id);
 
-        if (!$deliveryOrder) {
+        if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
         }
 
@@ -212,6 +216,7 @@ class DeliveryOrderController extends Controller
 
         try {
             $deliveryOrder = $this->deliveryService->reverseDeliveryOrder($deliveryOrder, $validated['reason']);
+
             return response()->json([
                 'message' => 'Delivery order reversed — stock restored',
                 'data' => $deliveryOrder,
@@ -225,7 +230,7 @@ class DeliveryOrderController extends Controller
     {
         $deliveryOrder = DeliveryOrder::find($id);
 
-        if (!$deliveryOrder) {
+        if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
         }
 
@@ -233,6 +238,7 @@ class DeliveryOrderController extends Controller
 
         try {
             $deliveryOrder = $this->deliveryService->cancelDeliveryOrder($deliveryOrder, $reason);
+
             return response()->json([
                 'message' => 'Delivery order cancelled',
                 'data' => $deliveryOrder,
@@ -245,7 +251,7 @@ class DeliveryOrderController extends Controller
     public function destroy($id)
     {
         $deliveryOrder = DeliveryOrder::find($id);
-        if (!$deliveryOrder) {
+        if (! $deliveryOrder) {
             return response()->json(['message' => 'Delivery order not found'], 404);
         }
 
@@ -254,6 +260,7 @@ class DeliveryOrderController extends Controller
         }
 
         $deliveryOrder->delete();
+
         return response()->json(['message' => 'Delivery order deleted']);
     }
 
@@ -334,18 +341,18 @@ class DeliveryOrderController extends Controller
                 ],
                 'transform_header' => function (array $header, array $rows) {
                     // Resolve customer_id from code first, then name
-                    if (!isset($header['customer_id']) || !is_numeric($header['customer_id'])) {
+                    if (! isset($header['customer_id']) || ! is_numeric($header['customer_id'])) {
                         $customer = null;
 
-                        if (!empty($header['customer_id'])) {
+                        if (! empty($header['customer_id'])) {
                             $customer = \App\Models\Customer::where('code', $header['customer_id'])->first();
                         }
 
-                        if (!$customer && !empty($header['customer_name'])) {
+                        if (! $customer && ! empty($header['customer_name'])) {
                             $customer = \App\Models\Customer::where('name', $header['customer_name'])->first();
                         }
 
-                        if (!$customer) {
+                        if (! $customer) {
                             return null;
                         }
                         $header['customer_id'] = $customer->id;
@@ -369,16 +376,18 @@ class DeliveryOrderController extends Controller
 
                     $header['status'] = 'draft';
                     $header['delivery_date'] = $header['delivery_date'] ?? now()->toDateString();
+
                     return $header;
                 },
                 'transform_line' => function (array $line, array $rawRow, int $idx) {
                     // Resolve product_id from SKU
-                    if (isset($line['product_id']) && !is_numeric($line['product_id'])) {
+                    if (isset($line['product_id']) && ! is_numeric($line['product_id'])) {
                         $product = \App\Models\Product::where('sku', $line['product_id'])->first();
                         $line['product_id'] = $product?->id;
                     }
                     $line['quantity_ordered'] = $line['quantity_delivered'] ?? 0;
                     $line['unit'] = $line['unit'] ?? 'pcs';
+
                     return $line;
                 },
             ]
@@ -388,7 +397,7 @@ class DeliveryOrderController extends Controller
             'message' => "Import complete: {$result['created']} delivery order(s) created",
             'created' => $result['created'],
             'errors' => $result['errors'],
-        ], !empty($result['errors']) ? 207 : 201);
+        ], ! empty($result['errors']) ? 207 : 201);
     }
 
     /**
@@ -420,7 +429,7 @@ class DeliveryOrderController extends Controller
     {
         $order = SalesOrder::with(['lines.product', 'deliveryOrders.lines'])->find($salesOrderId);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 

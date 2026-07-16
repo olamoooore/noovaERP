@@ -2,9 +2,9 @@
 
 namespace Modules\FinancialReporting\Database\Factories;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Modules\FinancialReporting\Models\ReportTemplate;
-use App\Models\User;
 
 class ReportTemplateFactory extends Factory
 {
@@ -63,7 +63,7 @@ class ReportTemplateFactory extends Factory
             $config['shared'] = true;
             $config['shared_by'] = $attributes['created_by'];
             $config['shared_at'] = now()->toIso8601String();
-            
+
             return ['configuration' => $config];
         });
     }

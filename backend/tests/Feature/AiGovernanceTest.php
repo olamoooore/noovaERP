@@ -27,6 +27,7 @@ use Tests\TenantTestCase;
 class AiGovernanceTest extends TenantTestCase
 {
     private AIApprovalControlService $approvals;
+
     private AISafetyRulesService $safety;
 
     protected function setUp(): void
@@ -134,7 +135,7 @@ class AiGovernanceTest extends TenantTestCase
     {
         $this->bindTestTenant();
         $user = $this->adminUser();
-        $dailyKey = 'ai_usage:test-tenant:' . date('Y-m-d');
+        $dailyKey = 'ai_usage:test-tenant:'.date('Y-m-d');
         Cache::put($dailyKey, 150.0); // default daily limit is 100
 
         $check = $this->safety->checkActionAllowed('ai.read', $user, [
@@ -164,6 +165,7 @@ class AiGovernanceTest extends TenantTestCase
     {
         $user = User::factory()->create();
         $user->assignRole('admin');
+
         return $user;
     }
 }

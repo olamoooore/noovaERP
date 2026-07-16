@@ -29,9 +29,13 @@ class TierBenefit extends Model
 
     // Benefit type constants
     public const TYPE_EARLY_ACCESS = 'early_access';
+
     public const TYPE_DISCOUNT = 'discount';
+
     public const TYPE_EXCLUSIVE_TICKETS = 'exclusive_tickets';
+
     public const TYPE_PRIORITY_SUPPORT = 'priority_support';
+
     public const TYPE_POINTS_MULTIPLIER = 'points_multiplier';
 
     /**
@@ -115,12 +119,12 @@ class TierBenefit extends Model
      */
     public function appliesTo(string $context, array $contextData = []): bool
     {
-        if (!$this->is_active) {
+        if (! $this->is_active) {
             return false;
         }
 
         $applicableContexts = $this->configuration['applicable_contexts'] ?? [];
-        
+
         if (empty($applicableContexts)) {
             return true; // Applies to all contexts if none specified
         }

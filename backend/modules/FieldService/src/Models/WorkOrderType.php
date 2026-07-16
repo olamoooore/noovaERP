@@ -19,8 +19,8 @@ class WorkOrderType extends Model
 
     protected $casts = [
         'default_duration_hours' => 'decimal:2',
-        'auto_invoice'           => 'boolean',
-        'is_active'              => 'boolean',
+        'auto_invoice' => 'boolean',
+        'is_active' => 'boolean',
     ];
 
     public function workOrders(): HasMany

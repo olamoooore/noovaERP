@@ -23,7 +23,7 @@ class WebsiteBuilderServiceProvider extends ServiceProvider
         // Tenant migrations are loaded via tenancy.php migration_parameters config.
         // Routes are loaded via ModuleManager in routes/tenant.php with proper tenant context
         // $this->loadRoutesFrom(__DIR__ . '/../routes/api.php');
-        $this->loadRoutesFrom(__DIR__ . '/../routes/web.php');
-        $this->loadViewsFrom(__DIR__ . '/../resources/views', 'website-builder');
+        $this->loadRoutesFrom(__DIR__.'/../routes/web.php');
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'website-builder');
     }
 }

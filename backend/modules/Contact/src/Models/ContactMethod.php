@@ -11,8 +11,11 @@ class ContactMethod extends Model
     use HasFactory, SoftDeletes;
 
     protected $table = 'contact_methods';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [

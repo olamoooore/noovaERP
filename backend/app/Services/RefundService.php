@@ -45,6 +45,7 @@ class RefundService
                         'refund_number' => $existing->refund_number,
                         'idempotency_key' => $idempotencyKey,
                     ]);
+
                     return $existing;
                 }
             }
@@ -61,6 +62,7 @@ class RefundService
                     'source_id' => $sourceId,
                     'existing_refund_id' => $existingBySource->id,
                 ]);
+
                 return $existingBySource;
             }
 
@@ -70,7 +72,7 @@ class RefundService
             }
 
             if ($refundAmount <= 0) {
-                throw new \Exception("Refund amount must be greater than zero");
+                throw new \Exception('Refund amount must be greater than zero');
             }
 
             // Determine refund type
@@ -113,7 +115,7 @@ class RefundService
         return DB::transaction(function () use ($refundId, $approvedBy) {
             $refund = RefundTransaction::lockForUpdate()->findOrFail($refundId);
 
-            if (!$refund->isPending()) {
+            if (! $refund->isPending()) {
                 throw new \Exception("Refund is {$refund->status}, cannot approve");
             }
 
@@ -141,7 +143,7 @@ class RefundService
         return DB::transaction(function () use ($refundId, $rejectedBy, $reason) {
             $refund = RefundTransaction::lockForUpdate()->findOrFail($refundId);
 
-            if (!$refund->isPending()) {
+            if (! $refund->isPending()) {
                 throw new \Exception("Refund is {$refund->status}, cannot reject");
             }
 
@@ -149,7 +151,7 @@ class RefundService
                 'status' => 'rejected',
                 'approved_by' => $rejectedBy,
                 'approved_at' => now(),
-                'notes' => ($refund->notes ? $refund->notes . "\n\n" : '') . "Rejected: {$reason}",
+                'notes' => ($refund->notes ? $refund->notes."\n\n" : '')."Rejected: {$reason}",
             ]);
 
             Log::info('Refund rejected', [
@@ -171,7 +173,7 @@ class RefundService
         return DB::transaction(function () use ($refundId) {
             $refund = RefundTransaction::lockForUpdate()->findOrFail($refundId);
 
-            if (!$refund->isApproved()) {
+            if (! $refund->isApproved()) {
                 throw new \Exception("Refund must be approved before completion. Current status: {$refund->status}");
             }
 
@@ -198,12 +200,12 @@ class RefundService
             $refund = RefundTransaction::lockForUpdate()->findOrFail($refundId);
 
             if ($refund->isCompleted()) {
-                throw new \Exception("Cannot cancel completed refund");
+                throw new \Exception('Cannot cancel completed refund');
             }
 
             $refund->update([
                 'status' => 'cancelled',
-                'notes' => ($refund->notes ? $refund->notes . "\n\n" : '') . "Cancelled: {$reason}",
+                'notes' => ($refund->notes ? $refund->notes."\n\n" : '')."Cancelled: {$reason}",
             ]);
 
             Log::info('Refund cancelled', [
@@ -233,8 +235,8 @@ class RefundService
     {
         foreach ($refundLines as $refundLine) {
             $originalLine = collect($originalLines)->firstWhere('id', $refundLine['line_id']);
-            
-            if (!$originalLine) {
+
+            if (! $originalLine) {
                 throw new \Exception("Refund line {$refundLine['line_id']} not found in original order");
             }
 

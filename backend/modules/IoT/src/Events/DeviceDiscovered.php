@@ -7,8 +7,8 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
-use Modules\IoT\Models\DiscoveredDevice;
 use Modules\IoT\Models\DeviceTemplate;
+use Modules\IoT\Models\DiscoveredDevice;
 
 class DeviceDiscovered implements ShouldBroadcast
 {
@@ -26,7 +26,8 @@ class DeviceDiscovered implements ShouldBroadcast
     {
         // Broadcast to tenant channel for frontend notifications
         $tenantId = tenant()?->id ?? 'default';
-        return new Channel("tenant." . $tenantId);
+
+        return new Channel('tenant.'.$tenantId);
     }
 
     /**

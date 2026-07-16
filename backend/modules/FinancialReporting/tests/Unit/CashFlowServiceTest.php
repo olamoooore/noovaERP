@@ -2,14 +2,13 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Modules\FinancialReporting\Services\Reports\CashFlowService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
 use Carbon\Carbon;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Reports\CashFlowService;
+use Tests\TenantTestCase;
 
 class CashFlowServiceTest extends TenantTestCase
 {
-
     protected CashFlowService $service;
 
     protected function setUp(): void
@@ -39,8 +38,8 @@ class CashFlowServiceTest extends TenantTestCase
     public function it_throws_exception_when_dates_missing()
     {
         $this->expectException(\InvalidArgumentException::class);
-        
-        $filter = new ReportFilter();
+
+        $filter = new ReportFilter;
         $this->service->generate($filter);
     }
 

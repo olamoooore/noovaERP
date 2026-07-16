@@ -22,7 +22,7 @@ class WorksheetResponse extends Model
     ];
 
     protected $casts = [
-        'responses'    => 'array',
+        'responses' => 'array',
         'completed_at' => 'datetime',
     ];
 
@@ -47,12 +47,12 @@ class WorksheetResponse extends Model
 
     public function hasTechnicianSignature(): bool
     {
-        return !empty($this->technician_signature);
+        return ! empty($this->technician_signature);
     }
 
     public function hasCustomerSignature(): bool
     {
-        return !empty($this->customer_signature);
+        return ! empty($this->customer_signature);
     }
 
     public function isFullySigned(): bool

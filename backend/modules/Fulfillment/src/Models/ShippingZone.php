@@ -2,8 +2,8 @@
 
 namespace Modules\Fulfillment\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
 
 class ShippingZone extends Model
 {
@@ -27,7 +27,7 @@ class ShippingZone extends Model
 
     public function matchesDestination(string $countryCode, string $postalCode): bool
     {
-        if (!in_array($countryCode, $this->country_codes ?? [])) {
+        if (! in_array($countryCode, $this->country_codes ?? [])) {
             return false;
         }
 
@@ -38,7 +38,7 @@ class ShippingZone extends Model
         }
 
         foreach ($patterns as $pattern) {
-            if (preg_match('/' . $pattern . '/', $postalCode)) {
+            if (preg_match('/'.$pattern.'/', $postalCode)) {
                 return true;
             }
         }

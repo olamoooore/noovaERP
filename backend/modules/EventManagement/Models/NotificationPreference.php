@@ -7,9 +7,9 @@ use Modules\EventManagement\Traits\HasTenantScope;
 
 /**
  * NotificationPreference Model
- * 
+ *
  * Manages customer notification preferences for different types of communications.
- * 
+ *
  * @property int $id
  * @property string $tenant_id
  * @property string $customer_id
@@ -73,7 +73,7 @@ class NotificationPreference extends Model
      */
     public function scopeEnabledForChannel($query, string $channel)
     {
-        return $query->where($channel . '_enabled', true);
+        return $query->where($channel.'_enabled', true);
     }
 
     /**
@@ -81,7 +81,8 @@ class NotificationPreference extends Model
      */
     public function isChannelEnabled(string $channel): bool
     {
-        $field = $channel . '_enabled';
+        $field = $channel.'_enabled';
+
         return $this->$field ?? false;
     }
 
@@ -91,12 +92,20 @@ class NotificationPreference extends Model
     public function getEnabledChannels(): array
     {
         $channels = [];
-        
-        if ($this->email_enabled) $channels[] = 'email';
-        if ($this->sms_enabled) $channels[] = 'sms';
-        if ($this->push_enabled) $channels[] = 'push';
-        if ($this->in_app_enabled) $channels[] = 'in_app';
-        
+
+        if ($this->email_enabled) {
+            $channels[] = 'email';
+        }
+        if ($this->sms_enabled) {
+            $channels[] = 'sms';
+        }
+        if ($this->push_enabled) {
+            $channels[] = 'push';
+        }
+        if ($this->in_app_enabled) {
+            $channels[] = 'in_app';
+        }
+
         return $channels;
     }
 
@@ -162,10 +171,11 @@ class NotificationPreference extends Model
             ->forType($notificationType)
             ->first();
 
-        if (!$preference) {
+        if (! $preference) {
             // Use default settings if no preference exists
             $defaults = self::getDefaultPreferences()[$notificationType] ?? [];
-            return $defaults[$channel . '_enabled'] ?? false;
+
+            return $defaults[$channel.'_enabled'] ?? false;
         }
 
         return $preference->isChannelEnabled($channel) && $preference->frequency !== 'disabled';

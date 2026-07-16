@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Migration: Create Migration Monitoring Tables
- * 
+ *
  * Creates tables for migration monitoring, alerting, and conflict detection
  * to ensure production safety and operational visibility.
  */
@@ -28,7 +28,7 @@ return new class extends Migration
             $table->timestamp('resolved_at')->nullable();
             $table->string('resolved_by', 100)->nullable();
             $table->text('resolution_notes')->nullable();
-            
+
             $table->index(['type', 'severity']);
             $table->index(['migration_name']);
             $table->index(['created_at']);
@@ -51,7 +51,7 @@ return new class extends Migration
             $table->json('performance_metrics')->nullable();
             $table->string('executed_by', 100)->nullable();
             $table->string('environment', 50)->default('production');
-            
+
             $table->index(['migration_name', 'status']);
             $table->index(['started_at']);
             $table->index(['status']);
@@ -68,7 +68,7 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->timestamp('created_at');
             $table->timestamp('updated_at');
-            
+
             $table->unique(['migration_name', 'depends_on', 'dependency_type']);
             $table->index(['migration_name']);
             $table->index(['depends_on']);
@@ -88,7 +88,7 @@ return new class extends Migration
             $table->timestamp('resolved_at')->nullable();
             $table->string('resolved_by', 100)->nullable();
             $table->text('resolution_notes')->nullable();
-            
+
             $table->index(['conflict_type', 'status']);
             $table->index(['severity']);
             $table->index(['detected_at']);
@@ -106,7 +106,7 @@ return new class extends Migration
             $table->integer('execution_count');
             $table->timestamp('last_updated');
             $table->json('performance_trends')->nullable();
-            
+
             $table->unique(['migration_pattern']);
             $table->index(['last_updated']);
         });
@@ -122,14 +122,14 @@ return new class extends Migration
             $table->integer('active_connections')->nullable();
             $table->decimal('query_response_time_ms', 10, 3)->nullable();
             $table->json('additional_metrics')->nullable();
-            
+
             $table->index(['monitoring_id', 'snapshot_time']);
             $table->index(['snapshot_time']);
-            
+
             $table->foreign('monitoring_id')
-                  ->references('monitoring_id')
-                  ->on('migration_execution_log')
-                  ->onDelete('cascade');
+                ->references('monitoring_id')
+                ->on('migration_execution_log')
+                ->onDelete('cascade');
         });
     }
 

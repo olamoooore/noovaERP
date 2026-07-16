@@ -19,7 +19,7 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
             $table->text('description')->nullable();
             $table->timestamps();
-            
+
             $table->index('type');
             $table->index('parent_id');
             $table->index('is_active');

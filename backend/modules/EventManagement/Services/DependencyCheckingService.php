@@ -2,20 +2,18 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Facades\Log;
 use Exception;
+use Illuminate\Support\Facades\Log;
 
 /**
  * DependencyCheckingService
- * 
+ *
  * Service for checking and validating module dependencies.
  */
 class DependencyCheckingService
 {
     /**
      * Check dependencies for the module
-     * 
-     * @return array
      */
     public function checkDependencies(): array
     {
@@ -23,7 +21,7 @@ class DependencyCheckingService
             $requirements = [
                 'php' => '>=8.1',
                 'extensions' => ['json', 'pdo', 'redis'],
-                'modules' => [] // Add required modules here
+                'modules' => [], // Add required modules here
             ];
 
             $results = [
@@ -31,10 +29,10 @@ class DependencyCheckingService
                 'php_version' => [
                     'required' => $requirements['php'],
                     'current' => PHP_VERSION,
-                    'satisfied' => version_compare(PHP_VERSION, '8.1', '>=')
+                    'satisfied' => version_compare(PHP_VERSION, '8.1', '>='),
                 ],
                 'extensions' => [],
-                'missing_extensions' => []
+                'missing_extensions' => [],
             ];
 
             // Check extensions
@@ -42,7 +40,7 @@ class DependencyCheckingService
                 $isLoaded = extension_loaded($extension);
                 $results['extensions'][$extension] = $isLoaded;
 
-                if (!$isLoaded) {
+                if (! $isLoaded) {
                     $results['success'] = false;
                     $results['missing_extensions'][] = $extension;
                 }
@@ -55,7 +53,7 @@ class DependencyCheckingService
 
             return [
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
@@ -65,10 +63,10 @@ class DependencyCheckingService
      */
     public function validateComposerDependencies(string $composerJsonPath): array
     {
-        if (!file_exists($composerJsonPath)) {
+        if (! file_exists($composerJsonPath)) {
             return [
                 'success' => false,
-                'error' => 'composer.json not found'
+                'error' => 'composer.json not found',
             ];
         }
 
@@ -77,7 +75,7 @@ class DependencyCheckingService
 
         return [
             'success' => true,
-            'requirements' => $requirements
+            'requirements' => $requirements,
         ];
     }
 }

@@ -2,35 +2,38 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TenantTestCase;
-use Illuminate\Support\Facades\DB;
+use App\Models\ChartOfAccount;
+use App\Models\FiscalPeriod;
+use App\Models\JournalEntry;
+use App\Models\User;
+use App\Models\Vendor;
+use Carbon\Carbon;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Services\OcrPostingService;
-use App\Models\JournalEntry;
-use App\Models\ChartOfAccount;
-use App\Models\Vendor;
-use App\Models\FiscalPeriod;
-use App\Models\User;
-use Carbon\Carbon;
+use Tests\TenantTestCase;
 
 class DocumentPostingTest extends TenantTestCase
 {
     protected User $user;
+
     protected OcrPostingService $service;
+
     protected Vendor $vendor;
+
     protected ChartOfAccount $expenseAccount;
+
     protected ChartOfAccount $payableAccount;
 
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->user = User::factory()->create();
         $this->actingAs($this->user);
         $this->vendor = Vendor::factory()->create(['name' => 'Test Vendor']);
-        
+
         $this->expenseAccount = ChartOfAccount::where('code', '5200')->firstOrFail();
-        
+
         $this->payableAccount = ChartOfAccount::where('code', '2100')->firstOrFail();
 
         // Create open fiscal period for today — OcrPostingService delegates to
@@ -47,7 +50,7 @@ class DocumentPostingTest extends TenantTestCase
             'status' => 'open',
             'created_by' => $this->user->id,
         ]);
-        
+
         $this->service = app(OcrPostingService::class);
     }
 
@@ -140,11 +143,11 @@ class DocumentPostingTest extends TenantTestCase
         $document->refresh();
 
         $this->assertNotNull($journalEntry);
-        
+
         // Verify lines
         $lines = $journalEntry->lines;
         $this->assertGreaterThanOrEqual(2, $lines->count()); // At least expense and payable
-        
+
         // Verify debits and credits balance (columns are debit/credit decimals, NOT debit_credit enum)
         $totalDebits = $lines->sum('debit');
         $totalCredits = $lines->sum('credit');
@@ -174,7 +177,7 @@ class DocumentPostingTest extends TenantTestCase
         ]);
 
         $this->expectException(\Exception::class);
-        
+
         $this->service->postDocument($document);
     }
 
@@ -202,7 +205,7 @@ class DocumentPostingTest extends TenantTestCase
         $this->service->postDocument($document);
 
         $document->refresh();
-        
+
         $this->assertEquals('POSTED', $document->status);
         $this->assertNotNull($document->posted_at);
         $this->assertNotNull($document->journal_entry_id);
@@ -234,7 +237,7 @@ class DocumentPostingTest extends TenantTestCase
         }
 
         $document->refresh();
-        
+
         // Status should not change
         $this->assertEquals($originalStatus, $document->status);
         $this->assertNull($document->journal_entry_id);
@@ -272,7 +275,7 @@ class DocumentPostingTest extends TenantTestCase
         // Verify rollback
         $this->assertEquals($initialDocCount, OcrDocument::count());
         $this->assertEquals($initialJournalCount, JournalEntry::count());
-        
+
         $document->refresh();
         $this->assertEquals('NEEDS_REVIEW', $document->status);
     }

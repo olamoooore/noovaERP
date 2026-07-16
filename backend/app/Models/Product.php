@@ -4,10 +4,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\EventManagement\Models\Event as EventManagementEvent;
 use Modules\Inventory\Models\Brand;
 use Modules\Inventory\Models\StockLevel;
@@ -24,19 +24,27 @@ class Product extends Model
 
     // Status constants
     public const STATUS_DRAFT = 'draft';
+
     public const STATUS_PENDING_APPROVAL = 'pending_approval';
+
     public const STATUS_ACTIVE = 'active';
+
     public const STATUS_DISCONTINUED = 'discontinued';
+
     public const STATUS_ARCHIVED = 'archived';
 
     // Tracking method constants
     public const TRACKING_NONE = 'none';
+
     public const TRACKING_QUANTITY = 'quantity';
+
     public const TRACKING_BATCH = 'batch';
+
     public const TRACKING_SERIAL = 'serial';
 
     // Product types
     public const TYPE_PRODUCT = 'product';
+
     public const TYPE_SERVICE = 'service';
 
     protected $fillable = [
@@ -56,11 +64,11 @@ class Product extends Model
         'is_subscription',
         'download_url',
         'license_key',
-        
+
         // Bundle
         'is_bundle',
         'bundle_type',
-        
+
         // Pricing
         'cost',
         'price',
@@ -68,18 +76,18 @@ class Product extends Model
         'msrp',
         'min_price',
         'max_price',
-        
+
         // Tax
         'tax_rate',
         'tax_mode',
         'tax_included',
         'tax_rate_override',
         'tax_id',
-        
+
         // Accounting
         'income_account_id',
         'expense_account_id',
-        
+
         // Inventory
         'track_inventory',
         'tracking_method',
@@ -91,14 +99,14 @@ class Product extends Model
         'reorder_quantity',
         'min_stock_threshold',
         'unit',
-        
+
         // Physical Attributes
         'weight',
         'length',
         'width',
         'height',
         'dimensional_weight',
-        
+
         // Storage & Handling
         'is_hazmat',
         'hazmat_class',
@@ -107,34 +115,34 @@ class Product extends Model
         'shelf_life_days',
         'lot_number',
         'expiry_date',
-        
+
         // Compliance
         'hs_code',
         'country_of_origin',
         'warranty_months',
         'warranty_type',
         'certifications',
-        
+
         // Manufacturer
         'manufacturer',
         'manufacturer_part_number',
-        
+
         // Media
         'image',
         'gallery',
-        
+
         // SEO
         'meta_title',
         'meta_description',
         'meta_keywords',
-        
+
         // Localization
         'localized_names',
         'localized_descriptions',
-        
+
         // Attributes
         'attributes',
-        
+
         // Status & Flags
         'status',
         'is_active',
@@ -143,7 +151,7 @@ class Product extends Model
         'is_merchandise',
         'show_on_website',
         'preorder_available_at',
-        
+
         // Approval
         'approved_by',
         'approved_at',
@@ -161,14 +169,14 @@ class Product extends Model
         'max_price' => 'decimal:2',
         'tax_rate' => 'decimal:2',
         'tax_rate_override' => 'decimal:2',
-        
+
         // Physical
         'weight' => 'decimal:3',
         'length' => 'decimal:2',
         'width' => 'decimal:2',
         'height' => 'decimal:2',
         'dimensional_weight' => 'decimal:3',
-        
+
         // Booleans
         'tax_included' => 'boolean',
         'track_inventory' => 'boolean',
@@ -182,13 +190,13 @@ class Product extends Model
         'is_digital' => 'boolean',
         'is_subscription' => 'boolean',
         'is_bundle' => 'boolean',
-        
+
         // Dates
         'preorder_available_at' => 'date:Y-m-d',
         'expiry_date' => 'date:Y-m-d',
         'approved_at' => 'datetime',
         'discontinued_at' => 'datetime',
-        
+
         // JSON
         'gallery' => 'array',
         'attributes' => 'array',
@@ -280,7 +288,7 @@ class Product extends Model
             ->withPivot([
                 'supplier_sku', 'supplier_barcode', 'cost', 'last_cost',
                 'lead_time_days', 'moq', 'order_multiple', 'priority',
-                'is_preferred', 'last_purchase_date', 'notes', 'is_active'
+                'is_preferred', 'last_purchase_date', 'notes', 'is_active',
             ])
             ->withTimestamps();
     }
@@ -410,7 +418,7 @@ class Product extends Model
             'default_tax_id' => null,
         ]);
 
-        if (!empty($taxSetting['enabled']) && !empty($taxSetting['default_tax_id'])) {
+        if (! empty($taxSetting['enabled']) && ! empty($taxSetting['default_tax_id'])) {
             $defaultTax = Tax::query()->whereKey($taxSetting['default_tax_id'])->first();
             if ($defaultTax) {
                 return (float) $defaultTax->rate;
@@ -445,7 +453,7 @@ class Product extends Model
             'default_tax_id' => null,
         ]);
 
-        if (!empty($taxSetting['enabled']) && !empty($taxSetting['default_tax_id'])) {
+        if (! empty($taxSetting['enabled']) && ! empty($taxSetting['default_tax_id'])) {
             $defaultTax = Tax::query()->whereKey($taxSetting['default_tax_id'])->first();
             if ($defaultTax) {
                 return (bool) $defaultTax->is_inclusive;
@@ -461,22 +469,25 @@ class Product extends Model
         if ($this->length && $this->width && $this->height) {
             return $this->length * $this->width * $this->height;
         }
+
         return null;
     }
 
     public function getMarginAttribute(): float
     {
-        if (!$this->cost || $this->cost == 0) {
+        if (! $this->cost || $this->cost == 0) {
             return 100;
         }
+
         return (($this->price - $this->cost) / $this->price) * 100;
     }
 
     public function getMarkupAttribute(): float
     {
-        if (!$this->cost || $this->cost == 0) {
+        if (! $this->cost || $this->cost == 0) {
             return 0;
         }
+
         return (($this->price - $this->cost) / $this->cost) * 100;
     }
 
@@ -572,12 +583,14 @@ class Product extends Model
     public function getStockInWarehouse(int $warehouseId): int
     {
         $stockLevel = $this->stockLevels()->where('warehouse_id', $warehouseId)->first();
+
         return $stockLevel ? $stockLevel->quantity : 0;
     }
 
     public function getAvailableStockInWarehouse(int $warehouseId): int
     {
         $stockLevel = $this->stockLevels()->where('warehouse_id', $warehouseId)->first();
+
         return $stockLevel ? $stockLevel->available_quantity : 0;
     }
 
@@ -611,21 +624,22 @@ class Product extends Model
             // products.stock_quantity will be re-synced inside adjustStock() via updateProductTotalStock().
             try {
                 app(\Modules\Inventory\Services\InventoryService::class)->adjustStock(
-                    productId:   $this->id,
+                    productId: $this->id,
                     warehouseId: $resolvedWarehouseId,
-                    quantity:    abs($quantity),
-                    type:        $type,
-                    reference:   $reference,
+                    quantity: abs($quantity),
+                    type: $type,
+                    reference: $reference,
                 );
+
                 return;
             } catch (\Throwable $e) {
                 // Log the failure but do not silently swallow critical stock errors
                 \Illuminate\Support\Facades\Log::error('Product::adjustStock delegation failed', [
-                    'product_id'  => $this->id,
+                    'product_id' => $this->id,
                     'warehouse_id' => $resolvedWarehouseId,
-                    'type'        => $type,
-                    'quantity'    => $quantity,
-                    'error'       => $e->getMessage(),
+                    'type' => $type,
+                    'quantity' => $quantity,
+                    'error' => $e->getMessage(),
                 ]);
                 throw $e;
             }
@@ -635,7 +649,7 @@ class Product extends Model
         // All callers must provide or resolve a warehouse.
         throw new \RuntimeException(
             "Cannot adjust stock for product {$this->id}: no warehouse available. "
-            . "All stock mutations must go through InventoryService with an explicit warehouse."
+            .'All stock mutations must go through InventoryService with an explicit warehouse.'
         );
     }
 
@@ -651,7 +665,7 @@ class Product extends Model
                 ->where('min_quantity', '<=', $quantity)
                 ->where(function ($q) use ($quantity) {
                     $q->whereNull('max_quantity')
-                      ->orWhere('max_quantity', '>=', $quantity);
+                        ->orWhere('max_quantity', '>=', $quantity);
                 })
                 ->orderBy('min_quantity', 'desc')
                 ->first();
@@ -668,7 +682,7 @@ class Product extends Model
             ->where('min_quantity', '<=', $quantity)
             ->where(function ($q) use ($quantity) {
                 $q->whereNull('max_quantity')
-                  ->orWhere('max_quantity', '>=', $quantity);
+                    ->orWhere('max_quantity', '>=', $quantity);
             })
             ->orderBy('min_quantity', 'desc')
             ->first();
@@ -684,7 +698,7 @@ class Product extends Model
 
     public function getBundleTotalCost(): float
     {
-        if (!$this->is_bundle) {
+        if (! $this->is_bundle) {
             return (float) $this->cost;
         }
 
@@ -695,7 +709,7 @@ class Product extends Model
 
     public function getBundleTotalPrice(): float
     {
-        if (!$this->is_bundle) {
+        if (! $this->is_bundle) {
             return (float) $this->price;
         }
 
@@ -706,7 +720,7 @@ class Product extends Model
 
     public function canFulfillBundle(int $quantity = 1): bool
     {
-        if (!$this->is_bundle) {
+        if (! $this->is_bundle) {
             return $this->getTotalAvailableStock() >= $quantity;
         }
 
@@ -714,7 +728,7 @@ class Product extends Model
             if ($component->is_optional) {
                 continue;
             }
-            
+
             $needed = $component->quantity * $quantity;
             if ($component->componentProduct->getTotalAvailableStock() < $needed) {
                 return false;
@@ -737,8 +751,8 @@ class Product extends Model
         $variant = ProductVariant::query()
             ->where(function ($q) use ($code) {
                 $q->where('barcode', $code)
-                  ->orWhere('sku', $code)
-                  ->orWhereJsonContains('barcodes', $code);
+                    ->orWhere('sku', $code)
+                    ->orWhereJsonContains('barcodes', $code);
             })
             ->where('is_active', true)
             ->orderBy('id')
@@ -756,15 +770,15 @@ class Product extends Model
         $product = Product::query()
             ->where(function ($q) use ($code) {
                 $q->where('barcode', $code)
-                  ->orWhere('sku', $code)
-                  ->orWhereJsonContains('barcodes', $code);
+                    ->orWhere('sku', $code)
+                    ->orWhereJsonContains('barcodes', $code);
             })
             ->where('is_active', true)
             ->where('status', self::STATUS_ACTIVE)
             ->orderBy('id')
             ->first();
 
-        if (!$product) {
+        if (! $product) {
             return null;
         }
 
@@ -792,8 +806,8 @@ class Product extends Model
             ->with('product')
             ->where(function ($q) use ($code) {
                 $q->where('barcode', $code)
-                  ->orWhere('sku', $code)
-                  ->orWhereJsonContains('barcodes', $code);
+                    ->orWhere('sku', $code)
+                    ->orWhereJsonContains('barcodes', $code);
             })
             ->where('is_active', true)
             ->orderBy('id')
@@ -804,7 +818,7 @@ class Product extends Model
                 'type' => 'variant',
                 'variant' => $variant,
                 'product' => $variant->product,
-                'display_name' => $variant->product->name . ' - ' . $variant->name,
+                'display_name' => $variant->product->name.' - '.$variant->name,
                 'sku' => $variant->sku,
                 'price' => $variant->price,
             ];
@@ -814,8 +828,8 @@ class Product extends Model
         $products = Product::query()
             ->where(function ($q) use ($code) {
                 $q->where('barcode', $code)
-                  ->orWhere('sku', $code)
-                  ->orWhereJsonContains('barcodes', $code);
+                    ->orWhere('sku', $code)
+                    ->orWhereJsonContains('barcodes', $code);
             })
             ->where('is_active', true)
             ->where('status', self::STATUS_ACTIVE)
@@ -866,9 +880,9 @@ class Product extends Model
             // Generate slug if not provided
             if (empty($product->slug)) {
                 $product->slug = \Illuminate\Support\Str::slug($product->name);
-                $count = static::where('slug', 'like', $product->slug . '%')->count();
+                $count = static::where('slug', 'like', $product->slug.'%')->count();
                 if ($count > 0) {
-                    $product->slug .= '-' . ($count + 1);
+                    $product->slug .= '-'.($count + 1);
                 }
             }
 

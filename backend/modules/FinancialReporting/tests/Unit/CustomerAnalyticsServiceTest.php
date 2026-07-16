@@ -2,20 +2,19 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Modules\FinancialReporting\Services\Analytics\CustomerAnalyticsService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
 use Carbon\Carbon;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Analytics\CustomerAnalyticsService;
+use Tests\TenantTestCase;
 
 class CustomerAnalyticsServiceTest extends TenantTestCase
 {
-
     protected CustomerAnalyticsService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new CustomerAnalyticsService();
+        $this->service = new CustomerAnalyticsService;
     }
 
     /** @test */
@@ -34,7 +33,7 @@ class CustomerAnalyticsServiceTest extends TenantTestCase
         $this->assertArrayHasKey('data', $result);
 
         // Happy path includes summary; error path includes message
-        if (!isset($result['message'])) {
+        if (! isset($result['message'])) {
             $this->assertArrayHasKey('summary', $result);
         }
     }
@@ -76,7 +75,7 @@ class CustomerAnalyticsServiceTest extends TenantTestCase
         $this->assertEquals('RFM Segmentation', $result['title']);
         $this->assertArrayHasKey('data', $result);
 
-        if (!isset($result['message'])) {
+        if (! isset($result['message'])) {
             $this->assertArrayHasKey('segments', $result);
         }
     }
@@ -95,7 +94,7 @@ class CustomerAnalyticsServiceTest extends TenantTestCase
         $this->assertArrayHasKey('title', $result);
         $this->assertEquals('Customer Retention', $result['title']);
 
-        if (!isset($result['message'])) {
+        if (! isset($result['message'])) {
             $this->assertArrayHasKey('metrics', $result);
             $this->assertArrayHasKey('retention_rate', $result['metrics']);
             $this->assertIsNumeric($result['metrics']['retention_rate']);
@@ -108,14 +107,14 @@ class CustomerAnalyticsServiceTest extends TenantTestCase
     /** @test */
     public function it_uses_default_dates_when_not_provided()
     {
-        $filter = new ReportFilter();
+        $filter = new ReportFilter;
 
         $result = $this->service->getCustomerLifetimeValue($filter);
 
         $this->assertIsArray($result);
         $this->assertArrayHasKey('title', $result);
 
-        if (!isset($result['message'])) {
+        if (! isset($result['message'])) {
             $this->assertArrayHasKey('period', $result);
             $this->assertArrayHasKey('start_date', $result['period']);
             $this->assertArrayHasKey('end_date', $result['period']);

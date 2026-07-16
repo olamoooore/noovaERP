@@ -1,16 +1,16 @@
 <?php
 
-require __DIR__ . '/../vendor/autoload.php';
-$app = require_once __DIR__ . '/../bootstrap/app.php';
+require __DIR__.'/../vendor/autoload.php';
+$app = require_once __DIR__.'/../bootstrap/app.php';
 $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 $kernel->bootstrap();
 
 use App\Models\Tenant;
 use App\Models\User;
-use Stancl\Tenancy\Database\Models\Domain;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Stancl\Tenancy\Database\Models\Domain;
 
 // Configuration
 $targetEmail = 'admin@demo5.com';
@@ -32,7 +32,7 @@ try {
 
     // Get source tenant
     $sourceUser = DB::table('users')->where('email', $sourceEmail)->first();
-    if (!$sourceUser) {
+    if (! $sourceUser) {
         throw new Exception("Source user {$sourceEmail} not found");
     }
 
@@ -41,8 +41,8 @@ try {
         ->where('is_default', true)
         ->value('tenant_id');
 
-    if (!$sourceTenantId) {
-        throw new Exception("Source tenant not found");
+    if (! $sourceTenantId) {
+        throw new Exception('Source tenant not found');
     }
 
     echo "Source tenant ID: {$sourceTenantId}\n";
@@ -150,7 +150,7 @@ try {
         ]);
     }
 
-    echo "Copied " . count($sourceItems) . " selections\n";
+    echo 'Copied '.count($sourceItems)." selections\n";
 
     // Rebuild entitlements
     echo "Rebuilding entitlements...\n";
@@ -175,18 +175,18 @@ try {
     echo "Domain: {$targetDomain}\n";
     echo "Email: {$targetEmail}\n";
     echo "Password: {$password}\n";
-    echo "Source modules: " . count($sourceModules) . "\n";
-    echo "Target modules: " . count($targetModules) . "\n";
+    echo 'Source modules: '.count($sourceModules)."\n";
+    echo 'Target modules: '.count($targetModules)."\n";
 
     $missing = array_diff($sourceModules, $targetModules);
-    if (!empty($missing)) {
-        echo "WARNING: Missing modules: " . implode(', ', $missing) . "\n";
+    if (! empty($missing)) {
+        echo 'WARNING: Missing modules: '.implode(', ', $missing)."\n";
     } else {
         echo "All modules matched!\n";
     }
 
 } catch (\Exception $e) {
-    echo "ERROR: " . $e->getMessage() . "\n";
-    echo $e->getTraceAsString() . "\n";
+    echo 'ERROR: '.$e->getMessage()."\n";
+    echo $e->getTraceAsString()."\n";
     exit(1);
 }

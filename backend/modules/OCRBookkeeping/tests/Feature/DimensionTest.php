@@ -2,36 +2,39 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TenantTestCase;
+use App\Models\Department;
+use App\Models\Location;
+use App\Models\Project;
+use App\Models\User;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Services\DimensionValidationService;
-use App\Models\Department;
-use App\Models\Project;
-use App\Models\Location;
-use App\Models\User;
-use Carbon\Carbon;
+use Tests\TenantTestCase;
 
 class DimensionTest extends TenantTestCase
 {
     protected User $user;
+
     protected DimensionValidationService $service;
+
     protected Department $department;
+
     protected Project $project;
+
     protected Location $location;
 
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->user = User::factory()->create();
-        
+
         $this->department = Department::create([
             'code' => 'IT',
             'name' => 'IT Department',
             'is_active' => true,
             'created_by' => $this->user->id,
         ]);
-        
+
         $this->project = Project::create([
             'code' => 'PROJ-001',
             'name' => 'Test Project',
@@ -39,14 +42,14 @@ class DimensionTest extends TenantTestCase
             'is_active' => true,
             'created_by' => $this->user->id,
         ]);
-        
+
         $this->location = Location::create([
             'code' => 'HQ',
             'name' => 'Headquarters',
             'is_active' => true,
             'created_by' => $this->user->id,
         ]);
-        
+
         $this->service = app(DimensionValidationService::class);
     }
 
@@ -155,7 +158,7 @@ class DimensionTest extends TenantTestCase
 
         // First line item should inherit document dimensions
         $this->assertArrayNotHasKey('dimensions', $document->line_items[0]);
-        
+
         // Second line item has its own dimensions
         $this->assertArrayHasKey('dimensions', $document->line_items[1]);
         $this->assertEquals($this->project->id, $document->line_items[1]['dimensions']['project_id']);
@@ -253,7 +256,7 @@ class DimensionTest extends TenantTestCase
 
         // Document should still have the dimension reference
         $this->assertEquals($this->department->id, $document->dimensions['department_id']);
-        
+
         // But department is now inactive
         $this->assertFalse($this->department->is_active);
     }
@@ -323,7 +326,7 @@ class DimensionTest extends TenantTestCase
         $this->assertNotNull($department);
         $this->assertNotNull($project);
         $this->assertNotNull($location);
-        
+
         $this->assertEquals('IT Department', $department->name);
         $this->assertEquals('Test Project', $project->name);
         $this->assertEquals('Headquarters', $location->name);
@@ -347,7 +350,7 @@ class DimensionTest extends TenantTestCase
         ]);
 
         $count = OcrDocument::whereJsonContains('dimensions->department_id', $this->department->id)->count();
-        
+
         $this->assertEquals(3, $count);
     }
 
@@ -395,8 +398,8 @@ class DimensionTest extends TenantTestCase
 
         foreach ($testCases as $testCase) {
             $result = $this->service->validate($testCase['dimensions']);
-            $this->assertEquals($testCase['expected'], $result['valid'], 
-                'Failed for: ' . json_encode($testCase['dimensions']));
+            $this->assertEquals($testCase['expected'], $result['valid'],
+                'Failed for: '.json_encode($testCase['dimensions']));
         }
     }
 }

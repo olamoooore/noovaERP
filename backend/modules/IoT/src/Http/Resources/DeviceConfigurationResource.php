@@ -38,7 +38,7 @@ class DeviceConfigurationResource extends JsonResource
      */
     private function transformConnectionInfo(?array $connectionInfo): array
     {
-        if (!$connectionInfo) {
+        if (! $connectionInfo) {
             return [];
         }
 

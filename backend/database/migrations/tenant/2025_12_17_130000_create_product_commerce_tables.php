@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('product_units')) {
+        if (! Schema::hasTable('product_units')) {
             Schema::create('product_units', function (Blueprint $table) {
                 $table->id();
                 $table->string('name');
@@ -19,7 +19,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('product_attributes')) {
+        if (! Schema::hasTable('product_attributes')) {
             Schema::create('product_attributes', function (Blueprint $table) {
                 $table->id();
                 $table->string('name');
@@ -30,7 +30,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('product_attribute_values')) {
+        if (! Schema::hasTable('product_attribute_values')) {
             Schema::create('product_attribute_values', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('product_attribute_id')->constrained()->cascadeOnDelete();
@@ -40,7 +40,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('product_features')) {
+        if (! Schema::hasTable('product_features')) {
             Schema::create('product_features', function (Blueprint $table) {
                 $table->id();
                 $table->string('name');
@@ -49,8 +49,8 @@ return new class extends Migration
                 $table->timestamps();
             });
         }
-        
-        if (!Schema::hasTable('product_feature_values')) {
+
+        if (! Schema::hasTable('product_feature_values')) {
             Schema::create('product_feature_values', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('product_id')->constrained()->cascadeOnDelete();

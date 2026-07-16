@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Platform\Workflow\WorkflowEngine;
-use App\Platform\Workflow\WorkflowSchema;
-use App\Platform\Workflow\WorkflowLog;
 use App\Platform\Workflow\StatusTransition;
+use App\Platform\Workflow\WorkflowEngine;
+use App\Platform\Workflow\WorkflowLog;
 use Tests\TenantTestCase;
 
 /**
@@ -16,6 +15,7 @@ use Tests\TenantTestCase;
 class WorkflowEngineTest extends TenantTestCase
 {
     protected string $tenantUuid;
+
     protected WorkflowEngine $engine;
 
     protected function setUp(): void

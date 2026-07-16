@@ -46,10 +46,11 @@ class ResolveTenantFromWebhook
         // Extract transaction ID from payload (different for each gateway)
         $transactionId = $this->extractTransactionId($request, $gateway);
 
-        if (!$transactionId) {
+        if (! $transactionId) {
             Log::error('Cannot resolve tenant: missing transaction ID', [
                 'gateway' => $gateway,
             ]);
+
             return response()->json(['error' => 'Missing transaction identifier'], 400);
         }
 
@@ -65,6 +66,7 @@ class ResolveTenantFromWebhook
                     'transaction_id' => $transactionId,
                     'tenant_id' => $tenantId,
                 ]);
+
                 return $this->runInTenantContext($tenant, $request, $next);
             }
             // Tenant was deleted, clear cache and continue to lookup
@@ -74,11 +76,12 @@ class ResolveTenantFromWebhook
         // Lookup tenant from central database
         $tenant = $this->lookupTenantByTransaction($transactionId, $gateway);
 
-        if (!$tenant) {
+        if (! $tenant) {
             Log::error('Transaction not found', [
                 'gateway' => $gateway,
                 'transaction_id' => $transactionId,
             ]);
+
             return response()->json(['error' => 'Transaction not found'], 404);
         }
 
@@ -131,7 +134,7 @@ class ResolveTenantFromWebhook
                 ->where('gateway_name', $gateway)
                 ->first(['tenant_id']);
 
-            if (!$result || !$result->tenant_id) {
+            if (! $result || ! $result->tenant_id) {
                 return null;
             }
 
@@ -143,6 +146,7 @@ class ResolveTenantFromWebhook
                 'gateway' => $gateway,
                 'error' => $e->getMessage(),
             ]);
+
             return null;
         }
     }

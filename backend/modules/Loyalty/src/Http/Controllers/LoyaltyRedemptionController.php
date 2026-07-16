@@ -5,8 +5,8 @@ namespace Modules\Loyalty\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Modules\Loyalty\Models\LoyaltyRedemption;
-use Modules\Loyalty\Services\RedemptionService;
 use Modules\Loyalty\Services\PointsCalculationService;
+use Modules\Loyalty\Services\RedemptionService;
 
 class LoyaltyRedemptionController extends Controller
 {
@@ -22,7 +22,7 @@ class LoyaltyRedemptionController extends Controller
     {
         $query = LoyaltyRedemption::with([
             'customerLoyalty.customer',
-            'reward'
+            'reward',
         ])->orderBy('created_at', 'desc');
 
         // Filter by status
@@ -40,11 +40,12 @@ class LoyaltyRedemptionController extends Controller
             $search = $request->search;
             $query->whereHas('customerLoyalty.customer', function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%");
+                    ->orWhere('email', 'like', "%{$search}%");
             });
         }
 
         $perPage = $request->input('per_page', 20);
+
         return $query->paginate($perPage);
     }
 
@@ -117,7 +118,7 @@ class LoyaltyRedemptionController extends Controller
         // Check if can redeem
         $validation = $this->pointsCalculation->canRedeemPoints($points, $customerId);
 
-        if (!$validation['can_redeem']) {
+        if (! $validation['can_redeem']) {
             return response()->json([
                 'can_redeem' => false,
                 'reason' => $validation['reason'],
@@ -154,7 +155,7 @@ class LoyaltyRedemptionController extends Controller
             ->where('customer_id', $customerId)
             ->first();
 
-        if (!$customerLoyalty) {
+        if (! $customerLoyalty) {
             return response()->json([
                 'enrolled' => false,
                 'message' => 'Customer not enrolled in loyalty program',
@@ -163,7 +164,7 @@ class LoyaltyRedemptionController extends Controller
 
         $program = \Modules\Loyalty\Models\LoyaltyProgram::where('is_active', true)->first();
 
-        if (!$program) {
+        if (! $program) {
             return response()->json([
                 'enrolled' => false,
                 'message' => 'No active loyalty program',
@@ -218,6 +219,7 @@ class LoyaltyRedemptionController extends Controller
         }
 
         $perPage = $request->input('per_page', 20);
+
         return $query->paginate($perPage);
     }
 
@@ -228,6 +230,7 @@ class LoyaltyRedemptionController extends Controller
     {
         try {
             $result = $this->redemptionService->cancelRedemption($redemptionId);
+
             return response()->json($result);
         } catch (\Exception $e) {
             return response()->json([
@@ -246,7 +249,7 @@ class LoyaltyRedemptionController extends Controller
             'customerLoyalty.customer',
             'reward',
             'transaction',
-            'invoice'
+            'invoice',
         ])->findOrFail($redemptionId);
 
         return response()->json($redemption);

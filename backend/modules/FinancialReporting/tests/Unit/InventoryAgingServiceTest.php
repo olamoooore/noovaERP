@@ -2,21 +2,20 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Modules\FinancialReporting\Services\Inventory\InventoryAgingService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
-use Modules\FinancialReporting\DTOs\ReportData;
 use Carbon\Carbon;
+use Modules\FinancialReporting\DTOs\ReportData;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Inventory\InventoryAgingService;
+use Tests\TenantTestCase;
 
 class InventoryAgingServiceTest extends TenantTestCase
 {
-
     protected InventoryAgingService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new InventoryAgingService();
+        $this->service = new InventoryAgingService;
     }
 
     /** @test */
@@ -50,7 +49,7 @@ class InventoryAgingServiceTest extends TenantTestCase
     /** @test */
     public function it_uses_default_date_when_not_provided()
     {
-        $filter = new ReportFilter();
+        $filter = new ReportFilter;
 
         $result = $this->service->generate($filter);
 

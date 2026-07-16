@@ -18,15 +18,15 @@ class SyncTenantUserFromCentralAuth
     {
         $centralUser = $request->user();
 
-        if (!$centralUser || !function_exists('tenant') || !tenant()) {
+        if (! $centralUser || ! function_exists('tenant') || ! tenant()) {
             return $next($request);
         }
 
         try {
             $tenantUser = User::query()->where('email', $centralUser->email)->first();
 
-            if (!$tenantUser) {
-                $tenantUser = new User();
+            if (! $tenantUser) {
+                $tenantUser = new User;
                 $tenantUser->email = $centralUser->email;
             }
 
@@ -37,7 +37,7 @@ class SyncTenantUserFromCentralAuth
                 $tenantUser->password = $centralUser->getAuthPassword();
             }
 
-            if (!$tenantUser->exists || $tenantUser->isDirty()) {
+            if (! $tenantUser->exists || $tenantUser->isDirty()) {
                 $tenantUser->save();
             }
 
@@ -89,7 +89,7 @@ class SyncTenantUserFromCentralAuth
     {
         $tenantId = tenant('id');
 
-        if (!$tenantId) {
+        if (! $tenantId) {
             return;
         }
 
@@ -98,7 +98,7 @@ class SyncTenantUserFromCentralAuth
             ->where('user_id', $centralUserId)
             ->first();
 
-        if (!$access || empty($access->role)) {
+        if (! $access || empty($access->role)) {
             return;
         }
 
@@ -108,7 +108,7 @@ class SyncTenantUserFromCentralAuth
             'guard_name' => 'web',
         ]);
 
-        if (!$tenantUser->hasRole($role)) {
+        if (! $tenantUser->hasRole($role)) {
             $tenantUser->assignRole($role);
         }
 

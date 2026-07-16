@@ -55,8 +55,8 @@ class AdminPackagingController
     public function setDefault(Request $request, PlanFamily $family, CatalogItem $item): JsonResponse
     {
         $data = $request->validate([
-            'availability' => 'required|in:' . implode(',', PlanItemDefault::AVAILABILITIES),
-            'notes'        => 'nullable|string|max:500',
+            'availability' => 'required|in:'.implode(',', PlanItemDefault::AVAILABILITIES),
+            'notes' => 'nullable|string|max:500',
         ]);
 
         try {
@@ -92,8 +92,8 @@ class AdminPackagingController
     public function bulkSetTier(Request $request, PlanFamily $family): JsonResponse
     {
         $data = $request->validate([
-            'defaults'   => 'required|array',
-            'defaults.*' => 'required|in:' . implode(',', PlanItemDefault::AVAILABILITIES),
+            'defaults' => 'required|array',
+            'defaults.*' => 'required|in:'.implode(',', PlanItemDefault::AVAILABILITIES),
         ]);
 
         try {

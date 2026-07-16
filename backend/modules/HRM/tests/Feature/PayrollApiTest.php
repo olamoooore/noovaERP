@@ -28,11 +28,11 @@ class PayrollApiTest extends HrmTestCase
     {
         $employee = Employee::factory()->create(['status' => 'active']);
         $contract = Contract::factory()->create([
-            'employee_id'         => $employee->id,
-            'status'              => 'active',
+            'employee_id' => $employee->id,
+            'status' => 'active',
             'base_monthly_salary' => $salary,
-            'start_date'          => '2026-01-01',
-            'end_date'            => null,
+            'start_date' => '2026-01-01',
+            'end_date' => null,
         ]);
 
         return [$employee, $contract];
@@ -46,7 +46,7 @@ class PayrollApiTest extends HrmTestCase
     {
         $response = $this->postJson('/api/v1/hrm/payroll-runs', [
             'period_start' => '2026-03-01',
-            'period_end'   => '2026-03-31',
+            'period_end' => '2026-03-31',
         ]);
 
         $response->assertStatus(201);
@@ -58,15 +58,15 @@ class PayrollApiTest extends HrmTestCase
     public function test_cannot_create_overlapping_run(): void
     {
         PayrollRun::create([
-            'reference'    => 'PAY-2026-03',
+            'reference' => 'PAY-2026-03',
             'period_start' => '2026-03-01',
-            'period_end'   => '2026-03-31',
-            'status'       => 'draft',
+            'period_end' => '2026-03-31',
+            'status' => 'draft',
         ]);
 
         $response = $this->postJson('/api/v1/hrm/payroll-runs', [
             'period_start' => '2026-03-15',
-            'period_end'   => '2026-04-15',
+            'period_end' => '2026-04-15',
         ]);
 
         $response->assertStatus(422);
@@ -90,10 +90,10 @@ class PayrollApiTest extends HrmTestCase
         [$employee] = $this->makeActiveEmployeeWithContract(6000.00);
 
         $run = PayrollRun::create([
-            'reference'    => 'PAY-2026-03',
+            'reference' => 'PAY-2026-03',
             'period_start' => '2026-03-01',
-            'period_end'   => '2026-03-31',
-            'status'       => 'draft',
+            'period_end' => '2026-03-31',
+            'status' => 'draft',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/payroll-runs/{$run->id}/calculate");
@@ -105,7 +105,7 @@ class PayrollApiTest extends HrmTestCase
 
         $this->assertDatabaseHas('hrm_payrolls', [
             'payroll_run_id' => $run->id,
-            'employee_id'    => $employee->id,
+            'employee_id' => $employee->id,
         ]);
     }
 
@@ -113,24 +113,24 @@ class PayrollApiTest extends HrmTestCase
     {
         $terminated = Employee::factory()->create(['status' => 'terminated']);
         Contract::factory()->create([
-            'employee_id'         => $terminated->id,
-            'status'              => 'active',
+            'employee_id' => $terminated->id,
+            'status' => 'active',
             'base_monthly_salary' => 5000,
-            'start_date'          => '2026-01-01',
+            'start_date' => '2026-01-01',
         ]);
 
         $run = PayrollRun::create([
-            'reference'    => 'PAY-2026-03',
+            'reference' => 'PAY-2026-03',
             'period_start' => '2026-03-01',
-            'period_end'   => '2026-03-31',
-            'status'       => 'draft',
+            'period_end' => '2026-03-31',
+            'status' => 'draft',
         ]);
 
         $this->postJson("/api/v1/hrm/payroll-runs/{$run->id}/calculate");
 
         $this->assertDatabaseMissing('hrm_payrolls', [
             'payroll_run_id' => $run->id,
-            'employee_id'    => $terminated->id,
+            'employee_id' => $terminated->id,
         ]);
     }
 
@@ -143,17 +143,17 @@ class PayrollApiTest extends HrmTestCase
         // deduction  = 1 * 100.00 = 100.00
         LeaveRequest::create([
             'employee_id' => $employee->id,
-            'leave_type'  => 'unpaid',
-            'status'      => 'approved',
-            'start_date'  => '2026-03-10',
-            'end_date'    => '2026-03-10',
+            'leave_type' => 'unpaid',
+            'status' => 'approved',
+            'start_date' => '2026-03-10',
+            'end_date' => '2026-03-10',
         ]);
 
         $run = PayrollRun::create([
-            'reference'    => 'PAY-2026-03',
+            'reference' => 'PAY-2026-03',
             'period_start' => '2026-03-01',
-            'period_end'   => '2026-03-31',
-            'status'       => 'draft',
+            'period_end' => '2026-03-31',
+            'status' => 'draft',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/payroll-runs/{$run->id}/calculate");
@@ -163,18 +163,18 @@ class PayrollApiTest extends HrmTestCase
         $response->assertJsonPath('data.total_net', '3000.00');
 
         $this->assertDatabaseHas('hrm_payroll_items', [
-            'category'    => 'leave_deduction',
-            'amount'      => '100.00',
+            'category' => 'leave_deduction',
+            'amount' => '100.00',
         ]);
     }
 
     public function test_cannot_calculate_non_draft_run(): void
     {
         $run = PayrollRun::create([
-            'reference'    => 'PAY-2026-03',
+            'reference' => 'PAY-2026-03',
             'period_start' => '2026-03-01',
-            'period_end'   => '2026-03-31',
-            'status'       => 'calculated',
+            'period_end' => '2026-03-31',
+            'status' => 'calculated',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/payroll-runs/{$run->id}/calculate");
@@ -189,10 +189,10 @@ class PayrollApiTest extends HrmTestCase
     public function test_can_approve_calculated_run(): void
     {
         $run = PayrollRun::create([
-            'reference'    => 'PAY-2026-03',
+            'reference' => 'PAY-2026-03',
             'period_start' => '2026-03-01',
-            'period_end'   => '2026-03-31',
-            'status'       => 'calculated',
+            'period_end' => '2026-03-31',
+            'status' => 'calculated',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/payroll-runs/{$run->id}/approve");
@@ -205,10 +205,10 @@ class PayrollApiTest extends HrmTestCase
     public function test_cannot_approve_draft_run(): void
     {
         $run = PayrollRun::create([
-            'reference'    => 'PAY-2026-03',
+            'reference' => 'PAY-2026-03',
             'period_start' => '2026-03-01',
-            'period_end'   => '2026-03-31',
-            'status'       => 'draft',
+            'period_end' => '2026-03-31',
+            'status' => 'draft',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/payroll-runs/{$run->id}/approve");
@@ -223,10 +223,10 @@ class PayrollApiTest extends HrmTestCase
     public function test_can_mark_paid(): void
     {
         $run = PayrollRun::create([
-            'reference'    => 'PAY-2026-03',
+            'reference' => 'PAY-2026-03',
             'period_start' => '2026-03-01',
-            'period_end'   => '2026-03-31',
-            'status'       => 'approved',
+            'period_end' => '2026-03-31',
+            'status' => 'approved',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/payroll-runs/{$run->id}/mark-paid");
@@ -238,10 +238,10 @@ class PayrollApiTest extends HrmTestCase
     public function test_cannot_mark_paid_unless_approved(): void
     {
         $run = PayrollRun::create([
-            'reference'    => 'PAY-2026-03',
+            'reference' => 'PAY-2026-03',
             'period_start' => '2026-03-01',
-            'period_end'   => '2026-03-31',
-            'status'       => 'calculated',
+            'period_end' => '2026-03-31',
+            'status' => 'calculated',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/payroll-runs/{$run->id}/mark-paid");
@@ -258,10 +258,10 @@ class PayrollApiTest extends HrmTestCase
         [$employee] = $this->makeActiveEmployeeWithContract(6000.00);
 
         $run = PayrollRun::create([
-            'reference'    => 'PAY-2026-03',
+            'reference' => 'PAY-2026-03',
             'period_start' => '2026-03-01',
-            'period_end'   => '2026-03-31',
-            'status'       => 'calculated',
+            'period_end' => '2026-03-31',
+            'status' => 'calculated',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/payroll-runs/{$run->id}/recalculate");
@@ -272,17 +272,17 @@ class PayrollApiTest extends HrmTestCase
 
         $this->assertDatabaseHas('hrm_payrolls', [
             'payroll_run_id' => $run->id,
-            'employee_id'    => $employee->id,
+            'employee_id' => $employee->id,
         ]);
     }
 
     public function test_cannot_recalculate_approved_run(): void
     {
         $run = PayrollRun::create([
-            'reference'    => 'PAY-2026-03',
+            'reference' => 'PAY-2026-03',
             'period_start' => '2026-03-01',
-            'period_end'   => '2026-03-31',
-            'status'       => 'approved',
+            'period_end' => '2026-03-31',
+            'status' => 'approved',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/payroll-runs/{$run->id}/recalculate");
@@ -294,10 +294,10 @@ class PayrollApiTest extends HrmTestCase
     public function test_cannot_recalculate_paid_run(): void
     {
         $run = PayrollRun::create([
-            'reference'    => 'PAY-2026-03',
+            'reference' => 'PAY-2026-03',
             'period_start' => '2026-03-01',
-            'period_end'   => '2026-03-31',
-            'status'       => 'paid',
+            'period_end' => '2026-03-31',
+            'status' => 'paid',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/payroll-runs/{$run->id}/recalculate");

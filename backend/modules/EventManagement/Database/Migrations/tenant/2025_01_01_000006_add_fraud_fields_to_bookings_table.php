@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::table('bookings', function (Blueprint $table) {
             $table->decimal('fraud_risk_score', 5, 2)->nullable()->after('tier_benefits_applied');
             $table->boolean('requires_manual_review')->default(false)->after('fraud_risk_score');
-            
+
             // Add indexes for fraud-related queries
             $table->index(['fraud_risk_score'], 'idx_bookings_fraud_risk_score');
             $table->index(['requires_manual_review'], 'idx_bookings_manual_review');
@@ -31,7 +31,7 @@ return new class extends Migration
             $table->dropIndex('idx_bookings_fraud_composite');
             $table->dropIndex('idx_bookings_manual_review');
             $table->dropIndex('idx_bookings_fraud_risk_score');
-            
+
             $table->dropColumn(['fraud_risk_score', 'requires_manual_review']);
         });
     }

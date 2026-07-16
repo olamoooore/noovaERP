@@ -3,13 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\ProductCustomFieldValue;
-use App\Models\ProductFeatureValue;
 use App\Models\Product;
 use App\Models\ProductAuditLog;
+use App\Models\ProductCustomFieldValue;
+use App\Models\ProductFeatureValue;
 use App\Models\Warehouse;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -19,11 +19,11 @@ class ProductController extends Controller
 {
     private function removeUnsupportedProductColumns(array $payload): array
     {
-        if (!Schema::hasColumn('products', 'is_merchandise')) {
+        if (! Schema::hasColumn('products', 'is_merchandise')) {
             unset($payload['is_merchandise']);
         }
 
-        if (!Schema::hasColumn('products', 'show_on_website')) {
+        if (! Schema::hasColumn('products', 'show_on_website')) {
             unset($payload['show_on_website']);
         }
 
@@ -68,7 +68,7 @@ class ProductController extends Controller
             $query->addSelect([
                 '*',
                 \Illuminate\Support\Facades\DB::raw(
-                    "(SELECT COALESCE(sl.quantity, 0) FROM stock_levels sl " .
+                    '(SELECT COALESCE(sl.quantity, 0) FROM stock_levels sl '.
                     "WHERE sl.product_id = products.id AND sl.warehouse_id = {$warehouseFilter} LIMIT 1) AS stock"
                 ),
             ]);
@@ -78,11 +78,11 @@ class ProductController extends Controller
             $search = (string) $request->input('search');
             $query->where(function ($q) use ($search) {
                 // Use ILIKE for case-insensitive search in PostgreSQL
-                $q->whereRaw('LOWER(name) LIKE ?', ['%' . strtolower($search) . '%'])
-                    ->orWhereRaw('LOWER(secondary_name) LIKE ?', ['%' . strtolower($search) . '%'])
-                    ->orWhereRaw('LOWER(sku) LIKE ?', ['%' . strtolower($search) . '%'])
-                    ->orWhereRaw('LOWER(barcode) LIKE ?', ['%' . strtolower($search) . '%'])
-                    ->orWhereRaw('LOWER(manufacturer_part_number) LIKE ?', ['%' . strtolower($search) . '%']);
+                $q->whereRaw('LOWER(name) LIKE ?', ['%'.strtolower($search).'%'])
+                    ->orWhereRaw('LOWER(secondary_name) LIKE ?', ['%'.strtolower($search).'%'])
+                    ->orWhereRaw('LOWER(sku) LIKE ?', ['%'.strtolower($search).'%'])
+                    ->orWhereRaw('LOWER(barcode) LIKE ?', ['%'.strtolower($search).'%'])
+                    ->orWhereRaw('LOWER(manufacturer_part_number) LIKE ?', ['%'.strtolower($search).'%']);
             });
         }
 
@@ -162,10 +162,10 @@ class ProductController extends Controller
         $allowedSorts = ['name', 'price', 'cost', 'stock_quantity', 'created_at', 'updated_at', 'sku', 'status'];
         $sortBy = (string) $request->input('sort_by', 'created_at');
         $sortDir = strtolower((string) $request->input('sort_dir', 'desc'));
-        if (!in_array($sortBy, $allowedSorts, true)) {
+        if (! in_array($sortBy, $allowedSorts, true)) {
             $sortBy = 'name';
         }
-        if (!in_array($sortDir, ['asc', 'desc'], true)) {
+        if (! in_array($sortDir, ['asc', 'desc'], true)) {
             $sortDir = 'asc';
         }
 
@@ -294,7 +294,7 @@ class ProductController extends Controller
         // Manually resolve product after tenant context is set
         // Route model binding happens BEFORE middleware, so it doesn't respect tenant search path
         $product = Product::findOrFail($id);
-        
+
         return response()->json($product->load([
             'incomeAccount',
             'expenseAccount',
@@ -302,12 +302,12 @@ class ProductController extends Controller
             'tax',
             'brand',
             'variants',
-            'stockMovements' => fn($q) => $q->latest()->limit(50),
+            'stockMovements' => fn ($q) => $q->latest()->limit(50),
             'featureValues.feature',
             'customFieldValues.customField',
             'uoms',
             'suppliers',
-            'bundleComponents.componentProduct' => fn($q) => $q->select('id', 'name', 'sku', 'price', 'cost', 'image'),
+            'bundleComponents.componentProduct' => fn ($q) => $q->select('id', 'name', 'sku', 'price', 'cost', 'image'),
             'priceTiers',
             'documents',
         ]));
@@ -320,7 +320,7 @@ class ProductController extends Controller
     {
         $product = Product::findOrFail($product);
         $perPage = $request->get('per_page', 50);
-        
+
         $logs = $product->auditLogs()
             ->with('user:id,name,email')
             ->orderBy('created_at', 'desc')
@@ -357,7 +357,7 @@ class ProductController extends Controller
         $product = Product::findOrFail($product);
         if ($product->status !== Product::STATUS_DRAFT) {
             return response()->json([
-                'message' => 'Only draft products can be submitted for approval'
+                'message' => 'Only draft products can be submitted for approval',
             ], 422);
         }
 
@@ -365,7 +365,7 @@ class ProductController extends Controller
 
         return response()->json([
             'message' => 'Product submitted for approval',
-            'product' => $product
+            'product' => $product,
         ]);
     }
 
@@ -377,7 +377,7 @@ class ProductController extends Controller
         $product = Product::findOrFail($product);
         if ($product->status !== Product::STATUS_PENDING_APPROVAL) {
             return response()->json([
-                'message' => 'Only products pending approval can be approved'
+                'message' => 'Only products pending approval can be approved',
             ], 422);
         }
 
@@ -385,7 +385,7 @@ class ProductController extends Controller
 
         return response()->json([
             'message' => 'Product approved successfully',
-            'product' => $product
+            'product' => $product,
         ]);
     }
 
@@ -397,7 +397,7 @@ class ProductController extends Controller
         $product = Product::findOrFail($product);
         if ($product->status !== Product::STATUS_PENDING_APPROVAL) {
             return response()->json([
-                'message' => 'Only products pending approval can be rejected'
+                'message' => 'Only products pending approval can be rejected',
             ], 422);
         }
 
@@ -409,12 +409,12 @@ class ProductController extends Controller
         $product->save();
 
         ProductAuditLog::log($product->id, 'rejected', 'status', 'pending_approval', 'draft', [
-            'rejection_reason' => $validated['reason']
+            'rejection_reason' => $validated['reason'],
         ]);
 
         return response()->json([
             'message' => 'Product rejected and returned to draft',
-            'product' => $product
+            'product' => $product,
         ]);
     }
 
@@ -426,7 +426,7 @@ class ProductController extends Controller
         $product = Product::findOrFail($product);
         if ($product->status === Product::STATUS_DISCONTINUED) {
             return response()->json([
-                'message' => 'Product is already discontinued'
+                'message' => 'Product is already discontinued',
             ], 422);
         }
 
@@ -434,7 +434,7 @@ class ProductController extends Controller
 
         return response()->json([
             'message' => 'Product discontinued successfully',
-            'product' => $product
+            'product' => $product,
         ]);
     }
 
@@ -448,7 +448,7 @@ class ProductController extends Controller
 
         return response()->json([
             'message' => 'Product archived successfully',
-            'product' => $product
+            'product' => $product,
         ]);
     }
 
@@ -460,7 +460,7 @@ class ProductController extends Controller
         $product = Product::findOrFail($product);
         if ($product->status === Product::STATUS_ACTIVE) {
             return response()->json([
-                'message' => 'Product is already active'
+                'message' => 'Product is already active',
             ], 422);
         }
 
@@ -474,7 +474,7 @@ class ProductController extends Controller
 
         return response()->json([
             'message' => 'Product reactivated successfully',
-            'product' => $product
+            'product' => $product,
         ]);
     }
 
@@ -522,12 +522,12 @@ class ProductController extends Controller
         ]);
 
         $unitPrice = $product->getPriceForQuantity(
-            $validated['quantity'], 
+            $validated['quantity'],
             $validated['customer_id'] ?? null
         );
 
         // Apply UOM multiplier if specified
-        if (!empty($validated['uom_id'])) {
+        if (! empty($validated['uom_id'])) {
             $uom = $product->uoms()->find($validated['uom_id']);
             if ($uom) {
                 $unitPrice = $unitPrice * $uom->price_multiplier;
@@ -556,12 +556,12 @@ class ProductController extends Controller
         ]);
 
         $newProduct = DB::transaction(function () use ($product, $validated) {
-            $newName = $validated['name'] ?? $product->name . ' (Copy)';
-            $newSku = $validated['sku'] ?? $product->sku . '-COPY-' . Str::random(4);
+            $newName = $validated['name'] ?? $product->name.' (Copy)';
+            $newSku = $validated['sku'] ?? $product->sku.'-COPY-'.Str::random(4);
 
             $data = $product->toArray();
             unset($data['id'], $data['created_at'], $data['updated_at'], $data['deleted_at']);
-            
+
             $data['name'] = $newName;
             $data['sku'] = $newSku;
             $data['barcode'] = null;
@@ -610,7 +610,7 @@ class ProductController extends Controller
 
         return response()->json([
             'message' => 'Product duplicated successfully',
-            'product' => $newProduct->load(['category', 'brand'])
+            'product' => $newProduct->load(['category', 'brand']),
         ], 201);
     }
 
@@ -619,11 +619,11 @@ class ProductController extends Controller
         // Manually resolve product after tenant context is set
         // Route model binding happens BEFORE middleware, so it doesn't respect tenant search path
         $product = Product::findOrFail($id);
-        
+
         $validated = $request->validate([
             'name' => 'string|max:255',
             'secondary_name' => 'nullable|string|max:255',
-            'sku' => 'string|unique:products,sku,' . $product->id,
+            'sku' => 'string|unique:products,sku,'.$product->id,
             'barcode' => 'nullable|string',
             'description' => 'nullable|string',
             'short_description' => 'nullable|string',
@@ -684,7 +684,7 @@ class ProductController extends Controller
         $validated = $this->removeUnsupportedProductColumns($validated);
         $validated = $this->coerceNotNullNumericDefaults($validated);
 
-        DB::transaction(function () use ($product, $validated, $featureValues, $customFieldValues, $suppliersData) {
+        DB::transaction(function () use ($product, $validated, $featureValues, $customFieldValues) {
             $product->update($validated);
 
             if (is_array($featureValues)) {
@@ -735,8 +735,9 @@ class ProductController extends Controller
         }
 
         $rawHeader = fgetcsv($handle);
-        if (!is_array($rawHeader) || count($rawHeader) === 0) {
+        if (! is_array($rawHeader) || count($rawHeader) === 0) {
             fclose($handle);
+
             return response()->json(['message' => 'CSV header missing'], 422);
         }
 
@@ -744,33 +745,34 @@ class ProductController extends Controller
         $header = array_map(function ($h) {
             $h = strtolower(trim((string) $h));
             $h = preg_replace('/[^a-z0-9]+/', '_', $h);
+
             return trim($h, '_');
         }, $rawHeader);
 
         // Column aliases to map various CSV formats to product fields
         $columnAliases = [
             'item_description' => 'name',
-            'item_barcode'     => 'barcode',
-            'stock_code'       => 'sku',
-            'unit_cost_sgd'    => 'cost',
-            'selling_price_sgd'=> 'price',
-            'quantity'         => 'stock_quantity',
-            'product_type'     => 'category_id',
-            'artist'           => 'secondary_name',
-            'artist_group'     => 'manufacturer',
+            'item_barcode' => 'barcode',
+            'stock_code' => 'sku',
+            'unit_cost_sgd' => 'cost',
+            'selling_price_sgd' => 'price',
+            'quantity' => 'stock_quantity',
+            'product_type' => 'category_id',
+            'artist' => 'secondary_name',
+            'artist_group' => 'manufacturer',
             'weblink_for_the_image' => 'image_url',
             // Batch / lot tracking
-            'lot'              => 'lot_number',
-            'lot_expiry_date'  => 'expiry_date',
-            'expiry'           => 'expiry_date',
-            'expire_date'      => 'expiry_date',
+            'lot' => 'lot_number',
+            'lot_expiry_date' => 'expiry_date',
+            'expiry' => 'expiry_date',
+            'expire_date' => 'expiry_date',
         ];
 
         $header = array_map(fn ($key) => $columnAliases[$key] ?? $key, $header);
 
         $rows = [];
         while (($data = fgetcsv($handle)) !== false) {
-            if (!is_array($data) || count(array_filter($data, fn ($v) => (string) $v !== '')) === 0) {
+            if (! is_array($data) || count(array_filter($data, fn ($v) => (string) $v !== '')) === 0) {
                 continue;
             }
             $row = [];
@@ -801,123 +803,124 @@ class ProductController extends Controller
         foreach ($rows as $index => $row) {
             $name = trim((string) ($row['name'] ?? ''));
 
-                if ($name === '') {
-                    $errors[] = [
-                        'row' => $index + 2,
-                        'message' => 'Missing required field: name',
-                    ];
-                    continue;
-                }
+            if ($name === '') {
+                $errors[] = [
+                    'row' => $index + 2,
+                    'message' => 'Missing required field: name',
+                ];
 
-                // Parse price/cost – strip currency symbols ($) and non-numeric chars
-                $cost = $this->parseNumericValue($row['cost'] ?? null);
-                $price = $this->parseNumericValue($row['price'] ?? null);
+                continue;
+            }
 
-                $sku = trim((string) ($row['sku'] ?? ''));
-                $barcode = isset($row['barcode']) ? trim((string) $row['barcode']) : '';
+            // Parse price/cost – strip currency symbols ($) and non-numeric chars
+            $cost = $this->parseNumericValue($row['cost'] ?? null);
+            $price = $this->parseNumericValue($row['price'] ?? null);
 
-                // Resolve category_id – handle both numeric IDs and category names
-                $categoryId = $this->resolveCategoryId($row['category_id'] ?? null, $categoriesCache);
+            $sku = trim((string) ($row['sku'] ?? ''));
+            $barcode = isset($row['barcode']) ? trim((string) $row['barcode']) : '';
 
-                // Build description from variant fields when no explicit description
-                $description = trim((string) ($row['description'] ?? ''));
-                if ($description === '') {
-                    $variantParts = [];
-                    foreach (['variant_edition', 'variant_theme', 'variant_format', 'variant_region', 'variant_colour'] as $vf) {
-                        $val = trim((string) ($row[$vf] ?? ''));
-                        if ($val !== '' && $val !== '-') {
-                            $label = ucfirst(str_replace('variant_', '', $vf));
-                            $variantParts[] = "{$label}: {$val}";
-                        }
-                    }
-                    if (count($variantParts) > 0) {
-                        $description = implode(' | ', $variantParts);
+            // Resolve category_id – handle both numeric IDs and category names
+            $categoryId = $this->resolveCategoryId($row['category_id'] ?? null, $categoriesCache);
+
+            // Build description from variant fields when no explicit description
+            $description = trim((string) ($row['description'] ?? ''));
+            if ($description === '') {
+                $variantParts = [];
+                foreach (['variant_edition', 'variant_theme', 'variant_format', 'variant_region', 'variant_colour'] as $vf) {
+                    $val = trim((string) ($row[$vf] ?? ''));
+                    if ($val !== '' && $val !== '-') {
+                        $label = ucfirst(str_replace('variant_', '', $vf));
+                        $variantParts[] = "{$label}: {$val}";
                     }
                 }
-
-                // Image URL from weblink
-                $imageUrl = trim((string) ($row['image_url'] ?? ''));
-                $imageValue = ($imageUrl !== '' && filter_var($imageUrl, FILTER_VALIDATE_URL)) ? $imageUrl : null;
-
-                $secondaryName = isset($row['secondary_name']) ? trim((string) $row['secondary_name']) : '';
-                $unit = isset($row['unit']) ? trim((string) $row['unit']) : '';
-                $manufacturer = isset($row['manufacturer']) ? trim((string) $row['manufacturer']) : '';
-                $hasImportedStockQuantity = array_key_exists('stock_quantity', $row);
-                $importedStockQuantity = $hasImportedStockQuantity
-                    ? max(0, (int) round($this->parseNumericValue($row['stock_quantity'] ?? null)))
-                    : null;
-
-                $lotNumber = isset($row['lot_number']) ? trim((string) $row['lot_number']) : '';
-                $expiryDate = $this->parseImportDate($row['expiry_date'] ?? null);
-
-                // Match by SKU when available. Barcode alone is not reliable because
-                // multiple distinct products in the same catalog can legitimately share it.
-                $existingProduct = $this->findExistingProductForImport($sku, $barcode, $name, $secondaryName);
-
-                // Generate SKU only if no existing product found and no SKU provided
-                if (!$existingProduct && ($sku === '' || $sku === '-')) {
-                    $base = Str::upper(Str::substr(preg_replace('/[^A-Za-z0-9]+/', '', $name), 0, 8));
-                    $base = $base !== '' ? $base : 'SKU';
-                    $sku = $base . '-' . Str::upper(Str::random(6));
+                if (count($variantParts) > 0) {
+                    $description = implode(' | ', $variantParts);
                 }
+            }
 
-                $productData = [
-                        'name'             => $name,
-                        'sku'              => ($sku !== '' && $sku !== '-') ? $sku : ($existingProduct->sku ?? $sku),
-                        'secondary_name'   => $secondaryName !== '' && $secondaryName !== '-' ? $secondaryName : null,
-                        'barcode'          => $barcode !== '' ? $barcode : null,
-                        'description'      => $description !== '' ? $description : null,
-                        'short_description'=> $row['short_description'] ?? ($description !== '' ? $description : null),
-                        'category_id'      => $categoryId,
-                        'type'             => in_array(($row['type'] ?? ''), ['product', 'service'], true) ? $row['type'] : 'product',
-                        'cost'             => $cost,
-                        'price'            => $price,
-                        'track_inventory'  => isset($row['track_inventory']) ? filter_var($row['track_inventory'], FILTER_VALIDATE_BOOLEAN) : true,
-                        'is_active'        => isset($row['is_active']) ? filter_var($row['is_active'], FILTER_VALIDATE_BOOLEAN) : true,
-                        'image'            => $imageValue,
-                        'manufacturer'     => $manufacturer !== '' && $manufacturer !== '-' ? $manufacturer : null,
-                        'unit'             => $unit !== '' && $unit !== '-' ? $unit : null,
-                        'lot_number'       => $lotNumber !== '' && $lotNumber !== '-' ? $lotNumber : null,
-                        'expiry_date'      => $expiryDate,
-                        'shelf_life_days'  => isset($row['shelf_life_days']) && trim((string) $row['shelf_life_days']) !== ''
-                            ? (int) round($this->parseNumericValue($row['shelf_life_days']))
-                            : null,
-                    ];
+            // Image URL from weblink
+            $imageUrl = trim((string) ($row['image_url'] ?? ''));
+            $imageValue = ($imageUrl !== '' && filter_var($imageUrl, FILTER_VALIDATE_URL)) ? $imageUrl : null;
 
-                try {
-                    DB::transaction(function () use (&$defaultWarehouse, $existingProduct, $productData, $hasImportedStockQuantity, $importedStockQuantity, &$created, &$updated) {
-                        if ($existingProduct) {
-                            $existingProduct->update($productData);
-                            $product = $existingProduct->fresh();
-                            $updated++;
-                        } else {
-                            $product = Product::create($productData);
-                            $created++;
-                        }
+            $secondaryName = isset($row['secondary_name']) ? trim((string) $row['secondary_name']) : '';
+            $unit = isset($row['unit']) ? trim((string) $row['unit']) : '';
+            $manufacturer = isset($row['manufacturer']) ? trim((string) $row['manufacturer']) : '';
+            $hasImportedStockQuantity = array_key_exists('stock_quantity', $row);
+            $importedStockQuantity = $hasImportedStockQuantity
+                ? max(0, (int) round($this->parseNumericValue($row['stock_quantity'] ?? null)))
+                : null;
 
-                        if (!$hasImportedStockQuantity || !$product->track_inventory || $product->type !== 'product') {
-                            return;
-                        }
+            $lotNumber = isset($row['lot_number']) ? trim((string) $row['lot_number']) : '';
+            $expiryDate = $this->parseImportDate($row['expiry_date'] ?? null);
 
-                        $defaultWarehouse ??= $this->resolveImportWarehouse();
+            // Match by SKU when available. Barcode alone is not reliable because
+            // multiple distinct products in the same catalog can legitimately share it.
+            $existingProduct = $this->findExistingProductForImport($sku, $barcode, $name, $secondaryName);
 
-                        app(InventoryService::class)->adjustStock(
-                            productId: $product->id,
-                            warehouseId: $defaultWarehouse->id,
-                            quantity: $importedStockQuantity,
-                            type: 'adjustment',
-                            reference: 'PRODUCT-IMPORT',
-                            notes: 'CSV product import stock sync'
-                        );
-                    });
-                } catch (\Throwable $e) {
-                    $msg = $e->getMessage();
-                    $enc = mb_detect_encoding($msg, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true) ?: 'ISO-8859-1';
-                    $errors[] = [
-                        'row' => $index + 2,
-                        'message' => mb_convert_encoding($msg, 'UTF-8', $enc),
-                    ];
-                }
+            // Generate SKU only if no existing product found and no SKU provided
+            if (! $existingProduct && ($sku === '' || $sku === '-')) {
+                $base = Str::upper(Str::substr(preg_replace('/[^A-Za-z0-9]+/', '', $name), 0, 8));
+                $base = $base !== '' ? $base : 'SKU';
+                $sku = $base.'-'.Str::upper(Str::random(6));
+            }
+
+            $productData = [
+                'name' => $name,
+                'sku' => ($sku !== '' && $sku !== '-') ? $sku : ($existingProduct->sku ?? $sku),
+                'secondary_name' => $secondaryName !== '' && $secondaryName !== '-' ? $secondaryName : null,
+                'barcode' => $barcode !== '' ? $barcode : null,
+                'description' => $description !== '' ? $description : null,
+                'short_description' => $row['short_description'] ?? ($description !== '' ? $description : null),
+                'category_id' => $categoryId,
+                'type' => in_array(($row['type'] ?? ''), ['product', 'service'], true) ? $row['type'] : 'product',
+                'cost' => $cost,
+                'price' => $price,
+                'track_inventory' => isset($row['track_inventory']) ? filter_var($row['track_inventory'], FILTER_VALIDATE_BOOLEAN) : true,
+                'is_active' => isset($row['is_active']) ? filter_var($row['is_active'], FILTER_VALIDATE_BOOLEAN) : true,
+                'image' => $imageValue,
+                'manufacturer' => $manufacturer !== '' && $manufacturer !== '-' ? $manufacturer : null,
+                'unit' => $unit !== '' && $unit !== '-' ? $unit : null,
+                'lot_number' => $lotNumber !== '' && $lotNumber !== '-' ? $lotNumber : null,
+                'expiry_date' => $expiryDate,
+                'shelf_life_days' => isset($row['shelf_life_days']) && trim((string) $row['shelf_life_days']) !== ''
+                    ? (int) round($this->parseNumericValue($row['shelf_life_days']))
+                    : null,
+            ];
+
+            try {
+                DB::transaction(function () use (&$defaultWarehouse, $existingProduct, $productData, $hasImportedStockQuantity, $importedStockQuantity, &$created, &$updated) {
+                    if ($existingProduct) {
+                        $existingProduct->update($productData);
+                        $product = $existingProduct->fresh();
+                        $updated++;
+                    } else {
+                        $product = Product::create($productData);
+                        $created++;
+                    }
+
+                    if (! $hasImportedStockQuantity || ! $product->track_inventory || $product->type !== 'product') {
+                        return;
+                    }
+
+                    $defaultWarehouse ??= $this->resolveImportWarehouse();
+
+                    app(InventoryService::class)->adjustStock(
+                        productId: $product->id,
+                        warehouseId: $defaultWarehouse->id,
+                        quantity: $importedStockQuantity,
+                        type: 'adjustment',
+                        reference: 'PRODUCT-IMPORT',
+                        notes: 'CSV product import stock sync'
+                    );
+                });
+            } catch (\Throwable $e) {
+                $msg = $e->getMessage();
+                $enc = mb_detect_encoding($msg, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true) ?: 'ISO-8859-1';
+                $errors[] = [
+                    'row' => $index + 2,
+                    'message' => mb_convert_encoding($msg, 'UTF-8', $enc),
+                ];
+            }
         }
 
         return response()->json([
@@ -965,6 +968,7 @@ class ProductController extends Controller
             return 0;
         }
         $cleaned = preg_replace('/[^0-9.]/', '', trim((string) $value));
+
         return $cleaned !== '' ? (float) $cleaned : 0;
     }
 
@@ -1000,7 +1004,7 @@ class ProductController extends Controller
             return Product::where('sku', $sku)->first();
         }
 
-        if (!$this->hasImportIdentifier($barcode)) {
+        if (! $this->hasImportIdentifier($barcode)) {
             return null;
         }
 
@@ -1046,7 +1050,7 @@ class ProductController extends Controller
     public function destroyAll(): JsonResponse
     {
         $count = Product::count();
-        
+
         DB::beginTransaction();
         try {
             // Clear FK references first
@@ -1059,14 +1063,18 @@ class ProductController extends Controller
                 'purchase_order_items', 'pos_order_items',
             ];
             foreach ($fkTables as $table) {
-                try { DB::table($table)->delete(); } catch (\Throwable $e) {}
+                try {
+                    DB::table($table)->delete();
+                } catch (\Throwable $e) {
+                }
             }
-            
+
             Product::query()->forceDelete();
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
-            return response()->json(['message' => 'Failed to delete all products: ' . $e->getMessage()], 500);
+
+            return response()->json(['message' => 'Failed to delete all products: '.$e->getMessage()], 500);
         }
 
         return response()->json([
@@ -1079,8 +1087,8 @@ class ProductController extends Controller
      * Resolve category ID from input value (numeric ID or category name)
      * Creates the category if it doesn't exist (when given a name)
      *
-     * @param mixed $categoryValue The category_id from CSV (can be ID, name, or empty)
-     * @param array &$cache Reference to cache array for performance
+     * @param  mixed  $categoryValue  The category_id from CSV (can be ID, name, or empty)
+     * @param  array  &$cache  Reference to cache array for performance
      * @return int|null The resolved category ID or null
      */
     private function resolveCategoryId($categoryValue, array &$cache): ?int
@@ -1100,15 +1108,16 @@ class ProductController extends Controller
         if (is_numeric($categoryValue) && intval($categoryValue) > 0) {
             $id = (int) $categoryValue;
             // Verify the ID exists in database
-            if (!isset($cache['id_' . $id])) {
+            if (! isset($cache['id_'.$id])) {
                 $exists = \App\Models\ProductCategory::where('id', $id)->exists();
-                $cache['id_' . $id] = $exists ? $id : null;
+                $cache['id_'.$id] = $exists ? $id : null;
             }
-            return $cache['id_' . $id];
+
+            return $cache['id_'.$id];
         }
 
         // It's a category name - check cache first
-        $cacheKey = 'name_' . strtolower($categoryValue);
+        $cacheKey = 'name_'.strtolower($categoryValue);
         if (array_key_exists($cacheKey, $cache)) {
             return $cache[$cacheKey];
         }
@@ -1118,6 +1127,7 @@ class ProductController extends Controller
 
         if ($category) {
             $cache[$cacheKey] = $category->id;
+
             return $category->id;
         }
 
@@ -1128,6 +1138,7 @@ class ProductController extends Controller
         ]);
 
         $cache[$cacheKey] = $newCategory->id;
+
         return $newCategory->id;
     }
 }

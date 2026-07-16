@@ -4,8 +4,8 @@ namespace Tests\Feature;
 
 use App\Platform\EventBus\DomainEventDispatcher;
 use App\Platform\EventBus\Handlers\AccountingContactSyncHandler;
-use App\Platform\EventBus\Handlers\CrmContactSyncHandler;
 use App\Platform\EventBus\Handlers\AuditTrailHandler;
+use App\Platform\EventBus\Handlers\CrmContactSyncHandler;
 use App\Platform\SystemLog\SystemLog;
 use Modules\Contact\src\Services\ContactMasterService;
 use Tests\TenantTestCase;
@@ -13,6 +13,7 @@ use Tests\TenantTestCase;
 class AuditTrailIntegrationTest extends TenantTestCase
 {
     private ContactMasterService $contactService;
+
     private string $tenantUuid;
 
     protected function setUp(): void
@@ -35,31 +36,103 @@ class AuditTrailIntegrationTest extends TenantTestCase
         $dispatcher->unsubscribeModule('crm');
         $dispatcher->unsubscribeModule('platform');
 
-        $dispatcher->subscribe(new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract {
-            public function getModuleKey(): string { return 'accounting'; }
-            public function getEventNames(): array { return ['contact.created', 'contact.updated', 'contact.deleted', 'contact.role.changed']; }
-            public function getHandlerClass(): string { return AccountingContactSyncHandler::class; }
-            public function getPriority(): int { return 100; }
-            public function getTenantFilter(): ?string { return null; }
-            public function getPayloadFilter(): ?array { return null; }
+        $dispatcher->subscribe(new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract
+        {
+            public function getModuleKey(): string
+            {
+                return 'accounting';
+            }
+
+            public function getEventNames(): array
+            {
+                return ['contact.created', 'contact.updated', 'contact.deleted', 'contact.role.changed'];
+            }
+
+            public function getHandlerClass(): string
+            {
+                return AccountingContactSyncHandler::class;
+            }
+
+            public function getPriority(): int
+            {
+                return 100;
+            }
+
+            public function getTenantFilter(): ?string
+            {
+                return null;
+            }
+
+            public function getPayloadFilter(): ?array
+            {
+                return null;
+            }
         });
 
-        $dispatcher->subscribe(new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract {
-            public function getModuleKey(): string { return 'crm'; }
-            public function getEventNames(): array { return ['contact.created', 'contact.updated', 'contact.deleted', 'contact.role.changed', 'contact.profile.updated']; }
-            public function getHandlerClass(): string { return CrmContactSyncHandler::class; }
-            public function getPriority(): int { return 100; }
-            public function getTenantFilter(): ?string { return null; }
-            public function getPayloadFilter(): ?array { return null; }
+        $dispatcher->subscribe(new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract
+        {
+            public function getModuleKey(): string
+            {
+                return 'crm';
+            }
+
+            public function getEventNames(): array
+            {
+                return ['contact.created', 'contact.updated', 'contact.deleted', 'contact.role.changed', 'contact.profile.updated'];
+            }
+
+            public function getHandlerClass(): string
+            {
+                return CrmContactSyncHandler::class;
+            }
+
+            public function getPriority(): int
+            {
+                return 100;
+            }
+
+            public function getTenantFilter(): ?string
+            {
+                return null;
+            }
+
+            public function getPayloadFilter(): ?array
+            {
+                return null;
+            }
         });
 
-        $dispatcher->subscribe(new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract {
-            public function getModuleKey(): string { return 'platform'; }
-            public function getEventNames(): array { return ['*']; }
-            public function getHandlerClass(): string { return AuditTrailHandler::class; }
-            public function getPriority(): int { return 1000; }
-            public function getTenantFilter(): ?string { return null; }
-            public function getPayloadFilter(): ?array { return null; }
+        $dispatcher->subscribe(new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract
+        {
+            public function getModuleKey(): string
+            {
+                return 'platform';
+            }
+
+            public function getEventNames(): array
+            {
+                return ['*'];
+            }
+
+            public function getHandlerClass(): string
+            {
+                return AuditTrailHandler::class;
+            }
+
+            public function getPriority(): int
+            {
+                return 1000;
+            }
+
+            public function getTenantFilter(): ?string
+            {
+                return null;
+            }
+
+            public function getPayloadFilter(): ?array
+            {
+                return null;
+            }
         });
     }
 

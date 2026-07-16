@@ -8,9 +8,13 @@ use Illuminate\Support\Str;
 class NotificationLog extends Model
 {
     protected $table = 'notification_logs';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
+
     protected $guarded = [];
 
     protected $casts = [

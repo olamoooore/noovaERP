@@ -3,8 +3,8 @@
 namespace Modules\FinancialReporting\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Modules\FinancialReporting\Models\ReportTemplate;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
@@ -83,7 +83,7 @@ class ReportTemplateController extends Controller
             ], 422);
         }
 
-        $template = new ReportTemplate();
+        $template = new ReportTemplate;
         $template->name = $request->input('name');
         $template->description = $request->input('description');
         $template->report_type = $request->input('report_type');
@@ -200,8 +200,8 @@ class ReportTemplateController extends Controller
     {
         $original = ReportTemplate::findOrFail($id);
 
-        $template = new ReportTemplate();
-        $template->name = $original->name . ' (Copy)';
+        $template = new ReportTemplate;
+        $template->name = $original->name.' (Copy)';
         $template->description = $original->description;
         $template->report_type = $original->report_type;
         $template->configuration = $original->configuration;

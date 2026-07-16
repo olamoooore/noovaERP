@@ -47,7 +47,7 @@ class EnsureInventoryAccess
         /** @var User|null $user */
         $user = $request->user();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
@@ -57,7 +57,7 @@ class EnsureInventoryAccess
         $tenantId = $this->resolveTenantId($request, $user);
         if ($tenantId) {
             $check = $this->featureGate->check((string) $tenantId, 'inventory');
-            if (!$check['is_entitled']) {
+            if (! $check['is_entitled']) {
                 return response()->json([
                     'message' => 'The inventory module is not enabled for this account.',
                 ], 403);

@@ -3,8 +3,8 @@
 namespace Modules\Ecommerce\Providers;
 
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
-use Modules\PaymentGateway\Events\PaymentSuccessful;
 use Modules\Ecommerce\Listeners\AwardLoyaltyPointsOnPayment;
+use Modules\PaymentGateway\Events\PaymentSuccessful;
 
 class EventServiceProvider extends ServiceProvider
 {

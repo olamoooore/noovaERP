@@ -50,9 +50,9 @@ class BillPayment extends Model
         static::deleting(function ($payment) {
             if ($payment->journal_entry_id !== null) {
                 throw new \RuntimeException(
-                    "Cannot delete posted bill payment #{$payment->payment_number}. " .
-                    "Posted payments must be reversed, not deleted. " .
-                    "Create a reversing entry to cancel this payment."
+                    "Cannot delete posted bill payment #{$payment->payment_number}. ".
+                    'Posted payments must be reversed, not deleted. '.
+                    'Create a reversing entry to cancel this payment.'
                 );
             }
         });

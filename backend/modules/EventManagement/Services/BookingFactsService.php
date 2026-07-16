@@ -2,19 +2,18 @@
 
 namespace Modules\EventManagement\Services;
 
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Modules\EventManagement\Models\Artist;
 use Modules\EventManagement\Models\Booking;
 use Modules\EventManagement\Models\BookingFacts;
 use Modules\EventManagement\Models\Event;
 use Modules\EventManagement\Models\EventTicketType;
-use Modules\EventManagement\Models\Artist;
 use Modules\EventManagement\Models\Group;
-use Modules\EventManagement\Models\CustomerTier;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 /**
  * BookingFactsService
- * 
+ *
  * Captures immutable snapshots of all relevant data at booking time
  * to prevent analytics drift when master data changes.
  */
@@ -31,7 +30,7 @@ class BookingFactsService
                 'event',
                 'eventTicketType',
                 'bookingAttendees',
-                'customerTier'
+                'customerTier',
             ]);
 
             $event = $booking->event;
@@ -39,19 +38,19 @@ class BookingFactsService
 
             // Capture event snapshot
             $eventSnapshot = $this->captureEventSnapshot($event);
-            
+
             // Capture ticket type snapshot
             $ticketTypeSnapshot = $this->captureTicketTypeSnapshot($ticketType);
-            
+
             // Capture artist snapshot (if any)
             $artistSnapshot = $this->captureArtistSnapshot($event);
-            
+
             // Capture pricing snapshot
             $pricingSnapshot = $this->capturePricingSnapshot($booking, $ticketType);
-            
+
             // Capture tier snapshot (if customer has tier)
             $tierSnapshot = $this->captureTierSnapshot($booking);
-            
+
             // Create metadata
             $metadata = $this->createMetadata($booking);
 
@@ -63,13 +62,13 @@ class BookingFactsService
                 'artist_snapshot' => $artistSnapshot,
                 'pricing_snapshot' => $pricingSnapshot,
                 'tier_snapshot' => $tierSnapshot,
-                'metadata' => $metadata
+                'metadata' => $metadata,
             ]);
 
             Log::info('Booking facts captured', [
                 'booking_id' => $booking->id,
                 'event_id' => $event->id,
-                'facts_id' => $bookingFacts->id
+                'facts_id' => $bookingFacts->id,
             ]);
 
             return $bookingFacts;
@@ -93,7 +92,7 @@ class BookingFactsService
             'terms_and_conditions' => $event->terms_and_conditions,
             'created_at' => $event->created_at?->toISOString(),
             'published_at' => $event->published_at?->toISOString(),
-            'snapshot_version' => '1.0'
+            'snapshot_version' => '1.0',
         ];
     }
 
@@ -112,7 +111,7 @@ class BookingFactsService
             'sale_start_date' => $ticketType->sale_start_date?->toISOString(),
             'sale_end_date' => $ticketType->sale_end_date?->toISOString(),
             'is_active' => $ticketType->is_active,
-            'snapshot_version' => '1.0'
+            'snapshot_version' => '1.0',
         ];
     }
 
@@ -122,7 +121,7 @@ class BookingFactsService
     private function captureArtistSnapshot(Event $event): ?array
     {
         $artistEvents = $event->artistEvents()->with(['artist', 'group'])->get();
-        
+
         if ($artistEvents->isEmpty()) {
             return null;
         }
@@ -137,7 +136,7 @@ class BookingFactsService
                     'name' => $artistEvent->artist->name,
                     'stage_name' => $artistEvent->artist->stage_name,
                     'role' => $artistEvent->role,
-                    'performance_order' => $artistEvent->performance_order
+                    'performance_order' => $artistEvent->performance_order,
                 ];
             }
 
@@ -146,7 +145,7 @@ class BookingFactsService
                     'id' => $artistEvent->group->id,
                     'name' => $artistEvent->group->name,
                     'role' => $artistEvent->role,
-                    'performance_order' => $artistEvent->performance_order
+                    'performance_order' => $artistEvent->performance_order,
                 ];
             }
         }
@@ -154,7 +153,7 @@ class BookingFactsService
         return [
             'artists' => $artists,
             'groups' => $groups,
-            'snapshot_version' => '1.0'
+            'snapshot_version' => '1.0',
         ];
     }
 
@@ -172,7 +171,7 @@ class BookingFactsService
             'currency' => $booking->currency ?? 'USD',
             'discount_type' => $booking->discount_type,
             'discount_reason' => $booking->discount_reason,
-            'snapshot_version' => '1.0'
+            'snapshot_version' => '1.0',
         ];
     }
 
@@ -181,7 +180,7 @@ class BookingFactsService
      */
     private function captureTierSnapshot(Booking $booking): ?array
     {
-        if (!$booking->customerTier) {
+        if (! $booking->customerTier) {
             return null;
         }
 
@@ -199,7 +198,7 @@ class BookingFactsService
             'early_access_hours' => $fanTier->early_access_hours,
             'discount_percentage' => $fanTier->discount_percentage,
             'benefits' => $fanTier->benefits,
-            'snapshot_version' => '1.0'
+            'snapshot_version' => '1.0',
         ];
     }
 
@@ -217,7 +216,7 @@ class BookingFactsService
             'ip_address' => request()->ip(),
             'session_id' => session()->getId(),
             'captured_at' => now()->toISOString(),
-            'capture_version' => '1.0'
+            'capture_version' => '1.0',
         ];
     }
 
@@ -235,6 +234,7 @@ class BookingFactsService
     public function getOriginalEventData(int $bookingId): ?array
     {
         $facts = $this->getBookingFacts($bookingId);
+
         return $facts?->getEventData();
     }
 
@@ -244,6 +244,7 @@ class BookingFactsService
     public function getOriginalPricingData(int $bookingId): ?array
     {
         $facts = $this->getBookingFacts($bookingId);
+
         return $facts?->getPricingData();
     }
 
@@ -253,12 +254,12 @@ class BookingFactsService
     public function compareWithCurrentData(int $bookingId): array
     {
         $facts = $this->getBookingFacts($bookingId);
-        if (!$facts) {
+        if (! $facts) {
             return ['error' => 'No booking facts found'];
         }
 
         $booking = Booking::with(['event', 'eventTicketType'])->find($bookingId);
-        if (!$booking) {
+        if (! $booking) {
             return ['error' => 'Booking not found'];
         }
 
@@ -266,35 +267,35 @@ class BookingFactsService
             'booking_id' => $bookingId,
             'facts_captured_at' => $facts->created_at,
             'comparison_performed_at' => now(),
-            'changes' => []
+            'changes' => [],
         ];
 
         // Compare event data
         $currentEvent = $booking->event;
         $originalEvent = $facts->getEventData();
-        
+
         if ($currentEvent->name !== $originalEvent['name']) {
             $comparison['changes']['event_name'] = [
                 'original' => $originalEvent['name'],
-                'current' => $currentEvent->name
+                'current' => $currentEvent->name,
             ];
         }
 
         if ($currentEvent->capacity !== $originalEvent['capacity']) {
             $comparison['changes']['event_capacity'] = [
                 'original' => $originalEvent['capacity'],
-                'current' => $currentEvent->capacity
+                'current' => $currentEvent->capacity,
             ];
         }
 
         // Compare ticket type data
         $currentTicketType = $booking->eventTicketType;
         $originalTicketType = $facts->getTicketTypeData();
-        
+
         if ($currentTicketType->price !== $originalTicketType['price']) {
             $comparison['changes']['ticket_price'] = [
                 'original' => $originalTicketType['price'],
-                'current' => $currentTicketType->price
+                'current' => $currentTicketType->price,
             ];
         }
 
@@ -315,7 +316,7 @@ class BookingFactsService
                 ->get()
                 ->toArray(),
             'oldest_facts' => BookingFacts::orderBy('created_at')->first()?->created_at,
-            'newest_facts' => BookingFacts::orderBy('created_at', 'desc')->first()?->created_at
+            'newest_facts' => BookingFacts::orderBy('created_at', 'desc')->first()?->created_at,
         ];
     }
 }

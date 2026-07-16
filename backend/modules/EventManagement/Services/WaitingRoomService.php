@@ -2,21 +2,20 @@
 
 namespace Modules\EventManagement\Services;
 
-use Modules\EventManagement\Models\WaitingRoomGame;
-use Modules\EventManagement\Models\WaitingRoomGameSession;
-use Modules\EventManagement\Models\GameReward;
 use Modules\EventManagement\Models\CustomerGameReward;
 use Modules\EventManagement\Models\FlashSale;
+use Modules\EventManagement\Models\GameReward;
 use Modules\EventManagement\Models\QueueSession;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use Modules\EventManagement\Models\WaitingRoomGame;
+use Modules\EventManagement\Models\WaitingRoomGameSession;
 
 class WaitingRoomService
 {
     public function getAvailableGames(): array
     {
         $games = WaitingRoomGame::active()->get();
-        return $games->map(fn($game) => [
+
+        return $games->map(fn ($game) => [
             'game_key' => $game->game_key,
             'name' => $game->name,
             'game_type' => $game->game_type,
@@ -32,12 +31,12 @@ class WaitingRoomService
             ->where('campaign_key', $campaignKey)
             ->first();
 
-        if (!$queueSession) {
+        if (! $queueSession) {
             return null;
         }
 
         $game = WaitingRoomGame::where('game_key', $gameKey)->active()->first();
-        if (!$game) {
+        if (! $game) {
             return null;
         }
 
@@ -47,13 +46,14 @@ class WaitingRoomService
             ->first();
 
         if ($existingSession) {
-            if (!$existingSession->canPlay()) {
+            if (! $existingSession->canPlay()) {
                 return [
                     'session_id' => $existingSession->id,
                     'can_play' => false,
                     'message' => 'No plays remaining in this session',
                 ];
             }
+
             return [
                 'session_id' => $existingSession->id,
                 'game' => $game,
@@ -78,7 +78,7 @@ class WaitingRoomService
     public function playGame(int $sessionId, array $playData): array
     {
         $session = WaitingRoomGameSession::with('game')->find($sessionId);
-        if (!$session || !$session->canPlay()) {
+        if (! $session || ! $session->canPlay()) {
             return ['success' => false, 'message' => 'Cannot play'];
         }
 
@@ -97,7 +97,7 @@ class WaitingRoomService
         }
 
         $nextPlay = $session->canPlay();
-        $sessionComplete = !$nextPlay;
+        $sessionComplete = ! $nextPlay;
 
         return [
             'success' => true,
@@ -117,7 +117,7 @@ class WaitingRoomService
             ->showInWaitingRoom()
             ->get();
 
-        return $flashSales->map(fn($sale) => [
+        return $flashSales->map(fn ($sale) => [
             'id' => $sale->id,
             'name' => $sale->name,
             'description' => $sale->description,
@@ -139,7 +139,7 @@ class WaitingRoomService
             ->with('reward')
             ->get();
 
-        return $rewards->map(fn($cr) => [
+        return $rewards->map(fn ($cr) => [
             'id' => $cr->id,
             'reward_type' => $cr->reward_type,
             'coin_amount' => $cr->coin_amount,
@@ -156,26 +156,28 @@ class WaitingRoomService
     public function redeemReward(int $customerRewardId): array
     {
         $customerReward = CustomerGameReward::with('reward')->find($customerRewardId);
-        if (!$customerReward) {
+        if (! $customerReward) {
             return ['success' => false, 'message' => 'Reward not found'];
         }
 
-        if (!$customerReward->isPending()) {
+        if (! $customerReward->isPending()) {
             return ['success' => false, 'message' => 'Reward already used or expired'];
         }
 
         if ($customerReward->isExpired()) {
             $customerReward->markAsExpired();
+
             return ['success' => false, 'message' => 'Reward has expired'];
         }
 
         if ($customerReward->reward_type === GameReward::TYPE_VOUCHER) {
-            if ($customerReward->reward && !$customerReward->reward->use()) {
+            if ($customerReward->reward && ! $customerReward->reward->use()) {
                 return ['success' => false, 'message' => 'Voucher exhausted'];
             }
         }
 
         $customerReward->markAsRedeemed();
+
         return [
             'success' => true,
             'message' => 'Reward redeemed successfully',
@@ -202,7 +204,7 @@ class WaitingRoomService
             $baseResult['score'] = $config['base_score'] ?? 100;
 
             $tiers = $rewardConfig['tiers'] ?? [];
-            if (!empty($tiers)) {
+            if (! empty($tiers)) {
                 $selectedTier = $this->selectRewardTier($tiers);
                 $baseResult['reward_key'] = $selectedTier['reward_key'];
                 $baseResult['score'] = $selectedTier['score'] ?? $baseResult['score'];
@@ -231,7 +233,7 @@ class WaitingRoomService
     private function awardReward(WaitingRoomGameSession $session, string $rewardKey): array
     {
         $reward = GameReward::where('reward_key', $rewardKey)->first();
-        if (!$reward) {
+        if (! $reward) {
             return ['success' => false, 'message' => 'Reward not found'];
         }
 

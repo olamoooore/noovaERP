@@ -5,8 +5,8 @@ namespace Modules\PaymentGateway\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
-use Modules\PaymentGateway\Models\OfflinePaymentMethod;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
+use Modules\PaymentGateway\Models\OfflinePaymentMethod;
 
 class OfflinePaymentMethodController extends Controller
 {
@@ -36,7 +36,7 @@ class OfflinePaymentMethodController extends Controller
         ]);
 
         // Generate method code from name
-        $validated['method_code'] = 'offline_' . Str::slug($validated['method_name'], '_');
+        $validated['method_code'] = 'offline_'.Str::slug($validated['method_name'], '_');
 
         // Create or find the offline payment gateway
         $gateway = \Modules\PaymentGateway\Models\PaymentGateway::firstOrCreate(
@@ -74,7 +74,7 @@ class OfflinePaymentMethodController extends Controller
         ]);
 
         if (isset($validated['method_name'])) {
-            $validated['method_code'] = 'offline_' . Str::slug($validated['method_name'], '_');
+            $validated['method_code'] = 'offline_'.Str::slug($validated['method_name'], '_');
         }
 
         $offlinePaymentMethod->update($validated);

@@ -3,28 +3,28 @@
 namespace Modules\Communication\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
-use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Event;
-use Modules\Communication\Services\CommunicationEngine;
-use Modules\Communication\Services\ChannelRouter;
-use Modules\Communication\Services\TemplateRenderer;
-use Modules\Communication\Services\Channels\EmailChannel;
-use Modules\Communication\Services\Channels\InAppChannel;
-use Modules\Communication\Services\Channels\SmsChannel;
-use Modules\Communication\Services\Channels\WhatsAppChannel;
-use Modules\Communication\Services\Channels\PushChannel;
-use Modules\Communication\Listeners\CommunicationEventSubscriber;
+use Illuminate\Support\ServiceProvider;
 use Modules\Communication\Console\ProcessOutboxCommand;
 use Modules\Communication\Console\SeedTemplatesCommand;
+use Modules\Communication\Jobs\CleanupOldMessages;
 use Modules\Communication\Jobs\RetryFailedDeliveries;
 use Modules\Communication\Jobs\SendDigest;
-use Modules\Communication\Jobs\CleanupOldMessages;
+use Modules\Communication\Listeners\CommunicationEventSubscriber;
+use Modules\Communication\Services\ChannelRouter;
+use Modules\Communication\Services\Channels\EmailChannel;
+use Modules\Communication\Services\Channels\InAppChannel;
+use Modules\Communication\Services\Channels\PushChannel;
+use Modules\Communication\Services\Channels\SmsChannel;
+use Modules\Communication\Services\Channels\WhatsAppChannel;
+use Modules\Communication\Services\CommunicationEngine;
+use Modules\Communication\Services\TemplateRenderer;
 
 class CommunicationServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__ . '/../../config/communication.php', 'communication');
+        $this->mergeConfigFrom(__DIR__.'/../../config/communication.php', 'communication');
 
         // Register the Communication Engine as singleton
         $this->app->singleton(CommunicationEngine::class);
@@ -45,7 +45,7 @@ class CommunicationServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // Load migrations
-        $this->loadMigrationsFrom(__DIR__ . '/../../database/migrations');
+        $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
 
         // Routes are loaded via ModuleManager::tenantApiRouteFiles() in tenant.php
         // Do NOT also loadRoutesFrom here or routes will be registered twice
@@ -68,7 +68,7 @@ class CommunicationServiceProvider extends ServiceProvider
             $schedule = $this->app->make(Schedule::class);
 
             // Retry failed deliveries every 5 minutes
-            $schedule->job(new RetryFailedDeliveries())->everyFiveMinutes();
+            $schedule->job(new RetryFailedDeliveries)->everyFiveMinutes();
 
             // Daily digest at 8am
             $schedule->job(new SendDigest('daily'))->dailyAt('08:00');
@@ -77,7 +77,7 @@ class CommunicationServiceProvider extends ServiceProvider
             $schedule->job(new SendDigest('weekly'))->weeklyOn(1, '08:00');
 
             // Cleanup old messages daily at 3am
-            $schedule->job(new CleanupOldMessages())->dailyAt('03:00');
+            $schedule->job(new CleanupOldMessages)->dailyAt('03:00');
         });
     }
 }

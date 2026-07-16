@@ -23,7 +23,7 @@ return new class extends Migration
             $table->string('color', 7)->nullable()->comment('Hex color for UI');
             $table->integer('sort_order')->default(0);
             $table->timestamps();
-            
+
             $table->index('loyalty_program_id');
             $table->index('sort_order');
         });

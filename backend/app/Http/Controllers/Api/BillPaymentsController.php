@@ -15,6 +15,7 @@ class BillPaymentsController extends Controller
         private BillPaymentService $billPaymentService,
         private LockDateValidationService $lockDateValidator,
     ) {}
+
     /**
      * Display a listing of bill payments
      */
@@ -37,10 +38,10 @@ class BillPaymentsController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('payment_number', 'like', "%{$search}%")
-                  ->orWhere('reference', 'like', "%{$search}%")
-                  ->orWhereHas('vendor', function ($vq) use ($search) {
-                      $vq->where('name', 'like', "%{$search}%");
-                  });
+                    ->orWhere('reference', 'like', "%{$search}%")
+                    ->orWhereHas('vendor', function ($vq) use ($search) {
+                        $vq->where('name', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -66,19 +67,19 @@ class BillPaymentsController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'vendor_id'       => 'required|exists:vendors,id',
-            'bill_id'         => 'nullable|exists:bills,id',
-            'payment_date'    => 'required|date',
-            'amount'          => 'required|numeric|min:0.01',
-            'payment_method'  => 'required|in:cash,bank,card,check,other',
+            'vendor_id' => 'required|exists:vendors,id',
+            'bill_id' => 'nullable|exists:bills,id',
+            'payment_date' => 'required|date',
+            'amount' => 'required|numeric|min:0.01',
+            'payment_method' => 'required|in:cash,bank,card,check,other',
             'bank_account_id' => 'nullable|exists:bank_accounts,id',
-            'reference'       => 'nullable|string|max:255',
-            'memo'            => 'nullable|string',
+            'reference' => 'nullable|string|max:255',
+            'memo' => 'nullable|string',
         ]);
 
         try {
             // Validate bank balance if paying from a bank account
-            if (!empty($validated['bank_account_id'])) {
+            if (! empty($validated['bank_account_id'])) {
                 $bankAccount = \App\Models\BankAccount::find($validated['bank_account_id']);
                 if ($bankAccount) {
                     $currentBalance = $bankAccount->getCurrentBalance();

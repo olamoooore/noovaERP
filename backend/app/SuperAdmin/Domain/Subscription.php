@@ -25,11 +25,11 @@ class Subscription extends Model
     ];
 
     protected $casts = [
-        'trial_starts_at'      => 'datetime',
-        'trial_ends_at'        => 'datetime',
+        'trial_starts_at' => 'datetime',
+        'trial_ends_at' => 'datetime',
         'current_period_start' => 'datetime',
-        'current_period_end'   => 'datetime',
-        'canceled_at'          => 'datetime',
+        'current_period_end' => 'datetime',
+        'canceled_at' => 'datetime',
     ];
 
     public function planVersion(): BelongsTo

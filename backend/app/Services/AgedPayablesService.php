@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Bill;
 use App\Models\Vendor;
-use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 /**
@@ -15,8 +14,8 @@ class AgedPayablesService
 {
     /**
      * Get aged payables report data
-     * 
-     * @param array $filters Optional filters (search, min_amount, aging_bucket)
+     *
+     * @param  array  $filters  Optional filters (search, min_amount, aging_bucket)
      * @return array Report data with vendor details and summary
      */
     public function getAgedPayables(array $filters = []): array
@@ -26,12 +25,12 @@ class AgedPayablesService
             ->whereIn('status', ['posted', 'partial', 'overdue'])
             ->where('balance', '>', 0);
 
-        if (!empty($filters['vendor_id'])) {
+        if (! empty($filters['vendor_id'])) {
             $billsQuery->where('vendor_id', (int) $filters['vendor_id']);
         }
 
         // Apply search filter
-        if (!empty($filters['search'])) {
+        if (! empty($filters['search'])) {
             $search = $filters['search'];
             $billsQuery->whereHas('vendor', function ($query) use ($search) {
                 $query->where('name', 'ILIKE', "%{$search}%");
@@ -42,13 +41,13 @@ class AgedPayablesService
 
         // Calculate aging for each bill and categorize
         $vendorData = [];
-        
+
         foreach ($bills as $bill) {
             $vendorId = $bill->vendor_id;
             $bucket = $this->calculateAgingBucket($bill);
             $amount = (float) $bill->balance;
 
-            if (!isset($vendorData[$vendorId])) {
+            if (! isset($vendorData[$vendorId])) {
                 $vendorData[$vendorId] = [
                     'vendor_id' => $vendorId,
                     'vendor_name' => $bill->vendor->name,
@@ -71,7 +70,7 @@ class AgedPayablesService
         $data = array_values($vendorData);
 
         // Apply minimum amount filter
-        if (!empty($filters['min_amount'])) {
+        if (! empty($filters['min_amount'])) {
             $minAmount = (float) $filters['min_amount'];
             $data = array_filter($data, function ($vendor) use ($minAmount) {
                 return $vendor['total'] >= $minAmount;
@@ -80,7 +79,7 @@ class AgedPayablesService
         }
 
         // Apply aging bucket filter
-        if (!empty($filters['aging_bucket'])) {
+        if (! empty($filters['aging_bucket'])) {
             $bucket = $filters['aging_bucket'];
             $data = array_filter($data, function ($vendor) use ($bucket) {
                 return $vendor[$bucket] > 0;
@@ -132,16 +131,15 @@ class AgedPayablesService
 
     /**
      * Calculate aging bucket for a bill
-     * 
-     * @param Bill $bill
+     *
      * @return string Bucket name (current, days_1_30, days_31_60, days_61_90, days_90_plus)
      */
     private function calculateAgingBucket(Bill $bill): string
     {
         $dueDate = $bill->due_date;
-        
+
         // If no due date, use bill date plus default payment terms (30 days)
-        if (!$dueDate) {
+        if (! $dueDate) {
             $paymentTerms = $bill->vendor->payment_terms ?? 30;
             $dueDate = Carbon::parse($bill->bill_date)->addDays($paymentTerms);
         }
@@ -149,12 +147,12 @@ class AgedPayablesService
         // Calculate days overdue
         $now = Carbon::now();
         $dueDate = Carbon::parse($dueDate);
-        
+
         if ($now->lessThan($dueDate)) {
             // Not yet due
             return 'current';
         }
-        
+
         // Get absolute days difference for overdue bills
         $daysOverdue = abs($now->diffInDays($dueDate, false));
 
@@ -171,9 +169,8 @@ class AgedPayablesService
 
     /**
      * Get bill details for a specific vendor and aging bucket
-     * 
-     * @param int $vendorId
-     * @param string $bucket Aging bucket name
+     *
+     * @param  string  $bucket  Aging bucket name
      * @return array List of bills
      */
     public function getBillDetails(int $vendorId, string $bucket): array
@@ -188,10 +185,10 @@ class AgedPayablesService
 
         foreach ($bills as $bill) {
             $billBucket = $this->calculateAgingBucket($bill);
-            
+
             if ($billBucket === $bucket) {
                 $dueDate = $bill->due_date;
-                if (!$dueDate) {
+                if (! $dueDate) {
                     $paymentTerms = $bill->vendor->payment_terms ?? 30;
                     $dueDate = Carbon::parse($bill->bill_date)->addDays($paymentTerms);
                 }

@@ -82,7 +82,7 @@ return new class extends Migration
     private function addColumns(string $tableName, array $definitions): void
     {
         foreach ($definitions as $column => $definition) {
-            if (!Schema::hasColumn($tableName, $column)) {
+            if (! Schema::hasColumn($tableName, $column)) {
                 Schema::table($tableName, $definition);
             }
         }

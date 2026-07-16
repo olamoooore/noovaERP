@@ -22,9 +22,7 @@ use Tests\TestCase;
 
 class TestPaymentWebhookController extends PaymentWebhookController
 {
-    public function __construct(private readonly ?Closure $processPaymentOverride = null)
-    {
-    }
+    public function __construct(private readonly ?Closure $processPaymentOverride = null) {}
 
     public function handleSuccess(array $webhookData, PaymentGateway $gateway): void
     {
@@ -40,23 +38,19 @@ class TestPaymentWebhookController extends PaymentWebhookController
     {
         if ($this->processPaymentOverride) {
             ($this->processPaymentOverride)($transaction);
+
             return;
         }
 
         parent::processPayment($transaction);
     }
 
-    protected function updateWebOrderStatus($invoice, $transaction = null)
-    {
-        return;
-    }
+    protected function updateWebOrderStatus($invoice, $transaction = null) {}
 }
 
 class TestPaymentService extends PaymentService
 {
-    public function __construct(private readonly array $status)
-    {
-    }
+    public function __construct(private readonly array $status) {}
 
     protected function getGatewayStatus(PaymentGateway $gateway, string $transactionId): array
     {
@@ -111,7 +105,7 @@ class PaymentLifecycleHardeningTest extends TestCase
 
     private function ensureCustomerSchemaCompatibility(): void
     {
-        if (!Schema::hasColumn('customers', 'marketing_opt_in')) {
+        if (! Schema::hasColumn('customers', 'marketing_opt_in')) {
             Schema::table('customers', function (Blueprint $table) {
                 $table->boolean('marketing_opt_in')->default(false);
             });
@@ -355,7 +349,7 @@ class PaymentLifecycleHardeningTest extends TestCase
             'payment_gateway_id' => $gateway->id,
             'invoice_id' => $invoice->id,
             'customer_id' => $customerId,
-            'transaction_id' => 'txn_' . bin2hex(random_bytes(6)),
+            'transaction_id' => 'txn_'.bin2hex(random_bytes(6)),
             'amount' => 50,
             'currency' => 'USD',
             'status' => 'pending',
@@ -371,7 +365,7 @@ class PaymentLifecycleHardeningTest extends TestCase
         $periodEnd = now()->endOfMonth()->toDateString();
         $periodCode = now()->format('Y-m');
 
-        if (!DB::table('fiscal_periods')->where('code', $periodCode)->exists()) {
+        if (! DB::table('fiscal_periods')->where('code', $periodCode)->exists()) {
             DB::table('fiscal_periods')->insert([
                 'name' => now()->format('F Y'),
                 'code' => $periodCode,
@@ -415,7 +409,7 @@ class PaymentLifecycleHardeningTest extends TestCase
 
         $transaction = PaymentTransaction::create([
             'payment_gateway_id' => $gateway->id,
-            'transaction_id' => 'txn_' . bin2hex(random_bytes(6)),
+            'transaction_id' => 'txn_'.bin2hex(random_bytes(6)),
             'amount' => 50,
             'currency' => 'USD',
             'status' => 'pending',

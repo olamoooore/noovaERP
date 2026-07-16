@@ -39,7 +39,7 @@ trait HasCommunication
     public static function bootHasCommunication(): void
     {
         static::created(function ($model) {
-            if (!config('communication.auto_subscribe.creator', true)) {
+            if (! config('communication.auto_subscribe.creator', true)) {
                 return;
             }
 

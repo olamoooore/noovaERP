@@ -2,14 +2,14 @@
 
 namespace Modules\HRM\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\User;
 use App\Models\Department;
 use App\Models\Location;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\HRM\Database\Factories\EmployeeFactory;
 
 class Employee extends Model
@@ -47,7 +47,7 @@ class Employee extends Model
         static::creating(function (Employee $employee) {
             if (empty($employee->employee_number)) {
                 $last = static::withTrashed()->max('id') ?? 0;
-                $employee->employee_number = 'E' . str_pad($last + 1, 4, '0', STR_PAD_LEFT);
+                $employee->employee_number = 'E'.str_pad($last + 1, 4, '0', STR_PAD_LEFT);
             }
         });
     }

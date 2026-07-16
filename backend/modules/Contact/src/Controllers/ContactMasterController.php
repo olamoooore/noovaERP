@@ -7,13 +7,14 @@ use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Modules\Contact\src\Models\AccountingCustomerProfile;
+use Modules\Contact\src\Models\AccountingVendorProfile;
+use Modules\Contact\src\Models\CrmContactProfile;
+use Modules\Contact\src\Models\HrStaffProfile;
+use Modules\Contact\src\Models\PosLoyaltyProfile;
+use Modules\Contact\src\Models\ProjectContactProfile;
+use Modules\Contact\src\Models\PropertyContactProfile;
 use Modules\Contact\src\Services\ContactMasterService;
-use Modules\Contact\src\Models\{
-    CoreContact, ContactRole, ContactIdentifier, ContactAddress,
-    ContactMethod, ContactRelationship, AccountingCustomerProfile,
-    AccountingVendorProfile, CrmContactProfile, HrStaffProfile,
-    PosLoyaltyProfile, PropertyContactProfile, ProjectContactProfile,
-};
 
 class ContactMasterController extends Controller
 {
@@ -53,13 +54,16 @@ class ContactMasterController extends Controller
         ]);
 
         $contact = $this->service->create($validated, tenant()->id);
+
         return $this->success($contact, 'Contact created.', 201);
     }
 
     public function show(Request $request, string $id): JsonResponse
     {
         $contact = $this->service->find($id, tenant()->id);
-        if (!$contact) return $this->notFound('Contact not found.');
+        if (! $contact) {
+            return $this->notFound('Contact not found.');
+        }
 
         return $this->success($contact, 'Contact retrieved.');
     }
@@ -82,7 +86,9 @@ class ContactMasterController extends Controller
         ]);
 
         $contact = $this->service->update($id, $validated, tenant()->id);
-        if (!$contact) return $this->notFound('Contact not found.');
+        if (! $contact) {
+            return $this->notFound('Contact not found.');
+        }
 
         return $this->success($contact, 'Contact updated.');
     }
@@ -91,7 +97,10 @@ class ContactMasterController extends Controller
     {
         try {
             $deleted = $this->service->delete($id, tenant()->id);
-            if (!$deleted) return $this->notFound('Contact not found.');
+            if (! $deleted) {
+                return $this->notFound('Contact not found.');
+            }
+
             return $this->success(null, 'Contact deleted.');
         } catch (\DomainException $e) {
             return $this->error($e->getMessage(), 422);
@@ -105,6 +114,7 @@ class ContactMasterController extends Controller
         $results = $this->service->search(tenant()->id, $request->only([
             'q', 'role', 'entity_id', 'per_page',
         ]));
+
         return $this->success($results, 'Search results.');
     }
 
@@ -113,7 +123,9 @@ class ContactMasterController extends Controller
     public function show360(Request $request, string $id): JsonResponse
     {
         $view = $this->service->get360View($id, tenant()->id);
-        if (!$view) return $this->notFound('Contact not found.');
+        if (! $view) {
+            return $this->notFound('Contact not found.');
+        }
 
         return $this->success($view, 'Contact 360 view.');
     }
@@ -123,7 +135,9 @@ class ContactMasterController extends Controller
     public function listRoles(Request $request, string $contactId): JsonResponse
     {
         $contact = $this->service->find($contactId, tenant()->id);
-        if (!$contact) return $this->notFound('Contact not found.');
+        if (! $contact) {
+            return $this->notFound('Contact not found.');
+        }
 
         return $this->success($contact->roles, 'Contact roles.');
     }
@@ -138,7 +152,9 @@ class ContactMasterController extends Controller
         ]);
 
         $role = $this->service->addRole($contactId, $validated['role'], tenant()->id, $validated);
-        if (!$role) return $this->notFound('Contact not found.');
+        if (! $role) {
+            return $this->notFound('Contact not found.');
+        }
 
         return $this->success($role, 'Role added.', 201);
     }
@@ -146,7 +162,9 @@ class ContactMasterController extends Controller
     public function removeRole(Request $request, string $contactId, string $role): JsonResponse
     {
         $removed = $this->service->removeRole($contactId, $role, tenant()->id);
-        if (!$removed) return $this->notFound('Role not found.');
+        if (! $removed) {
+            return $this->notFound('Role not found.');
+        }
 
         return $this->success(null, 'Role removed.');
     }
@@ -156,7 +174,9 @@ class ContactMasterController extends Controller
     public function listIdentifiers(Request $request, string $contactId): JsonResponse
     {
         $contact = $this->service->find($contactId, tenant()->id);
-        if (!$contact) return $this->notFound('Contact not found.');
+        if (! $contact) {
+            return $this->notFound('Contact not found.');
+        }
 
         return $this->success($contact->identifiers, 'Contact identifiers.');
     }
@@ -178,7 +198,9 @@ class ContactMasterController extends Controller
             tenant()->id,
             $validated
         );
-        if (!$identifier) return $this->notFound('Contact not found.');
+        if (! $identifier) {
+            return $this->notFound('Contact not found.');
+        }
 
         return $this->success($identifier, 'Identifier added.', 201);
     }
@@ -188,7 +210,9 @@ class ContactMasterController extends Controller
     public function listAddresses(Request $request, string $contactId): JsonResponse
     {
         $contact = $this->service->find($contactId, tenant()->id);
-        if (!$contact) return $this->notFound('Contact not found.');
+        if (! $contact) {
+            return $this->notFound('Contact not found.');
+        }
 
         return $this->success($contact->addresses, 'Contact addresses.');
     }
@@ -213,7 +237,9 @@ class ContactMasterController extends Controller
         ]);
 
         $address = $this->service->addAddress($contactId, $validated, tenant()->id);
-        if (!$address) return $this->notFound('Contact not found.');
+        if (! $address) {
+            return $this->notFound('Contact not found.');
+        }
 
         return $this->success($address, 'Address added.', 201);
     }
@@ -223,7 +249,9 @@ class ContactMasterController extends Controller
     public function listMethods(Request $request, string $contactId): JsonResponse
     {
         $contact = $this->service->find($contactId, tenant()->id);
-        if (!$contact) return $this->notFound('Contact not found.');
+        if (! $contact) {
+            return $this->notFound('Contact not found.');
+        }
 
         return $this->success($contact->methods, 'Contact methods.');
     }
@@ -240,7 +268,9 @@ class ContactMasterController extends Controller
         ]);
 
         $method = $this->service->addMethod($contactId, $validated, tenant()->id);
-        if (!$method) return $this->notFound('Contact not found.');
+        if (! $method) {
+            return $this->notFound('Contact not found.');
+        }
 
         return $this->success($method, 'Method added.', 201);
     }
@@ -250,7 +280,9 @@ class ContactMasterController extends Controller
     public function listRelationships(Request $request, string $contactId): JsonResponse
     {
         $contact = $this->service->find($contactId, tenant()->id);
-        if (!$contact) return $this->notFound('Contact not found.');
+        if (! $contact) {
+            return $this->notFound('Contact not found.');
+        }
 
         return $this->success($contact->relationships, 'Contact relationships.');
     }
@@ -273,7 +305,10 @@ class ContactMasterController extends Controller
                 tenant()->id,
                 $validated
             );
-            if (!$rel) return $this->notFound('Contact not found.');
+            if (! $rel) {
+                return $this->notFound('Contact not found.');
+            }
+
             return $this->success($rel, 'Relationship added.', 201);
         } catch (\DomainException $e) {
             return $this->error($e->getMessage(), 422);
@@ -285,6 +320,7 @@ class ContactMasterController extends Controller
     public function duplicates(Request $request): JsonResponse
     {
         $candidates = $this->service->findDuplicates(tenant()->id);
+
         return $this->success($candidates, 'Duplicate candidates.');
     }
 
@@ -302,7 +338,10 @@ class ContactMasterController extends Controller
             $request->user()->id,
         );
 
-        if (!$merged) return $this->error('Merge failed.', 422);
+        if (! $merged) {
+            return $this->error('Merge failed.', 422);
+        }
+
         return $this->success(null, 'Contacts merged.');
     }
 
@@ -311,7 +350,9 @@ class ContactMasterController extends Controller
     public function profiles(Request $request, string $contactId): JsonResponse
     {
         $contact = $this->service->find($contactId, tenant()->id);
-        if (!$contact) return $this->notFound('Contact not found.');
+        if (! $contact) {
+            return $this->notFound('Contact not found.');
+        }
 
         return $this->success([
             'accounting_customer' => $contact->accountingCustomerProfile,
@@ -542,7 +583,9 @@ class ContactMasterController extends Controller
     public function importStatus(Request $request, string $batch): JsonResponse
     {
         $batchModel = $this->service->importGetStatus($batch, tenant()->id);
-        if (!$batchModel) return $this->notFound('Import batch not found.');
+        if (! $batchModel) {
+            return $this->notFound('Import batch not found.');
+        }
 
         return $this->success([
             'batch_id' => $batchModel->id,
@@ -558,7 +601,9 @@ class ContactMasterController extends Controller
     public function importConfirm(Request $request, string $batch): JsonResponse
     {
         $batchModel = $this->service->importGetStatus($batch, tenant()->id);
-        if (!$batchModel) return $this->notFound('Import batch not found.');
+        if (! $batchModel) {
+            return $this->notFound('Import batch not found.');
+        }
 
         if ($batchModel->status !== 'validated') {
             return $this->error('Import batch is not in validated status.', 422);

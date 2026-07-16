@@ -2,20 +2,19 @@
 
 namespace Modules\EventManagement\Tests\Integration;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
-use Modules\EventManagement\Services\EventService;
-use Modules\EventManagement\Services\BookingService;
-use Modules\EventManagement\Services\TenantSchemaManager;
-use Modules\EventManagement\Services\AuditService;
-use Modules\EventManagement\Models\Event;
-use Modules\EventManagement\Models\Booking;
 use Carbon\Carbon;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\EventManagement\Models\Booking;
+use Modules\EventManagement\Models\Event;
+use Modules\EventManagement\Services\AuditService;
+use Modules\EventManagement\Services\BookingService;
+use Modules\EventManagement\Services\EventService;
+use Modules\EventManagement\Services\TenantSchemaManager;
+use Tests\TestCase;
 
 /**
  * Integration Test for Multi-Tenant Isolation
- * 
+ *
  * Tests that multi-tenant isolation works correctly across all components
  * Validates: Requirements 9.1
  */
@@ -24,24 +23,27 @@ class MultiTenantIsolationTest extends TestCase
     use RefreshDatabase;
 
     private EventService $eventService;
+
     private BookingService $bookingService;
+
     private AuditService $auditService;
+
     private TenantSchemaManager $tenantSchemaManager;
 
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         // Run migrations to set up the database schema
         $this->artisan('migrate', [
             '--path' => 'backend/modules/EventManagement/Database/Migrations',
-            '--realpath' => true
+            '--realpath' => true,
         ]);
 
         // Set up service dependencies
         $this->auditService = $this->createMock(AuditService::class);
         $this->tenantSchemaManager = $this->createMock(TenantSchemaManager::class);
-        
+
         // Bind mocks into the container so auto-wiring uses them
         $this->app->instance(AuditService::class, $this->auditService);
         $this->app->instance(TenantSchemaManager::class, $this->tenantSchemaManager);
@@ -53,7 +55,7 @@ class MultiTenantIsolationTest extends TestCase
 
     /**
      * Test that tenant data is properly isolated
-     * 
+     *
      * @test
      */
     public function test_tenant_data_isolation()
@@ -65,7 +67,7 @@ class MultiTenantIsolationTest extends TestCase
         // Configure tenant schema manager mock for tenant 1
         $this->tenantSchemaManager->expects($this->any())
             ->method('setTenantContext')
-            ->willReturnCallback(function($tenantId) {
+            ->willReturnCallback(function ($tenantId) {
                 // Simulate tenant context switching
                 config(['database.default' => "tenant_{$tenantId}"]);
             });
@@ -76,10 +78,10 @@ class MultiTenantIsolationTest extends TestCase
 
         // Create events for tenant 1
         $this->tenantSchemaManager->setTenantContext($tenant1Id);
-        
+
         $tenant1Event1 = $this->createTestEvent('Tenant 1 Event 1');
         $tenant1Event2 = $this->createTestEvent('Tenant 1 Event 2');
-        
+
         // Create bookings for tenant 1
         $tenant1Booking1 = $this->createTestBooking($tenant1Event1->id, 'tenant1-buyer1@example.com');
         $tenant1Booking2 = $this->createTestBooking($tenant1Event2->id, 'tenant1-buyer2@example.com');
@@ -90,16 +92,16 @@ class MultiTenantIsolationTest extends TestCase
             ->willReturn($tenant2Id);
 
         $this->tenantSchemaManager->setTenantContext($tenant2Id);
-        
+
         $tenant2Event1 = $this->createTestEvent('Tenant 2 Event 1');
         $tenant2Event2 = $this->createTestEvent('Tenant 2 Event 2');
-        
+
         $tenant2Booking1 = $this->createTestBooking($tenant2Event1->id, 'tenant2-buyer1@example.com');
         $tenant2Booking2 = $this->createTestBooking($tenant2Event2->id, 'tenant2-buyer2@example.com');
 
         // Verify tenant 1 can only see their own data
         $this->tenantSchemaManager->setTenantContext($tenant1Id);
-        
+
         $tenant1Events = $this->eventService->getPublicEvents();
         $this->assertCount(2, $tenant1Events);
         $this->assertTrue($tenant1Events->contains('title', 'Tenant 1 Event 1'));
@@ -109,7 +111,7 @@ class MultiTenantIsolationTest extends TestCase
 
         // Verify tenant 2 can only see their own data
         $this->tenantSchemaManager->setTenantContext($tenant2Id);
-        
+
         $tenant2Events = $this->eventService->getPublicEvents();
         $this->assertCount(2, $tenant2Events);
         $this->assertTrue($tenant2Events->contains('title', 'Tenant 2 Event 1'));
@@ -119,16 +121,16 @@ class MultiTenantIsolationTest extends TestCase
 
         // Verify booking isolation
         $this->assertDatabaseHas('bookings', [
-            'buyer_email' => 'tenant1-buyer1@example.com'
+            'buyer_email' => 'tenant1-buyer1@example.com',
         ]);
-        
+
         $this->assertDatabaseHas('bookings', [
-            'buyer_email' => 'tenant2-buyer1@example.com'
+            'buyer_email' => 'tenant2-buyer1@example.com',
         ]);
 
         // Verify that tenant 1 cannot access tenant 2's bookings
         $this->tenantSchemaManager->setTenantContext($tenant1Id);
-        
+
         // This should throw an exception or return null when trying to access cross-tenant data
         $this->expectException(\InvalidArgumentException::class);
         $this->bookingService->getBookingByReference($tenant2Booking1->booking_reference);
@@ -136,7 +138,7 @@ class MultiTenantIsolationTest extends TestCase
 
     /**
      * Test tenant schema context switching
-     * 
+     *
      * @test
      */
     public function test_tenant_schema_context_switching()
@@ -146,16 +148,16 @@ class MultiTenantIsolationTest extends TestCase
 
         // Mock schema manager behavior
         $currentTenant = null;
-        
+
         $this->tenantSchemaManager->expects($this->any())
             ->method('setTenantContext')
-            ->willReturnCallback(function($tenantId) use (&$currentTenant) {
+            ->willReturnCallback(function ($tenantId) use (&$currentTenant) {
                 $currentTenant = $tenantId;
             });
 
         $this->tenantSchemaManager->expects($this->any())
             ->method('getCurrentTenantId')
-            ->willReturnCallback(function() use (&$currentTenant) {
+            ->willReturnCallback(function () use (&$currentTenant) {
                 return $currentTenant;
             });
 
@@ -169,7 +171,7 @@ class MultiTenantIsolationTest extends TestCase
         // Create data in different tenant contexts
         $this->tenantSchemaManager->setTenantContext($tenant1Id);
         $event1 = $this->createTestEvent('Alpha Event');
-        
+
         $this->tenantSchemaManager->setTenantContext($tenant2Id);
         $event2 = $this->createTestEvent('Beta Event');
 
@@ -181,7 +183,7 @@ class MultiTenantIsolationTest extends TestCase
 
     /**
      * Test audit log isolation between tenants
-     * 
+     *
      * @test
      */
     public function test_audit_log_isolation_between_tenants()
@@ -191,46 +193,46 @@ class MultiTenantIsolationTest extends TestCase
 
         // Configure audit service to track tenant context
         $auditLogs = [];
-        
+
         $this->auditService->expects($this->any())
             ->method('logActivity')
-            ->willReturnCallback(function($tenantId, $action, $subject, $changes) use (&$auditLogs) {
+            ->willReturnCallback(function ($tenantId, $action, $subject, $changes) use (&$auditLogs) {
                 $auditLogs[] = [
                     'tenant_id' => $tenantId,
                     'action' => $action,
                     'subject' => $subject,
-                    'changes' => $changes
+                    'changes' => $changes,
                 ];
             });
 
         // Configure tenant schema manager
         $currentTenant = null;
-        
+
         $this->tenantSchemaManager->expects($this->any())
             ->method('setTenantContext')
-            ->willReturnCallback(function($tenantId) use (&$currentTenant) {
+            ->willReturnCallback(function ($tenantId) use (&$currentTenant) {
                 $currentTenant = $tenantId;
             });
 
         $this->tenantSchemaManager->expects($this->any())
             ->method('getCurrentTenantId')
-            ->willReturnCallback(function() use (&$currentTenant) {
+            ->willReturnCallback(function () use (&$currentTenant) {
                 return $currentTenant;
             });
 
         // Create events in different tenant contexts
         $this->tenantSchemaManager->setTenantContext($tenant1Id);
         $event1 = $this->createTestEvent('Tenant 1 Audit Event');
-        
+
         $this->tenantSchemaManager->setTenantContext($tenant2Id);
         $event2 = $this->createTestEvent('Tenant 2 Audit Event');
 
         // Verify audit logs are properly isolated
-        $tenant1Logs = array_filter($auditLogs, function($log) use ($tenant1Id) {
+        $tenant1Logs = array_filter($auditLogs, function ($log) use ($tenant1Id) {
             return $log['tenant_id'] === $tenant1Id;
         });
 
-        $tenant2Logs = array_filter($auditLogs, function($log) use ($tenant2Id) {
+        $tenant2Logs = array_filter($auditLogs, function ($log) use ($tenant2Id) {
             return $log['tenant_id'] === $tenant2Id;
         });
 
@@ -249,7 +251,7 @@ class MultiTenantIsolationTest extends TestCase
 
     /**
      * Test capacity management isolation between tenants
-     * 
+     *
      * @test
      */
     public function test_capacity_management_isolation_between_tenants()
@@ -259,29 +261,29 @@ class MultiTenantIsolationTest extends TestCase
 
         // Configure tenant context
         $currentTenant = null;
-        
+
         $this->tenantSchemaManager->expects($this->any())
             ->method('setTenantContext')
-            ->willReturnCallback(function($tenantId) use (&$currentTenant) {
+            ->willReturnCallback(function ($tenantId) use (&$currentTenant) {
                 $currentTenant = $tenantId;
             });
 
         $this->tenantSchemaManager->expects($this->any())
             ->method('getCurrentTenantId')
-            ->willReturnCallback(function() use (&$currentTenant) {
+            ->willReturnCallback(function () use (&$currentTenant) {
                 return $currentTenant;
             });
 
         // Create events with same capacity in different tenants
         $this->tenantSchemaManager->setTenantContext($tenant1Id);
         $tenant1Event = $this->createTestEventWithCapacity(10);
-        
+
         $this->tenantSchemaManager->setTenantContext($tenant2Id);
         $tenant2Event = $this->createTestEventWithCapacity(10);
 
         // Create bookings that fill capacity for tenant 1
         $this->tenantSchemaManager->setTenantContext($tenant1Id);
-        
+
         for ($i = 0; $i < 10; $i++) {
             $this->createTestBooking($tenant1Event->id, "tenant1-buyer{$i}@example.com");
         }
@@ -309,20 +311,21 @@ class MultiTenantIsolationTest extends TestCase
     /**
      * Create a test event
      */
-    private function createTestEvent(string $title = null): Event
+    private function createTestEvent(?string $title = null): Event
     {
-        $title = $title ?? 'Test Event ' . rand(1000, 9999);
-        
+        $title = $title ?? 'Test Event '.rand(1000, 9999);
+
         $eventData = [
             'title' => $title,
             'description' => 'Test event for multi-tenant testing',
             'event_date' => Carbon::now()->addDays(rand(1, 30))->toDateTimeString(),
-            'venue' => 'Test Venue ' . rand(100, 999),
+            'venue' => 'Test Venue '.rand(100, 999),
             'total_capacity' => 100,
-            'terms_conditions' => 'Test terms and conditions'
+            'terms_conditions' => 'Test terms and conditions',
         ];
-        
+
         $event = $this->eventService->createEvent($eventData);
+
         return $this->eventService->publishEvent($event->id);
     }
 
@@ -332,15 +335,16 @@ class MultiTenantIsolationTest extends TestCase
     private function createTestEventWithCapacity(int $capacity): Event
     {
         $eventData = [
-            'title' => 'Capacity Test Event ' . rand(1000, 9999),
+            'title' => 'Capacity Test Event '.rand(1000, 9999),
             'description' => 'Test event for capacity testing',
             'event_date' => Carbon::now()->addDays(rand(1, 30))->toDateTimeString(),
-            'venue' => 'Test Venue ' . rand(100, 999),
+            'venue' => 'Test Venue '.rand(100, 999),
             'total_capacity' => $capacity,
-            'terms_conditions' => 'Test terms and conditions'
+            'terms_conditions' => 'Test terms and conditions',
         ];
-        
+
         $event = $this->eventService->createEvent($eventData);
+
         return $this->eventService->publishEvent($event->id);
     }
 
@@ -363,11 +367,11 @@ class MultiTenantIsolationTest extends TestCase
                     'ticket_type_id' => 1,
                     'attendee_name' => 'Test Attendee',
                     'attendee_email' => $buyerEmail,
-                    'attendee_phone' => '+1234567890'
-                ]
-            ]
+                    'attendee_phone' => '+1234567890',
+                ],
+            ],
         ];
-        
+
         return $this->bookingService->createBooking($bookingData);
     }
 }

@@ -32,7 +32,7 @@ return new class extends Migration
 
         DB::statement('ALTER TABLE pos_orders DROP CONSTRAINT IF EXISTS pos_orders_terminal_id_foreign');
         DB::statement(
-            "ALTER TABLE pos_orders ADD CONSTRAINT pos_orders_terminal_id_foreign " .
+            'ALTER TABLE pos_orders ADD CONSTRAINT pos_orders_terminal_id_foreign '.
             "FOREIGN KEY (terminal_id) REFERENCES {$quotedSchema}.pos_terminals(id) ON DELETE SET NULL"
         );
     }
@@ -45,7 +45,7 @@ return new class extends Migration
 
         DB::statement('ALTER TABLE pos_orders DROP CONSTRAINT IF EXISTS pos_orders_terminal_id_foreign');
         DB::statement(
-            'ALTER TABLE pos_orders ADD CONSTRAINT pos_orders_terminal_id_foreign ' .
+            'ALTER TABLE pos_orders ADD CONSTRAINT pos_orders_terminal_id_foreign '.
             'FOREIGN KEY (terminal_id) REFERENCES pos_terminals(id) ON DELETE SET NULL'
         );
     }
@@ -77,6 +77,6 @@ return new class extends Migration
 
     private function quoteIdentifier(string $identifier): string
     {
-        return '"' . str_replace('"', '""', $identifier) . '"';
+        return '"'.str_replace('"', '""', $identifier).'"';
     }
 };

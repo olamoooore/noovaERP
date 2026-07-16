@@ -3,11 +3,10 @@
 namespace Modules\FinancialClose\Services;
 
 use Illuminate\Support\Facades\Log;
-use Modules\FinancialClose\Models\AiFinding;
-use Modules\FinancialClose\Models\AiFeedback;
-use Modules\FinancialClose\Models\AuditLog;
-use Modules\FinancialClose\Services\AiOutputValidationService;
 use Modules\FinancialClose\Events\FinancialCloseFindingGenerated;
+use Modules\FinancialClose\Models\AiFeedback;
+use Modules\FinancialClose\Models\AiFinding;
+use Modules\FinancialClose\Models\AuditLog;
 
 class FinancialCloseAiFindingService
 {
@@ -26,11 +25,11 @@ class FinancialCloseAiFindingService
         $query = AiFinding::where('tenant_id', $tenantId)
             ->where('review_id', $reviewId);
 
-        if (!empty($filters['status'])) {
+        if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
 
-        if (!empty($filters['risk_status'])) {
+        if (! empty($filters['risk_status'])) {
             $query->where('risk_status', $filters['risk_status']);
         }
 
@@ -55,27 +54,29 @@ class FinancialCloseAiFindingService
                 'review_id' => $reviewId,
                 'error' => $e->getMessage(),
             ]);
+
             return null;
         }
 
-        if (!$this->validator->meetsConfidenceThreshold((float) $validated['confidence'])) {
+        if (! $this->validator->meetsConfidenceThreshold((float) $validated['confidence'])) {
             Log::info('FinancialClose: AI finding below confidence threshold, not persisted', [
                 'review_id' => $reviewId,
                 'confidence' => $validated['confidence'],
             ]);
+
             return null;
         }
 
         $finding = AiFinding::create([
-            'tenant_id'        => $tenantId,
-            'review_id'        => $reviewId,
-            'entity_id'        => $entityId,
-            'account_code'     => $accountCode,
-            'finding_type'     => $this->validator->sanitize($validated['finding_type']),
-            'status'           => 'open',
-            'risk_status'      => $validated['risk_status'],
-            'confidence'       => $validated['confidence'],
-            'description'      => $this->validator->sanitize($validated['description']),
+            'tenant_id' => $tenantId,
+            'review_id' => $reviewId,
+            'entity_id' => $entityId,
+            'account_code' => $accountCode,
+            'finding_type' => $this->validator->sanitize($validated['finding_type']),
+            'status' => 'open',
+            'risk_status' => $validated['risk_status'],
+            'confidence' => $validated['confidence'],
+            'description' => $this->validator->sanitize($validated['description']),
             'structured_output' => $validated,
         ]);
 
@@ -93,7 +94,7 @@ class FinancialCloseAiFindingService
             ->where('id', $findingId)
             ->first();
 
-        if (!$finding) {
+        if (! $finding) {
             return ['success' => false, 'reason' => 'Finding not found.'];
         }
 
@@ -122,7 +123,7 @@ class FinancialCloseAiFindingService
             ->where('id', $findingId)
             ->first();
 
-        if (!$finding) {
+        if (! $finding) {
             return ['success' => false, 'reason' => 'Finding not found.'];
         }
 
@@ -147,7 +148,7 @@ class FinancialCloseAiFindingService
             ->where('id', $findingId)
             ->first();
 
-        if (!$finding) {
+        if (! $finding) {
             return ['success' => false, 'reason' => 'Finding not found.'];
         }
 
@@ -176,7 +177,7 @@ class FinancialCloseAiFindingService
             ->where('id', $findingId)
             ->first();
 
-        if (!$finding) {
+        if (! $finding) {
             return ['success' => false, 'reason' => 'Finding not found.'];
         }
 
@@ -231,7 +232,7 @@ class FinancialCloseAiFindingService
             ->where('id', $findingId)
             ->first();
 
-        if (!$finding) {
+        if (! $finding) {
             return null;
         }
 

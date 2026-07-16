@@ -3,12 +3,11 @@
 namespace Modules\IoT\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
-use Modules\IoT\Enums\DeviceType;
-use Modules\IoT\Enums\DeviceStatus;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\IoT\Enums\ConnectionType;
+use Modules\IoT\Enums\DeviceStatus;
+use Modules\IoT\Enums\DeviceType;
 
 class IoTDevice extends Model
 {

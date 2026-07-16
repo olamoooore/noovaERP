@@ -20,7 +20,7 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
             $table->text('description')->nullable();
             $table->timestamps();
-            
+
             $table->index('is_default');
             $table->index('is_active');
         });

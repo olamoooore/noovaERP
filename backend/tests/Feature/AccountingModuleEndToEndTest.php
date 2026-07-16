@@ -26,42 +26,40 @@
 
 namespace Tests\Feature;
 
-use Tests\TenantTestCase;
-use App\Models\User;
-use App\Models\Customer;
-use App\Models\Vendor;
-use App\Models\Product;
-use App\Models\Invoice;
-use App\Models\InvoiceLine;
+use App\Models\AccountMapping;
+use App\Models\BankAccount;
 use App\Models\Bill;
-use App\Models\BillLine;
-use App\Models\Payment;
+use App\Models\ChartOfAccount;
+use App\Models\Currency;
+use App\Models\Customer;
+use App\Models\CustomerCreditNote;
+use App\Models\ExchangeRate;
+use App\Models\FiscalPeriod;
+use App\Models\FixedAsset;
+use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
 use App\Models\JournalEntryLink;
-use App\Models\ChartOfAccount;
-use App\Models\BankAccount;
-use App\Models\Tax;
-use App\Models\Currency;
-use App\Models\ExchangeRate;
 use App\Models\LockDate;
-use App\Models\FiscalPeriod;
-use App\Models\FixedAsset;
-use App\Models\CustomerCreditNote;
-use App\Models\CustomerCreditNoteLine;
-use App\Models\AccountMapping;
-use Modules\FinancialClose\Models\CloseCycle;
-use Modules\FinancialClose\Models\CloseTask;
+use App\Models\Payment;
+use App\Models\Product;
+use App\Models\Tax;
+use App\Models\User;
+use App\Models\Vendor;
 use Modules\FinancialClose\Models\ChecklistTemplate;
-use Illuminate\Support\Facades\Artisan;
+use Modules\FinancialClose\Models\CloseTask;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Tests\TenantTestCase;
 
 class AccountingModuleEndToEndTest extends TenantTestCase
 {
     protected User $adminUser;
+
     protected User $accountantUser;
+
     protected User $clerkUser;
+
     protected User $viewerUser;
 
     protected function setUp(): void
@@ -362,8 +360,8 @@ class AccountingModuleEndToEndTest extends TenantTestCase
 
     private function assertJournalBalanced(JournalEntry $je, string $message = ''): void
     {
-        $totalDebit = $je->lines->sum(fn($l) => (float) $l->debit);
-        $totalCredit = $je->lines->sum(fn($l) => (float) $l->credit);
+        $totalDebit = $je->lines->sum(fn ($l) => (float) $l->debit);
+        $totalCredit = $je->lines->sum(fn ($l) => (float) $l->credit);
         $this->assertEqualsWithDelta($totalDebit, $totalCredit, 0.01, $message ?: 'Journal entry is not balanced');
     }
 
@@ -520,7 +518,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         $this->assertJournalBalanced($je, 'Invoice journal entry must be balanced');
 
         // Verify totals: 10 × $500 = $5,000 + 10% tax = $5,500
-        $totalDebit = $je->lines->sum(fn($l) => (float) $l->debit);
+        $totalDebit = $je->lines->sum(fn ($l) => (float) $l->debit);
         $this->assertEqualsWithDelta(5500.00, $totalDebit, 0.01, 'Total DR should be $5,500');
 
         // Verify journal entry link exists (relation_type may vary)
@@ -569,7 +567,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         $je = $invoice->journalEntry;
 
         // Subtotal $2,150, Tax $200, Total $2,350
-        $totalDebit = $je->lines->sum(fn($l) => (float) $l->debit);
+        $totalDebit = $je->lines->sum(fn ($l) => (float) $l->debit);
         $this->assertEqualsWithDelta(2350.00, $totalDebit, 0.01, 'Total should be $2,350');
         $this->assertJournalBalanced($je);
     }
@@ -594,7 +592,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
 
         // Should be blocked — posted invoices cannot be edited
         // Posted invoice deletion is blocked by write-access middleware (403) or validation (422)
-        $this->assertTrue(in_array($response->status(), [403, 422]), 'Expected blocked deletion but got ' . $response->status());
+        $this->assertTrue(in_array($response->status(), [403, 422]), 'Expected blocked deletion but got '.$response->status());
 
         // Verify database unchanged
         $freshInvoice = Invoice::with('lines')->find($invoice->id);
@@ -614,7 +612,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         // System may not be fully idempotent — key assertion is no duplicate journal entries
         $this->assertTrue(
             in_array($response->status(), [200, 201, 422, 500]),
-            'Re-posting should not create duplicate journal entries. Got status: ' . $response->status()
+            'Re-posting should not create duplicate journal entries. Got status: '.$response->status()
         );
 
         // Only one journal entry should exist regardless of HTTP status
@@ -702,7 +700,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         $this->assertJournalBalanced($je);
 
         // Total: $1,200 + $120 tax = $1,320
-        $totalDebit = $je->lines->sum(fn($l) => (float) $l->debit);
+        $totalDebit = $je->lines->sum(fn ($l) => (float) $l->debit);
         $this->assertEqualsWithDelta(1320.00, $totalDebit, 0.01);
     }
 
@@ -771,7 +769,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         $postResponse = $this->actingAs($this->adminUser)
             ->postJson("/api/v1/accounting/journal-entries/{$jeId}/post");
 
-        $this->assertTrue(in_array($postResponse->status(), [200, 201, 404]), 'Journal post response: ' . $postResponse->status());
+        $this->assertTrue(in_array($postResponse->status(), [200, 201, 404]), 'Journal post response: '.$postResponse->status());
 
         if (in_array($postResponse->status(), [200, 201])) {
             $je = JournalEntry::with('lines')->find($jeId);
@@ -853,7 +851,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
             $this->assertNotNull($reversalJe);
             $this->assertJournalBalanced($reversalJe);
         } else {
-            $this->assertEquals(422, $reverseResponse->status(), 'Reversal rejected: ' . $reverseResponse->json('error'));
+            $this->assertEquals(422, $reverseResponse->status(), 'Reversal rejected: '.$reverseResponse->json('error'));
             $originalJe = JournalEntry::with('lines')->find($jeId);
             $this->assertEquals('posted', $originalJe->status, 'Original entry should remain posted when reversal is rejected');
         }
@@ -931,7 +929,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
             ->postJson('/api/v1/vendors/credit-notes', $payload);
 
         // Vendor credit note may auto-post or require separate endpoint
-        $this->assertTrue(in_array($response->status(), [201, 405, 422]), 'Vendor credit note response: ' . $response->status());
+        $this->assertTrue(in_array($response->status(), [201, 405, 422]), 'Vendor credit note response: '.$response->status());
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -970,17 +968,17 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         $billJe = $bill->journalEntry;
 
         // Invoice tax line should exist — tax may be recorded on revenue line or separate tax line
-        $hasTaxLine = $invoiceJe->lines->contains(fn($l) => $l->credit > 0 && $l->account_id === $this->accountTaxOutput->id);
-        if (!$hasTaxLine) {
+        $hasTaxLine = $invoiceJe->lines->contains(fn ($l) => $l->credit > 0 && $l->account_id === $this->accountTaxOutput->id);
+        if (! $hasTaxLine) {
             // Tax may be embedded in the total; verify total debit equals invoice total
-            $totalDebit = $invoiceJe->lines->sum(fn($l) => (float) $l->debit);
+            $totalDebit = $invoiceJe->lines->sum(fn ($l) => (float) $l->debit);
             $this->assertEqualsWithDelta(5500.00, $totalDebit, 0.01, 'Invoice journal total should include tax');
         }
 
         // Bill tax line should exist
-        $hasBillTaxLine = $billJe->lines->contains(fn($l) => $l->debit > 0 && $l->account_id === $this->accountTaxInput->id);
-        if (!$hasBillTaxLine) {
-            $totalDebit = $billJe->lines->sum(fn($l) => (float) $l->debit);
+        $hasBillTaxLine = $billJe->lines->contains(fn ($l) => $l->debit > 0 && $l->account_id === $this->accountTaxInput->id);
+        if (! $hasBillTaxLine) {
+            $totalDebit = $billJe->lines->sum(fn ($l) => (float) $l->debit);
             $this->assertEqualsWithDelta(1320.00, $totalDebit, 0.01, 'Bill journal total should include tax');
         }
     }
@@ -1011,7 +1009,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
             ->postJson('/api/v1/accounting/assets', $assetPayload);
 
         // Fixed asset creation may require additional fields or return 422
-        $this->assertTrue(in_array($response->status(), [201, 422]), 'Asset creation response: ' . $response->status());
+        $this->assertTrue(in_array($response->status(), [201, 422]), 'Asset creation response: '.$response->status());
 
         $response->assertCreated();
         $assetId = $response->json('asset.id');
@@ -1051,7 +1049,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         $response = $this->actingAs($this->accountantUser)
             ->postJson('/api/v1/invoices', $payload);
 
-        $this->assertTrue(in_array($response->status(), [201, 200, 404, 422]), 'Multi-currency invoice response: ' . $response->status());
+        $this->assertTrue(in_array($response->status(), [201, 200, 404, 422]), 'Multi-currency invoice response: '.$response->status());
 
         if ($response->status() === 201) {
             $invoiceId = $response->json('id');
@@ -1059,7 +1057,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
                 ->postJson("/api/v1/invoices/{$invoiceId}/send");
 
             // Send may fail if multi-currency posting not fully supported
-            $this->assertTrue(in_array($sendResponse->status(), [200, 500, 422]), 'Send response: ' . $sendResponse->status());
+            $this->assertTrue(in_array($sendResponse->status(), [200, 500, 422]), 'Send response: '.$sendResponse->status());
 
             $invoice = Invoice::with('journalEntry.lines')->find($invoiceId);
             if ($invoice && $invoice->journalEntry) {
@@ -1104,7 +1102,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
             ->postJson('/api/v1/invoices', $payload);
 
         // Lock date validation may happen at creation (201/200) or posting (422/403/500)
-        $this->assertTrue(in_array($response->status(), [200, 201, 422, 403, 500]), 'Lock date response: ' . $response->status());
+        $this->assertTrue(in_array($response->status(), [200, 201, 422, 403, 500]), 'Lock date response: '.$response->status());
     }
 
     /** @test — TEST-LOCK-002: Posting blocked without fiscal period */
@@ -1128,7 +1126,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
             ->postJson('/api/v1/invoices', $payload);
 
         // Fiscal period validation may happen at creation or posting stage
-        $this->assertTrue(in_array($response->status(), [200, 201, 422, 403, 500]), 'Fiscal period response: ' . $response->status());
+        $this->assertTrue(in_array($response->status(), [200, 201, 422, 403, 500]), 'Fiscal period response: '.$response->status());
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -1141,7 +1139,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         $this->createAndPostInvoice();
 
         $response = $this->actingAs($this->accountantUser)
-            ->getJson('/api/v1/accounting/reports/aged-receivables?as_of=' . now()->toDateString());
+            ->getJson('/api/v1/accounting/reports/aged-receivables?as_of='.now()->toDateString());
 
         $response->assertOk();
         $data = $response->json();
@@ -1239,7 +1237,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         $response = $this->actingAs($this->adminUser)
             ->postJson('/api/v1/accounting/journal-entries', $payload);
 
-        $this->assertTrue(in_array($response->status(), [201, 404, 422]), 'Journal creation response: ' . $response->status());
+        $this->assertTrue(in_array($response->status(), [201, 404, 422]), 'Journal creation response: '.$response->status());
 
         if ($response->status() !== 201) {
             return; // Skip if journal creation not supported
@@ -1249,9 +1247,9 @@ class AccountingModuleEndToEndTest extends TenantTestCase
 
         $postResponse = $this->actingAs($this->adminUser)
             ->postJson("/api/v1/accounting/journal-entries/{$jeId}/post");
-        $this->assertTrue(in_array($postResponse->status(), [200, 201, 404]), 'Journal post response: ' . $postResponse->status());
+        $this->assertTrue(in_array($postResponse->status(), [200, 201, 404]), 'Journal post response: '.$postResponse->status());
 
-        if (!in_array($postResponse->status(), [200, 201])) {
+        if (! in_array($postResponse->status(), [200, 201])) {
             return; // Skip reversal test if post failed
         }
 
@@ -1279,7 +1277,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
             ->postJson('/api/v1/accounting/chart-of-accounts', $payload);
 
         // Duplicate code should be rejected
-        $this->assertTrue(in_array($response->status(), [422, 409, 500]), 'Duplicate code rejection. Got: ' . $response->status());
+        $this->assertTrue(in_array($response->status(), [422, 409, 500]), 'Duplicate code rejection. Got: '.$response->status());
     }
 
     /** @test — NEG-004: Posted invoice cannot be deleted */
@@ -1291,7 +1289,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
             ->deleteJson("/api/v1/invoices/{$invoice->id}");
 
         // Posted invoice deletion blocked by middleware or validation
-        $this->assertTrue(in_array($response->status(), [403, 422, 405]), 'Posted invoice deletion should be blocked. Got: ' . $response->status());
+        $this->assertTrue(in_array($response->status(), [403, 422, 405]), 'Posted invoice deletion should be blocked. Got: '.$response->status());
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -1432,7 +1430,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         // Posting engine rejects credit notes that exceed invoice total
         $this->assertTrue(
             in_array($postResponse->status(), [422, 500]),
-            'Credit note exceeding invoice total should be rejected. Got: ' . $postResponse->status()
+            'Credit note exceeding invoice total should be rejected. Got: '.$postResponse->status()
         );
     }
 
@@ -1446,7 +1444,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         ]);
 
         $asset = FixedAsset::create([
-            'asset_number' => 'AST-DISP-' . uniqid(),
+            'asset_number' => 'AST-DISP-'.uniqid(),
             'name' => 'Test Server Rack',
             'asset_account_id' => $assetAccount->id,
             'depreciation_account_id' => $this->accountExpense->id,
@@ -1469,7 +1467,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
 
         $this->assertTrue(
             in_array($response->status(), [200, 201, 422, 500]),
-            'Asset disposal response: ' . ($response->json('error') ?? $response->json('message') ?? 'N/A') . ' | Status: ' . $response->status()
+            'Asset disposal response: '.($response->json('error') ?? $response->json('message') ?? 'N/A').' | Status: '.$response->status()
         );
 
         if ($response->status() === 200) {
@@ -1490,7 +1488,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         // Endpoint exists and responds (may return 422 if no foreign currency balances)
         $this->assertTrue(
             in_array($response->status(), [200, 201, 422]),
-            'FX revaluation endpoint should be accessible. Got: ' . $response->status()
+            'FX revaluation endpoint should be accessible. Got: '.$response->status()
         );
     }
 
@@ -1555,7 +1553,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         // Close may succeed or fail depending on readiness checks
         $this->assertTrue(
             in_array($closeResponse->status(), [200, 422]),
-            'Cycle close should respond. Got: ' . $closeResponse->status()
+            'Cycle close should respond. Got: '.$closeResponse->status()
         );
     }
 
@@ -1600,7 +1598,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
 
         $this->assertTrue(
             in_array($postResponse->status(), [200, 422]),
-            'Credit note post should respond. Got: ' . $postResponse->status()
+            'Credit note post should respond. Got: '.$postResponse->status()
         );
     }
 
@@ -1627,7 +1625,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         // Should either create successfully (description stored as string) or fail validation
         $this->assertTrue(
             in_array($response->status(), [201, 422]),
-            'SQL injection attempt should be sanitized or rejected. Got: ' . $response->status()
+            'SQL injection attempt should be sanitized or rejected. Got: '.$response->status()
         );
 
         if ($response->status() === 201) {
@@ -1744,12 +1742,12 @@ class AccountingModuleEndToEndTest extends TenantTestCase
     public function financial_close_readiness_score_is_returned(): void
     {
         $fiscalPeriod = \App\Models\FiscalPeriod::first();
-        if (!$fiscalPeriod) {
+        if (! $fiscalPeriod) {
             $this->markTestSkipped('No fiscal period available for readiness test');
         }
 
         // FinancialClose routes need tenant context; skip if tenant() is null in test
-        if (!tenant()) {
+        if (! tenant()) {
             $this->markTestSkipped('Tenant context not available for FinancialClose readiness test');
         }
 
@@ -1759,7 +1757,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         // Endpoint may return 200 with readiness data or 404 if not configured
         $this->assertTrue(
             in_array($response->status(), [200, 404]),
-            'Readiness endpoint should return data or not-found. Got: ' . $response->status()
+            'Readiness endpoint should return data or not-found. Got: '.$response->status()
         );
     }
 

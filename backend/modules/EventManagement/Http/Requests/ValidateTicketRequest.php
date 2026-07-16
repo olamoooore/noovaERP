@@ -24,27 +24,27 @@ class ValidateTicketRequest extends FormRequest
                 'required',
                 'string',
                 'regex:/^TKT-[A-Z0-9]{8}-[A-Z0-9]{4}$/',
-                'max:20'
+                'max:20',
             ],
             'event_id' => [
                 'sometimes',
                 'integer',
-                'min:1'
+                'min:1',
             ],
             'validation_context' => [
                 'sometimes',
-                'array'
+                'array',
             ],
             'validation_context.location' => [
                 'sometimes',
                 'string',
-                'max:255'
+                'max:255',
             ],
             'validation_context.scanner_id' => [
                 'sometimes',
                 'string',
-                'max:100'
-            ]
+                'max:100',
+            ],
         ];
     }
 

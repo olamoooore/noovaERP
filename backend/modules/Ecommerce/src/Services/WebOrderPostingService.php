@@ -24,6 +24,7 @@ class WebOrderPostingService
         private readonly InventoryService $inventoryService,
         private readonly StockReservationService $stockReservationService,
     ) {}
+
     /**
      * Deduct stock for web order items via InventoryService (canonical path).
      */
@@ -35,7 +36,7 @@ class WebOrderPostingService
             : null;
 
         foreach ($order->items as $item) {
-            $productId      = $item->product_id;
+            $productId = $item->product_id;
             $trackInventory = $item->product?->track_inventory ?? false;
 
             if ($productId && $trackInventory) {
@@ -53,24 +54,25 @@ class WebOrderPostingService
                         'ordered_qty' => (int) $item->quantity,
                         'already_deducted' => $alreadyDeducted,
                     ]);
+
                     continue;
                 }
 
                 try {
                     $this->inventoryService->adjustStock(
-                        productId:     $productId,
-                        warehouseId:   $warehouseId,
-                        quantity:      $remainingToDeduct,
-                        type:          'sale',
-                        reference:     $order->order_number,
+                        productId: $productId,
+                        warehouseId: $warehouseId,
+                        quantity: $remainingToDeduct,
+                        type: 'sale',
+                        reference: $order->order_number,
                         referenceType: 'WebOrder',
-                        referenceId:   $order->id,
+                        referenceId: $order->id,
                     );
                 } catch (\Exception $e) {
                     Log::error('WebOrderPostingService::deductStock item failed', [
-                        'order_id'   => $order->id,
+                        'order_id' => $order->id,
                         'product_id' => $productId,
-                        'error'      => $e->getMessage(),
+                        'error' => $e->getMessage(),
                     ]);
                     throw $e;
                 }
@@ -78,7 +80,7 @@ class WebOrderPostingService
         }
 
         Log::info('Stock deducted for web order', [
-            'order_id'     => $order->id,
+            'order_id' => $order->id,
             'order_number' => $order->order_number,
         ]);
 
@@ -97,7 +99,7 @@ class WebOrderPostingService
             : null;
 
         foreach ($order->items as $item) {
-            $productId      = $item->product_id;
+            $productId = $item->product_id;
             $trackInventory = $item->product?->track_inventory ?? false;
 
             if ($productId && $trackInventory) {
@@ -120,24 +122,25 @@ class WebOrderPostingService
                         'already_deducted' => $alreadyDeducted,
                         'already_restored' => $alreadyRestored,
                     ]);
+
                     continue;
                 }
 
                 try {
                     $this->inventoryService->adjustStock(
-                        productId:     $productId,
-                        warehouseId:   $warehouseId,
-                        quantity:      $remainingToRestore,
-                        type:          'return',
-                        reference:     'Return: ' . $order->order_number,
+                        productId: $productId,
+                        warehouseId: $warehouseId,
+                        quantity: $remainingToRestore,
+                        type: 'return',
+                        reference: 'Return: '.$order->order_number,
                         referenceType: 'WebOrder',
-                        referenceId:   $order->id,
+                        referenceId: $order->id,
                     );
                 } catch (\Exception $e) {
                     Log::error('WebOrderPostingService::restoreStock item failed', [
-                        'order_id'   => $order->id,
+                        'order_id' => $order->id,
                         'product_id' => $productId,
-                        'error'      => $e->getMessage(),
+                        'error' => $e->getMessage(),
                     ]);
                     throw $e;
                 }
@@ -145,7 +148,7 @@ class WebOrderPostingService
         }
 
         Log::info('Stock restored for web order', [
-            'order_id'     => $order->id,
+            'order_id' => $order->id,
             'order_number' => $order->order_number,
         ]);
 
@@ -167,20 +170,22 @@ class WebOrderPostingService
                 'payment_status' => $order->payment_status,
                 'status' => $order->status,
             ]);
+
             return null;
         }
-        
+
         // Check if already posted
         $existingLink = JournalEntryLink::where('source_document_type', 'web_order')
             ->where('source_document_id', $order->id)
             ->where('relation_type', 'post')
             ->first();
-            
+
         if ($existingLink) {
             Log::info('Web order already posted', [
                 'order_id' => $order->id,
                 'entry_id' => $existingLink->journal_entry_id,
             ]);
+
             return JournalEntry::find($existingLink->journal_entry_id);
         }
 
@@ -256,7 +261,7 @@ class WebOrderPostingService
             // If tracked items exist, GL must include COGS+inventory lines.
             if ($this->orderHasTrackedInventoryItems($order) && $totalCost <= 0) {
                 throw new \RuntimeException(
-                    "Cannot post stock-tracked web order without cost basis (COGS/inventory lines would be skipped)."
+                    'Cannot post stock-tracked web order without cost basis (COGS/inventory lines would be skipped).'
                 );
             }
 
@@ -292,7 +297,7 @@ class WebOrderPostingService
                 entityBookId: request()->attributes->get('entity_book_id'),
             ));
 
-            if (!$result->success) {
+            if (! $result->success) {
                 throw new \RuntimeException(
                     "GL posting failed for web order {$order->order_number}: {$result->error}"
                 );
@@ -311,7 +316,7 @@ class WebOrderPostingService
             return $result->journalEntry;
         });
     }
-    
+
     /**
      * Reverse a web order posting (for refunds/cancellations).
      * Stock restoration happens AFTER reversal succeeds to ensure atomicity.
@@ -324,11 +329,12 @@ class WebOrderPostingService
             ->where('relation_type', 'post')
             ->first();
 
-        if (!$link) {
+        if (! $link) {
             Log::info('No journal entry found to reverse for web order', [
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,
             ]);
+
             return null;
         }
 
@@ -338,14 +344,14 @@ class WebOrderPostingService
 
             $result = $this->postingEngine->reverse(new ReversalRequest(
                 journalEntryId: $link->journal_entry_id,
-                reversalDate:   now()->toDateString(),
-                reason:         $reason,
-                reasonCode:     'WEB_ORDER_CANCEL',
-                actorUserId:    TenantUserHelper::resolveTenantUserId(),
+                reversalDate: now()->toDateString(),
+                reason: $reason,
+                reasonCode: 'WEB_ORDER_CANCEL',
+                actorUserId: TenantUserHelper::resolveTenantUserId(),
                 approvalUserId: null,
             ));
 
-            if (!$result->success) {
+            if (! $result->success) {
                 throw new \RuntimeException(
                     "GL reversal failed for web order {$order->order_number}: {$result->error}"
                 );
@@ -382,8 +388,8 @@ class WebOrderPostingService
             } catch (\Exception $e) {
                 Log::warning('Failed to fulfil stock reservation during deduction', [
                     'reservation_id' => $reservation->id,
-                    'order_id'       => $order->id,
-                    'error'          => $e->getMessage(),
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
                 ]);
             }
         }
@@ -405,8 +411,8 @@ class WebOrderPostingService
             } catch (\Exception $e) {
                 Log::warning('Failed to release stock reservation', [
                     'reservation_id' => $reservation->id,
-                    'order_id'       => $order->id,
-                    'error'          => $e->getMessage(),
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
                 ]);
             }
         }
@@ -420,13 +426,13 @@ class WebOrderPostingService
     private function requireInventoryWarehouseId(WebOrder $order, string $operation): int
     {
         $warehouseId = $order->resolveInventoryWarehouseId();
-        if (!$warehouseId) {
+        if (! $warehouseId) {
             throw new \RuntimeException(
                 "WebOrderPostingService::{$operation} — no fulfillment warehouse context for order {$order->id}."
             );
         }
 
-        if (!$order->fulfillment_warehouse_id) {
+        if (! $order->fulfillment_warehouse_id) {
             $order->forceFill(['fulfillment_warehouse_id' => $warehouseId])->saveQuietly();
         }
 

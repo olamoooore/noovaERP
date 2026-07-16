@@ -55,6 +55,7 @@ class TenantResource extends Resource
                     ->label('Domains')
                     ->state(function (Tenant $record) {
                         $domains = $record->domains()->pluck('domain')->all();
+
                         return implode(', ', $domains);
                     })
                     ->toggleable(),

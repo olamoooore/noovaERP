@@ -5,8 +5,8 @@ namespace App\Modules;
 final readonly class Module
 {
     /**
-     * @param array<int, class-string> $providers
-     * @param array<int, string> $dependencies Module keys this module depends on
+     * @param  array<int, class-string>  $providers
+     * @param  array<int, string>  $dependencies  Module keys this module depends on
      */
     public function __construct(
         public string $key,
@@ -15,8 +15,7 @@ final readonly class Module
         public string $basePath,
         public array $providers,
         public array $dependencies = [],
-    ) {
-    }
+    ) {}
 
     public function isCore(): bool
     {
@@ -42,30 +41,35 @@ final readonly class Module
     public function tenantApiRoutesPath(): ?string
     {
         $path = $this->basePath.'/routes/api.php';
+
         return file_exists($path) ? $path : null;
     }
 
     public function tenantMigrationsPath(): ?string
     {
         $path = $this->basePath.'/database/migrations/tenant';
+
         return is_dir($path) ? $path : null;
     }
 
     public function viewsPath(): ?string
     {
         $path = $this->basePath.'/resources/views';
+
         return is_dir($path) ? $path : null;
     }
 
     public function translationsPath(): ?string
     {
         $path = $this->basePath.'/resources/lang';
+
         return is_dir($path) ? $path : null;
     }
 
     public function configPath(): ?string
     {
         $path = $this->basePath.'/config/'.$this->key.'.php';
+
         return file_exists($path) ? $path : null;
     }
 }

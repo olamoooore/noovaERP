@@ -4,8 +4,8 @@ namespace Modules\AccountingCountry\Singapore\Services;
 
 use App\Accounting\Contracts\SubmissionProviderContract;
 use GuzzleHttp\Client;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Singapore PEPPOL Submission Provider
@@ -14,12 +14,14 @@ use Illuminate\Support\Facades\Log;
 class PeppolSubmissionProvider implements SubmissionProviderContract
 {
     protected Client $client;
+
     protected string $endpoint;
+
     protected bool $testMode;
 
     public function __construct()
     {
-        $this->client = new Client();
+        $this->client = new Client;
         $this->testMode = config('compliance.singapore.peppol_test_mode', true);
         $this->endpoint = $this->testMode
             ? config('compliance.singapore.peppol_test_endpoint', 'https://test.peppol.example.com')
@@ -36,7 +38,7 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
             $xml = $this->convertToUBL($payload);
 
             // Validate XML structure
-            if (!$this->validateXML($xml)) {
+            if (! $this->validateXML($xml)) {
                 return ['success' => false, 'message' => 'Invalid UBL XML generated'];
             }
 
@@ -67,7 +69,8 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
 
         } catch (\Exception $e) {
             Log::error('PEPPOL submission error', ['error' => $e->getMessage()]);
-            return ['success' => false, 'message' => 'Submission error: ' . $e->getMessage()];
+
+            return ['success' => false, 'message' => 'Submission error: '.$e->getMessage()];
         }
     }
 
@@ -131,8 +134,8 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
         $xml = '<?xml version="1.0" encoding="UTF-8"?>';
         $xml .= '<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2">';
         $xml .= '<cbc:CustomizationID>urn:cen.eu:en16931:2017</cbc:CustomizationID>';
-        $xml .= '<cbc:ID>' . $payload['custom_id'] . '</cbc:ID>';
-        $xml .= '<cbc:IssueDate>' . $payload['issue_date'] . '</cbc:IssueDate>';
+        $xml .= '<cbc:ID>'.$payload['custom_id'].'</cbc:ID>';
+        $xml .= '<cbc:IssueDate>'.$payload['issue_date'].'</cbc:IssueDate>';
         $xml .= '<!-- Additional elements would be added here -->';
         $xml .= '</Invoice>';
 
@@ -145,7 +148,7 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
     private function validateXML(string $xml): bool
     {
         // In production, use XML Schema validation
-        return !empty($xml) && strpos($xml, '<?xml') === 0;
+        return ! empty($xml) && strpos($xml, '<?xml') === 0;
     }
 
     /**
@@ -166,7 +169,7 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
         return [
             'Content-Type' => 'application/xml',
             'Accept' => 'application/json',
-            'Authorization' => 'Bearer ' . ($credentials['api_key'] ?? ''),
+            'Authorization' => 'Bearer '.($credentials['api_key'] ?? ''),
             'X-Idempotency-Key' => $credentials['idempotency_key'] ?? Str::uuid(),
         ];
     }

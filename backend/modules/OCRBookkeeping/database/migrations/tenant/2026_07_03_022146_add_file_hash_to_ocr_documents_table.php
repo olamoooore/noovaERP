@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasColumn('ocr_documents', 'file_hash')) {
+        if (! Schema::hasColumn('ocr_documents', 'file_hash')) {
             Schema::table('ocr_documents', function (Blueprint $table) {
                 $table->string('file_hash', 64)->nullable()->after('file_name');
                 $table->index('file_hash');

@@ -2,14 +2,14 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TenantTestCase;
+use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
-use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Jobs\ProcessOcrDocument;
-use App\Models\User;
+use Modules\OCRBookkeeping\Models\OcrDocument;
 use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
+use Tests\TenantTestCase;
 
 /**
  * Document Upload Tests
@@ -34,7 +34,7 @@ class DocumentUploadTest extends TenantTestCase
     private function fakeSuccessfulOcrResponse(array $overrides = []): void
     {
         Http::fake([
-            config('ocr.service.url') . '/api/bookkeeping/upload' => Http::response([
+            config('ocr.service.url').'/api/bookkeeping/upload' => Http::response([
                 'status' => 'success',
                 'extracted_data' => array_merge([
                     'vendor_customer_name' => 'Upload Test Vendor',

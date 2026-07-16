@@ -14,10 +14,15 @@ import { BlocksPalette } from './BlocksPalette'
 import { DocumentCanvas } from './DocumentCanvas'
 import { PropertyPanel } from './PropertyPanel'
 import { PreviewPane } from './PreviewPane'
+import { StructureTree } from './StructureTree'
+import { ValidationPanel } from './ValidationPanel'
+import { useEditorKeyboard } from './useEditorKeyboard'
 import { ArrowLeft, Save, Send, Eye, Pencil, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { STATUS_LABELS } from '@/types/template-builder'
 
 export function EditorShell({ templateId }: { templateId: string }) {
+  useEditorKeyboard()
   const navigate = useNavigate()
   const [view, setView] = useState<'edit' | 'preview'>('edit')
   const loadedId = useRef<string | null>(null)
@@ -80,7 +85,7 @@ export function EditorShell({ templateId }: { templateId: string }) {
     if (!template) return
     setLoadingPreview(true)
     templateBuilderApi
-      .preview(templateId, { layout_config: template.layout_config, css: template.css, mode: 'block', document_type: template.document_type })
+      .preview(templateId, { layout_config: template.layout_config, css: template.css ?? undefined, mode: 'block', document_type: template.document_type })
       .then((r) => setPreview(r.html, r.warnings))
       .catch(() => toast({ title: 'Preview failed', variant: 'destructive' }))
       .finally(() => setLoadingPreview(false))
@@ -104,8 +109,10 @@ export function EditorShell({ templateId }: { templateId: string }) {
 
   const statusBadge =
     template.status === 'published' ? <Badge className="bg-emerald-600">Published v{template.published_version}</Badge>
-    : template.status === 'archived' ? <Badge variant="secondary">Archived</Badge>
-    : <Badge variant="outline">Draft</Badge>
+    : template.status === 'in_review' ? <Badge className="bg-amber-500">{STATUS_LABELS[template.status]}</Badge>
+    : template.status === 'superseded' ? <Badge variant="secondary">{STATUS_LABELS[template.status]}</Badge>
+    : template.status === 'archived' ? <Badge variant="destructive">{STATUS_LABELS[template.status]}</Badge>
+    : <Badge variant="outline">{STATUS_LABELS[template.status] ?? 'Draft'}</Badge>
 
   return (
     <div className="flex h-screen flex-col">
@@ -145,14 +152,16 @@ export function EditorShell({ templateId }: { templateId: string }) {
         <div className="flex flex-1 overflow-hidden">
           {view === 'edit' ? (
             <>
-              <aside className="w-56 shrink-0 border-r bg-background">
-                <BlocksPalette />
+              <aside className="w-56 shrink-0 border-r bg-background flex flex-col">
+                <div className="shrink-0 border-b"><BlocksPalette /></div>
+                <div className="flex-1 overflow-hidden"><StructureTree /></div>
               </aside>
               <main className="flex-1 overflow-hidden">
                 <DocumentCanvas />
               </main>
-              <aside className="w-80 shrink-0 border-l bg-background">
-                <PropertyPanel />
+              <aside className="w-80 shrink-0 border-l bg-background flex flex-col">
+                <div className="shrink-0 border-b"><PropertyPanel /></div>
+                <div className="h-56 shrink-0 border-t"><ValidationPanel /></div>
               </aside>
             </>
           ) : (

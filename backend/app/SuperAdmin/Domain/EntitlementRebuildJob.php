@@ -24,20 +24,23 @@ class EntitlementRebuildJob extends Model
     ];
 
     protected $casts = [
-        'items_processed'   => 'integer',
+        'items_processed' => 'integer',
         'tenants_processed' => 'integer',
-        'started_at'        => 'datetime',
-        'completed_at'      => 'datetime',
+        'started_at' => 'datetime',
+        'completed_at' => 'datetime',
     ];
 
     // -------------------------------------------------------------------------
     // Constants
     // -------------------------------------------------------------------------
 
-    public const STATUS_PENDING   = 'pending';
-    public const STATUS_RUNNING   = 'running';
+    public const STATUS_PENDING = 'pending';
+
+    public const STATUS_RUNNING = 'running';
+
     public const STATUS_COMPLETED = 'completed';
-    public const STATUS_FAILED    = 'failed';
+
+    public const STATUS_FAILED = 'failed';
 
     // -------------------------------------------------------------------------
     // Relations
@@ -69,7 +72,7 @@ class EntitlementRebuildJob extends Model
     public function markRunning(): void
     {
         $this->update([
-            'status'     => self::STATUS_RUNNING,
+            'status' => self::STATUS_RUNNING,
             'started_at' => now(),
         ]);
     }
@@ -77,19 +80,19 @@ class EntitlementRebuildJob extends Model
     public function markCompleted(int $itemsProcessed, int $tenantsProcessed = 1): void
     {
         $this->update([
-            'status'             => self::STATUS_COMPLETED,
-            'items_processed'    => $itemsProcessed,
-            'tenants_processed'  => $tenantsProcessed,
-            'completed_at'       => now(),
+            'status' => self::STATUS_COMPLETED,
+            'items_processed' => $itemsProcessed,
+            'tenants_processed' => $tenantsProcessed,
+            'completed_at' => now(),
         ]);
     }
 
     public function markFailed(string $errorMessage): void
     {
         $this->update([
-            'status'        => self::STATUS_FAILED,
+            'status' => self::STATUS_FAILED,
             'error_message' => $errorMessage,
-            'completed_at'  => now(),
+            'completed_at' => now(),
         ]);
     }
 }

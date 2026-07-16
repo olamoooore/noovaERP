@@ -37,7 +37,7 @@ return new class extends Migration
             $table->index('created_at');
             $table->index('expires_at');
 
-            // Foreign key usually handled by tenancy, but strict referencing users table might fail if users are in central db. 
+            // Foreign key usually handled by tenancy, but strict referencing users table might fail if users are in central db.
             // Assuming users are in tenant db or this migration logic is sound for the architecture.
             // Since I am copying, I will keep it as is, but be mindful.
             $table->foreign('created_by')->references('id')->on('users')->onDelete('set null');

@@ -25,6 +25,7 @@ class ProcessOutboxCommand extends Command
         if ($this->option('retry-failed')) {
             $count = $engine->retryFailed();
             $this->info("Retried {$count} failed deliveries.");
+
             return self::SUCCESS;
         }
 

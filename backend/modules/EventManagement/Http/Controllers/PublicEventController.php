@@ -2,15 +2,15 @@
 
 namespace Modules\EventManagement\Http\Controllers;
 
+use App\Mail\BookingConfirmation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Mail;
-use App\Mail\BookingConfirmation;
-use Modules\EventManagement\Models\Event;
 use Modules\EventManagement\Models\Booking;
+use Modules\EventManagement\Models\Event;
 use Modules\EventManagement\Services\BookingService;
 use Modules\EventManagement\Services\EventTicketCheckoutService;
 use Modules\PaymentGateway\Models\PaymentGateway;
@@ -43,17 +43,17 @@ class PublicEventController extends Controller
                 $query->with(['merchandiseProducts', 'bundleProducts']);
             }
 
-            $events = $query->get()->map(fn($event) => $this->formatEvent($event));
+            $events = $query->get()->map(fn ($event) => $this->formatEvent($event));
 
             return response()->json([
-                'data'    => $events,
+                'data' => $events,
                 'message' => 'Events retrieved successfully',
             ]);
         } catch (\Throwable $e) {
             return response()->json([
-                'data'    => [],
+                'data' => [],
                 'message' => 'Failed to fetch events',
-                'error'   => config('app.debug') ? $e->getMessage() : 'Server error',
+                'error' => config('app.debug') ? $e->getMessage() : 'Server error',
             ], 500);
         }
     }
@@ -65,7 +65,7 @@ class PublicEventController extends Controller
     public function show(string $id): JsonResponse
     {
         try {
-            if (!ctype_digit($id)) {
+            if (! ctype_digit($id)) {
                 return response()->json(['message' => 'Event not found'], 404);
             }
 
@@ -78,7 +78,7 @@ class PublicEventController extends Controller
             $event = $query->findOrFail((int) $id);
 
             return response()->json([
-                'data'    => $this->formatEvent($event),
+                'data' => $this->formatEvent($event),
                 'message' => 'Event retrieved successfully',
             ]);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
@@ -86,7 +86,7 @@ class PublicEventController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Failed to fetch event',
-                'error'   => config('app.debug') ? $e->getMessage() : 'Server error',
+                'error' => config('app.debug') ? $e->getMessage() : 'Server error',
             ], 500);
         }
     }
@@ -98,7 +98,7 @@ class PublicEventController extends Controller
     public function book(Request $request, string $id): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'name'  => 'required|string|max:255',
+            'name' => 'required|string|max:255',
             'email' => 'required|email|max:255',
             'phone' => 'nullable|string|max:50',
         ]);
@@ -106,12 +106,12 @@ class PublicEventController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'message' => 'Validation failed',
-                'errors'  => $validator->errors(),
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         try {
-            if (!ctype_digit($id)) {
+            if (! ctype_digit($id)) {
                 return response()->json(['message' => 'Event not found'], 404);
             }
 
@@ -122,7 +122,7 @@ class PublicEventController extends Controller
             }
 
             // Generate a unique booking reference
-            $reference = 'BK-' . strtoupper(substr(md5(uniqid()), 0, 8));
+            $reference = 'BK-'.strtoupper(substr(md5(uniqid()), 0, 8));
 
             // Generate a queue number from current bookings count + 1
             $queueNumber = Booking::where('event_id', $event->id)->count() + 1;
@@ -132,15 +132,15 @@ class PublicEventController extends Controller
             // Create the booking using Eloquent (tenant-scoped via search_path)
             $booking = Booking::create([
                 'booking_reference' => $reference,
-                'event_id'          => $event->id,
-                'buyer_name'        => $request->name,
-                'buyer_email'       => $request->email,
-                'buyer_phone'       => $request->phone ?? '',
-                'total_amount'      => $event->price ?? 0,
-                'currency'          => 'SGD',
-                'state'             => $paymentRequired ? 'pending' : 'confirmed',
+                'event_id' => $event->id,
+                'buyer_name' => $request->name,
+                'buyer_email' => $request->email,
+                'buyer_phone' => $request->phone ?? '',
+                'total_amount' => $event->price ?? 0,
+                'currency' => 'SGD',
+                'state' => $paymentRequired ? 'pending' : 'confirmed',
                 'payment_reference' => null,
-                'consent_pdpa'      => true,
+                'consent_pdpa' => true,
                 'consent_marketing' => false,
             ]);
 
@@ -151,7 +151,7 @@ class PublicEventController extends Controller
                     'description' => "Event Booking {$reference} - {$event->title}",
                     'email' => $request->email,
                     'gateway_id' => $this->resolvePreferredPublicGatewayId(),
-                    'redirect_url' => rtrim((string) config('app.frontend_url', 'http://localhost:5173'), '/') . '/payment/callback',
+                    'redirect_url' => rtrim((string) config('app.frontend_url', 'http://localhost:5173'), '/').'/payment/callback',
                     'metadata' => [
                         'type' => 'event_booking',
                         'booking_id' => $booking->id,
@@ -198,10 +198,10 @@ class PublicEventController extends Controller
                         'timeout' => null,
                         'local_domain' => env('MAIL_EHLO_DOMAIN'),
                     ]]);
-                    if (!empty($mail['from_address'])) {
+                    if (! empty($mail['from_address'])) {
                         config(['mail.from.address' => $mail['from_address']]);
                     }
-                    if (!empty($mail['from_name'])) {
+                    if (! empty($mail['from_name'])) {
                         config(['mail.from.name' => $mail['from_name']]);
                     }
                     // Purge and set SSL stream options on the new transport
@@ -230,11 +230,11 @@ class PublicEventController extends Controller
 
             return response()->json([
                 'data' => [
-                    'booking_id'       => $booking->id,
-                    'booking_reference'=> $reference,
-                    'queue_number'     => $formattedQueueNumber,
-                    'event_title'      => $event->title,
-                    'email'            => $request->email,
+                    'booking_id' => $booking->id,
+                    'booking_reference' => $reference,
+                    'queue_number' => $formattedQueueNumber,
+                    'event_title' => $event->title,
+                    'email' => $request->email,
                     'payment_required' => false,
                 ],
                 'message' => 'Booking successful!',
@@ -244,7 +244,7 @@ class PublicEventController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Booking failed',
-                'error'   => config('app.debug') ? $e->getMessage() : 'Server error',
+                'error' => config('app.debug') ? $e->getMessage() : 'Server error',
             ], 500);
         }
     }
@@ -256,7 +256,7 @@ class PublicEventController extends Controller
     public function prepareCheckout(string $id): JsonResponse
     {
         try {
-            if (!ctype_digit($id)) {
+            if (! ctype_digit($id)) {
                 return response()->json(['message' => 'Event not found'], 404);
             }
 
@@ -319,7 +319,7 @@ class PublicEventController extends Controller
             $queueNumber = $this->calculateQueueNumber($booking);
             $transaction = PaymentTransaction::where('transaction_id', $paymentIntentId)->first();
 
-            if (!$transaction || ($transaction->metadata['booking_reference'] ?? null) !== $bookingReference) {
+            if (! $transaction || ($transaction->metadata['booking_reference'] ?? null) !== $bookingReference) {
                 return response()->json([
                     'message' => 'Payment transaction does not match this booking.',
                 ], 422);
@@ -393,7 +393,7 @@ class PublicEventController extends Controller
 
         // Fallback images based on event keywords
         $image = $event->image_url;
-        if (!$image) {
+        if (! $image) {
             $title = strtolower($event->title);
             if (str_contains($title, 'concert') || str_contains($title, 'music') || str_contains($title, 'k-pop') || str_contains($title, 'kpop')) {
                 $image = 'https://images.unsplash.com/photo-1540039155733-5bb30b53aa14?w=800&q=80';
@@ -409,24 +409,24 @@ class PublicEventController extends Controller
         }
 
         return [
-            'id'                 => $event->id,
-            'title'              => $event->title,
-            'description'        => $event->description ?? '',
-            'start_date'         => $event->start_date?->toIso8601String(),
-            'end_date'           => $event->end_date?->toIso8601String(),
-            'event_date'         => $event->start_date?->toIso8601String(),
-            'venue'              => $event->venue ?? 'TBA',
-            'price'              => (float) ($event->price ?? 0),
-            'image_url'          => $image,
-            'total_capacity'     => $event->total_capacity ?? 0,
+            'id' => $event->id,
+            'title' => $event->title,
+            'description' => $event->description ?? '',
+            'start_date' => $event->start_date?->toIso8601String(),
+            'end_date' => $event->end_date?->toIso8601String(),
+            'event_date' => $event->start_date?->toIso8601String(),
+            'venue' => $event->venue ?? 'TBA',
+            'price' => (float) ($event->price ?? 0),
+            'image_url' => $image,
+            'total_capacity' => $event->total_capacity ?? 0,
             'available_capacity' => $event->available_capacity ?? 0,
-            'spots_left'         => $event->available_capacity ?? 0,
-            'total_spots'        => $event->total_capacity ?? 0,
-            'status'             => $event->status,
-            'is_sold_out'        => ($event->available_capacity ?? 1) <= 0,
+            'spots_left' => $event->available_capacity ?? 0,
+            'total_spots' => $event->total_capacity ?? 0,
+            'status' => $event->status,
+            'is_sold_out' => ($event->available_capacity ?? 1) <= 0,
             'merchandise_products' => $supportsEventProductLinks ? $this->formatLinkedProducts($event->merchandiseProducts) : [],
-            'bundle_products'      => $supportsEventProductLinks ? $this->formatLinkedProducts($event->bundleProducts) : [],
-            'ticket_product_id'    => $event->ticket_product_id,
+            'bundle_products' => $supportsEventProductLinks ? $this->formatLinkedProducts($event->bundleProducts) : [],
+            'ticket_product_id' => $event->ticket_product_id,
         ];
     }
 
@@ -495,7 +495,7 @@ class PublicEventController extends Controller
     {
         try {
             $mail = \App\Models\Setting::getValue('mail_config');
-            if (!$mail || !is_array($mail)) {
+            if (! $mail || ! is_array($mail)) {
                 return;
             }
 
@@ -510,10 +510,10 @@ class PublicEventController extends Controller
                 'local_domain' => env('MAIL_EHLO_DOMAIN'),
             ]]);
 
-            if (!empty($mail['from_address'])) {
+            if (! empty($mail['from_address'])) {
                 config(['mail.from.address' => $mail['from_address']]);
             }
-            if (!empty($mail['from_name'])) {
+            if (! empty($mail['from_name'])) {
                 config(['mail.from.name' => $mail['from_name']]);
             }
 

@@ -9,14 +9,14 @@ use Modules\HRM\Tests\HrmTestCase;
 
 class LeaveRequestApiTest extends HrmTestCase
 {
-
     protected User $user;
+
     protected Employee $employee;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user     = User::factory()->create();
+        $this->user = User::factory()->create();
         $this->employee = Employee::factory()->create();
         $this->actingAs($this->user, 'sanctum');
     }
@@ -35,10 +35,10 @@ class LeaveRequestApiTest extends HrmTestCase
     {
         $payload = [
             'employee_id' => $this->employee->id,
-            'start_date'  => '2026-04-01',
-            'end_date'    => '2026-04-03',
-            'leave_type'  => 'sick',
-            'message'     => 'Not feeling well',
+            'start_date' => '2026-04-01',
+            'end_date' => '2026-04-03',
+            'leave_type' => 'sick',
+            'message' => 'Not feeling well',
         ];
 
         $response = $this->postJson('/api/v1/hrm/leave-requests', $payload);
@@ -52,10 +52,10 @@ class LeaveRequestApiTest extends HrmTestCase
     {
         $response = $this->postJson('/api/v1/hrm/leave-requests', [
             'employee_id' => $this->employee->id,
-            'start_date'  => '2026-04-05',
-            'end_date'    => '2026-04-01',
-            'leave_type'  => 'sick',
-            'message'     => 'Test',
+            'start_date' => '2026-04-05',
+            'end_date' => '2026-04-01',
+            'leave_type' => 'sick',
+            'message' => 'Test',
         ]);
 
         $response->assertStatus(422);
@@ -66,7 +66,7 @@ class LeaveRequestApiTest extends HrmTestCase
     {
         $leave = LeaveRequest::factory()->create([
             'employee_id' => $this->employee->id,
-            'status'      => 'pending',
+            'status' => 'pending',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/leave-requests/{$leave->id}/approve", [
@@ -81,7 +81,7 @@ class LeaveRequestApiTest extends HrmTestCase
     {
         $leave = LeaveRequest::factory()->create([
             'employee_id' => $this->employee->id,
-            'status'      => 'approved',
+            'status' => 'approved',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/leave-requests/{$leave->id}/approve");
@@ -94,7 +94,7 @@ class LeaveRequestApiTest extends HrmTestCase
     {
         $leave = LeaveRequest::factory()->create([
             'employee_id' => $this->employee->id,
-            'status'      => 'pending',
+            'status' => 'pending',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/leave-requests/{$leave->id}/reject", [
@@ -109,7 +109,7 @@ class LeaveRequestApiTest extends HrmTestCase
     {
         $leave = LeaveRequest::factory()->create([
             'employee_id' => $this->employee->id,
-            'status'      => 'rejected',
+            'status' => 'rejected',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/leave-requests/{$leave->id}/reject");

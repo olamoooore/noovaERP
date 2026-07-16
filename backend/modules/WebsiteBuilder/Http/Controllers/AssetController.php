@@ -4,9 +4,9 @@ namespace Modules\WebsiteBuilder\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Modules\WebsiteBuilder\Models\Asset;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Modules\WebsiteBuilder\Models\Asset;
 
 class AssetController extends Controller
 {
@@ -28,11 +28,11 @@ class AssetController extends Controller
         if ($existing) {
             return response()->json([
                 'url' => Storage::disk('public')->url($existing->path),
-                'asset' => $existing
+                'asset' => $existing,
             ]);
         }
 
-        $path = $file->store('website-assets/' . $request->website_id, 'public');
+        $path = $file->store('website-assets/'.$request->website_id, 'public');
 
         $asset = Asset::create([
             'website_id' => $request->website_id,
@@ -46,7 +46,7 @@ class AssetController extends Controller
 
         return response()->json([
             'url' => Storage::disk('public')->url($asset->path),
-            'asset' => $asset
+            'asset' => $asset,
         ], 201);
     }
 }

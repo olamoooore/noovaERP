@@ -31,9 +31,12 @@ class PlanItemDefault extends Model
     // Constants
     // -------------------------------------------------------------------------
 
-    public const AVAILABILITY_INCLUDED    = 'included';
-    public const AVAILABILITY_ADD_ON      = 'add_on';
-    public const AVAILABILITY_HIDDEN      = 'hidden';
+    public const AVAILABILITY_INCLUDED = 'included';
+
+    public const AVAILABILITY_ADD_ON = 'add_on';
+
+    public const AVAILABILITY_HIDDEN = 'hidden';
+
     public const AVAILABILITY_CUSTOM_ONLY = 'custom_only';
 
     public const AVAILABILITIES = [

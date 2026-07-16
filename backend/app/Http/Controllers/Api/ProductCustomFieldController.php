@@ -28,7 +28,7 @@ class ProductCustomFieldController extends Controller
         $baseSlug = $slug;
         $counter = 1;
         while (ProductCustomField::where('slug', $slug)->exists()) {
-            $slug = $baseSlug . '-' . $counter++;
+            $slug = $baseSlug.'-'.$counter++;
         }
 
         $field = ProductCustomField::create([
@@ -65,7 +65,7 @@ class ProductCustomFieldController extends Controller
 
         if (isset($validated['name'])) {
             $newSlug = Str::slug($validated['name']);
-            if ($newSlug !== $productCustomField->slug && !ProductCustomField::where('slug', $newSlug)->where('id', '!=', $productCustomField->id)->exists()) {
+            if ($newSlug !== $productCustomField->slug && ! ProductCustomField::where('slug', $newSlug)->where('id', '!=', $productCustomField->id)->exists()) {
                 $updateData['slug'] = $newSlug;
             }
         }
@@ -79,6 +79,7 @@ class ProductCustomFieldController extends Controller
     {
         $productCustomField = ProductCustomField::findOrFail($id);
         $productCustomField->delete();
+
         return response()->json(['message' => 'Custom field deleted successfully']);
     }
 }

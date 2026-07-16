@@ -7,15 +7,15 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
-use Modules\FinancialReporting\Services\Export\PdfExportService;
-use Modules\FinancialReporting\Services\Export\ExcelExportService;
 use Modules\FinancialReporting\Services\Export\CsvExportService;
+use Modules\FinancialReporting\Services\Export\ExcelExportService;
+use Modules\FinancialReporting\Services\Export\PdfExportService;
 
 class ReportExportController extends Controller
 {
     private function currentTenantId(): string
     {
-        if (!function_exists('tenant') || !tenant()) {
+        if (! function_exists('tenant') || ! tenant()) {
             throw new \RuntimeException('Report export requires an active tenant context.');
         }
 
@@ -35,8 +35,7 @@ class ReportExportController extends Controller
         protected PdfExportService $pdfExportService,
         protected ExcelExportService $excelExportService,
         protected CsvExportService $csvExportService
-    ) {
-    }
+    ) {}
 
     /**
      * Export report to PDF
@@ -81,7 +80,7 @@ class ReportExportController extends Controller
 
             return response()->json([
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -120,7 +119,7 @@ class ReportExportController extends Controller
 
             return response()->json([
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -159,7 +158,7 @@ class ReportExportController extends Controller
 
             return response()->json([
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -187,7 +186,7 @@ class ReportExportController extends Controller
 
             return response()->json([
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -201,9 +200,9 @@ class ReportExportController extends Controller
 
         $tenantId = $this->currentTenantId();
         $safeFile = basename($file);
-        $filePath = storage_path('app/reports/' . $tenantId . '/' . $safeFile);
+        $filePath = storage_path('app/reports/'.$tenantId.'/'.$safeFile);
 
-        if (!file_exists($filePath)) {
+        if (! file_exists($filePath)) {
             abort(404, 'File not found');
         }
 
@@ -246,7 +245,7 @@ class ReportExportController extends Controller
 
             return response()->json([
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }

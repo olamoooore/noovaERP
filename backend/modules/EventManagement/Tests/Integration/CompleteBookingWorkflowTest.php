@@ -2,22 +2,22 @@
 
 namespace Modules\EventManagement\Tests\Integration;
 
-use Tests\TestCase;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Modules\EventManagement\Services\EventService;
-use Modules\EventManagement\Services\BookingService;
-use Modules\EventManagement\Services\TicketService;
-use Modules\EventManagement\Services\AuditService;
-use Modules\EventManagement\Services\TenantSchemaManager;
-use Modules\EventManagement\Models\Event;
 use Modules\EventManagement\Models\Booking;
+use Modules\EventManagement\Models\Event;
 use Modules\EventManagement\Models\Ticket;
-use Carbon\Carbon;
+use Modules\EventManagement\Services\AuditService;
+use Modules\EventManagement\Services\BookingService;
+use Modules\EventManagement\Services\EventService;
+use Modules\EventManagement\Services\TenantSchemaManager;
+use Modules\EventManagement\Services\TicketService;
+use Tests\TestCase;
 
 /**
  * Integration Test for Complete Booking Workflow
- * 
+ *
  * Tests the complete booking workflow from event creation to ticket issuance
  * Validates: Requirements 9.1, 5.1, 8.5
  */
@@ -26,25 +26,29 @@ class CompleteBookingWorkflowTest extends TestCase
     use RefreshDatabase;
 
     private EventService $eventService;
+
     private BookingService $bookingService;
+
     private TicketService $ticketService;
+
     private AuditService $auditService;
+
     private TenantSchemaManager $tenantSchemaManager;
 
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         // Run migrations to set up the database schema
         $this->artisan('migrate', [
             '--path' => 'backend/modules/EventManagement/Database/Migrations',
-            '--realpath' => true
+            '--realpath' => true,
         ]);
 
         // Set up service dependencies
         $this->auditService = $this->createMock(AuditService::class);
         $this->tenantSchemaManager = $this->createMock(TenantSchemaManager::class);
-        
+
         $this->eventService = new EventService(
             $this->tenantSchemaManager,
             $this->auditService
@@ -63,7 +67,7 @@ class CompleteBookingWorkflowTest extends TestCase
 
     /**
      * Test complete booking workflow from event creation to ticket issuance
-     * 
+     *
      * @test
      */
     public function test_complete_booking_workflow_from_event_creation_to_ticket_issuance()
@@ -81,19 +85,19 @@ class CompleteBookingWorkflowTest extends TestCase
                     'name' => 'General Admission',
                     'price' => 50.00,
                     'capacity' => 400,
-                    'description' => 'General admission to the event'
+                    'description' => 'General admission to the event',
                 ],
                 [
                     'name' => 'VIP Access',
                     'price' => 150.00,
                     'capacity' => 100,
-                    'description' => 'VIP access with early entry and exclusive merchandise'
-                ]
-            ]
+                    'description' => 'VIP access with early entry and exclusive merchandise',
+                ],
+            ],
         ];
 
         $event = $this->eventService->createEvent($eventData);
-        
+
         // Verify event creation
         $this->assertInstanceOf(Event::class, $event);
         $this->assertEquals('draft', $event->status);
@@ -103,10 +107,10 @@ class CompleteBookingWorkflowTest extends TestCase
 
         // Step 2: Publish the event
         $publishedEvent = $this->eventService->publishEvent($event->id);
-        
+
         // Verify event publishing
         $this->assertEquals('published', $publishedEvent->status);
-        
+
         // Verify event appears in public listings
         $publicEvents = $this->eventService->getPublicEvents();
         $this->assertTrue($publicEvents->contains('id', $event->id));
@@ -126,19 +130,19 @@ class CompleteBookingWorkflowTest extends TestCase
                     'ticket_type_id' => $event->ticketTypes[0]->id, // General Admission
                     'attendee_name' => 'John Doe',
                     'attendee_email' => 'john.doe@example.com',
-                    'attendee_phone' => '+1234567890'
+                    'attendee_phone' => '+1234567890',
                 ],
                 [
                     'ticket_type_id' => $event->ticketTypes[1]->id, // VIP Access
                     'attendee_name' => 'Jane Doe',
                     'attendee_email' => 'jane.doe@example.com',
-                    'attendee_phone' => '+1234567891'
-                ]
-            ]
+                    'attendee_phone' => '+1234567891',
+                ],
+            ],
         ];
 
         $booking = $this->bookingService->createBooking($bookingData);
-        
+
         // Verify booking creation
         $this->assertInstanceOf(Booking::class, $booking);
         $this->assertEquals('new', $booking->state);
@@ -152,7 +156,7 @@ class CompleteBookingWorkflowTest extends TestCase
 
         // Step 4: Initiate payment (transition to pending)
         $pendingBooking = $this->bookingService->transitionState($booking->id, 'pending');
-        
+
         // Verify state transition
         $this->assertEquals('pending', $pendingBooking->state);
 
@@ -161,36 +165,36 @@ class CompleteBookingWorkflowTest extends TestCase
             'payment_reference' => 'PAY_123456789',
             'status' => 'confirmed',
             'amount' => 200.00,
-            'currency' => 'USD'
+            'currency' => 'USD',
         ];
 
         $confirmedBooking = $this->bookingService->processPaymentCallback(
-            $booking->booking_reference, 
+            $booking->booking_reference,
             $paymentData
         );
-        
+
         // Verify payment processing
         $this->assertEquals('confirmed', $confirmedBooking->state);
         $this->assertEquals('PAY_123456789', $confirmedBooking->payment_reference);
 
         // Step 6: Issue tickets (transition to booked)
         $bookedBooking = $this->bookingService->transitionState($confirmedBooking->id, 'booked');
-        
+
         // Verify final state
         $this->assertEquals('booked', $bookedBooking->state);
 
         // Step 7: Generate tickets
         $tickets = $this->ticketService->generateTickets($bookedBooking->id);
-        
+
         // Verify ticket generation
         $this->assertCount(2, $tickets);
-        
+
         foreach ($tickets as $ticket) {
             $this->assertInstanceOf(Ticket::class, $ticket);
             $this->assertEquals('active', $ticket->status);
             $this->assertMatchesRegularExpression('/^TK[A-Z0-9]{8}$/', $ticket->ticket_code);
             $this->assertNotEmpty($ticket->qr_payload);
-            
+
             // Verify QR payload contains required information
             $payload = json_decode($ticket->qr_payload, true);
             $this->assertIsArray($payload);
@@ -209,13 +213,13 @@ class CompleteBookingWorkflowTest extends TestCase
         $this->assertDatabaseHas('events', [
             'id' => $event->id,
             'status' => 'published',
-            'available_capacity' => 498
+            'available_capacity' => 498,
         ]);
 
         $this->assertDatabaseHas('bookings', [
             'id' => $booking->id,
             'state' => 'booked',
-            'payment_reference' => 'PAY_123456789'
+            'payment_reference' => 'PAY_123456789',
         ]);
 
         $this->assertDatabaseCount('tickets', 2);
@@ -228,7 +232,7 @@ class CompleteBookingWorkflowTest extends TestCase
 
     /**
      * Test booking workflow with capacity constraints
-     * 
+     *
      * @test
      */
     public function test_booking_workflow_respects_capacity_constraints()
@@ -240,7 +244,7 @@ class CompleteBookingWorkflowTest extends TestCase
             'event_date' => Carbon::now()->addDays(15)->toDateTimeString(),
             'venue' => 'Small Venue',
             'total_capacity' => 5,
-            'terms_conditions' => 'Limited capacity event'
+            'terms_conditions' => 'Limited capacity event',
         ];
 
         $event = $this->eventService->createEvent($eventData);
@@ -256,7 +260,7 @@ class CompleteBookingWorkflowTest extends TestCase
             'currency' => 'USD',
             'consent_pdpa' => true,
             'consent_marketing' => false,
-            'attendees' => []
+            'attendees' => [],
         ];
 
         // Add 5 attendees to fill capacity
@@ -265,7 +269,7 @@ class CompleteBookingWorkflowTest extends TestCase
                 'ticket_type_id' => 1,
                 'attendee_name' => "Attendee {$i}",
                 'attendee_email' => "attendee{$i}@example.com",
-                'attendee_phone' => "+123456789{$i}"
+                'attendee_phone' => "+123456789{$i}",
             ];
         }
 
@@ -278,7 +282,7 @@ class CompleteBookingWorkflowTest extends TestCase
 
         // Attempt to create another booking should fail
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage("Insufficient capacity for requested tickets");
+        $this->expectExceptionMessage('Insufficient capacity for requested tickets');
 
         $newBookingData = [
             'event_id' => $event->id,
@@ -294,9 +298,9 @@ class CompleteBookingWorkflowTest extends TestCase
                     'ticket_type_id' => 1,
                     'attendee_name' => 'Extra Attendee',
                     'attendee_email' => 'extra@example.com',
-                    'attendee_phone' => '+1987654321'
-                ]
-            ]
+                    'attendee_phone' => '+1987654321',
+                ],
+            ],
         ];
 
         $this->bookingService->createBooking($newBookingData);
@@ -304,7 +308,7 @@ class CompleteBookingWorkflowTest extends TestCase
 
     /**
      * Test booking cancellation workflow
-     * 
+     *
      * @test
      */
     public function test_booking_cancellation_workflow()
@@ -342,15 +346,16 @@ class CompleteBookingWorkflowTest extends TestCase
     private function createTestEvent(): Event
     {
         $eventData = [
-            'title' => 'Test Event ' . rand(1000, 9999),
+            'title' => 'Test Event '.rand(1000, 9999),
             'description' => 'Test event for integration testing',
             'event_date' => Carbon::now()->addDays(rand(1, 30))->toDateTimeString(),
-            'venue' => 'Test Venue ' . rand(100, 999),
+            'venue' => 'Test Venue '.rand(100, 999),
             'total_capacity' => 100,
-            'terms_conditions' => 'Test terms and conditions'
+            'terms_conditions' => 'Test terms and conditions',
         ];
-        
+
         $event = $this->eventService->createEvent($eventData);
+
         return $this->eventService->publishEvent($event->id);
     }
 
@@ -373,11 +378,11 @@ class CompleteBookingWorkflowTest extends TestCase
                     'ticket_type_id' => 1,
                     'attendee_name' => 'Test Attendee',
                     'attendee_email' => 'attendee@example.com',
-                    'attendee_phone' => '+1234567890'
-                ]
-            ]
+                    'attendee_phone' => '+1234567890',
+                ],
+            ],
         ];
-        
+
         return $this->bookingService->createBooking($bookingData);
     }
 }

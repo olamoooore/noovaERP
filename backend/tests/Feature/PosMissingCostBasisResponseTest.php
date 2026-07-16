@@ -3,11 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Models\Warehouse;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
-use Illuminate\Testing\TestResponse;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Mockery;
 use Modules\POS\Http\Controllers\PosOrderController;
 use Modules\POS\Models\PosOrder;
@@ -15,7 +16,6 @@ use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Modules\POS\Services\PosPaymentCompletionService;
 use Tests\TenantTestCase;
-use App\Models\Warehouse;
 
 class PosMissingCostBasisResponseTest extends TenantTestCase
 {
@@ -75,7 +75,7 @@ class PosMissingCostBasisResponseTest extends TenantTestCase
 
         $order = PosOrder::create([
             'external_id' => (string) Str::uuid(),
-            'order_number' => 'POS-TEST-' . uniqid(),
+            'order_number' => 'POS-TEST-'.uniqid(),
             'status' => 'draft',
             'terminal_id' => $terminal->id,
             'session_id' => $session->id,

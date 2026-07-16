@@ -5,9 +5,9 @@ namespace Modules\HRM\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Modules\HRM\Models\LeaveRequest;
 use Modules\HRM\Http\Requests\StoreLeaveRequestRequest;
 use Modules\HRM\Http\Resources\LeaveRequestResource;
+use Modules\HRM\Models\LeaveRequest;
 
 class LeaveRequestController extends Controller
 {
@@ -54,7 +54,7 @@ class LeaveRequestController extends Controller
         }
 
         $leaveRequest->update([
-            'status'   => 'approved',
+            'status' => 'approved',
             'feedback' => $request->input('feedback'),
         ]);
 
@@ -70,7 +70,7 @@ class LeaveRequestController extends Controller
         }
 
         $leaveRequest->update([
-            'status'   => 'rejected',
+            'status' => 'rejected',
             'feedback' => $request->input('feedback'),
         ]);
 

@@ -3,8 +3,8 @@
 namespace Modules\POS\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Modules\POS\Models\PosTerminal;
 
 class PosTerminalController extends Controller
@@ -20,6 +20,7 @@ class PosTerminalController extends Controller
             ->map(function ($terminal) {
                 // Refresh the model to get latest session data
                 $terminal->refresh();
+
                 return [
                     ...$terminal->toArray(),
                     'has_open_session' => $terminal->hasOpenSession(),
@@ -61,6 +62,7 @@ class PosTerminalController extends Controller
     public function show($terminal): JsonResponse
     {
         $terminal = PosTerminal::findOrFail($terminal);
+
         return response()->json([
             'terminal' => [
                 ...$terminal->load(['warehouse', 'sessions' => function ($q) {

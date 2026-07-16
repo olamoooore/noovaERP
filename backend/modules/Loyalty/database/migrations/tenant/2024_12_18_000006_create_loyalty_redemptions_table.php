@@ -22,7 +22,7 @@ return new class extends Migration
             $table->enum('status', ['pending', 'completed', 'cancelled'])->default('pending');
             $table->timestamp('redeemed_at')->nullable();
             $table->timestamps();
-            
+
             $table->index('customer_loyalty_id');
             $table->index('loyalty_reward_id');
             $table->index('invoice_id');

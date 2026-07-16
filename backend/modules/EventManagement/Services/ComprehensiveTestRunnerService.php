@@ -2,45 +2,44 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Collection;
 use Exception;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Comprehensive Test Runner Service
- * 
+ *
  * Executes all Phase 3 property-based tests with comprehensive validation
  * and reporting for enterprise-grade testing requirements.
  */
 class ComprehensiveTestRunnerService
 {
     private array $testResults = [];
+
     private array $performanceMetrics = [];
+
     private int $defaultIterations = 100;
 
     /**
      * Run all Phase 3 property-based tests
      */
-    public function runAllPhase3Tests(int $iterations = null): array
+    public function runAllPhase3Tests(?int $iterations = null): array
     {
         $iterations = $iterations ?? $this->defaultIterations;
-        
+
         Log::info('Starting comprehensive Phase 3 property-based test execution', [
             'iterations' => $iterations,
-            'timestamp' => now()
+            'timestamp' => now(),
         ]);
 
         $testSuites = $this->getPhase3TestSuites();
-        
+
         foreach ($testSuites as $testSuite) {
             $this->runTestSuite($testSuite, $iterations);
         }
 
         $this->validateBackwardCompatibility();
         $this->validateTenantIsolation();
-        
+
         return $this->generateTestReport();
     }
 
@@ -54,74 +53,74 @@ class ComprehensiveTestRunnerService
                 'name' => 'Property 18: Immutable Facts Integrity',
                 'class' => 'Tests\\PropertyBased\\ImmutableFactsTest',
                 'requirements' => ['17.1', '17.2', '17.3', '17.4', '17.5'],
-                'priority' => 'P0'
+                'priority' => 'P0',
             ],
             [
                 'name' => 'Property 19: Exactly-Once Side Effects',
                 'class' => 'Tests\\PropertyBased\\ExactlyOnceSideEffectsTest',
                 'requirements' => ['18.1', '18.2', '18.3', '18.4', '18.5'],
-                'priority' => 'P0'
+                'priority' => 'P0',
             ],
             [
                 'name' => 'Property 20: Absolute Capacity Enforcement',
                 'class' => 'Tests\\PropertyBased\\CapacityEnforcementTest',
                 'requirements' => ['19.1', '19.2', '19.3', '19.4', '19.5'],
-                'priority' => 'P0'
+                'priority' => 'P0',
             ],
             [
                 'name' => 'Property 21: PII Vault Security and Compliance',
                 'class' => 'Tests\\PropertyBased\\PIIVaultTest',
                 'requirements' => ['20.1', '20.2', '20.3', '20.4', '20.5'],
-                'priority' => 'P0'
+                'priority' => 'P0',
             ],
             [
                 'name' => 'Property 22: Analytics Data Consistency and Accuracy',
                 'class' => 'Tests\\PropertyBased\\AnalyticsCorrectnessTest',
                 'requirements' => ['21.1', '21.2', '21.3', '21.4', '21.5'],
-                'priority' => 'P1'
+                'priority' => 'P1',
             ],
             [
                 'name' => 'Property 23: Artist-Event Relationship Integrity',
                 'class' => 'Tests\\PropertyBased\\ArtistDataIntegrityTest',
                 'requirements' => ['22.1', '22.2', '22.3', '22.4', '22.5'],
-                'priority' => 'P1'
+                'priority' => 'P1',
             ],
             [
                 'name' => 'Property 24: Loyalty Decision Auditability',
                 'class' => 'Tests\\PropertyBased\\LoyaltyAuditabilityTest',
                 'requirements' => ['23.1', '23.2', '23.3', '23.4', '23.5'],
-                'priority' => 'P1'
+                'priority' => 'P1',
             ],
             [
                 'name' => 'Property 25: Progressive Fraud Prevention Accuracy',
                 'class' => 'Tests\\PropertyBased\\FraudPreventionTest',
                 'requirements' => ['24.1', '24.2', '24.3', '24.4', '24.5'],
-                'priority' => 'P1'
+                'priority' => 'P1',
             ],
             [
                 'name' => 'Property 26: Operations Console Offline Reliability',
                 'class' => 'Tests\\PropertyBased\\OperationsReliabilityTest',
                 'requirements' => ['25.1', '25.2', '25.3', '25.4', '25.5'],
-                'priority' => 'P1'
+                'priority' => 'P1',
             ],
             [
                 'name' => 'Property 27: Customer Hub Data Consistency',
                 'class' => 'Tests\\PropertyBased\\CustomerHubConsistencyTest',
                 'requirements' => ['26.1', '26.2', '26.3', '26.4', '26.5'],
-                'priority' => 'P1'
+                'priority' => 'P1',
             ],
             [
                 'name' => 'Property 28: Multi-Tenant Observability Accuracy',
                 'class' => 'Tests\\PropertyBased\\ObservabilityTest',
                 'requirements' => ['27.1', '27.2', '27.3', '27.4', '27.5'],
-                'priority' => 'P2'
+                'priority' => 'P2',
             ],
             [
                 'name' => 'Property 29: API Contract Enforcement and RBAC Integrity',
                 'class' => 'Tests\\PropertyBased\\ApiGovernanceTest',
                 'requirements' => ['28.1', '28.2', '28.3', '28.4', '28.5'],
-                'priority' => 'P2'
-            ]
+                'priority' => 'P2',
+            ],
         ];
     }
 
@@ -131,17 +130,17 @@ class ComprehensiveTestRunnerService
     private function runTestSuite(array $testSuite, int $iterations): void
     {
         $startTime = microtime(true);
-        
+
         try {
             Log::info('Running test suite', [
                 'name' => $testSuite['name'],
                 'class' => $testSuite['class'],
-                'iterations' => $iterations
+                'iterations' => $iterations,
             ]);
 
             // Execute property-based test with specified iterations
             $result = $this->executePropertyTest($testSuite['class'], $iterations);
-            
+
             $endTime = microtime(true);
             $duration = $endTime - $startTime;
 
@@ -152,14 +151,14 @@ class ComprehensiveTestRunnerService
                 'requirements' => $testSuite['requirements'],
                 'priority' => $testSuite['priority'],
                 'details' => $result['details'],
-                'errors' => $result['errors'] ?? []
+                'errors' => $result['errors'] ?? [],
             ];
 
             $this->performanceMetrics[$testSuite['name']] = [
                 'avg_iteration_time' => $duration / $iterations,
                 'total_duration' => $duration,
                 'memory_peak' => memory_get_peak_usage(true),
-                'iterations_per_second' => $iterations / $duration
+                'iterations_per_second' => $iterations / $duration,
             ];
 
         } catch (Exception $e) {
@@ -167,12 +166,12 @@ class ComprehensiveTestRunnerService
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
                 'requirements' => $testSuite['requirements'],
-                'priority' => $testSuite['priority']
+                'priority' => $testSuite['priority'],
             ];
-            
+
             Log::error('Test suite execution failed', [
                 'name' => $testSuite['name'],
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
         }
     }
@@ -184,7 +183,7 @@ class ComprehensiveTestRunnerService
     {
         // Simulate property-based test execution
         // In real implementation, this would use PHPUnit or similar framework
-        
+
         $success = true;
         $details = [];
         $errors = [];
@@ -193,30 +192,30 @@ class ComprehensiveTestRunnerService
             try {
                 // Generate random test data
                 $testData = $this->generateTestData($testClass);
-                
+
                 // Execute property validation
                 $propertyResult = $this->validateProperty($testClass, $testData);
-                
-                if (!$propertyResult['valid']) {
+
+                if (! $propertyResult['valid']) {
                     $success = false;
                     $errors[] = [
                         'iteration' => $i + 1,
                         'error' => $propertyResult['error'],
-                        'test_data' => $testData
+                        'test_data' => $testData,
                     ];
                 }
-                
+
                 $details[] = [
                     'iteration' => $i + 1,
                     'result' => $propertyResult['valid'] ? 'PASS' : 'FAIL',
-                    'execution_time' => $propertyResult['execution_time']
+                    'execution_time' => $propertyResult['execution_time'],
                 ];
-                
+
             } catch (Exception $e) {
                 $success = false;
                 $errors[] = [
                     'iteration' => $i + 1,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ];
             }
         }
@@ -224,7 +223,7 @@ class ComprehensiveTestRunnerService
         return [
             'success' => $success,
             'details' => $details,
-            'errors' => $errors
+            'errors' => $errors,
         ];
     }
 
@@ -235,11 +234,11 @@ class ComprehensiveTestRunnerService
     {
         // Generate appropriate test data based on test class
         $baseData = [
-            'tenant_id' => 'tenant_' . rand(1, 10),
+            'tenant_id' => 'tenant_'.rand(1, 10),
             'user_id' => rand(1, 1000),
             'timestamp' => now(),
             'random_string' => bin2hex(random_bytes(16)),
-            'random_number' => rand(1, 10000)
+            'random_number' => rand(1, 10000),
         ];
 
         // Add class-specific test data
@@ -249,24 +248,24 @@ class ComprehensiveTestRunnerService
                     'event_id' => rand(1, 100),
                     'ticket_type_id' => rand(1, 20),
                     'quantity' => rand(1, 10),
-                    'price' => rand(50, 500)
+                    'price' => rand(50, 500),
                 ];
                 break;
-                
+
             case 'Tests\\PropertyBased\\CapacityEnforcementTest':
                 $baseData['capacity_data'] = [
                     'event_id' => rand(1, 100),
                     'total_capacity' => rand(100, 1000),
                     'reserved_capacity' => rand(0, 50),
-                    'booking_quantity' => rand(1, 20)
+                    'booking_quantity' => rand(1, 20),
                 ];
                 break;
-                
+
             case 'Tests\\PropertyBased\\PIIVaultTest':
                 $baseData['pii_data'] = [
-                    'customer_email' => 'test' . rand(1, 1000) . '@example.com',
-                    'customer_phone' => '+1555' . rand(1000000, 9999999),
-                    'customer_name' => 'Test Customer ' . rand(1, 1000)
+                    'customer_email' => 'test'.rand(1, 1000).'@example.com',
+                    'customer_phone' => '+1555'.rand(1000000, 9999999),
+                    'customer_name' => 'Test Customer '.rand(1, 1000),
                 ];
                 break;
         }
@@ -280,24 +279,24 @@ class ComprehensiveTestRunnerService
     private function validateProperty(string $testClass, array $testData): array
     {
         $startTime = microtime(true);
-        
+
         try {
             // Simulate property validation logic
             $valid = $this->executePropertyLogic($testClass, $testData);
-            
+
             $endTime = microtime(true);
-            
+
             return [
                 'valid' => $valid,
                 'execution_time' => $endTime - $startTime,
-                'error' => $valid ? null : 'Property validation failed'
+                'error' => $valid ? null : 'Property validation failed',
             ];
-            
+
         } catch (Exception $e) {
             return [
                 'valid' => false,
                 'execution_time' => microtime(true) - $startTime,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
@@ -309,10 +308,10 @@ class ComprehensiveTestRunnerService
     {
         // Simulate property validation - in real implementation,
         // this would call actual property test methods
-        
+
         // Add some randomness to simulate real test scenarios
         $successRate = 0.95; // 95% success rate for simulation
-        
+
         return (rand(1, 100) / 100) <= $successRate;
     }
 
@@ -322,21 +321,21 @@ class ComprehensiveTestRunnerService
     private function validateBackwardCompatibility(): void
     {
         Log::info('Validating backward compatibility');
-        
+
         try {
             // Test existing API endpoints
             $apiTests = $this->runBackwardCompatibilityTests();
-            
+
             $this->testResults['Backward Compatibility'] = [
                 'status' => $apiTests['success'] ? 'PASSED' : 'FAILED',
                 'details' => $apiTests['details'],
-                'requirements' => ['Backward Compatibility Constraint']
+                'requirements' => ['Backward Compatibility Constraint'],
             ];
-            
+
         } catch (Exception $e) {
             $this->testResults['Backward Compatibility'] = [
                 'status' => 'ERROR',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
@@ -349,14 +348,14 @@ class ComprehensiveTestRunnerService
         $tests = [
             'API Endpoints' => $this->testApiEndpoints(),
             'Database Schema' => $this->testDatabaseSchema(),
-            'Service Interfaces' => $this->testServiceInterfaces()
+            'Service Interfaces' => $this->testServiceInterfaces(),
         ];
 
-        $allPassed = collect($tests)->every(fn($result) => $result['success']);
+        $allPassed = collect($tests)->every(fn ($result) => $result['success']);
 
         return [
             'success' => $allPassed,
-            'details' => $tests
+            'details' => $tests,
         ];
     }
 
@@ -372,9 +371,9 @@ class ComprehensiveTestRunnerService
                 'GET /api/events',
                 'POST /api/bookings',
                 'GET /api/customers/{id}',
-                'PUT /api/events/{id}'
+                'PUT /api/events/{id}',
             ],
-            'message' => 'All API endpoints maintain backward compatibility'
+            'message' => 'All API endpoints maintain backward compatibility',
         ];
     }
 
@@ -390,9 +389,9 @@ class ComprehensiveTestRunnerService
                 'events',
                 'bookings',
                 'customers',
-                'tickets'
+                'tickets',
             ],
-            'message' => 'Database schema maintains backward compatibility'
+            'message' => 'Database schema maintains backward compatibility',
         ];
     }
 
@@ -408,9 +407,9 @@ class ComprehensiveTestRunnerService
                 'BookingService',
                 'EventService',
                 'CustomerService',
-                'NotificationService'
+                'NotificationService',
             ],
-            'message' => 'Service interfaces maintain backward compatibility'
+            'message' => 'Service interfaces maintain backward compatibility',
         ];
     }
 
@@ -420,20 +419,20 @@ class ComprehensiveTestRunnerService
     private function validateTenantIsolation(): void
     {
         Log::info('Validating tenant isolation');
-        
+
         try {
             $isolationTests = $this->runTenantIsolationTests();
-            
+
             $this->testResults['Tenant Isolation'] = [
                 'status' => $isolationTests['success'] ? 'PASSED' : 'FAILED',
                 'details' => $isolationTests['details'],
-                'requirements' => ['Multi-Tenant Schema Constraint']
+                'requirements' => ['Multi-Tenant Schema Constraint'],
             ];
-            
+
         } catch (Exception $e) {
             $this->testResults['Tenant Isolation'] = [
                 'status' => 'ERROR',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
@@ -446,14 +445,14 @@ class ComprehensiveTestRunnerService
         $tests = [
             'Data Isolation' => $this->testDataIsolation(),
             'Schema Isolation' => $this->testSchemaIsolation(),
-            'Performance Isolation' => $this->testPerformanceIsolation()
+            'Performance Isolation' => $this->testPerformanceIsolation(),
         ];
 
-        $allPassed = collect($tests)->every(fn($result) => $result['success']);
+        $allPassed = collect($tests)->every(fn ($result) => $result['success']);
 
         return [
             'success' => $allPassed,
-            'details' => $tests
+            'details' => $tests,
         ];
     }
 
@@ -468,9 +467,9 @@ class ComprehensiveTestRunnerService
             'tested_scenarios' => [
                 'Cross-tenant data access prevention',
                 'Tenant-specific query filtering',
-                'Data leakage prevention'
+                'Data leakage prevention',
             ],
-            'message' => 'Data isolation maintained across all tenants'
+            'message' => 'Data isolation maintained across all tenants',
         ];
     }
 
@@ -485,9 +484,9 @@ class ComprehensiveTestRunnerService
             'tested_scenarios' => [
                 'Schema-per-tenant architecture',
                 'Migration isolation',
-                'Connection pooling isolation'
+                'Connection pooling isolation',
             ],
-            'message' => 'Schema isolation maintained for all tenants'
+            'message' => 'Schema isolation maintained for all tenants',
         ];
     }
 
@@ -502,9 +501,9 @@ class ComprehensiveTestRunnerService
             'tested_scenarios' => [
                 'Resource usage isolation',
                 'Query performance isolation',
-                'Load balancing effectiveness'
+                'Load balancing effectiveness',
             ],
-            'message' => 'Performance isolation maintained under load'
+            'message' => 'Performance isolation maintained under load',
         ];
     }
 
@@ -526,11 +525,11 @@ class ComprehensiveTestRunnerService
                 'errors' => $errorTests,
                 'success_rate' => $totalTests > 0 ? ($passedTests / $totalTests) * 100 : 0,
                 'execution_time' => now(),
-                'overall_status' => ($failedTests === 0 && $errorTests === 0) ? 'PASSED' : 'FAILED'
+                'overall_status' => ($failedTests === 0 && $errorTests === 0) ? 'PASSED' : 'FAILED',
             ],
             'test_results' => $this->testResults,
             'performance_metrics' => $this->performanceMetrics,
-            'recommendations' => $this->generateRecommendations()
+            'recommendations' => $this->generateRecommendations(),
         ];
 
         // Log comprehensive report
@@ -552,31 +551,31 @@ class ComprehensiveTestRunnerService
             $recommendations[] = [
                 'type' => 'CRITICAL',
                 'message' => 'Failed tests must be resolved before deployment',
-                'failed_tests' => $failedTests->keys()->toArray()
+                'failed_tests' => $failedTests->keys()->toArray(),
             ];
         }
 
         // Check performance metrics
         $slowTests = collect($this->performanceMetrics)
             ->where('avg_iteration_time', '>', 1.0); // Tests taking more than 1 second per iteration
-            
+
         if ($slowTests->isNotEmpty()) {
             $recommendations[] = [
                 'type' => 'PERFORMANCE',
                 'message' => 'Consider optimizing slow-running tests',
-                'slow_tests' => $slowTests->keys()->toArray()
+                'slow_tests' => $slowTests->keys()->toArray(),
             ];
         }
 
         // Check P0 priority tests
         $p0Tests = collect($this->testResults)->where('priority', 'P0');
         $failedP0 = $p0Tests->where('status', '!=', 'PASSED');
-        
+
         if ($failedP0->isNotEmpty()) {
             $recommendations[] = [
                 'type' => 'BLOCKING',
                 'message' => 'P0 tests must pass before any deployment',
-                'failed_p0_tests' => $failedP0->keys()->toArray()
+                'failed_p0_tests' => $failedP0->keys()->toArray(),
             ];
         }
 

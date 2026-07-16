@@ -28,9 +28,13 @@ class TierBenefitUsage extends Model
 
     // Usage type constants
     public const USAGE_EARLY_ACCESS = 'early_access_used';
+
     public const USAGE_DISCOUNT_APPLIED = 'discount_applied';
+
     public const USAGE_EXCLUSIVE_TICKET = 'exclusive_ticket_used';
+
     public const USAGE_PRIORITY_SUPPORT = 'priority_support_used';
+
     public const USAGE_POINTS_MULTIPLIER = 'points_multiplier_applied';
 
     /**

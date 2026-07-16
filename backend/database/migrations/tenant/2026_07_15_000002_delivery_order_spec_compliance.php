@@ -12,8 +12,8 @@ return new class extends Migration
         // ── Expand delivery_orders status enum ──────────────────────────
         // Drop the old CHECK constraint from the original enum, then change
         // to a plain varchar so we can freely add 'done', 'ready', etc.
-        DB::statement("ALTER TABLE delivery_orders DROP CONSTRAINT IF EXISTS delivery_orders_status_check");
-        DB::statement("ALTER TABLE delivery_orders ALTER COLUMN status TYPE varchar(20)");
+        DB::statement('ALTER TABLE delivery_orders DROP CONSTRAINT IF EXISTS delivery_orders_status_check');
+        DB::statement('ALTER TABLE delivery_orders ALTER COLUMN status TYPE varchar(20)');
         DB::statement("ALTER TABLE delivery_orders ALTER COLUMN status SET DEFAULT 'draft'");
 
         // Migrate existing 'confirmed' records to 'done' since the old code

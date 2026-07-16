@@ -50,7 +50,7 @@ return new class extends Migration
             $table->unsignedBigInteger('submitted_by')->nullable();
             $table->timestamp('submitted_at')->nullable();
             $table->timestamps();
-            
+
             $table->index(['tenant_id', 'document_type', 'document_id']);
             $table->index(['tenant_id', 'compliance_status']);
         });
@@ -68,7 +68,7 @@ return new class extends Migration
             $table->timestamp('submitted_at')->nullable();
             $table->timestamp('acknowledged_at')->nullable();
             $table->timestamps();
-            
+
             $table->index(['tenant_id', 'document_id']);
         });
 
@@ -81,7 +81,7 @@ return new class extends Migration
             $table->string('event_type');
             $table->json('event_data')->nullable();
             $table->timestamps();
-            
+
             $table->index(['tenant_id', 'document_id']);
         });
     }

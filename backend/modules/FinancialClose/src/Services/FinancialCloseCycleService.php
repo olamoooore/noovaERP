@@ -6,10 +6,10 @@ use App\Models\FiscalPeriod;
 use App\Models\LockDate;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\FinancialClose\Events\FinancialCloseCycleOpened;
+use Modules\FinancialClose\Models\AuditLog;
 use Modules\FinancialClose\Models\CloseCycle;
 use Modules\FinancialClose\Models\CloseTask;
-use Modules\FinancialClose\Models\AuditLog;
-use Modules\FinancialClose\Events\FinancialCloseCycleOpened;
 
 class FinancialCloseCycleService
 {
@@ -22,6 +22,7 @@ class FinancialCloseCycleService
      * Minimum number of distinct sign-offs required to mark a cycle ready to close.
      */
     private const REQUIRED_SIGNOFFS = 1;
+
     /**
      * Get all close cycles for a tenant/entity
      */
@@ -33,7 +34,7 @@ class FinancialCloseCycleService
             $query->where('entity_id', $entityId);
         }
 
-        if (!empty($filters['status'])) {
+        if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
 
@@ -74,18 +75,19 @@ class FinancialCloseCycleService
                 'entity_id' => $entityId,
                 'period_id' => $periodId,
             ]);
+
             return null;
         }
 
         return CloseCycle::create([
-            'tenant_id'          => $tenantId,
-            'entity_id'          => $entityId,
+            'tenant_id' => $tenantId,
+            'entity_id' => $entityId,
             'accounting_book_id' => $accountingBookId,
-            'period_id'          => $periodId,
-            'name'               => $name,
-            'template_id'        => $templateId,
-            'status'             => 'draft',
-            'created_by'         => $userId,
+            'period_id' => $periodId,
+            'name' => $name,
+            'template_id' => $templateId,
+            'status' => 'draft',
+            'created_by' => $userId,
         ]);
     }
 
@@ -96,7 +98,7 @@ class FinancialCloseCycleService
     {
         $cycle = $this->getCycle($tenantId, $cycleId);
 
-        if (!$cycle || $cycle->status !== 'draft') {
+        if (! $cycle || $cycle->status !== 'draft') {
             return false;
         }
 
@@ -131,11 +133,12 @@ class FinancialCloseCycleService
     {
         $cycle = $this->getCycle($tenantId, $cycleId);
 
-        if (!$cycle || $cycle->status !== 'ready_to_close') {
+        if (! $cycle || $cycle->status !== 'ready_to_close') {
             Log::warning('FinancialClose: cycle not ready to close', [
                 'cycle_id' => $cycleId,
                 'status' => $cycle?->status,
             ]);
+
             return false;
         }
 
@@ -148,12 +151,12 @@ class FinancialCloseCycleService
         $periodCode = $cycle->period_id;
         $period = FiscalPeriod::where('code', $periodCode)->first();
 
-        if ($period && !$period->isLocked()) {
+        if ($period && ! $period->isLocked()) {
             $period->lock();
 
             Log::info('FinancialClose: fiscal period locked on cycle close', [
                 'period_code' => $periodCode,
-                'cycle_id'    => $cycleId,
+                'cycle_id' => $cycleId,
             ]);
         }
 
@@ -172,26 +175,26 @@ class FinancialCloseCycleService
                 ->where('lock_date', $lockDateValue)
                 ->first();
 
-            if (!$existingLock) {
+            if (! $existingLock) {
                 LockDate::create([
-                    'lock_type'  => 'all',
-                    'lock_date'  => $lockDateValue,
-                    'set_by'     => $userId,
-                    'reason'     => "Financial Close cycle {$cycleId} closed for period {$periodCode}",
-                    'is_active'  => true,
+                    'lock_type' => 'all',
+                    'lock_date' => $lockDateValue,
+                    'set_by' => $userId,
+                    'reason' => "Financial Close cycle {$cycleId} closed for period {$periodCode}",
+                    'is_active' => true,
                 ]);
             }
         }
 
         AuditLog::create([
             'tenant_id' => $tenantId,
-            'actor_id'  => $userId,
-            'action'    => 'cycle_closed',
+            'actor_id' => $userId,
+            'action' => 'cycle_closed',
             'entity_type' => 'close_cycle',
             'entity_id' => $cycleId,
-            'after'     => [
+            'after' => [
                 'period_locked' => $period?->code,
-                'lock_date'     => $lockDateValue instanceof \Carbon\Carbon
+                'lock_date' => $lockDateValue instanceof \Carbon\Carbon
                     ? $lockDateValue->format('Y-m-d')
                     : $lockDateValue,
             ],
@@ -209,7 +212,7 @@ class FinancialCloseCycleService
     {
         $cycle = $this->getCycle($tenantId, $cycleId);
 
-        if (!$cycle) {
+        if (! $cycle) {
             return ['success' => false, 'reason' => 'Cycle not found.'];
         }
 
@@ -258,8 +261,8 @@ class FinancialCloseCycleService
 
         $signoffs[] = [
             'user_id' => $userId,
-            'role'    => $role,
-            'notes'   => $notes,
+            'role' => $role,
+            'notes' => $notes,
             'signed_at' => now()->toIso8601String(),
         ];
 
@@ -267,22 +270,22 @@ class FinancialCloseCycleService
         $cycle->update(['metadata' => $metadata]);
 
         AuditLog::create([
-            'tenant_id'   => $tenantId,
-            'actor_id'    => $userId,
-            'action'      => 'cycle_signed_off',
+            'tenant_id' => $tenantId,
+            'actor_id' => $userId,
+            'action' => 'cycle_signed_off',
             'entity_type' => 'close_cycle',
-            'entity_id'   => $cycleId,
-            'after'       => ['role' => $role, 'signoff_count' => count($signoffs)],
+            'entity_id' => $cycleId,
+            'after' => ['role' => $role, 'signoff_count' => count($signoffs)],
         ]);
 
         // Re-evaluate readiness after each sign-off
         $evaluation = $this->evaluateReadiness($tenantId, $cycleId);
 
         return [
-            'success'       => true,
+            'success' => true,
             'signoff_count' => count($signoffs),
-            'ready_to_close'=> $evaluation['ready_to_close'],
-            'evaluation'    => $evaluation,
+            'ready_to_close' => $evaluation['ready_to_close'],
+            'evaluation' => $evaluation,
         ];
     }
 
@@ -293,7 +296,7 @@ class FinancialCloseCycleService
     {
         $cycle = $this->getCycle($tenantId, $cycleId);
 
-        if (!$cycle) {
+        if (! $cycle) {
             return ['success' => false, 'reason' => 'Cycle not found.'];
         }
 
@@ -310,11 +313,11 @@ class FinancialCloseCycleService
         $cycle->update(['metadata' => $metadata]);
 
         AuditLog::create([
-            'tenant_id'   => $tenantId,
-            'actor_id'    => $userId,
-            'action'      => 'cycle_signoff_revoked',
+            'tenant_id' => $tenantId,
+            'actor_id' => $userId,
+            'action' => 'cycle_signoff_revoked',
             'entity_type' => 'close_cycle',
-            'entity_id'   => $cycleId,
+            'entity_id' => $cycleId,
         ]);
 
         // Downgrade from ready_to_close if sign-offs no longer sufficient
@@ -337,7 +340,7 @@ class FinancialCloseCycleService
     {
         $cycle = $this->getCycle($tenantId, $cycleId);
 
-        if (!$cycle) {
+        if (! $cycle) {
             return ['ready_to_close' => false, 'reason' => 'Cycle not found.'];
         }
 
@@ -371,28 +374,28 @@ class FinancialCloseCycleService
             $cycle->update(['status' => 'ready_to_close']);
 
             AuditLog::create([
-                'tenant_id'   => $tenantId,
-                'actor_id'    => 'system',
-                'action'      => 'cycle_ready_to_close',
+                'tenant_id' => $tenantId,
+                'actor_id' => 'system',
+                'action' => 'cycle_ready_to_close',
                 'entity_type' => 'close_cycle',
-                'entity_id'   => $cycleId,
-                'after'       => [
+                'entity_id' => $cycleId,
+                'after' => [
                     'incomplete_tasks' => $incompleteTasks,
                     'open_escalations' => $openEscalations,
-                    'signoffs'         => $authorisedSignoffs,
+                    'signoffs' => $authorisedSignoffs,
                 ],
             ]);
         }
 
         // Downgrade if conditions no longer met
-        if (!$ready && $cycle->status === 'ready_to_close') {
+        if (! $ready && $cycle->status === 'ready_to_close') {
             $cycle->update(['status' => 'opened']);
         }
 
         return [
-            'ready_to_close'    => $ready,
-            'incomplete_tasks'  => $incompleteTasks,
-            'open_escalations'  => $openEscalations,
+            'ready_to_close' => $ready,
+            'incomplete_tasks' => $incompleteTasks,
+            'open_escalations' => $openEscalations,
             'authorised_signoffs' => $authorisedSignoffs,
             'required_signoffs' => self::REQUIRED_SIGNOFFS,
         ];
@@ -407,14 +410,14 @@ class FinancialCloseCycleService
     {
         $period = FiscalPeriod::where('code', $periodCode)->first();
 
-        if (!$period) {
+        if (! $period) {
             return ['success' => false, 'reason' => "Fiscal period '{$periodCode}' not found."];
         }
 
-        if (!$period->isLocked()) {
+        if (! $period->isLocked()) {
             // Also check company_settings.lock_date — if it covers this period, treat as locked
             $companyLockDate = DB::table('company_settings')->whereNotNull('lock_date')->value('lock_date');
-            if (!$companyLockDate || !$period->period_start->lte(\Carbon\Carbon::parse($companyLockDate))) {
+            if (! $companyLockDate || ! $period->period_start->lte(\Carbon\Carbon::parse($companyLockDate))) {
                 return ['success' => false, 'reason' => "Fiscal period '{$periodCode}' is not locked."];
             }
         }
@@ -434,7 +437,7 @@ class FinancialCloseCycleService
             }
 
             // 2. Check accounting.settings permission
-            if (!$isAuthorised && method_exists($user, 'hasPermissionTo')) {
+            if (! $isAuthorised && method_exists($user, 'hasPermissionTo')) {
                 try {
                     $isAuthorised = $user->hasPermissionTo('accounting.settings');
                 } catch (\Throwable $e) {
@@ -443,7 +446,7 @@ class FinancialCloseCycleService
             }
         }
 
-        if (!$isAuthorised) {
+        if (! $isAuthorised) {
             return ['success' => false, 'reason' => 'Insufficient permissions. Only Admin/Owner/Manager can reopen a locked period.'];
         }
 
@@ -467,29 +470,29 @@ class FinancialCloseCycleService
         DB::table('company_settings')->update(['lock_date' => $newLockDate]);
 
         AuditLog::create([
-            'tenant_id'   => $tenantId,
-            'actor_id'    => $userId,
-            'action'      => 'period_reopened',
+            'tenant_id' => $tenantId,
+            'actor_id' => $userId,
+            'action' => 'period_reopened',
             'entity_type' => 'fiscal_period',
-            'entity_id'   => (string) $period->id,
-            'after'       => [
-                'period_code'      => $periodCode,
-                'role'             => $role,
-                'new_lock_date'    => $newLockDate,
+            'entity_id' => (string) $period->id,
+            'after' => [
+                'period_code' => $periodCode,
+                'role' => $role,
+                'new_lock_date' => $newLockDate,
             ],
         ]);
 
         Log::info('FinancialClose: fiscal period reopened', [
-            'period_code'   => $periodCode,
-            'user_id'       => $userId,
-            'role'          => $role,
+            'period_code' => $periodCode,
+            'user_id' => $userId,
+            'role' => $role,
             'new_lock_date' => $newLockDate,
         ]);
 
         return [
-            'success'    => true,
-            'message'    => "Period '{$periodCode}' has been reopened.",
-            'lock_date'  => $newLockDate,
+            'success' => true,
+            'message' => "Period '{$periodCode}' has been reopened.",
+            'lock_date' => $newLockDate,
         ];
     }
 }

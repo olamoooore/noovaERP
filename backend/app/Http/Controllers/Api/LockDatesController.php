@@ -19,6 +19,7 @@ use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 class LockDatesController extends Controller
 {
     protected $lockDateService;
+
     protected $approvalPolicy;
 
     public function __construct(LockDateValidationService $lockDateService, ApprovalPolicyService $approvalPolicy)
@@ -72,6 +73,7 @@ class LockDatesController extends Controller
     public function show($id)
     {
         $lockDate = LockDate::with('setBy')->findOrFail($id);
+
         return response()->json($lockDate);
     }
 
@@ -106,7 +108,7 @@ class LockDatesController extends Controller
 
         return response()->json([
             'message' => 'Lock date set successfully',
-            'lock_date' => $lockDate->load('setBy')
+            'lock_date' => $lockDate->load('setBy'),
         ], 201);
     }
 
@@ -131,7 +133,7 @@ class LockDatesController extends Controller
 
         return response()->json([
             'message' => 'Lock date updated successfully',
-            'lock_date' => $lockDate->fresh('setBy')
+            'lock_date' => $lockDate->fresh('setBy'),
         ]);
     }
 
@@ -144,7 +146,7 @@ class LockDatesController extends Controller
         $lockDate->update(['is_active' => false]);
 
         return response()->json([
-            'message' => 'Lock date deactivated successfully'
+            'message' => 'Lock date deactivated successfully',
         ]);
     }
 
@@ -187,7 +189,7 @@ class LockDatesController extends Controller
         }
 
         // Check if user has override permission
-        if (!$this->lockDateService->canOverrideLockDate(TenantUserHelper::requireTenantUserId())) {
+        if (! $this->lockDateService->canOverrideLockDate(TenantUserHelper::requireTenantUserId())) {
             return response()->json([
                 'message' => 'You do not have permission to override lock dates',
             ], 403);
@@ -204,7 +206,7 @@ class LockDatesController extends Controller
 
         return response()->json([
             'message' => 'Override logged successfully',
-            'override' => $override->load(['user', 'approvedBy'])
+            'override' => $override->load(['user', 'approvedBy']),
         ], 201);
     }
 
@@ -286,7 +288,7 @@ class LockDatesController extends Controller
             $request->approved_by
         );
 
-        if (!$selfApprovalCheck['allowed']) {
+        if (! $selfApprovalCheck['allowed']) {
             Log::warning('Lock date override self-approval blocked', [
                 'override_id' => $overrideId,
                 'requestor_user_id' => $override->user_id,
@@ -299,7 +301,7 @@ class LockDatesController extends Controller
         }
 
         // Validate approver has permission
-        if (!$this->lockDateService->canOverrideLockDate($request->approved_by)) {
+        if (! $this->lockDateService->canOverrideLockDate($request->approved_by)) {
             return response()->json([
                 'message' => 'The specified approver does not have permission to approve lock date overrides',
             ], 422);

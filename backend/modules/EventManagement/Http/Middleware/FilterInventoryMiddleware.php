@@ -3,14 +3,14 @@
 namespace Modules\EventManagement\Http\Middleware;
 
 use Closure;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Modules\EventManagement\Services\AccessControlService;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Middleware to filter inventory data from responses for non-staff users
- * 
+ *
  * Requirements: 5.1, 5.2, 5.3, 6.4
  * - Customers should not see inventory quantities
  * - Customers should not see remaining ticket counts
@@ -35,7 +35,7 @@ class FilterInventoryMiddleware
         $response = $next($request);
 
         // Only filter JSON responses
-        if (!$response instanceof JsonResponse) {
+        if (! $response instanceof JsonResponse) {
             return $response;
         }
 
@@ -57,12 +57,12 @@ class FilterInventoryMiddleware
     /**
      * Recursively remove inventory fields from data
      *
-     * @param mixed $data
+     * @param  mixed  $data
      * @return mixed
      */
     protected function removeInventoryFields($data)
     {
-        if (!is_array($data)) {
+        if (! is_array($data)) {
             return $data;
         }
 

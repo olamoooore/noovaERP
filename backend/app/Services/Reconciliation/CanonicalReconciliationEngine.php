@@ -2,8 +2,8 @@
 
 namespace App\Services\Reconciliation;
 
-use App\Models\ReconciliationException;
 use App\Models\ReconciliationControlResult;
+use App\Models\ReconciliationException;
 use Illuminate\Support\Facades\Log;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
@@ -25,7 +25,7 @@ class CanonicalReconciliationEngine
             'inventory_gl' => $this->reconcileInventoryGL($startDate, $endDate),
         ];
 
-        $totalExceptions = collect($results)->sum(fn($r) => count($r['exceptions'] ?? []));
+        $totalExceptions = collect($results)->sum(fn ($r) => count($r['exceptions'] ?? []));
 
         Log::info('Canonical reconciliation completed', [
             'total_exceptions' => $totalExceptions,
@@ -43,6 +43,7 @@ class CanonicalReconciliationEngine
     {
         $result = $this->posPaymentService->reconcile($startDate, $endDate);
         $this->persistExceptions($result['exceptions'], 'pos_payment_gl');
+
         return $result;
     }
 
@@ -50,6 +51,7 @@ class CanonicalReconciliationEngine
     {
         $result = $this->arService->reconcile($asOfDate ?? now()->toDateString());
         $this->persistControlResult($result, 'ar_gl_reconciliation');
+
         return ['exceptions' => [], 'stats' => []];
     }
 
@@ -57,6 +59,7 @@ class CanonicalReconciliationEngine
     {
         $result = $this->apService->reconcile($asOfDate ?? now()->toDateString());
         $this->persistControlResult($result, 'ap_gl_reconciliation');
+
         return ['exceptions' => [], 'stats' => []];
     }
 
@@ -64,6 +67,7 @@ class CanonicalReconciliationEngine
     {
         $result = $this->inventoryService->reconcile($asOfDate ?? now()->toDateString());
         $this->persistControlResult($result, 'inventory_gl_reconciliation');
+
         return ['exceptions' => [], 'stats' => []];
     }
 
@@ -98,6 +102,7 @@ class CanonicalReconciliationEngine
         if ($source) {
             $query->where('source', $source);
         }
+
         return $query->orderBy('detected_at', 'desc')->get()->toArray();
     }
 
@@ -109,6 +114,7 @@ class CanonicalReconciliationEngine
             'resolved_by' => TenantUserHelper::requireTenantUserId(),
             'notes' => $notes,
         ]);
+
         return $exception;
     }
 }

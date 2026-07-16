@@ -22,9 +22,9 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
     /**
      * Map internal-expense JournalEntry as a MyInvois document.
      *
-     * @param  bool $selfBilled  When true (default): LHDN type 05 self-billed invoice.
-     *                           When false: regular invoice (type 01). Pass false when the
-     *                           LHDN portal account does not have self-billing activated.
+     * @param  bool  $selfBilled  When true (default): LHDN type 05 self-billed invoice.
+     *                            When false: regular invoice (type 01). Pass false when the
+     *                            LHDN portal account does not have self-billing activated.
      */
     public function mapJournalEntry(\App\Models\JournalEntry $journalEntry, bool $selfBilled = true): array
     {
@@ -38,19 +38,20 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
 
         $lineItems = $debitLines->values()->map(function ($line, int $index) {
             $amount = round((float) $line->debit, 2);
+
             return [
-                'line_number'          => $index + 1,
-                'item_id'              => (string) ($line->id ?? ($index + 1)),
-                'description'          => $line->description ?? ($line->account->name ?? 'Internal Expense'),
-                'quantity'             => 1.0,
-                'unit_code'            => 'C62',
-                'unit_price'           => $amount,
-                'line_amount'          => $amount,
-                'discount_amount'      => 0.0,
-                'discount_percent'     => 0.0,
-                'tax_type'             => 'E',
-                'sst_rate'             => 0.0,
-                'sst_amount'           => 0.0,
+                'line_number' => $index + 1,
+                'item_id' => (string) ($line->id ?? ($index + 1)),
+                'description' => $line->description ?? ($line->account->name ?? 'Internal Expense'),
+                'quantity' => 1.0,
+                'unit_code' => 'C62',
+                'unit_price' => $amount,
+                'line_amount' => $amount,
+                'discount_amount' => 0.0,
+                'discount_percent' => 0.0,
+                'tax_type' => 'E',
+                'sst_rate' => 0.0,
+                'sst_amount' => 0.0,
                 'tax_exemption_reason' => null,
             ];
         })->toArray();
@@ -59,18 +60,18 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
 
         if (empty($lineItems)) {
             $lineItems[] = [
-                'line_number'          => 1,
-                'item_id'              => (string) $journalEntry->id,
-                'description'          => $journalEntry->description ?? 'Internal Expense',
-                'quantity'             => 1.0,
-                'unit_code'            => 'C62',
-                'unit_price'           => $totalDebit,
-                'line_amount'          => $totalDebit,
-                'discount_amount'      => 0.0,
-                'discount_percent'     => 0.0,
-                'tax_type'             => 'E',
-                'sst_rate'             => 0.0,
-                'sst_amount'           => 0.0,
+                'line_number' => 1,
+                'item_id' => (string) $journalEntry->id,
+                'description' => $journalEntry->description ?? 'Internal Expense',
+                'quantity' => 1.0,
+                'unit_code' => 'C62',
+                'unit_price' => $totalDebit,
+                'line_amount' => $totalDebit,
+                'discount_amount' => 0.0,
+                'discount_percent' => 0.0,
+                'tax_type' => 'E',
+                'sst_rate' => 0.0,
+                'sst_amount' => 0.0,
                 'tax_exemption_reason' => null,
             ];
         }
@@ -88,43 +89,43 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
             : $dateStr;
 
         $mapped = [
-            'document_type'          => $selfBilled ? 'self_billed_invoice' : 'invoice',
+            'document_type' => $selfBilled ? 'self_billed_invoice' : 'invoice',
             '_buyer_same_as_supplier' => true,  // tells applyProviderPayloadDefaults to copy supplier TIN→buyer
             'profile_version' => 'myinvoice-v1',
-            'invoice_id'      => $journalEntry->id,
-            'invoice_number'  => $journalEntry->entry_number,
-            'invoice_date'    => $dateStr,
-            'issue_datetime'  => $datetimeStr,
-            'due_date'        => null,
-            'currency_code'   => 'MYR',
-            'supplier'        => $this->mapParty($company, true),
-            'buyer'           => $this->mapParty($company, true),
-            'line_items'      => $lineItems,
-            'totals'          => [
-                'subtotal'                => $totalDebit,
-                'discount_total'          => 0.0,
+            'invoice_id' => $journalEntry->id,
+            'invoice_number' => $journalEntry->entry_number,
+            'invoice_date' => $dateStr,
+            'issue_datetime' => $datetimeStr,
+            'due_date' => null,
+            'currency_code' => 'MYR',
+            'supplier' => $this->mapParty($company, true),
+            'buyer' => $this->mapParty($company, true),
+            'line_items' => $lineItems,
+            'totals' => [
+                'subtotal' => $totalDebit,
+                'discount_total' => 0.0,
                 'subtotal_after_discount' => $totalDebit,
-                'sst_amount'              => 0.0,
-                'gross_amount'            => $totalDebit,
-                'paid_amount'             => 0.0,
-                'amount_due'              => $totalDebit,
+                'sst_amount' => 0.0,
+                'gross_amount' => $totalDebit,
+                'paid_amount' => 0.0,
+                'amount_due' => $totalDebit,
             ],
-            'tax_summary'     => [
-                'sst_rate'           => 0.0,
-                'sst_amount'         => 0.0,
-                'sst_exemption'      => true,
+            'tax_summary' => [
+                'sst_rate' => 0.0,
+                'sst_amount' => 0.0,
+                'sst_exemption' => true,
                 'sst_exemption_code' => null,
             ],
-            'payment_terms'   => null,
-            'narration'       => $journalEntry->description ?? null,
+            'payment_terms' => null,
+            'narration' => $journalEntry->description ?? null,
             'attachment_reference' => null,
         ];
 
         Log::info('myinvois:mapJournalEntry — done', [
-            'journal_entry_id'  => $journalEntry->id,
-            'entry_number'      => $journalEntry->entry_number,
-            'line_item_count'   => count($lineItems),
-            'total_debit'       => $totalDebit,
+            'journal_entry_id' => $journalEntry->id,
+            'entry_number' => $journalEntry->entry_number,
+            'line_item_count' => count($lineItems),
+            'total_debit' => $totalDebit,
         ]);
 
         return $mapped;
@@ -136,7 +137,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
     public function mapInvoice(Invoice $invoice): array
     {
         Log::info('myinvois:mapInvoice — begin', [
-            'invoice_id'     => $invoice->id,
+            'invoice_id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
         ]);
 
@@ -175,11 +176,11 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
         ];
 
         Log::info('myinvois:mapInvoice — done', [
-            'invoice_id'     => $invoice->id,
+            'invoice_id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
             'line_item_count' => count($lineItems),
-            'currency'       => $currency,
-            'payload_hash'   => hash('sha256', (string) json_encode($mapped)),
+            'currency' => $currency,
+            'payload_hash' => hash('sha256', (string) json_encode($mapped)),
         ]);
 
         return $mapped;
@@ -198,7 +199,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
         return [
             'line_number' => 1,
             'item_id' => (string) ($invoice->id ?? '1'),
-            'description' => $invoice->notes ?: ('Invoice ' . ($invoice->invoice_number ?? 'Line Item')),
+            'description' => $invoice->notes ?: ('Invoice '.($invoice->invoice_number ?? 'Line Item')),
             'quantity' => 1.0,
             'unit_code' => 'C62',
             'unit_price' => $subtotal,
@@ -214,7 +215,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
 
     private function resolveSupplier(mixed $invoice): object
     {
-        if ($invoice !== null && !empty($invoice->supplier)) {
+        if ($invoice !== null && ! empty($invoice->supplier)) {
             return $invoice->supplier;
         }
 
@@ -223,18 +224,18 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
         $company = DB::table('public.company_settings')->first();
 
         return (object) [
-            'name'                     => $company->company_name ?? null,
-            'tax_identification_number'=> null,
-            'registration_number'      => null,
-            'company_registration'     => null,
-            'identity_type'            => 'BRN',
-            'identity_number'          => null,
-            'country_code'             => 'MY',
-            'is_individual'            => false,
-            'address_line_1'           => null,
-            'city'                     => null,
-            'state'                    => null,
-            'postal_code'              => null,
+            'name' => $company->company_name ?? null,
+            'tax_identification_number' => null,
+            'registration_number' => null,
+            'company_registration' => null,
+            'identity_type' => 'BRN',
+            'identity_number' => null,
+            'country_code' => 'MY',
+            'is_individual' => false,
+            'address_line_1' => null,
+            'city' => null,
+            'state' => null,
+            'postal_code' => null,
         ];
     }
 
@@ -244,7 +245,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
     public function mapCreditNote(object $creditNote): array
     {
         $issuedDate = $creditNote->credit_note_date ?? now();
-        $currency   = $creditNote->currency_code ?? 'MYR';
+        $currency = $creditNote->currency_code ?? 'MYR';
 
         $lineCollection = $creditNote->lines ?? collect();
         $lineItems = collect($lineCollection)->map(function ($line, int $index) {
@@ -256,34 +257,34 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
         }
 
         $originalInvoice = $creditNote->invoice ?? null;
-        $supplier        = $this->resolveSupplier($originalInvoice);
-        $buyer           = $creditNote->customer;
+        $supplier = $this->resolveSupplier($originalInvoice);
+        $buyer = $creditNote->customer;
 
         $mapped = [
-            'document_type'               => 'credit_note',
-            'profile_version'             => 'myinvoice-v1',
-            'invoice_id'                  => $creditNote->id,
-            'invoice_number'              => $creditNote->credit_note_number,
-            'invoice_date'                => is_string($issuedDate) ? $issuedDate : $issuedDate->format('Y-m-d'),
-            'issue_datetime'              => is_string($issuedDate) ? $issuedDate : $issuedDate->format('c'),
-            'due_date'                    => null,
-            'currency_code'               => $currency,
-            'supplier'                    => $this->mapParty($supplier, true),
-            'buyer'                       => $this->mapParty($buyer, false),
-            'line_items'                  => $lineItems,
-            'totals'                      => $this->mapTotals($creditNote, collect($lineCollection)),
-            'tax_summary'                 => $this->mapTaxDetails($creditNote),
+            'document_type' => 'credit_note',
+            'profile_version' => 'myinvoice-v1',
+            'invoice_id' => $creditNote->id,
+            'invoice_number' => $creditNote->credit_note_number,
+            'invoice_date' => is_string($issuedDate) ? $issuedDate : $issuedDate->format('Y-m-d'),
+            'issue_datetime' => is_string($issuedDate) ? $issuedDate : $issuedDate->format('c'),
+            'due_date' => null,
+            'currency_code' => $currency,
+            'supplier' => $this->mapParty($supplier, true),
+            'buyer' => $this->mapParty($buyer, false),
+            'line_items' => $lineItems,
+            'totals' => $this->mapTotals($creditNote, collect($lineCollection)),
+            'tax_summary' => $this->mapTaxDetails($creditNote),
             'original_invoice_references' => $this->resolveOriginalInvoiceRefs($creditNote),
-            'payment_terms'               => null,
-            'narration'                   => $creditNote->reason ?? $creditNote->notes ?? null,
-            'attachment_reference'        => null,
+            'payment_terms' => null,
+            'narration' => $creditNote->reason ?? $creditNote->notes ?? null,
+            'attachment_reference' => null,
         ];
 
         Log::info('myinvois:mapCreditNote — done', [
-            'credit_note_id'     => $creditNote->id,
+            'credit_note_id' => $creditNote->id,
             'credit_note_number' => $creditNote->credit_note_number,
-            'line_item_count'    => count($lineItems),
-            'currency'           => $currency,
+            'line_item_count' => count($lineItems),
+            'currency' => $currency,
         ]);
 
         return $mapped;
@@ -292,7 +293,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
     private function resolveOriginalInvoiceRefs(object $creditNote): array
     {
         $originalInvoice = $creditNote->invoice ?? null;
-        if (!$originalInvoice) {
+        if (! $originalInvoice) {
             return [];
         }
 
@@ -309,7 +310,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
     private function resolveOriginalBillRefs(object $debitNote): array
     {
         $originalBill = $debitNote->bill ?? null;
-        if (!$originalBill) {
+        if (! $originalBill) {
             return [];
         }
 
@@ -332,7 +333,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
             ->where('document_id', $glId)
             ->first();
 
-        if (!$complianceDoc) {
+        if (! $complianceDoc) {
             return null;
         }
 
@@ -350,8 +351,8 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
      */
     public function mapBill(object $bill): array
     {
-        $issuedDate     = $bill->bill_date ?? now();
-        $currency       = $bill->currency_code ?? 'MYR';
+        $issuedDate = $bill->bill_date ?? now();
+        $currency = $bill->currency_code ?? 'MYR';
         $lineCollection = $bill->lines ?? collect();
 
         $lineItems = collect($lineCollection)->map(function ($line, int $index) {
@@ -363,34 +364,34 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
         }
 
         $company = $this->resolveSupplier(null);
-        $vendor  = $bill->vendor;
+        $vendor = $bill->vendor;
 
         $mapped = [
-            'document_type'   => 'invoice',
+            'document_type' => 'invoice',
             'profile_version' => 'myinvoice-v1',
-            'invoice_id'      => $bill->id,
-            'invoice_number'  => $bill->bill_number,
-            'invoice_date'    => is_string($issuedDate) ? $issuedDate : $issuedDate->format('Y-m-d'),
-            'issue_datetime'  => is_string($issuedDate) ? $issuedDate : $issuedDate->format('c'),
-            'due_date'        => $bill->due_date
+            'invoice_id' => $bill->id,
+            'invoice_number' => $bill->bill_number,
+            'invoice_date' => is_string($issuedDate) ? $issuedDate : $issuedDate->format('Y-m-d'),
+            'issue_datetime' => is_string($issuedDate) ? $issuedDate : $issuedDate->format('c'),
+            'due_date' => $bill->due_date
                 ? (is_string($bill->due_date) ? $bill->due_date : $bill->due_date->format('Y-m-d'))
                 : null,
-            'currency_code'   => $currency,
-            'supplier'        => $this->mapParty($company, true),
-            'buyer'           => $this->mapParty($vendor, false),
-            'line_items'      => $lineItems,
-            'totals'          => $this->mapTotals($bill, collect($lineCollection)),
-            'tax_summary'     => $this->mapTaxDetails($bill),
-            'payment_terms'   => $bill->terms ?? null,
-            'narration'       => $bill->notes ?? null,
+            'currency_code' => $currency,
+            'supplier' => $this->mapParty($company, true),
+            'buyer' => $this->mapParty($vendor, false),
+            'line_items' => $lineItems,
+            'totals' => $this->mapTotals($bill, collect($lineCollection)),
+            'tax_summary' => $this->mapTaxDetails($bill),
+            'payment_terms' => $bill->terms ?? null,
+            'narration' => $bill->notes ?? null,
             'attachment_reference' => null,
         ];
 
         Log::info('myinvois:mapBill — done', [
-            'bill_id'        => $bill->id,
-            'bill_number'    => $bill->bill_number,
+            'bill_id' => $bill->id,
+            'bill_number' => $bill->bill_number,
             'line_item_count' => count($lineItems),
-            'currency'       => $currency,
+            'currency' => $currency,
         ]);
 
         return $mapped;
@@ -402,8 +403,8 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
      */
     public function mapVendorDebitNote(object $debitNote): array
     {
-        $issuedDate     = $debitNote->debit_note_date ?? now();
-        $currency       = $debitNote->currency_code ?? 'MYR';
+        $issuedDate = $debitNote->debit_note_date ?? now();
+        $currency = $debitNote->currency_code ?? 'MYR';
         $lineCollection = $debitNote->lines ?? collect();
 
         $lineItems = collect($lineCollection)->map(function ($line, int $index) {
@@ -415,33 +416,33 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
         }
 
         $company = $this->resolveSupplier(null);
-        $vendor  = $debitNote->vendor;
+        $vendor = $debitNote->vendor;
 
         $mapped = [
-            'document_type'               => 'debit_note',
-            'profile_version'             => 'myinvoice-v1',
-            'invoice_id'                  => $debitNote->id,
-            'invoice_number'              => $debitNote->debit_note_number,
-            'invoice_date'                => is_string($issuedDate) ? $issuedDate : $issuedDate->format('Y-m-d'),
-            'issue_datetime'              => is_string($issuedDate) ? $issuedDate : $issuedDate->format('c'),
-            'due_date'                    => null,
-            'currency_code'               => $currency,
-            'supplier'                    => $this->mapParty($company, true),
-            'buyer'                       => $this->mapParty($vendor, false),
-            'line_items'                  => $lineItems,
-            'totals'                      => $this->mapTotals($debitNote, collect($lineCollection)),
-            'tax_summary'                 => $this->mapTaxDetails($debitNote),
+            'document_type' => 'debit_note',
+            'profile_version' => 'myinvoice-v1',
+            'invoice_id' => $debitNote->id,
+            'invoice_number' => $debitNote->debit_note_number,
+            'invoice_date' => is_string($issuedDate) ? $issuedDate : $issuedDate->format('Y-m-d'),
+            'issue_datetime' => is_string($issuedDate) ? $issuedDate : $issuedDate->format('c'),
+            'due_date' => null,
+            'currency_code' => $currency,
+            'supplier' => $this->mapParty($company, true),
+            'buyer' => $this->mapParty($vendor, false),
+            'line_items' => $lineItems,
+            'totals' => $this->mapTotals($debitNote, collect($lineCollection)),
+            'tax_summary' => $this->mapTaxDetails($debitNote),
             'original_invoice_references' => $this->resolveOriginalBillRefs($debitNote),
-            'payment_terms'               => null,
-            'narration'                   => $debitNote->reason ?? $debitNote->notes ?? null,
-            'attachment_reference'        => null,
+            'payment_terms' => null,
+            'narration' => $debitNote->reason ?? $debitNote->notes ?? null,
+            'attachment_reference' => null,
         ];
 
         Log::info('myinvois:mapVendorDebitNote — done', [
-            'debit_note_id'     => $debitNote->id,
+            'debit_note_id' => $debitNote->id,
             'debit_note_number' => $debitNote->debit_note_number,
-            'line_item_count'   => count($lineItems),
-            'currency'          => $currency,
+            'line_item_count' => count($lineItems),
+            'currency' => $currency,
         ]);
 
         return $mapped;
@@ -449,69 +450,69 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
 
     private function buildFallbackBillLineItem(object $bill): array
     {
-        $subtotal  = round((float) ($bill->subtotal ?? $bill->total ?? 0), 2);
+        $subtotal = round((float) ($bill->subtotal ?? $bill->total ?? 0), 2);
         $taxAmount = round((float) ($bill->tax_amount ?? 0), 2);
-        $taxRate   = ($taxAmount > 0 && $subtotal > 0) ? round(($taxAmount / $subtotal) * 100, 2) : 0.0;
+        $taxRate = ($taxAmount > 0 && $subtotal > 0) ? round(($taxAmount / $subtotal) * 100, 2) : 0.0;
 
         return [
-            'line_number'          => 1,
-            'item_id'              => (string) ($bill->id ?? '1'),
-            'description'          => 'Bill ' . ($bill->bill_number ?? 'Line Item'),
-            'quantity'             => 1.0,
-            'unit_code'            => 'C62',
-            'unit_price'           => $subtotal,
-            'line_amount'          => $subtotal,
-            'discount_amount'      => 0.0,
-            'discount_percent'     => 0.0,
-            'tax_type'             => $taxAmount > 0 ? 'SST' : 'E',
-            'sst_rate'             => $taxRate,
-            'sst_amount'           => $taxAmount,
+            'line_number' => 1,
+            'item_id' => (string) ($bill->id ?? '1'),
+            'description' => 'Bill '.($bill->bill_number ?? 'Line Item'),
+            'quantity' => 1.0,
+            'unit_code' => 'C62',
+            'unit_price' => $subtotal,
+            'line_amount' => $subtotal,
+            'discount_amount' => 0.0,
+            'discount_percent' => 0.0,
+            'tax_type' => $taxAmount > 0 ? 'SST' : 'E',
+            'sst_rate' => $taxRate,
+            'sst_amount' => $taxAmount,
             'tax_exemption_reason' => null,
         ];
     }
 
     private function buildFallbackVendorDebitNoteLineItem(object $debitNote): array
     {
-        $subtotal  = round((float) ($debitNote->subtotal ?? $debitNote->total_amount ?? 0), 2);
+        $subtotal = round((float) ($debitNote->subtotal ?? $debitNote->total_amount ?? 0), 2);
         $taxAmount = round((float) ($debitNote->tax_amount ?? 0), 2);
-        $taxRate   = ($taxAmount > 0 && $subtotal > 0) ? round(($taxAmount / $subtotal) * 100, 2) : 0.0;
+        $taxRate = ($taxAmount > 0 && $subtotal > 0) ? round(($taxAmount / $subtotal) * 100, 2) : 0.0;
 
         return [
-            'line_number'          => 1,
-            'item_id'              => (string) ($debitNote->id ?? '1'),
-            'description'          => 'Debit Note ' . ($debitNote->debit_note_number ?? 'Line Item'),
-            'quantity'             => 1.0,
-            'unit_code'            => 'C62',
-            'unit_price'           => $subtotal,
-            'line_amount'          => $subtotal,
-            'discount_amount'      => 0.0,
-            'discount_percent'     => 0.0,
-            'tax_type'             => $taxAmount > 0 ? 'SST' : 'E',
-            'sst_rate'             => $taxRate,
-            'sst_amount'           => $taxAmount,
+            'line_number' => 1,
+            'item_id' => (string) ($debitNote->id ?? '1'),
+            'description' => 'Debit Note '.($debitNote->debit_note_number ?? 'Line Item'),
+            'quantity' => 1.0,
+            'unit_code' => 'C62',
+            'unit_price' => $subtotal,
+            'line_amount' => $subtotal,
+            'discount_amount' => 0.0,
+            'discount_percent' => 0.0,
+            'tax_type' => $taxAmount > 0 ? 'SST' : 'E',
+            'sst_rate' => $taxRate,
+            'sst_amount' => $taxAmount,
             'tax_exemption_reason' => null,
         ];
     }
 
     private function buildFallbackCreditNoteLineItem(object $creditNote): array
     {
-        $subtotal  = round((float) ($creditNote->subtotal ?? $creditNote->total_amount ?? 0), 2);
+        $subtotal = round((float) ($creditNote->subtotal ?? $creditNote->total_amount ?? 0), 2);
         $taxAmount = round((float) ($creditNote->tax_amount ?? 0), 2);
-        $taxRate   = ($taxAmount > 0 && $subtotal > 0) ? round(($taxAmount / $subtotal) * 100, 2) : 0.0;
+        $taxRate = ($taxAmount > 0 && $subtotal > 0) ? round(($taxAmount / $subtotal) * 100, 2) : 0.0;
 
         return [
-            'line_number'          => 1,
-            'item_id'              => (string) ($creditNote->id ?? '1'),
-            'description'          => $creditNote->reason ?: ('Credit Note ' . ($creditNote->credit_note_number ?? 'Line Item')),
-            'quantity'             => 1.0,
-            'unit_code'            => 'C62',
-            'unit_price'           => $subtotal,
-            'line_amount'          => $subtotal,
-            'discount_amount'      => 0.0,
-            'discount_percent'     => 0.0,
-            'tax_type'             => $taxAmount > 0 ? 'SST' : 'E',
-            'sst_rate'             => $taxRate,
-            'sst_amount'           => $taxAmount,
+            'line_number' => 1,
+            'item_id' => (string) ($creditNote->id ?? '1'),
+            'description' => $creditNote->reason ?: ('Credit Note '.($creditNote->credit_note_number ?? 'Line Item')),
+            'quantity' => 1.0,
+            'unit_code' => 'C62',
+            'unit_price' => $subtotal,
+            'line_amount' => $subtotal,
+            'discount_amount' => 0.0,
+            'discount_percent' => 0.0,
+            'tax_type' => $taxAmount > 0 ? 'SST' : 'E',
+            'sst_rate' => $taxRate,
+            'sst_amount' => $taxAmount,
             'tax_exemption_reason' => null,
         ];
     }
@@ -543,59 +544,66 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
 
         $required = ['document_type', 'invoice_id', 'invoice_number', 'invoice_date', 'currency_code', 'supplier', 'buyer', 'line_items', 'totals'];
         foreach ($required as $field) {
-            if (!isset($payload[$field])) {
+            if (! isset($payload[$field])) {
                 Log::warning("myinvois:validatePayload — missing required field '{$field}'", ['document_type' => $docType, 'invoice_id' => $payload['invoice_id'] ?? null]);
+
                 return false;
             }
         }
 
-        if (!in_array($docType, ['invoice', 'credit_note', 'debit_note', 'refund_note', 'self_billed_invoice', 'self_billed_credit_note', 'self_billed_debit_note', 'self_billed_refund_note'], true)) {
+        if (! in_array($docType, ['invoice', 'credit_note', 'debit_note', 'refund_note', 'self_billed_invoice', 'self_billed_credit_note', 'self_billed_debit_note', 'self_billed_refund_note'], true)) {
             Log::warning("myinvois:validatePayload — unrecognised document_type '{$docType}'");
+
             return false;
         }
 
-        if (!is_array($payload['line_items']) || empty($payload['line_items'])) {
-            Log::warning("myinvois:validatePayload — line_items empty or not an array", ['document_type' => $docType, 'invoice_id' => $payload['invoice_id'] ?? null]);
+        if (! is_array($payload['line_items']) || empty($payload['line_items'])) {
+            Log::warning('myinvois:validatePayload — line_items empty or not an array', ['document_type' => $docType, 'invoice_id' => $payload['invoice_id'] ?? null]);
+
             return false;
         }
 
-        if (!isset($payload['supplier']['name']) || empty($payload['supplier']['tin'])) {
-            Log::warning("myinvois:validatePayload — supplier name missing or TIN empty", [
-                'document_type'  => $docType,
-                'invoice_id'     => $payload['invoice_id'] ?? null,
-                'supplier_name'  => $payload['supplier']['name'] ?? null,
-                'supplier_tin'   => $payload['supplier']['tin'] ?? null,
-            ]);
-            return false;
-        }
-
-        $supplierHasCompanyRegistration = !empty($payload['supplier']['company_registration']);
-        $supplierHasIdentityDocument = !empty($payload['supplier']['identity_type'])
-            && !empty($payload['supplier']['identity_number']);
-
-        if (!$supplierHasCompanyRegistration && !$supplierHasIdentityDocument) {
-            Log::warning("myinvois:validatePayload — supplier has neither company_registration nor identity document", [
-                'document_type'              => $docType,
-                'invoice_id'                 => $payload['invoice_id'] ?? null,
-                'supplier_name'              => $payload['supplier']['name'] ?? null,
-                'company_registration'       => $payload['supplier']['company_registration'] ?? null,
-                'identity_type'              => $payload['supplier']['identity_type'] ?? null,
-                'identity_number'            => $payload['supplier']['identity_number'] ?? null,
-            ]);
-            return false;
-        }
-
-        if (!isset($payload['buyer']['name'])) {
-            Log::warning("myinvois:validatePayload — buyer name missing", ['document_type' => $docType, 'invoice_id' => $payload['invoice_id'] ?? null]);
-            return false;
-        }
-
-        if (!isset($payload['totals']['gross_amount']) || !is_numeric($payload['totals']['gross_amount'])) {
-            Log::warning("myinvois:validatePayload — totals.gross_amount missing or non-numeric", [
+        if (! isset($payload['supplier']['name']) || empty($payload['supplier']['tin'])) {
+            Log::warning('myinvois:validatePayload — supplier name missing or TIN empty', [
                 'document_type' => $docType,
-                'invoice_id'    => $payload['invoice_id'] ?? null,
-                'gross_amount'  => $payload['totals']['gross_amount'] ?? null,
+                'invoice_id' => $payload['invoice_id'] ?? null,
+                'supplier_name' => $payload['supplier']['name'] ?? null,
+                'supplier_tin' => $payload['supplier']['tin'] ?? null,
             ]);
+
+            return false;
+        }
+
+        $supplierHasCompanyRegistration = ! empty($payload['supplier']['company_registration']);
+        $supplierHasIdentityDocument = ! empty($payload['supplier']['identity_type'])
+            && ! empty($payload['supplier']['identity_number']);
+
+        if (! $supplierHasCompanyRegistration && ! $supplierHasIdentityDocument) {
+            Log::warning('myinvois:validatePayload — supplier has neither company_registration nor identity document', [
+                'document_type' => $docType,
+                'invoice_id' => $payload['invoice_id'] ?? null,
+                'supplier_name' => $payload['supplier']['name'] ?? null,
+                'company_registration' => $payload['supplier']['company_registration'] ?? null,
+                'identity_type' => $payload['supplier']['identity_type'] ?? null,
+                'identity_number' => $payload['supplier']['identity_number'] ?? null,
+            ]);
+
+            return false;
+        }
+
+        if (! isset($payload['buyer']['name'])) {
+            Log::warning('myinvois:validatePayload — buyer name missing', ['document_type' => $docType, 'invoice_id' => $payload['invoice_id'] ?? null]);
+
+            return false;
+        }
+
+        if (! isset($payload['totals']['gross_amount']) || ! is_numeric($payload['totals']['gross_amount'])) {
+            Log::warning('myinvois:validatePayload — totals.gross_amount missing or non-numeric', [
+                'document_type' => $docType,
+                'invoice_id' => $payload['invoice_id'] ?? null,
+                'gross_amount' => $payload['totals']['gross_amount'] ?? null,
+            ]);
+
             return false;
         }
 
@@ -626,7 +634,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
             ?? $party->tax_id
             ?? null;
 
-        if ($tin === null && !$isSupplier) {
+        if ($tin === null && ! $isSupplier) {
             // LHDN general-public TIN for consolidated/end-consumer invoices (LHDN constant).
             $tin = self::LHDN_GENERAL_PUBLIC_TIN;
         }
@@ -677,18 +685,18 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
                 ),
                 'email' => $party->email ?? null,
             ],
-            'is_business' => !($party->is_individual ?? false),
+            'is_business' => ! ($party->is_individual ?? false),
         ];
     }
 
     private function extractLegacyAddress(object $party): array
     {
         $shippingAddress = $this->decodeAddressValue($party->shipping_address ?? null);
-        $billingAddress  = $this->decodeAddressValue($party->billing_address ?? null);
+        $billingAddress = $this->decodeAddressValue($party->billing_address ?? null);
         // Vendor model stores address in a plain 'address' field (may be JSON or plain string)
-        $plainAddress    = $this->decodeAddressValue($party->address ?? null);
-        $address = !empty($shippingAddress) ? $shippingAddress
-                 : (!empty($billingAddress) ? $billingAddress : $plainAddress);
+        $plainAddress = $this->decodeAddressValue($party->address ?? null);
+        $address = ! empty($shippingAddress) ? $shippingAddress
+                 : (! empty($billingAddress) ? $billingAddress : $plainAddress);
 
         return [
             'street' => $this->firstNonEmptyString(
@@ -719,7 +727,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
             return $value;
         }
 
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             return [];
         }
 
@@ -729,13 +737,14 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
         }
 
         $decoded = json_decode($trimmed, true);
+
         return is_array($decoded) ? $decoded : [];
     }
 
     private function firstNonEmptyString(mixed ...$values): string
     {
         foreach ($values as $value) {
-            if (!is_string($value)) {
+            if (! is_string($value)) {
                 continue;
             }
 
@@ -750,7 +759,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
 
     private function normalizeCountryCode(mixed $value): string
     {
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             return 'MY';
         }
 
@@ -784,7 +793,7 @@ class MyInvoiceMapper implements InvoiceSchemaMapperContract
 
         return [
             'line_number' => $lineNumber,
-            'item_id' => (string)$line->id,
+            'item_id' => (string) $line->id,
             'description' => $line->description ?? 'Line Item',
             'quantity' => $quantity,
             'unit_code' => $line->unit_code ?? 'C62',

@@ -23,20 +23,20 @@ class FieldServiceNotificationService
     public function notifyScheduled(WorkOrder $workOrder): void
     {
         $phone = $this->resolvePhone($workOrder);
-        if (!$phone) {
+        if (! $phone) {
             return;
         }
 
-        $date      = $workOrder->scheduled_start
+        $date = $workOrder->scheduled_start
             ? $workOrder->scheduled_start->format('d M Y \a\t H:i')
             : 'TBD';
-        $techName  = $workOrder->leadTechnician?->user?->name ?? 'our technician';
+        $techName = $workOrder->leadTechnician?->user?->name ?? 'our technician';
 
         $message = "Hello {$this->customerName($workOrder)},\n\n"
-            . "Your field service appointment has been scheduled for *{$date}*.\n"
-            . "Technician: *{$techName}*\n"
-            . "Reference: {$workOrder->reference}\n\n"
-            . "We'll send you an update when our technician is on the way.";
+            ."Your field service appointment has been scheduled for *{$date}*.\n"
+            ."Technician: *{$techName}*\n"
+            ."Reference: {$workOrder->reference}\n\n"
+            ."We'll send you an update when our technician is on the way.";
 
         $this->send($phone, $message, $workOrder);
     }
@@ -47,16 +47,16 @@ class FieldServiceNotificationService
     public function notifyDispatched(WorkOrder $workOrder): void
     {
         $phone = $this->resolvePhone($workOrder);
-        if (!$phone) {
+        if (! $phone) {
             return;
         }
 
         $techName = $workOrder->leadTechnician?->user?->name ?? 'Our technician';
 
         $message = "Hello {$this->customerName($workOrder)},\n\n"
-            . "*{$techName}* is on the way to your location!\n"
-            . "Reference: {$workOrder->reference}\n\n"
-            . "Please ensure access is available at the site.";
+            ."*{$techName}* is on the way to your location!\n"
+            ."Reference: {$workOrder->reference}\n\n"
+            .'Please ensure access is available at the site.';
 
         $this->send($phone, $message, $workOrder);
     }
@@ -67,14 +67,14 @@ class FieldServiceNotificationService
     public function notifyCompleted(WorkOrder $workOrder): void
     {
         $phone = $this->resolvePhone($workOrder);
-        if (!$phone) {
+        if (! $phone) {
             return;
         }
 
         $message = "Hello {$this->customerName($workOrder)},\n\n"
-            . "Your service job (*{$workOrder->reference}*) has been *completed*. ✅\n"
-            . "A signed service report has been sent to your email.\n\n"
-            . "Thank you for choosing us!";
+            ."Your service job (*{$workOrder->reference}*) has been *completed*. ✅\n"
+            ."A signed service report has been sent to your email.\n\n"
+            .'Thank you for choosing us!';
 
         $this->send($phone, $message, $workOrder);
     }
@@ -84,6 +84,7 @@ class FieldServiceNotificationService
     private function resolvePhone(WorkOrder $workOrder): ?string
     {
         $workOrder->loadMissing(['customer', 'leadTechnician.user']);
+
         return $workOrder->customer?->phone ?? null;
     }
 
@@ -100,26 +101,27 @@ class FieldServiceNotificationService
                 ->latest()
                 ->first();
 
-            if (!$apiKey) {
+            if (! $apiKey) {
                 Log::info('FieldServiceNotification: no active WhatsApp API key configured — skip.', [
                     'work_order' => $workOrder->reference,
                 ]);
+
                 return;
             }
 
             $result = $this->whatsApp->sendMessage($apiKey, $phone, $message);
 
-            if (!($result['success'] ?? false)) {
+            if (! ($result['success'] ?? false)) {
                 Log::warning('FieldServiceNotification: WhatsApp send failed', [
                     'work_order' => $workOrder->reference,
-                    'phone'      => $phone,
-                    'error'      => $result['error'] ?? 'unknown',
+                    'phone' => $phone,
+                    'error' => $result['error'] ?? 'unknown',
                 ]);
             }
         } catch (\Exception $e) {
             Log::error('FieldServiceNotification: exception during WhatsApp send', [
                 'work_order' => $workOrder->reference,
-                'error'      => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
         }
     }

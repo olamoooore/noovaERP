@@ -2,11 +2,11 @@
 
 namespace Modules\EventManagement\Tests\Unit;
 
-use Modules\EventManagement\Models\EventType;
-use Modules\EventManagement\Services\EventTypeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
+use Modules\EventManagement\Models\EventType;
+use Modules\EventManagement\Services\EventTypeService;
 use Tests\TestCase;
 
 class EventTypeServiceTest extends TestCase
@@ -18,7 +18,7 @@ class EventTypeServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new EventTypeService();
+        $this->service = new EventTypeService;
         Cache::flush();
     }
 
@@ -35,7 +35,7 @@ class EventTypeServiceTest extends TestCase
 
         // Assert
         $this->assertCount(2, $activeTypes);
-        $this->assertTrue($activeTypes->every(fn($type) => $type->is_active));
+        $this->assertTrue($activeTypes->every(fn ($type) => $type->is_active));
     }
 
     /** @test */
@@ -46,10 +46,10 @@ class EventTypeServiceTest extends TestCase
 
         // Act - First call should hit database
         $firstCall = $this->service->getAllActiveTypes();
-        
+
         // Add a new type after first call
         EventType::create(['name' => 'New Type', 'slug' => 'new-type', 'is_active' => true]);
-        
+
         // Second call should return cached result (only 1 type)
         $secondCall = $this->service->getAllActiveTypes();
 
@@ -64,7 +64,7 @@ class EventTypeServiceTest extends TestCase
         // Arrange
         $eventType = EventType::create([
             'name' => 'Concert',
-            'slug' => 'concert'
+            'slug' => 'concert',
         ]);
 
         // Act
@@ -94,7 +94,7 @@ class EventTypeServiceTest extends TestCase
             'name' => 'Workshop',
             'slug' => 'workshop',
             'description' => 'Educational workshop',
-            'is_active' => true
+            'is_active' => true,
         ];
 
         // Act
@@ -117,7 +117,7 @@ class EventTypeServiceTest extends TestCase
         $this->expectException(ValidationException::class);
         $this->service->createType([
             'name' => 'Concert',
-            'slug' => 'concert-2'
+            'slug' => 'concert-2',
         ]);
     }
 
@@ -131,7 +131,7 @@ class EventTypeServiceTest extends TestCase
         $this->expectException(ValidationException::class);
         $this->service->createType([
             'name' => 'Concert 2',
-            'slug' => 'concert'
+            'slug' => 'concert',
         ]);
     }
 
@@ -141,19 +141,19 @@ class EventTypeServiceTest extends TestCase
         // Arrange
         $eventType = EventType::create([
             'name' => 'Concert',
-            'slug' => 'concert'
+            'slug' => 'concert',
         ]);
 
         // Act
         $updated = $this->service->updateType($eventType->id, [
-            'description' => 'Updated description'
+            'description' => 'Updated description',
         ]);
 
         // Assert
         $this->assertEquals('Updated description', $updated->description);
         $this->assertDatabaseHas('event_types', [
             'id' => $eventType->id,
-            'description' => 'Updated description'
+            'description' => 'Updated description',
         ]);
     }
 
@@ -167,7 +167,7 @@ class EventTypeServiceTest extends TestCase
         // Act & Assert
         $this->expectException(ValidationException::class);
         $this->service->updateType($eventType2->id, [
-            'name' => 'Concert' // Trying to use existing name
+            'name' => 'Concert', // Trying to use existing name
         ]);
     }
 
@@ -181,7 +181,7 @@ class EventTypeServiceTest extends TestCase
         // Act & Assert
         $this->expectException(ValidationException::class);
         $this->service->updateType($eventType2->id, [
-            'slug' => 'concert' // Trying to use existing slug
+            'slug' => 'concert', // Trying to use existing slug
         ]);
     }
 
@@ -190,7 +190,7 @@ class EventTypeServiceTest extends TestCase
     {
         // Arrange
         EventType::create(['name' => 'Concert', 'slug' => 'concert', 'is_active' => true]);
-        
+
         // Prime the cache
         $this->service->getAllActiveTypes();
 
@@ -198,7 +198,7 @@ class EventTypeServiceTest extends TestCase
         $this->service->createType([
             'name' => 'Workshop',
             'slug' => 'workshop',
-            'is_active' => true
+            'is_active' => true,
         ]);
 
         // Get types again - should reflect new type
@@ -215,9 +215,9 @@ class EventTypeServiceTest extends TestCase
         $eventType = EventType::create([
             'name' => 'Concert',
             'slug' => 'concert',
-            'is_active' => true
+            'is_active' => true,
         ]);
-        
+
         // Prime the cache
         $this->service->getAllActiveTypes();
 

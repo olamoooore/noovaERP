@@ -28,6 +28,7 @@ class ListProductCategories extends Command
         if ($categories->isEmpty()) {
             $this->warn('No product categories found in the database.');
             $this->info('You can still import products with category names - they will be created automatically.');
+
             return self::SUCCESS;
         }
 
@@ -44,7 +45,7 @@ class ListProductCategories extends Command
             case 'csv':
                 $output = "ID,Name,Parent ID,Active\n";
                 foreach ($categories as $cat) {
-                    $output .= "{$cat->id},\"{$cat->name}\",{$cat->parent_id}," . ($cat->is_active ? 'Yes' : 'No') . "\n";
+                    $output .= "{$cat->id},\"{$cat->name}\",{$cat->parent_id},".($cat->is_active ? 'Yes' : 'No')."\n";
                 }
                 break;
 
@@ -52,35 +53,35 @@ class ListProductCategories extends Command
             default:
                 $this->info("Found {$categories->count()} product categories:");
                 $this->newLine();
-                
-                $rows = $categories->map(fn($c) => [
+
+                $rows = $categories->map(fn ($c) => [
                     $c->id,
                     $c->name,
                     $c->parent_id ?? '-',
-                    $c->is_active ? '✓' : '✗'
+                    $c->is_active ? '✓' : '✗',
                 ])->toArray();
-                
+
                 $this->table(
                     ['ID', 'Name', 'Parent ID', 'Active'],
                     $rows
                 );
-                
+
                 $this->newLine();
                 $this->info('Usage in CSV import:');
                 $this->line('  - Use the ID number (first column) for exact matching');
                 $this->line('  - Or use the exact Name (second column) - case insensitive');
                 $this->line('  - New categories will be auto-created if name does not exist');
-                
+
                 if ($exportPath) {
                     $csvOutput = "ID,Name,Parent ID,Active\n";
                     foreach ($categories as $cat) {
-                        $csvOutput .= "{$cat->id},\"{$cat->name}\",{$cat->parent_id}," . ($cat->is_active ? 'Yes' : 'No') . "\n";
+                        $csvOutput .= "{$cat->id},\"{$cat->name}\",{$cat->parent_id},".($cat->is_active ? 'Yes' : 'No')."\n";
                     }
                     file_put_contents($exportPath, $csvOutput);
                     $this->newLine();
                     $this->info("Exported to: {$exportPath}");
                 }
-                
+
                 return self::SUCCESS;
         }
 

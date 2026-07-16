@@ -13,49 +13,49 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (!Schema::hasTable('pos_orders')) {
+        if (! Schema::hasTable('pos_orders')) {
             return;
         }
 
         Schema::table('pos_orders', function (Blueprint $table) {
-            if (!Schema::hasColumn('pos_orders', 'session_id')) {
+            if (! Schema::hasColumn('pos_orders', 'session_id')) {
                 $table->unsignedBigInteger('session_id')->nullable()->after('id');
             }
 
-            if (!Schema::hasColumn('pos_orders', 'terminal_id')) {
+            if (! Schema::hasColumn('pos_orders', 'terminal_id')) {
                 $table->unsignedBigInteger('terminal_id')->nullable()->after('session_id');
             }
 
-            if (!Schema::hasColumn('pos_orders', 'customer_id')) {
+            if (! Schema::hasColumn('pos_orders', 'customer_id')) {
                 $table->unsignedBigInteger('customer_id')->nullable()->after('terminal_id');
                 $table->foreign('customer_id')->references('id')->on('customers')->nullOnDelete();
             }
 
-            if (!Schema::hasColumn('pos_orders', 'is_return')) {
+            if (! Schema::hasColumn('pos_orders', 'is_return')) {
                 $table->boolean('is_return')->default(false);
             }
 
-            if (!Schema::hasColumn('pos_orders', 'original_order_id')) {
+            if (! Schema::hasColumn('pos_orders', 'original_order_id')) {
                 $table->foreignId('original_order_id')->nullable()->constrained('pos_orders')->nullOnDelete();
             }
 
-            if (!Schema::hasColumn('pos_orders', 'loyalty_points_earned')) {
+            if (! Schema::hasColumn('pos_orders', 'loyalty_points_earned')) {
                 $table->integer('loyalty_points_earned')->default(0);
             }
 
-            if (!Schema::hasColumn('pos_orders', 'loyalty_points_redeemed')) {
+            if (! Schema::hasColumn('pos_orders', 'loyalty_points_redeemed')) {
                 $table->integer('loyalty_points_redeemed')->default(0);
             }
 
-            if (!Schema::hasColumn('pos_orders', 'loyalty_discount')) {
+            if (! Schema::hasColumn('pos_orders', 'loyalty_discount')) {
                 $table->decimal('loyalty_discount', 12, 2)->default(0);
             }
 
-            if (!Schema::hasColumn('pos_orders', 'receipt_number')) {
+            if (! Schema::hasColumn('pos_orders', 'receipt_number')) {
                 $table->string('receipt_number')->nullable();
             }
 
-            if (!Schema::hasColumn('pos_orders', 'cashier_name')) {
+            if (! Schema::hasColumn('pos_orders', 'cashier_name')) {
                 $table->string('cashier_name')->nullable();
             }
         });
@@ -86,7 +86,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        if (!Schema::hasTable('pos_orders')) {
+        if (! Schema::hasTable('pos_orders')) {
             return;
         }
 

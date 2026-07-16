@@ -2,36 +2,38 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 use Exception;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * RbacMatrixService - Task 12.3
- * 
+ *
  * Service for automated RBAC permission matrix testing, role-based access validation,
  * permission regression testing, and RBAC audit and compliance reporting.
- * 
+ *
  * Requirements: 28.4
  */
 class RbacMatrixService
 {
     private const CACHE_PREFIX = 'rbac_matrix:';
+
     private const TEST_CACHE_TTL = 300; // 5 minutes
+
     private const PERMISSION_CACHE_TTL = 600; // 10 minutes
 
     /**
      * Run automated RBAC permission matrix testing
-     * 
-     * @param array $options Testing options
+     *
+     * @param  array  $options  Testing options
      * @return array Testing result
      */
     public function runPermissionMatrixTests(array $options = []): array
     {
         try {
-            $testSuiteId = $options['test_suite_id'] ?? 'auto_' . uniqid();
+            $testSuiteId = $options['test_suite_id'] ?? 'auto_'.uniqid();
             $roles = $options['roles'] ?? $this->getAllActiveRoles();
             $endpoints = $options['endpoints'] ?? $this->getAllActiveEndpoints();
             $version = $options['version'] ?? '1.0';
@@ -72,7 +74,7 @@ class RbacMatrixService
                 'success_rate' => $totalTests > 0 ? ($passedTests / $totalTests) * 100 : 0,
                 'roles_tested' => count($roles),
                 'endpoints_tested' => count($endpoints),
-                'version' => $version
+                'version' => $version,
             ]);
 
             Log::info('RBAC permission matrix tests completed', [
@@ -80,7 +82,7 @@ class RbacMatrixService
                 'total_tests' => $totalTests,
                 'passed_tests' => $passedTests,
                 'failed_tests' => $failedTests,
-                'success_rate' => $totalTests > 0 ? ($passedTests / $totalTests) * 100 : 0
+                'success_rate' => $totalTests > 0 ? ($passedTests / $totalTests) * 100 : 0,
             ]);
 
             return [
@@ -90,59 +92,59 @@ class RbacMatrixService
                     'total_tests' => $totalTests,
                     'passed_tests' => $passedTests,
                     'failed_tests' => $failedTests,
-                    'success_rate' => $totalTests > 0 ? ($passedTests / $totalTests) * 100 : 0
+                    'success_rate' => $totalTests > 0 ? ($passedTests / $totalTests) * 100 : 0,
                 ],
                 'test_results' => $testResults,
-                'completed_at' => now()
+                'completed_at' => now(),
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to run RBAC permission matrix tests', [
                 'options' => $options,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to run permission tests',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Validate role-based access for specific request
-     * 
-     * @param string $role User role
-     * @param string $endpoint API endpoint
-     * @param string $method HTTP method
-     * @param string $version API version
-     * @param array $context Additional context
+     *
+     * @param  string  $role  User role
+     * @param  string  $endpoint  API endpoint
+     * @param  string  $method  HTTP method
+     * @param  string  $version  API version
+     * @param  array  $context  Additional context
      * @return array Validation result
      */
     public function validateRoleAccess(string $role, string $endpoint, string $method, string $version, array $context = []): array
     {
         try {
-            $cacheKey = self::CACHE_PREFIX . "access:{$role}:{$endpoint}:{$method}:{$version}";
+            $cacheKey = self::CACHE_PREFIX."access:{$role}:{$endpoint}:{$method}:{$version}";
 
             $permission = Cache::remember($cacheKey, self::PERMISSION_CACHE_TTL, function () use ($role, $endpoint, $method, $version) {
                 return $this->getPermissionFromMatrix($role, $endpoint, $method, $version);
             });
 
-            if (!$permission) {
+            if (! $permission) {
                 return [
                     'allowed' => false,
                     'reason' => 'No permission defined for this role and endpoint',
-                    'permission_level' => 'deny'
+                    'permission_level' => 'deny',
                 ];
             }
 
             // Check if permission is active and not expired
-            if (!$permission->is_active) {
+            if (! $permission->is_active) {
                 return [
                     'allowed' => false,
                     'reason' => 'Permission is inactive',
-                    'permission_level' => 'deny'
+                    'permission_level' => 'deny',
                 ];
             }
 
@@ -150,7 +152,7 @@ class RbacMatrixService
                 return [
                     'allowed' => false,
                     'reason' => 'Permission has expired',
-                    'permission_level' => 'deny'
+                    'permission_level' => 'deny',
                 ];
             }
 
@@ -161,14 +163,14 @@ class RbacMatrixService
                         'allowed' => true,
                         'reason' => 'Explicit allow permission',
                         'permission_level' => 'allow',
-                        'field_permissions' => json_decode($permission->field_permissions, true)
+                        'field_permissions' => json_decode($permission->field_permissions, true),
                     ];
 
                 case 'deny':
                     return [
                         'allowed' => false,
                         'reason' => 'Explicit deny permission',
-                        'permission_level' => 'deny'
+                        'permission_level' => 'deny',
                     ];
 
                 case 'conditional':
@@ -178,7 +180,7 @@ class RbacMatrixService
                     return [
                         'allowed' => false,
                         'reason' => 'Unknown permission level',
-                        'permission_level' => 'deny'
+                        'permission_level' => 'deny',
                     ];
             }
 
@@ -188,47 +190,47 @@ class RbacMatrixService
                 'endpoint' => $endpoint,
                 'method' => $method,
                 'version' => $version,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'allowed' => false,
                 'reason' => 'Access validation error',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Run permission regression testing
-     * 
-     * @param array $options Regression testing options
+     *
+     * @param  array  $options  Regression testing options
      * @return array Regression test result
      */
     public function runRegressionTests(array $options = []): array
     {
         try {
             $baselineTestSuite = $options['baseline_test_suite'] ?? null;
-            $currentTestSuite = $options['current_test_suite'] ?? 'regression_' . uniqid();
+            $currentTestSuite = $options['current_test_suite'] ?? 'regression_'.uniqid();
 
-            if (!$baselineTestSuite) {
+            if (! $baselineTestSuite) {
                 // Get the most recent successful test suite as baseline
                 $baselineTestSuite = $this->getMostRecentSuccessfulTestSuite();
             }
 
-            if (!$baselineTestSuite) {
+            if (! $baselineTestSuite) {
                 return [
                     'success' => false,
-                    'error' => 'No baseline test suite available for regression testing'
+                    'error' => 'No baseline test suite available for regression testing',
                 ];
             }
 
             // Run current tests
             $currentResults = $this->runPermissionMatrixTests([
-                'test_suite_id' => $currentTestSuite
+                'test_suite_id' => $currentTestSuite,
             ]);
 
-            if (!$currentResults['success']) {
+            if (! $currentResults['success']) {
                 return $currentResults;
             }
 
@@ -241,27 +243,27 @@ class RbacMatrixService
                 'current_test_suite' => $currentTestSuite,
                 'regression_analysis' => $regressionAnalysis,
                 'current_results' => $currentResults,
-                'completed_at' => now()
+                'completed_at' => now(),
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to run regression tests', [
                 'options' => $options,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to run regression tests',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Generate RBAC audit and compliance report
-     * 
-     * @param array $options Report options
+     *
+     * @param  array  $options  Report options
      * @return array Audit report
      */
     public function generateAuditReport(array $options = []): array
@@ -291,7 +293,7 @@ class RbacMatrixService
                 'success' => true,
                 'report_period' => [
                     'start_date' => $startDate,
-                    'end_date' => $endDate
+                    'end_date' => $endDate,
                 ],
                 'matrix_coverage' => $matrixCoverage,
                 'test_execution_summary' => $testHistory,
@@ -299,7 +301,7 @@ class RbacMatrixService
                 'role_analysis' => $roleAnalysis,
                 'endpoint_analysis' => $endpointAnalysis,
                 'violations_summary' => $violations,
-                'generated_at' => now()
+                'generated_at' => now(),
             ];
 
             if ($includeDetails) {
@@ -312,21 +314,21 @@ class RbacMatrixService
         } catch (Exception $e) {
             Log::error('Failed to generate RBAC audit report', [
                 'options' => $options,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to generate audit report',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Update permission matrix entry
-     * 
-     * @param array $permissionData Permission configuration
+     *
+     * @param  array  $permissionData  Permission configuration
      * @return array Update result
      */
     public function updatePermissionMatrix(array $permissionData): array
@@ -365,7 +367,7 @@ class RbacMatrixService
                 'effective_from' => $permissionData['effective_from'] ?? now(),
                 'expires_at' => $permissionData['expires_at'] ?? null,
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ]);
 
             DB::commit();
@@ -379,26 +381,26 @@ class RbacMatrixService
                 'endpoint' => $endpoint,
                 'method' => $method,
                 'version' => $version,
-                'permission_level' => $permissionData['permission_level']
+                'permission_level' => $permissionData['permission_level'],
             ]);
 
             return [
                 'success' => true,
                 'permission_id' => $permissionId,
-                'message' => 'Permission matrix updated successfully'
+                'message' => 'Permission matrix updated successfully',
             ];
 
         } catch (Exception $e) {
             DB::rollBack();
             Log::error('Failed to update permission matrix', [
                 'permission_data' => $permissionData,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to update permission matrix',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
@@ -434,13 +436,13 @@ class RbacMatrixService
                 'test_passed' => $testPassed,
                 'test_context' => json_encode([
                     'validation_result' => $validationResult,
-                    'permission_exists' => $permission !== null
+                    'permission_exists' => $permission !== null,
                 ]),
                 'failure_reason' => $testPassed ? null : "Expected {$expectedResult}, got {$actualResult}",
                 'execution_time_ms' => $executionTime,
                 'tested_at' => now(),
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ]);
 
             return [
@@ -452,7 +454,7 @@ class RbacMatrixService
                 'actual_result' => $actualResult,
                 'test_passed' => $testPassed,
                 'execution_time_ms' => $executionTime,
-                'failure_reason' => $testPassed ? null : "Expected {$expectedResult}, got {$actualResult}"
+                'failure_reason' => $testPassed ? null : "Expected {$expectedResult}, got {$actualResult}",
             ];
 
         } catch (Exception $e) {
@@ -468,11 +470,11 @@ class RbacMatrixService
                 'expected_result' => 'unknown',
                 'actual_result' => 'error',
                 'test_passed' => false,
-                'failure_reason' => 'Test execution error: ' . $e->getMessage(),
+                'failure_reason' => 'Test execution error: '.$e->getMessage(),
                 'execution_time_ms' => $executionTime,
                 'tested_at' => now(),
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ]);
 
             return [
@@ -484,10 +486,11 @@ class RbacMatrixService
                 'actual_result' => 'error',
                 'test_passed' => false,
                 'execution_time_ms' => $executionTime,
-                'failure_reason' => 'Test execution error: ' . $e->getMessage()
+                'failure_reason' => 'Test execution error: '.$e->getMessage(),
             ];
         }
     }
+
     /**
      * Get permission from matrix
      */
@@ -517,17 +520,17 @@ class RbacMatrixService
             return [
                 'allowed' => false,
                 'reason' => 'Conditional permission has no conditions defined',
-                'permission_level' => 'conditional'
+                'permission_level' => 'conditional',
             ];
         }
 
         foreach ($conditions as $condition) {
-            if (!$this->evaluateCondition($condition, $context)) {
+            if (! $this->evaluateCondition($condition, $context)) {
                 return [
                     'allowed' => false,
                     'reason' => 'Conditional permission requirement not met',
                     'permission_level' => 'conditional',
-                    'failed_condition' => $condition
+                    'failed_condition' => $condition,
                 ];
             }
         }
@@ -536,7 +539,7 @@ class RbacMatrixService
             'allowed' => true,
             'reason' => 'All conditional permission requirements met',
             'permission_level' => 'conditional',
-            'field_permissions' => json_decode($permission->field_permissions, true)
+            'field_permissions' => json_decode($permission->field_permissions, true),
         ];
     }
 
@@ -549,7 +552,7 @@ class RbacMatrixService
         $operator = $condition['operator'] ?? 'equals';
         $value = $condition['value'] ?? null;
 
-        if (!$field || !isset($context[$field])) {
+        if (! $field || ! isset($context[$field])) {
             return false;
         }
 
@@ -562,7 +565,7 @@ class RbacMatrixService
             'less_than' => $contextValue < $value,
             'contains' => str_contains($contextValue, $value),
             'in' => in_array($contextValue, (array) $value),
-            'not_in' => !in_array($contextValue, (array) $value),
+            'not_in' => ! in_array($contextValue, (array) $value),
             default => false
         };
     }
@@ -597,7 +600,7 @@ class RbacMatrixService
     private function storeTestSuiteSummary(string $testSuiteId, array $summary): void
     {
         // Store in cache for quick access
-        $cacheKey = self::CACHE_PREFIX . "test_suite:{$testSuiteId}";
+        $cacheKey = self::CACHE_PREFIX."test_suite:{$testSuiteId}";
         Cache::put($cacheKey, $summary, self::TEST_CACHE_TTL);
     }
 
@@ -641,31 +644,32 @@ class RbacMatrixService
         $removedTests = [];
 
         foreach ($currentResults as $key => $currentResult) {
-            if (!isset($baselineResults[$key])) {
+            if (! isset($baselineResults[$key])) {
                 $newTests[] = $key;
+
                 continue;
             }
 
             $baselineResult = $baselineResults[$key];
 
-            if ($baselineResult->test_passed && !$currentResult->test_passed) {
+            if ($baselineResult->test_passed && ! $currentResult->test_passed) {
                 $regressions[] = [
                     'test_key' => $key,
                     'baseline_result' => $baselineResult->actual_result,
                     'current_result' => $currentResult->actual_result,
-                    'failure_reason' => $currentResult->failure_reason
+                    'failure_reason' => $currentResult->failure_reason,
                 ];
-            } elseif (!$baselineResult->test_passed && $currentResult->test_passed) {
+            } elseif (! $baselineResult->test_passed && $currentResult->test_passed) {
                 $improvements[] = [
                     'test_key' => $key,
                     'baseline_result' => $baselineResult->actual_result,
-                    'current_result' => $currentResult->actual_result
+                    'current_result' => $currentResult->actual_result,
                 ];
             }
         }
 
         foreach ($baselineResults as $key => $baselineResult) {
-            if (!isset($currentResults[$key])) {
+            if (! isset($currentResults[$key])) {
                 $removedTests[] = $key;
             }
         }
@@ -677,7 +681,7 @@ class RbacMatrixService
             'removed_tests' => $removedTests,
             'regression_count' => count($regressions),
             'improvement_count' => count($improvements),
-            'has_regressions' => !empty($regressions)
+            'has_regressions' => ! empty($regressions),
         ];
     }
 
@@ -711,7 +715,7 @@ class RbacMatrixService
             'total_permissions' => $totalPermissions,
             'roles_with_permissions' => $rolesWithPermissions,
             'endpoints_with_permissions' => $endpointsWithPermissions,
-            'permissions_by_level' => $permissionsByLevel
+            'permissions_by_level' => $permissionsByLevel,
         ];
     }
 
@@ -823,7 +827,7 @@ class RbacMatrixService
             'passed_tests' => $passedTests,
             'failed_tests' => $totalTests - $passedTests,
             'compliance_rate' => round($complianceRate, 2),
-            'compliance_status' => $this->getComplianceStatus($complianceRate)
+            'compliance_status' => $this->getComplianceStatus($complianceRate),
         ];
     }
 
@@ -860,18 +864,18 @@ class RbacMatrixService
         $required = ['role_name', 'endpoint', 'method', 'version', 'permission_level'];
 
         foreach ($required as $field) {
-            if (!isset($permissionData[$field])) {
+            if (! isset($permissionData[$field])) {
                 throw new Exception("Required field {$field} is missing");
             }
         }
 
         $validLevels = ['allow', 'deny', 'conditional'];
-        if (!in_array($permissionData['permission_level'], $validLevels)) {
+        if (! in_array($permissionData['permission_level'], $validLevels)) {
             throw new Exception('Invalid permission level');
         }
 
         $validMethods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
-        if (!in_array($permissionData['method'], $validMethods)) {
+        if (! in_array($permissionData['method'], $validMethods)) {
             throw new Exception('Invalid HTTP method');
         }
     }
@@ -881,7 +885,7 @@ class RbacMatrixService
      */
     private function clearPermissionCache(string $role, string $endpoint, string $method, string $version): void
     {
-        $cacheKey = self::CACHE_PREFIX . "access:{$role}:{$endpoint}:{$method}:{$version}";
+        $cacheKey = self::CACHE_PREFIX."access:{$role}:{$endpoint}:{$method}:{$version}";
         Cache::forget($cacheKey);
     }
 
@@ -890,14 +894,19 @@ class RbacMatrixService
      */
     private function getComplianceStatus(float $complianceRate): string
     {
-        if ($complianceRate >= 95)
+        if ($complianceRate >= 95) {
             return 'excellent';
-        if ($complianceRate >= 90)
+        }
+        if ($complianceRate >= 90) {
             return 'good';
-        if ($complianceRate >= 80)
+        }
+        if ($complianceRate >= 80) {
             return 'acceptable';
-        if ($complianceRate >= 70)
+        }
+        if ($complianceRate >= 70) {
             return 'needs_improvement';
+        }
+
         return 'critical';
     }
 }

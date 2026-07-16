@@ -4,7 +4,6 @@ namespace App\Platform\Import;
 
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Platform Import Service
@@ -17,10 +16,10 @@ class ImportService
     /**
      * Import CSV data into a table.
      *
-     * @param string $table Target table
-     * @param UploadedFile $file The CSV file
-     * @param array $columnMap CSV header => DB column mapping
-     * @param array $options Additional options
+     * @param  string  $table  Target table
+     * @param  UploadedFile  $file  The CSV file
+     * @param  array  $columnMap  CSV header => DB column mapping
+     * @param  array  $options  Additional options
      * @return array{created: int, updated: int, errors: array}
      */
     public function importCSV(string $table, UploadedFile $file, array $columnMap, array $options = []): array
@@ -40,19 +39,20 @@ class ImportService
 
         // Parse CSV
         $handle = fopen($file->getPathname(), 'r');
-        if (!$handle) {
+        if (! $handle) {
             return ['created' => 0, 'updated' => 0, 'errors' => [['row' => 0, 'message' => 'Failed to open file']]];
         }
 
         // Read headers
         $headers = fgetcsv($handle);
-        if (!$headers) {
+        if (! $headers) {
             fclose($handle);
+
             return ['created' => 0, 'updated' => 0, 'errors' => [['row' => 0, 'message' => 'Empty or invalid CSV file']]];
         }
 
         // Normalize headers and map to DB columns
-        $normalizedHeaders = array_map(fn($h) => strtolower(trim(str_replace(' ', '_', $h))), $headers);
+        $normalizedHeaders = array_map(fn ($h) => strtolower(trim(str_replace(' ', '_', $h))), $headers);
         $mappedColumns = [];
         foreach ($normalizedHeaders as $idx => $header) {
             if (isset($columnMap[$header])) {
@@ -95,8 +95,9 @@ class ImportService
 
             // Validate
             $validationErrors = $this->validateRow($record, $rules, $rowNum);
-            if (!empty($validationErrors)) {
+            if (! empty($validationErrors)) {
                 $errors = array_merge($errors, $validationErrors);
+
                 continue;
             }
 
@@ -115,7 +116,7 @@ class ImportService
                     if ($upsert && isset($record[$upsertKey])) {
                         $existing = DB::table($table)
                             ->where($upsertKey, $record[$upsertKey])
-                            ->when($tenantId && $this->hasColumn($table, 'tenant_id'), fn($q) => $q->where('tenant_id', $tenantId))
+                            ->when($tenantId && $this->hasColumn($table, 'tenant_id'), fn ($q) => $q->where('tenant_id', $tenantId))
                             ->first();
 
                         if ($existing) {
@@ -133,7 +134,7 @@ class ImportService
                 DB::commit();
             } catch (\Exception $e) {
                 DB::rollBack();
-                $errors[] = ['row' => 0, 'message' => 'Batch processing error: ' . $e->getMessage()];
+                $errors[] = ['row' => 0, 'message' => 'Batch processing error: '.$e->getMessage()];
             }
         }
 
@@ -161,17 +162,18 @@ class ImportService
         $errors = [];
 
         $handle = fopen($file->getPathname(), 'r');
-        if (!$handle) {
+        if (! $handle) {
             return ['created' => 0, 'errors' => [['row' => 0, 'message' => 'Failed to open file']]];
         }
 
         $headers = fgetcsv($handle);
-        if (!$headers) {
+        if (! $headers) {
             fclose($handle);
+
             return ['created' => 0, 'errors' => [['row' => 0, 'message' => 'Empty CSV']]];
         }
 
-        $normalizedHeaders = array_map(fn($h) => strtolower(trim(str_replace(' ', '_', $h))), $headers);
+        $normalizedHeaders = array_map(fn ($h) => strtolower(trim(str_replace(' ', '_', $h))), $headers);
 
         // Group rows by groupKey
         $groups = [];
@@ -181,14 +183,16 @@ class ImportService
 
         while (($row = fgetcsv($handle)) !== false) {
             $rowNum++;
-            if (empty(array_filter($row))) continue;
+            if (empty(array_filter($row))) {
+                continue;
+            }
 
             $rowData = [];
             foreach ($normalizedHeaders as $idx => $header) {
                 $rowData[$header] = $row[$idx] ?? null;
             }
 
-            $groupId = $groupKey ? ($rowData[$groupKey] ?? null) : 'single_' . $rowNum;
+            $groupId = $groupKey ? ($rowData[$groupKey] ?? null) : 'single_'.$rowNum;
 
             if ($groupId && $groupId !== $currentGroup) {
                 if ($currentGroup !== null) {
@@ -219,7 +223,11 @@ class ImportService
 
                 if ($transformHeader && is_callable($transformHeader)) {
                     $headerData = $transformHeader($headerData, $rows);
-                    if ($headerData === null) { DB::rollBack(); continue; }
+                    if ($headerData === null) {
+                        DB::rollBack();
+
+                        continue;
+                    }
                 }
 
                 if ($tenantId && $this->hasColumn($table, 'tenant_id')) {
@@ -236,7 +244,7 @@ class ImportService
 
                 // Build line records
                 foreach ($rows as $idx => $row) {
-                    $lineData = [$lineColumnMap['header_id'] ?? str_replace('_s', '', $table) . '_id' => $headerId];
+                    $lineData = [$lineColumnMap['header_id'] ?? str_replace('_s', '', $table).'_id' => $headerId];
                     foreach ($lineColumnMap['map'] ?? [] as $csvCol => $dbCol) {
                         if (isset($row[$csvCol]) && $row[$csvCol] !== '') {
                             $lineData[$dbCol] = $this->cleanValue($row[$csvCol]);
@@ -245,7 +253,9 @@ class ImportService
 
                     if ($transformLine && is_callable($transformLine)) {
                         $lineData = $transformLine($lineData, $row, $idx);
-                        if ($lineData === null) { continue; }
+                        if ($lineData === null) {
+                            continue;
+                        }
                     }
 
                     if ($tenantId && $this->hasColumn($lineTable, 'tenant_id')) {
@@ -301,12 +311,12 @@ class ImportService
     {
         return match ($rule) {
             'required' => empty($value) && $value !== '0' ? "{$field} is required" : null,
-            'numeric' => $value !== null && !is_numeric($value) ? "{$field} must be numeric" : null,
-            'email' => $value !== null && !filter_var($value, FILTER_VALIDATE_EMAIL) ? "{$field} must be a valid email" : null,
-            'date' => $value !== null && !strtotime($value) ? "{$field} must be a valid date" : null,
+            'numeric' => $value !== null && ! is_numeric($value) ? "{$field} must be numeric" : null,
+            'email' => $value !== null && ! filter_var($value, FILTER_VALIDATE_EMAIL) ? "{$field} must be a valid email" : null,
+            'date' => $value !== null && ! strtotime($value) ? "{$field} must be a valid date" : null,
             'max' => $value !== null && strlen($value) > $param ? "{$field} must not exceed {$param} characters" : null,
             'min' => $value !== null && strlen($value) < $param ? "{$field} must be at least {$param} characters" : null,
-            'in' => $value !== null && !in_array($value, is_array($param) ? $param : explode(',', $param)) ? "{$field} must be one of: {$param}" : null,
+            'in' => $value !== null && ! in_array($value, is_array($param) ? $param : explode(',', $param)) ? "{$field} must be one of: {$param}" : null,
             default => null,
         };
     }
@@ -320,6 +330,7 @@ class ImportService
             return null;
         }
         $value = trim($value);
+
         return $value === '' ? null : $value;
     }
 

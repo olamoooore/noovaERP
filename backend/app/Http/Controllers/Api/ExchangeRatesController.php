@@ -57,6 +57,7 @@ class ExchangeRatesController extends Controller
     public function show($id)
     {
         $rate = ExchangeRate::with(['fromCurrency', 'toCurrency'])->findOrFail($id);
+
         return response()->json($rate);
     }
 
@@ -87,7 +88,7 @@ class ExchangeRatesController extends Controller
 
         return response()->json([
             'message' => 'Exchange rate created successfully',
-            'rate' => $rate->load(['fromCurrency', 'toCurrency'])
+            'rate' => $rate->load(['fromCurrency', 'toCurrency']),
         ], 201);
     }
 
@@ -112,7 +113,7 @@ class ExchangeRatesController extends Controller
 
         return response()->json([
             'message' => 'Exchange rate updated successfully',
-            'rate' => $rate->fresh(['fromCurrency', 'toCurrency'])
+            'rate' => $rate->fresh(['fromCurrency', 'toCurrency']),
         ]);
     }
 
@@ -125,7 +126,7 @@ class ExchangeRatesController extends Controller
         $rate->delete();
 
         return response()->json([
-            'message' => 'Exchange rate deleted successfully'
+            'message' => 'Exchange rate deleted successfully',
         ]);
     }
 
@@ -150,9 +151,9 @@ class ExchangeRatesController extends Controller
             $request->as_of_date
         );
 
-        if (!$rate) {
+        if (! $rate) {
             return response()->json([
-                'message' => 'No exchange rate found for this currency pair'
+                'message' => 'No exchange rate found for this currency pair',
             ], 404);
         }
 
@@ -187,7 +188,7 @@ class ExchangeRatesController extends Controller
 
         } catch (\Exception $e) {
             return response()->json([
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 422);
         }
     }
@@ -246,12 +247,12 @@ class ExchangeRatesController extends Controller
 
             return response()->json([
                 'message' => 'Exchange rates synced successfully',
-                'results' => $results
+                'results' => $results,
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
-                'error' => 'Failed to sync rates: ' . $e->getMessage()
+                'error' => 'Failed to sync rates: '.$e->getMessage(),
             ], 500);
         }
     }

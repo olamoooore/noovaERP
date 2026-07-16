@@ -26,9 +26,9 @@ class AdminTenantOperationController extends Controller
         return response()->json([
             'data' => $operations->items(),
             'meta' => [
-                'total'     => $operations->total(),
-                'page'      => $operations->currentPage(),
-                'per_page'  => $operations->perPage(),
+                'total' => $operations->total(),
+                'page' => $operations->currentPage(),
+                'per_page' => $operations->perPage(),
                 'last_page' => $operations->lastPage(),
             ],
         ]);
@@ -38,8 +38,8 @@ class AdminTenantOperationController extends Controller
     {
         $validated = $request->validate([
             'operation' => ['required', 'string', 'in:suspend,reinstate,ping_health,migrate_plan'],
-            'reason'    => ['nullable', 'string', 'max:500'],
-            'payload'   => ['nullable', 'array'],
+            'reason' => ['nullable', 'string', 'max:500'],
+            'payload' => ['nullable', 'array'],
         ]);
 
         $operation = $this->operationService->runOperation(

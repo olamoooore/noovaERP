@@ -4,9 +4,9 @@ namespace App\Models\Accounting;
 
 use App\Models\Invoice;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Compliance Document - Tracks invoices/bills pending submission
@@ -82,7 +82,7 @@ class ComplianceDocument extends Model
      */
     public function getStatusLabel(): string
     {
-        return match($this->compliance_status) {
+        return match ($this->compliance_status) {
             'pending' => 'Pending Submission',
             'submitted' => 'Submitted',
             'accepted' => 'Accepted',

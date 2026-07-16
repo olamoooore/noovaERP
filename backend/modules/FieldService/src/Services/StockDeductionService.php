@@ -33,12 +33,12 @@ class StockDeductionService
     private function deductSinglePart(WorkOrder $wo, WorkOrderPart $part): void
     {
         // Only deduct if a warehouse is specified and product exists
-        if (!$part->warehouse_id || !$part->product_id) {
+        if (! $part->warehouse_id || ! $part->product_id) {
             return;
         }
 
         $product = Product::find($part->product_id);
-        if (!$product) {
+        if (! $product) {
             return;
         }
 
@@ -64,6 +64,7 @@ class StockDeductionService
     public function checkAvailability(int $productId, int $warehouseId): ?float
     {
         $availability = $this->inventoryService->checkAvailability($productId, 1, $warehouseId);
+
         return (float) ($availability['total_available'] ?? 0);
     }
 }

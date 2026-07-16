@@ -2,15 +2,16 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 use Exception;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class DataHealthCheckService
 {
     private const CACHE_PREFIX = 'data_health_check:';
+
     private const CACHE_TTL = 300; // 5 minutes
 
     /**
@@ -40,7 +41,7 @@ class DataHealthCheckService
         } catch (Exception $e) {
             Log::error('Data health check failed', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             throw $e;
@@ -93,15 +94,15 @@ class DataHealthCheckService
                 'status' => $status,
                 'expected_result' => [
                     'booking_count' => $sourceCount,
-                    'revenue_total' => $sourceRevenue
+                    'revenue_total' => $sourceRevenue,
                 ],
                 'actual_result' => [
                     'analytics_count' => $analyticsCount,
                     'analytics_revenue' => $analyticsRevenue,
                     'count_discrepancy_percentage' => $discrepancyPercentage,
-                    'revenue_discrepancy_percentage' => $revenueDiscrepancyPercentage
+                    'revenue_discrepancy_percentage' => $revenueDiscrepancyPercentage,
                 ],
-                'checked_at' => Carbon::now()
+                'checked_at' => Carbon::now(),
             ];
 
             return $result;
@@ -112,7 +113,7 @@ class DataHealthCheckService
                 'check_type' => 'reconciliation',
                 'status' => 'failed',
                 'error' => $e->getMessage(),
-                'checked_at' => Carbon::now()
+                'checked_at' => Carbon::now(),
             ];
         }
     }
@@ -152,9 +153,9 @@ class DataHealthCheckService
                 'expected_result' => ['inconsistent_events' => 0],
                 'actual_result' => [
                     'inconsistent_events' => count($inconsistentEvents),
-                    'details' => $inconsistentEvents
+                    'details' => $inconsistentEvents,
                 ],
-                'checked_at' => Carbon::now()
+                'checked_at' => Carbon::now(),
             ];
 
         } catch (Exception $e) {
@@ -163,7 +164,7 @@ class DataHealthCheckService
                 'check_type' => 'consistency',
                 'status' => 'failed',
                 'error' => $e->getMessage(),
-                'checked_at' => Carbon::now()
+                'checked_at' => Carbon::now(),
             ];
         }
     }
@@ -183,7 +184,7 @@ class DataHealthCheckService
                 ->count();
 
             // Check for missing access logs for recent access
-            $recentAccessWithoutLogs = DB::select("
+            $recentAccessWithoutLogs = DB::select('
                 SELECT COUNT(*) as missing_logs
                 FROM pii_vault pv
                 WHERE pv.created_at >= ?
@@ -191,7 +192,7 @@ class DataHealthCheckService
                     SELECT 1 FROM pii_access_log pal 
                     WHERE pal.vault_id = pv.id
                 )
-            ", [Carbon::now()->subHours(24)]);
+            ', [Carbon::now()->subHours(24)]);
 
             $missingLogs = $recentAccessWithoutLogs[0]->missing_logs ?? 0;
 
@@ -211,14 +212,14 @@ class DataHealthCheckService
                 'expected_result' => [
                     'unencrypted_pii' => 0,
                     'missing_access_logs' => 0,
-                    'expired_unanonymized' => 0
+                    'expired_unanonymized' => 0,
                 ],
                 'actual_result' => [
                     'unencrypted_pii' => $unencryptedPII,
                     'missing_access_logs' => $missingLogs,
-                    'expired_unanonymized' => $expiredUnanonymized
+                    'expired_unanonymized' => $expiredUnanonymized,
                 ],
-                'checked_at' => Carbon::now()
+                'checked_at' => Carbon::now(),
             ];
 
         } catch (Exception $e) {
@@ -227,7 +228,7 @@ class DataHealthCheckService
                 'check_type' => 'consistency',
                 'status' => 'failed',
                 'error' => $e->getMessage(),
-                'checked_at' => Carbon::now()
+                'checked_at' => Carbon::now(),
             ];
         }
     }
@@ -270,14 +271,14 @@ class DataHealthCheckService
                 'expected_result' => [
                     'stuck_events' => 0,
                     'failed_events' => 0,
-                    'processing_lag_minutes' => 0
+                    'processing_lag_minutes' => 0,
                 ],
                 'actual_result' => [
                     'stuck_events' => $stuckEvents,
                     'failed_events' => $failedEvents,
-                    'processing_lag_minutes' => $processingLagMinutes
+                    'processing_lag_minutes' => $processingLagMinutes,
                 ],
-                'checked_at' => Carbon::now()
+                'checked_at' => Carbon::now(),
             ];
 
         } catch (Exception $e) {
@@ -286,7 +287,7 @@ class DataHealthCheckService
                 'check_type' => 'completeness',
                 'status' => 'failed',
                 'error' => $e->getMessage(),
-                'checked_at' => Carbon::now()
+                'checked_at' => Carbon::now(),
             ];
         }
     }
@@ -300,7 +301,7 @@ class DataHealthCheckService
 
         try {
             // Check for balance inconsistencies
-            $inconsistentBalances = DB::select("
+            $inconsistentBalances = DB::select('
                 SELECT 
                     ct.customer_id,
                     ct.current_points,
@@ -310,7 +311,7 @@ class DataHealthCheckService
                 GROUP BY ct.customer_id, ct.current_points
                 HAVING ct.current_points != ledger_balance
                 LIMIT 100
-            ");
+            ');
 
             // Check for duplicate transactions
             $duplicateTransactions = DB::table('loyalty_ledger')
@@ -328,14 +329,14 @@ class DataHealthCheckService
                 'status' => $status,
                 'expected_result' => [
                     'inconsistent_balances' => 0,
-                    'duplicate_transactions' => 0
+                    'duplicate_transactions' => 0,
                 ],
                 'actual_result' => [
                     'inconsistent_balances' => count($inconsistentBalances),
                     'duplicate_transactions' => $duplicateTransactions,
-                    'balance_details' => array_slice($inconsistentBalances, 0, 10)
+                    'balance_details' => array_slice($inconsistentBalances, 0, 10),
                 ],
-                'checked_at' => Carbon::now()
+                'checked_at' => Carbon::now(),
             ];
 
         } catch (Exception $e) {
@@ -344,7 +345,7 @@ class DataHealthCheckService
                 'check_type' => 'accuracy',
                 'status' => 'failed',
                 'error' => $e->getMessage(),
-                'checked_at' => Carbon::now()
+                'checked_at' => Carbon::now(),
             ];
         }
     }
@@ -380,13 +381,13 @@ class DataHealthCheckService
                 'status' => $status,
                 'expected_result' => [
                     'orphaned_relations' => 0,
-                    'missing_canonical' => 0
+                    'missing_canonical' => 0,
                 ],
                 'actual_result' => [
                     'orphaned_relations' => $orphanedRelations,
-                    'missing_canonical' => $missingCanonical
+                    'missing_canonical' => $missingCanonical,
                 ],
-                'checked_at' => Carbon::now()
+                'checked_at' => Carbon::now(),
             ];
 
         } catch (Exception $e) {
@@ -395,7 +396,7 @@ class DataHealthCheckService
                 'check_type' => 'consistency',
                 'status' => 'failed',
                 'error' => $e->getMessage(),
-                'checked_at' => Carbon::now()
+                'checked_at' => Carbon::now(),
             ];
         }
     }
@@ -414,7 +415,7 @@ class DataHealthCheckService
                 'expected_result' => json_encode($result['expected_result'] ?? null),
                 'actual_result' => json_encode($result['actual_result'] ?? null),
                 'status' => $result['status'],
-                'checked_at' => $result['checked_at']
+                'checked_at' => $result['checked_at'],
             ]);
         }
     }
@@ -431,7 +432,7 @@ class DataHealthCheckService
                     'check_type' => $result['check_type'],
                     'expected' => $result['expected_result'] ?? null,
                     'actual' => $result['actual_result'] ?? null,
-                    'error' => $result['error'] ?? null
+                    'error' => $result['error'] ?? null,
                 ]);
 
                 // TODO: Integrate with alerting system (Slack, email, etc.)
@@ -440,7 +441,7 @@ class DataHealthCheckService
                     'check_name' => $result['check_name'],
                     'check_type' => $result['check_type'],
                     'expected' => $result['expected_result'] ?? null,
-                    'actual' => $result['actual_result'] ?? null
+                    'actual' => $result['actual_result'] ?? null,
                 ]);
             }
         }
@@ -457,7 +458,7 @@ class DataHealthCheckService
             'pii_vault_integrity' => 'pii_vault',
             'outbox_processing_health' => 'outbox_events',
             'loyalty_points_integrity' => 'customer_tiers,loyalty_ledger',
-            'artist_relationship_consistency' => 'artists,artist_events'
+            'artist_relationship_consistency' => 'artists,artist_events',
         ];
 
         return $mapping[$checkName] ?? 'unknown';
@@ -474,7 +475,7 @@ class DataHealthCheckService
             'pii_vault_integrity' => 'Check PII encryption, access logging, and retention compliance',
             'outbox_processing_health' => 'Monitor outbox event processing status and lag',
             'loyalty_points_integrity' => 'Validate loyalty points balance consistency with ledger',
-            'artist_relationship_consistency' => 'Check artist-event relationship integrity and canonical references'
+            'artist_relationship_consistency' => 'Check artist-event relationship integrity and canonical references',
         ];
 
         return $mapping[$checkName] ?? 'Unknown check query';
@@ -485,7 +486,7 @@ class DataHealthCheckService
      */
     public function getKPIDefinitions(): array
     {
-        return Cache::remember(self::CACHE_PREFIX . 'kpi_definitions', self::CACHE_TTL, function () {
+        return Cache::remember(self::CACHE_PREFIX.'kpi_definitions', self::CACHE_TTL, function () {
             return DB::table('kpi_definitions')
                 ->where('is_active', true)
                 ->orderBy('kpi_name')
@@ -508,11 +509,11 @@ class DataHealthCheckService
             'version' => $kpiData['version'] ?? 1,
             'is_active' => $kpiData['is_active'] ?? true,
             'created_at' => Carbon::now(),
-            'updated_at' => Carbon::now()
+            'updated_at' => Carbon::now(),
         ]);
 
         // Clear cache
-        Cache::forget(self::CACHE_PREFIX . 'kpi_definitions');
+        Cache::forget(self::CACHE_PREFIX.'kpi_definitions');
 
         return $kpiId;
     }
@@ -541,7 +542,7 @@ class DataHealthCheckService
             'passed' => 0,
             'warnings' => 0,
             'failed' => 0,
-            'last_run' => null
+            'last_run' => null,
         ];
 
         foreach ($recent as $check) {
@@ -557,7 +558,7 @@ class DataHealthCheckService
                     break;
             }
 
-            if (!$summary['last_run'] || $check->checked_at > $summary['last_run']) {
+            if (! $summary['last_run'] || $check->checked_at > $summary['last_run']) {
                 $summary['last_run'] = $check->checked_at;
             }
         }

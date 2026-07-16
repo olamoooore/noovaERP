@@ -2,24 +2,23 @@
 
 namespace Modules\EventManagement\Tests\Unit;
 
-use Tests\TestCase;
-use Modules\EventManagement\Services\OperationalCheckInService;
-use Modules\EventManagement\Services\TicketService;
-use Modules\EventManagement\Services\EventOperationsService;
-use Modules\EventManagement\Services\AuditService;
-use Modules\EventManagement\Services\TenantSchemaManager;
-use Modules\EventManagement\Models\Event;
-use Modules\EventManagement\Models\Booking;
-use Modules\EventManagement\Models\Ticket;
-use Modules\EventManagement\Models\BookingAttendee;
-use Modules\EventManagement\Exceptions\EventManagementException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Modules\EventManagement\Exceptions\EventManagementException;
+use Modules\EventManagement\Models\Booking;
+use Modules\EventManagement\Models\BookingAttendee;
+use Modules\EventManagement\Models\Event;
+use Modules\EventManagement\Models\Ticket;
+use Modules\EventManagement\Services\AuditService;
+use Modules\EventManagement\Services\EventOperationsService;
+use Modules\EventManagement\Services\OperationalCheckInService;
+use Modules\EventManagement\Services\TenantSchemaManager;
+use Modules\EventManagement\Services\TicketService;
+use Tests\TestCase;
 
 /**
  * OperationalCheckInService Unit Tests
- * 
+ *
  * Tests the operational check-in functionality including single check-in,
  * bulk check-in, queue management, and capacity monitoring.
  */
@@ -28,24 +27,29 @@ class OperationalCheckInServiceTest extends TestCase
     use RefreshDatabase;
 
     private OperationalCheckInService $service;
+
     private TicketService $ticketService;
+
     private EventOperationsService $operationsService;
+
     private AuditService $auditService;
+
     private TenantSchemaManager $tenantManager;
+
     private string $testTenantId = 'test-tenant-001';
 
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->ticketService = $this->createMock(TicketService::class);
         $this->operationsService = $this->createMock(EventOperationsService::class);
         $this->auditService = $this->createMock(AuditService::class);
         $this->tenantManager = $this->createMock(TenantSchemaManager::class);
-        
+
         $this->tenantManager->method('getCurrentTenantId')
-                           ->willReturn($this->testTenantId);
-        
+            ->willReturn($this->testTenantId);
+
         $this->service = new OperationalCheckInService(
             $this->ticketService,
             $this->operationsService,
@@ -59,25 +63,25 @@ class OperationalCheckInServiceTest extends TestCase
         // Create test data
         $event = Event::factory()->create([
             'tenant_id' => $this->testTenantId,
-            'title' => 'Test Concert'
+            'title' => 'Test Concert',
         ]);
 
         $booking = Booking::factory()->create([
             'tenant_id' => $this->testTenantId,
             'event_id' => $event->id,
-            'status' => 'confirmed'
+            'status' => 'confirmed',
         ]);
 
         $attendee = BookingAttendee::factory()->create([
             'booking_id' => $booking->id,
-            'attendee_name' => 'John Doe'
+            'attendee_name' => 'John Doe',
         ]);
 
         $ticket = Ticket::factory()->create([
             'ticket_code' => 'TK12345678',
             'booking_id' => $booking->id,
             'attendee_id' => $attendee->id,
-            'status' => 'active'
+            'status' => 'active',
         ]);
 
         // Create counter
@@ -90,7 +94,7 @@ class OperationalCheckInServiceTest extends TestCase
             'status' => 'active',
             'current_queue_length' => 5,
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Create zone
@@ -105,39 +109,39 @@ class OperationalCheckInServiceTest extends TestCase
             'occupancy_percentage' => 50.0,
             'status' => 'open',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Mock ticket service validation
         $this->ticketService->expects($this->once())
-                           ->method('validateTicket')
-                           ->with('TK12345678')
-                           ->willReturn([
-                               'valid' => true,
-                               'ticket' => $ticket,
-                               'event' => $event,
-                               'attendee' => $attendee,
-                               'message' => 'Valid ticket'
-                           ]);
+            ->method('validateTicket')
+            ->with('TK12345678')
+            ->willReturn([
+                'valid' => true,
+                'ticket' => $ticket,
+                'event' => $event,
+                'attendee' => $attendee,
+                'message' => 'Valid ticket',
+            ]);
 
         // Mock operations service calls
         $this->operationsService->expects($this->once())
-                               ->method('updateCounterQueue')
-                               ->with($counterId, -1);
+            ->method('updateCounterQueue')
+            ->with($counterId, -1);
 
         $this->operationsService->expects($this->once())
-                               ->method('updateZoneOccupancy')
-                               ->with($zoneId, 1);
+            ->method('updateZoneOccupancy')
+            ->with($zoneId, 1);
 
         // Mock audit service
         $this->auditService->expects($this->once())
-                          ->method('logActivity')
-                          ->with('operational_ticket_checkin', $this->anything(), $this->anything());
+            ->method('logActivity')
+            ->with('operational_ticket_checkin', $this->anything(), $this->anything());
 
         // Perform check-in
         $result = $this->service->checkInTicket('TK12345678', $counterId, [
             'zone_code' => 'MAIN',
-            'staff_id' => 'staff-001'
+            'staff_id' => 'staff-001',
         ]);
 
         // Assertions
@@ -168,17 +172,17 @@ class OperationalCheckInServiceTest extends TestCase
             'counter_name' => 'Main Entrance A1',
             'status' => 'active',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Mock ticket service validation
         $this->ticketService->expects($this->once())
-                           ->method('validateTicket')
-                           ->with('INVALID123')
-                           ->willReturn([
-                               'valid' => false,
-                               'message' => 'Ticket not found'
-                           ]);
+            ->method('validateTicket')
+            ->with('INVALID123')
+            ->willReturn([
+                'valid' => false,
+                'message' => 'Ticket not found',
+            ]);
 
         $this->expectException(EventManagementException::class);
         $this->expectExceptionMessage('Invalid ticket: Ticket not found');
@@ -191,23 +195,23 @@ class OperationalCheckInServiceTest extends TestCase
         // Create test data
         $event = Event::factory()->create([
             'tenant_id' => $this->testTenantId,
-            'title' => 'Test Event'
+            'title' => 'Test Event',
         ]);
 
         $booking = Booking::factory()->create([
             'tenant_id' => $this->testTenantId,
-            'event_id' => $event->id
+            'event_id' => $event->id,
         ]);
 
         $attendee = BookingAttendee::factory()->create([
-            'booking_id' => $booking->id
+            'booking_id' => $booking->id,
         ]);
 
         $ticket = Ticket::factory()->create([
             'ticket_code' => 'TK87654321',
             'booking_id' => $booking->id,
             'attendee_id' => $attendee->id,
-            'status' => 'checked_in'
+            'status' => 'checked_in',
         ]);
 
         $counterId = DB::table('check_in_counters')->insertGetId([
@@ -217,18 +221,18 @@ class OperationalCheckInServiceTest extends TestCase
             'counter_name' => 'Main Entrance A1',
             'status' => 'active',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Mock ticket service validation
         $this->ticketService->expects($this->once())
-                           ->method('validateTicket')
-                           ->willReturn([
-                               'valid' => true,
-                               'ticket' => $ticket,
-                               'event' => $event,
-                               'attendee' => $attendee
-                           ]);
+            ->method('validateTicket')
+            ->willReturn([
+                'valid' => true,
+                'ticket' => $ticket,
+                'event' => $event,
+                'attendee' => $attendee,
+            ]);
 
         $this->expectException(EventManagementException::class);
         $this->expectExceptionMessage('Ticket TK87654321 is already checked in');
@@ -241,12 +245,12 @@ class OperationalCheckInServiceTest extends TestCase
         // Create test data
         $event = Event::factory()->create([
             'tenant_id' => $this->testTenantId,
-            'title' => 'Test Event'
+            'title' => 'Test Event',
         ]);
 
         $booking = Booking::factory()->create([
             'tenant_id' => $this->testTenantId,
-            'event_id' => $event->id
+            'event_id' => $event->id,
         ]);
 
         $attendee1 = BookingAttendee::factory()->create(['booking_id' => $booking->id]);
@@ -256,14 +260,14 @@ class OperationalCheckInServiceTest extends TestCase
             'ticket_code' => 'TK11111111',
             'booking_id' => $booking->id,
             'attendee_id' => $attendee1->id,
-            'status' => 'active'
+            'status' => 'active',
         ]);
 
         $ticket2 = Ticket::factory()->create([
             'ticket_code' => 'TK22222222',
             'booking_id' => $booking->id,
             'attendee_id' => $attendee2->id,
-            'status' => 'active'
+            'status' => 'active',
         ]);
 
         $counterId = DB::table('check_in_counters')->insertGetId([
@@ -273,42 +277,42 @@ class OperationalCheckInServiceTest extends TestCase
             'counter_name' => 'Main Entrance A1',
             'status' => 'active',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Mock ticket service validations
         $this->ticketService->expects($this->exactly(2))
-                           ->method('validateTicket')
-                           ->willReturnCallback(function ($ticketCode) use ($ticket1, $ticket2, $event, $attendee1, $attendee2) {
-                               if ($ticketCode === 'TK11111111') {
-                                   return [
-                                       'valid' => true,
-                                       'ticket' => $ticket1,
-                                       'event' => $event,
-                                       'attendee' => $attendee1
-                                   ];
-                               } elseif ($ticketCode === 'TK22222222') {
-                                   return [
-                                       'valid' => true,
-                                       'ticket' => $ticket2,
-                                       'event' => $event,
-                                       'attendee' => $attendee2
-                                   ];
-                               }
-                           });
+            ->method('validateTicket')
+            ->willReturnCallback(function ($ticketCode) use ($ticket1, $ticket2, $event, $attendee1, $attendee2) {
+                if ($ticketCode === 'TK11111111') {
+                    return [
+                        'valid' => true,
+                        'ticket' => $ticket1,
+                        'event' => $event,
+                        'attendee' => $attendee1,
+                    ];
+                } elseif ($ticketCode === 'TK22222222') {
+                    return [
+                        'valid' => true,
+                        'ticket' => $ticket2,
+                        'event' => $event,
+                        'attendee' => $attendee2,
+                    ];
+                }
+            });
 
         // Mock operations service calls
         $this->operationsService->expects($this->exactly(2))
-                               ->method('updateCounterQueue')
-                               ->with($counterId, -1);
+            ->method('updateCounterQueue')
+            ->with($counterId, -1);
 
         // Mock audit service calls
         $this->auditService->expects($this->exactly(3)) // 2 individual + 1 bulk
-                          ->method('logActivity');
+            ->method('logActivity');
 
         // Perform bulk check-in
         $result = $this->service->bulkCheckIn(['TK11111111', 'TK22222222'], $counterId, [
-            'staff_id' => 'staff-001'
+            'staff_id' => 'staff-001',
         ]);
 
         // Assertions
@@ -326,13 +330,13 @@ class OperationalCheckInServiceTest extends TestCase
         // Create test data
         $event = Event::factory()->create([
             'tenant_id' => $this->testTenantId,
-            'title' => 'Test Event'
+            'title' => 'Test Event',
         ]);
 
         $booking = Booking::factory()->create([
             'tenant_id' => $this->testTenantId,
             'event_id' => $event->id,
-            'booking_reference' => 'BK123456'
+            'booking_reference' => 'BK123456',
         ]);
 
         $attendee1 = BookingAttendee::factory()->create(['booking_id' => $booking->id]);
@@ -342,14 +346,14 @@ class OperationalCheckInServiceTest extends TestCase
             'ticket_code' => 'TK11111111',
             'booking_id' => $booking->id,
             'attendee_id' => $attendee1->id,
-            'status' => 'active'
+            'status' => 'active',
         ]);
 
         $ticket2 = Ticket::factory()->create([
             'ticket_code' => 'TK22222222',
             'booking_id' => $booking->id,
             'attendee_id' => $attendee2->id,
-            'status' => 'active'
+            'status' => 'active',
         ]);
 
         $counterId = DB::table('check_in_counters')->insertGetId([
@@ -362,41 +366,41 @@ class OperationalCheckInServiceTest extends TestCase
             'max_group_size' => 10,
             'status' => 'active',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Mock ticket service validations
         $this->ticketService->expects($this->exactly(2))
-                           ->method('validateTicket')
-                           ->willReturnCallback(function ($ticketCode) use ($ticket1, $ticket2, $event, $attendee1, $attendee2) {
-                               if ($ticketCode === 'TK11111111') {
-                                   return [
-                                       'valid' => true,
-                                       'ticket' => $ticket1,
-                                       'event' => $event,
-                                       'attendee' => $attendee1
-                                   ];
-                               } elseif ($ticketCode === 'TK22222222') {
-                                   return [
-                                       'valid' => true,
-                                       'ticket' => $ticket2,
-                                       'event' => $event,
-                                       'attendee' => $attendee2
-                                   ];
-                               }
-                           });
+            ->method('validateTicket')
+            ->willReturnCallback(function ($ticketCode) use ($ticket1, $ticket2, $event, $attendee1, $attendee2) {
+                if ($ticketCode === 'TK11111111') {
+                    return [
+                        'valid' => true,
+                        'ticket' => $ticket1,
+                        'event' => $event,
+                        'attendee' => $attendee1,
+                    ];
+                } elseif ($ticketCode === 'TK22222222') {
+                    return [
+                        'valid' => true,
+                        'ticket' => $ticket2,
+                        'event' => $event,
+                        'attendee' => $attendee2,
+                    ];
+                }
+            });
 
         // Mock operations service calls
         $this->operationsService->expects($this->exactly(2))
-                               ->method('updateCounterQueue');
+            ->method('updateCounterQueue');
 
         // Mock audit service calls
         $this->auditService->expects($this->exactly(3)) // 2 individual + 1 bulk
-                          ->method('logActivity');
+            ->method('logActivity');
 
         // Perform group check-in
         $result = $this->service->checkInByBookingReference('BK123456', $counterId, [
-            'staff_id' => 'staff-001'
+            'staff_id' => 'staff-001',
         ]);
 
         // Assertions
@@ -414,25 +418,25 @@ class OperationalCheckInServiceTest extends TestCase
         $booking1 = Booking::factory()->create([
             'tenant_id' => $this->testTenantId,
             'event_id' => $eventId,
-            'status' => 'confirmed'
+            'status' => 'confirmed',
         ]);
 
         $booking2 = Booking::factory()->create([
             'tenant_id' => $this->testTenantId,
             'event_id' => $eventId,
-            'status' => 'confirmed'
+            'status' => 'confirmed',
         ]);
 
         // Create tickets - some checked in, some not
         Ticket::factory()->count(3)->create([
             'booking_id' => $booking1->id,
-            'status' => 'active'
+            'status' => 'active',
         ]);
 
         Ticket::factory()->count(2)->create([
             'booking_id' => $booking2->id,
             'status' => 'checked_in',
-            'checked_in_at' => now()->subMinutes(30)
+            'checked_in_at' => now()->subMinutes(30),
         ]);
 
         // Get statistics
@@ -465,7 +469,7 @@ class OperationalCheckInServiceTest extends TestCase
                 'current_queue_length' => 5,
                 'average_processing_time' => 2.0,
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ],
             [
                 'tenant_id' => $this->testTenantId,
@@ -476,7 +480,7 @@ class OperationalCheckInServiceTest extends TestCase
                 'current_queue_length' => 20,
                 'average_processing_time' => 2.5,
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ],
             [
                 'tenant_id' => $this->testTenantId,
@@ -487,8 +491,8 @@ class OperationalCheckInServiceTest extends TestCase
                 'current_queue_length' => 0,
                 'average_processing_time' => 0,
                 'created_at' => now(),
-                'updated_at' => now()
-            ]
+                'updated_at' => now(),
+            ],
         ]);
 
         // Get queue management data
@@ -527,7 +531,7 @@ class OperationalCheckInServiceTest extends TestCase
                 'occupancy_percentage' => 100.0,
                 'status' => 'full',
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ],
             [
                 'tenant_id' => $this->testTenantId,
@@ -540,7 +544,7 @@ class OperationalCheckInServiceTest extends TestCase
                 'occupancy_percentage' => 95.0,
                 'status' => 'open',
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ],
             [
                 'tenant_id' => $this->testTenantId,
@@ -553,8 +557,8 @@ class OperationalCheckInServiceTest extends TestCase
                 'occupancy_percentage' => 50.0,
                 'status' => 'open',
                 'created_at' => now(),
-                'updated_at' => now()
-            ]
+                'updated_at' => now(),
+            ],
         ]);
 
         // Monitor zone capacity
@@ -591,18 +595,18 @@ class OperationalCheckInServiceTest extends TestCase
         // Create test data
         $event = Event::factory()->create([
             'tenant_id' => $this->testTenantId,
-            'title' => 'Test Event'
+            'title' => 'Test Event',
         ]);
 
         $booking = Booking::factory()->create([
             'tenant_id' => $this->testTenantId,
-            'event_id' => $event->id
+            'event_id' => $event->id,
         ]);
 
         $ticket = Ticket::factory()->create([
             'ticket_code' => 'TK99999999',
             'booking_id' => $booking->id,
-            'status' => 'revoked' // Normally can't check in revoked tickets
+            'status' => 'revoked', // Normally can't check in revoked tickets
         ]);
 
         $counterId = DB::table('check_in_counters')->insertGetId([
@@ -612,7 +616,7 @@ class OperationalCheckInServiceTest extends TestCase
             'counter_name' => 'Main Entrance A1',
             'status' => 'active',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Create staff assignment with override permission
@@ -624,13 +628,13 @@ class OperationalCheckInServiceTest extends TestCase
             'status' => 'active',
             'can_override' => true,
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Mock audit service
         $this->auditService->expects($this->once())
-                          ->method('logActivity')
-                          ->with('emergency_checkin_override', $this->anything(), $this->anything());
+            ->method('logActivity')
+            ->with('emergency_checkin_override', $this->anything(), $this->anything());
 
         // Perform emergency override
         $result = $this->service->emergencyCheckInOverride(
@@ -659,7 +663,7 @@ class OperationalCheckInServiceTest extends TestCase
     {
         $ticket = Ticket::factory()->create([
             'ticket_code' => 'TK88888888',
-            'status' => 'revoked'
+            'status' => 'revoked',
         ]);
 
         $counterId = DB::table('check_in_counters')->insertGetId([
@@ -669,7 +673,7 @@ class OperationalCheckInServiceTest extends TestCase
             'counter_name' => 'Main Entrance A1',
             'status' => 'active',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // No staff assignment with override permission exists

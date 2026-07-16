@@ -28,9 +28,9 @@ class CurrenciesController extends Controller
         // Search by code or name
         if ($request->has('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('code', 'LIKE', "%{$search}%")
-                  ->orWhere('name', 'LIKE', "%{$search}%");
+                    ->orWhere('name', 'LIKE', "%{$search}%");
             });
         }
 
@@ -45,6 +45,7 @@ class CurrenciesController extends Controller
     public function show($code)
     {
         $currency = Currency::findOrFail($code);
+
         return response()->json($currency);
     }
 
@@ -74,7 +75,7 @@ class CurrenciesController extends Controller
 
         return response()->json([
             'message' => 'Currency created successfully',
-            'currency' => $currency
+            'currency' => $currency,
         ], 201);
     }
 
@@ -100,7 +101,7 @@ class CurrenciesController extends Controller
 
         return response()->json([
             'message' => 'Currency updated successfully',
-            'currency' => $currency
+            'currency' => $currency,
         ]);
     }
 
@@ -110,14 +111,14 @@ class CurrenciesController extends Controller
     public function destroy($code)
     {
         $currency = Currency::findOrFail($code);
-        
+
         // Check if currency is in use
         // In a real application, you would check if there are transactions using this currency
-        
+
         $currency->update(['is_active' => false]);
 
         return response()->json([
-            'message' => 'Currency deactivated successfully'
+            'message' => 'Currency deactivated successfully',
         ]);
     }
 

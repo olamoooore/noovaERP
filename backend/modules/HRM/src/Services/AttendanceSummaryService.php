@@ -37,27 +37,27 @@ class AttendanceSummaryService
 
         // Recalculate worked_minutes when both timestamps are available
         if ($summary->first_check_in && $summary->last_check_out) {
-            $checkIn  = Carbon::createFromFormat('H:i:s', $summary->first_check_in);
+            $checkIn = Carbon::createFromFormat('H:i:s', $summary->first_check_in);
             $checkOut = Carbon::createFromFormat('H:i:s', $summary->last_check_out);
             $summary->worked_minutes = max(0, $checkIn->diffInMinutes($checkOut));
         }
 
         // Determine exception state
-        $hasBoth    = $summary->first_check_in && $summary->last_check_out;
-        $hasOnlyIn  = $summary->first_check_in && !$summary->last_check_out;
-        $hasOnlyOut = !$summary->first_check_in && $summary->last_check_out;
+        $hasBoth = $summary->first_check_in && $summary->last_check_out;
+        $hasOnlyIn = $summary->first_check_in && ! $summary->last_check_out;
+        $hasOnlyOut = ! $summary->first_check_in && $summary->last_check_out;
 
         if ($hasBoth) {
-            $summary->has_exception  = false;
+            $summary->has_exception = false;
             $summary->exception_type = 'none';
         } elseif ($hasOnlyOut) {
-            $summary->has_exception  = true;
+            $summary->has_exception = true;
             $summary->exception_type = 'missing_check_in';
         } elseif ($hasOnlyIn) {
-            $summary->has_exception  = true;
+            $summary->has_exception = true;
             $summary->exception_type = 'missing_check_out';
         } else {
-            $summary->has_exception  = true;
+            $summary->has_exception = true;
             $summary->exception_type = 'partial_day';
         }
 

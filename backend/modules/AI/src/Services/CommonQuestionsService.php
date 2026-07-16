@@ -2,28 +2,27 @@
 
 namespace Modules\AI\Services;
 
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Common Questions Service
- * 
+ *
  * Provides predefined questions and direct data handlers
  * for when AI model is too low capability or Ollama fails
  */
 class CommonQuestionsService
 {
     protected FunctionRouter $router;
-    
+
     public function __construct(FunctionRouter $router)
     {
         $this->router = $router;
     }
-    
+
     /**
      * Get common questions for a specific module
-     * 
-     * @param string $module Module name (orders, loyalty, products, invoices, general)
+     *
+     * @param  string  $module  Module name (orders, loyalty, products, invoices, general)
      * @return array Array of quick options
      */
     public function getCommonQuestions(string $module = 'general'): array
@@ -38,15 +37,15 @@ class CommonQuestionsService
             'general' => $this->getGeneralQuestions(),
             default => $this->getGeneralQuestions(),
         };
-        
+
         return $questions;
     }
-    
+
     /**
      * Handle a button press by executing the corresponding action
-     * 
-     * @param string $questionId Question identifier
-     * @param int $customerId Customer ID
+     *
+     * @param  string  $questionId  Question identifier
+     * @param  int  $customerId  Customer ID
      * @return array Response with success status and message
      */
     public function handleQuestion(string $questionId, int $customerId): array
@@ -55,7 +54,7 @@ class CommonQuestionsService
             'question_id' => $questionId,
             'customer_id' => $customerId,
         ]);
-        
+
         try {
             $result = match ($questionId) {
                 // Orders module
@@ -63,7 +62,7 @@ class CommonQuestionsService
                 'orders_recent' => $this->handleRecentOrders($customerId),
                 'orders_pending' => $this->handlePendingOrders($customerId),
                 'orders_status' => $this->handleOrderStatus($customerId),
-                
+
                 // Loyalty module
                 'loyalty_points' => $this->handleLoyaltyPoints($customerId),
                 'loyalty_tier_info' => $this->handleTierInfo($customerId),
@@ -72,7 +71,7 @@ class CommonQuestionsService
                 'loyalty_tier_benefits' => $this->handleTierBenefits($customerId),
                 'loyalty_calculate_points' => $this->handleCalculatePoints($customerId),
                 'loyalty_programs_available' => $this->handleProgramsAvailable($customerId),
-                
+
                 // Products module
                 'products_search' => $this->handleProductSearch(''),
                 'products_categories' => $this->handleProductCategories(),
@@ -84,47 +83,47 @@ class CommonQuestionsService
                 'inventory_out_of_stock' => $this->handleInventoryOutOfStock(),
                 'inventory_warehouses' => $this->handleInventoryWarehouses(),
                 'inventory_recent_movements' => $this->handleInventoryRecentMovements(),
-                
+
                 // Invoices module
                 'invoices_list' => $this->handleListInvoices($customerId),
                 'invoices_unpaid' => $this->handleUnpaidInvoices($customerId),
                 'invoices_recent' => $this->handleRecentInvoices($customerId),
-                
+
                 // Tickets module
                 'tickets_create' => $this->handleCreateTicketPrompt(),
                 'tickets_list' => $this->handleListTickets($customerId),
                 'tickets_status' => $this->handleTicketStatus($customerId),
-                
+
                 // General questions
                 'help' => $this->handleHelp(),
                 'features' => $this->handleFeatures(),
                 'contact' => $this->handleContact(),
-                
+
                 default => [
                     'success' => false,
                     'message' => "I don't understand that question. Please try selecting from the available options.",
                 ],
             };
-            
+
             return $result;
-            
+
         } catch (\Exception $e) {
             Log::error('CommonQuestions - Handler failed', [
                 'question_id' => $questionId,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return [
                 'success' => false,
                 'message' => 'Sorry, I encountered an error processing your request. Please try again.',
             ];
         }
     }
-    
+
     // ============================================================
     // QUESTION DEFINITIONS
     // ============================================================
-    
+
     protected function getOrderQuestions(): array
     {
         return [
@@ -154,7 +153,7 @@ class CommonQuestionsService
             ],
         ];
     }
-    
+
     protected function getLoyaltyQuestions(): array
     {
         return [
@@ -202,7 +201,7 @@ class CommonQuestionsService
             ],
         ];
     }
-    
+
     protected function getProductQuestions(): array
     {
         return [
@@ -262,7 +261,7 @@ class CommonQuestionsService
             ],
         ];
     }
-    
+
     protected function getInvoiceQuestions(): array
     {
         return [
@@ -286,7 +285,7 @@ class CommonQuestionsService
             ],
         ];
     }
-    
+
     protected function getTicketQuestions(): array
     {
         return [
@@ -310,7 +309,7 @@ class CommonQuestionsService
             ],
         ];
     }
-    
+
     protected function getGeneralQuestions(): array
     {
         return [
@@ -334,15 +333,15 @@ class CommonQuestionsService
             ],
         ];
     }
-    
+
     // ============================================================
     // QUESTION HANDLERS
     // ============================================================
-    
+
     protected function handleListOrders(int $customerId): array
     {
         $result = $this->router->execute('list_customer_orders', [], $customerId);
-        
+
         if ($result['success'] && $result['found']) {
             $ordersList = '';
             foreach ($result['orders'] as $order) {
@@ -354,28 +353,28 @@ class CommonQuestionsService
                     date('M d, Y', strtotime($order['date']))
                 );
             }
-            
+
             return [
                 'success' => true,
                 'message' => "📦 **Your Orders** ({$result['count']} total):\n\n{$ordersList}",
             ];
         }
-        
+
         return [
             'success' => true,
             'message' => "You don't have any orders yet. Start shopping to create your first order!",
         ];
     }
-    
+
     protected function handleRecentOrders(int $customerId): array
     {
         $result = $this->router->execute('list_customer_orders', [], $customerId);
-        
+
         if ($result['success'] && $result['found']) {
             // Get last 3 orders
             $recentOrders = array_slice($result['orders'], -3);
             $ordersList = '';
-            
+
             foreach ($recentOrders as $order) {
                 $ordersList .= sprintf(
                     "• **%s** - %s ($%.2f)\n",
@@ -384,36 +383,36 @@ class CommonQuestionsService
                     $order['total']
                 );
             }
-            
+
             return [
                 'success' => true,
                 'message' => "🆕 **Your Recent Orders**:\n\n{$ordersList}",
             ];
         }
-        
+
         return [
             'success' => true,
             'message' => "You don't have any recent orders.",
         ];
     }
-    
+
     protected function handlePendingOrders(int $customerId): array
     {
         $result = $this->router->execute('list_customer_orders', [], $customerId);
-        
+
         if ($result['success'] && $result['found']) {
             // Filter pending orders
-            $pendingOrders = array_filter($result['orders'], function($order) {
+            $pendingOrders = array_filter($result['orders'], function ($order) {
                 return in_array(strtolower($order['status']), ['pending', 'processing', 'shipped']);
             });
-            
+
             if (empty($pendingOrders)) {
                 return [
                     'success' => true,
                     'message' => "You don't have any pending orders. All your orders have been delivered!",
                 ];
             }
-            
+
             $ordersList = '';
             foreach ($pendingOrders as $order) {
                 $ordersList .= sprintf(
@@ -423,36 +422,36 @@ class CommonQuestionsService
                     $order['total']
                 );
             }
-            
+
             return [
                 'success' => true,
                 'message' => "⏳ **Pending Orders**:\n\n{$ordersList}",
             ];
         }
-        
+
         return [
             'success' => true,
             'message' => "You don't have any pending orders.",
         ];
     }
-    
+
     protected function handleOrderStatus(int $customerId): array
     {
         return [
             'success' => true,
-            'message' => "🔍 To track a specific order, please provide the order number. You can find it in your order confirmation email.",
+            'message' => '🔍 To track a specific order, please provide the order number. You can find it in your order confirmation email.',
             'prompt_for_input' => 'order_number',
         ];
     }
-    
+
     protected function handleLoyaltyPoints(int $customerId): array
     {
         $result = $this->router->execute('get_loyalty_points', [], $customerId);
-        
+
         if ($result['success'] && isset($result['points'])) {
             $pointsValue = $result['points'];
             $tier = $result['tier'] ?? 'Bronze';
-            
+
             return [
                 'success' => true,
                 'message' => sprintf(
@@ -462,18 +461,18 @@ class CommonQuestionsService
                 ),
             ];
         }
-        
+
         return [
             'success' => true,
             'message' => "You don't have any loyalty points yet. Start earning by making purchases!",
         ];
     }
-    
+
     protected function handleLoyaltyRewards(int $customerId): array
     {
         $result = $this->router->execute('get_loyalty_rewards', [], $customerId);
-        
-        if ($result['success'] && !empty($result['rewards'])) {
+
+        if ($result['success'] && ! empty($result['rewards'])) {
             $rewardsList = '';
             foreach ($result['rewards'] as $reward) {
                 $rewardsList .= sprintf(
@@ -483,19 +482,19 @@ class CommonQuestionsService
                     $reward['description']
                 );
             }
-            
+
             return [
                 'success' => true,
                 'message' => "🎁 **Available Rewards**:\n\n{$rewardsList}",
             ];
         }
-        
+
         return [
             'success' => true,
-            'message' => "No rewards available at the moment. Check back later!",
+            'message' => 'No rewards available at the moment. Check back later!',
         ];
     }
-    
+
     protected function handleLoyaltyHistory(int $customerId): array
     {
         return [
@@ -503,42 +502,42 @@ class CommonQuestionsService
             'message' => "📊 **Points History** is coming soon! You'll be able to see all your points transactions here.",
         ];
     }
-    
+
     protected function handleHowToEarnPoints(): array
     {
         return [
             'success' => true,
-            'message' => "💡 **How to Earn Loyalty Points**\n\n" .
-                         "1. **Make Purchases** - Earn points on every purchase\n" .
-                         "2. **Refer Friends** - Get bonus points for referrals\n" .
-                         "3. **Complete Profile** - Earn points by completing your profile\n" .
-                         "4. **Special Promotions** - Watch for double-point events\n\n" .
-                         "The more you shop, the more you earn!",
+            'message' => "💡 **How to Earn Loyalty Points**\n\n".
+                         "1. **Make Purchases** - Earn points on every purchase\n".
+                         "2. **Refer Friends** - Get bonus points for referrals\n".
+                         "3. **Complete Profile** - Earn points by completing your profile\n".
+                         "4. **Special Promotions** - Watch for double-point events\n\n".
+                         'The more you shop, the more you earn!',
         ];
     }
-    
+
     protected function handleTierInfo(int $customerId): array
     {
         $result = $this->router->execute('get_customer_tier_info', [], $customerId);
-        
+
         if ($result['success'] && isset($result['current_tier'])) {
             $tier = $result['current_tier'];
             $nextTier = $result['next_tier'] ?? null;
             $pointsToNext = $result['points_to_next_tier'] ?? null;
-            
+
             $message = sprintf(
                 "🏆 **Your Tier Status**\n\n💎 Current Tier: **%s**\n⭐ Points: **%d**\n",
                 $tier['name'],
                 $result['current_points']
             );
-            
+
             if ($tier['benefits']) {
                 $message .= "\n**Your Benefits:**\n";
                 foreach ($tier['benefits'] as $benefit) {
                     $message .= "✓ {$benefit}\n";
                 }
             }
-            
+
             if ($nextTier && $pointsToNext) {
                 $message .= sprintf(
                     "\n🎯 **Next Tier:** %s (%d more points needed)",
@@ -546,31 +545,31 @@ class CommonQuestionsService
                     $pointsToNext
                 );
             }
-            
+
             return [
                 'success' => true,
                 'message' => $message,
             ];
         }
-        
+
         return [
             'success' => true,
-            'message' => "Join our loyalty program to unlock exclusive benefits!",
+            'message' => 'Join our loyalty program to unlock exclusive benefits!',
         ];
     }
-    
+
     protected function handleHowToJoin(int $customerId): array
     {
         $result = $this->router->execute('get_loyalty_program_details', [], $customerId);
-        
+
         if ($result['success'] && isset($result['program'])) {
             $program = $result['program'];
-            
+
             return [
                 'success' => true,
                 'message' => sprintf(
-                    "📝 **Join %s**\n\n%s\n\n" .
-                    "🎁 **Benefits:**\n%s\n\n" .
+                    "📝 **Join %s**\n\n%s\n\n".
+                    "🎁 **Benefits:**\n%s\n\n".
                     "To join, simply make your first purchase and you'll be automatically enrolled!",
                     $program['name'],
                     $program['description'],
@@ -578,22 +577,22 @@ class CommonQuestionsService
                 ),
             ];
         }
-        
+
         return [
             'success' => true,
-            'message' => "📝 **Join Our Loyalty Program**\n\n" .
-                         "Simply make your first purchase and you'll be automatically enrolled!\n\n" .
-                         "Start earning points, unlocking rewards, and enjoying exclusive benefits.",
+            'message' => "📝 **Join Our Loyalty Program**\n\n".
+                         "Simply make your first purchase and you'll be automatically enrolled!\n\n".
+                         'Start earning points, unlocking rewards, and enjoying exclusive benefits.',
         ];
     }
-    
+
     protected function handleTierBenefits(int $customerId): array
     {
         $result = $this->router->execute('get_tier_benefits', [], $customerId);
-        
-        if ($result['success'] && !empty($result['tiers'])) {
+
+        if ($result['success'] && ! empty($result['tiers'])) {
             $message = "🥉 **Loyalty Tier Levels**\n\n";
-            
+
             foreach ($result['tiers'] as $tier) {
                 $message .= sprintf(
                     "**%s** (%d - %d points)\n",
@@ -601,31 +600,31 @@ class CommonQuestionsService
                     $tier['min_points'],
                     $tier['max_points'] ?? 999999
                 );
-                
+
                 $message .= sprintf("• Points Multiplier: %.2fx\n", $tier['multiplier']);
                 $message .= sprintf("• Discount: %d%%\n", $tier['discount_percentage']);
-                
-                if (!empty($tier['benefits'])) {
+
+                if (! empty($tier['benefits'])) {
                     foreach ($tier['benefits'] as $benefit) {
                         $message .= "• {$benefit}\n";
                     }
                 }
-                
+
                 $message .= "\n";
             }
-            
+
             return [
                 'success' => true,
                 'message' => $message,
             ];
         }
-        
+
         return [
             'success' => true,
             'message' => "🥉 **Tier Levels**\n\n**Bronze** - Entry level\n**Silver** - Mid tier\n**Gold** - Premium tier",
         ];
     }
-    
+
     protected function handleCalculatePoints(int $customerId): array
     {
         return [
@@ -634,14 +633,14 @@ class CommonQuestionsService
             'prompt_for_input' => 'calculate_points',
         ];
     }
-    
+
     protected function handleProgramsAvailable(int $customerId): array
     {
         $result = $this->router->execute('list_loyalty_programs', [], $customerId);
-        
-        if ($result['success'] && !empty($result['programs'])) {
+
+        if ($result['success'] && ! empty($result['programs'])) {
             $message = "📋 **Available Loyalty Programs**\n\n";
-            
+
             foreach ($result['programs'] as $program) {
                 $status = $program['is_active'] ? '✅ Active' : '⏸️ Inactive';
                 $message .= sprintf(
@@ -653,21 +652,21 @@ class CommonQuestionsService
                     $program['tiers_count'] ?? 0
                 );
             }
-            
-            $message .= "💡 Ask me how to join any of these programs!";
-            
+
+            $message .= '💡 Ask me how to join any of these programs!';
+
             return [
                 'success' => true,
                 'message' => $message,
             ];
         }
-        
+
         return [
             'success' => true,
             'message' => "📋 **Loyalty Programs**\n\nNo loyalty programs are currently available. Check back soon!",
         ];
     }
-    
+
     protected function handleProductSearch(string $query): array
     {
         return [
@@ -676,34 +675,34 @@ class CommonQuestionsService
             'prompt_for_input' => 'product_search',
         ];
     }
-    
+
     protected function handleProductCategories(): array
     {
         return [
             'success' => true,
-            'message' => "📂 **Product Categories**:\n\n" .
-                         "• Electronics\n" .
-                         "• Clothing & Accessories\n" .
-                         "• Home & Garden\n" .
-                         "• Sports & Outdoors\n" .
-                         "• Books & Media\n\n" .
-                         "Which category interests you?",
+            'message' => "📂 **Product Categories**:\n\n".
+                         "• Electronics\n".
+                         "• Clothing & Accessories\n".
+                         "• Home & Garden\n".
+                         "• Sports & Outdoors\n".
+                         "• Books & Media\n\n".
+                         'Which category interests you?',
         ];
     }
-    
+
     protected function handleFeaturedProducts(): array
     {
         return [
             'success' => true,
-            'message' => "⭐ **Featured Products** are currently being loaded. Please check back soon!",
+            'message' => '⭐ **Featured Products** are currently being loaded. Please check back soon!',
         ];
     }
-    
+
     protected function handleNewProducts(): array
     {
         return [
             'success' => true,
-            'message' => "🆕 **New Arrivals** are currently being loaded. Please check back soon!",
+            'message' => '🆕 **New Arrivals** are currently being loaded. Please check back soon!',
         ];
     }
 
@@ -711,7 +710,7 @@ class CommonQuestionsService
     {
         $result = $this->router->execute('list_low_stock_items', ['limit' => 10]);
 
-        if (!($result['success'] ?? false)) {
+        if (! ($result['success'] ?? false)) {
             return [
                 'success' => false,
                 'message' => 'Sorry, I could not load low stock items right now.',
@@ -722,7 +721,7 @@ class CommonQuestionsService
         if (count($items) === 0) {
             return [
                 'success' => true,
-                'message' => "✅ No low stock items found (based on configured thresholds).",
+                'message' => '✅ No low stock items found (based on configured thresholds).',
             ];
         }
 
@@ -747,7 +746,7 @@ class CommonQuestionsService
     {
         $result = $this->router->execute('list_out_of_stock_items', ['limit' => 10]);
 
-        if (!($result['success'] ?? false)) {
+        if (! ($result['success'] ?? false)) {
             return [
                 'success' => false,
                 'message' => 'Sorry, I could not load out-of-stock items right now.',
@@ -758,7 +757,7 @@ class CommonQuestionsService
         if (count($items) === 0) {
             return [
                 'success' => true,
-                'message' => "✅ No out-of-stock items found.",
+                'message' => '✅ No out-of-stock items found.',
             ];
         }
 
@@ -781,7 +780,7 @@ class CommonQuestionsService
     {
         $result = $this->router->execute('list_warehouses', []);
 
-        if (!($result['success'] ?? false)) {
+        if (! ($result['success'] ?? false)) {
             return [
                 'success' => false,
                 'message' => 'Sorry, I could not load warehouses right now.',
@@ -798,7 +797,7 @@ class CommonQuestionsService
 
         $lines = '';
         foreach ($warehouses as $w) {
-            $defaultTag = !empty($w['is_default']) ? ' (default)' : '';
+            $defaultTag = ! empty($w['is_default']) ? ' (default)' : '';
             $lines .= sprintf(
                 "• #%d %s%s\n",
                 (int) $w['id'],
@@ -817,7 +816,7 @@ class CommonQuestionsService
     {
         $result = $this->router->execute('list_recent_stock_movements', ['limit' => 10]);
 
-        if (!($result['success'] ?? false)) {
+        if (! ($result['success'] ?? false)) {
             return [
                 'success' => false,
                 'message' => 'Sorry, I could not load recent stock movements right now.',
@@ -836,7 +835,7 @@ class CommonQuestionsService
         foreach ($movements as $m) {
             $lines .= sprintf(
                 "• %s %d — %s (%s)\n",
-                strtoupper((string) ($m['type'] ?? '')), 
+                strtoupper((string) ($m['type'] ?? '')),
                 (int) ($m['quantity'] ?? 0),
                 $m['product_name'] ?? 'Unknown',
                 $m['sku'] ?? 'N/A'
@@ -848,12 +847,12 @@ class CommonQuestionsService
             'message' => "📈 **Recent Stock Movements**\n\n{$lines}",
         ];
     }
-    
+
     protected function handleListInvoices(int $customerId): array
     {
         // Similar to orders
         $result = $this->router->execute('list_customer_orders', [], $customerId);
-        
+
         if ($result['success'] && $result['found']) {
             $invoicesList = '';
             foreach ($result['orders'] as $order) {
@@ -864,43 +863,43 @@ class CommonQuestionsService
                     date('M d, Y', strtotime($order['date']))
                 );
             }
-            
+
             return [
                 'success' => true,
                 'message' => "💰 **Your Invoices**:\n\n{$invoicesList}",
             ];
         }
-        
+
         return [
             'success' => true,
             'message' => "You don't have any invoices yet.",
         ];
     }
-    
+
     protected function handleUnpaidInvoices(int $customerId): array
     {
         return [
             'success' => true,
-            'message' => "⚠️ **Unpaid Invoices**: Currently showing all invoices. Payment status tracking coming soon!",
+            'message' => '⚠️ **Unpaid Invoices**: Currently showing all invoices. Payment status tracking coming soon!',
         ];
     }
-    
+
     protected function handleRecentInvoices(int $customerId): array
     {
         return $this->handleListInvoices($customerId);
     }
-    
+
     protected function handleCreateTicketPrompt(): array
     {
         return [
             'success' => true,
-            'message' => "✍️ **Create Support Ticket**\n\n" .
-                         "To create a ticket, please describe your issue or question in detail. " .
+            'message' => "✍️ **Create Support Ticket**\n\n".
+                         'To create a ticket, please describe your issue or question in detail. '.
                          "I'll help you submit it to our support team.",
             'prompt_for_input' => 'ticket_description',
         ];
     }
-    
+
     protected function handleListTickets(int $customerId): array
     {
         return [
@@ -908,7 +907,7 @@ class CommonQuestionsService
             'message' => "📋 **Your Support Tickets**: This feature is coming soon. You'll be able to view all your tickets here.",
         ];
     }
-    
+
     protected function handleTicketStatus(int $customerId): array
     {
         return [
@@ -916,46 +915,46 @@ class CommonQuestionsService
             'message' => "🔍 **Check Ticket Status**: This feature is coming soon. You'll be able to track your ticket status here.",
         ];
     }
-    
+
     protected function handleHelp(): array
     {
         return [
             'success' => true,
-            'message' => "❓ **Help & Support**\n\n" .
-                         "I'm your AI assistant! I can help you with:\n\n" .
-                         "📦 **Orders** - Track and view your orders\n" .
-                         "⭐ **Loyalty** - Check points and rewards\n" .
-                         "🛍️ **Products** - Search and browse products\n" .
-                         "💰 **Invoices** - View your invoices\n" .
-                         "🎫 **Support** - Create and track tickets\n\n" .
-                         "Just click any option above to get started!",
+            'message' => "❓ **Help & Support**\n\n".
+                         "I'm your AI assistant! I can help you with:\n\n".
+                         "📦 **Orders** - Track and view your orders\n".
+                         "⭐ **Loyalty** - Check points and rewards\n".
+                         "🛍️ **Products** - Search and browse products\n".
+                         "💰 **Invoices** - View your invoices\n".
+                         "🎫 **Support** - Create and track tickets\n\n".
+                         'Just click any option above to get started!',
         ];
     }
-    
+
     protected function handleFeatures(): array
     {
         return [
             'success' => true,
-            'message' => "✨ **What I Can Do**\n\n" .
-                         "I'm an AI-powered assistant that can help you:\n\n" .
-                         "• Track your orders and shipments\n" .
-                         "• Check your loyalty points and rewards\n" .
-                         "• Search for products\n" .
-                         "• View invoices and payments\n" .
-                         "• Create support tickets\n" .
-                         "• Answer common questions\n\n" .
-                         "Choose an option from the menu to get started!",
+            'message' => "✨ **What I Can Do**\n\n".
+                         "I'm an AI-powered assistant that can help you:\n\n".
+                         "• Track your orders and shipments\n".
+                         "• Check your loyalty points and rewards\n".
+                         "• Search for products\n".
+                         "• View invoices and payments\n".
+                         "• Create support tickets\n".
+                         "• Answer common questions\n\n".
+                         'Choose an option from the menu to get started!',
         ];
     }
-    
+
     protected function handleContact(): array
     {
         return [
             'success' => true,
-            'message' => "📞 **Contact Information**\n\n" .
-                         "📧 Email: support@example.com\n" .
-                         "📱 Phone: +1 (555) 123-4567\n" .
-                         "⏰ Hours: Mon-Fri 9AM-5PM\n\n" .
+            'message' => "📞 **Contact Information**\n\n".
+                         "📧 Email: support@example.com\n".
+                         "📱 Phone: +1 (555) 123-4567\n".
+                         "⏰ Hours: Mon-Fri 9AM-5PM\n\n".
                          "Or create a support ticket and we'll get back to you!",
         ];
     }

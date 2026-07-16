@@ -2,17 +2,17 @@
 
 namespace Modules\EventManagement\Models;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Modules\EventManagement\Traits\HasTenantScope;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Modules\EventManagement\Traits\HasTenantScope;
 
 /**
  * EventReminder Model
- * 
+ *
  * Manages scheduled notifications for customers about events.
- * 
+ *
  * @property int $id
  * @property string $tenant_id
  * @property string $customer_id
@@ -34,7 +34,7 @@ use Carbon\Carbon;
  */
 class EventReminder extends Model
 {
-    use SoftDeletes, HasTenantScope;
+    use HasTenantScope, SoftDeletes;
 
     protected $table = 'event_reminders';
 
@@ -98,7 +98,7 @@ class EventReminder extends Model
     public function scopePending($query)
     {
         return $query->where('status', 'scheduled')
-                    ->where('scheduled_at', '<=', now());
+            ->where('scheduled_at', '<=', now());
     }
 
     /**
@@ -131,11 +131,11 @@ class EventReminder extends Model
     public function scopeRetryable($query, int $maxRetries = 3)
     {
         return $query->where('status', 'failed')
-                    ->where('retry_count', '<', $maxRetries)
-                    ->where(function ($q) {
-                        $q->whereNull('last_retry_at')
-                          ->orWhere('last_retry_at', '<', now()->subHours(1));
-                    });
+            ->where('retry_count', '<', $maxRetries)
+            ->where(function ($q) {
+                $q->whereNull('last_retry_at')
+                    ->orWhere('last_retry_at', '<', now()->subHours(1));
+            });
     }
 
     /**
@@ -177,7 +177,7 @@ class EventReminder extends Model
      */
     public function canRetry(int $maxRetries = 3): bool
     {
-        return $this->status === 'failed' 
+        return $this->status === 'failed'
             && $this->retry_count < $maxRetries
             && ($this->last_retry_at === null || $this->last_retry_at->lt(now()->subHours(1)));
     }

@@ -1,66 +1,65 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AccountingController;
-use App\Http\Controllers\Api\ChartOfAccountsController;
-use App\Http\Controllers\Api\AgedReceivablesController;
-use App\Http\Controllers\Api\AgedPayablesController;
-use App\Http\Controllers\Api\BankReconciliationController;
-use App\Http\Controllers\Api\JournalsController;
-use App\Http\Controllers\Api\JournalEntriesController;
-use App\Http\Controllers\Api\FixedAssetsController;
-use App\Http\Controllers\Api\LockDatesController;
-use App\Http\Controllers\Api\CurrenciesController;
-use App\Http\Controllers\Api\ExchangeRatesController;
-use App\Http\Controllers\Api\AnalyticAccountsController;
-use App\Http\Controllers\Api\CompanySettingsController;
-use App\Http\Controllers\Api\PaymentTermsController;
-use App\Http\Controllers\Api\TaxRatesController;
-use App\Http\Controllers\Api\BankAccountsController;
-use App\Http\Controllers\Api\VendorBillsController;
+use App\Http\Controllers\Api\AccountingDashboardController;
 use App\Http\Controllers\Api\AccountingOriginController;
-use App\Http\Controllers\Api\BillPaymentsController;
-use App\Http\Controllers\Api\CustomerController;
-use App\Http\Controllers\Api\DashboardController;
-use App\Http\Controllers\Api\InvoiceController;
-use App\Http\Controllers\Api\QuotationController;
-use App\Http\Controllers\Api\PaymentController;
-use App\Http\Controllers\Api\ProductController;
-use App\Http\Controllers\Api\ProductCategoryController;
-use App\Http\Controllers\Api\ProductVariantController;
-use App\Http\Controllers\Api\ProductUnitController;
-use App\Http\Controllers\Api\ProductAttributeController;
-use App\Http\Controllers\Api\ProductFeatureController;
-use App\Http\Controllers\Api\ProductCustomFieldController;
-use App\Http\Controllers\Api\UploadController;
-use App\Http\Controllers\Api\FeatureController;
-use App\Http\Controllers\Api\SettingsController;
-use App\Http\Controllers\Api\TaxController;
+use App\Http\Controllers\Api\AccountRolesController;
+use App\Http\Controllers\Api\AgedPayablesController;
+use App\Http\Controllers\Api\AgedReceivablesController;
+use App\Http\Controllers\Api\AnalyticAccountsController;
+use App\Http\Controllers\Api\APTransactionsController;
+use App\Http\Controllers\Api\ARTransactionsController;
 use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\AutoMatchController;
+use App\Http\Controllers\Api\BankAccountsController;
+use App\Http\Controllers\Api\BankReconciliationController;
+use App\Http\Controllers\Api\BillPaymentsController;
+use App\Http\Controllers\Api\ChartOfAccountsController;
+use App\Http\Controllers\Api\CompanySettingsController;
+use App\Http\Controllers\Api\CurrenciesController;
+use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\CustomerCreditNotesController;
+use App\Http\Controllers\Api\CustomersController;
+use App\Http\Controllers\Api\CustomerStatementController;
+use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\EntityManagementController;
+use App\Http\Controllers\Api\ExchangeRatesController;
+use App\Http\Controllers\Api\FeatureController;
+use App\Http\Controllers\Api\FiscalPeriodsController;
+use App\Http\Controllers\Api\FixedAssetsController;
+use App\Http\Controllers\Api\ImportController;
+use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\JournalEntriesController;
+use App\Http\Controllers\Api\JournalsController;
+use App\Http\Controllers\Api\LockDatesController;
+use App\Http\Controllers\Api\OnboardingSessionsController;
+use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\PaymentTermsController;
+use App\Http\Controllers\Api\ProductAttributeController;
+use App\Http\Controllers\Api\ProductCategoryController;
+use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ProductCustomFieldController;
+use App\Http\Controllers\Api\ProductFeatureController;
+use App\Http\Controllers\Api\ProductUnitController;
+use App\Http\Controllers\Api\ProductVariantController;
+use App\Http\Controllers\Api\QuotationController;
+use App\Http\Controllers\Api\ReconciliationExceptionController;
+use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\SubledgerReconciliationController;
+use App\Http\Controllers\Api\TaxController;
+use App\Http\Controllers\Api\TaxRatesController;
+use App\Http\Controllers\Api\VendorBillsController;
 use App\Http\Controllers\Api\VendorCreditNotesController;
 use App\Http\Controllers\Api\VendorDebitNotesController;
-use App\Http\Controllers\Api\ARTransactionsController;
-use App\Http\Controllers\Api\APTransactionsController;
-use App\Http\Controllers\Api\CustomerStatementController;
-use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\VendorsController;
-use App\Http\Controllers\Api\ImportController;
-use App\Http\Controllers\Api\AccountingDashboardController;
-use App\Http\Controllers\Api\AccountRolesController;
-use App\Http\Controllers\Api\AutoMatchController;
-use App\Http\Controllers\Api\SubledgerReconciliationController;
-use App\Http\Controllers\Api\ReconciliationExceptionController;
-use App\Http\Controllers\Api\OnboardingSessionsController;
-use App\Http\Controllers\Api\EntityManagementController;
-use App\Http\Controllers\Api\FiscalPeriodsController;
 use App\Http\Controllers\Api\WarehouseController;
-use App\Http\Middleware\ResolveEntityContext;
-use App\Http\Middleware\EnsureEntityAccess;
-use App\Http\Middleware\EnsureAccountingWriteAccess;
+use App\Http\Middleware\EnsureAccountingLockManageAccess;
 use App\Http\Middleware\EnsureAccountingPostAccess;
 use App\Http\Middleware\EnsureAccountingReverseAccess;
-use App\Http\Middleware\EnsureAccountingLockManageAccess;
+use App\Http\Middleware\EnsureAccountingWriteAccess;
+use App\Http\Middleware\EnsureEntityAccess;
+use App\Http\Middleware\ResolveEntityContext;
+use Illuminate\Support\Facades\Route;
 
 // Auth routes are registered centrally in routes/api.php (v1/auth/login, auth/login).
 // Do NOT duplicate them here — this file is loaded under tenant middleware
@@ -96,7 +95,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::post('/taxes', [TaxController::class, 'store']);
     Route::put('/taxes/{tax}', [TaxController::class, 'update']);
     Route::delete('/taxes/{tax}', [TaxController::class, 'destroy']);
-    
+
     // Features
     Route::get('/features', [FeatureController::class, 'index']);
 
@@ -148,15 +147,15 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     // Customer Categories (must be before customers resource to avoid route conflicts)
     Route::get('customer-categories', [CustomerController::class, 'categories']);
     Route::post('customer-categories', [CustomerController::class, 'storeCategory']);
-    
+
     // Customers - static routes first (before apiResource)
     Route::get('customers/statistics', [CustomerController::class, 'statistics']);
     Route::get('customers/search', [CustomerController::class, 'search']);
     Route::post('customers/import', [CustomersController::class, 'import']);
-    
+
     // Customers - resource routes
     Route::apiResource('customers', CustomerController::class);
-    
+
     // Customers - dynamic routes with {customer} parameter (must be after apiResource)
     Route::get('customers/{customer}/statistics', [CustomerController::class, 'customerStatistics']);
     Route::get('customers/{customer}/activity', [CustomerController::class, 'activity']);
@@ -171,34 +170,33 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::put('customers/{customer}/contacts/{contact}', [CustomerController::class, 'updateContact']);
     Route::delete('customers/{customer}/contacts/{contact}', [CustomerController::class, 'deleteContact']);
 
-        Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
-            // Invoices
-            Route::post('/invoices/import', [InvoiceController::class, 'import']);
-            Route::post('/invoices/bulk-delete', [InvoiceController::class, 'bulkDestroy']);
-            Route::apiResource('invoices', InvoiceController::class);
-            Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'send']);
+    Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
+        // Invoices
+        Route::post('/invoices/import', [InvoiceController::class, 'import']);
+        Route::post('/invoices/bulk-delete', [InvoiceController::class, 'bulkDestroy']);
+        Route::apiResource('invoices', InvoiceController::class);
+        Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'send']);
 
-            // Quotations
-            Route::post('/quotations/import', [QuotationController::class, 'import']);
-            Route::get('/quotations/{id}/pdf', [QuotationController::class, 'pdf']);
-            Route::apiResource('quotations', QuotationController::class);
-            Route::post('/quotations/{id}/confirm', [QuotationController::class, 'confirm']);
-            Route::post('/quotations/{id}/create-invoice', [QuotationController::class, 'createInvoice']);
+        // Quotations
+        Route::post('/quotations/import', [QuotationController::class, 'import']);
+        Route::get('/quotations/{id}/pdf', [QuotationController::class, 'pdf']);
+        Route::apiResource('quotations', QuotationController::class);
+        Route::post('/quotations/{id}/confirm', [QuotationController::class, 'confirm']);
+        Route::post('/quotations/{id}/create-invoice', [QuotationController::class, 'createInvoice']);
 
-            // Payments (no update — PaymentController has no update method)
-            Route::get('/payments', [PaymentController::class, 'index']);
-            Route::get('/payments/eligible-invoices', [PaymentController::class, 'eligibleInvoices']);
-            Route::post('/payments', [PaymentController::class, 'store']);
-            Route::get('/payments/{payment}', [PaymentController::class, 'show']);
-            Route::delete('/payments/{payment}', [PaymentController::class, 'destroy']);
-        });
+        // Payments (no update — PaymentController has no update method)
+        Route::get('/payments', [PaymentController::class, 'index']);
+        Route::get('/payments/eligible-invoices', [PaymentController::class, 'eligibleInvoices']);
+        Route::post('/payments', [PaymentController::class, 'store']);
+        Route::get('/payments/{payment}', [PaymentController::class, 'show']);
+        Route::delete('/payments/{payment}', [PaymentController::class, 'destroy']);
+    });
 
     // Accounting
     Route::prefix('accounting')->middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
         // Dashboard
         Route::get('/dashboard', [AccountingDashboardController::class, 'index']);
 
-        
         // Chart of Accounts
         Route::get('/chart-of-accounts', [ChartOfAccountsController::class, 'index']);
         Route::get('/chart-of-accounts/hierarchy/tree', [ChartOfAccountsController::class, 'tree']);
@@ -206,11 +204,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/chart-of-accounts', [ChartOfAccountsController::class, 'store']);
         Route::put('/chart-of-accounts/{id}', [ChartOfAccountsController::class, 'update']);
         Route::delete('/chart-of-accounts/{id}', [ChartOfAccountsController::class, 'destroy']);
-        
+
         // Journals Configuration
         Route::apiResource('journals', JournalsController::class);
         Route::get('/journals/{id}/next-entry-number', [JournalsController::class, 'getNextEntryNumber']);
-        
+
         // Journal Entries
         Route::get('/journal-entries', [JournalEntriesController::class, 'index']);
         Route::get('/journal-entries/{id}', [JournalEntriesController::class, 'show']);
@@ -226,16 +224,16 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         // Reversal requires accounting.reverse permission
         Route::post('/journal-entries/{id}/reverse', [JournalEntriesController::class, 'reverse'])
             ->middleware(EnsureAccountingReverseAccess::class);
-        
+
         // Reports
         Route::get('/trial-balance', [AccountingController::class, 'trialBalance']);
         Route::get('/ledger/{account}', [AccountingController::class, 'ledger']);
         Route::get('/balance-sheet', [AccountingController::class, 'balanceSheet']);
         Route::get('/profit-and-loss', [AccountingController::class, 'profitAndLoss']);
-        
+
         // Period-End Processes
         Route::post('/fx-revaluation', [AccountingController::class, 'fxRevaluation']);
-        
+
         // Vendor Bills (with tenant context)
         Route::get('/vendor-bills', [VendorBillsController::class, 'index']);
         Route::get('/vendor-bills/eligible', [VendorBillsController::class, 'eligibleBills']);
@@ -246,7 +244,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/vendor-bills/{id}/post', [VendorBillsController::class, 'post']);
         Route::post('/vendor-bills/{id}/approve', [VendorBillsController::class, 'approve']);
         Route::post('/vendor-bills/{id}/reject', [VendorBillsController::class, 'reject']);
-        
+
         // Accounting-Origin Documents (direct AR/AP creation by accountants)
         Route::post('/origin/invoices', [AccountingOriginController::class, 'storeInvoice']);
         Route::post('/origin/invoices/{id}/post', [AccountingOriginController::class, 'postInvoice'])
@@ -258,11 +256,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         // Aged Receivables Report
         Route::get('/reports/aged-receivables', [AgedReceivablesController::class, 'index']);
         Route::get('/reports/aged-receivables/details', [AgedReceivablesController::class, 'details']);
-        
+
         // Aged Payables Report
         Route::get('/reports/aged-payables', [AgedPayablesController::class, 'index']);
         Route::get('/reports/aged-payables/details', [AgedPayablesController::class, 'details']);
-        
+
         // Bank Reconciliation
         Route::get('/reconciliation/bank-accounts', [BankReconciliationController::class, 'getBankAccounts']);
         Route::get('/reconciliation/transactions/{bankAccountId}', [BankReconciliationController::class, 'getTransactions']);
@@ -302,7 +300,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::get('/assets/{id}/depreciation', [FixedAssetsController::class, 'getDepreciationSchedule']);
         Route::post('/assets/{id}/dispose', [FixedAssetsController::class, 'dispose']);
         Route::post('/assets/calculate-depreciation', [FixedAssetsController::class, 'calculateDepreciation']);
-        
+
         // Lock Dates
         // Workstream 2 (2026-04-15): Lock management requires accounting.lock permission
         Route::middleware(EnsureAccountingLockManageAccess::class)->group(function () {
@@ -320,7 +318,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::get('/lock-dates/{id}', [LockDatesController::class, 'show']);
         Route::post('/lock-dates/validate', [LockDatesController::class, 'validateDate']);
         Route::get('/lock-dates/overrides/history', [LockDatesController::class, 'overrides']);
-        
+
         // Fiscal Periods — CRUD + lifecycle (lock / unlock / close / reopen)
         // Workstream 2 (2026-04-15): Fiscal period management requires accounting.lock permission
         Route::middleware(EnsureAccountingLockManageAccess::class)->group(function () {
@@ -391,7 +389,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/currencies', [CurrenciesController::class, 'store']);
         Route::put('/currencies/{code}', [CurrenciesController::class, 'update']);
         Route::delete('/currencies/{code}', [CurrenciesController::class, 'destroy']);
-        
+
         // Exchange Rates
         Route::get('/exchange-rates', [ExchangeRatesController::class, 'index']);
         Route::get('/exchange-rates/latest', [ExchangeRatesController::class, 'latest']);
@@ -402,7 +400,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/exchange-rates', [ExchangeRatesController::class, 'store']);
         Route::put('/exchange-rates/{id}', [ExchangeRatesController::class, 'update']);
         Route::delete('/exchange-rates/{id}', [ExchangeRatesController::class, 'destroy']);
-        
+
         // Analytic Accounts
         Route::get('/analytic-accounts', [AnalyticAccountsController::class, 'index']);
         Route::get('/analytic-accounts/tree', [AnalyticAccountsController::class, 'tree']);
@@ -413,7 +411,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::delete('/analytic-accounts/{id}', [AnalyticAccountsController::class, 'destroy']);
         Route::get('/analytic-accounts/{id}/balance', [AnalyticAccountsController::class, 'balance']);
         Route::get('/analytic-accounts/{id}/profit-loss', [AnalyticAccountsController::class, 'profitLoss']);
-        
+
         // Company Settings
         Route::get('/settings', [CompanySettingsController::class, 'index']);
         Route::put('/settings', [CompanySettingsController::class, 'update']);
@@ -424,11 +422,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::put('/settings/currencies', [CompanySettingsController::class, 'updateCurrencies']);
         Route::get('/settings/accounts', [CompanySettingsController::class, 'accounts']);
         Route::put('/settings/accounts', [CompanySettingsController::class, 'updateAccounts']);
-        
+
         // Accounting Policies
         Route::get('/policies', [\App\Http\Controllers\Api\AccountingPoliciesController::class, 'index']);
         Route::put('/policies', [\App\Http\Controllers\Api\AccountingPoliciesController::class, 'update']);
-        
+
         // Payment Terms
         Route::get('/payment-terms', [PaymentTermsController::class, 'index']);
         Route::get('/payment-terms/default', [PaymentTermsController::class, 'getDefault']);
@@ -437,7 +435,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/payment-terms', [PaymentTermsController::class, 'store']);
         Route::put('/payment-terms/{id}', [PaymentTermsController::class, 'update']);
         Route::delete('/payment-terms/{id}', [PaymentTermsController::class, 'destroy']);
-        
+
         // Bank Accounts
         Route::get('/bank-accounts', [BankAccountsController::class, 'index']);
         Route::get('/bank-accounts/{id}', [BankAccountsController::class, 'show']);
@@ -461,7 +459,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::put('/tax-rates/{id}', [TaxRatesController::class, 'update']);
         Route::delete('/tax-rates/{id}', [TaxRatesController::class, 'destroy']);
         Route::post('/tax-rates/calculate', [TaxRatesController::class, 'calculateTax']);
-        
+
         // Customer Credit Notes (must be before /customers/{id} to avoid route conflict)
         Route::get('/customers/credit-notes', [CustomerCreditNotesController::class, 'index']);
         Route::get('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'show']);
@@ -471,12 +469,12 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/customers/credit-notes/{creditNote}/post', [CustomerCreditNotesController::class, 'post']);
         Route::get('/customers/invoices/{invoiceId}/credit-notes', [CustomerCreditNotesController::class, 'getByInvoice']);
         Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validate']);
-        
+
         // Customers List
         Route::get('/customers', [CustomersController::class, 'index']);
         Route::get('/customers/{id}', [CustomersController::class, 'show']);
         Route::post('/customers/import', [CustomersController::class, 'import']);
-        
+
         // Vendor Credit Notes (must be before /vendors/{id} to avoid route conflict)
         Route::get('/vendors/credit-notes', [VendorCreditNotesController::class, 'index']);
         Route::get('/vendors/credit-notes/{creditNote}', [VendorCreditNotesController::class, 'show']);
@@ -496,19 +494,19 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/vendors/debit-notes/{debitNote}/post', [VendorDebitNotesController::class, 'post']);
         Route::get('/vendors/bills/{billId}/debit-notes', [VendorDebitNotesController::class, 'getByBill']);
         Route::post('/vendors/debit-notes/validate', [VendorDebitNotesController::class, 'validate']);
-        
+
         // Vendors List
         Route::get('/vendors', [VendorsController::class, 'index']);
         Route::get('/vendors/{id}', [VendorsController::class, 'show']);
         Route::post('/vendors', [VendorsController::class, 'store']);
         Route::put('/vendors/{id}', [VendorsController::class, 'update']);
         Route::post('/vendors/import', [VendorsController::class, 'import']);
-        
+
         // AR Transactions Ledger
         Route::get('/customers/transactions', [ARTransactionsController::class, 'index']);
         Route::get('/customers/{customerId}/balance', [ARTransactionsController::class, 'getBalance']);
         Route::get('/customers/transactions/export', [ARTransactionsController::class, 'export']);
-        
+
         // AP Transactions Ledger
         Route::get('/vendors/transactions', [APTransactionsController::class, 'index']);
         Route::get('/vendors/{vendorId}/balance', [APTransactionsController::class, 'getBalance']);

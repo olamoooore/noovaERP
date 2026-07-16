@@ -118,9 +118,9 @@ class WarehouseTransferController extends Controller
 
             if (isset($validated['items'])) {
                 $existingIds = [];
-                
+
                 foreach ($validated['items'] as $itemData) {
-                    if (!empty($itemData['id'])) {
+                    if (! empty($itemData['id'])) {
                         $item = WarehouseTransferItem::find($itemData['id']);
                         if ($item && $item->warehouse_transfer_id === $warehouseTransfer->id) {
                             $item->update($itemData);
@@ -143,7 +143,7 @@ class WarehouseTransferController extends Controller
     {
         $warehouseTransfer = $this->findWarehouseTransferOrFail($warehouse_transfer_id);
 
-        if (!in_array($warehouseTransfer->status, ['draft', 'cancelled'])) {
+        if (! in_array($warehouseTransfer->status, ['draft', 'cancelled'])) {
             return response()->json(['message' => 'Cannot delete transfer in current status'], 422);
         }
 
@@ -279,7 +279,7 @@ class WarehouseTransferController extends Controller
                             'WarehouseTransfer',
                             $warehouseTransfer->id,
                             null,
-                            "Transfer cancelled - stock returned"
+                            'Transfer cancelled - stock returned'
                         );
                     }
                 }
@@ -295,8 +295,8 @@ class WarehouseTransferController extends Controller
     {
         $warehouseTransfer = WarehouseTransfer::query()->find($warehouseTransferId);
 
-        if (!$warehouseTransfer) {
-            throw (new ModelNotFoundException())->setModel(WarehouseTransfer::class, [$warehouseTransferId]);
+        if (! $warehouseTransfer) {
+            throw (new ModelNotFoundException)->setModel(WarehouseTransfer::class, [$warehouseTransferId]);
         }
 
         return $warehouseTransfer;

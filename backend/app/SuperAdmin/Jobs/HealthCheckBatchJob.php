@@ -18,7 +18,8 @@ class HealthCheckBatchJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries   = 1;
+    public int $tries = 1;
+
     public int $timeout = 300;
 
     public function __construct(
@@ -29,21 +30,21 @@ class HealthCheckBatchJob implements ShouldQueue
 
     public function handle(TenantOperationService $operationService, AdminAuditLogger $auditLogger): void
     {
-        $total        = count($this->tenantIds);
-        $results      = [];
+        $total = count($this->tenantIds);
+        $results = [];
         $successCount = 0;
         $failureCount = 0;
-        $startedAt    = now()->toIso8601String();
+        $startedAt = now()->toIso8601String();
 
         $this->saveStatus([
-            'status'        => 'running',
-            'total'         => $total,
-            'processed'     => 0,
+            'status' => 'running',
+            'total' => $total,
+            'processed' => 0,
             'success_count' => 0,
             'failure_count' => 0,
-            'results'       => [],
-            'started_at'    => $startedAt,
-            'completed_at'  => null,
+            'results' => [],
+            'started_at' => $startedAt,
+            'completed_at' => null,
         ]);
 
         foreach ($this->tenantIds as $tenantId) {
@@ -51,10 +52,10 @@ class HealthCheckBatchJob implements ShouldQueue
                 $snapshot = $operationService->pingHealth((string) $tenantId);
 
                 $results[] = [
-                    'tenant_id'    => $tenantId,
+                    'tenant_id' => $tenantId,
                     'db_connected' => $snapshot->db_connected,
-                    'storage_mb'   => $snapshot->storage_usage_mb,
-                    'status'       => 'ok',
+                    'storage_mb' => $snapshot->storage_usage_mb,
+                    'status' => 'ok',
                 ];
 
                 $successCount++;
@@ -63,44 +64,44 @@ class HealthCheckBatchJob implements ShouldQueue
 
                 $results[] = [
                     'tenant_id' => $tenantId,
-                    'status'    => 'error',
-                    'error'     => $errorMessage,
+                    'status' => 'error',
+                    'error' => $errorMessage,
                 ];
 
                 $failureCount++;
 
                 Log::warning('HealthCheckBatchJob: ping failed', [
-                    'batch_id'  => $this->batchId,
+                    'batch_id' => $this->batchId,
                     'tenant_id' => $tenantId,
-                    'error'     => $errorMessage,
+                    'error' => $errorMessage,
                 ]);
             }
 
             $processed = $successCount + $failureCount;
 
             $this->saveStatus([
-                'status'        => 'running',
-                'total'         => $total,
-                'processed'     => $processed,
+                'status' => 'running',
+                'total' => $total,
+                'processed' => $processed,
                 'success_count' => $successCount,
                 'failure_count' => $failureCount,
-                'results'       => $results,
-                'started_at'    => $startedAt,
-                'completed_at'  => null,
+                'results' => $results,
+                'started_at' => $startedAt,
+                'completed_at' => null,
             ]);
         }
 
         $completedAt = now()->toIso8601String();
 
         $this->saveStatus([
-            'status'        => 'done',
-            'total'         => $total,
-            'processed'     => $total,
+            'status' => 'done',
+            'total' => $total,
+            'processed' => $total,
             'success_count' => $successCount,
             'failure_count' => $failureCount,
-            'results'       => $results,
-            'started_at'    => $startedAt,
-            'completed_at'  => $completedAt,
+            'results' => $results,
+            'started_at' => $startedAt,
+            'completed_at' => $completedAt,
         ]);
 
         $auditLogger->log(
@@ -108,8 +109,8 @@ class HealthCheckBatchJob implements ShouldQueue
             target: null,
             before: [],
             after: [
-                'batch_id'      => $this->batchId,
-                'total'         => $total,
+                'batch_id' => $this->batchId,
+                'total' => $total,
                 'success_count' => $successCount,
                 'failure_count' => $failureCount,
             ],
@@ -121,12 +122,12 @@ class HealthCheckBatchJob implements ShouldQueue
     {
         Log::error('HealthCheckBatchJob failed', [
             'batch_id' => $this->batchId,
-            'error'    => $exception->getMessage(),
+            'error' => $exception->getMessage(),
         ]);
 
         $this->saveStatus([
-            'status'       => 'failed',
-            'error'        => $exception->getMessage(),
+            'status' => 'failed',
+            'error' => $exception->getMessage(),
             'completed_at' => now()->toIso8601String(),
         ]);
     }

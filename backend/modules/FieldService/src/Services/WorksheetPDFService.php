@@ -20,34 +20,35 @@ class WorksheetPDFService
         $worksheetResponse->load('template');
 
         $template = $worksheetResponse->template;
-        $fields   = collect($template->fields ?? [])->sortBy('sort_order');
+        $fields = collect($template->fields ?? [])->sortBy('sort_order');
         $responses = $worksheetResponse->responses ?? [];
 
         // Build data for the view
         $rows = $fields->map(function (array $field) use ($responses) {
-            $raw   = $responses[$field['id']] ?? null;
+            $raw = $responses[$field['id']] ?? null;
             $value = $this->formatFieldValue($field, $raw);
+
             return [
-                'label'     => $field['label'],
-                'type'      => $field['type'],
-                'value'     => $value,
-                'raw'       => $raw,
-                'is_photo'  => $field['type'] === 'photo',
-                'is_sig'    => $field['type'] === 'signature',
+                'label' => $field['label'],
+                'type' => $field['type'],
+                'value' => $value,
+                'raw' => $raw,
+                'is_photo' => $field['type'] === 'photo',
+                'is_sig' => $field['type'] === 'signature',
             ];
         })->values()->all();
 
         $pdf = Pdf::loadView('field-service.worksheet-report', [
-            'workOrder'    => $workOrder,
-            'worksheet'    => $worksheetResponse,
+            'workOrder' => $workOrder,
+            'worksheet' => $worksheetResponse,
             'templateName' => $template->name,
-            'rows'         => $rows,
+            'rows' => $rows,
         ])->setPaper('a4', 'portrait');
 
         $directory = 'field-service/worksheets';
         Storage::makeDirectory($directory);
 
-        $filename  = $directory . '/WS-' . $workOrder->reference . '-' . $workOrder->id . '.pdf';
+        $filename = $directory.'/WS-'.$workOrder->reference.'-'.$workOrder->id.'.pdf';
         Storage::put($filename, $pdf->output());
 
         return $filename;
@@ -61,9 +62,9 @@ class WorksheetPDFService
 
         return match ($field['type']) {
             'checkbox' => $value ? 'Yes' : 'No',
-            'photo'    => '[Photo attached]',
-            'signature'=> '[Signature captured]',
-            default    => (string) $value,
+            'photo' => '[Photo attached]',
+            'signature' => '[Signature captured]',
+            default => (string) $value,
         };
     }
 }

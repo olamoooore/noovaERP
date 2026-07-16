@@ -2,31 +2,33 @@
 
 namespace Modules\EventManagement\Services;
 
+use Exception;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
-use Carbon\Carbon;
-use Exception;
 
 /**
  * OfflineOperationsService - Task 9.2
- * 
+ *
  * Manages offline check-in queue operations, conflict detection and resolution,
  * and data synchronization with online systems for reliable event operations.
- * 
+ *
  * Requirements: 25.1, 25.2, 25.5
  */
 class OfflineOperationsService
 {
     private const CACHE_PREFIX = 'offline_ops:';
+
     private const SYNC_BATCH_SIZE = 100;
+
     private const MAX_RETRY_ATTEMPTS = 3;
+
     private const CONFLICT_RESOLUTION_TIMEOUT = 300; // 5 minutes
 
     /**
      * Queue offline check-in operation
-     * 
-     * @param array $checkinData Check-in operation data
+     *
+     * @param  array  $checkinData  Check-in operation data
      * @return array Operation result with queue ID
      */
     public function queueOfflineCheckin(array $checkinData): array
@@ -47,7 +49,7 @@ class OfflineOperationsService
                 'sync_status' => 'pending',
                 'checkin_data' => json_encode($checkinData),
                 'retry_count' => 0,
-                'created_at' => now()
+                'created_at' => now(),
             ];
 
             $queueId = DB::table('offline_checkin_queue')->insertGetId($queueEntry);
@@ -63,52 +65,52 @@ class OfflineOperationsService
             Log::info('Offline check-in queued', [
                 'queue_id' => $queueId,
                 'ticket_id' => $checkinData['ticket_id'],
-                'device_id' => $checkinData['device_id']
+                'device_id' => $checkinData['device_id'],
             ]);
 
             return [
                 'success' => true,
                 'queue_id' => $queueId,
                 'status' => 'queued',
-                'message' => 'Check-in queued for synchronization'
+                'message' => 'Check-in queued for synchronization',
             ];
 
         } catch (Exception $e) {
             DB::rollBack();
             Log::error('Failed to queue offline check-in', [
                 'error' => $e->getMessage(),
-                'checkin_data' => $checkinData
+                'checkin_data' => $checkinData,
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to queue check-in operation',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Synchronize offline operations with online systems
-     * 
-     * @param string $deviceId Device to synchronize
-     * @param array $options Synchronization options
+     *
+     * @param  string  $deviceId  Device to synchronize
+     * @param  array  $options  Synchronization options
      * @return array Synchronization result
      */
     public function synchronizeOfflineOperations(string $deviceId, array $options = []): array
     {
         try {
             $syncId = $this->startSyncSession($deviceId, $options);
-            
+
             // Get pending operations for device
             $pendingOperations = $this->getPendingOperations($deviceId, $options);
-            
+
             if (empty($pendingOperations)) {
                 return $this->completeSyncSession($syncId, [
                     'records_processed' => 0,
                     'records_synced' => 0,
                     'conflicts_detected' => 0,
-                    'message' => 'No pending operations to synchronize'
+                    'message' => 'No pending operations to synchronize',
                 ]);
             }
 
@@ -117,16 +119,16 @@ class OfflineOperationsService
                 'synced' => 0,
                 'conflicts' => 0,
                 'failed' => 0,
-                'conflict_details' => []
+                'conflict_details' => [],
             ];
 
             // Process operations in batches
             $batches = array_chunk($pendingOperations, self::SYNC_BATCH_SIZE);
-            
+
             foreach ($batches as $batch) {
                 $batchResult = $this->processSyncBatch($batch, $syncId);
                 $syncResults = $this->mergeSyncResults($syncResults, $batchResult);
-                
+
                 // Update sync progress
                 $this->updateSyncProgress($syncId, $syncResults);
             }
@@ -137,21 +139,21 @@ class OfflineOperationsService
         } catch (Exception $e) {
             Log::error('Offline synchronization failed', [
                 'device_id' => $deviceId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Synchronization failed',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Detect conflicts between offline and online data
-     * 
-     * @param array $offlineData Offline operation data
+     *
+     * @param  array  $offlineData  Offline operation data
      * @return array Conflict detection result
      */
     public function detectConflicts(array $offlineData): array
@@ -159,18 +161,19 @@ class OfflineOperationsService
         try {
             $conflicts = [];
             $ticketId = $offlineData['ticket_id'];
-            
+
             // Get current online ticket status
             $onlineTicket = $this->getOnlineTicketStatus($ticketId);
-            
-            if (!$onlineTicket) {
+
+            if (! $onlineTicket) {
                 $conflicts[] = [
                     'type' => 'ticket_not_found',
                     'severity' => 'critical',
                     'description' => 'Ticket not found in online system',
                     'offline_data' => $offlineData,
-                    'online_data' => null
+                    'online_data' => null,
                 ];
+
                 return ['has_conflicts' => true, 'conflicts' => $conflicts];
             }
 
@@ -181,7 +184,7 @@ class OfflineOperationsService
                     'severity' => 'high',
                     'description' => 'Ticket already checked in online',
                     'offline_data' => $offlineData,
-                    'online_data' => $onlineTicket
+                    'online_data' => $onlineTicket,
                 ];
             }
 
@@ -204,15 +207,15 @@ class OfflineOperationsService
             }
 
             return [
-                'has_conflicts' => !empty($conflicts),
+                'has_conflicts' => ! empty($conflicts),
                 'conflicts' => $conflicts,
-                'conflict_count' => count($conflicts)
+                'conflict_count' => count($conflicts),
             ];
 
         } catch (Exception $e) {
             Log::error('Conflict detection failed', [
                 'offline_data' => $offlineData,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
@@ -220,21 +223,21 @@ class OfflineOperationsService
                 'conflicts' => [[
                     'type' => 'detection_error',
                     'severity' => 'critical',
-                    'description' => 'Failed to detect conflicts: ' . $e->getMessage(),
+                    'description' => 'Failed to detect conflicts: '.$e->getMessage(),
                     'offline_data' => $offlineData,
-                    'online_data' => null
-                ]]
+                    'online_data' => null,
+                ]],
             ];
         }
     }
 
     /**
      * Resolve synchronization conflicts
-     * 
-     * @param string $conflictId Conflict identifier
-     * @param string $resolutionStrategy Resolution strategy
-     * @param array $resolutionData Additional resolution data
-     * @param int $staffId Staff member resolving conflict
+     *
+     * @param  string  $conflictId  Conflict identifier
+     * @param  string  $resolutionStrategy  Resolution strategy
+     * @param  array  $resolutionData  Additional resolution data
+     * @param  int  $staffId  Staff member resolving conflict
      * @return array Resolution result
      */
     public function resolveConflict(string $conflictId, string $resolutionStrategy, array $resolutionData, int $staffId): array
@@ -248,7 +251,7 @@ class OfflineOperationsService
                 ->where('conflict_status', '!=', 'resolved')
                 ->first();
 
-            if (!$conflict) {
+            if (! $conflict) {
                 throw new Exception('Conflict not found or already resolved');
             }
 
@@ -273,7 +276,7 @@ class OfflineOperationsService
                     'resolved_by_staff_id' => $staffId,
                     'resolved_at' => now(),
                     'resolution_notes' => $resolutionData['notes'] ?? null,
-                    'updated_at' => now()
+                    'updated_at' => now(),
                 ]);
 
             // Update related queue entry
@@ -287,7 +290,7 @@ class OfflineOperationsService
             Log::info('Conflict resolved', [
                 'conflict_id' => $conflictId,
                 'strategy' => $resolutionStrategy,
-                'resolved_by' => $staffId
+                'resolved_by' => $staffId,
             ]);
 
             return [
@@ -295,7 +298,7 @@ class OfflineOperationsService
                 'conflict_id' => $conflictId,
                 'resolution_strategy' => $resolutionStrategy,
                 'resolution_result' => $resolutionResult,
-                'message' => 'Conflict resolved successfully'
+                'message' => 'Conflict resolved successfully',
             ];
 
         } catch (Exception $e) {
@@ -303,21 +306,21 @@ class OfflineOperationsService
             Log::error('Conflict resolution failed', [
                 'conflict_id' => $conflictId,
                 'strategy' => $resolutionStrategy,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to resolve conflict',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Get offline capability status for device
-     * 
-     * @param string $deviceId Device identifier
+     *
+     * @param  string  $deviceId  Device identifier
      * @return array Device offline status
      */
     public function getOfflineCapabilityStatus(string $deviceId): array
@@ -328,11 +331,11 @@ class OfflineOperationsService
                 ->where('device_id', $deviceId)
                 ->first();
 
-            if (!$device) {
+            if (! $device) {
                 return [
                     'capable' => false,
                     'status' => 'device_not_found',
-                    'message' => 'Device not registered'
+                    'message' => 'Device not registered',
                 ];
             }
 
@@ -359,29 +362,29 @@ class OfflineOperationsService
                 'last_sync' => $lastSync ? [
                     'status' => $lastSync->sync_status,
                     'completed_at' => $lastSync->sync_completed_at,
-                    'success_rate' => $lastSync->success_rate
+                    'success_rate' => $lastSync->success_rate,
                 ] : null,
-                'sync_health' => $this->calculateSyncHealth($deviceId)
+                'sync_health' => $this->calculateSyncHealth($deviceId),
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to get offline capability status', [
                 'device_id' => $deviceId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'capable' => false,
                 'status' => 'error',
-                'message' => 'Failed to determine offline capability'
+                'message' => 'Failed to determine offline capability',
             ];
         }
     }
 
     /**
      * Get pending conflicts requiring manual resolution
-     * 
-     * @param array $filters Optional filters
+     *
+     * @param  array  $filters  Optional filters
      * @return array List of pending conflicts
      */
     public function getPendingConflicts(array $filters = []): array
@@ -416,7 +419,7 @@ class OfflineOperationsService
                     'requires_manual' => $conflict->requires_manual_intervention,
                     'offline_data' => json_decode($conflict->offline_data, true),
                     'online_data' => json_decode($conflict->online_data, true),
-                    'conflict_details' => json_decode($conflict->conflict_details, true)
+                    'conflict_details' => json_decode($conflict->conflict_details, true),
                 ];
             })->toArray();
 
@@ -424,19 +427,19 @@ class OfflineOperationsService
                 'success' => true,
                 'conflicts' => $conflicts,
                 'total_count' => count($conflicts),
-                'manual_count' => collect($conflicts)->where('requires_manual', true)->count()
+                'manual_count' => collect($conflicts)->where('requires_manual', true)->count(),
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to get pending conflicts', [
                 'filters' => $filters,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'conflicts' => [],
-                'error' => 'Failed to retrieve conflicts'
+                'error' => 'Failed to retrieve conflicts',
             ];
         }
     }
@@ -446,9 +449,9 @@ class OfflineOperationsService
     private function validateCheckinData(array $data): void
     {
         $required = ['ticket_id', 'staff_id', 'event_id', 'device_id'];
-        
+
         foreach ($required as $field) {
-            if (!isset($data[$field]) || empty($data[$field])) {
+            if (! isset($data[$field]) || empty($data[$field])) {
                 throw new Exception("Missing required field: {$field}");
             }
         }
@@ -461,13 +464,13 @@ class OfflineOperationsService
             ->update([
                 'pending_sync_count' => DB::raw('pending_sync_count + 1'),
                 'sync_status_details' => json_encode(['status' => $status, 'updated_at' => now()]),
-                'updated_at' => now()
+                'updated_at' => now(),
             ]);
     }
 
     private function cacheQueueEntry(int $queueId, array $entry): void
     {
-        $cacheKey = self::CACHE_PREFIX . "queue:{$queueId}";
+        $cacheKey = self::CACHE_PREFIX."queue:{$queueId}";
         Cache::put($cacheKey, $entry, 3600); // 1 hour
     }
 
@@ -480,7 +483,7 @@ class OfflineOperationsService
             'sync_status' => 'started',
             'sync_started_at' => now(),
             'sync_details' => json_encode($options),
-            'created_at' => now()
+            'created_at' => now(),
         ]);
     }
 
@@ -497,13 +500,14 @@ class OfflineOperationsService
 
         return $query->get()->toArray();
     }
+
     private function processSyncBatch(array $batch, int $syncId): array
     {
         $results = ['processed' => 0, 'synced' => 0, 'conflicts' => 0, 'failed' => 0, 'conflict_details' => []];
 
         foreach ($batch as $operation) {
             $results['processed']++;
-            
+
             try {
                 $checkinData = json_decode($operation->checkin_data, true);
                 $conflictResult = $this->detectConflicts($checkinData);
@@ -520,7 +524,7 @@ class OfflineOperationsService
             } catch (Exception $e) {
                 Log::error('Sync operation failed', [
                     'operation_id' => $operation->id,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ]);
                 $results['failed']++;
             }
@@ -536,7 +540,7 @@ class OfflineOperationsService
             'synced' => $current['synced'] + $batch['synced'],
             'conflicts' => $current['conflicts'] + $batch['conflicts'],
             'failed' => $current['failed'] + $batch['failed'],
-            'conflict_details' => array_merge($current['conflict_details'], $batch['conflict_details'])
+            'conflict_details' => array_merge($current['conflict_details'], $batch['conflict_details']),
         ];
     }
 
@@ -550,13 +554,13 @@ class OfflineOperationsService
                 'records_synced' => $results['synced'],
                 'conflicts_detected' => $results['conflicts'],
                 'sync_details' => json_encode($results),
-                'updated_at' => now()
+                'updated_at' => now(),
             ]);
     }
 
     private function completeSyncSession(int $syncId, array $results): array
     {
-        $successRate = $results['processed'] > 0 
+        $successRate = $results['processed'] > 0
             ? round(($results['synced'] / $results['processed']) * 100, 2)
             : 100;
 
@@ -572,7 +576,7 @@ class OfflineOperationsService
                 'success_rate' => $successRate,
                 'duration_seconds' => now()->diffInSeconds(DB::table('sync_status_log')->where('id', $syncId)->value('sync_started_at')),
                 'sync_details' => json_encode($results),
-                'updated_at' => now()
+                'updated_at' => now(),
             ]);
 
         return [
@@ -580,7 +584,7 @@ class OfflineOperationsService
             'sync_id' => $syncId,
             'results' => $results,
             'success_rate' => $successRate,
-            'message' => 'Synchronization completed'
+            'message' => 'Synchronization completed',
         ];
     }
 
@@ -592,7 +596,7 @@ class OfflineOperationsService
             'ticket_id' => $ticketId,
             'status' => 'valid',
             'checked_in_at' => null,
-            'last_updated' => now()
+            'last_updated' => now(),
         ];
     }
 
@@ -624,8 +628,8 @@ class OfflineOperationsService
     private function validateResolutionStrategy(string $strategy, object $conflict): void
     {
         $validStrategies = ['offline_wins', 'online_wins', 'merge_data', 'manual_resolution', 'create_duplicate', 'reject_offline'];
-        
-        if (!in_array($strategy, $validStrategies)) {
+
+        if (! in_array($strategy, $validStrategies)) {
             throw new Exception("Invalid resolution strategy: {$strategy}");
         }
     }
@@ -637,7 +641,7 @@ class OfflineOperationsService
             'strategy' => $strategy,
             'applied_by' => $staffId,
             'applied_at' => now(),
-            'result' => 'resolved'
+            'result' => 'resolved',
         ];
     }
 
@@ -651,15 +655,15 @@ class OfflineOperationsService
                 'sync_status' => $status,
                 'resolution_data' => json_encode($result),
                 'synced_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ]);
     }
 
     private function handleSyncConflict(object $operation, array $conflicts): void
     {
         foreach ($conflicts as $conflict) {
-            $conflictId = 'conflict_' . $operation->id . '_' . uniqid();
-            
+            $conflictId = 'conflict_'.$operation->id.'_'.uniqid();
+
             DB::table('sync_conflicts')->insert([
                 'conflict_id' => $conflictId,
                 'conflict_type' => $conflict['type'],
@@ -675,7 +679,7 @@ class OfflineOperationsService
                 'resolution_priority' => $this->calculateConflictPriority($conflict),
                 'requires_manual_intervention' => $this->requiresManualIntervention($conflict),
                 'detected_at' => now(),
-                'created_at' => now()
+                'created_at' => now(),
             ]);
         }
 
@@ -685,7 +689,7 @@ class OfflineOperationsService
             ->update([
                 'sync_status' => 'conflict',
                 'conflict_data' => json_encode($conflicts),
-                'updated_at' => now()
+                'updated_at' => now(),
             ]);
     }
 
@@ -693,13 +697,13 @@ class OfflineOperationsService
     {
         // Apply the offline operation to the online system
         // This would integrate with the actual booking/ticket system
-        
+
         DB::table('offline_checkin_queue')
             ->where('id', $operation->id)
             ->update([
                 'sync_status' => 'synced',
                 'synced_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ]);
     }
 
@@ -710,7 +714,7 @@ class OfflineOperationsService
             'critical' => 1,
             'high' => 3,
             'medium' => 5,
-            'low' => 7
+            'low' => 7,
         ];
 
         return $priorityMap[$conflict['severity']] ?? 5;
@@ -719,6 +723,7 @@ class OfflineOperationsService
     private function requiresManualIntervention(array $conflict): bool
     {
         $manualTypes = ['duplicate_checkin', 'data_integrity_violation', 'detection_error'];
+
         return in_array($conflict['type'], $manualTypes) || $conflict['severity'] === 'critical';
     }
 
@@ -743,7 +748,7 @@ class OfflineOperationsService
             'status' => $healthScore >= 90 ? 'excellent' : ($healthScore >= 70 ? 'good' : ($healthScore >= 50 ? 'fair' : 'poor')),
             'score' => round($healthScore, 2),
             'recent_syncs' => $totalSyncs,
-            'success_rate' => round($avgSuccessRate, 2)
+            'success_rate' => round($avgSuccessRate, 2),
         ];
     }
 }

@@ -2,17 +2,17 @@
 
 namespace Modules\IoT\Services;
 
-use Modules\IoT\Contracts\DeviceClientInterface;
-use Modules\IoT\Models\DeviceConfiguration;
 use App\Services\TenantCache;
 use Illuminate\Support\Facades\Log;
+use Modules\IoT\Contracts\DeviceClientInterface;
+use Modules\IoT\Models\DeviceConfiguration;
 
 /**
  * MQTT Device Client
- * 
+ *
  * Communicates directly with MQTT-enabled IoT devices
  * without requiring a local agent.
- * 
+ *
  * Note: Requires php-mqtt/client package
  * Install with: composer require php-mqtt/client
  */
@@ -29,18 +29,18 @@ class MqttDeviceClient implements DeviceClientInterface
         array $payload = []
     ): array {
         $config = $device->connection_info;
-        
-        if (!isset($config['broker_url'], $config['topic_command'])) {
+
+        if (! isset($config['broker_url'], $config['topic_command'])) {
             throw new \InvalidArgumentException('Invalid MQTT configuration: broker_url and topic_command required');
         }
 
         // Check if MQTT library is available
-        if (!class_exists('\PhpMqtt\Client\MqttClient')) {
+        if (! class_exists('\PhpMqtt\Client\MqttClient')) {
             Log::warning('MQTT client library not installed', [
                 'device_id' => $device->id,
                 'message' => 'Install with: composer require php-mqtt/client',
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => 'MQTT client library not installed. Install with: composer require php-mqtt/client',
@@ -84,7 +84,7 @@ class MqttDeviceClient implements DeviceClientInterface
                 'device_id' => $device->id,
                 'error' => $e->getMessage(),
             ]);
-            
+
             throw $e;
         }
     }
@@ -104,17 +104,19 @@ class MqttDeviceClient implements DeviceClientInterface
     {
         try {
             // Check if MQTT library is available
-            if (!class_exists('\PhpMqtt\Client\MqttClient')) {
+            if (! class_exists('\PhpMqtt\Client\MqttClient')) {
                 return false;
             }
 
             $mqtt = $this->getConnection($device);
+
             return $mqtt->isConnected();
         } catch (\Exception $e) {
             Log::error('MQTT connection test failed', [
                 'device_id' => $device->id,
                 'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -145,14 +147,14 @@ class MqttDeviceClient implements DeviceClientInterface
         }
 
         $config = $device->connection_info;
-        
+
         // Parse broker URL
         $brokerUrl = parse_url($config['broker_url']);
         $host = $brokerUrl['host'];
         $port = $brokerUrl['port'] ?? 1883;
 
         // Create connection settings
-        $connectionSettings = (new \PhpMqtt\Client\ConnectionSettings())
+        $connectionSettings = (new \PhpMqtt\Client\ConnectionSettings)
             ->setUsername($config['username'] ?? null)
             ->setPassword($config['password'] ?? null)
             ->setKeepAliveInterval($config['keep_alive'] ?? 60)
@@ -167,14 +169,14 @@ class MqttDeviceClient implements DeviceClientInterface
         }
 
         // Create MQTT client
-        $mqtt = new \PhpMqtt\Client\MqttClient($host, $port, $config['client_id'] ?? 'noovaerp-iot-' . $deviceId);
+        $mqtt = new \PhpMqtt\Client\MqttClient($host, $port, $config['client_id'] ?? 'noovaerp-iot-'.$deviceId);
         $mqtt->connect($connectionSettings, $config['clean_session'] ?? true);
 
         $this->connections[$deviceId] = $mqtt;
 
         Log::info('MQTT connection established', [
             'device_id' => $deviceId,
-            'broker' => $host . ':' . $port,
+            'broker' => $host.':'.$port,
         ]);
 
         return $mqtt;
@@ -185,7 +187,7 @@ class MqttDeviceClient implements DeviceClientInterface
      */
     private function waitForResponse($mqtt, string $responseTopic, string $deviceId, int $timeout = 10): array
     {
-        $cacheKey = "mqtt_response_{$deviceId}_" . time();
+        $cacheKey = "mqtt_response_{$deviceId}_".time();
         $startTime = time();
 
         // Subscribe to response topic
@@ -196,9 +198,10 @@ class MqttDeviceClient implements DeviceClientInterface
         // Wait for response
         while (time() - $startTime < $timeout) {
             $mqtt->loop(true, true);
-            
+
             if ($response = TenantCache::get($cacheKey)) {
                 TenantCache::forget($cacheKey);
+
                 return json_decode($response, true) ?? ['success' => false, 'error' => 'Invalid response'];
             }
 

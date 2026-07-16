@@ -2,28 +2,34 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use App\Models\User;
-use App\Models\Product;
-use App\Models\Customer;
 use App\Models\AuditLog;
+use App\Models\Customer;
+use App\Models\Product;
+use App\Models\User;
 use App\Services\AuditLogger;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Spatie\Permission\Models\Role;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class PosAuditLineageTest extends TestCase
 {
     use RefreshDatabase;
 
     protected User $cashier;
+
     protected User $manager;
+
     protected Product $product;
+
     protected Customer $customer;
+
     protected PosTerminal $terminal;
+
     protected PosSession $session;
+
     protected AuditLogger $auditLogger;
 
     protected function setUp(): void

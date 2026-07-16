@@ -23,9 +23,9 @@ class EntityModuleService
 
         $allModules = $this->getAllModuleCodes();
 
-        return array_map(fn(string $code) => [
+        return array_map(fn (string $code) => [
             'module_code' => $code,
-            'is_active'   => in_array($code, $active),
+            'is_active' => in_array($code, $active),
         ], $allModules);
     }
 
@@ -47,7 +47,7 @@ class EntityModuleService
                 ->where('is_active', true)
                 ->exists();
 
-            if (!$depActive) {
+            if (! $depActive) {
                 throw new \RuntimeException(
                     "Cannot activate '{$moduleCode}': hard dependency '{$dep}' is not active."
                 );
@@ -57,10 +57,10 @@ class EntityModuleService
         DB::table('entity_modules')->updateOrInsert(
             ['legal_entity_id' => $legalEntityId, 'module_code' => $moduleCode],
             [
-                'is_active'    => true,
+                'is_active' => true,
                 'activated_at' => now(),
                 'activated_by' => $userId,
-                'updated_at'   => now(),
+                'updated_at' => now(),
             ]
         );
     }
@@ -95,7 +95,7 @@ class EntityModuleService
             ->where('legal_entity_id', $legalEntityId)
             ->where('module_code', $moduleCode)
             ->update([
-                'is_active'  => false,
+                'is_active' => false,
                 'updated_at' => now(),
             ]);
     }
@@ -110,7 +110,7 @@ class EntityModuleService
             ->where('is_active', true)
             ->first();
 
-        if (!$pack) {
+        if (! $pack) {
             throw new \RuntimeException("Industry pack '{$packCode}' not found.");
         }
 
@@ -118,7 +118,7 @@ class EntityModuleService
         $count = 0;
 
         // Activate in dependency order (accounting first)
-        usort($modules, fn($a, $b) => $a === 'accounting' ? -1 : ($b === 'accounting' ? 1 : 0));
+        usort($modules, fn ($a, $b) => $a === 'accounting' ? -1 : ($b === 'accounting' ? 1 : 0));
 
         foreach ($modules as $moduleCode) {
             try {
@@ -126,10 +126,10 @@ class EntityModuleService
                 $count++;
             } catch (\RuntimeException $e) {
                 // Log but don't fail the whole pack
-                \Illuminate\Support\Facades\Log::warning("Failed to activate module during pack apply", [
-                    'module'    => $moduleCode,
+                \Illuminate\Support\Facades\Log::warning('Failed to activate module during pack apply', [
+                    'module' => $moduleCode,
                     'entity_id' => $legalEntityId,
-                    'error'     => $e->getMessage(),
+                    'error' => $e->getMessage(),
                 ]);
             }
         }

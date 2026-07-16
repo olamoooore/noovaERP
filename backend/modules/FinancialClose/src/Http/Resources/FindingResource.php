@@ -19,25 +19,25 @@ class FindingResource extends JsonResource
         $sourceRefs = is_array($structuredOutput['source_refs'] ?? null) ? $structuredOutput['source_refs'] : [];
 
         return [
-            'id'           => $this->id,
-            'review_id'    => $this->review_id,
-            'entity_id'    => $this->entity_id,
+            'id' => $this->id,
+            'review_id' => $this->review_id,
+            'entity_id' => $this->entity_id,
             'account_code' => $this->account_code,
             'finding_type' => $this->finding_type,
-            'status'       => $this->status,
-            'risk_status'  => $this->risk_status,
-            'confidence'   => $this->confidence,
-            'description'  => $this->description,
+            'status' => $this->status,
+            'risk_status' => $this->risk_status,
+            'confidence' => $this->confidence,
+            'description' => $this->description,
             'likely_cause' => isset($structuredOutput['likely_cause']) ? (string) $structuredOutput['likely_cause'] : null,
             'recommendation' => isset($structuredOutput['recommendation']) ? (string) $structuredOutput['recommendation'] : null,
-            'source_refs'  => collect($sourceRefs)
-                ->filter(fn ($ref) => is_array($ref) && !empty($ref['id']))
+            'source_refs' => collect($sourceRefs)
+                ->filter(fn ($ref) => is_array($ref) && ! empty($ref['id']))
                 ->map(fn ($ref) => [
-                    'type'  => $ref['type']  ?? 'transaction',
-                    'id'    => (string) $ref['id'],
-                    'label' => $ref['label'] ?? ('#' . $ref['id']),
+                    'type' => $ref['type'] ?? 'transaction',
+                    'id' => (string) $ref['id'],
+                    'label' => $ref['label'] ?? ('#'.$ref['id']),
                     'route' => $ref['route'] ?? null,
-                    'meta'  => is_array($ref['meta'] ?? null) ? $ref['meta'] : null,
+                    'meta' => is_array($ref['meta'] ?? null) ? $ref['meta'] : null,
                 ])
                 ->values()
                 ->all(),
@@ -50,11 +50,11 @@ class FindingResource extends JsonResource
                 ])
                 ->values()
                 ->all(),
-            'accepted_by'  => $this->accepted_by,
-            'accepted_at'  => $this->accepted_at,
+            'accepted_by' => $this->accepted_by,
+            'accepted_at' => $this->accepted_at,
             'dismissed_by' => $this->dismissed_by,
             'dismissed_at' => $this->dismissed_at,
-            'created_at'   => $this->created_at,
+            'created_at' => $this->created_at,
             // raw structured_output intentionally omitted — only safe preview fields are exposed here
         ];
     }

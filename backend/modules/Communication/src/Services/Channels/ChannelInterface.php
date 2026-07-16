@@ -2,8 +2,8 @@
 
 namespace Modules\Communication\Services\Channels;
 
-use Modules\Communication\Models\CommunicationOutbox;
 use Modules\Communication\Models\CommunicationMessage;
+use Modules\Communication\Models\CommunicationOutbox;
 
 /**
  * ChannelInterface — Contract for all delivery channel adapters.
@@ -26,8 +26,8 @@ interface ChannelInterface
     /**
      * Send a single outbox item through this channel.
      *
-     * @param CommunicationOutbox $outbox The queued delivery item
-     * @param CommunicationMessage $message The parent message
+     * @param  CommunicationOutbox  $outbox  The queued delivery item
+     * @param  CommunicationMessage  $message  The parent message
      * @return array{success: bool, external_id?: string, error?: string}
      */
     public function send(CommunicationOutbox $outbox, CommunicationMessage $message): array;
@@ -35,7 +35,6 @@ interface ChannelInterface
     /**
      * Send a batch of outbox items (for channels that support batching).
      *
-     * @param \Illuminate\Support\Collection $outboxItems
      * @return array<int, array{success: bool, external_id?: string, error?: string}>
      */
     public function sendBatch(\Illuminate\Support\Collection $outboxItems): array;

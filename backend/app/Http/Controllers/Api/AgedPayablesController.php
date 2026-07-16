@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\AgedPayablesService;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 /**
  * Aged Payables Controller
@@ -19,9 +19,6 @@ class AgedPayablesController extends Controller
 
     /**
      * Get aged payables report
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function index(Request $request): JsonResponse
     {
@@ -38,7 +35,7 @@ class AgedPayablesController extends Controller
             $report = $this->agedPayablesService->getAgedPayables($validated);
 
             return response()->json([
-                'data' => $report
+                'data' => $report,
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -57,9 +54,6 @@ class AgedPayablesController extends Controller
 
     /**
      * Get bill details for a specific vendor and aging bucket
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function details(Request $request): JsonResponse
     {

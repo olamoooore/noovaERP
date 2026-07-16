@@ -2,30 +2,28 @@
 
 namespace Modules\EventManagement\Services;
 
-use Modules\EventManagement\Models\Event;
-use Modules\EventManagement\Models\Bid;
-use Modules\EventManagement\Services\BiddingService;
-use Modules\EventManagement\Services\SaleWindowService;
-use Modules\EventManagement\Services\AccessControlService;
-use Modules\EventManagement\Exceptions\InvalidAcquisitionModeException;
-use Modules\EventManagement\Exceptions\SaleNotStartedException;
-use Modules\EventManagement\Exceptions\SaleClosedException;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
+use Modules\EventManagement\Exceptions\InvalidAcquisitionModeException;
+use Modules\EventManagement\Exceptions\SaleClosedException;
+use Modules\EventManagement\Exceptions\SaleNotStartedException;
+use Modules\EventManagement\Models\Bid;
+use Modules\EventManagement\Models\Event;
 
 /**
  * Bid Flow Orchestrator
- * 
+ *
  * Consolidated orchestrator for all bid flow processing operations.
  * This service acts as the single entry point for bid flow logic,
  * coordinating between BiddingService, SaleWindowService, and AccessControlService.
- * 
+ *
  * Requirements: 6.3 - Isolate bid flow processing (if present)
  */
 class BidFlowOrchestrator
 {
     protected BiddingService $biddingService;
+
     protected SaleWindowService $saleWindowService;
+
     protected AccessControlService $accessControlService;
 
     public function __construct(
@@ -40,10 +38,6 @@ class BidFlowOrchestrator
 
     /**
      * Complete bid submission flow with all validations
-     * 
-     * @param array $bidData
-     * @param int|null $userId
-     * @return array
      */
     public function submitBidFlow(array $bidData, ?int $userId = null): array
     {
@@ -56,7 +50,7 @@ class BidFlowOrchestrator
 
             // Step 1: Validate bid eligibility
             $eligibilityCheck = $this->validateBidEligibility($bidData['event_id'], $bidData['customer_id']);
-            if (!$eligibilityCheck['eligible']) {
+            if (! $eligibilityCheck['eligible']) {
                 return [
                     'success' => false,
                     'error' => $eligibilityCheck['reason'],
@@ -114,12 +108,6 @@ class BidFlowOrchestrator
 
     /**
      * Complete bid processing flow with access control
-     * 
-     * @param int $bidId
-     * @param string $action
-     * @param int $adminId
-     * @param array $additionalData
-     * @return array
      */
     public function processBidFlow(int $bidId, string $action, int $adminId, array $additionalData = []): array
     {
@@ -132,7 +120,7 @@ class BidFlowOrchestrator
 
             // Step 1: Validate admin permissions (if user object is available)
             // Note: Access control validation should be done at controller level
-            
+
             // Step 2: Process the bid action
             $bid = $this->biddingService->processBidAction(
                 $bidId,
@@ -185,11 +173,6 @@ class BidFlowOrchestrator
 
     /**
      * Bulk bid processing flow
-     * 
-     * @param array $bids
-     * @param int $adminId
-     * @param string|null $adminNotes
-     * @return array
      */
     public function bulkProcessBidsFlow(array $bids, int $adminId, ?string $adminNotes = null): array
     {
@@ -232,19 +215,15 @@ class BidFlowOrchestrator
 
     /**
      * Get comprehensive bid information for management
-     * 
-     * @param int $eventId
-     * @param array $filters
-     * @return array
      */
     public function getBidManagementData(int $eventId, array $filters = []): array
     {
         try {
             $bids = $this->biddingService->getBidsForEvent($eventId);
             $event = Event::findOrFail($eventId);
-            
+
             // Apply filters if provided
-            if (!empty($filters['status'])) {
+            if (! empty($filters['status'])) {
                 $bids = $bids->where('status', $filters['status']);
             }
 
@@ -284,17 +263,13 @@ class BidFlowOrchestrator
 
     /**
      * Validate bid eligibility with comprehensive checks
-     * 
-     * @param int $eventId
-     * @param int $customerId
-     * @return array
      */
     protected function validateBidEligibility(int $eventId, int $customerId): array
     {
         try {
             // Check if bidding is allowed for the event
             $canBidResult = $this->biddingService->canBid($eventId);
-            if (!$canBidResult['can_bid']) {
+            if (! $canBidResult['can_bid']) {
                 return [
                     'eligible' => false,
                     'reason' => $canBidResult['reason'],
@@ -339,10 +314,6 @@ class BidFlowOrchestrator
 
     /**
      * Get bid flow analytics and insights
-     * 
-     * @param int|null $eventId
-     * @param array $dateRange
-     * @return array
      */
     public function getBidFlowAnalytics(?int $eventId = null, array $dateRange = []): array
     {
@@ -353,11 +324,11 @@ class BidFlowOrchestrator
                 $query->where('event_id', $eventId);
             }
 
-            if (!empty($dateRange['from'])) {
+            if (! empty($dateRange['from'])) {
                 $query->where('created_at', '>=', $dateRange['from']);
             }
 
-            if (!empty($dateRange['to'])) {
+            if (! empty($dateRange['to'])) {
                 $query->where('created_at', '<=', $dateRange['to']);
             }
 
@@ -371,7 +342,7 @@ class BidFlowOrchestrator
                 'average_bid_amount' => $bids->avg('bid_amount'),
                 'highest_bid_amount' => $bids->max('bid_amount'),
                 'total_bid_value' => $bids->sum('bid_amount'),
-                'acceptance_rate' => $bids->count() > 0 ? 
+                'acceptance_rate' => $bids->count() > 0 ?
                     ($bids->where('status', Bid::STATUS_ACCEPTED)->count() / $bids->count()) * 100 : 0,
                 'bid_distribution' => [
                     'by_status' => $bids->groupBy('status')->map->count(),
@@ -400,9 +371,8 @@ class BidFlowOrchestrator
 
     /**
      * Get bid amount distribution for analytics
-     * 
-     * @param \Illuminate\Support\Collection $bids
-     * @return array
+     *
+     * @param  \Illuminate\Support\Collection  $bids
      */
     protected function getBidAmountDistribution($bids): array
     {
@@ -416,7 +386,7 @@ class BidFlowOrchestrator
 
         foreach ($bids as $bid) {
             $amount = $bid->bid_amount;
-            
+
             if ($amount <= 100) {
                 $ranges['0-100']++;
             } elseif ($amount <= 500) {

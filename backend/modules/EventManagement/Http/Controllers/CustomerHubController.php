@@ -2,22 +2,22 @@
 
 namespace Modules\EventManagement\Http\Controllers;
 
-use Illuminate\Http\Request;
+use Exception;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Modules\EventManagement\Services\TicketStatusService;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use Exception;
+use Illuminate\Support\Facades\Validator;
+use Modules\EventManagement\Services\TicketStatusService;
 
 /**
  * CustomerHubController - Task 10.3
- * 
+ *
  * Enhanced customer hub UI controller with real-time status updates,
  * clear event instructions, ticket resend functionality, and status history.
- * 
+ *
  * Requirements: 26.2, 26.5
  */
 class CustomerHubController extends Controller
@@ -31,8 +31,8 @@ class CustomerHubController extends Controller
 
     /**
      * Get customer hub dashboard
-        * Shows only the authenticated customer's bookings for this tenant.
-        * Results are sorted with upcoming events first.
+     * Shows only the authenticated customer's bookings for this tenant.
+     * Results are sorted with upcoming events first.
      */
     public function getDashboard(Request $request): JsonResponse
     {
@@ -92,7 +92,7 @@ class CustomerHubController extends Controller
                         $scope->where('b.customer_id', $user->id);
                     }
 
-                    if (!empty($user->email) && Schema::hasColumn('bookings', 'buyer_email')) {
+                    if (! empty($user->email) && Schema::hasColumn('bookings', 'buyer_email')) {
                         $scope->orWhere('b.buyer_email', $user->email);
                     }
                 });
@@ -102,7 +102,7 @@ class CustomerHubController extends Controller
             $bookingIds = $bookings->pluck('id')->all();
             $ticketsByBooking = collect();
 
-            if (!empty($bookingIds)) {
+            if (! empty($bookingIds)) {
                 $ticketsByBooking = DB::table('tickets as t')
                     ->leftJoin('booking_attendees as a', 't.attendee_id', '=', 'a.id')
                     ->whereIn('t.booking_id', $bookingIds)
@@ -126,7 +126,7 @@ class CustomerHubController extends Controller
             })->values();
 
             $past = $bookings->filter(function ($b) use ($now) {
-                return !$b->event_start || \Carbon\Carbon::parse($b->event_start)->lte($now);
+                return ! $b->event_start || \Carbon\Carbon::parse($b->event_start)->lte($now);
             })->values();
 
             $formatBooking = function ($b) use ($ticketsByBooking) {
@@ -140,37 +140,37 @@ class CustomerHubController extends Controller
                 ])->values();
 
                 return [
-                    'id'                => $b->id,
+                    'id' => $b->id,
                     'booking_reference' => $b->booking_reference,
-                    'event_id'          => $b->event_id,
-                    'event_title'       => $b->event_title ?? 'Unknown Event',
-                    'event_date'        => $b->event_start,
-                    'event_venue'       => $b->event_venue,
-                    'event_image'       => $b->event_image,
-                    'buyer_name'        => $b->buyer_name,
-                    'buyer_email'       => $b->buyer_email,
-                    'amount'            => $b->total_amount,
-                    'currency'          => $b->currency ?? 'SGD',
-                    'state'             => $b->state,
-                    'created_at'        => $b->created_at,
-                    'ticket_count'       => $tickets->count(),
-                    'tickets'            => $tickets->all(),
+                    'event_id' => $b->event_id,
+                    'event_title' => $b->event_title ?? 'Unknown Event',
+                    'event_date' => $b->event_start,
+                    'event_venue' => $b->event_venue,
+                    'event_image' => $b->event_image,
+                    'buyer_name' => $b->buyer_name,
+                    'buyer_email' => $b->buyer_email,
+                    'amount' => $b->total_amount,
+                    'currency' => $b->currency ?? 'SGD',
+                    'state' => $b->state,
+                    'created_at' => $b->created_at,
+                    'ticket_count' => $tickets->count(),
+                    'tickets' => $tickets->all(),
                 ];
             };
 
             $totalTickets = $ticketsByBooking->flatten(1)->count();
 
             return response()->json([
-                'success'     => true,
+                'success' => true,
                 'customer_id' => $request->user()->id,
-                'dashboard'   => [
+                'dashboard' => [
                     'upcoming_events' => $upcoming->map($formatBooking)->all(),
-                    'tickets'         => $bookings->map($formatBooking)->all(),
-                    'past_events'     => $past->map($formatBooking)->all(),
-                    'stats'           => [
+                    'tickets' => $bookings->map($formatBooking)->all(),
+                    'past_events' => $past->map($formatBooking)->all(),
+                    'stats' => [
                         'upcoming_count' => $upcoming->count(),
                         'total_bookings' => $bookings->count(),
-                        'total_tickets'  => $totalTickets,
+                        'total_tickets' => $totalTickets,
                     ],
                 ],
             ]);
@@ -183,7 +183,7 @@ class CustomerHubController extends Controller
 
             return response()->json([
                 'success' => false,
-                'error'   => 'Failed to load dashboard',
+                'error' => 'Failed to load dashboard',
                 'message' => $e->getMessage(),
             ], 500);
         }
@@ -191,7 +191,7 @@ class CustomerHubController extends Controller
 
     private function shouldScopeToCustomer($user): bool
     {
-        if (!$user) {
+        if (! $user) {
             return true;
         }
 
@@ -203,6 +203,7 @@ class CustomerHubController extends Controller
             if (method_exists($user, 'hasAnyRole') && $user->hasAnyRole(['customer', 'web_customer', 'guest_customer'])) {
                 return true;
             }
+
             return false;
         }
 
@@ -221,7 +222,7 @@ class CustomerHubController extends Controller
             return false;
         }
 
-        return !str_contains($role, 'admin') && !str_contains($role, 'manager') && !str_contains($role, 'owner');
+        return ! str_contains($role, 'admin') && ! str_contains($role, 'manager') && ! str_contains($role, 'owner');
     }
 
     /**
@@ -232,21 +233,21 @@ class CustomerHubController extends Controller
         try {
             // Verify customer owns this ticket
             $customerId = $request->user()->id;
-            if (!$this->verifyTicketOwnership($ticketId, $customerId)) {
+            if (! $this->verifyTicketOwnership($ticketId, $customerId)) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'Ticket not found or access denied'
+                    'error' => 'Ticket not found or access denied',
                 ], 404);
             }
 
             $options = [
                 'include_history' => $request->boolean('include_history', true),
-                'force_refresh' => $request->boolean('force_refresh', false)
+                'force_refresh' => $request->boolean('force_refresh', false),
             ];
 
             $ticketStatus = $this->ticketStatusService->getTicketStatus($ticketId, $options);
 
-            if (!$ticketStatus['success']) {
+            if (! $ticketStatus['success']) {
                 return response()->json($ticketStatus, 404);
             }
 
@@ -261,7 +262,7 @@ class CustomerHubController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to get ticket status',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -273,31 +274,31 @@ class CustomerHubController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'delivery_method' => 'nullable|in:email,sms,both',
-            'reason' => 'nullable|string|max:255'
+            'reason' => 'nullable|string|max:255',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         try {
             // Verify customer owns this ticket
             $customerId = $request->user()->id;
-            if (!$this->verifyTicketOwnership($ticketId, $customerId)) {
+            if (! $this->verifyTicketOwnership($ticketId, $customerId)) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'Ticket not found or access denied'
+                    'error' => 'Ticket not found or access denied',
                 ], 404);
             }
 
             $resendOptions = [
                 'delivery_method' => $request->input('delivery_method', 'email'),
                 'reason' => $request->input('reason', 'Customer requested resend'),
-                'requested_by_customer' => true
+                'requested_by_customer' => true,
             ];
 
             $result = $this->ticketStatusService->resendTicket($ticketId, $resendOptions, $customerId);
@@ -308,7 +309,7 @@ class CustomerHubController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to resend ticket',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -321,21 +322,21 @@ class CustomerHubController extends Controller
         try {
             // Verify customer owns this ticket
             $customerId = $request->user()->id;
-            if (!$this->verifyTicketOwnership($ticketId, $customerId)) {
+            if (! $this->verifyTicketOwnership($ticketId, $customerId)) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'Ticket not found or access denied'
+                    'error' => 'Ticket not found or access denied',
                 ], 404);
             }
 
             $options = [
                 'include_history' => true,
-                'limit' => $request->input('limit', 50)
+                'limit' => $request->input('limit', 50),
             ];
 
             $ticketStatus = $this->ticketStatusService->getTicketStatus($ticketId, $options);
 
-            if (!$ticketStatus['success']) {
+            if (! $ticketStatus['success']) {
                 return response()->json($ticketStatus, 404);
             }
 
@@ -347,14 +348,14 @@ class CustomerHubController extends Controller
                 'ticket_id' => $ticketId,
                 'current_status' => $ticketStatus['current_status'],
                 'status_history' => $enhancedHistory,
-                'timeline' => $this->generateStatusTimeline($enhancedHistory)
+                'timeline' => $this->generateStatusTimeline($enhancedHistory),
             ]);
 
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to get ticket history',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -368,10 +369,10 @@ class CustomerHubController extends Controller
             $customerId = $request->user()->id;
 
             // Verify customer has tickets for this event
-            if (!$this->verifyEventAccess($eventId, $customerId)) {
+            if (! $this->verifyEventAccess($eventId, $customerId)) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'Event not found or access denied'
+                    'error' => 'Event not found or access denied',
                 ], 404);
             }
 
@@ -380,14 +381,14 @@ class CustomerHubController extends Controller
             return response()->json([
                 'success' => true,
                 'event_id' => $eventId,
-                'instructions' => $instructions
+                'instructions' => $instructions,
             ]);
 
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to get event instructions',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -406,14 +407,14 @@ class CustomerHubController extends Controller
             'push_notifications_enabled' => 'nullable|boolean',
             'preferred_language' => 'nullable|string|size:2',
             'timezone' => 'nullable|string|max:50',
-            'communication_frequency' => 'nullable|in:immediate,daily_digest,weekly_digest,minimal'
+            'communication_frequency' => 'nullable|in:immediate,daily_digest,weekly_digest,minimal',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -429,7 +430,7 @@ class CustomerHubController extends Controller
                 'push_notifications_enabled' => $request->input('push_notifications_enabled'),
                 'preferred_language' => $request->input('preferred_language'),
                 'timezone' => $request->input('timezone'),
-                'communication_frequency' => $request->input('communication_frequency')
+                'communication_frequency' => $request->input('communication_frequency'),
             ], function ($value) {
                 return $value !== null;
             });
@@ -442,7 +443,7 @@ class CustomerHubController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to update preferences',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -459,7 +460,7 @@ class CustomerHubController extends Controller
                 'limit' => $request->input('limit', 20),
                 'unread_only' => $request->boolean('unread_only', false),
                 'notification_type' => $request->input('type'),
-                'since' => $request->input('since')
+                'since' => $request->input('since'),
             ];
 
             $notifications = $this->getCustomerNotifications($customerId, $options);
@@ -468,14 +469,14 @@ class CustomerHubController extends Controller
                 'success' => true,
                 'customer_id' => $customerId,
                 'notifications' => $notifications,
-                'unread_count' => collect($notifications)->whereNull('read_at')->count()
+                'unread_count' => collect($notifications)->whereNull('read_at')->count(),
             ]);
 
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to get notifications',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -496,7 +497,7 @@ class CustomerHubController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to mark notification as read',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -516,14 +517,14 @@ class CustomerHubController extends Controller
                 'success' => true,
                 'customer_id' => $customerId,
                 'updates' => $updates,
-                'timestamp' => now()->toISOString()
+                'timestamp' => now()->toISOString(),
             ]);
 
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to get status updates',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -536,24 +537,24 @@ class CustomerHubController extends Controller
         $validator = Validator::make($request->all(), [
             'issue_type' => 'required|in:not_received,invalid_qr,access_denied,technical_issue,other',
             'description' => 'required|string|min:10|max:1000',
-            'contact_method' => 'nullable|in:email,phone,chat'
+            'contact_method' => 'nullable|in:email,phone,chat',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         try {
             // Verify customer owns this ticket
             $customerId = $request->user()->id;
-            if (!$this->verifyTicketOwnership($ticketId, $customerId)) {
+            if (! $this->verifyTicketOwnership($ticketId, $customerId)) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'Ticket not found or access denied'
+                    'error' => 'Ticket not found or access denied',
                 ], 404);
             }
 
@@ -562,7 +563,7 @@ class CustomerHubController extends Controller
                 'customer_id' => $customerId,
                 'issue_type' => $request->input('issue_type'),
                 'description' => $request->input('description'),
-                'contact_method' => $request->input('contact_method', 'email')
+                'contact_method' => $request->input('contact_method', 'email'),
             ];
 
             $result = $this->createSupportTicket($issueData);
@@ -573,7 +574,7 @@ class CustomerHubController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to report issue',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -616,7 +617,7 @@ class CustomerHubController extends Controller
             'status_color' => $this->getStatusColor($status),
             'progress_percentage' => $this->getProgressPercentage($status),
             'next_steps' => $this->getNextSteps($status),
-            'estimated_timeline' => $this->getEstimatedTimeline($status)
+            'estimated_timeline' => $this->getEstimatedTimeline($status),
         ];
 
         return $displayInfo;
@@ -634,7 +635,7 @@ class CustomerHubController extends Controller
                     'action' => 'resend_ticket',
                     'label' => 'Resend Ticket',
                     'description' => 'Send ticket to your email again',
-                    'icon' => 'mail'
+                    'icon' => 'mail',
                 ];
                 break;
 
@@ -643,13 +644,13 @@ class CustomerHubController extends Controller
                     'action' => 'view_ticket',
                     'label' => 'View Ticket',
                     'description' => 'View your digital ticket',
-                    'icon' => 'ticket'
+                    'icon' => 'ticket',
                 ];
                 $actions[] = [
                     'action' => 'add_to_wallet',
                     'label' => 'Add to Wallet',
                     'description' => 'Add ticket to Apple/Google Wallet',
-                    'icon' => 'wallet'
+                    'icon' => 'wallet',
                 ];
                 break;
 
@@ -659,7 +660,7 @@ class CustomerHubController extends Controller
                     'action' => 'view_refund_status',
                     'label' => 'View Refund Status',
                     'description' => 'Check refund processing status',
-                    'icon' => 'refund'
+                    'icon' => 'refund',
                 ];
                 break;
         }
@@ -669,7 +670,7 @@ class CustomerHubController extends Controller
             'action' => 'report_issue',
             'label' => 'Report Issue',
             'description' => 'Get help with your ticket',
-            'icon' => 'help'
+            'icon' => 'help',
         ];
 
         return $actions;
@@ -678,6 +679,7 @@ class CustomerHubController extends Controller
     private function formatEventInstructions(array $ticketStatus): array
     {
         $eventId = $ticketStatus['current_status']['event_id'];
+
         return $this->getEventInstructionsData($eventId, $ticketStatus['current_status']['customer_id']);
     }
 
@@ -689,31 +691,31 @@ class CustomerHubController extends Controller
                 'name' => 'Sample Venue',
                 'address' => '123 Event Street, City, State 12345',
                 'parking_info' => 'Parking available on-site for $10',
-                'accessibility' => 'Wheelchair accessible venue'
+                'accessibility' => 'Wheelchair accessible venue',
             ],
             'entry_requirements' => [
                 'doors_open' => '18:00',
                 'show_starts' => '19:30',
                 'age_restriction' => 'All ages welcome',
                 'prohibited_items' => ['Outside food/drinks', 'Professional cameras', 'Recording devices'],
-                'required_items' => ['Valid ID', 'Digital or printed ticket']
+                'required_items' => ['Valid ID', 'Digital or printed ticket'],
             ],
             'covid_guidelines' => [
                 'mask_required' => false,
                 'vaccination_required' => false,
-                'health_screening' => false
+                'health_screening' => false,
             ],
             'contact_info' => [
                 'venue_phone' => '+1-555-0123',
                 'customer_service' => '+1-555-0456',
-                'emergency_contact' => '+1-555-0789'
+                'emergency_contact' => '+1-555-0789',
             ],
             'additional_info' => [
                 'merchandise_available' => true,
                 'food_beverages_available' => true,
                 'coat_check_available' => true,
-                'will_call_location' => 'Main entrance box office'
-            ]
+                'will_call_location' => 'Main entrance box office',
+            ],
         ];
     }
 
@@ -728,7 +730,7 @@ class CustomerHubController extends Controller
                 'description' => $this->getStatusDescription($entry['status']),
                 'customer_message' => $this->getCustomerMessage($entry['status'], $entry),
                 'icon' => $this->getStatusIcon($entry['status']),
-                'color' => $this->getStatusColor($entry['status'])
+                'color' => $this->getStatusColor($entry['status']),
             ];
         }, $history);
     }
@@ -744,12 +746,12 @@ class CustomerHubController extends Controller
                 'description' => $entry['customer_message'],
                 'icon' => $entry['icon'],
                 'color' => $entry['color'],
-                'is_current' => false // Will be set for current status
+                'is_current' => false, // Will be set for current status
             ];
         }
 
         // Mark the most recent entry as current
-        if (!empty($timeline)) {
+        if (! empty($timeline)) {
             $timeline[0]['is_current'] = true;
         }
 
@@ -765,7 +767,7 @@ class CustomerHubController extends Controller
             $preferenceData = [
                 'customer_id' => $customerId,
                 'preferences_updated_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ];
 
             // Add JSON fields
@@ -803,15 +805,16 @@ class CustomerHubController extends Controller
 
             return [
                 'success' => true,
-                'message' => 'Preferences updated successfully'
+                'message' => 'Preferences updated successfully',
             ];
 
         } catch (Exception $e) {
             \DB::rollBack();
+
             return [
                 'success' => false,
                 'error' => 'Failed to update preferences',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
@@ -850,7 +853,7 @@ class CustomerHubController extends Controller
                 'created_at' => $notification->created_at,
                 'read_at' => $notification->read_at,
                 'ticket_id' => $notification->ticket_id,
-                'booking_id' => $notification->booking_id
+                'booking_id' => $notification->booking_id,
             ];
         })->toArray();
     }
@@ -864,18 +867,18 @@ class CustomerHubController extends Controller
                 ->whereNull('read_at')
                 ->update([
                     'read_at' => now(),
-                    'updated_at' => now()
+                    'updated_at' => now(),
                 ]);
 
             if ($updated) {
                 return [
                     'success' => true,
-                    'message' => 'Notification marked as read'
+                    'message' => 'Notification marked as read',
                 ];
             } else {
                 return [
                     'success' => false,
-                    'error' => 'Notification not found or already read'
+                    'error' => 'Notification not found or already read',
                 ];
             }
 
@@ -883,7 +886,7 @@ class CustomerHubController extends Controller
             return [
                 'success' => false,
                 'error' => 'Failed to mark notification as read',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
@@ -906,7 +909,7 @@ class CustomerHubController extends Controller
                 'status' => $status->status,
                 'status_changed_at' => $status->status_changed_at,
                 'status_label' => $this->getStatusLabel($status->status),
-                'customer_message' => $this->getCustomerMessage($status->status, (array) $status)
+                'customer_message' => $this->getCustomerMessage($status->status, (array) $status),
             ];
         })->toArray();
     }
@@ -915,28 +918,28 @@ class CustomerHubController extends Controller
     {
         try {
             // This would integrate with a support ticket system
-            $supportTicketId = 'SUPPORT_' . uniqid();
+            $supportTicketId = 'SUPPORT_'.uniqid();
 
             // Log the support request
             \Log::info('Customer support ticket created', [
                 'support_ticket_id' => $supportTicketId,
                 'customer_id' => $issueData['customer_id'],
                 'ticket_id' => $issueData['ticket_id'],
-                'issue_type' => $issueData['issue_type']
+                'issue_type' => $issueData['issue_type'],
             ]);
 
             return [
                 'success' => true,
                 'support_ticket_id' => $supportTicketId,
                 'message' => 'Support ticket created successfully. You will be contacted within 24 hours.',
-                'estimated_response_time' => '24 hours'
+                'estimated_response_time' => '24 hours',
             ];
 
         } catch (Exception $e) {
             return [
                 'success' => false,
                 'error' => 'Failed to create support ticket',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
@@ -957,7 +960,7 @@ class CustomerHubController extends Controller
             'refunded' => 'Refunded',
             'expired' => 'Expired',
             'suspended' => 'Temporarily Suspended',
-            'invalid' => 'Invalid'
+            'invalid' => 'Invalid',
         ];
 
         return $labels[$status] ?? ucwords(str_replace('_', ' ', $status));
@@ -977,7 +980,7 @@ class CustomerHubController extends Controller
             'refunded' => 'This ticket has been refunded. Refund should appear in 3-5 business days.',
             'expired' => 'This ticket has expired and is no longer valid.',
             'suspended' => 'This ticket is temporarily suspended. Please contact support.',
-            'invalid' => 'This ticket is invalid. Please contact support for assistance.'
+            'invalid' => 'This ticket is invalid. Please contact support for assistance.',
         ];
 
         return $descriptions[$status] ?? 'Status information not available.';
@@ -997,7 +1000,7 @@ class CustomerHubController extends Controller
             'refunded' => 'purple',
             'expired' => 'gray',
             'suspended' => 'yellow',
-            'invalid' => 'red'
+            'invalid' => 'red',
         ];
 
         return $colors[$status] ?? 'gray';
@@ -1017,7 +1020,7 @@ class CustomerHubController extends Controller
             'refunded' => 'dollar-sign',
             'expired' => 'calendar-x',
             'suspended' => 'pause-circle',
-            'invalid' => 'alert-triangle'
+            'invalid' => 'alert-triangle',
         ];
 
         return $icons[$status] ?? 'help-circle';
@@ -1037,7 +1040,7 @@ class CustomerHubController extends Controller
             'refunded' => 0,
             'expired' => 0,
             'suspended' => 0,
-            'invalid' => 0
+            'invalid' => 0,
         ];
 
         return $progress[$status] ?? 0;
@@ -1057,7 +1060,7 @@ class CustomerHubController extends Controller
             'refunded' => ['Refund will appear in your account within 3-5 business days'],
             'expired' => ['This ticket is no longer valid'],
             'suspended' => ['Contact customer support for assistance'],
-            'invalid' => ['Contact customer support immediately']
+            'invalid' => ['Contact customer support immediately'],
         ];
 
         return $steps[$status] ?? ['Contact customer support for assistance'];
@@ -1077,7 +1080,7 @@ class CustomerHubController extends Controller
             'refunded' => 'Refund processing: 3-5 business days',
             'expired' => null,
             'suspended' => 'Contact support for resolution timeline',
-            'invalid' => 'Contact support immediately'
+            'invalid' => 'Contact support immediately',
         ];
 
         return $timelines[$status] ?? null;
@@ -1097,7 +1100,7 @@ class CustomerHubController extends Controller
             'refunded' => 'Your refund is being processed and will appear in your account within 3-5 business days.',
             'expired' => 'This ticket has expired and is no longer valid for entry.',
             'suspended' => 'Your ticket is temporarily suspended. Please contact customer support.',
-            'invalid' => 'There is an issue with your ticket. Please contact customer support immediately.'
+            'invalid' => 'There is an issue with your ticket. Please contact customer support immediately.',
         ];
 
         return $messages[$status] ?? 'Your ticket status has been updated.';

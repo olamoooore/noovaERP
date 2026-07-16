@@ -4,13 +4,13 @@ namespace Modules\EventManagement\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use Modules\EventManagement\Services\ComprehensiveTestRunnerService;
 use Modules\EventManagement\Services\Phase3DeploymentService;
 use Modules\EventManagement\Services\RollbackManagementService;
-use Modules\EventManagement\Services\ComprehensiveTestRunnerService;
 
 /**
  * Deploy Phase 3 Command
- * 
+ *
  * Executes Task 15 deployment and rollout for Phase 3 components
  * including phased deployment, validation, and rollback capabilities.
  */
@@ -64,8 +64,9 @@ class DeployPhase3Command extends Command
             }
 
             // Pre-deployment validation
-            if (!$force && !$this->validatePreDeployment()) {
+            if (! $force && ! $this->validatePreDeployment()) {
                 $this->error('Pre-deployment validation failed. Use --force to override.');
+
                 return 1;
             }
 
@@ -78,12 +79,12 @@ class DeployPhase3Command extends Command
             return $this->handlePhasedDeployment($phase, $dryRun, $startTime);
 
         } catch (\Exception $e) {
-            $this->error("Deployment failed: " . $e->getMessage());
+            $this->error('Deployment failed: '.$e->getMessage());
             Log::error('Phase 3 deployment failed', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return 1;
         }
     }
@@ -97,11 +98,13 @@ class DeployPhase3Command extends Command
 
         if ($dryRun) {
             $this->line("Would rollback: {$rollback}");
+
             return 0;
         }
 
-        if (!$this->confirm("Are you sure you want to rollback {$rollback}? This action cannot be undone.")) {
+        if (! $this->confirm("Are you sure you want to rollback {$rollback}? This action cannot be undone.")) {
             $this->info('Rollback cancelled.');
+
             return 0;
         }
 
@@ -141,7 +144,8 @@ class DeployPhase3Command extends Command
 
         $this->displayValidationResults($validationResults);
 
-        $allPassed = collect($validationResults)->every(fn($result) => $result['passed']);
+        $allPassed = collect($validationResults)->every(fn ($result) => $result['passed']);
+
         return $allPassed ? 0 : 1;
     }
 
@@ -154,11 +158,13 @@ class DeployPhase3Command extends Command
 
         if ($dryRun) {
             $this->line("Would deploy component: {$component}");
+
             return 0;
         }
 
         // Component deployment logic would go here
         $this->info("Component {$component} deployed successfully");
+
         return 0;
     }
 
@@ -169,6 +175,7 @@ class DeployPhase3Command extends Command
     {
         if ($dryRun) {
             $this->displayDryRunPlan($phase);
+
             return 0;
         }
 
@@ -177,15 +184,16 @@ class DeployPhase3Command extends Command
         // Phase 3.1: P0 Enterprise Hardening
         if ($phase === 'all' || $phase === '3.1') {
             $this->info("\n🏗️  Phase 3.1: P0 Enterprise Hardening Deployment");
-            $this->line("Critical reliability and data integrity components");
-            
+            $this->line('Critical reliability and data integrity components');
+
             $phase31Result = $this->deploymentService->deployPhase31();
             $deploymentResults['phase_3_1'] = $phase31Result;
-            
+
             $this->displayPhaseResults($phase31Result);
-            
+
             if ($phase31Result['status'] !== 'COMPLETED') {
                 $this->error('Phase 3.1 deployment failed. Stopping deployment.');
+
                 return 1;
             }
         }
@@ -193,15 +201,16 @@ class DeployPhase3Command extends Command
         // Phase 3.2: P1 High-Impact Improvements
         if ($phase === 'all' || $phase === '3.2') {
             $this->info("\n🎯 Phase 3.2: P1 High-Impact Improvements Deployment");
-            $this->line("Enhanced functionality and operational excellence");
-            
+            $this->line('Enhanced functionality and operational excellence');
+
             $phase32Result = $this->deploymentService->deployPhase32();
             $deploymentResults['phase_3_2'] = $phase32Result;
-            
+
             $this->displayPhaseResults($phase32Result);
-            
+
             if ($phase32Result['status'] !== 'COMPLETED') {
                 $this->error('Phase 3.2 deployment failed. Stopping deployment.');
+
                 return 1;
             }
         }
@@ -209,15 +218,16 @@ class DeployPhase3Command extends Command
         // Phase 3.3: P1 Operations + P2 SaaS Excellence
         if ($phase === 'all' || $phase === '3.3') {
             $this->info("\n⭐ Phase 3.3: P1 Operations + P2 SaaS Excellence Deployment");
-            $this->line("Advanced monitoring and governance features");
-            
+            $this->line('Advanced monitoring and governance features');
+
             $phase33Result = $this->deploymentService->deployPhase33();
             $deploymentResults['phase_3_3'] = $phase33Result;
-            
+
             $this->displayPhaseResults($phase33Result);
-            
+
             if ($phase33Result['status'] !== 'COMPLETED') {
                 $this->error('Phase 3.3 deployment failed. Stopping deployment.');
+
                 return 1;
             }
         }
@@ -228,6 +238,7 @@ class DeployPhase3Command extends Command
         }
 
         $this->displayFinalSummary($deploymentResults, microtime(true) - $startTime);
+
         return 0;
     }
 
@@ -243,7 +254,7 @@ class DeployPhase3Command extends Command
             'Database Connectivity' => $this->checkDatabaseConnectivity(),
             'Monitoring System Available' => $this->checkMonitoringSystem(),
             'Backup Systems Ready' => $this->checkBackupSystems(),
-            'Rollback Procedures Verified' => $this->checkRollbackProcedures()
+            'Rollback Procedures Verified' => $this->checkRollbackProcedures(),
         ];
 
         foreach ($checks as $check => $passed) {
@@ -251,8 +262,8 @@ class DeployPhase3Command extends Command
             $this->line("  {$status} {$check}");
         }
 
-        $allPassed = collect($checks)->every(fn($passed) => $passed);
-        
+        $allPassed = collect($checks)->every(fn ($passed) => $passed);
+
         if ($allPassed) {
             $this->info('✅ All pre-deployment checks passed');
         } else {
@@ -272,29 +283,29 @@ class DeployPhase3Command extends Command
 
         if ($phase === 'all' || $phase === '3.1') {
             $this->line("\n🏗️  Phase 3.1: P0 Enterprise Hardening");
-            $this->line("  • Deploy Immutable Facts");
-            $this->line("  • Deploy Outbox Pattern");
-            $this->line("  • Deploy Enhanced Capacity Management");
-            $this->line("  • Deploy PII Vault");
-            $this->line("  • Validate P0 functionality");
+            $this->line('  • Deploy Immutable Facts');
+            $this->line('  • Deploy Outbox Pattern');
+            $this->line('  • Deploy Enhanced Capacity Management');
+            $this->line('  • Deploy PII Vault');
+            $this->line('  • Validate P0 functionality');
         }
 
         if ($phase === 'all' || $phase === '3.2') {
             $this->line("\n🎯 Phase 3.2: P1 High-Impact Improvements");
-            $this->line("  • Deploy Analytics Governance");
-            $this->line("  • Deploy Artist Canonicalization");
-            $this->line("  • Deploy Loyalty Auditability");
-            $this->line("  • Deploy Advanced Fraud Prevention");
-            $this->line("  • Validate P1 functionality");
+            $this->line('  • Deploy Analytics Governance');
+            $this->line('  • Deploy Artist Canonicalization');
+            $this->line('  • Deploy Loyalty Auditability');
+            $this->line('  • Deploy Advanced Fraud Prevention');
+            $this->line('  • Validate P1 functionality');
         }
 
         if ($phase === 'all' || $phase === '3.3') {
             $this->line("\n⭐ Phase 3.3: P1 Operations + P2 SaaS Excellence");
-            $this->line("  • Deploy Operations Console Hardening");
-            $this->line("  • Deploy Customer Hub Consistency");
-            $this->line("  • Deploy Multi-Tenant Observability");
-            $this->line("  • Deploy API Stability & Governance");
-            $this->line("  • Validate complete system");
+            $this->line('  • Deploy Operations Console Hardening');
+            $this->line('  • Deploy Customer Hub Consistency');
+            $this->line('  • Deploy Multi-Tenant Observability');
+            $this->line('  • Deploy API Stability & Governance');
+            $this->line('  • Validate complete system');
         }
     }
 
@@ -304,14 +315,14 @@ class DeployPhase3Command extends Command
     private function displayPhaseResults(array $phaseResult): void
     {
         $this->info("\n📊 {$phaseResult['phase']} Results:");
-        
+
         $this->table(
             ['Component', 'Status'],
             collect($phaseResult['deployment_steps'])
                 ->except(['validation'])
-                ->map(fn($step, $name) => [
+                ->map(fn ($step, $name) => [
                     ucwords(str_replace('_', ' ', $name)),
-                    $step['status']
+                    $step['status'],
                 ])
                 ->values()
                 ->toArray()
@@ -349,7 +360,7 @@ class DeployPhase3Command extends Command
             'Security Validation' => true,
             'Compliance Validation' => true,
             'Tenant Isolation' => true,
-            'Backward Compatibility' => true
+            'Backward Compatibility' => true,
         ];
 
         foreach ($validations as $validation => $passed) {
@@ -363,7 +374,7 @@ class DeployPhase3Command extends Command
      */
     private function displayFinalSummary(array $deploymentResults, float $totalTime): void
     {
-        $this->info("\n" . str_repeat('=', 70));
+        $this->info("\n".str_repeat('=', 70));
         $this->info('PHASE 3 DEPLOYMENT SUMMARY');
         $this->info(str_repeat('=', 70));
 
@@ -373,13 +384,13 @@ class DeployPhase3Command extends Command
         foreach ($deploymentResults as $phaseName => $result) {
             $status = $result['status'] === 'COMPLETED' ? '✅ COMPLETED' : '❌ FAILED';
             $summaryData[] = [str_replace('_', '.', strtoupper($phaseName)), $status];
-            
+
             if ($result['status'] !== 'COMPLETED') {
                 $allSuccessful = false;
             }
         }
 
-        $summaryData[] = ['Total Deployment Time', number_format($totalTime, 2) . ' seconds'];
+        $summaryData[] = ['Total Deployment Time', number_format($totalTime, 2).' seconds'];
         $summaryData[] = ['Overall Status', $allSuccessful ? '✅ SUCCESS' : '❌ FAILED'];
 
         $this->table(['Phase', 'Status'], $summaryData);
@@ -387,21 +398,21 @@ class DeployPhase3Command extends Command
         if ($allSuccessful) {
             $this->info("\n🎉 Phase 3 deployment completed successfully!");
             $this->info("\n🚀 Next Steps:");
-            $this->line("  1. Monitor system performance and stability");
-            $this->line("  2. Verify all monitoring dashboards are operational");
-            $this->line("  3. Test alert escalation procedures");
-            $this->line("  4. Conduct user acceptance testing");
-            $this->line("  5. Schedule team training on new features");
+            $this->line('  1. Monitor system performance and stability');
+            $this->line('  2. Verify all monitoring dashboards are operational');
+            $this->line('  3. Test alert escalation procedures');
+            $this->line('  4. Conduct user acceptance testing');
+            $this->line('  5. Schedule team training on new features');
         } else {
             $this->error("\n❌ Phase 3 deployment encountered failures!");
-            $this->warn("Please review the deployment logs and consider rollback if necessary.");
+            $this->warn('Please review the deployment logs and consider rollback if necessary.');
         }
 
         $this->warn("\n⚠️  Important Notes:");
-        $this->line("  • Monitor system closely for the next 24-48 hours");
-        $this->line("  • Keep rollback procedures readily available");
-        $this->line("  • Validate tenant isolation and data integrity");
-        $this->line("  • Review performance metrics for any degradation");
+        $this->line('  • Monitor system closely for the next 24-48 hours');
+        $this->line('  • Keep rollback procedures readily available');
+        $this->line('  • Validate tenant isolation and data integrity');
+        $this->line('  • Review performance metrics for any degradation');
     }
 
     /**
@@ -410,7 +421,7 @@ class DeployPhase3Command extends Command
     private function displayRollbackResults(array $result, float $totalTime): void
     {
         $this->info("\n📊 Rollback Results:");
-        
+
         foreach ($result['rollback_results'] as $phaseName => $phaseResult) {
             if (isset($phaseResult['component_rollbacks'])) {
                 $this->line("\n{$phaseResult['phase']}:");
@@ -421,8 +432,8 @@ class DeployPhase3Command extends Command
             }
         }
 
-        $this->info("\nRollback completed in " . number_format($totalTime, 2) . " seconds");
-        
+        $this->info("\nRollback completed in ".number_format($totalTime, 2).' seconds');
+
         if ($result['system_restored']) {
             $this->info('✅ System successfully restored to previous state');
         } else {
@@ -438,11 +449,11 @@ class DeployPhase3Command extends Command
         $this->info("\n📊 Component Rollback Results:");
         $this->line("Component: {$result['component']}");
         $this->line("Status: {$result['status']}");
-        $this->line("Time: " . number_format($totalTime, 2) . " seconds");
+        $this->line('Time: '.number_format($totalTime, 2).' seconds');
 
         foreach ($result['rollback_steps'] as $step => $stepResult) {
             $status = $stepResult['status'] === 'SUCCESS' ? '✅' : '❌';
-            $this->line("  {$status} " . ucwords(str_replace('_', ' ', $step)));
+            $this->line("  {$status} ".ucwords(str_replace('_', ' ', $step)));
         }
     }
 
@@ -477,12 +488,43 @@ class DeployPhase3Command extends Command
     }
 
     // Validation helper methods
-    private function checkPreviousPhasesOperational(): bool { return true; }
-    private function checkDatabaseConnectivity(): bool { return true; }
-    private function checkMonitoringSystem(): bool { return true; }
-    private function checkBackupSystems(): bool { return true; }
-    private function checkRollbackProcedures(): bool { return true; }
-    private function validatePhase31(): array { return ['passed' => true]; }
-    private function validatePhase32(): array { return ['passed' => true]; }
-    private function validatePhase33(): array { return ['passed' => true]; }
+    private function checkPreviousPhasesOperational(): bool
+    {
+        return true;
+    }
+
+    private function checkDatabaseConnectivity(): bool
+    {
+        return true;
+    }
+
+    private function checkMonitoringSystem(): bool
+    {
+        return true;
+    }
+
+    private function checkBackupSystems(): bool
+    {
+        return true;
+    }
+
+    private function checkRollbackProcedures(): bool
+    {
+        return true;
+    }
+
+    private function validatePhase31(): array
+    {
+        return ['passed' => true];
+    }
+
+    private function validatePhase32(): array
+    {
+        return ['passed' => true];
+    }
+
+    private function validatePhase33(): array
+    {
+        return ['passed' => true];
+    }
 }

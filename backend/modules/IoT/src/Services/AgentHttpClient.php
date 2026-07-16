@@ -2,17 +2,17 @@
 
 namespace Modules\IoT\Services;
 
+use App\Models\Setting;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
-use App\Models\Setting;
 use Modules\IoT\Contracts\DeviceClientInterface;
 use Modules\IoT\Models\DeviceConfiguration;
 use Modules\IoT\Models\IoTDevice;
 
 /**
  * HTTP Client for communicating with IoT Local Agents
- * 
+ *
  * Agents expose HTTP API endpoints for remote management.
  * This service provides methods to call agent endpoints.
  * Implements DeviceClientInterface for protocol-agnostic device communication.
@@ -30,8 +30,8 @@ class AgentHttpClient implements DeviceClientInterface
         array $payload = []
     ): array {
         $agentId = $device->agent_id;
-        
-        if (!$agentId) {
+
+        if (! $agentId) {
             throw new \InvalidArgumentException('Agent ID required for agent-based devices');
         }
 
@@ -55,11 +55,12 @@ class AgentHttpClient implements DeviceClientInterface
     {
         try {
             $agentId = $device->agent_id;
-            if (!$agentId) {
+            if (! $agentId) {
                 return false;
             }
 
             $result = $this->checkHealth($agentId);
+
             return $result['success'] ?? false;
         } catch (\Exception $e) {
             return false;
@@ -104,24 +105,26 @@ class AgentHttpClient implements DeviceClientInterface
             ->where('agent_id', $agentId)
             ->first();
 
-        if ($agentDevice && !empty($agentDevice->config['agent_url'])) {
+        if ($agentDevice && ! empty($agentDevice->config['agent_url'])) {
             $url = $agentDevice->config['agent_url'];
-            \Log::debug("AgentHttpClient: found URL in IoTDevice config", ['url' => $url, 'agent_id' => $agentId]);
+            \Log::debug('AgentHttpClient: found URL in IoTDevice config', ['url' => $url, 'agent_id' => $agentId]);
+
             return $url;
         }
 
         // 2. Try legacy agents table
         $agent = DB::table('agents')->where('id', $agentId)->first();
 
-        if ($agent && !empty($agent->callback_url)) {
+        if ($agent && ! empty($agent->callback_url)) {
             $url = $agent->callback_url;
-            \Log::debug("AgentHttpClient: found URL in legacy agents table", ['url' => $url, 'agent_id' => $agentId]);
+            \Log::debug('AgentHttpClient: found URL in legacy agents table', ['url' => $url, 'agent_id' => $agentId]);
+
             return $url;
         }
 
         // 3. Fallback to global settings
         $url = Setting::getValue('iot_agent_url');
-        \Log::debug("AgentHttpClient: checking settings", ['url' => $url, 'key' => 'iot_agent_url', 'agent_id' => $agentId]);
+        \Log::debug('AgentHttpClient: checking settings', ['url' => $url, 'key' => 'iot_agent_url', 'agent_id' => $agentId]);
 
         return $url;
     }
@@ -144,12 +147,13 @@ class AgentHttpClient implements DeviceClientInterface
 
         try {
             // Check if search_path is already set to a tenant schema
-            $currentPath = DB::selectOne("SHOW search_path");
+            $currentPath = DB::selectOne('SHOW search_path');
             $path = $currentPath->search_path ?? '';
 
             // If already set to something other than just 'public', skip
             if ($path && $path !== 'public' && $path !== '"$user", public') {
                 $searchPathSet = true;
+
                 return;
             }
 
@@ -164,8 +168,9 @@ class AgentHttpClient implements DeviceClientInterface
                 if ($defaultCompany && $defaultCompany->tenant_id) {
                     $tenantId = $defaultCompany->tenant_id;
                     DB::statement("SET search_path TO \"{$tenantId}\", public");
-                    \Log::debug("AgentHttpClient: set search_path to tenant", ['tenant_id' => $tenantId]);
+                    \Log::debug('AgentHttpClient: set search_path to tenant', ['tenant_id' => $tenantId]);
                     $searchPathSet = true;
+
                     return;
                 }
             }
@@ -174,19 +179,20 @@ class AgentHttpClient implements DeviceClientInterface
             $tenantId = request()->header('X-Tenant-ID');
             if ($tenantId && $this->isValidUuid($tenantId)) {
                 DB::statement("SET search_path TO \"{$tenantId}\", public");
-                \Log::debug("AgentHttpClient: set search_path from header", ['tenant_id' => $tenantId]);
+                \Log::debug('AgentHttpClient: set search_path from header', ['tenant_id' => $tenantId]);
                 $searchPathSet = true;
+
                 return;
             }
 
             // Last resort: query ALL schemas for the setting
             // This is a fallback for when tenant context is completely missing
-            \Log::warning("AgentHttpClient: no tenant context, searching all schemas for agent_url");
+            \Log::warning('AgentHttpClient: no tenant context, searching all schemas for agent_url');
         } catch (\Exception $e) {
-            \Log::warning("AgentHttpClient: failed to set search_path", ['error' => $e->getMessage()]);
+            \Log::warning('AgentHttpClient: failed to set search_path', ['error' => $e->getMessage()]);
         }
     }
-    
+
     /**
      * Get agent authentication token.
      *
@@ -214,7 +220,7 @@ class AgentHttpClient implements DeviceClientInterface
 
     private function normalizeBearerToken(mixed $token): ?string
     {
-        if (!is_string($token)) {
+        if (! is_string($token)) {
             return null;
         }
 
@@ -239,7 +245,7 @@ class AgentHttpClient implements DeviceClientInterface
         $response = Http::withoutVerifying()
             ->timeout(30)
             ->withHeaders($this->getAuthHeaders($agentId))
-            ->get("{$url}" . self::UMP_DEVICES_ENDPOINT);
+            ->get("{$url}".self::UMP_DEVICES_ENDPOINT);
 
         if (! $response->successful()) {
             return [
@@ -301,8 +307,8 @@ class AgentHttpClient implements DeviceClientInterface
     public function checkHealth(string $agentId): array
     {
         $url = $this->getAgentUrl($agentId);
-        
-        if (!$url) {
+
+        if (! $url) {
             return [
                 'success' => false,
                 'error' => 'Agent URL not configured',
@@ -336,8 +342,8 @@ class AgentHttpClient implements DeviceClientInterface
     public function getDevices(string $agentId): array
     {
         $url = $this->getAgentUrl($agentId);
-        
-        if (!$url) {
+
+        if (! $url) {
             return [
                 'success' => false,
                 'error' => 'Agent URL not configured',
@@ -385,8 +391,8 @@ class AgentHttpClient implements DeviceClientInterface
     public function triggerDiscovery(string $agentId): array
     {
         $url = $this->getAgentUrl($agentId);
-        
-        if (!$url) {
+
+        if (! $url) {
             return [
                 'success' => false,
                 'error' => 'Agent URL not configured',
@@ -434,8 +440,8 @@ class AgentHttpClient implements DeviceClientInterface
     public function getDiscoveredDevices(string $agentId): array
     {
         $url = $this->getAgentUrl($agentId);
-        
-        if (!$url) {
+
+        if (! $url) {
             return [
                 'success' => false,
                 'error' => 'Agent URL not configured',
@@ -483,8 +489,8 @@ class AgentHttpClient implements DeviceClientInterface
     public function reloadAllDevices(string $agentId): array
     {
         $url = $this->getAgentUrl($agentId);
-        
-        if (!$url) {
+
+        if (! $url) {
             return [
                 'success' => false,
                 'error' => 'Agent URL not configured',
@@ -528,8 +534,8 @@ class AgentHttpClient implements DeviceClientInterface
     public function reloadDevice(string $agentId, string $deviceId): array
     {
         $url = $this->getAgentUrl($agentId);
-        
-        if (!$url) {
+
+        if (! $url) {
             return [
                 'success' => false,
                 'error' => 'Agent URL not configured',
@@ -570,15 +576,15 @@ class AgentHttpClient implements DeviceClientInterface
 
     /**
      * Send device configuration to agent.
-     * 
+     *
      * Note: This assumes agent has an endpoint to receive configs.
      * If not, agent should poll the backend API instead.
      */
     public function sendConfiguration(string $agentId, array $config): array
     {
         $url = $this->getAgentUrl($agentId);
-        
-        if (!$url) {
+
+        if (! $url) {
             return [
                 'success' => false,
                 'error' => 'Agent URL not configured',
@@ -645,18 +651,18 @@ class AgentHttpClient implements DeviceClientInterface
         $url = $this->getAgentUrl($agentId);
         $action = $this->mapEndpointToUmpAction($endpoint);
 
-        if (!$action) {
+        if (! $action) {
             return [
                 'success' => false,
                 'error' => "Unsupported endpoint for UMP cloud: {$endpoint}",
             ];
         }
 
-        $umpUrl = rtrim($url, '/') . '/api/v1/universal/execute';
+        $umpUrl = rtrim($url, '/').'/api/v1/universal/execute';
 
         // Get UMP device ID from connection_info or fall back to provided deviceId
         $umpDeviceId = $data['deviceId'] ?? $data['device_id'] ?? '';
-        if ($device && !empty($device->connection_info['ump_device_id'])) {
+        if ($device && ! empty($device->connection_info['ump_device_id'])) {
             $umpDeviceId = $device->connection_info['ump_device_id'];
         }
 
@@ -673,7 +679,7 @@ class AgentHttpClient implements DeviceClientInterface
         ];
 
         // Remove null values from data
-        $payload['data'] = array_filter($payload['data'], fn($v) => $v !== null);
+        $payload['data'] = array_filter($payload['data'], fn ($v) => $v !== null);
 
         try {
             $response = Http::withoutVerifying()
@@ -686,12 +692,13 @@ class AgentHttpClient implements DeviceClientInterface
                 if (is_array($body) && isset($body['success'])) {
                     return $body;
                 }
+
                 return array_merge(['success' => true], $body ?? []);
             }
 
             return [
                 'success' => false,
-                'error' => $response->body() ?: 'UMP cloud returned HTTP ' . $response->status(),
+                'error' => $response->body() ?: 'UMP cloud returned HTTP '.$response->status(),
                 'status' => $response->status(),
             ];
         } catch (\Exception $e) {
@@ -718,7 +725,7 @@ class AgentHttpClient implements DeviceClientInterface
     {
         $url = $this->getAgentUrl($agentId);
 
-        if (!$url) {
+        if (! $url) {
             return [
                 'success' => false,
                 'error' => 'Agent URL not configured',
@@ -748,7 +755,7 @@ class AgentHttpClient implements DeviceClientInterface
 
             return [
                 'success' => false,
-                'error' => $response->body() ?: 'Agent returned HTTP ' . $response->status(),
+                'error' => $response->body() ?: 'Agent returned HTTP '.$response->status(),
                 'status' => $response->status(),
             ];
         } catch (\Exception $e) {

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Platform\Numbering\NumberingService;
 use App\Platform\Numbering\NumberingSequence;
+use App\Platform\Numbering\NumberingService;
 use Tests\TenantTestCase;
 
 /**
@@ -14,6 +14,7 @@ use Tests\TenantTestCase;
 class NumberingServiceTest extends TenantTestCase
 {
     protected string $tenantUuid;
+
     protected NumberingService $service;
 
     protected function setUp(): void
@@ -66,7 +67,7 @@ class NumberingServiceTest extends TenantTestCase
 
         $n = $this->service->next('receipt', $this->tenantUuid);
 
-        $this->assertStringStartsWith('RCP-' . date('Y') . '-', $n);
+        $this->assertStringStartsWith('RCP-'.date('Y').'-', $n);
     }
 
     public function test_next_with_yearly_reset(): void

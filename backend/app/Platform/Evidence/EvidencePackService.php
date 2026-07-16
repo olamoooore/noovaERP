@@ -3,7 +3,6 @@
 namespace App\Platform\Evidence;
 
 use App\Platform\Evidence\Contracts\EvidencePackServiceContract;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class EvidencePackService implements EvidencePackServiceContract
@@ -79,7 +78,7 @@ class EvidencePackService implements EvidencePackServiceContract
             ->with('items')
             ->find((string) $packId);
 
-        if (!$pack) {
+        if (! $pack) {
             return null;
         }
 

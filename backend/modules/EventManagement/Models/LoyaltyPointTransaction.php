@@ -29,15 +29,22 @@ class LoyaltyPointTransaction extends Model
 
     // Transaction type constants
     public const TYPE_EARNED = 'earned';
+
     public const TYPE_REDEEMED = 'redeemed';
+
     public const TYPE_EXPIRED = 'expired';
+
     public const TYPE_ADJUSTED = 'adjusted';
 
     // Source type constants
     public const SOURCE_BOOKING = 'booking';
+
     public const SOURCE_PURCHASE = 'purchase';
+
     public const SOURCE_MANUAL = 'manual';
+
     public const SOURCE_EXPIRATION = 'expiration';
+
     public const SOURCE_BONUS = 'bonus';
 
     /**
@@ -102,9 +109,9 @@ class LoyaltyPointTransaction extends Model
     public function scopeExpiringSoon($query, int $days = 30)
     {
         return $query->where('transaction_type', self::TYPE_EARNED)
-                    ->whereNotNull('expires_at')
-                    ->where('expires_at', '<=', now()->addDays($days))
-                    ->where('expires_at', '>', now());
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<=', now()->addDays($days))
+            ->where('expires_at', '>', now());
     }
 
     /**
@@ -113,8 +120,8 @@ class LoyaltyPointTransaction extends Model
     public function scopeAlreadyExpired($query)
     {
         return $query->where('transaction_type', self::TYPE_EARNED)
-                    ->whereNotNull('expires_at')
-                    ->where('expires_at', '<=', now());
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<=', now());
     }
 
     /**

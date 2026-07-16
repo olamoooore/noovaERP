@@ -4,9 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Quotation extends Model
 {
@@ -17,10 +17,10 @@ class Quotation extends Model
         parent::boot();
 
         static::creating(function ($quotation) {
-            if (!$quotation->quotation_number) {
+            if (! $quotation->quotation_number) {
                 $quotation->quotation_number = static::generateQuotationNumber();
             }
-            if (!$quotation->quotation_date) {
+            if (! $quotation->quotation_date) {
                 $quotation->quotation_date = now()->toDateString();
             }
         });
@@ -94,7 +94,7 @@ class Quotation extends Model
         $prefix = "QUO-{$year}-";
 
         try {
-            \Illuminate\Support\Facades\DB::statement("CREATE SEQUENCE IF NOT EXISTS quotation_number_seq START 1");
+            \Illuminate\Support\Facades\DB::statement('CREATE SEQUENCE IF NOT EXISTS quotation_number_seq START 1');
 
             $maxNum = (int) (\Illuminate\Support\Facades\DB::selectOne("
                 SELECT MAX(CAST(SUBSTRING(quotation_number FROM '\d{4}$') AS INTEGER)) as m
@@ -108,7 +108,8 @@ class Quotation extends Model
             }
 
             $seqVal = (int) \Illuminate\Support\Facades\DB::selectOne("SELECT nextval('quotation_number_seq') AS val")->val;
-            return $prefix . str_pad($seqVal, 4, '0', STR_PAD_LEFT);
+
+            return $prefix.str_pad($seqVal, 4, '0', STR_PAD_LEFT);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('Quotation number sequence unavailable, using fallback', [
                 'error' => $e->getMessage(),
@@ -116,11 +117,12 @@ class Quotation extends Model
         }
 
         $latest = static::withTrashed()
-            ->where('quotation_number', 'like', $prefix . '%')
+            ->where('quotation_number', 'like', $prefix.'%')
             ->orderBy('id', 'desc')
             ->first();
         $number = $latest ? (int) substr($latest->quotation_number, -4) + 1 : 1;
-        return $prefix . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        return $prefix.str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 
     public function calculateTotals(): void

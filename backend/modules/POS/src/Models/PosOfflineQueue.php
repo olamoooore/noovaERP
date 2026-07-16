@@ -57,35 +57,35 @@ class PosOfflineQueue extends Model
 
     /**
      * Validate state transition
-     * 
+     *
      * @throws \InvalidArgumentException
      */
     public function validateTransition(string $newStatus): void
     {
         $currentStatus = $this->status;
-        
-        if (!isset(self::$allowedTransitions[$currentStatus])) {
+
+        if (! isset(self::$allowedTransitions[$currentStatus])) {
             throw new \InvalidArgumentException("Invalid current status: {$currentStatus}");
         }
 
-        if (!in_array($newStatus, self::$allowedTransitions[$currentStatus])) {
+        if (! in_array($newStatus, self::$allowedTransitions[$currentStatus])) {
             throw new \InvalidArgumentException(
-                "Invalid state transition from '{$currentStatus}' to '{$newStatus}'. " .
-                "Allowed transitions: " . implode(', ', self::$allowedTransitions[$currentStatus])
+                "Invalid state transition from '{$currentStatus}' to '{$newStatus}'. ".
+                'Allowed transitions: '.implode(', ', self::$allowedTransitions[$currentStatus])
             );
         }
     }
 
     /**
      * Transition to new status with validation
-     * 
+     *
      * @throws \InvalidArgumentException
      */
     public function transitionTo(string $newStatus): void
     {
         $this->validateTransition($newStatus);
         $this->status = $newStatus;
-        
+
         // Update timestamps based on status
         if ($newStatus === 'syncing') {
             $this->last_sync_attempt = now();
@@ -102,6 +102,7 @@ class PosOfflineQueue extends Model
     {
         try {
             $this->validateTransition($newStatus);
+
             return true;
         } catch (\InvalidArgumentException $e) {
             return false;
@@ -144,14 +145,14 @@ class PosOfflineQueue extends Model
         $last = static::where('queue_number', 'like', "OFQ{$date}%")
             ->orderBy('queue_number', 'desc')
             ->first();
-        
+
         if ($last && preg_match('/(\d+)$/', $last->queue_number, $matches)) {
             $number = intval($matches[1]) + 1;
         } else {
             $number = 1;
         }
-        
-        return 'OFQ' . $date . str_pad($number, 6, '0', STR_PAD_LEFT);
+
+        return 'OFQ'.$date.str_pad($number, 6, '0', STR_PAD_LEFT);
     }
 
     /**
@@ -189,7 +190,7 @@ class PosOfflineQueue extends Model
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($queue) {
             if (empty($queue->queue_number)) {
                 $queue->queue_number = static::generateQueueNumber();

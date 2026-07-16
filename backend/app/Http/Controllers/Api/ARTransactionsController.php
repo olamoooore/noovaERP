@@ -11,8 +11,7 @@ class ARTransactionsController extends Controller
 {
     /**
      * List AR transactions with filtering and running balance
-     * 
-     * @param Request $request
+     *
      * @return \Illuminate\Http\JsonResponse
      */
     public function index(Request $request)
@@ -45,7 +44,7 @@ class ARTransactionsController extends Controller
 
             // Order by date (oldest first for running balance calculation)
             $query->orderBy('transaction_date', 'asc')
-                  ->orderBy('created_at', 'asc');
+                ->orderBy('created_at', 'asc');
 
             // Get transactions
             $transactions = $query->get();
@@ -54,7 +53,7 @@ class ARTransactionsController extends Controller
             $runningBalance = 0;
             $transactionsWithBalance = $transactions->map(function ($transaction) use (&$runningBalance) {
                 $runningBalance += $transaction->debit - $transaction->credit;
-                
+
                 return [
                     'transaction_type' => $transaction->transaction_type,
                     'transaction_id' => $transaction->transaction_id,
@@ -79,7 +78,7 @@ class ARTransactionsController extends Controller
             $perPage = $request->get('per_page', 20);
             $page = $request->get('page', 1);
             $total = $transactionsWithBalance->count();
-            
+
             $paginatedTransactions = $transactionsWithBalance->slice(($page - 1) * $perPage, $perPage)->values();
 
             return response()->json([
@@ -93,18 +92,19 @@ class ARTransactionsController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to fetch AR transactions: ' . $e->getMessage());
+            Log::error('Failed to fetch AR transactions: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to fetch AR transactions',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Get AR balance for a specific customer
-     * 
-     * @param int $customerId
+     *
+     * @param  int  $customerId
      * @return \Illuminate\Http\JsonResponse
      */
     public function getBalance($customerId)
@@ -135,9 +135,9 @@ class ARTransactionsController extends Controller
                 ->where('id', $customerId)
                 ->first();
 
-            if (!$customer) {
+            if (! $customer) {
                 return response()->json([
-                    'message' => 'Customer not found'
+                    'message' => 'Customer not found',
                 ], 404);
             }
 
@@ -151,18 +151,18 @@ class ARTransactionsController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to calculate AR balance: ' . $e->getMessage());
+            Log::error('Failed to calculate AR balance: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to calculate AR balance',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Export AR transactions to CSV or Excel
-     * 
-     * @param Request $request
+     *
      * @return \Illuminate\Http\Response
      */
     public function export(Request $request)
@@ -190,7 +190,7 @@ class ARTransactionsController extends Controller
             }
 
             $query->orderBy('transaction_date', 'asc')
-                  ->orderBy('created_at', 'asc');
+                ->orderBy('created_at', 'asc');
 
             $transactions = $query->get();
 
@@ -198,7 +198,7 @@ class ARTransactionsController extends Controller
             $runningBalance = 0;
             $transactionsWithBalance = $transactions->map(function ($transaction) use (&$runningBalance) {
                 $runningBalance += $transaction->debit - $transaction->credit;
-                
+
                 return [
                     'Date' => $transaction->transaction_date,
                     'Type' => ucfirst($transaction->transaction_type),
@@ -221,45 +221,46 @@ class ARTransactionsController extends Controller
             }
 
         } catch (\Exception $e) {
-            Log::error('Failed to export AR transactions: ' . $e->getMessage());
+            Log::error('Failed to export AR transactions: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to export AR transactions',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Export transactions to CSV format
-     * 
-     * @param \Illuminate\Support\Collection $transactions
+     *
+     * @param  \Illuminate\Support\Collection  $transactions
      * @return \Illuminate\Http\Response
      */
     private function exportToCsv($transactions)
     {
-        $filename = 'ar_transactions_' . date('Y-m-d_His') . '.csv';
-        
+        $filename = 'ar_transactions_'.date('Y-m-d_His').'.csv';
+
         $headers = [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ];
 
-        $callback = function() use ($transactions) {
+        $callback = function () use ($transactions) {
             $file = fopen('php://output', 'w');
-            
+
             // Add BOM for Excel UTF-8 support
             fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
-            
+
             // Add headers
             if ($transactions->isNotEmpty()) {
                 fputcsv($file, array_keys($transactions->first()));
             }
-            
+
             // Add data
             foreach ($transactions as $transaction) {
                 fputcsv($file, $transaction);
             }
-            
+
             fclose($file);
         };
 

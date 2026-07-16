@@ -25,7 +25,7 @@ return new class extends Migration
 
             $featuresToInsert = array_diff($featuresToAdd, $existingFeatures->toArray());
 
-            if (!empty($featuresToInsert)) {
+            if (! empty($featuresToInsert)) {
                 $publicFeatures = DB::table('public.features')
                     ->whereIn('id', $featuresToInsert)
                     ->get(['id', 'key', 'name', 'description', 'is_core']);
@@ -49,7 +49,7 @@ return new class extends Migration
                     ->where('feature_id', $featureId)
                     ->exists();
 
-                if (!$exists) {
+                if (! $exists) {
                     DB::table("{$schema}.tenant_features")->insert([
                         'feature_id' => $featureId,
                         'is_enabled' => true,

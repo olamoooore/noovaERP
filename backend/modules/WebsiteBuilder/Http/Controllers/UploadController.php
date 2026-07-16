@@ -3,12 +3,12 @@
 namespace Modules\WebsiteBuilder\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Modules\WebsiteBuilder\Jobs\ProcessUploadJob;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
+use Modules\WebsiteBuilder\Jobs\ProcessUploadJob;
 
 class UploadController extends Controller
 {

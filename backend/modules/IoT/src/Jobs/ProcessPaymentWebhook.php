@@ -3,28 +3,28 @@
 namespace Modules\IoT\Jobs;
 
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\IoT\Models\IoTDevice;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosPayment;
-use Modules\IoT\Models\IoTDevice;
 use Modules\POS\Services\PosPaymentCompletionService;
 
 /**
  * Process Payment Webhook Job
- * 
+ *
  * Handles payment webhook processing asynchronously with retry logic.
  * This ensures the webhook endpoint returns quickly to HitPay while
  * processing happens in the background with automatic retries.
- * 
+ *
  * Implements ShouldBeUnique to prevent concurrent job instances for the same order.
  */
-class ProcessPaymentWebhook implements ShouldQueue, ShouldBeUnique
+class ProcessPaymentWebhook implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -82,12 +82,13 @@ class ProcessPaymentWebhook implements ShouldQueue, ShouldBeUnique
     {
         // Initialize tenant context
         $tenant = \Stancl\Tenancy\Database\Models\Tenant::find($this->tenantId);
-        if (!$tenant) {
+        if (! $tenant) {
             Log::error('Tenant not found for webhook processing', [
                 'tenant_id' => $this->tenantId,
                 'order_id' => $this->orderId,
             ]);
             $this->fail(new \Exception('Tenant not found'));
+
             return;
         }
 
@@ -97,21 +98,23 @@ class ProcessPaymentWebhook implements ShouldQueue, ShouldBeUnique
             $order = PosOrder::find($this->orderId);
             $device = IoTDevice::find($this->deviceId);
 
-            if (!$order) {
+            if (! $order) {
                 Log::error('Order not found for webhook processing', [
                     'order_id' => $this->orderId,
                     'payload' => $this->payload,
                 ]);
                 $this->fail(new \Exception('Order not found'));
+
                 return;
             }
 
-            if (!$device) {
+            if (! $device) {
                 Log::error('Device not found for webhook processing', [
                     'device_id' => $this->deviceId,
                     'order_id' => $this->orderId,
                 ]);
                 $this->fail(new \Exception('Device not found'));
+
                 return;
             }
 
@@ -174,6 +177,7 @@ class ProcessPaymentWebhook implements ShouldQueue, ShouldBeUnique
                 'order_id' => $order->id,
                 'payment_id' => $paymentId,
             ]);
+
             return;
         }
 
@@ -182,6 +186,7 @@ class ProcessPaymentWebhook implements ShouldQueue, ShouldBeUnique
                 'order_id' => $order->id,
                 'payment_id' => $paymentId,
             ]);
+
             return;
         }
 
@@ -286,9 +291,9 @@ class ProcessPaymentWebhook implements ShouldQueue, ShouldBeUnique
         return [
             'payment',
             'webhook',
-            'order:' . $this->orderId,
-            'device:' . $this->deviceId,
-            'tenant:' . $this->tenantId,
+            'order:'.$this->orderId,
+            'device:'.$this->deviceId,
+            'tenant:'.$this->tenantId,
         ];
     }
 }

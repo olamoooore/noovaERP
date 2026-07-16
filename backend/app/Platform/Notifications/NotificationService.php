@@ -4,7 +4,6 @@ namespace App\Platform\Notifications;
 
 use App\Models\User;
 use App\Platform\Notifications\Contracts\NotificationServiceContract;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -22,11 +21,12 @@ class NotificationService implements NotificationServiceContract
             ->where('channel', 'mail')
             ->first();
 
-        if ($preference && !$preference->mail_enabled) {
+        if ($preference && ! $preference->mail_enabled) {
             Log::info('Notification skipped — user opted out', [
                 'user_id' => $user->id,
                 'event' => $event,
             ]);
+
             return;
         }
 
@@ -47,8 +47,9 @@ class NotificationService implements NotificationServiceContract
         try {
             // Send mail
             $toEmail = $user->email;
-            if (!$toEmail) {
+            if (! $toEmail) {
                 $log->update(['status' => 'failed', 'error' => 'No email address']);
+
                 return;
             }
 
@@ -155,7 +156,7 @@ class NotificationService implements NotificationServiceContract
             'approval.approved' => "Your approval request has been approved.\n\nType: {$type}\nApproved by: {$approvedBy}",
             'approval.rejected' => "Your approval request has been rejected.\n\nType: {$type}\nReason: {$reason}",
             'approval.escalated' => "An approval request has been escalated to you.\n\nType: {$type}\nAmount: {$amount}",
-            default => "Event: {$event}\n\n" . json_encode($data, JSON_PRETTY_PRINT),
+            default => "Event: {$event}\n\n".json_encode($data, JSON_PRETTY_PRINT),
         };
     }
 }

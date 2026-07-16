@@ -92,7 +92,7 @@ class PlanCatalogService
     /**
      * Upsert prices for a plan version.
      *
-     * @param array<int, array{billing_interval: string, unit_amount: int, currency?: string}> $prices
+     * @param  array<int, array{billing_interval: string, unit_amount: int, currency?: string}>  $prices
      */
     public function setPrices(PlanVersion $version, array $prices): void
     {
@@ -118,7 +118,7 @@ class PlanCatalogService
     public function attachModule(PlanVersion $version, ModuleCatalogEntry $module): void
     {
         PlanModule::firstOrCreate([
-            'plan_version_id'   => $version->id,
+            'plan_version_id' => $version->id,
             'module_catalog_id' => $module->id,
         ], ['is_included' => true]);
 

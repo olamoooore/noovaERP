@@ -3,15 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\Reconciliation\ARGLReconciliationService;
 use App\Services\Reconciliation\APGLReconciliationService;
-use Illuminate\Http\Request;
+use App\Services\Reconciliation\ARGLReconciliationService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 /**
  * SubledgerReconciliationController
- * 
+ *
  * API endpoints for AR/AP to GL reconciliation controls.
  */
 class SubledgerReconciliationController extends Controller
@@ -23,7 +23,7 @@ class SubledgerReconciliationController extends Controller
 
     /**
      * Run AR to GL reconciliation
-     * 
+     *
      * POST /api/v1/accounting/reconciliation/ar-gl
      */
     public function reconcileAR(Request $request): JsonResponse
@@ -69,7 +69,7 @@ class SubledgerReconciliationController extends Controller
 
     /**
      * Run AP to GL reconciliation
-     * 
+     *
      * POST /api/v1/accounting/reconciliation/ap-gl
      */
     public function reconcileAP(Request $request): JsonResponse
@@ -115,7 +115,7 @@ class SubledgerReconciliationController extends Controller
 
     /**
      * Get AR to GL reconciliation report
-     * 
+     *
      * GET /api/v1/accounting/reports/ar-gl-reconciliation
      */
     public function getARReport(Request $request): JsonResponse
@@ -147,7 +147,7 @@ class SubledgerReconciliationController extends Controller
 
     /**
      * Get AP to GL reconciliation report
-     * 
+     *
      * GET /api/v1/accounting/reports/ap-gl-reconciliation
      */
     public function getAPReport(Request $request): JsonResponse
@@ -179,7 +179,7 @@ class SubledgerReconciliationController extends Controller
 
     /**
      * Get reconciliation history
-     * 
+     *
      * GET /api/v1/accounting/reconciliation/history/{type}
      */
     public function getHistory(string $type, Request $request): JsonResponse
@@ -189,7 +189,7 @@ class SubledgerReconciliationController extends Controller
                 'limit' => 'nullable|integer|min:1|max:100|default:12',
             ]);
 
-            $controlName = match($type) {
+            $controlName = match ($type) {
                 'ar' => 'ar_gl_reconciliation',
                 'ap' => 'ap_gl_reconciliation',
                 default => throw new \InvalidArgumentException("Invalid reconciliation type: {$type}"),

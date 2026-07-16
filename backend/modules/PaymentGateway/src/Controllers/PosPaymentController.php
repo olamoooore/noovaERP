@@ -22,7 +22,7 @@ class PosPaymentController extends Controller
     {
         try {
             $methods = $this->posPaymentService->getAvailablePaymentMethods();
-            
+
             return response()->json([
                 'success' => true,
                 'methods' => $methods,

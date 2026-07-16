@@ -3,15 +3,15 @@
 namespace Modules\EventManagement\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\EventManagement\Traits\HasTenantScope;
 
 /**
  * FeedbackSubmission Model
- * 
+ *
  * Manages customer feedback, reviews, and ratings for events.
- * 
+ *
  * @property int $id
  * @property string $tenant_id
  * @property string $customer_id
@@ -39,7 +39,7 @@ use Modules\EventManagement\Traits\HasTenantScope;
  */
 class FeedbackSubmission extends Model
 {
-    use SoftDeletes, HasTenantScope;
+    use HasTenantScope, SoftDeletes;
 
     protected $table = 'feedback_submissions';
 
@@ -122,7 +122,7 @@ class FeedbackSubmission extends Model
     public function scopePublic($query)
     {
         return $query->where('allow_public_display', true)
-                    ->where('status', 'approved');
+            ->where('status', 'approved');
     }
 
     /**
@@ -260,7 +260,7 @@ class FeedbackSubmission extends Model
         if ($this->total_votes === 0) {
             return 0.0;
         }
-        
+
         return round(($this->helpful_votes / $this->total_votes) * 100, 1);
     }
 
@@ -295,12 +295,13 @@ class FeedbackSubmission extends Model
 
         // Fill in missing ratings with 0
         for ($i = 1; $i <= 5; $i++) {
-            if (!isset($distribution[$i])) {
+            if (! isset($distribution[$i])) {
                 $distribution[$i] = 0;
             }
         }
 
         ksort($distribution);
+
         return $distribution;
     }
 

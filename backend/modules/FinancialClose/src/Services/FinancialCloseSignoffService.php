@@ -3,10 +3,9 @@
 namespace Modules\FinancialClose\Services;
 
 use Illuminate\Support\Facades\Log;
-use Modules\FinancialClose\Models\Signoff;
 use Modules\FinancialClose\Models\AccountReview;
 use Modules\FinancialClose\Models\AuditLog;
-use Modules\FinancialClose\Services\FinancialClosePolicyService;
+use Modules\FinancialClose\Models\Signoff;
 
 class FinancialCloseSignoffService
 {
@@ -38,15 +37,16 @@ class FinancialCloseSignoffService
             ->where('id', $reviewId)
             ->first();
 
-        if (!$review) {
+        if (! $review) {
             return null;
         }
 
-        if (!in_array($review->status, ['submitted', 'approved'])) {
+        if (! in_array($review->status, ['submitted', 'approved'])) {
             Log::warning('FinancialClose: cannot sign off review in current state', [
                 'review_id' => $reviewId,
                 'status' => $review->status,
             ]);
+
             return null;
         }
 
@@ -57,6 +57,7 @@ class FinancialCloseSignoffService
                 'assigned_to' => $review->assigned_to,
                 'signer' => $userId,
             ]);
+
             return null;
         }
 
@@ -85,7 +86,7 @@ class FinancialCloseSignoffService
             ->where('id', $signoffId)
             ->first();
 
-        if (!$signoff) {
+        if (! $signoff) {
             return false;
         }
 
@@ -97,6 +98,7 @@ class FinancialCloseSignoffService
             Log::warning('FinancialClose: cannot revoke signoff on locked review', [
                 'signoff_id' => $signoffId,
             ]);
+
             return false;
         }
 

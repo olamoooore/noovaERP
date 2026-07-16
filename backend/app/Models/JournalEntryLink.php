@@ -38,11 +38,11 @@ class JournalEntryLink extends Model
 
     public static function buildPostIdempotencyKey(string $documentType, int $documentId): string
     {
-        return $documentType . ':' . $documentId;
+        return $documentType.':'.$documentId;
     }
 
     public static function buildReversalIdempotencyKey(int $originalJournalEntryId): string
     {
-        return 'reversal:' . $originalJournalEntryId;
+        return 'reversal:'.$originalJournalEntryId;
     }
 }

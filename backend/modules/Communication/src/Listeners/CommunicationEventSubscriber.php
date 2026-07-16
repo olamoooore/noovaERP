@@ -36,9 +36,9 @@ class CommunicationEventSubscriber implements ShouldQueue
         try {
             // If direct recipients are specified, use sendDirect
             if (
-                !empty($event->directRecipientUserIds) ||
-                !empty($event->directRecipientCustomerIds) ||
-                !empty($event->directRecipientEmails)
+                ! empty($event->directRecipientUserIds) ||
+                ! empty($event->directRecipientCustomerIds) ||
+                ! empty($event->directRecipientEmails)
             ) {
                 $this->engine->sendDirect(
                     subject: $event->subject,
@@ -55,7 +55,7 @@ class CommunicationEventSubscriber implements ShouldQueue
                     templateKey: $event->templateKey,
                     templateVariables: $event->context,
                     metadata: $event->metadata,
-                );  
+                );
             } else {
                 // Default: notify all subscribers of the record
                 $this->engine->notify(

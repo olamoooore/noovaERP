@@ -2,34 +2,35 @@
 
 namespace Modules\EventManagement\Services;
 
+use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
-use Carbon\Carbon;
-use Exception;
 
 /**
  * ApiContractService - Task 12.1 & 12.2
- * 
+ *
  * Service for API contract management, validation, versioning, and monitoring.
  * Handles contract storage, retrieval, validation, and violation tracking.
- * 
+ *
  * Requirements: 28.1, 28.2, 28.3
  */
 class ApiContractService
 {
     private const CACHE_PREFIX = 'api_contract:';
+
     private const CONTRACT_STORAGE_PATH = 'api_contracts';
+
     private const VIOLATION_RETENTION_DAYS = 30;
 
     /**
      * Get API contract for endpoint
-     * 
-     * @param string $endpoint Normalized endpoint path
-     * @param string $method HTTP method
-     * @param string $version API version
+     *
+     * @param  string  $endpoint  Normalized endpoint path
+     * @param  string  $method  HTTP method
+     * @param  string  $version  API version
      * @return array|null Contract specification
      */
     public function getContract(string $endpoint, string $method, string $version): ?array
@@ -55,7 +56,7 @@ class ApiContractService
                 'endpoint' => $endpoint,
                 'method' => $method,
                 'version' => $version,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return null;
@@ -64,11 +65,11 @@ class ApiContractService
 
     /**
      * Store API contract
-     * 
-     * @param string $endpoint Endpoint path
-     * @param string $method HTTP method
-     * @param string $version API version
-     * @param array $contractSpec Contract specification
+     *
+     * @param  string  $endpoint  Endpoint path
+     * @param  string  $method  HTTP method
+     * @param  string  $version  API version
+     * @param  array  $contractSpec  Contract specification
      * @return array Storage result
      */
     public function storeContract(string $endpoint, string $method, string $version, array $contractSpec): array
@@ -91,7 +92,7 @@ class ApiContractService
                 'contract_spec' => json_encode($contractSpec),
                 'is_active' => true,
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ]);
 
             DB::commit();
@@ -103,13 +104,13 @@ class ApiContractService
                 'contract_id' => $contractId,
                 'endpoint' => $endpoint,
                 'method' => $method,
-                'version' => $version
+                'version' => $version,
             ]);
 
             return [
                 'success' => true,
                 'contract_id' => $contractId,
-                'message' => 'Contract stored successfully'
+                'message' => 'Contract stored successfully',
             ];
 
         } catch (Exception $e) {
@@ -118,24 +119,23 @@ class ApiContractService
                 'endpoint' => $endpoint,
                 'method' => $method,
                 'version' => $version,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to store contract',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Record contract violation
-     * 
-     * @param Request $request HTTP request
-     * @param string $violationType Type of violation
-     * @param array $details Violation details
-     * @return void
+     *
+     * @param  Request  $request  HTTP request
+     * @param  string  $violationType  Type of violation
+     * @param  array  $details  Violation details
      */
     public function recordViolation(Request $request, string $violationType, array $details): void
     {
@@ -151,7 +151,7 @@ class ApiContractService
                 'tenant_id' => $this->extractTenantId($request),
                 'user_id' => $request->user()?->id,
                 'occurred_at' => now(),
-                'created_at' => now()
+                'created_at' => now(),
             ]);
 
             // Update violation metrics
@@ -160,37 +160,36 @@ class ApiContractService
         } catch (Exception $e) {
             Log::error('Failed to record contract violation', [
                 'violation_type' => $violationType,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
         }
     }
 
     /**
      * Record contract compliance
-     * 
-     * @param Request $request HTTP request
-     * @param array $contract Contract that was validated
-     * @return void
+     *
+     * @param  Request  $request  HTTP request
+     * @param  array  $contract  Contract that was validated
      */
     public function recordCompliance(Request $request, array $contract): void
     {
         try {
             // Update compliance metrics (lightweight)
-            $cacheKey = self::CACHE_PREFIX . 'compliance:' . date('Y-m-d-H');
+            $cacheKey = self::CACHE_PREFIX.'compliance:'.date('Y-m-d-H');
             Cache::increment($cacheKey, 1);
             Cache::expire($cacheKey, 3600); // 1 hour TTL
 
         } catch (Exception $e) {
             Log::error('Failed to record contract compliance', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
         }
     }
 
     /**
      * Get contract violations summary
-     * 
-     * @param array $options Query options
+     *
+     * @param  array  $options  Query options
      * @return array Violations summary
      */
     public function getViolationsSummary(array $options = []): array
@@ -209,7 +208,7 @@ class ApiContractService
 
             // Overall statistics
             $totalViolations = $query->count();
-            
+
             // Violations by type
             $violationsByType = $query->selectRaw('violation_type, COUNT(*) as count')
                 ->groupBy('violation_type')
@@ -237,36 +236,36 @@ class ApiContractService
                 'success' => true,
                 'period' => [
                     'start_date' => $startDate,
-                    'end_date' => $endDate
+                    'end_date' => $endDate,
                 ],
                 'summary' => [
                     'total_violations' => $totalViolations,
                     'violations_by_type' => $violationsByType,
                     'violations_by_endpoint' => $violationsByEndpoint,
-                    'violations_over_time' => $violationsOverTime
-                ]
+                    'violations_over_time' => $violationsOverTime,
+                ],
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to get violations summary', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to get violations summary',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Check contract compatibility between versions
-     * 
-     * @param string $endpoint Endpoint path
-     * @param string $method HTTP method
-     * @param string $oldVersion Old version
-     * @param string $newVersion New version
+     *
+     * @param  string  $endpoint  Endpoint path
+     * @param  string  $method  HTTP method
+     * @param  string  $oldVersion  Old version
+     * @param  string  $newVersion  New version
      * @return array Compatibility check result
      */
     public function checkCompatibility(string $endpoint, string $method, string $oldVersion, string $newVersion): array
@@ -275,10 +274,10 @@ class ApiContractService
             $oldContract = $this->getContract($endpoint, $method, $oldVersion);
             $newContract = $this->getContract($endpoint, $method, $newVersion);
 
-            if (!$oldContract || !$newContract) {
+            if (! $oldContract || ! $newContract) {
                 return [
                     'compatible' => false,
-                    'reason' => 'One or both contracts not found'
+                    'reason' => 'One or both contracts not found',
                 ];
             }
 
@@ -286,13 +285,13 @@ class ApiContractService
 
             // Check request compatibility
             $requestIssues = $this->checkRequestCompatibility($oldContract, $newContract);
-            if (!empty($requestIssues)) {
+            if (! empty($requestIssues)) {
                 $issues['request'] = $requestIssues;
             }
 
             // Check response compatibility
             $responseIssues = $this->checkResponseCompatibility($oldContract, $newContract);
-            if (!empty($responseIssues)) {
+            if (! empty($responseIssues)) {
                 $issues['response'] = $responseIssues;
             }
 
@@ -301,7 +300,7 @@ class ApiContractService
             return [
                 'compatible' => $compatible,
                 'issues' => $issues,
-                'compatibility_score' => $this->calculateCompatibilityScore($issues)
+                'compatibility_score' => $this->calculateCompatibilityScore($issues),
             ];
 
         } catch (Exception $e) {
@@ -310,22 +309,22 @@ class ApiContractService
                 'method' => $method,
                 'old_version' => $oldVersion,
                 'new_version' => $newVersion,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'compatible' => false,
                 'error' => 'Compatibility check failed',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Generate OpenAPI specification for contracts
-     * 
-     * @param string $version API version
-     * @param array $options Generation options
+     *
+     * @param  string  $version  API version
+     * @param  array  $options  Generation options
      * @return array OpenAPI specification
      */
     public function generateOpenApiSpec(string $version, array $options = []): array
@@ -341,15 +340,15 @@ class ApiContractService
                 'info' => [
                     'title' => 'ERP Event Management API',
                     'version' => $version,
-                    'description' => 'API for ERP Event Management Module'
+                    'description' => 'API for ERP Event Management Module',
                 ],
                 'servers' => [
                     [
-                        'url' => config('app.url') . "/api/v{$version}",
-                        'description' => 'Production server'
-                    ]
+                        'url' => config('app.url')."/api/v{$version}",
+                        'description' => 'Production server',
+                    ],
                 ],
-                'paths' => []
+                'paths' => [],
             ];
 
             foreach ($contracts as $contract) {
@@ -357,7 +356,7 @@ class ApiContractService
                 $path = $contract->endpoint;
                 $method = strtolower($contract->method);
 
-                if (!isset($openApiSpec['paths'][$path])) {
+                if (! isset($openApiSpec['paths'][$path])) {
                     $openApiSpec['paths'][$path] = [];
                 }
 
@@ -366,19 +365,19 @@ class ApiContractService
 
             return [
                 'success' => true,
-                'specification' => $openApiSpec
+                'specification' => $openApiSpec,
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to generate OpenAPI specification', [
                 'version' => $version,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to generate OpenAPI spec',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
@@ -389,10 +388,11 @@ class ApiContractService
     private function loadContractFromFile(string $endpoint, string $method, string $version): ?array
     {
         $filename = $this->getContractFilename($endpoint, $method, $version);
-        $path = self::CONTRACT_STORAGE_PATH . '/' . $filename;
+        $path = self::CONTRACT_STORAGE_PATH.'/'.$filename;
 
         if (Storage::exists($path)) {
             $content = Storage::get($path);
+
             return json_decode($content, true);
         }
 
@@ -405,6 +405,7 @@ class ApiContractService
     private function getContractFilename(string $endpoint, string $method, string $version): string
     {
         $sanitizedEndpoint = str_replace(['/', '{', '}'], ['_', '', ''], $endpoint);
+
         return "{$version}_{$method}_{$sanitizedEndpoint}.json";
     }
 
@@ -413,7 +414,7 @@ class ApiContractService
      */
     private function clearContractCache(string $endpoint, string $method, string $version): void
     {
-        $cacheKey = self::CACHE_PREFIX . "contract:{$version}:{$method}:{$endpoint}";
+        $cacheKey = self::CACHE_PREFIX."contract:{$version}:{$method}:{$endpoint}";
         Cache::forget($cacheKey);
     }
 
@@ -442,7 +443,7 @@ class ApiContractService
      */
     private function updateViolationMetrics(string $violationType): void
     {
-        $cacheKey = self::CACHE_PREFIX . "violations:{$violationType}:" . date('Y-m-d-H');
+        $cacheKey = self::CACHE_PREFIX."violations:{$violationType}:".date('Y-m-d-H');
         Cache::increment($cacheKey, 1);
         Cache::expire($cacheKey, 3600); // 1 hour TTL
     }
@@ -457,10 +458,10 @@ class ApiContractService
         // Check if new required parameters were added
         $oldRequired = $oldContract['request']['required'] ?? [];
         $newRequired = $newContract['request']['required'] ?? [];
-        
+
         $addedRequired = array_diff($newRequired, $oldRequired);
-        if (!empty($addedRequired)) {
-            $issues[] = 'Added required parameters: ' . implode(', ', $addedRequired);
+        if (! empty($addedRequired)) {
+            $issues[] = 'Added required parameters: '.implode(', ', $addedRequired);
         }
 
         // Check if parameter types changed
@@ -491,8 +492,8 @@ class ApiContractService
 
         // Check if response status codes were removed
         $removedCodes = array_diff(array_keys($oldResponses), array_keys($newResponses));
-        if (!empty($removedCodes)) {
-            $issues[] = 'Removed response codes: ' . implode(', ', $removedCodes);
+        if (! empty($removedCodes)) {
+            $issues[] = 'Removed response codes: '.implode(', ', $removedCodes);
         }
 
         return $issues;
@@ -525,7 +526,7 @@ class ApiContractService
             'summary' => $contractSpec['summary'] ?? 'API Operation',
             'description' => $contractSpec['description'] ?? '',
             'parameters' => [],
-            'responses' => []
+            'responses' => [],
         ];
 
         // Convert query parameters
@@ -536,8 +537,8 @@ class ApiContractService
                     'in' => 'query',
                     'required' => $spec['required'] ?? false,
                     'schema' => [
-                        'type' => $spec['type'] ?? 'string'
-                    ]
+                        'type' => $spec['type'] ?? 'string',
+                    ],
                 ];
             }
         }
@@ -549,9 +550,9 @@ class ApiContractService
                     'description' => $response['description'] ?? 'Response',
                     'content' => [
                         'application/json' => [
-                            'schema' => $response['body_schema'] ?? ['type' => 'object']
-                        ]
-                    ]
+                            'schema' => $response['body_schema'] ?? ['type' => 'object'],
+                        ],
+                    ],
                 ];
             }
         }

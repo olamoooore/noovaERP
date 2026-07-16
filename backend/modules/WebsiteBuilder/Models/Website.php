@@ -43,6 +43,33 @@ class Website extends Model
                 $model->slug = Str::slug($model->name);
             }
         });
+
+        static::created(function ($website) {
+            if (! $website->pages()->exists()) {
+                $page = $website->pages()->create([
+                    'title' => 'Home',
+                    'slug' => 'home',
+                    'is_home' => true,
+                    'status' => 'draft',
+                    'sort_order' => 0,
+                ]);
+
+                $page->versions()->create([
+                    'version' => 1,
+                    'content' => [
+                        'html' => '',
+                        'css' => '',
+                        'components' => [],
+                        'styles' => [],
+                        'header_js' => '',
+                        'body_js' => '',
+                    ],
+                    'is_current' => true,
+                    'is_published' => false,
+                    'created_by' => $website->created_by,
+                ]);
+            }
+        });
     }
 
     public function pages(): HasMany

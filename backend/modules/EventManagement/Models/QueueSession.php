@@ -36,8 +36,11 @@ class QueueSession extends Model
     ];
 
     public const STATUS_QUEUED = 'queued';
+
     public const STATUS_ACTIVE = 'active';
+
     public const STATUS_EXPIRED = 'expired';
+
     public const STATUS_COMPLETED = 'completed';
 
     public function config()

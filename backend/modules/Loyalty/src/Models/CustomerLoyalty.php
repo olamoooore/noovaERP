@@ -2,10 +2,10 @@
 
 namespace Modules\Loyalty\Models;
 
+use App\Models\Customer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\Customer;
 
 class CustomerLoyalty extends Model
 {

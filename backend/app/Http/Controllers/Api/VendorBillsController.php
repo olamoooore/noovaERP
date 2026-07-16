@@ -25,10 +25,10 @@ class VendorBillsController extends Controller
         private ThreeWayMatchService $threeWayMatchService,
         private BillService $billService,
     ) {}
+
     /**
      * List all vendor bills
-     * 
-     * @param Request $request
+     *
      * @return \Illuminate\Http\JsonResponse
      */
     public function index(Request $request)
@@ -73,9 +73,9 @@ class VendorBillsController extends Controller
                 $search = $request->get('search');
                 $query->where(function ($q) use ($search) {
                     $q->where('bill_number', 'ILIKE', "%{$search}%")
-                      ->orWhereHas('vendor', function ($vq) use ($search) {
-                          $vq->where('name', 'ILIKE', "%{$search}%");
-                      });
+                        ->orWhereHas('vendor', function ($vq) use ($search) {
+                            $vq->where('name', 'ILIKE', "%{$search}%");
+                        });
                 });
             }
 
@@ -99,18 +99,19 @@ class VendorBillsController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to fetch vendor bills: ' . $e->getMessage());
+            Log::error('Failed to fetch vendor bills: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to fetch vendor bills',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Get a single vendor bill
-     * 
-     * @param int $id
+     *
+     * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
     public function show($id)
@@ -119,21 +120,22 @@ class VendorBillsController extends Controller
             $bill = Bill::with(['vendor', 'lines.account', 'journalEntry', 'purchaseOrder', 'goodsReceipt'])
                 ->find($id);
 
-            if (!$bill) {
+            if (! $bill) {
                 return response()->json([
-                    'message' => 'Vendor bill not found'
+                    'message' => 'Vendor bill not found',
                 ], 404);
             }
 
             return response()->json([
-                'data' => $bill
+                'data' => $bill,
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to fetch vendor bill: ' . $e->getMessage());
+            Log::error('Failed to fetch vendor bill: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to fetch vendor bill',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -145,46 +147,45 @@ class VendorBillsController extends Controller
      * bill_type enforcement (FIX-02) and three-way match enforcement (FIX-02/FIX-03)
      * are handled by BillService.
      *
-     * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function store(Request $request)
     {
         try {
             $validator = Validator::make($request->all(), [
-                'bill_number'                    => 'nullable|string|unique:bills,bill_number',
-                'vendor_id'                      => 'required|exists:vendors,id',
-                'bill_type'                      => 'nullable|string|in:procurement,expense',
-                'purchase_order_id'              => 'nullable|exists:purchase_orders,id',
-                'goods_receipt_id'               => 'nullable|exists:goods_receipts,id',
-                'bill_date'                      => 'required|date',
-                'due_date'                       => 'nullable|date',
-                'vendor_reference'               => 'nullable|string|max:100',
-                'internal_reference'             => 'nullable|string|max:100',
-                'attention_to'                   => 'nullable|string|max:255',
-                'contact_email'                  => 'nullable|email|max:255',
-                'contact_phone'                  => 'nullable|string|max:50',
-                'vendor_address_snapshot'        => 'nullable|string',
-                'remittance_address_snapshot'    => 'nullable|string',
-                'company_registration_number'    => 'nullable|string|max:100',
-                'tax_registration_number'        => 'nullable|string|max:100',
-                'notes'                          => 'nullable|string',
-                'terms'                          => 'nullable|string',
-                'discount_amount'                => 'nullable|numeric|min:0',
-                'lines'                          => 'required|array|min:1',
-                'lines.*.account_id'             => 'required|exists:chart_of_accounts,id',
-                'lines.*.description'            => 'nullable|string',
-                'lines.*.quantity'               => 'required|numeric|min:0',
-                'lines.*.unit_price'             => 'required|numeric',
-                'lines.*.tax_rate'               => 'nullable|numeric|min:0|max:100',
+                'bill_number' => 'nullable|string|unique:bills,bill_number',
+                'vendor_id' => 'required|exists:vendors,id',
+                'bill_type' => 'nullable|string|in:procurement,expense',
+                'purchase_order_id' => 'nullable|exists:purchase_orders,id',
+                'goods_receipt_id' => 'nullable|exists:goods_receipts,id',
+                'bill_date' => 'required|date',
+                'due_date' => 'nullable|date',
+                'vendor_reference' => 'nullable|string|max:100',
+                'internal_reference' => 'nullable|string|max:100',
+                'attention_to' => 'nullable|string|max:255',
+                'contact_email' => 'nullable|email|max:255',
+                'contact_phone' => 'nullable|string|max:50',
+                'vendor_address_snapshot' => 'nullable|string',
+                'remittance_address_snapshot' => 'nullable|string',
+                'company_registration_number' => 'nullable|string|max:100',
+                'tax_registration_number' => 'nullable|string|max:100',
+                'notes' => 'nullable|string',
+                'terms' => 'nullable|string',
+                'discount_amount' => 'nullable|numeric|min:0',
+                'lines' => 'required|array|min:1',
+                'lines.*.account_id' => 'required|exists:chart_of_accounts,id',
+                'lines.*.description' => 'nullable|string',
+                'lines.*.quantity' => 'required|numeric|min:0',
+                'lines.*.unit_price' => 'required|numeric',
+                'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
                 'lines.*.purchase_order_item_id' => 'nullable|integer',
-                'lines.*.goods_receipt_line_id'  => 'nullable|integer',
+                'lines.*.goods_receipt_line_id' => 'nullable|integer',
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
                     'message' => 'Validation failed',
-                    'errors'  => $validator->errors(),
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -214,7 +215,7 @@ class VendorBillsController extends Controller
 
             return response()->json([
                 'message' => 'Vendor bill created successfully',
-                'data'    => $bill,
+                'data' => $bill,
             ], 201);
 
         } catch (\InvalidArgumentException $e) {
@@ -222,19 +223,19 @@ class VendorBillsController extends Controller
         } catch (\RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         } catch (\Exception $e) {
-            Log::error('Failed to create vendor bill: ' . $e->getMessage());
+            Log::error('Failed to create vendor bill: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to create vendor bill',
-                'error'   => $e->getMessage(),
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Update a vendor bill
-     * 
-     * @param Request $request
-     * @param int $id
+     *
+     * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
     public function update(Request $request, $id)
@@ -242,9 +243,9 @@ class VendorBillsController extends Controller
         try {
             $bill = Bill::find($id);
 
-            if (!$bill) {
+            if (! $bill) {
                 return response()->json([
-                    'message' => 'Vendor bill not found'
+                    'message' => 'Vendor bill not found',
                 ], 404);
             }
 
@@ -252,7 +253,7 @@ class VendorBillsController extends Controller
             // Use the dedicated service methods (postBill, cancelBill) for status transitions.
             if (in_array($bill->status, ['posted', 'paid', 'cancelled'])) {
                 return response()->json([
-                    'message' => "Cannot edit a vendor bill with status '{$bill->status}'. " .
+                    'message' => "Cannot edit a vendor bill with status '{$bill->status}'. ".
                                  'Use the dedicated post/cancel endpoints for status transitions.',
                 ], 422);
             }
@@ -260,7 +261,7 @@ class VendorBillsController extends Controller
             // Validate request — 'status' is intentionally excluded: status transitions
             // must go through VendorBillService state-machine methods, not direct mutation.
             $validator = Validator::make($request->all(), [
-                'bill_number' => 'nullable|string|unique:bills,bill_number,' . $id,
+                'bill_number' => 'nullable|string|unique:bills,bill_number,'.$id,
                 'vendor_id' => 'nullable|exists:vendors,id',
                 'purchase_order_id' => 'nullable|exists:purchase_orders,id',
                 'goods_receipt_id' => 'nullable|exists:goods_receipts,id',
@@ -292,7 +293,7 @@ class VendorBillsController extends Controller
             if ($validator->fails()) {
                 return response()->json([
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -316,8 +317,9 @@ class VendorBillsController extends Controller
             if ($resolvedPurchaseOrderId || $resolvedGoodsReceiptId) {
                 $billType = 'procurement';
             }
-            if ($billType === 'procurement' && !$resolvedPurchaseOrderId && !$resolvedGoodsReceiptId) {
+            if ($billType === 'procurement' && ! $resolvedPurchaseOrderId && ! $resolvedGoodsReceiptId) {
                 DB::rollBack();
+
                 return response()->json([
                     'message' => "A bill with bill_type 'procurement' must be linked to a purchase_order_id or goods_receipt_id.",
                 ], 422);
@@ -329,20 +331,23 @@ class VendorBillsController extends Controller
                 foreach ($linePayloads as $idx => $lineData) {
                     if (empty(trim($lineData['description'] ?? ''))) {
                         DB::rollBack();
+
                         return response()->json([
                             'message' => 'Validation failed',
                             'errors' => ["lines.{$idx}.description" => ['Expense bill lines require a description since they have no product linkage.']],
                         ], 422);
                     }
-                    if (!empty($lineData['purchase_order_item_id']) || !empty($lineData['goods_receipt_line_id'])) {
+                    if (! empty($lineData['purchase_order_item_id']) || ! empty($lineData['goods_receipt_line_id'])) {
                         DB::rollBack();
+
                         return response()->json([
                             'message' => 'Validation failed',
                             'errors' => ["lines.{$idx}" => ['Expense bill lines cannot carry PO/GRN linkage.']],
                         ], 422);
                     }
-                    if (!empty($lineData['product_id'])) {
+                    if (! empty($lineData['product_id'])) {
                         DB::rollBack();
+
                         return response()->json([
                             'message' => 'Validation failed',
                             'errors' => ["lines.{$idx}.product_id" => ['Expense bill lines should not reference products. Use a GL account and description instead.']],
@@ -418,7 +423,7 @@ class VendorBillsController extends Controller
                     $quantity = $lineData['quantity'];
                     $unitPrice = $lineData['unit_price'];
                     $taxRate = $lineData['tax_rate'] ?? 0;
-                    
+
                     $lineTotal = $quantity * $unitPrice;
                     $taxAmount = $lineTotal * ($taxRate / 100);
 
@@ -450,8 +455,9 @@ class VendorBillsController extends Controller
             if ($billType === 'procurement') {
                 $bill->load(['lines', 'purchaseOrder.items.product', 'goodsReceipt.lines.product']);
                 $matchResult = $this->threeWayMatchService->validate($bill);
-                if (!$matchResult['valid']) {
+                if (! $matchResult['valid']) {
                     DB::rollBack();
+
                     return response()->json([
                         'message' => 'Three-way match validation failed',
                         'errors' => $matchResult['errors'],
@@ -467,15 +473,16 @@ class VendorBillsController extends Controller
 
             return response()->json([
                 'message' => 'Vendor bill updated successfully',
-                'data' => $bill
+                'data' => $bill,
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Failed to update vendor bill: ' . $e->getMessage());
+            Log::error('Failed to update vendor bill: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to update vendor bill',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -483,8 +490,7 @@ class VendorBillsController extends Controller
     /**
      * Post a vendor bill to the general ledger
      *
-     * @param int $id
-     * @param VendorBillService $billService
+     * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
     public function post($id, VendorBillService $billService)
@@ -492,7 +498,7 @@ class VendorBillsController extends Controller
         try {
             $bill = Bill::with(['vendor', 'lines', 'purchaseOrder.items.product', 'goodsReceipt.lines.product'])->find($id);
 
-            if (!$bill) {
+            if (! $bill) {
                 return response()->json(['message' => 'Vendor bill not found'], 404);
             }
 
@@ -500,7 +506,7 @@ class VendorBillsController extends Controller
             // Uses bill_type (not PO/GRN presence) so it cannot be bypassed by omitting linkage fields.
             if ($bill->isProcurement()) {
                 $matchResult = $this->threeWayMatchService->validate($bill);
-                if (!$matchResult['valid']) {
+                if (! $matchResult['valid']) {
                     return response()->json([
                         'message' => 'Cannot post: three-way match validation failed',
                         'errors' => $matchResult['errors'],
@@ -532,12 +538,12 @@ class VendorBillsController extends Controller
 
             $result = $billService->postBill($bill);
 
-            if (!$result->success) {
+            if (! $result->success) {
                 $errorMessage = $result->error;
 
                 // Surface account-mapping errors with actionable guidance
                 if (str_contains($errorMessage, 'Cannot resolve GL account')) {
-                    $errorMessage = 'Default accounts not configured. ' .
+                    $errorMessage = 'Default accounts not configured. '.
                         'Please go to Company Settings > Default Accounts and map the required GL accounts before posting bills.';
                 }
 
@@ -549,7 +555,8 @@ class VendorBillsController extends Controller
                 'data' => $bill->fresh(['vendor', 'lines.account', 'journalEntry']),
             ]);
         } catch (\Exception $e) {
-            Log::error('Failed to post vendor bill: ' . $e->getMessage());
+            Log::error('Failed to post vendor bill: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to post vendor bill',
                 'error' => $e->getMessage(),
@@ -561,7 +568,7 @@ class VendorBillsController extends Controller
      * Approve a vendor bill.
      * Only draft bills can be approved. Approval is required before posting.
      *
-     * @param int $id
+     * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
     public function approve($id)
@@ -569,11 +576,11 @@ class VendorBillsController extends Controller
         try {
             $bill = Bill::find($id);
 
-            if (!$bill) {
+            if (! $bill) {
                 return response()->json(['message' => 'Vendor bill not found'], 404);
             }
 
-            if (!is_null($bill->approved_at)) {
+            if (! is_null($bill->approved_at)) {
                 return response()->json([
                     'message' => 'This bill has already been approved.',
                 ], 422);
@@ -596,7 +603,8 @@ class VendorBillsController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to approve vendor bill: ' . $e->getMessage());
+            Log::error('Failed to approve vendor bill: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to approve vendor bill',
                 'error' => $e->getMessage(),
@@ -608,7 +616,7 @@ class VendorBillsController extends Controller
      * Reject a vendor bill approval.
      * Resets an approved bill back to draft.
      *
-     * @param int $id
+     * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
     public function reject($id)
@@ -616,7 +624,7 @@ class VendorBillsController extends Controller
         try {
             $bill = Bill::find($id);
 
-            if (!$bill) {
+            if (! $bill) {
                 return response()->json(['message' => 'Vendor bill not found'], 404);
             }
 
@@ -637,7 +645,8 @@ class VendorBillsController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to reject vendor bill: ' . $e->getMessage());
+            Log::error('Failed to reject vendor bill: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to reject vendor bill',
                 'error' => $e->getMessage(),
@@ -649,7 +658,6 @@ class VendorBillsController extends Controller
      * Get eligible vendor bills for recording a payment.
      * Only posted or partially paid bills with a positive balance are eligible.
      *
-     * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function eligibleBills(Request $request)
@@ -663,7 +671,7 @@ class VendorBillsController extends Controller
                 ->whereIn('status', ['posted', 'partial', 'overdue'])
                 ->where(function ($q) {
                     $q->whereNull('balance')
-                      ->orWhere('balance', '>', 0);
+                        ->orWhere('balance', '>', 0);
                 })
                 ->orderBy('bill_date', 'desc');
 
@@ -696,7 +704,8 @@ class VendorBillsController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to fetch eligible bills: ' . $e->getMessage());
+            Log::error('Failed to fetch eligible bills: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to fetch eligible bills',
                 'error' => $e->getMessage(),
@@ -707,7 +716,7 @@ class VendorBillsController extends Controller
     /**
      * Delete a vendor bill
      *
-     * @param int $id
+     * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
     public function destroy($id)
@@ -715,16 +724,16 @@ class VendorBillsController extends Controller
         try {
             $bill = Bill::find($id);
 
-            if (!$bill) {
+            if (! $bill) {
                 return response()->json([
-                    'message' => 'Vendor bill not found'
+                    'message' => 'Vendor bill not found',
                 ], 404);
             }
 
             // Check if bill is posted
             if ($bill->status === 'posted') {
                 return response()->json([
-                    'message' => 'Cannot delete a posted bill'
+                    'message' => 'Cannot delete a posted bill',
                 ], 422);
             }
 
@@ -739,15 +748,16 @@ class VendorBillsController extends Controller
             DB::commit();
 
             return response()->json([
-                'message' => 'Vendor bill deleted successfully'
+                'message' => 'Vendor bill deleted successfully',
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Failed to delete vendor bill: ' . $e->getMessage());
+            Log::error('Failed to delete vendor bill: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to delete vendor bill',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -762,7 +772,7 @@ class VendorBillsController extends Controller
      */
     private function validateProcurementLineage(array $lines, ?PurchaseOrder $purchaseOrder, ?GoodsReceipt $goodsReceipt): array
     {
-        if (!$purchaseOrder && !$goodsReceipt) {
+        if (! $purchaseOrder && ! $goodsReceipt) {
             return [];
         }
 
@@ -778,21 +788,21 @@ class VendorBillsController extends Controller
                 : null;
 
             if ($goodsReceipt) {
-                if (!$goodsReceiptLineId) {
+                if (! $goodsReceiptLineId) {
                     $errors["lines.{$index}.goods_receipt_line_id"][] = 'A goods receipt line reference is required when goods_receipt_id is provided.';
                 } else {
                     $grnLine = $goodsReceipt->lines->firstWhere('id', $goodsReceiptLineId);
 
-                    if (!$grnLine) {
+                    if (! $grnLine) {
                         $errors["lines.{$index}.goods_receipt_line_id"][] = 'The selected goods receipt line does not belong to the linked goods receipt.';
                     }
                 }
             }
 
             if ($purchaseOrder) {
-                if (!$purchaseOrderItemId) {
+                if (! $purchaseOrderItemId) {
                     $errors["lines.{$index}.purchase_order_item_id"][] = 'A purchase order item reference is required when purchase_order_id is provided.';
-                } elseif (!$purchaseOrder->items->firstWhere('id', $purchaseOrderItemId)) {
+                } elseif (! $purchaseOrder->items->firstWhere('id', $purchaseOrderItemId)) {
                     $errors["lines.{$index}.purchase_order_item_id"][] = 'The selected purchase order item does not belong to the linked purchase order.';
                 }
 

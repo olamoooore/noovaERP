@@ -4,8 +4,8 @@ namespace Database\Factories;
 
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Modules\OCRBookkeeping\Models\OcrDocument;
 use Illuminate\Support\Str;
+use Modules\OCRBookkeeping\Models\OcrDocument;
 
 class OcrDocumentFactory extends Factory
 {
@@ -15,8 +15,8 @@ class OcrDocumentFactory extends Factory
     {
         return [
             'uuid' => Str::uuid(),
-            'file_path' => '2024/12/26/' . $this->faker->uuid . '.jpg',
-            'file_name' => $this->faker->word . '.jpg',
+            'file_path' => '2024/12/26/'.$this->faker->uuid.'.jpg',
+            'file_name' => $this->faker->word.'.jpg',
             'file_size' => $this->faker->numberBetween(100000, 5000000),
             'mime_type' => 'image/jpeg',
             'status' => 'PENDING',

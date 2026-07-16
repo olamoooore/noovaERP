@@ -3,30 +3,29 @@
 namespace Modules\POS\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\ProductVariant;
-use App\Models\Invoice;
+use App\Models\Setting;
+use App\Models\Tax;
+use App\Models\User;
+use App\Notifications\AdminOrderAlert;
+use App\Notifications\CustomerOrderConfirmation;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
-use App\Models\Setting;
-use App\Models\Tax;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Loyalty\Services\PointsEarningService;
+use Modules\Loyalty\Services\RedemptionService;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosOrderItem;
-use Modules\POS\Models\PosPayment;
 use Modules\POS\Services\PosPaymentCompletionService;
 use Modules\POS\Services\PosPostingService;
 use Modules\POS\Services\PosReversalService;
-use Modules\Loyalty\Services\RedemptionService;
-use Modules\Loyalty\Services\PointsEarningService;
-use Barryvdh\DomPDF\Facade\Pdf;
-use App\Notifications\AdminOrderAlert;
-use App\Notifications\CustomerOrderConfirmation;
-use Illuminate\Support\Facades\Notification;
-use App\Models\User;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PosOrderController extends Controller
 {
@@ -40,7 +39,7 @@ class PosOrderController extends Controller
 
         // Search by order number
         if ($request->has('search') && $request->search) {
-            $query->where('order_number', 'like', '%' . $request->search . '%');
+            $query->where('order_number', 'like', '%'.$request->search.'%');
         }
 
         // Filter by status
@@ -62,6 +61,7 @@ class PosOrderController extends Controller
         }
 
         $perPage = $request->input('per_page', 20);
+
         return $query->paginate($perPage);
     }
 
@@ -226,18 +226,18 @@ class PosOrderController extends Controller
             if (isset($validated['notes'])) {
                 $order->notes = $validated['notes'];
             }
-            
+
             // Save any changes to discount, customer, or notes
             if ($order->isDirty()) {
                 $order->save();
             }
 
             if ($order->wasRecentlyCreated === false && $order->items()->count() > 0) {
-                 // If it's an existing draft, we might want to update it. 
-                 // For now, let's assume 'store' is mostly for new drafts or syncing.
-                 // If we want to support updating draft items, we'd need to clear old items or update them.
-                 // For simplified "sync", we can delete old items and re-add.
-                 $order->items()->delete();
+                // If it's an existing draft, we might want to update it.
+                // For now, let's assume 'store' is mostly for new drafts or syncing.
+                // If we want to support updating draft items, we'd need to clear old items or update them.
+                // For simplified "sync", we can delete old items and re-add.
+                $order->items()->delete();
             }
 
             // TASK TAX-003: Use TaxResolutionService for canonical tax calculation
@@ -251,10 +251,10 @@ class PosOrderController extends Controller
                 $product = null;
                 $variant = null;
 
-                if (!empty($line['product_variant_id'])) {
+                if (! empty($line['product_variant_id'])) {
                     $variant = ProductVariant::findOrFail($line['product_variant_id']);
                     $product = $variant->product;
-                } elseif (!empty($line['product_id'])) {
+                } elseif (! empty($line['product_id'])) {
                     $product = Product::findOrFail($line['product_id']);
                 } else {
                     abort(422, 'Each item must have product_id or product_variant_id');
@@ -266,7 +266,7 @@ class PosOrderController extends Controller
                     : (float) ($variant ? $variant->price : $product->price);
 
                 $lineSubtotal = $qty * $unitPrice;
-                
+
                 // TASK TAX-003: Use canonical TaxResolutionService instead of inline logic
                 $taxInfo = $taxResolutionService->resolveTaxForProduct($product, $variant);
                 $lineTaxRate = $taxEnabled ? $taxInfo['rate'] : 0.0;
@@ -279,7 +279,7 @@ class PosOrderController extends Controller
                     'pos_order_id' => $order->id,
                     'product_id' => $product?->id,
                     'product_variant_id' => $variant?->id,
-                    'name' => $variant ? ($product->name . ' - ' . $variant->name) : $product->name,
+                    'name' => $variant ? ($product->name.' - '.$variant->name) : $product->name,
                     'sku' => $variant?->sku ?? $product->sku,
                     'quantity' => $qty,
                     'unit_price' => $unitPrice,
@@ -325,18 +325,18 @@ class PosOrderController extends Controller
     public function show($posOrder)
     {
         $posOrder = PosOrder::findOrFail($posOrder);
-        
+
         // Validate session exists and is accessible
         if ($posOrder->session_id) {
             $session = \Modules\POS\Models\PosSession::find($posOrder->session_id);
-            if (!$session) {
+            if (! $session) {
                 return response()->json([
                     'error' => 'Order session not found',
                     'message' => 'This order is associated with a deleted session',
                 ], 404);
             }
         }
-        
+
         return response()->json($posOrder->load([
             'customer',
             'terminal',
@@ -359,13 +359,13 @@ class PosOrderController extends Controller
         }
 
         // Validate session is open
-        if (!$posOrder->session_id || !$posOrder->terminal_id) {
+        if (! $posOrder->session_id || ! $posOrder->terminal_id) {
             return response()->json([
                 'error' => 'Order missing session or terminal',
                 'message' => 'Cannot process payment without valid session',
             ], 422);
         }
-        
+
         $this->validateSessionIsOpen($posOrder->session_id, $posOrder->terminal_id);
 
         $validated = $request->validate([
@@ -455,7 +455,7 @@ class PosOrderController extends Controller
 
                 // 2. Notify Admins
                 // Find users with admin role or fallback to first user
-                $admins = User::whereHas('roles', function($q) {
+                $admins = User::whereHas('roles', function ($q) {
                     $q->where('name', 'like', '%admin%'); // Matches admin, super-admin, etc.
                 })->get();
 
@@ -463,14 +463,16 @@ class PosOrderController extends Controller
                     // Fallback: Notify the user who created the order if no admins found? No, that's the cashier.
                     // Maybe notify user ID 1?
                     $admin = User::find(1);
-                    if ($admin) $admins = collect([$admin]);
+                    if ($admin) {
+                        $admins = collect([$admin]);
+                    }
                 }
 
                 if ($admins->isNotEmpty()) {
                     Notification::send($admins, new AdminOrderAlert($posOrder, 'POS'));
                 }
             } catch (\Exception $e) {
-                Log::error('POS Notification Failed: ' . $e->getMessage());
+                Log::error('POS Notification Failed: '.$e->getMessage());
             }
 
             // Award loyalty points for the purchase (after payment)
@@ -497,7 +499,7 @@ class PosOrderController extends Controller
             }
 
             $response = $posOrder->fresh()->load('items', 'payments', 'journalEntry', 'customer');
-            
+
             return response()->json([
                 'data' => $response,
                 'loyalty' => [
@@ -546,7 +548,7 @@ class PosOrderController extends Controller
 
         $posOrder->update([
             'status' => 'void',
-            'notes' => $this->appendOrderNote($posOrder->notes, 'Cancelled: ' . $reason),
+            'notes' => $this->appendOrderNote($posOrder->notes, 'Cancelled: '.$reason),
         ]);
 
         return response()->json([
@@ -573,10 +575,10 @@ class PosOrderController extends Controller
         ]);
 
         $reason = trim($validated['reason']);
-        
+
         // Check for existing approved request or create new one
         $approvalService = app(\App\Services\ApprovalService::class);
-        
+
         if (isset($validated['approval_request_id'])) {
             // Use existing approval
             $approvalRequest = \App\Models\ApprovalRequest::findOrFail($validated['approval_request_id']);
@@ -590,8 +592,8 @@ class PosOrderController extends Controller
                     'error' => 'Approval request does not match this void operation',
                 ], 403);
             }
-            
-            if (!$approvalRequest->isApproved()) {
+
+            if (! $approvalRequest->isApproved()) {
                 return response()->json([
                     'error' => 'Approval request not approved',
                     'approval_status' => $approvalRequest->status,
@@ -606,7 +608,7 @@ class PosOrderController extends Controller
                 $posOrder->total,
                 $reason
             );
-            
+
             return response()->json([
                 'message' => 'Approval required',
                 'approval_request' => $approvalRequest,
@@ -635,7 +637,7 @@ class PosOrderController extends Controller
                 'voided_at' => now(),
                 'void_approved_by' => $approvalRequest->reviewed_by,
                 'void_reason' => $reason,
-                'notes' => $this->appendOrderNote($posOrder->notes, 'Voided: ' . $reason),
+                'notes' => $this->appendOrderNote($posOrder->notes, 'Voided: '.$reason),
             ]);
 
             return response()->json([
@@ -654,7 +656,7 @@ class PosOrderController extends Controller
 
         return DB::transaction(function () use ($posOrder, $reason, $approvalRequest) {
             $refundService = app(\App\Services\RefundService::class);
-            $refundLines = $posOrder->items->map(fn($item) => [
+            $refundLines = $posOrder->items->map(fn ($item) => [
                 'line_id' => $item->id,
                 'product_id' => $item->product_id,
                 'variant_id' => $item->product_variant_id,
@@ -679,7 +681,7 @@ class PosOrderController extends Controller
             $returnOrder = $this->createAndRestockReturn(
                 $posOrder,
                 $this->buildFullReturnItems($posOrder),
-                $this->appendOrderNote(null, 'Void refund: ' . $reason)
+                $this->appendOrderNote(null, 'Void refund: '.$reason)
             );
 
             $reversalService = app(PosReversalService::class);
@@ -710,7 +712,7 @@ class PosOrderController extends Controller
                 'voided_at' => now(),
                 'void_approved_by' => $approvalRequest->reviewed_by,
                 'void_reason' => $reason,
-                'notes' => $this->appendOrderNote($posOrder->notes, 'Voided: ' . $reason),
+                'notes' => $this->appendOrderNote($posOrder->notes, 'Voided: '.$reason),
             ]);
 
             Log::info('POS order void completed', [
@@ -753,10 +755,10 @@ class PosOrderController extends Controller
         ]);
 
         $notes = trim($validated['notes']);
-        
+
         // Check for existing approved request or create new one
         $approvalService = app(\App\Services\ApprovalService::class);
-        
+
         if (isset($validated['approval_request_id'])) {
             // Use existing approval
             $approvalRequest = \App\Models\ApprovalRequest::findOrFail($validated['approval_request_id']);
@@ -770,8 +772,8 @@ class PosOrderController extends Controller
                     'error' => 'Approval request does not match this refund operation',
                 ], 403);
             }
-            
-            if (!$approvalRequest->isApproved()) {
+
+            if (! $approvalRequest->isApproved()) {
                 return response()->json([
                     'error' => 'Approval request not approved',
                     'approval_status' => $approvalRequest->status,
@@ -786,7 +788,7 @@ class PosOrderController extends Controller
                 $posOrder->total,
                 $notes
             );
-            
+
             return response()->json([
                 'message' => 'Approval required',
                 'approval_request' => $approvalRequest,
@@ -808,7 +810,7 @@ class PosOrderController extends Controller
 
         return DB::transaction(function () use ($posOrder, $notes, $validated, $approvalRequest) {
             $refundService = app(\App\Services\RefundService::class);
-            $refundLines = $posOrder->items->map(fn($item) => [
+            $refundLines = $posOrder->items->map(fn ($item) => [
                 'line_id' => $item->id,
                 'product_id' => $item->product_id,
                 'variant_id' => $item->product_variant_id,
@@ -896,23 +898,24 @@ class PosOrderController extends Controller
         }
 
         $validated = $request->validate([
-            'items'              => 'required|array|min:1',
-            'items.*.item_id'    => 'required|exists:pos_order_items,id',
-            'items.*.quantity'   => 'required|integer|min:1',
-            'notes'              => 'required|string|min:10|max:500',
-            'refund_method'      => 'required|in:cash,card,store_credit',
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required|exists:pos_order_items,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'notes' => 'required|string|min:10|max:500',
+            'refund_method' => 'required|in:cash,card,store_credit',
             'approval_request_id' => 'nullable|integer|exists:approval_requests,id',
         ]);
 
         // Calculate partial return total for approval check
         $returnTotal = collect($validated['items'])->reduce(function (float $sum, array $line) use ($posOrder) {
             $item = $posOrder->items->firstWhere('id', $line['item_id']);
+
             return $sum + (($item?->unit_price ?? 0) * $line['quantity']);
         }, 0.0);
-        
+
         // Check for existing approved request or create new one
         $approvalService = app(\App\Services\ApprovalService::class);
-        
+
         if (isset($validated['approval_request_id'])) {
             // Use existing approval
             $approvalRequest = \App\Models\ApprovalRequest::findOrFail($validated['approval_request_id']);
@@ -926,8 +929,8 @@ class PosOrderController extends Controller
                     'error' => 'Approval request does not match this return operation',
                 ], 403);
             }
-            
-            if (!$approvalRequest->isApproved()) {
+
+            if (! $approvalRequest->isApproved()) {
                 return response()->json([
                     'error' => 'Approval request not approved',
                     'approval_status' => $approvalRequest->status,
@@ -944,7 +947,7 @@ class PosOrderController extends Controller
                 null,
                 ['items' => $validated['items']]
             );
-            
+
             return response()->json([
                 'message' => 'Approval required',
                 'approval_request' => $approvalRequest,
@@ -953,22 +956,23 @@ class PosOrderController extends Controller
         }
 
         Log::info('POS order return initiated', [
-            'order_id'       => $posOrder->id,
-            'order_number'   => $posOrder->order_number,
-            'return_total'   => $returnTotal,
-            'refund_method'  => $validated['refund_method'],
-            'notes'          => $validated['notes'],
-            'initiated_by'   => auth()->id(),
-            'approved_by'    => $approvalRequest->reviewed_by,
-            'ip_address'     => $request->ip(),
-            'timestamp'      => now()->toIso8601String(),
+            'order_id' => $posOrder->id,
+            'order_number' => $posOrder->order_number,
+            'return_total' => $returnTotal,
+            'refund_method' => $validated['refund_method'],
+            'notes' => $validated['notes'],
+            'initiated_by' => auth()->id(),
+            'approved_by' => $approvalRequest->reviewed_by,
+            'ip_address' => $request->ip(),
+            'timestamp' => now()->toIso8601String(),
         ]);
 
         return DB::transaction(function () use ($validated, $posOrder, $approvalRequest, $returnTotal) {
             // Create RefundTransaction via RefundService
             $refundService = app(\App\Services\RefundService::class);
-            $refundLines = collect($validated['items'])->map(function($line) use ($posOrder) {
+            $refundLines = collect($validated['items'])->map(function ($line) use ($posOrder) {
                 $item = $posOrder->items->firstWhere('id', $line['item_id']);
+
                 return [
                     'line_id' => $line['item_id'],
                     'product_id' => $item->product_id,
@@ -986,7 +990,7 @@ class PosOrderController extends Controller
                 refundLines: $refundLines,
                 reason: $validated['notes'],
                 notes: "Partial return for order #{$posOrder->order_number}",
-                idempotencyKey: "return_{$posOrder->id}_" . md5(json_encode($validated['items']))
+                idempotencyKey: "return_{$posOrder->id}_".md5(json_encode($validated['items']))
             );
 
             // Auto-approve and complete the refund
@@ -1006,14 +1010,14 @@ class PosOrderController extends Controller
                 $returnTotal,
                 $approvalRequest->reviewed_by,
                 $validated['notes'],
-                "return_{$posOrder->id}_" . md5(json_encode($validated['items']))
+                "return_{$posOrder->id}_".md5(json_encode($validated['items']))
             );
 
             // TASK POS-010: Proportional loyalty reversal for partial returns
             if ($posOrder->customer_id) {
                 try {
                     $reversalService = app(\Modules\Loyalty\Services\PointsReversalService::class);
-                    
+
                     // Execute proportional loyalty reversal
                     $loyaltyResult = $reversalService->reverseProportional(
                         $posOrder->customer_id,
@@ -1022,9 +1026,9 @@ class PosOrderController extends Controller
                         $returnTotal,
                         $posOrder->total,
                         "Proportional loyalty reversal for partial return of order #{$posOrder->order_number}: {$validated['notes']}",
-                        "pos_partial_return_{$posOrder->id}_" . md5(json_encode($validated['items']))
+                        "pos_partial_return_{$posOrder->id}_".md5(json_encode($validated['items']))
                     );
-                    
+
                     Log::info('Partial return loyalty reversal completed', [
                         'order_id' => $posOrder->id,
                         'customer_id' => $posOrder->customer_id,
@@ -1044,17 +1048,17 @@ class PosOrderController extends Controller
             }
 
             Log::info('POS order return completed', [
-                'order_id'        => $posOrder->id,
-                'order_number'    => $posOrder->order_number,
+                'order_id' => $posOrder->id,
+                'order_number' => $posOrder->order_number,
                 'return_order_id' => $returnOrder->id,
-                'refund_amount'   => -$returnTotal,
+                'refund_amount' => -$returnTotal,
                 'refund_transaction_id' => $refundTransaction->id,
-                'timestamp'       => now()->toIso8601String(),
+                'timestamp' => now()->toIso8601String(),
             ]);
 
             return response()->json([
-                'message'        => 'Return created successfully',
-                'return_order'   => $returnOrder->load('items'),
+                'message' => 'Return created successfully',
+                'return_order' => $returnOrder->load('items'),
                 'original_order' => $posOrder->fresh()->load('items', 'returns'),
                 'refund_transaction' => $refundTransaction,
             ]);
@@ -1107,12 +1111,12 @@ class PosOrderController extends Controller
 
         $businessAddresses = $decodeJsonArray(
             $companySettings->addresses ?? null,
-            !empty($companySettings?->address) ? [$companySettings->address] : []
+            ! empty($companySettings?->address) ? [$companySettings->address] : []
         );
 
         $businessPhones = $decodeJsonArray(
             $companySettings->phone_numbers ?? null,
-            !empty($companySettings?->phone) ? [$companySettings->phone] : []
+            ! empty($companySettings?->phone) ? [$companySettings->phone] : []
         );
 
         $socialLinks = $decodeJsonObject($companySettings->social_links ?? null, []);
@@ -1138,7 +1142,7 @@ class PosOrderController extends Controller
         // Set paper size to receipt size (80mm thermal paper) with taller height for longer receipts.
         $pdf->setPaper([0, 0, 226.77, 1100], 'portrait'); // 80mm = 226.77 points
 
-        $filename = 'receipt-' . $posOrder->order_number . '.pdf';
+        $filename = 'receipt-'.$posOrder->order_number.'.pdf';
 
         return $pdf->download($filename);
     }
@@ -1162,10 +1166,10 @@ class PosOrderController extends Controller
             ->first();
 
         // Auto-create invoice from POS order via SalesOrderService (canonical path)
-        if (!$invoice) {
+        if (! $invoice) {
             $invoice = DB::transaction(function () use ($posOrder) {
                 // Ensure customer_id exists (walk-in customer for anonymous POS orders)
-                if (!$posOrder->customer_id) {
+                if (! $posOrder->customer_id) {
                     $walkIn = \App\Models\Customer::firstOrCreate(
                         ['email' => 'walkin@system.local'],
                         ['name' => 'Walk-in Customer', 'notes' => 'System customer for walk-in POS transactions']
@@ -1203,11 +1207,11 @@ class PosOrderController extends Controller
                 // Create invoice via canonical SalesOrderService → InvoiceService path,
                 // passing POS totals as overrides so synchronizeInvoiceBookkeeping runs on final amounts.
                 $inv = $salesOrderService->createInvoice($salesOrder, [
-                    'subtotal'         => $posOrder->subtotal,
-                    'tax_amount'       => $posOrder->tax_amount ?? 0,
-                    'discount_amount'  => $posOrder->discount_amount ?? 0,
-                    'total'            => $posOrder->total,
-                    'pos_order_id'     => $posOrder->id,
+                    'subtotal' => $posOrder->subtotal,
+                    'tax_amount' => $posOrder->tax_amount ?? 0,
+                    'discount_amount' => $posOrder->discount_amount ?? 0,
+                    'total' => $posOrder->total,
+                    'pos_order_id' => $posOrder->id,
                     'journal_entry_id' => $posOrder->journal_entry_id,
                 ]);
 
@@ -1233,7 +1237,8 @@ class PosOrderController extends Controller
     {
         $stamp = now()->format('YmdHis');
         $rand = strtoupper(Str::random(4));
-        return 'POS-' . $stamp . '-' . $rand;
+
+        return 'POS-'.$stamp.'-'.$rand;
     }
 
     private function buildFullReturnItems(PosOrder $posOrder): array
@@ -1256,7 +1261,7 @@ class PosOrderController extends Controller
         $terminal = $posOrder->terminal()->with('warehouse')->first();
         $warehouseId = $terminal?->warehouse_id;
 
-        if (!$warehouseId) {
+        if (! $warehouseId) {
             Log::warning('POS return has no terminal warehouse — stock restock skipped', [
                 'pos_order_id' => $posOrder->id,
             ]);
@@ -1278,7 +1283,7 @@ class PosOrderController extends Controller
                             warehouseId: $warehouseId,
                             quantity: $qty,
                             type: 'return',
-                            reference: 'Return: ' . $returnOrder->order_number,
+                            reference: 'Return: '.$returnOrder->order_number,
                             referenceType: 'PosOrder',
                             referenceId: $returnOrder->id,
                         );
@@ -1300,7 +1305,7 @@ class PosOrderController extends Controller
             app(PosPostingService::class)->reverseOrder(
                 $posOrder,
                 $returnOrder,
-                'POS return: ' . ($notes ?? $returnOrder->order_number)
+                'POS return: '.($notes ?? $returnOrder->order_number)
             );
         }
 
@@ -1320,19 +1325,19 @@ class PosOrderController extends Controller
     private function validateSessionIsOpen(int $sessionId, int $terminalId): \Modules\POS\Models\PosSession
     {
         $session = \Modules\POS\Models\PosSession::find($sessionId);
-        
-        if (!$session) {
+
+        if (! $session) {
             abort(404, 'Session not found');
         }
-        
+
         if ($session->status !== 'open') {
             abort(422, "Session is {$session->status}, not open. Cannot process orders.");
         }
-        
+
         if ($session->terminal_id !== $terminalId) {
             abort(422, 'Terminal does not match session');
         }
-        
+
         return $session;
     }
 }

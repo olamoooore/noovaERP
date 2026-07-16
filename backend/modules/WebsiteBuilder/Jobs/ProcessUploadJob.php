@@ -42,8 +42,8 @@ class ProcessUploadJob implements ShouldQueue
 
     private function processZip(Website $website): void
     {
-        $zip = new ZipArchive();
-        $tempDir = storage_path('app/' . $this->filePath);
+        $zip = new ZipArchive;
+        $tempDir = storage_path('app/'.$this->filePath);
 
         if ($zip->open($tempDir) !== true) {
             throw new \Exception('Failed to open ZIP file');
@@ -135,7 +135,9 @@ class ProcessUploadJob implements ShouldQueue
 
     private function deleteDirectory(string $dir): void
     {
-        if (!is_dir($dir)) return;
+        if (! is_dir($dir)) {
+            return;
+        }
 
         $items = array_diff(scandir($dir), ['.', '..']);
         foreach ($items as $item) {

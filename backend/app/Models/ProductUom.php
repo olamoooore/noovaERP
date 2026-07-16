@@ -81,6 +81,7 @@ class ProductUom extends Model
         if ($this->length && $this->width && $this->height) {
             return $this->length * $this->width * $this->height;
         }
+
         return null;
     }
 }

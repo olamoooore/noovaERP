@@ -62,11 +62,11 @@ class FeatureGateService
         $match = collect($all)->firstWhere('key', $key);
 
         return [
-            'key'         => $key,
+            'key' => $key,
             'is_entitled' => $match !== null,
-            'source'      => $match['source'] ?? null,
-            'name'        => $match['name']   ?? null,
-            'cached_at'   => now()->toIso8601String(),
+            'source' => $match['source'] ?? null,
+            'name' => $match['name'] ?? null,
+            'cached_at' => now()->toIso8601String(),
         ];
     }
 
@@ -78,16 +78,16 @@ class FeatureGateService
      */
     public function checkMany(string $tenantId, array $keys, bool $fresh = false): array
     {
-        $all    = collect($this->all($tenantId, $fresh))->keyBy('key');
+        $all = collect($this->all($tenantId, $fresh))->keyBy('key');
         $result = [];
 
         foreach ($keys as $key) {
-            $match        = $all->get($key);
+            $match = $all->get($key);
             $result[$key] = [
-                'key'         => $key,
+                'key' => $key,
                 'is_entitled' => $match !== null,
-                'source'      => $match['source'] ?? null,
-                'name'        => $match['name']   ?? null,
+                'source' => $match['source'] ?? null,
+                'name' => $match['name'] ?? null,
             ];
         }
 
@@ -103,6 +103,7 @@ class FeatureGateService
 
         if ($driver === 'redis' || $driver === 'memcached') {
             Cache::tags(['feature_gate', $tenantId])->forget($this->cacheKey($tenantId));
+
             return;
         }
 
@@ -120,6 +121,7 @@ class FeatureGateService
         // When using Redis with tags
         if ($driver === 'redis') {
             Cache::tags('feature_gate')->flush();
+
             return;
         }
 
@@ -180,12 +182,12 @@ class FeatureGateService
     private function resolveFromLegacyTenantFeatures(string $tenantId): array
     {
         $tenant = Tenant::find($tenantId);
-        if (!$tenant) {
+        if (! $tenant) {
             return [];
         }
 
         $schema = $tenant->getSchemaName();
-        if (!preg_match('/^[a-zA-Z0-9_-]+$/', $schema)) {
+        if (! preg_match('/^[a-zA-Z0-9_-]+$/', $schema)) {
             Log::warning('FeatureGateService: Invalid tenant schema name for legacy fallback', [
                 'tenant_id' => $tenantId,
                 'schema' => $schema,

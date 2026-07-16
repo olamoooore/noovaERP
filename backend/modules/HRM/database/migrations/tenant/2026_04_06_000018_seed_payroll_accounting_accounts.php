@@ -23,7 +23,7 @@ return new class extends Migration
     public function up(): void
     {
         // Skip seeding if the Accounting module tables don't exist
-        if (!Schema::hasTable('chart_of_accounts')) {
+        if (! Schema::hasTable('chart_of_accounts')) {
             return;
         }
 
@@ -32,19 +32,19 @@ return new class extends Migration
             ->where('code', '5300')
             ->value('id');
 
-        if (!$salaryId) {
+        if (! $salaryId) {
             $salaryId = DB::table('chart_of_accounts')->insertGetId([
-                'code'        => '5300',
-                'name'        => 'Salary Expense',
-                'type'        => 'expense',
-                'subtype'     => 'operating_expense',
-                'parent_id'   => DB::table('chart_of_accounts')->where('code', '5000')->value('id'),
+                'code' => '5300',
+                'name' => 'Salary Expense',
+                'type' => 'expense',
+                'subtype' => 'operating_expense',
+                'parent_id' => DB::table('chart_of_accounts')->where('code', '5000')->value('id'),
                 'description' => 'Salary and wages expense from payroll runs',
-                'is_active'   => true,
-                'is_system'   => true,
+                'is_active' => true,
+                'is_system' => true,
                 'opening_balance' => 0,
-                'created_at'  => now(),
-                'updated_at'  => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
         }
 
@@ -53,19 +53,19 @@ return new class extends Migration
             ->where('code', '2300')
             ->value('id');
 
-        if (!$payableId) {
+        if (! $payableId) {
             $payableId = DB::table('chart_of_accounts')->insertGetId([
-                'code'        => '2300',
-                'name'        => 'Payroll Payable',
-                'type'        => 'liability',
-                'subtype'     => 'current_liability',
-                'parent_id'   => DB::table('chart_of_accounts')->where('code', '2000')->value('id'),
+                'code' => '2300',
+                'name' => 'Payroll Payable',
+                'type' => 'liability',
+                'subtype' => 'current_liability',
+                'parent_id' => DB::table('chart_of_accounts')->where('code', '2000')->value('id'),
                 'description' => 'Accrued payroll payable to employees',
-                'is_active'   => true,
-                'is_system'   => true,
+                'is_active' => true,
+                'is_system' => true,
                 'opening_balance' => 0,
-                'created_at'  => now(),
-                'updated_at'  => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
         }
 
@@ -83,25 +83,25 @@ return new class extends Migration
         // ── Payroll journal ──
         $exists = DB::table('journals')->where('code', 'PAYROLL')->exists();
 
-        if (!$exists) {
+        if (! $exists) {
             DB::table('journals')->insert([
-                'code'                     => 'PAYROLL',
-                'name'                     => 'Payroll Journal',
-                'type'                     => 'payroll',
+                'code' => 'PAYROLL',
+                'name' => 'Payroll Journal',
+                'type' => 'payroll',
                 'default_debit_account_id' => $salaryId,
-                'default_credit_account_id'=> $payableId,
-                'sequence_prefix'          => 'PAY',
-                'sequence_number'          => 0,
-                'is_active'                => true,
-                'created_at'               => now(),
-                'updated_at'               => now(),
+                'default_credit_account_id' => $payableId,
+                'sequence_prefix' => 'PAY',
+                'sequence_number' => 0,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
         }
     }
 
     public function down(): void
     {
-        if (!Schema::hasTable('chart_of_accounts')) {
+        if (! Schema::hasTable('chart_of_accounts')) {
             return;
         }
 

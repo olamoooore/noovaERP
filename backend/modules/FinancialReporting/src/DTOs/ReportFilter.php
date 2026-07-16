@@ -26,8 +26,7 @@ class ReportFilter
         public int $perPage = 50,
         public ?int $legalEntityId = null,
         public ?int $entityBookId = null,
-    ) {
-    }
+    ) {}
 
     /**
      * Create from request array
@@ -89,7 +88,7 @@ class ReportFilter
      */
     public function validateDateRange(int $maxDays = 365): bool
     {
-        if (!$this->startDate || !$this->endDate) {
+        if (! $this->startDate || ! $this->endDate) {
             return true;
         }
 

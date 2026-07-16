@@ -20,6 +20,7 @@ class PlatformModuleApiTest extends TenantTestCase
     {
         $user = \App\Models\User::factory()->create();
         $user->assignRole('admin');
+
         return $user;
     }
 

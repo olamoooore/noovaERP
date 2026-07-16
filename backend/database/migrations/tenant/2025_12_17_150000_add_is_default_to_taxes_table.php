@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (Schema::hasTable('taxes') && !Schema::hasColumn('taxes', 'is_default')) {
+        if (Schema::hasTable('taxes') && ! Schema::hasColumn('taxes', 'is_default')) {
             Schema::table('taxes', function (Blueprint $table) {
                 $table->boolean('is_default')->default(false)->after('rate');
             });

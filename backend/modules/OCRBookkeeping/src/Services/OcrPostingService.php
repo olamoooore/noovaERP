@@ -7,19 +7,19 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\ReversalRequest;
 use App\Accounting\Services\AccountMappingService;
-use App\Models\JournalEntry;
 use App\Models\ChartOfAccount;
+use App\Models\JournalEntry;
 use App\Models\Warehouse;
 use App\Services\FiscalPeriodValidator;
-use Modules\OCRBookkeeping\Models\OcrDocument;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Services\InventoryService;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
+use Modules\OCRBookkeeping\Models\OcrDocument;
 
 /**
  * OCR Posting Service
- * 
+ *
  * Posts verified OCR documents to the general ledger
  * Implements double-entry bookkeeping with atomic transactions
  */
@@ -36,21 +36,19 @@ class OcrPostingService
 
     /**
      * Post OCR document to ledger
-     * 
-     * @param OcrDocument $document
-     * @return JournalEntry
+     *
      * @throws \Exception
      */
     public function postDocument(OcrDocument $document): JournalEntry
     {
         // Validate document is ready for posting
-        if (!$document->canBePosted()) {
+        if (! $document->canBePosted()) {
             throw new \Exception('Document is not ready to be posted');
         }
 
         // Validate fiscal period
         $fiscalValidation = $this->fiscalValidator->validateDate($document->document_date);
-        if (!$fiscalValidation['allowed']) {
+        if (! $fiscalValidation['allowed']) {
             throw new \Exception($fiscalValidation['reason']);
         }
 
@@ -83,7 +81,7 @@ class OcrPostingService
             $this->validateBalance($rawLines);
 
             // Convert raw lines to PostingRequestLine DTOs
-            $postingLines = array_map(fn(array $line) => new PostingRequestLine(
+            $postingLines = array_map(fn (array $line) => new PostingRequestLine(
                 accountMappingKey: 'general_expense', // fallback key, overridden by accountId
                 accountId: $line['account_id'],
                 debit: (float) $line['debit'],
@@ -108,7 +106,7 @@ class OcrPostingService
                 entityBookId: $document->entity_book_id ?? request()->attributes->get('entity_book_id'),
             ));
 
-            if (!$result->success) {
+            if (! $result->success) {
                 throw new \Exception($result->error);
             }
 
@@ -125,7 +123,7 @@ class OcrPostingService
 
             DB::commit();
 
-            Log::info("OCR document posted successfully", [
+            Log::info('OCR document posted successfully', [
                 'document_uuid' => $document->uuid,
                 'journal_entry_id' => $journalEntry->id,
                 'total_amount' => $document->total_amount,
@@ -136,8 +134,8 @@ class OcrPostingService
 
         } catch (\Exception $e) {
             DB::rollBack();
-            
-            Log::error("Failed to post OCR document", [
+
+            Log::error('Failed to post OCR document', [
                 'document_uuid' => $document->uuid,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
@@ -149,10 +147,8 @@ class OcrPostingService
 
     /**
      * Build ledger lines for expense document
-     * 
-     * @param OcrDocument $document
-     * @param float $exchangeRate Exchange rate to base currency
-     * @return array
+     *
+     * @param  float  $exchangeRate  Exchange rate to base currency
      */
     private function buildExpenseLines(OcrDocument $document, float $exchangeRate = 1.0): array
     {
@@ -165,14 +161,14 @@ class OcrPostingService
                 $lineItemsTotal += floatval($item['amount'] ?? 0);
             }
         }
-        
+
         $totalAmount = floatval($document->total_amount ?? 0);
         $taxAmount = floatval($document->tax_amount ?? 0);
         $taxRate = floatval($document->tax_rate ?? 0);
-        
+
         // If line items sum equals total amount, they are tax-inclusive
         $isTaxInclusive = abs($lineItemsTotal - $totalAmount) < 0.01 && $taxAmount > 0;
-        
+
         // Calculate tax rate if not provided (derive from amounts)
         if ($isTaxInclusive && $taxRate == 0 && $taxAmount > 0) {
             // Tax rate = tax / (total - tax) * 100
@@ -185,12 +181,12 @@ class OcrPostingService
         // Debit: Expense accounts (from line items)
         if ($document->line_items && is_array($document->line_items)) {
             foreach ($document->line_items as $item) {
-                if (!isset($item['account_id']) || !isset($item['amount'])) {
+                if (! isset($item['account_id']) || ! isset($item['amount'])) {
                     throw new \Exception('Line item missing account_id or amount');
                 }
 
                 $itemAmount = floatval($item['amount']);
-                
+
                 // If tax-inclusive, calculate tax-exclusive amount
                 if ($isTaxInclusive && $taxRate > 0) {
                     $itemAmount = $itemAmount / (1 + $taxRate / 100);
@@ -217,7 +213,7 @@ class OcrPostingService
         } else {
             // Fallback: Single expense line if no line items
             $expenseAccount = $this->getDefaultExpenseAccount();
-            
+
             $lines[] = [
                 'account_id' => $expenseAccount->id,
                 'debit' => $document->subtotal ?? $document->total_amount,
@@ -231,7 +227,7 @@ class OcrPostingService
         // Debit: Input Tax account (for purchases, tax paid is a recoverable asset)
         if ($document->tax_amount && $document->tax_amount > 0) {
             $taxAccount = $this->getTaxAccount();
-            
+
             $lines[] = [
                 'account_id' => $taxAccount->id,
                 'debit' => round($document->tax_amount * $exchangeRate, 2),
@@ -244,7 +240,7 @@ class OcrPostingService
 
         // Credit: Accounts Payable
         $apAccount = $this->getAccountsPayableAccount();
-        
+
         $lines[] = [
             'account_id' => $apAccount->id,
             'debit' => 0,
@@ -260,14 +256,10 @@ class OcrPostingService
     /**
      * Merge document-level and line-level dimensions
      * Line-level dimensions override document-level
-     * 
-     * @param array|null $documentDimensions
-     * @param array|null $lineDimensions
-     * @return array|null
      */
     private function mergeDimensions(?array $documentDimensions, ?array $lineDimensions): ?array
     {
-        if (!$documentDimensions && !$lineDimensions) {
+        if (! $documentDimensions && ! $lineDimensions) {
             return null;
         }
 
@@ -283,9 +275,7 @@ class OcrPostingService
 
     /**
      * Validate that debits equal credits
-     * 
-     * @param array $lines
-     * @return void
+     *
      * @throws \Exception
      */
     private function validateBalance(array $lines): void
@@ -309,38 +299,35 @@ class OcrPostingService
 
     /**
      * Update inventory for matched SKUs
-     * 
-     * @param OcrDocument $document
-     * @param JournalEntry $journalEntry
-     * @return void
      */
     private function updateInventory(OcrDocument $document, JournalEntry $journalEntry): void
     {
-        if (!$document->line_items) {
+        if (! $document->line_items) {
             return;
         }
 
         foreach ($document->line_items as $item) {
-            if (!isset($item['sku']) || !$item['sku']) {
+            if (! isset($item['sku']) || ! $item['sku']) {
                 continue;
             }
 
             // Try to match SKU to product
             $product = $this->findProductBySku($item['sku']);
-            
-            if (!$product) {
-                Log::warning("SKU not found in inventory", [
+
+            if (! $product) {
+                Log::warning('SKU not found in inventory', [
                     'sku' => $item['sku'],
                     'document_uuid' => $document->uuid,
                     'journal_entry_id' => $journalEntry->id,
                 ]);
+
                 continue;
             }
 
             // Validate product matches expected SKU or barcode
             $resolvedViaBarcode = $product->sku !== $item['sku'];
             if ($resolvedViaBarcode && $product->barcode !== $item['sku']) {
-                Log::warning("Product resolution mismatch - input does not match resolved product SKU or barcode", [
+                Log::warning('Product resolution mismatch - input does not match resolved product SKU or barcode', [
                     'sku' => $item['sku'],
                     'resolved_product_id' => $product->id,
                     'resolved_sku' => $product->sku,
@@ -350,12 +337,13 @@ class OcrPostingService
             }
 
             // Only track inventory for products with track_inventory enabled
-            if (!$product->track_inventory) {
-                Log::info("Product found but inventory tracking disabled", [
+            if (! $product->track_inventory) {
+                Log::info('Product found but inventory tracking disabled', [
                     'sku' => $item['sku'],
                     'product_id' => $product->id,
                     'document_uuid' => $document->uuid,
                 ]);
+
                 continue;
             }
 
@@ -365,8 +353,8 @@ class OcrPostingService
                 continue;
             }
 
-            $unitCost = isset($item['amount']) && $quantity > 0 
-                ? $item['amount'] / $quantity 
+            $unitCost = isset($item['amount']) && $quantity > 0
+                ? $item['amount'] / $quantity
                 : $product->cost;
 
             $this->createStockMovement(
@@ -378,7 +366,7 @@ class OcrPostingService
                 $item
             );
 
-            Log::info("Stock movement created for OCR document", [
+            Log::info('Stock movement created for OCR document', [
                 'sku' => $item['sku'],
                 'product_id' => $product->id,
                 'quantity' => $quantity,
@@ -391,9 +379,6 @@ class OcrPostingService
 
     /**
      * Find product by SKU
-     * 
-     * @param string $sku
-     * @return \App\Models\Product|null
      */
     private function findProductBySku(string $sku): ?\App\Models\Product
     {
@@ -414,7 +399,7 @@ class OcrPostingService
 
         // Log barcode fallback usage for audit trail
         if ($product) {
-            Log::warning("Product resolved via barcode fallback", [
+            Log::warning('Product resolved via barcode fallback', [
                 'sku_input' => $sku,
                 'product_id' => $product->id,
                 'product_sku' => $product->sku,
@@ -427,14 +412,6 @@ class OcrPostingService
 
     /**
      * Create stock movement and update WAC
-     * 
-     * @param \App\Models\Product $product
-     * @param int $quantity
-     * @param float $unitCost
-     * @param OcrDocument $document
-     * @param JournalEntry $journalEntry
-     * @param array $item
-     * @return void
      */
     private function createStockMovement(
         \App\Models\Product $product,
@@ -450,7 +427,7 @@ class OcrPostingService
         $oldQuantity = $product->stock_quantity;
         $oldCost = $product->cost;
         $newQuantity = $oldQuantity + $quantity;
-        
+
         // Weighted Average Cost formula:
         // New WAC = (Old Quantity × Old Cost + New Quantity × New Cost) / Total Quantity
         if ($newQuantity > 0) {
@@ -472,7 +449,7 @@ class OcrPostingService
 
         $product->refresh();
 
-        Log::info("WAC updated for product", [
+        Log::info('WAC updated for product', [
             'product_id' => $product->id,
             'sku' => $product->sku,
             'old_quantity' => $oldQuantity,
@@ -495,7 +472,7 @@ class OcrPostingService
                 ->where('is_active', true)
                 ->first();
 
-            if (!$lineWarehouse) {
+            if (! $lineWarehouse) {
                 throw new \InvalidArgumentException("OCR line item warehouse_id {$lineWarehouseId} is invalid or inactive.");
             }
 
@@ -506,7 +483,7 @@ class OcrPostingService
             ->where('is_active', true)
             ->first();
 
-        if (!$defaultWarehouse) {
+        if (! $defaultWarehouse) {
             throw new \RuntimeException('Cannot post OCR inventory movement: no active default warehouse and no line-item warehouse_id.');
         }
 
@@ -515,35 +492,32 @@ class OcrPostingService
 
     /**
      * Dispatch BI update job
-     * 
-     * @param JournalEntry $journalEntry
-     * @return void
      */
     private function dispatchBIUpdate(JournalEntry $journalEntry): void
     {
         // The observer will handle this automatically when the entry is posted
         // But we can also dispatch directly here for immediate updates
-        
+
         try {
             $date = \Carbon\Carbon::parse($journalEntry->entry_date);
             $tenantId = function_exists('tenant') && tenant() ? (string) tenant()->getTenantKey() : null;
 
-            if (!$tenantId) {
+            if (! $tenantId) {
                 throw new \RuntimeException('Unable to dispatch BI update job without tenant context.');
             }
-            
+
             \Modules\OCRBookkeeping\Jobs\UpdateDailyLedgerSummary::dispatch($date, $tenantId)
                 ->onQueue('bi-updates')
                 ->delay(now()->addSeconds(30)); // Delay to batch multiple updates
-            
-            Log::info("BI update job dispatched", [
+
+            Log::info('BI update job dispatched', [
                 'journal_entry_id' => $journalEntry->id,
                 'entry_date' => $date->format('Y-m-d'),
                 'tenant_id' => $tenantId,
             ]);
-            
+
         } catch (\Exception $e) {
-            Log::warning("Failed to dispatch BI update job", [
+            Log::warning('Failed to dispatch BI update job', [
                 'journal_entry_id' => $journalEntry->id,
                 'error' => $e->getMessage(),
             ]);
@@ -553,8 +527,7 @@ class OcrPostingService
 
     /**
      * Get default expense account
-     * 
-     * @return ChartOfAccount
+     *
      * @throws \Exception
      */
     private function getDefaultExpenseAccount(): ChartOfAccount
@@ -564,8 +537,7 @@ class OcrPostingService
 
     /**
      * Get tax account
-     * 
-     * @return ChartOfAccount
+     *
      * @throws \Exception
      */
     private function getTaxAccount(): ChartOfAccount
@@ -575,8 +547,7 @@ class OcrPostingService
 
     /**
      * Get accounts payable account
-     * 
-     * @return ChartOfAccount
+     *
      * @throws \Exception
      */
     private function getAccountsPayableAccount(): ChartOfAccount
@@ -586,8 +557,7 @@ class OcrPostingService
 
     /**
      * Batch post multiple documents
-     * 
-     * @param array $documentUuids
+     *
      * @return array ['posted' => array, 'failed' => array]
      */
     public function batchPost(array $documentUuids): array
@@ -599,13 +569,13 @@ class OcrPostingService
             try {
                 $document = OcrDocument::where('uuid', $uuid)->firstOrFail();
                 $journalEntry = $this->postDocument($document);
-                
+
                 $posted[] = [
                     'uuid' => $uuid,
                     'journal_entry_id' => $journalEntry->id,
                     'entry_number' => $journalEntry->entry_number,
                 ];
-                
+
             } catch (\Exception $e) {
                 $failed[] = [
                     'uuid' => $uuid,
@@ -624,24 +594,19 @@ class OcrPostingService
 
     /**
      * Add exchange gain/loss entry if rounding differences exist
-     * 
-     * @param array $lines
-     * @param OcrDocument $document
-     * @param float $exchangeRate
-     * @return array
      */
     private function addExchangeGainLoss(array $lines, OcrDocument $document, float $exchangeRate): array
     {
         // Calculate total debits and credits
-        $totalDebits = array_sum(array_column(array_filter($lines, fn($l) => $l['debit'] > 0), 'debit'));
-        $totalCredits = array_sum(array_column(array_filter($lines, fn($l) => $l['credit'] > 0), 'credit'));
-        
+        $totalDebits = array_sum(array_column(array_filter($lines, fn ($l) => $l['debit'] > 0), 'debit'));
+        $totalCredits = array_sum(array_column(array_filter($lines, fn ($l) => $l['credit'] > 0), 'credit'));
+
         $difference = round($totalDebits - $totalCredits, 2);
-        
+
         // If there's a rounding difference due to exchange rate conversion
         if (abs($difference) >= 0.01) {
             $exchangeAccount = $this->getExchangeGainLossAccount();
-            
+
             if ($difference > 0) {
                 // Debits > Credits: Exchange Loss (credit to balance)
                 $lines[] = [
@@ -663,40 +628,35 @@ class OcrPostingService
                     'dimensions' => null,
                 ];
             }
-            
-            Log::info("Exchange gain/loss entry added", [
+
+            Log::info('Exchange gain/loss entry added', [
                 'difference' => $difference,
                 'type' => $difference > 0 ? 'loss' : 'gain',
             ]);
         }
-        
+
         return $lines;
     }
 
     /**
      * Store original currency amounts for audit trail
-     * 
-     * @param JournalEntry $journalEntry
-     * @param OcrDocument $document
-     * @param float $exchangeRate
-     * @return void
      */
     private function storeOriginalCurrencyAmounts(JournalEntry $journalEntry, OcrDocument $document, float $exchangeRate): void
     {
         // Store in journal entry metadata or separate table
         // For now, we'll add it to the journal entry description
         $originalCurrencyInfo = sprintf(
-            " [Original: %s %s @ rate %s]",
+            ' [Original: %s %s @ rate %s]',
             $document->currency_code,
             number_format($document->total_amount, 2),
             number_format($exchangeRate, 4)
         );
-        
+
         $journalEntry->update([
-            'description' => $journalEntry->description . $originalCurrencyInfo
+            'description' => $journalEntry->description.$originalCurrencyInfo,
         ]);
-        
-        Log::info("Original currency amounts stored", [
+
+        Log::info('Original currency amounts stored', [
             'journal_entry_id' => $journalEntry->id,
             'original_currency' => $document->currency_code,
             'original_amount' => $document->total_amount,
@@ -706,8 +666,7 @@ class OcrPostingService
 
     /**
      * Get exchange gain/loss account
-     * 
-     * @return ChartOfAccount
+     *
      * @throws \Exception
      */
     private function getExchangeGainLossAccount(): ChartOfAccount
@@ -716,16 +675,16 @@ class OcrPostingService
         $account = ChartOfAccount::where('code', 'LIKE', '7%')
             ->where('name', 'LIKE', '%exchange%')
             ->first();
-            
-        if (!$account) {
+
+        if (! $account) {
             // Fallback to other income/expense account
             $account = ChartOfAccount::where('code', '7000')->first();
         }
-        
-        if (!$account) {
+
+        if (! $account) {
             throw new \Exception('Exchange gain/loss account not found. Please configure account code 7000 or similar.');
         }
-        
+
         return $account;
     }
 
@@ -743,7 +702,7 @@ class OcrPostingService
         DB::transaction(function () use ($document, $actorUserId) {
             $document->refresh();
 
-            if (!$document->isPosted()) {
+            if (! $document->isPosted()) {
                 throw new \Exception("Cannot unpost document '{$document->uuid}': current status is '{$document->status}'.");
             }
 
@@ -753,29 +712,28 @@ class OcrPostingService
 
             $journalEntry = JournalEntry::find($document->journal_entry_id);
 
-            if (!$journalEntry) {
+            if (! $journalEntry) {
                 throw new \Exception("Cannot unpost document '{$document->uuid}': journal entry '{$document->journal_entry_id}' was not found.");
             }
 
             $result = $this->postingEngine->reverse(new ReversalRequest(
                 journalEntryId: (int) $document->journal_entry_id,
-                reversalDate:   now()->toDateString(),
-                reason:         "Unpost OCR document {$document->uuid}",
-                reasonCode:     'OCR_UNPOST',
-                actorUserId:    $actorUserId,
+                reversalDate: now()->toDateString(),
+                reason: "Unpost OCR document {$document->uuid}",
+                reasonCode: 'OCR_UNPOST',
+                actorUserId: $actorUserId,
             ));
 
-            if (!$result->success) {
+            if (! $result->success) {
                 throw new \Exception("Failed to reverse journal entry: {$result->error}");
             }
 
             $document->update([
-                'status'          => 'NEEDS_REVIEW',
+                'status' => 'NEEDS_REVIEW',
                 'journal_entry_id' => null,
-                'posted_at'       => null,
-                'posted_by'       => null,
+                'posted_at' => null,
+                'posted_by' => null,
             ]);
         });
     }
-
 }

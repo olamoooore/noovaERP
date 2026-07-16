@@ -2,21 +2,20 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Modules\FinancialReporting\Services\Inventory\StockValuationService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
-use Modules\FinancialReporting\DTOs\ReportData;
 use Carbon\Carbon;
+use Modules\FinancialReporting\DTOs\ReportData;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Inventory\StockValuationService;
+use Tests\TenantTestCase;
 
 class StockValuationServiceTest extends TenantTestCase
 {
-
     protected StockValuationService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new StockValuationService();
+        $this->service = new StockValuationService;
     }
 
     /** @test */
@@ -37,7 +36,7 @@ class StockValuationServiceTest extends TenantTestCase
     /** @test */
     public function it_uses_default_date_when_not_provided()
     {
-        $filter = new ReportFilter();
+        $filter = new ReportFilter;
 
         $result = $this->service->generate($filter);
 

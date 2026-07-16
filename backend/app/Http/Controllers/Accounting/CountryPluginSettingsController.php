@@ -13,12 +13,12 @@ class CountryPluginSettingsController extends Controller
     public function show(Request $request): JsonResponse
     {
         $tenantId = tenant('id');
-        if (!$tenantId) {
+        if (! $tenantId) {
             return response()->json(['error' => 'No tenant context'], 400);
         }
 
         $tenant = DB::connection('pgsql')->table('tenants')->where('id', $tenantId)->first();
-        if (!$tenant) {
+        if (! $tenant) {
             return response()->json(['error' => 'Tenant not found'], 404);
         }
 
@@ -32,7 +32,7 @@ class CountryPluginSettingsController extends Controller
     public function update(Request $request): JsonResponse
     {
         $tenantId = tenant('id');
-        if (!$tenantId) {
+        if (! $tenantId) {
             return response()->json(['error' => 'No tenant context'], 400);
         }
 
@@ -58,11 +58,11 @@ class CountryPluginSettingsController extends Controller
         if ($seedData && $enabled) {
             try {
                 if ($countryCode === 'MY') {
-                    $seeder = new \Database\Seeders\MalaysiaCountrySeeder();
+                    $seeder = new \Database\Seeders\MalaysiaCountrySeeder;
                     $seeder->run();
                     $seeded = true;
                 } elseif ($countryCode === 'SG') {
-                    $seeder = new \Database\Seeders\SingaporeCountrySeeder();
+                    $seeder = new \Database\Seeders\SingaporeCountrySeeder;
                     $seeder->run();
                     $seeded = true;
                 }

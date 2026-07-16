@@ -3,12 +3,12 @@
 namespace Modules\WebsiteBuilder\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Modules\WebsiteBuilder\Models\Website;
-use Modules\WebsiteBuilder\Models\Page;
-use Modules\WebsiteBuilder\Http\Resources\PageResource;
+use Illuminate\Http\Request;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
+use Modules\WebsiteBuilder\Http\Resources\PageResource;
+use Modules\WebsiteBuilder\Models\Page;
+use Modules\WebsiteBuilder\Models\Website;
 
 class PageController extends Controller
 {
@@ -43,10 +43,10 @@ class PageController extends Controller
 
         // Generate slug if not provided
         $slug = $validated['slug'] ?? \Str::slug($validated['title']);
-        
+
         // Check if a soft-deleted page with this slug exists and restore it
         $existingPage = $website->pages()->withTrashed()->where('slug', $slug)->first();
-        
+
         if ($existingPage) {
             if ($existingPage->trashed()) {
                 // Restore the soft-deleted page
@@ -58,12 +58,12 @@ class PageController extends Controller
                     'seo_description' => $validated['seo_description'] ?? null,
                     'status' => 'draft',
                 ]);
-                
+
                 // Update content if provided
-                if (!empty($validated['content'])) {
+                if (! empty($validated['content'])) {
                     $existingPage->createVersion($validated['content'], TenantUserHelper::resolveTenantUserId());
                 }
-                
+
                 return response()->json(new PageResource($existingPage->load('currentVersion')), 201);
             } else {
                 // Page already exists and is not deleted
@@ -75,7 +75,7 @@ class PageController extends Controller
         }
 
         // If this is set as home, unset other home pages
-        if (!empty($validated['is_home'])) {
+        if (! empty($validated['is_home'])) {
             $website->pages()->update(['is_home' => false]);
         }
 
@@ -90,7 +90,7 @@ class PageController extends Controller
         ]);
 
         // Create initial version
-        if (!empty($validated['content'])) {
+        if (! empty($validated['content'])) {
             $page->createVersion($validated['content'], TenantUserHelper::resolveTenantUserId());
         } else {
             $page->createVersion($this->getEmptyPageContent(), TenantUserHelper::resolveTenantUserId());
@@ -105,6 +105,7 @@ class PageController extends Controller
     public function show($page): JsonResponse
     {
         $page = Page::findOrFail($page);
+
         return response()->json(new PageResource($page->load(['currentVersion', 'website'])));
     }
 
@@ -126,7 +127,7 @@ class PageController extends Controller
         ]);
 
         // Handle home page toggle
-        if (!empty($validated['is_home']) && !$page->is_home) {
+        if (! empty($validated['is_home']) && ! $page->is_home) {
             $page->website->pages()->update(['is_home' => false]);
         }
 

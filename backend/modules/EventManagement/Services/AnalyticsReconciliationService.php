@@ -2,18 +2,18 @@
 
 namespace Modules\EventManagement\Services;
 
-use Modules\EventManagement\Models\BookingFacts;
-use Modules\EventManagement\Models\AnalyticsFacts;
-use Modules\EventManagement\Models\FactReconciliationLog;
-use Modules\EventManagement\Models\Event;
-use Modules\EventManagement\Models\Booking;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
+use Modules\EventManagement\Models\AnalyticsFacts;
+use Modules\EventManagement\Models\Booking;
+use Modules\EventManagement\Models\BookingFacts;
+use Modules\EventManagement\Models\Event;
+use Modules\EventManagement\Models\FactReconciliationLog;
 
 /**
  * AnalyticsReconciliationService
- * 
+ *
  * Provides reconciliation between source data and analytics facts
  * to ensure data consistency and detect drift.
  */
@@ -25,21 +25,21 @@ class AnalyticsReconciliationService
     public function reconcileEvent(int $eventId, ?Carbon $reconciliationDate = null): array
     {
         $reconciliationDate = $reconciliationDate ?? now()->toDateString();
-        
+
         $results = [];
-        
+
         // Revenue reconciliation
         $results['revenue'] = $this->reconcileRevenue($eventId, $reconciliationDate);
-        
+
         // Capacity reconciliation
         $results['capacity'] = $this->reconcileCapacity($eventId, $reconciliationDate);
-        
+
         // Booking count reconciliation
         $results['booking_count'] = $this->reconcileBookingCount($eventId, $reconciliationDate);
-        
+
         // Analytics consistency check
         $results['analytics_consistency'] = $this->checkAnalyticsConsistency($eventId, $reconciliationDate);
-        
+
         return $results;
     }
 
@@ -76,7 +76,7 @@ class AnalyticsReconciliationService
             $discrepancies['source_vs_analytics_facts'] = [
                 'source' => $sourceRevenue,
                 'analytics_facts' => $factRevenue,
-                'difference' => $sourceRevenue - $factRevenue
+                'difference' => $sourceRevenue - $factRevenue,
             ];
             $status = FactReconciliationLog::STATUS_FAILED;
         }
@@ -85,7 +85,7 @@ class AnalyticsReconciliationService
             $discrepancies['source_vs_booking_facts'] = [
                 'source' => $sourceRevenue,
                 'booking_facts' => $bookingFactsRevenue,
-                'difference' => $sourceRevenue - $bookingFactsRevenue
+                'difference' => $sourceRevenue - $bookingFactsRevenue,
             ];
             $status = FactReconciliationLog::STATUS_FAILED;
         }
@@ -101,7 +101,7 @@ class AnalyticsReconciliationService
                     ->where('event_id', $eventId)
                     ->whereIn('state', ['confirmed', 'booked'])
                     ->whereDate('created_at', '<=', $reconciliationDate)
-                    ->count()
+                    ->count(),
             ],
             'fact_data_summary' => [
                 'analytics_facts_revenue' => $factRevenue,
@@ -109,11 +109,11 @@ class AnalyticsReconciliationService
                 'analytics_facts_count' => AnalyticsFacts::forEvent($eventId)
                     ->revenueGenerating()
                     ->whereDate('fact_timestamp', '<=', $reconciliationDate)
-                    ->count()
+                    ->count(),
             ],
             'discrepancies' => $discrepancies,
             'status' => $status,
-            'notes' => empty($discrepancies) ? 'Revenue reconciliation passed' : 'Revenue discrepancies detected'
+            'notes' => empty($discrepancies) ? 'Revenue reconciliation passed' : 'Revenue discrepancies detected',
         ]);
 
         return [
@@ -122,7 +122,7 @@ class AnalyticsReconciliationService
             'source_revenue' => $sourceRevenue,
             'analytics_facts_revenue' => $factRevenue,
             'booking_facts_revenue' => $bookingFactsRevenue,
-            'discrepancies' => $discrepancies
+            'discrepancies' => $discrepancies,
         ];
     }
 
@@ -132,7 +132,7 @@ class AnalyticsReconciliationService
     public function reconcileCapacity(int $eventId, string $reconciliationDate): array
     {
         $event = Event::findOrFail($eventId);
-        
+
         // Get source capacity data
         $sourceTicketsSold = DB::table('bookings')
             ->join('booking_attendees', 'bookings.id', '=', 'booking_attendees.booking_id')
@@ -162,7 +162,7 @@ class AnalyticsReconciliationService
             $discrepancies['source_vs_analytics_facts'] = [
                 'source' => $sourceTicketsSold,
                 'analytics_facts' => $factTicketsSold,
-                'difference' => $sourceTicketsSold - $factTicketsSold
+                'difference' => $sourceTicketsSold - $factTicketsSold,
             ];
             $status = FactReconciliationLog::STATUS_FAILED;
         }
@@ -171,7 +171,7 @@ class AnalyticsReconciliationService
             $discrepancies['source_vs_booking_facts'] = [
                 'source' => $sourceTicketsSold,
                 'booking_facts' => $bookingFactsTickets,
-                'difference' => $sourceTicketsSold - $bookingFactsTickets
+                'difference' => $sourceTicketsSold - $bookingFactsTickets,
             ];
             $status = FactReconciliationLog::STATUS_FAILED;
         }
@@ -184,15 +184,15 @@ class AnalyticsReconciliationService
             'source_data_summary' => [
                 'total_capacity' => $event->capacity,
                 'tickets_sold' => $sourceTicketsSold,
-                'capacity_utilization' => $event->capacity > 0 ? ($sourceTicketsSold / $event->capacity) * 100 : 0
+                'capacity_utilization' => $event->capacity > 0 ? ($sourceTicketsSold / $event->capacity) * 100 : 0,
             ],
             'fact_data_summary' => [
                 'analytics_facts_tickets' => $factTicketsSold,
-                'booking_facts_tickets' => $bookingFactsTickets
+                'booking_facts_tickets' => $bookingFactsTickets,
             ],
             'discrepancies' => $discrepancies,
             'status' => $status,
-            'notes' => empty($discrepancies) ? 'Capacity reconciliation passed' : 'Capacity discrepancies detected'
+            'notes' => empty($discrepancies) ? 'Capacity reconciliation passed' : 'Capacity discrepancies detected',
         ]);
 
         return [
@@ -202,7 +202,7 @@ class AnalyticsReconciliationService
             'source_tickets_sold' => $sourceTicketsSold,
             'analytics_facts_tickets' => $factTicketsSold,
             'booking_facts_tickets' => $bookingFactsTickets,
-            'discrepancies' => $discrepancies
+            'discrepancies' => $discrepancies,
         ];
     }
 
@@ -229,7 +229,7 @@ class AnalyticsReconciliationService
             $discrepancies['booking_count_mismatch'] = [
                 'source' => $sourceBookingCount,
                 'facts' => $factBookingCount,
-                'difference' => $sourceBookingCount - $factBookingCount
+                'difference' => $sourceBookingCount - $factBookingCount,
             ];
             $status = FactReconciliationLog::STATUS_WARNING; // Warning, not failure
         }
@@ -244,14 +244,14 @@ class AnalyticsReconciliationService
                 'confirmed_bookings' => Booking::where('event_id', $eventId)
                     ->whereIn('state', ['confirmed', 'booked'])
                     ->whereDate('created_at', '<=', $reconciliationDate)
-                    ->count()
+                    ->count(),
             ],
             'fact_data_summary' => [
-                'booking_facts_count' => $factBookingCount
+                'booking_facts_count' => $factBookingCount,
             ],
             'discrepancies' => $discrepancies,
             'status' => $status,
-            'notes' => empty($discrepancies) ? 'Booking count reconciliation passed' : 'Minor booking count discrepancies detected'
+            'notes' => empty($discrepancies) ? 'Booking count reconciliation passed' : 'Minor booking count discrepancies detected',
         ]);
 
         return [
@@ -259,7 +259,7 @@ class AnalyticsReconciliationService
             'status' => $status,
             'source_booking_count' => $sourceBookingCount,
             'fact_booking_count' => $factBookingCount,
-            'discrepancies' => $discrepancies
+            'discrepancies' => $discrepancies,
         ];
     }
 
@@ -292,7 +292,7 @@ class AnalyticsReconciliationService
             $discrepancies['payment_exceeds_booking'] = [
                 'booking_created' => $bookingCreatedFacts,
                 'payment_confirmed' => $paymentConfirmedFacts,
-                'excess' => $paymentConfirmedFacts - $bookingCreatedFacts
+                'excess' => $paymentConfirmedFacts - $bookingCreatedFacts,
             ];
             $status = FactReconciliationLog::STATUS_FAILED;
         }
@@ -302,7 +302,7 @@ class AnalyticsReconciliationService
             $discrepancies['tickets_exceed_payments'] = [
                 'payment_confirmed' => $paymentConfirmedFacts,
                 'ticket_issued' => $ticketIssuedFacts,
-                'excess' => $ticketIssuedFacts - $paymentConfirmedFacts
+                'excess' => $ticketIssuedFacts - $paymentConfirmedFacts,
             ];
             $status = FactReconciliationLog::STATUS_FAILED;
         }
@@ -315,15 +315,15 @@ class AnalyticsReconciliationService
             'source_data_summary' => [
                 'booking_created_facts' => $bookingCreatedFacts,
                 'payment_confirmed_facts' => $paymentConfirmedFacts,
-                'ticket_issued_facts' => $ticketIssuedFacts
+                'ticket_issued_facts' => $ticketIssuedFacts,
             ],
             'fact_data_summary' => [
                 'consistency_checks_performed' => 2,
-                'logical_flow_validated' => empty($discrepancies)
+                'logical_flow_validated' => empty($discrepancies),
             ],
             'discrepancies' => $discrepancies,
             'status' => $status,
-            'notes' => empty($discrepancies) ? 'Analytics consistency validated' : 'Analytics flow inconsistencies detected'
+            'notes' => empty($discrepancies) ? 'Analytics consistency validated' : 'Analytics flow inconsistencies detected',
         ]);
 
         return [
@@ -332,7 +332,7 @@ class AnalyticsReconciliationService
             'booking_created_facts' => $bookingCreatedFacts,
             'payment_confirmed_facts' => $paymentConfirmedFacts,
             'ticket_issued_facts' => $ticketIssuedFacts,
-            'discrepancies' => $discrepancies
+            'discrepancies' => $discrepancies,
         ];
     }
 
@@ -352,7 +352,7 @@ class AnalyticsReconciliationService
             'failed' => $reconciliations->where('status', FactReconciliationLog::STATUS_FAILED)->count(),
             'warnings' => $reconciliations->where('status', FactReconciliationLog::STATUS_WARNING)->count(),
             'by_type' => [],
-            'recent_failures' => []
+            'recent_failures' => [],
         ];
 
         // Group by reconciliation type
@@ -361,7 +361,7 @@ class AnalyticsReconciliationService
                 'total' => $typeReconciliations->count(),
                 'passed' => $typeReconciliations->where('status', FactReconciliationLog::STATUS_PASSED)->count(),
                 'failed' => $typeReconciliations->where('status', FactReconciliationLog::STATUS_FAILED)->count(),
-                'warnings' => $typeReconciliations->where('status', FactReconciliationLog::STATUS_WARNING)->count()
+                'warnings' => $typeReconciliations->where('status', FactReconciliationLog::STATUS_WARNING)->count(),
             ];
         }
 
@@ -375,7 +375,7 @@ class AnalyticsReconciliationService
                     'type' => $reconciliation->reconciliation_type,
                     'date' => $reconciliation->reconciliation_date,
                     'discrepancy_count' => $reconciliation->getDiscrepancyCount(),
-                    'reconciled_at' => $reconciliation->reconciled_at
+                    'reconciled_at' => $reconciliation->reconciled_at,
                 ];
             })
             ->values()
@@ -390,7 +390,7 @@ class AnalyticsReconciliationService
     public function detectDataDrift(int $eventId): array
     {
         $driftDetected = [];
-        
+
         $bookingFacts = BookingFacts::join('bookings', 'booking_facts.booking_id', '=', 'bookings.id')
             ->where('bookings.event_id', $eventId)
             ->with('booking.event', 'booking.eventTicketType')
@@ -403,48 +403,48 @@ class AnalyticsReconciliationService
             // Check event data drift
             $currentEvent = $booking->event;
             $originalEvent = $facts->getEventData();
-            
+
             if ($currentEvent->name !== $originalEvent['name']) {
                 $comparison['event_name_changed'] = [
                     'original' => $originalEvent['name'],
-                    'current' => $currentEvent->name
+                    'current' => $currentEvent->name,
                 ];
             }
 
             if ($currentEvent->capacity !== $originalEvent['capacity']) {
                 $comparison['event_capacity_changed'] = [
                     'original' => $originalEvent['capacity'],
-                    'current' => $currentEvent->capacity
+                    'current' => $currentEvent->capacity,
                 ];
             }
 
             // Check ticket type data drift
             $currentTicketType = $booking->eventTicketType;
             $originalTicketType = $facts->getTicketTypeData();
-            
+
             if ($currentTicketType->price !== $originalTicketType['price']) {
                 $comparison['ticket_price_changed'] = [
                     'original' => $originalTicketType['price'],
-                    'current' => $currentTicketType->price
+                    'current' => $currentTicketType->price,
                 ];
             }
 
-            if (!empty($comparison)) {
+            if (! empty($comparison)) {
                 $driftDetected[] = [
                     'booking_id' => $booking->id,
                     'booking_reference' => $booking->booking_reference,
                     'facts_captured_at' => $facts->created_at,
-                    'changes' => $comparison
+                    'changes' => $comparison,
                 ];
             }
         }
 
         return [
             'event_id' => $eventId,
-            'drift_detected' => !empty($driftDetected),
+            'drift_detected' => ! empty($driftDetected),
             'affected_bookings' => count($driftDetected),
             'total_bookings_checked' => $bookingFacts->count(),
-            'drift_details' => $driftDetected
+            'drift_details' => $driftDetected,
         ];
     }
 }

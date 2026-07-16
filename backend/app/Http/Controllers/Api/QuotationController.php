@@ -7,14 +7,13 @@ use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Quotation;
-use App\Models\QuotationLine;
 use App\Models\Warehouse;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Modules\Sales\Services\SalesOrderService;
 use Modules\TemplateBuilder\Services\DataSource\CompanyDataSource;
 
@@ -44,9 +43,9 @@ class QuotationController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('quotation_number', 'ILIKE', "%{$search}%")
-                  ->orWhereHas('customer', function ($cq) use ($search) {
-                      $cq->where('name', 'ILIKE', "%{$search}%");
-                  });
+                    ->orWhereHas('customer', function ($cq) use ($search) {
+                        $cq->where('name', 'ILIKE', "%{$search}%");
+                    });
             });
         }
 
@@ -145,7 +144,7 @@ class QuotationController extends Controller
     {
         $quotation = Quotation::with(['customer', 'lines.product', 'salesOrder', 'invoices'])->find($id);
 
-        if (!$quotation) {
+        if (! $quotation) {
             return response()->json(['message' => 'Quotation not found'], 404);
         }
 
@@ -156,7 +155,7 @@ class QuotationController extends Controller
     {
         $quotation = Quotation::find($id);
 
-        if (!$quotation) {
+        if (! $quotation) {
             return response()->json(['message' => 'Quotation not found'], 404);
         }
 
@@ -211,7 +210,7 @@ class QuotationController extends Controller
     {
         $quotation = Quotation::find($id);
 
-        if (!$quotation) {
+        if (! $quotation) {
             return response()->json(['message' => 'Quotation not found'], 404);
         }
 
@@ -231,7 +230,7 @@ class QuotationController extends Controller
     {
         $quotation = Quotation::with(['customer', 'lines.product'])->find($id);
 
-        if (!$quotation) {
+        if (! $quotation) {
             return response()->json(['message' => 'Quotation not found'], 404);
         }
 
@@ -246,7 +245,7 @@ class QuotationController extends Controller
             'company' => $company,
         ])->setPaper('a4', 'portrait');
 
-        $filename = 'quotation-' . $quotation->quotation_number . '.pdf';
+        $filename = 'quotation-'.$quotation->quotation_number.'.pdf';
 
         return $pdf->download($filename);
     }
@@ -259,7 +258,7 @@ class QuotationController extends Controller
     {
         $quotation = Quotation::with(['customer', 'lines.product'])->find($id);
 
-        if (!$quotation) {
+        if (! $quotation) {
             return response()->json(['message' => 'Quotation not found'], 404);
         }
 
@@ -282,7 +281,7 @@ class QuotationController extends Controller
                 // Resolve warehouse if needed
                 $warehouseId = null;
                 $productIds = array_filter(array_column($salesLines, 'product_id'));
-                if (!empty($productIds)) {
+                if (! empty($productIds)) {
                     $hasStockTracked = Product::whereIn('id', $productIds)
                         ->where('track_inventory', true)
                         ->exists();
@@ -334,7 +333,7 @@ class QuotationController extends Controller
     {
         $quotation = Quotation::with(['customer', 'lines.product', 'salesOrder'])->find($id);
 
-        if (!$quotation) {
+        if (! $quotation) {
             return response()->json(['message' => 'Quotation not found'], 404);
         }
 
@@ -342,7 +341,7 @@ class QuotationController extends Controller
             return response()->json(['message' => 'Only confirmed quotations can be invoiced'], 403);
         }
 
-        if (!$quotation->sales_order_id) {
+        if (! $quotation->sales_order_id) {
             return response()->json(['message' => 'Quotation has no linked Sales Order'], 422);
         }
 
@@ -388,48 +387,50 @@ class QuotationController extends Controller
         }
 
         $rawHeader = fgetcsv($handle);
-        if (!is_array($rawHeader) || count($rawHeader) === 0) {
+        if (! is_array($rawHeader) || count($rawHeader) === 0) {
             fclose($handle);
+
             return response()->json(['message' => 'CSV header missing'], 422);
         }
 
         $header = array_map(function ($h) {
             $h = strtolower(trim((string) $h));
             $h = preg_replace('/[^a-z0-9]+/', '_', $h);
+
             return trim($h, '_');
         }, $rawHeader);
 
         $columnAliases = [
-            'quote_no'           => 'quotation_number',
-            'quote_number'       => 'quotation_number',
-            'number'             => 'quotation_number',
-            'customer'           => 'customer_name',
-            'customer_code'      => 'customer_code',
-            'customer_name'      => 'customer_name',
-            'date'               => 'quotation_date',
-            'issue_date'         => 'quotation_date',
-            'valid_until'        => 'valid_until',
-            'expiry_date'        => 'valid_until',
-            'reference'          => 'customer_reference',
-            'po_number'          => 'customer_reference',
-            'sku'                => 'product_sku',
-            'product_sku'        => 'product_sku',
-            'item'               => 'description',
-            'item_description'   => 'description',
-            'qty'                => 'quantity',
-            'price'              => 'unit_price',
-            'unit_price'         => 'unit_price',
-            'rate'               => 'unit_price',
-            'tax'                => 'tax_rate',
-            'line_discount'      => 'line_discount_amount',
+            'quote_no' => 'quotation_number',
+            'quote_number' => 'quotation_number',
+            'number' => 'quotation_number',
+            'customer' => 'customer_name',
+            'customer_code' => 'customer_code',
+            'customer_name' => 'customer_name',
+            'date' => 'quotation_date',
+            'issue_date' => 'quotation_date',
+            'valid_until' => 'valid_until',
+            'expiry_date' => 'valid_until',
+            'reference' => 'customer_reference',
+            'po_number' => 'customer_reference',
+            'sku' => 'product_sku',
+            'product_sku' => 'product_sku',
+            'item' => 'description',
+            'item_description' => 'description',
+            'qty' => 'quantity',
+            'price' => 'unit_price',
+            'unit_price' => 'unit_price',
+            'rate' => 'unit_price',
+            'tax' => 'tax_rate',
+            'line_discount' => 'line_discount_amount',
             'line_discount_amount' => 'line_discount_amount',
-            'discount'           => 'discount_amount',
+            'discount' => 'discount_amount',
         ];
         $header = array_map(fn ($key) => $columnAliases[$key] ?? $key, $header);
 
         $rows = [];
         while (($data = fgetcsv($handle)) !== false) {
-            if (!is_array($data) || count(array_filter($data, fn ($v) => (string) $v !== '')) === 0) {
+            if (! is_array($data) || count(array_filter($data, fn ($v) => (string) $v !== '')) === 0) {
                 continue;
             }
             $row = [];
@@ -451,8 +452,8 @@ class QuotationController extends Controller
         $order = [];
         foreach ($rows as $idx => $row) {
             $num = trim((string) ($row['quotation_number'] ?? ''));
-            $key = $num !== '' ? 'num:' . $num : 'row:' . $idx;
-            if (!isset($groups[$key])) {
+            $key = $num !== '' ? 'num:'.$num : 'row:'.$idx;
+            if (! isset($groups[$key])) {
                 $groups[$key] = ['first_index' => $idx, 'header' => $row, 'lines' => []];
                 $order[] = $key;
             }
@@ -471,14 +472,14 @@ class QuotationController extends Controller
 
             try {
                 $customer = $this->resolveImportCustomer($headerRow, $customerCache);
-                if (!$customer) {
+                if (! $customer) {
                     $code = trim((string) ($headerRow['customer_code'] ?? ''));
                     $name = trim((string) ($headerRow['customer_name'] ?? ''));
                     $identifier = $code ?: $name;
                     throw new \RuntimeException(
-                        "Customer not found: {$identifier}. " .
-                        "Use an existing customer_code, customer_name, or customer_id. " .
-                        "Check /customers to see available customers."
+                        "Customer not found: {$identifier}. ".
+                        'Use an existing customer_code, customer_name, or customer_id. '.
+                        'Check /customers to see available customers.'
                     );
                 }
 
@@ -494,10 +495,10 @@ class QuotationController extends Controller
                     $lineDiscount = $this->parseNumericValue($lineRow['line_discount_amount'] ?? null);
 
                     $line = [
-                        'description'     => $description !== '' ? $description : 'Imported line',
-                        'quantity'        => $quantity,
-                        'unit_price'      => $unitPrice,
-                        'tax_rate'        => $taxRate,
+                        'description' => $description !== '' ? $description : 'Imported line',
+                        'quantity' => $quantity,
+                        'unit_price' => $unitPrice,
+                        'tax_rate' => $taxRate,
                         'discount_amount' => $lineDiscount,
                     ];
 
@@ -564,14 +565,14 @@ class QuotationController extends Controller
             } catch (\Throwable $e) {
                 $errors[] = [
                     'row' => $firstIndex + 2,
-                    'message' => 'Quotation ' . trim((string) ($headerRow['quotation_number'] ?? ('row ' . ($firstIndex + 2)))) . ': ' . $e->getMessage(),
+                    'message' => 'Quotation '.trim((string) ($headerRow['quotation_number'] ?? ('row '.($firstIndex + 2)))).': '.$e->getMessage(),
                 ];
             }
         }
 
         return response()->json([
             'created' => $created,
-            'errors'  => $errors,
+            'errors' => $errors,
         ], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
     }
 
@@ -581,7 +582,7 @@ class QuotationController extends Controller
         $name = trim((string) ($row['customer_name'] ?? ''));
         $id = trim((string) ($row['customer_id'] ?? ''));
 
-        $cacheKey = $code . '|' . $name . '|' . $id;
+        $cacheKey = $code.'|'.$name.'|'.$id;
         if (isset($cache[$cacheKey])) {
             return $cache[$cacheKey];
         }
@@ -590,10 +591,10 @@ class QuotationController extends Controller
         if ($code !== '' && $code !== '-') {
             $customer = Customer::whereRaw('LOWER(code) = ?', [strtolower($code)])->first();
         }
-        if (!$customer && $name !== '' && $name !== '-') {
+        if (! $customer && $name !== '' && $name !== '-') {
             $customer = Customer::whereRaw('LOWER(name) = ?', [strtolower($name)])->first();
         }
-        if (!$customer && $id !== '' && filter_var($id, FILTER_VALIDATE_INT) !== false) {
+        if (! $customer && $id !== '' && filter_var($id, FILTER_VALIDATE_INT) !== false) {
             $customer = Customer::find((int) $id);
         }
 
@@ -605,6 +606,7 @@ class QuotationController extends Controller
         if (isset($cache[$sku])) {
             return $cache[$sku];
         }
+
         return $cache[$sku] = Product::where('sku', $sku)->first();
     }
 
@@ -614,6 +616,7 @@ class QuotationController extends Controller
             return 0;
         }
         $cleaned = preg_replace('/[^0-9.]/', '', trim((string) $value));
+
         return $cleaned !== '' ? (float) $cleaned : 0;
     }
 
@@ -623,6 +626,7 @@ class QuotationController extends Controller
             return null;
         }
         $value = trim((string) $value);
+
         return ($value === '' || $value === '-') ? null : $value;
     }
 

@@ -10,8 +10,11 @@ class ContactIdentifier extends Model
     use HasFactory;
 
     protected $table = 'contact_identifiers';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [

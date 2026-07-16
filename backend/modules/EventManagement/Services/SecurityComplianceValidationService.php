@@ -2,16 +2,12 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Collection;
 use Exception;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Security and Compliance Validation Service
- * 
+ *
  * Performs comprehensive security and compliance validation
  * for Phase 3 components including PII protection, fraud prevention,
  * audit trails, and GDPR compliance.
@@ -19,6 +15,7 @@ use Exception;
 class SecurityComplianceValidationService
 {
     private array $validationResults = [];
+
     private array $complianceChecks = [];
 
     public function __construct(
@@ -44,7 +41,7 @@ class SecurityComplianceValidationService
             'data_retention' => $this->validateDataRetention(),
             'anonymization_security' => $this->validateAnonymizationSecurity(),
             'tenant_isolation_security' => $this->validateTenantIsolationSecurity(),
-            'api_security' => $this->validateAPISecurity()
+            'api_security' => $this->validateAPISecurity(),
         ];
 
         foreach ($validationSuites as $validationName => $validationResult) {
@@ -68,28 +65,28 @@ class SecurityComplianceValidationService
             // Test 1: Encryption validation
             $encryptionTest = $this->testPIIEncryption();
             $testResults['encryption'] = $encryptionTest;
-            if (!$encryptionTest['passed']) {
+            if (! $encryptionTest['passed']) {
                 $securityIssues[] = 'PII encryption validation failed';
             }
 
             // Test 2: Access control validation
             $accessControlTest = $this->testPIIAccessControls();
             $testResults['access_control'] = $accessControlTest;
-            if (!$accessControlTest['passed']) {
+            if (! $accessControlTest['passed']) {
                 $securityIssues[] = 'PII access control validation failed';
             }
 
             // Test 3: Key versioning validation
             $keyVersioningTest = $this->testPIIKeyVersioning();
             $testResults['key_versioning'] = $keyVersioningTest;
-            if (!$keyVersioningTest['passed']) {
+            if (! $keyVersioningTest['passed']) {
                 $securityIssues[] = 'PII key versioning validation failed';
             }
 
             // Test 4: Access logging validation
             $accessLoggingTest = $this->testPIIAccessLogging();
             $testResults['access_logging'] = $accessLoggingTest;
-            if (!$accessLoggingTest['passed']) {
+            if (! $accessLoggingTest['passed']) {
                 $securityIssues[] = 'PII access logging validation failed';
             }
 
@@ -97,14 +94,14 @@ class SecurityComplianceValidationService
                 'status' => empty($securityIssues) ? 'PASSED' : 'FAILED',
                 'test_results' => $testResults,
                 'security_issues' => $securityIssues,
-                'requirement' => 'PII vault encryption and access controls'
+                'requirement' => 'PII vault encryption and access controls',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'PII vault encryption and access controls'
+                'requirement' => 'PII vault encryption and access controls',
             ];
         }
     }
@@ -120,7 +117,7 @@ class SecurityComplianceValidationService
             $testCases = 1000;
             $fraudCases = 100; // 10% fraud rate
             $legitimateCases = $testCases - $fraudCases;
-            
+
             $truePositives = 0;
             $falsePositives = 0;
             $trueNegatives = 0;
@@ -130,15 +127,15 @@ class SecurityComplianceValidationService
             for ($i = 0; $i < $testCases; $i++) {
                 $isFraud = $i < $fraudCases;
                 $bookingData = $this->generateTestBookingData($isFraud);
-                
+
                 $riskScore = $this->riskScoringService->calculateRiskScore($bookingData);
                 $flaggedAsFraud = $riskScore > 0.7; // 70% threshold
 
                 if ($isFraud && $flaggedAsFraud) {
                     $truePositives++;
-                } elseif ($isFraud && !$flaggedAsFraud) {
+                } elseif ($isFraud && ! $flaggedAsFraud) {
                     $falseNegatives++;
-                } elseif (!$isFraud && $flaggedAsFraud) {
+                } elseif (! $isFraud && $flaggedAsFraud) {
                     $falsePositives++;
                 } else {
                     $trueNegatives++;
@@ -160,14 +157,14 @@ class SecurityComplianceValidationService
                 'false_positives' => $falsePositives,
                 'true_negatives' => $trueNegatives,
                 'false_negatives' => $falseNegatives,
-                'requirement' => '95% fraud detection with <2% false positive rate'
+                'requirement' => '95% fraud detection with <2% false positive rate',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => '95% fraud detection with <2% false positive rate'
+                'requirement' => '95% fraud detection with <2% false positive rate',
             ];
         }
     }
@@ -186,28 +183,28 @@ class SecurityComplianceValidationService
             // Test 1: Eligibility decision logging
             $eligibilityAuditTest = $this->testEligibilityAuditLogging();
             $testResults['eligibility_audit'] = $eligibilityAuditTest;
-            if (!$eligibilityAuditTest['passed']) {
+            if (! $eligibilityAuditTest['passed']) {
                 $auditIssues[] = 'Eligibility decision audit logging incomplete';
             }
 
             // Test 2: Booking facts immutability
             $factsImmutabilityTest = $this->testBookingFactsImmutability();
             $testResults['facts_immutability'] = $factsImmutabilityTest;
-            if (!$factsImmutabilityTest['passed']) {
+            if (! $factsImmutabilityTest['passed']) {
                 $auditIssues[] = 'Booking facts immutability validation failed';
             }
 
             // Test 3: PII access audit trail
             $piiAuditTest = $this->testPIIAccessAuditTrail();
             $testResults['pii_audit'] = $piiAuditTest;
-            if (!$piiAuditTest['passed']) {
+            if (! $piiAuditTest['passed']) {
                 $auditIssues[] = 'PII access audit trail incomplete';
             }
 
             // Test 4: Staff override audit trail
             $staffOverrideTest = $this->testStaffOverrideAuditTrail();
             $testResults['staff_override_audit'] = $staffOverrideTest;
-            if (!$staffOverrideTest['passed']) {
+            if (! $staffOverrideTest['passed']) {
                 $auditIssues[] = 'Staff override audit trail incomplete';
             }
 
@@ -215,14 +212,14 @@ class SecurityComplianceValidationService
                 'status' => empty($auditIssues) ? 'PASSED' : 'FAILED',
                 'test_results' => $testResults,
                 'audit_issues' => $auditIssues,
-                'requirement' => 'Complete and immutable audit trails'
+                'requirement' => 'Complete and immutable audit trails',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Complete and immutable audit trails'
+                'requirement' => 'Complete and immutable audit trails',
             ];
         }
     }
@@ -241,28 +238,28 @@ class SecurityComplianceValidationService
             // Test 1: Data export functionality
             $dataExportTest = $this->testGDPRDataExport();
             $testResults['data_export'] = $dataExportTest;
-            if (!$dataExportTest['passed']) {
+            if (! $dataExportTest['passed']) {
                 $complianceIssues[] = 'GDPR data export functionality failed';
             }
 
             // Test 2: Right to be forgotten
             $dataErasureTest = $this->testGDPRDataErasure();
             $testResults['data_erasure'] = $dataErasureTest;
-            if (!$dataErasureTest['passed']) {
+            if (! $dataErasureTest['passed']) {
                 $complianceIssues[] = 'GDPR data erasure functionality failed';
             }
 
             // Test 3: Consent management
             $consentTest = $this->testGDPRConsentManagement();
             $testResults['consent_management'] = $consentTest;
-            if (!$consentTest['passed']) {
+            if (! $consentTest['passed']) {
                 $complianceIssues[] = 'GDPR consent management validation failed';
             }
 
             // Test 4: Data retention policies
             $retentionTest = $this->testGDPRDataRetention();
             $testResults['data_retention'] = $retentionTest;
-            if (!$retentionTest['passed']) {
+            if (! $retentionTest['passed']) {
                 $complianceIssues[] = 'GDPR data retention policy validation failed';
             }
 
@@ -270,14 +267,14 @@ class SecurityComplianceValidationService
                 'status' => empty($complianceIssues) ? 'PASSED' : 'FAILED',
                 'test_results' => $testResults,
                 'compliance_issues' => $complianceIssues,
-                'requirement' => 'GDPR compliance and data portability'
+                'requirement' => 'GDPR compliance and data portability',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'GDPR compliance and data portability'
+                'requirement' => 'GDPR compliance and data portability',
             ];
         }
     }
@@ -296,21 +293,21 @@ class SecurityComplianceValidationService
             // Test 1: PII encryption strength
             $piiEncryptionTest = $this->testPIIEncryptionStrength();
             $testResults['pii_encryption'] = $piiEncryptionTest;
-            if (!$piiEncryptionTest['passed']) {
+            if (! $piiEncryptionTest['passed']) {
                 $encryptionIssues[] = 'PII encryption strength insufficient';
             }
 
             // Test 2: Database encryption
             $dbEncryptionTest = $this->testDatabaseEncryption();
             $testResults['database_encryption'] = $dbEncryptionTest;
-            if (!$dbEncryptionTest['passed']) {
+            if (! $dbEncryptionTest['passed']) {
                 $encryptionIssues[] = 'Database encryption validation failed';
             }
 
             // Test 3: Transit encryption
             $transitEncryptionTest = $this->testTransitEncryption();
             $testResults['transit_encryption'] = $transitEncryptionTest;
-            if (!$transitEncryptionTest['passed']) {
+            if (! $transitEncryptionTest['passed']) {
                 $encryptionIssues[] = 'Transit encryption validation failed';
             }
 
@@ -318,14 +315,14 @@ class SecurityComplianceValidationService
                 'status' => empty($encryptionIssues) ? 'PASSED' : 'FAILED',
                 'test_results' => $testResults,
                 'encryption_issues' => $encryptionIssues,
-                'requirement' => 'Enterprise-grade encryption standards'
+                'requirement' => 'Enterprise-grade encryption standards',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Enterprise-grade encryption standards'
+                'requirement' => 'Enterprise-grade encryption standards',
             ];
         }
     }
@@ -344,21 +341,21 @@ class SecurityComplianceValidationService
             // Test 1: Role-based access control
             $rbacTest = $this->testRoleBasedAccessControl();
             $testResults['rbac'] = $rbacTest;
-            if (!$rbacTest['passed']) {
+            if (! $rbacTest['passed']) {
                 $accessIssues[] = 'Role-based access control validation failed';
             }
 
             // Test 2: Tenant isolation
             $tenantIsolationTest = $this->testTenantAccessIsolation();
             $testResults['tenant_isolation'] = $tenantIsolationTest;
-            if (!$tenantIsolationTest['passed']) {
+            if (! $tenantIsolationTest['passed']) {
                 $accessIssues[] = 'Tenant access isolation validation failed';
             }
 
             // Test 3: API authentication
             $apiAuthTest = $this->testAPIAuthentication();
             $testResults['api_auth'] = $apiAuthTest;
-            if (!$apiAuthTest['passed']) {
+            if (! $apiAuthTest['passed']) {
                 $accessIssues[] = 'API authentication validation failed';
             }
 
@@ -366,14 +363,14 @@ class SecurityComplianceValidationService
                 'status' => empty($accessIssues) ? 'PASSED' : 'FAILED',
                 'test_results' => $testResults,
                 'access_issues' => $accessIssues,
-                'requirement' => 'Comprehensive access controls'
+                'requirement' => 'Comprehensive access controls',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Comprehensive access controls'
+                'requirement' => 'Comprehensive access controls',
             ];
         }
     }
@@ -392,14 +389,14 @@ class SecurityComplianceValidationService
             // Test 1: Automated retention enforcement
             $retentionEnforcementTest = $this->testRetentionPolicyEnforcement();
             $testResults['retention_enforcement'] = $retentionEnforcementTest;
-            if (!$retentionEnforcementTest['passed']) {
+            if (! $retentionEnforcementTest['passed']) {
                 $retentionIssues[] = 'Retention policy enforcement validation failed';
             }
 
             // Test 2: Data anonymization
             $anonymizationTest = $this->testDataAnonymization();
             $testResults['anonymization'] = $anonymizationTest;
-            if (!$anonymizationTest['passed']) {
+            if (! $anonymizationTest['passed']) {
                 $retentionIssues[] = 'Data anonymization validation failed';
             }
 
@@ -407,14 +404,14 @@ class SecurityComplianceValidationService
                 'status' => empty($retentionIssues) ? 'PASSED' : 'FAILED',
                 'test_results' => $testResults,
                 'retention_issues' => $retentionIssues,
-                'requirement' => 'Automated retention and anonymization'
+                'requirement' => 'Automated retention and anonymization',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Automated retention and anonymization'
+                'requirement' => 'Automated retention and anonymization',
             ];
         }
     }
@@ -436,14 +433,14 @@ class SecurityComplianceValidationService
                 'status' => $passed ? 'PASSED' : 'FAILED',
                 'reversibility_test' => $reversibilityTest,
                 'cryptographic_test' => $cryptographicTest,
-                'requirement' => 'Irreversible cryptographic anonymization'
+                'requirement' => 'Irreversible cryptographic anonymization',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Irreversible cryptographic anonymization'
+                'requirement' => 'Irreversible cryptographic anonymization',
             ];
         }
     }
@@ -465,14 +462,14 @@ class SecurityComplianceValidationService
                 'status' => $passed ? 'PASSED' : 'FAILED',
                 'data_leakage_test' => $dataLeakageTest,
                 'schema_isolation_test' => $schemaIsolationTest,
-                'requirement' => 'Secure tenant isolation'
+                'requirement' => 'Secure tenant isolation',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Secure tenant isolation'
+                'requirement' => 'Secure tenant isolation',
             ];
         }
     }
@@ -489,8 +486,8 @@ class SecurityComplianceValidationService
             $inputValidationTest = $this->testAPIInputValidation();
             $authorizationTest = $this->testAPIAuthorization();
 
-            $passed = $rateLimitingTest['passed'] && 
-                     $inputValidationTest['passed'] && 
+            $passed = $rateLimitingTest['passed'] &&
+                     $inputValidationTest['passed'] &&
                      $authorizationTest['passed'];
 
             return [
@@ -498,14 +495,14 @@ class SecurityComplianceValidationService
                 'rate_limiting_test' => $rateLimitingTest,
                 'input_validation_test' => $inputValidationTest,
                 'authorization_test' => $authorizationTest,
-                'requirement' => 'Comprehensive API security'
+                'requirement' => 'Comprehensive API security',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Comprehensive API security'
+                'requirement' => 'Comprehensive API security',
             ];
         }
     }
@@ -518,10 +515,10 @@ class SecurityComplianceValidationService
         $testData = 'sensitive_test_data';
         $encrypted = $this->piiVaultService->encryptData($testData);
         $decrypted = $this->piiVaultService->decryptData($encrypted);
-        
+
         return [
             'passed' => $decrypted === $testData && $encrypted !== $testData,
-            'details' => 'PII encryption/decryption validation'
+            'details' => 'PII encryption/decryption validation',
         ];
     }
 
@@ -530,7 +527,7 @@ class SecurityComplianceValidationService
         // Test PII access control implementation
         return [
             'passed' => true,
-            'details' => 'PII access controls validated'
+            'details' => 'PII access controls validated',
         ];
     }
 
@@ -539,7 +536,7 @@ class SecurityComplianceValidationService
         // Test PII key versioning implementation
         return [
             'passed' => true,
-            'details' => 'PII key versioning validated'
+            'details' => 'PII key versioning validated',
         ];
     }
 
@@ -548,7 +545,7 @@ class SecurityComplianceValidationService
         // Test PII access logging implementation
         return [
             'passed' => true,
-            'details' => 'PII access logging validated'
+            'details' => 'PII access logging validated',
         ];
     }
 
@@ -559,9 +556,9 @@ class SecurityComplianceValidationService
             'event_id' => rand(1, 100),
             'quantity' => rand(1, 10),
             'price' => rand(50, 500),
-            'ip_address' => '192.168.1.' . rand(1, 254),
+            'ip_address' => '192.168.1.'.rand(1, 254),
             'user_agent' => 'Mozilla/5.0 Test Browser',
-            'booking_time' => now()
+            'booking_time' => now(),
         ];
 
         if ($isFraud) {
@@ -707,10 +704,10 @@ class SecurityComplianceValidationService
                 'errors' => $errorValidations,
                 'compliance_rate' => $totalValidations > 0 ? ($passedValidations / $totalValidations) * 100 : 0,
                 'execution_time' => now(),
-                'overall_status' => ($failedValidations === 0 && $errorValidations === 0) ? 'COMPLIANT' : 'NON_COMPLIANT'
+                'overall_status' => ($failedValidations === 0 && $errorValidations === 0) ? 'COMPLIANT' : 'NON_COMPLIANT',
             ],
             'validation_results' => $this->validationResults,
-            'compliance_recommendations' => $this->generateComplianceRecommendations()
+            'compliance_recommendations' => $this->generateComplianceRecommendations(),
         ];
     }
 
@@ -726,7 +723,7 @@ class SecurityComplianceValidationService
             $recommendations[] = [
                 'type' => 'CRITICAL',
                 'message' => 'Security and compliance issues must be resolved before deployment',
-                'failed_validations' => $failedValidations->keys()->toArray()
+                'failed_validations' => $failedValidations->keys()->toArray(),
             ];
         }
 

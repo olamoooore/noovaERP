@@ -10,8 +10,11 @@ class ContactImportBatch extends Model
     use HasFactory;
 
     protected $table = 'contact_import_batches';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [

@@ -5,9 +5,9 @@ namespace Tests\Feature;
 use App\Models\Feature;
 use App\Services\AccountingAccessService;
 use App\SuperAdmin\Application\EntitlementService;
-use Tests\TenantTestCase;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Tests\TenantTestCase;
 
 class AccountingAccessServiceTest extends TenantTestCase
 {

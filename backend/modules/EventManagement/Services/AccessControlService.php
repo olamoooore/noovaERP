@@ -3,19 +3,17 @@
 namespace Modules\EventManagement\Services;
 
 use Illuminate\Support\Facades\Auth;
-use Spatie\Activitylog\Facades\LogActivity;
 
 class AccessControlService
 {
     /**
      * Check if a user can view inventory data
      *
-     * @param mixed $user
-     * @return bool
+     * @param  mixed  $user
      */
     public function canViewInventory($user): bool
     {
-        if (!$user) {
+        if (! $user) {
             return false;
         }
 
@@ -25,12 +23,11 @@ class AccessControlService
     /**
      * Check if a user is staff
      *
-     * @param mixed $user
-     * @return bool
+     * @param  mixed  $user
      */
     public function isStaff($user): bool
     {
-        if (!$user) {
+        if (! $user) {
             return false;
         }
 
@@ -41,12 +38,11 @@ class AccessControlService
     /**
      * Check if a user can configure events
      *
-     * @param mixed $user
-     * @return bool
+     * @param  mixed  $user
      */
     public function canConfigureEvents($user): bool
     {
-        if (!$user) {
+        if (! $user) {
             return false;
         }
 
@@ -66,8 +62,6 @@ class AccessControlService
 
     /**
      * Check if current user can view inventory
-     *
-     * @return bool
      */
     public function currentUserCanViewInventory(): bool
     {
@@ -76,8 +70,6 @@ class AccessControlService
 
     /**
      * Check if current user is staff
-     *
-     * @return bool
      */
     public function currentUserIsStaff(): bool
     {
@@ -86,8 +78,6 @@ class AccessControlService
 
     /**
      * Check if current user can configure events
-     *
-     * @return bool
      */
     public function currentUserCanConfigureEvents(): bool
     {
@@ -97,14 +87,11 @@ class AccessControlService
     /**
      * Log inventory access by staff
      *
-     * @param string $eventId
-     * @param mixed $user
-     * @param string $action
-     * @return void
+     * @param  mixed  $user
      */
     public function logInventoryAccess(string $eventId, $user, string $action = 'view_inventory'): void
     {
-        if (!$user) {
+        if (! $user) {
             return;
         }
 
@@ -121,15 +108,11 @@ class AccessControlService
 
     /**
      * Log inventory access for current user
-     *
-     * @param string $eventId
-     * @param string $action
-     * @return void
      */
     public function logCurrentUserInventoryAccess(string $eventId, string $action = 'view_inventory'): void
     {
         $user = $this->getCurrentUser();
-        
+
         if ($user && $this->isStaff($user)) {
             $this->logInventoryAccess($eventId, $user, $action);
         }

@@ -16,7 +16,7 @@ return new class extends Migration
             $table->boolean('is_default')->default(false);
             $table->timestamp('last_accessed_at')->nullable();
             $table->timestamps();
-            
+
             $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
             $table->unique(['user_id', 'tenant_id']);
         });

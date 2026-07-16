@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Modules\FieldService\Models\WorkOrder;
 use Modules\FieldService\Models\TimeLog;
+use Modules\FieldService\Models\WorkOrder;
 
 class TimeLogController extends Controller
 {
@@ -25,18 +25,18 @@ class TimeLogController extends Controller
         $workOrder = $this->findWorkOrderOrFail($work_order_id);
 
         $validated = $request->validate([
-            'description'    => 'nullable|string|max:255',
-            'date'           => 'required|date',
-            'started_at'     => 'nullable|date',
-            'ended_at'       => 'nullable|date|after:started_at',
+            'description' => 'nullable|string|max:255',
+            'date' => 'required|date',
+            'started_at' => 'nullable|date',
+            'ended_at' => 'nullable|date|after:started_at',
             'duration_hours' => 'required|numeric|min:0.01|max:24',
-            'is_billable'    => 'nullable|boolean',
-            'hourly_rate'    => 'nullable|numeric|min:0',
+            'is_billable' => 'nullable|boolean',
+            'hourly_rate' => 'nullable|numeric|min:0',
         ]);
 
         $log = $workOrder->timeLogs()->create(array_merge($validated, [
             'work_order_id' => $workOrder->id,
-            'user_id'       => Auth::id(),
+            'user_id' => Auth::id(),
         ]));
 
         return response()->json($log->load('user'), 201);
@@ -58,13 +58,13 @@ class TimeLogController extends Controller
         $this->ensureLogBelongs($workOrder, $timeLog);
 
         $validated = $request->validate([
-            'description'    => 'nullable|string|max:255',
-            'date'           => 'nullable|date',
-            'started_at'     => 'nullable|date',
-            'ended_at'       => 'nullable|date',
+            'description' => 'nullable|string|max:255',
+            'date' => 'nullable|date',
+            'started_at' => 'nullable|date',
+            'ended_at' => 'nullable|date',
             'duration_hours' => 'nullable|numeric|min:0.01|max:24',
-            'is_billable'    => 'nullable|boolean',
-            'hourly_rate'    => 'nullable|numeric|min:0',
+            'is_billable' => 'nullable|boolean',
+            'hourly_rate' => 'nullable|numeric|min:0',
         ]);
 
         $timeLog->update($validated);
@@ -93,8 +93,8 @@ class TimeLogController extends Controller
     {
         $workOrder = WorkOrder::query()->find($workOrderId);
 
-        if (!$workOrder) {
-            throw (new ModelNotFoundException())->setModel(WorkOrder::class, [$workOrderId]);
+        if (! $workOrder) {
+            throw (new ModelNotFoundException)->setModel(WorkOrder::class, [$workOrderId]);
         }
 
         return $workOrder;
@@ -104,8 +104,8 @@ class TimeLogController extends Controller
     {
         $timeLog = TimeLog::query()->find($timeLogId);
 
-        if (!$timeLog) {
-            throw (new ModelNotFoundException())->setModel(TimeLog::class, [$timeLogId]);
+        if (! $timeLog) {
+            throw (new ModelNotFoundException)->setModel(TimeLog::class, [$timeLogId]);
         }
 
         return $timeLog;

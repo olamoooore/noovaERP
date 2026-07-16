@@ -23,7 +23,7 @@ return new class extends Migration
             $table->boolean('require_attendee_id')->default(false);
             $table->integer('data_retention_days')->default(2555); // 7 years
             $table->timestamps();
-            
+
             // Unique constraint on tenant_id for tenant isolation
             $table->unique('tenant_id');
         });
@@ -42,7 +42,7 @@ return new class extends Migration
             $table->string('ip_address', 45)->nullable();
             $table->text('user_agent')->nullable();
             $table->timestamp('created_at')->useCurrent();
-            
+
             // Indexes for performance and tenant isolation
             $table->index('tenant_id');
             $table->index(['subject_type', 'subject_id']);

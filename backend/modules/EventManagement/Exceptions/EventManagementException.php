@@ -25,8 +25,8 @@ abstract class EventManagementException extends Exception
             'error' => [
                 'code' => $this->getErrorCode(),
                 'message' => $this->getMessage(),
-                'request_id' => request()->header('X-Request-ID', uniqid('req_'))
-            ]
+                'request_id' => request()->header('X-Request-ID', uniqid('req_')),
+            ],
         ];
 
         // Add additional details if available

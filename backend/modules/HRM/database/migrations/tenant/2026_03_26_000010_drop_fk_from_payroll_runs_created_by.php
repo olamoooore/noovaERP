@@ -12,18 +12,21 @@ use Illuminate\Support\Facades\Schema;
  * Keeping the FK causes a 23503 violation on every INSERT.
  * We store the central user ID as a plain integer instead.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('hrm_payroll_runs', function (Blueprint $table) {
             // Drop FKs — ignore if they don't exist (idempotent)
             try {
                 $table->dropForeign(['created_by']);
-            } catch (\Exception $e) {}
+            } catch (\Exception $e) {
+            }
 
             try {
                 $table->dropForeign(['approved_by']);
-            } catch (\Exception $e) {}
+            } catch (\Exception $e) {
+            }
         });
     }
 

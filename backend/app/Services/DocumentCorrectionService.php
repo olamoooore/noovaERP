@@ -3,11 +3,11 @@
 namespace App\Services;
 
 use App\Accounting\DTOs\ReversalRequest;
-use App\Models\Invoice;
 use App\Models\Bill;
+use App\Models\CustomerCreditNote;
+use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\Payment;
-use App\Models\CustomerCreditNote;
 use App\Models\VendorCreditNote;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -26,7 +26,7 @@ class DocumentCorrectionService
     {
         $policy = $this->policyService->canVoid($document, $request->userId ? \App\Models\User::find($request->userId) : null);
 
-        if (!$policy->allowed) {
+        if (! $policy->allowed) {
             throw new \RuntimeException($policy->message());
         }
 
@@ -43,7 +43,7 @@ class DocumentCorrectionService
     {
         $policy = $this->policyService->canReverse($document, $request->userId ? \App\Models\User::find($request->userId) : null);
 
-        if (!$policy->allowed) {
+        if (! $policy->allowed) {
             throw new \RuntimeException($policy->message());
         }
 
@@ -51,21 +51,21 @@ class DocumentCorrectionService
             ? $document->id
             : $document->journal_entry_id;
 
-        if (!$reversalTargetId) {
+        if (! $reversalTargetId) {
             throw new \RuntimeException('Document has no posted journal entry to reverse');
         }
 
         $reversalRequest = new ReversalRequest(
             journalEntryId: $reversalTargetId,
             reversalDate: now()->toDateString(),
-            reason: $request->reasonText ?? 'Reversal: ' . ($document instanceof Invoice ? $document->invoice_number : ($document instanceof Bill ? $document->bill_number : $document->entry_number)),
+            reason: $request->reasonText ?? 'Reversal: '.($document instanceof Invoice ? $document->invoice_number : ($document instanceof Bill ? $document->bill_number : $document->entry_number)),
             reasonCode: $request->reasonCode,
             actorUserId: $request->userId,
         );
 
         $reversalResult = app(\App\Accounting\PostingEngine::class)->reverse($reversalRequest);
 
-        if (!$reversalResult->success || !$reversalResult->journalEntry) {
+        if (! $reversalResult->success || ! $reversalResult->journalEntry) {
             throw new \RuntimeException($reversalResult->error ?? 'Failed to create reversal journal entry');
         }
 
@@ -86,7 +86,7 @@ class DocumentCorrectionService
     {
         $policy = $this->policyService->canCreateCreditNote($document, $request->userId ? \App\Models\User::find($request->userId) : null);
 
-        if (!$policy->allowed) {
+        if (! $policy->allowed) {
             throw new \RuntimeException($policy->message());
         }
 
@@ -109,7 +109,7 @@ class DocumentCorrectionService
     {
         $policy = $this->policyService->canRefund($invoice, $request->userId ? \App\Models\User::find($request->userId) : null);
 
-        if (!$policy->allowed) {
+        if (! $policy->allowed) {
             throw new \RuntimeException($policy->message());
         }
 
@@ -140,7 +140,7 @@ class DocumentCorrectionService
     {
         $policy = $this->policyService->canCreateReplacement($document, $request->userId ? \App\Models\User::find($request->userId) : null);
 
-        if (!$policy->allowed) {
+        if (! $policy->allowed) {
             $data = $policy->data ?? [];
             throw new \RuntimeException($data['message'] ?? $policy->message());
         }
@@ -268,7 +268,8 @@ class DocumentCorrectionService
             ?? VendorCreditNote::orderBy('id', 'desc')->first();
 
         $number = $latest ? (int) substr($latest->credit_note_number, -4) + 1 : 1;
-        return $prefix . '-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        return $prefix.'-'.date('Y').'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 }
 
@@ -278,8 +279,8 @@ class CorrectionResult
         public readonly Invoice|Bill|JournalEntry $document,
         public readonly string $correctionType,
         public readonly ?JournalEntry $reversalJournalEntry = null,
-        public readonly object|null $creditNote = null,
+        public readonly ?object $creditNote = null,
         public readonly ?Payment $refundPayment = null,
-        public readonly object|null $originalDocument = null,
+        public readonly ?object $originalDocument = null,
     ) {}
 }

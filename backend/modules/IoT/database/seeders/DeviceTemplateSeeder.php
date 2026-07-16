@@ -3,14 +3,14 @@
 namespace Modules\IoT\Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Modules\IoT\Models\DeviceTemplate;
 use Illuminate\Support\Str;
+use Modules\IoT\Models\DeviceTemplate;
 
 class DeviceTemplateSeeder extends Seeder
 {
     /**
      * Run the database seeds.
-     * 
+     *
      * Seeds 4 default device templates for common hardware.
      */
     public function run(): void

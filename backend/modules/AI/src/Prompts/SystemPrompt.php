@@ -6,7 +6,7 @@ use Modules\AI\Models\AIConversation;
 
 /**
  * System Prompt Generator
- * 
+ *
  * Generates system prompts optimized for small models (3B-7B)
  */
 class SystemPrompt
@@ -18,14 +18,14 @@ class SystemPrompt
     {
         $customer = $conversation->customer;
         $language = $conversation->language;
-        
-        return match($language) {
+
+        return match ($language) {
             'zh' => self::getChinesePrompt($customer),
             'ms' => self::getMalayPrompt($customer),
             default => self::getEnglishPrompt($customer),
         };
     }
-    
+
     /**
      * English prompt
      */
@@ -289,7 +289,7 @@ TEMPERATURE SETTING: 0.2 (Low temperature for structured, predictable responses)
 Date: {now()->format('Y-m-d')}
 PROMPT;
     }
-    
+
     /**
      * Chinese prompt
      */
@@ -498,7 +498,7 @@ AI: "这是订单问题。请切换到Orders模块查询订单状态。"
 日期: {now()->format('Y-m-d')}
 PROMPT;
     }
-    
+
     /**
      * Malay prompt
      */

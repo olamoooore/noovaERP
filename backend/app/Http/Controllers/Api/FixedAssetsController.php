@@ -32,7 +32,7 @@ class FixedAssetsController extends Controller
             'depreciationAccount',
             'accumulatedDepreciationAccount',
             'vendor',
-            'department'
+            'department',
         ]);
 
         // Filter by status
@@ -47,7 +47,7 @@ class FixedAssetsController extends Controller
 
         // Filter by location
         if ($request->has('location')) {
-            $query->where('location', 'LIKE', '%' . $request->location . '%');
+            $query->where('location', 'LIKE', '%'.$request->location.'%');
         }
 
         // Filter by department
@@ -58,10 +58,10 @@ class FixedAssetsController extends Controller
         // Search
         if ($request->has('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('asset_number', 'LIKE', "%{$search}%")
-                  ->orWhere('name', 'LIKE', "%{$search}%")
-                  ->orWhere('description', 'LIKE', "%{$search}%");
+                    ->orWhere('name', 'LIKE', "%{$search}%")
+                    ->orWhere('description', 'LIKE', "%{$search}%");
             });
         }
 
@@ -81,9 +81,9 @@ class FixedAssetsController extends Controller
             'accumulatedDepreciationAccount',
             'vendor',
             'department',
-            'depreciationSchedules' => function($query) {
+            'depreciationSchedules' => function ($query) {
                 $query->orderBy('period_date', 'desc');
-            }
+            },
         ])->findOrFail($id);
 
         return response()->json($asset);
@@ -136,13 +136,14 @@ class FixedAssetsController extends Controller
                 'asset' => $asset->load([
                     'assetAccount',
                     'depreciationAccount',
-                    'accumulatedDepreciationAccount'
-                ])
+                    'accumulatedDepreciationAccount',
+                ]),
             ], 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['error' => 'Failed to create asset: ' . $e->getMessage()], 500);
+
+            return response()->json(['error' => 'Failed to create asset: '.$e->getMessage()], 500);
         }
     }
 
@@ -159,7 +160,7 @@ class FixedAssetsController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'asset_number' => 'sometimes|string|max:50|unique:fixed_assets,asset_number,' . $id,
+            'asset_number' => 'sometimes|string|max:50|unique:fixed_assets,asset_number,'.$id,
             'name' => 'sometimes|string|max:255',
             'category' => 'sometimes|string|max:100',
             'location' => 'nullable|string|max:255',
@@ -175,7 +176,7 @@ class FixedAssetsController extends Controller
         // Only allow updating certain fields after creation
         $allowedFields = [
             'name', 'description', 'category', 'location',
-            'department_id', 'responsible_person', 'serial_number'
+            'department_id', 'responsible_person', 'serial_number',
         ];
 
         $updateData = $request->only($allowedFields);
@@ -186,8 +187,8 @@ class FixedAssetsController extends Controller
             'asset' => $asset->fresh([
                 'assetAccount',
                 'depreciationAccount',
-                'accumulatedDepreciationAccount'
-            ])
+                'accumulatedDepreciationAccount',
+            ]),
         ]);
     }
 
@@ -201,14 +202,14 @@ class FixedAssetsController extends Controller
         // Check if asset has depreciation entries
         if ($asset->depreciationSchedules()->where('is_posted', true)->exists()) {
             return response()->json([
-                'error' => 'Cannot delete asset with posted depreciation entries'
+                'error' => 'Cannot delete asset with posted depreciation entries',
             ], 422);
         }
 
         $asset->update(['is_active' => false]);
 
         return response()->json([
-            'message' => 'Asset deactivated successfully'
+            'message' => 'Asset deactivated successfully',
         ]);
     }
 
@@ -251,12 +252,13 @@ class FixedAssetsController extends Controller
                 'message' => 'Asset disposed successfully',
                 'asset' => $asset->fresh(),
                 'gain_loss' => $result['gain_loss'],
-                'journal_entry' => $result['journal_entry']
+                'journal_entry' => $result['journal_entry'],
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['error' => 'Failed to dispose asset: ' . $e->getMessage()], 500);
+
+            return response()->json(['error' => 'Failed to dispose asset: '.$e->getMessage()], 500);
         }
     }
 
@@ -266,9 +268,9 @@ class FixedAssetsController extends Controller
     public function getDepreciationSchedule($id)
     {
         $asset = FixedAsset::with([
-            'depreciationSchedules' => function($query) {
+            'depreciationSchedules' => function ($query) {
                 $query->orderBy('period_date', 'asc');
-            }
+            },
         ])->findOrFail($id);
 
         $schedule = $asset->depreciationSchedules->map(function ($entry) {
@@ -279,7 +281,7 @@ class FixedAssetsController extends Controller
 
         return response()->json([
             'asset' => $asset,
-            'schedule' => $schedule
+            'schedule' => $schedule,
         ]);
     }
 
@@ -331,15 +333,16 @@ class FixedAssetsController extends Controller
             return response()->json([
                 'success' => $successCount > 0,
                 'message' => $message,
-                'results' => $results
+                'results' => $results,
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::error('Depreciation calculation failed', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
-                'error' => 'Failed to calculate depreciation: ' . $e->getMessage()
+                'error' => 'Failed to calculate depreciation: '.$e->getMessage(),
             ], 500);
         }
     }

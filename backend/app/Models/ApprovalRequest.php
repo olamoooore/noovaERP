@@ -67,14 +67,14 @@ class ApprovalRequest extends Model
         $last = static::where('request_number', 'like', "APR{$date}%")
             ->orderBy('request_number', 'desc')
             ->first();
-        
+
         if ($last && preg_match('/(\d+)$/', $last->request_number, $matches)) {
             $number = intval($matches[1]) + 1;
         } else {
             $number = 1;
         }
-        
-        return 'APR' . $date . str_pad($number, 6, '0', STR_PAD_LEFT);
+
+        return 'APR'.$date.str_pad($number, 6, '0', STR_PAD_LEFT);
     }
 
     /**
@@ -106,14 +106,14 @@ class ApprovalRequest extends Model
      */
     public function isExpired(): bool
     {
-        return $this->status === 'expired' || 
+        return $this->status === 'expired' ||
                ($this->expires_at && $this->expires_at->isPast());
     }
 
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($request) {
             if (empty($request->request_number)) {
                 $request->request_number = static::generateRequestNumber();

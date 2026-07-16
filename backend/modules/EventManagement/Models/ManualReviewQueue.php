@@ -38,22 +38,33 @@ class ManualReviewQueue extends Model
 
     // Review reason constants
     public const REASON_VELOCITY_EXCEEDED = 'velocity_exceeded';
+
     public const REASON_SUSPICIOUS_PATTERN = 'suspicious_pattern';
+
     public const REASON_HIGH_RISK_CUSTOMER = 'high_risk_customer';
+
     public const REASON_MANUAL_FLAG = 'manual_flag';
+
     public const REASON_IDENTITY_VERIFICATION_REQUIRED = 'identity_verification_required';
 
     // Priority constants
     public const PRIORITY_LOW = 'low';
+
     public const PRIORITY_MEDIUM = 'medium';
+
     public const PRIORITY_HIGH = 'high';
+
     public const PRIORITY_URGENT = 'urgent';
 
     // Status constants
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_IN_REVIEW = 'in_review';
+
     public const STATUS_APPROVED = 'approved';
+
     public const STATUS_REJECTED = 'rejected';
+
     public const STATUS_ESCALATED = 'escalated';
 
     /**
@@ -157,10 +168,10 @@ class ManualReviewQueue extends Model
         ];
 
         return $query->orderByRaw("CASE 
-            WHEN priority = '" . self::PRIORITY_URGENT . "' THEN 4
-            WHEN priority = '" . self::PRIORITY_HIGH . "' THEN 3
-            WHEN priority = '" . self::PRIORITY_MEDIUM . "' THEN 2
-            WHEN priority = '" . self::PRIORITY_LOW . "' THEN 1
+            WHEN priority = '".self::PRIORITY_URGENT."' THEN 4
+            WHEN priority = '".self::PRIORITY_HIGH."' THEN 3
+            WHEN priority = '".self::PRIORITY_MEDIUM."' THEN 2
+            WHEN priority = '".self::PRIORITY_LOW."' THEN 1
             ELSE 0 END DESC")
             ->orderBy('created_at', 'asc');
     }
@@ -338,7 +349,7 @@ class ManualReviewQueue extends Model
         } elseif ($this->risk_score >= 40) {
             return 'medium';
         }
-        
+
         return 'low';
     }
 }

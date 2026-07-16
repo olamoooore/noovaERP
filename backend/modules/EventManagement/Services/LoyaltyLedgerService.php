@@ -2,35 +2,38 @@
 
 namespace Modules\EventManagement\Services;
 
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
-use Carbon\Carbon;
-use Illuminate\Support\Str;
 
 /**
  * LoyaltyLedgerService - Task 7.3
- * 
+ *
  * Provides ledger-based points transaction system with idempotent operations,
  * points balance reconciliation, audit trails, and expiration management.
- * 
+ *
  * Requirements: 23.3, 23.4
  */
 class LoyaltyLedgerService
 {
     protected AuditService $auditService;
-    
+
     // Cache configuration
     private const CACHE_PREFIX = 'loyalty_ledger:';
+
     private const BALANCE_CACHE_TTL = 1800; // 30 minutes
+
     private const EXPIRY_CACHE_TTL = 3600; // 1 hour
-    
+
     // Transaction limits
     private const MAX_TRANSACTION_AMOUNT = 1000000; // 1 million points
+
     private const MIN_TRANSACTION_AMOUNT = -1000000; // -1 million points
-    
+
     // Points expiry configuration
     private const DEFAULT_EXPIRY_MONTHS = 24; // 2 years
+
     private const EXPIRY_WARNING_DAYS = 30; // Warn 30 days before expiry
 
     public function __construct(AuditService $auditService)
@@ -40,10 +43,10 @@ class LoyaltyLedgerService
 
     /**
      * Process a points transaction with idempotency.
-     * 
-     * @param array $transactionData Transaction data
+     *
+     * @param  array  $transactionData  Transaction data
      * @return array Transaction result
-     * 
+     *
      * Requirements: 23.3, 23.4
      */
     public function processTransaction(array $transactionData): array
@@ -52,12 +55,12 @@ class LoyaltyLedgerService
             try {
                 // Validate transaction data
                 $this->validateTransactionData($transactionData);
-                
+
                 // Check for existing transaction with same idempotency key
                 $existingTransaction = DB::table('loyalty_ledger')
                     ->where('idempotency_key', $transactionData['idempotency_key'])
                     ->first();
-                
+
                 if ($existingTransaction) {
                     return [
                         'success' => true,
@@ -67,16 +70,16 @@ class LoyaltyLedgerService
                         'message' => 'Transaction already processed',
                     ];
                 }
-                
+
                 // Get current balance
                 $currentBalance = $this->getCurrentBalance($transactionData['customer_id']);
-                
+
                 // Validate transaction constraints
                 $this->validateTransactionConstraints($transactionData, $currentBalance);
-                
+
                 // Calculate new balance
                 $newBalance = $currentBalance + $transactionData['points_delta'];
-                
+
                 // Create transaction record
                 $transactionId = DB::table('loyalty_ledger')->insertGetId([
                     'customer_id' => $transactionData['customer_id'],
@@ -99,20 +102,20 @@ class LoyaltyLedgerService
                     'created_at' => Carbon::now(),
                     'updated_at' => Carbon::now(),
                 ]);
-                
+
                 // Handle points earning - create expiry schedule
                 if ($transactionData['transaction_type'] === 'earn' && $transactionData['points_delta'] > 0) {
                     $this->createExpirySchedule($transactionId, $transactionData);
                 }
-                
+
                 // Handle points redemption - update expiry schedule
                 if (in_array($transactionData['transaction_type'], ['redeem', 'transfer_out']) && $transactionData['points_delta'] < 0) {
                     $this->updateExpiryScheduleForRedemption($transactionData['customer_id'], abs($transactionData['points_delta']));
                 }
-                
+
                 // Clear balance cache
                 $this->clearBalanceCache($transactionData['customer_id']);
-                
+
                 // Create audit log
                 $this->auditService->log('loyalty_transaction_processed', [
                     'transaction_id' => $transactionId,
@@ -122,7 +125,7 @@ class LoyaltyLedgerService
                     'new_balance' => $newBalance,
                     'reference_type' => $transactionData['reference_type'],
                 ]);
-                
+
                 Log::info('Loyalty transaction processed', [
                     'transaction_id' => $transactionId,
                     'customer_id' => $transactionData['customer_id'],
@@ -130,7 +133,7 @@ class LoyaltyLedgerService
                     'points_delta' => $transactionData['points_delta'],
                     'new_balance' => $newBalance,
                 ]);
-                
+
                 return [
                     'success' => true,
                     'transaction_id' => $transactionId,
@@ -139,13 +142,13 @@ class LoyaltyLedgerService
                     'transaction_type' => $transactionData['transaction_type'],
                     'is_duplicate' => false,
                 ];
-                
+
             } catch (\Exception $e) {
                 Log::error('Failed to process loyalty transaction', [
                     'error' => $e->getMessage(),
                     'transaction_data' => $transactionData,
                 ]);
-                
+
                 return [
                     'success' => false,
                     'error' => $e->getMessage(),
@@ -156,12 +159,12 @@ class LoyaltyLedgerService
 
     /**
      * Earn points for a customer.
-     * 
-     * @param int $customerId Customer ID
-     * @param int $points Points to earn
-     * @param array $context Transaction context
+     *
+     * @param  int  $customerId  Customer ID
+     * @param  int  $points  Points to earn
+     * @param  array  $context  Transaction context
      * @return array Earning result
-     * 
+     *
      * Requirements: 23.3, 23.4
      */
     public function earnPoints(int $customerId, int $points, array $context): array
@@ -179,25 +182,25 @@ class LoyaltyLedgerService
             'effective_date' => $context['effective_date'] ?? Carbon::now(),
             'authorized_by' => $context['authorized_by'] ?? null,
         ];
-        
+
         return $this->processTransaction($transactionData);
     }
 
     /**
      * Redeem points for a customer.
-     * 
-     * @param int $customerId Customer ID
-     * @param int $points Points to redeem
-     * @param array $context Transaction context
+     *
+     * @param  int  $customerId  Customer ID
+     * @param  int  $points  Points to redeem
+     * @param  array  $context  Transaction context
      * @return array Redemption result
-     * 
+     *
      * Requirements: 23.3, 23.4
      */
     public function redeemPoints(int $customerId, int $points, array $context): array
     {
         // Check available balance
         $availableBalance = $this->getAvailableBalance($customerId);
-        
+
         if ($availableBalance < $points) {
             return [
                 'success' => false,
@@ -206,7 +209,7 @@ class LoyaltyLedgerService
                 'requested_points' => $points,
             ];
         }
-        
+
         $transactionData = [
             'customer_id' => $customerId,
             'transaction_type' => 'redeem',
@@ -220,29 +223,29 @@ class LoyaltyLedgerService
             'effective_date' => $context['effective_date'] ?? Carbon::now(),
             'authorized_by' => $context['authorized_by'] ?? null,
         ];
-        
+
         return $this->processTransaction($transactionData);
     }
 
     /**
      * Adjust points balance (manual adjustment).
-     * 
-     * @param int $customerId Customer ID
-     * @param int $pointsDelta Points adjustment (positive or negative)
-     * @param array $context Adjustment context
+     *
+     * @param  int  $customerId  Customer ID
+     * @param  int  $pointsDelta  Points adjustment (positive or negative)
+     * @param  array  $context  Adjustment context
      * @return array Adjustment result
-     * 
+     *
      * Requirements: 23.3, 23.4
      */
     public function adjustPoints(int $customerId, int $pointsDelta, array $context): array
     {
-        if (!isset($context['authorized_by']) || empty($context['authorized_by'])) {
+        if (! isset($context['authorized_by']) || empty($context['authorized_by'])) {
             return [
                 'success' => false,
                 'error' => 'Manual adjustments require authorization',
             ];
         }
-        
+
         $transactionData = [
             'customer_id' => $customerId,
             'transaction_type' => 'adjustment',
@@ -256,17 +259,17 @@ class LoyaltyLedgerService
             'effective_date' => $context['effective_date'] ?? Carbon::now(),
             'authorized_by' => $context['authorized_by'],
         ];
-        
+
         return $this->processTransaction($transactionData);
     }
 
     /**
      * Reverse a transaction.
-     * 
-     * @param int $transactionId Transaction ID to reverse
-     * @param array $context Reversal context
+     *
+     * @param  int  $transactionId  Transaction ID to reverse
+     * @param  array  $context  Reversal context
      * @return array Reversal result
-     * 
+     *
      * Requirements: 23.3, 23.4
      */
     public function reverseTransaction(int $transactionId, array $context): array
@@ -275,14 +278,14 @@ class LoyaltyLedgerService
             try {
                 // Get original transaction
                 $originalTransaction = DB::table('loyalty_ledger')->where('id', $transactionId)->first();
-                
-                if (!$originalTransaction) {
+
+                if (! $originalTransaction) {
                     return [
                         'success' => false,
                         'error' => 'Original transaction not found',
                     ];
                 }
-                
+
                 if ($originalTransaction->is_reversed) {
                     return [
                         'success' => false,
@@ -290,7 +293,7 @@ class LoyaltyLedgerService
                         'reversal_transaction_id' => $originalTransaction->reversal_transaction_id,
                     ];
                 }
-                
+
                 // Create reversal transaction
                 $reversalData = [
                     'customer_id' => $originalTransaction->customer_id,
@@ -303,9 +306,9 @@ class LoyaltyLedgerService
                     'metadata' => array_merge(['original_transaction_id' => $transactionId], $context['metadata'] ?? []),
                     'authorized_by' => $context['authorized_by'] ?? null,
                 ];
-                
+
                 $reversalResult = $this->processTransaction($reversalData);
-                
+
                 if ($reversalResult['success']) {
                     // Mark original transaction as reversed
                     DB::table('loyalty_ledger')
@@ -315,19 +318,19 @@ class LoyaltyLedgerService
                             'reversal_transaction_id' => $reversalResult['transaction_id'],
                             'updated_at' => Carbon::now(),
                         ]);
-                    
+
                     // Handle expiry schedule updates for reversals
                     $this->handleReversalExpiryUpdates($originalTransaction, $reversalResult['transaction_id']);
                 }
-                
+
                 return $reversalResult;
-                
+
             } catch (\Exception $e) {
                 Log::error('Failed to reverse transaction', [
                     'transaction_id' => $transactionId,
                     'error' => $e->getMessage(),
                 ]);
-                
+
                 return [
                     'success' => false,
                     'error' => $e->getMessage(),
@@ -338,70 +341,70 @@ class LoyaltyLedgerService
 
     /**
      * Get current points balance for a customer.
-     * 
-     * @param int $customerId Customer ID
+     *
+     * @param  int  $customerId  Customer ID
      * @return int Current balance
-     * 
+     *
      * Requirements: 23.3
      */
     public function getCurrentBalance(int $customerId): int
     {
-        $cacheKey = self::CACHE_PREFIX . "balance:{$customerId}";
+        $cacheKey = self::CACHE_PREFIX."balance:{$customerId}";
         $cachedBalance = Cache::get($cacheKey);
-        
+
         if ($cachedBalance !== null) {
             return $cachedBalance;
         }
-        
+
         $latestTransaction = DB::table('loyalty_ledger')
             ->where('customer_id', $customerId)
             ->orderBy('transaction_timestamp', 'desc')
             ->orderBy('id', 'desc')
             ->first();
-        
+
         $balance = $latestTransaction ? $latestTransaction->points_balance_after : 0;
-        
+
         // Cache the balance
         Cache::put($cacheKey, $balance, self::BALANCE_CACHE_TTL);
-        
+
         return $balance;
     }
 
     /**
      * Get available points balance (excluding expired points).
-     * 
-     * @param int $customerId Customer ID
+     *
+     * @param  int  $customerId  Customer ID
      * @return int Available balance
-     * 
+     *
      * Requirements: 23.3, 23.4
      */
     public function getAvailableBalance(int $customerId): int
     {
-        $cacheKey = self::CACHE_PREFIX . "available_balance:{$customerId}";
+        $cacheKey = self::CACHE_PREFIX."available_balance:{$customerId}";
         $cachedBalance = Cache::get($cacheKey);
-        
+
         if ($cachedBalance !== null) {
             return $cachedBalance;
         }
-        
+
         $availablePoints = DB::table('loyalty_points_expiry_schedule')
             ->where('customer_id', $customerId)
             ->where('expiry_status', 'active')
             ->where('expiry_date', '>', Carbon::now())
             ->sum('points_remaining');
-        
+
         // Cache the available balance
         Cache::put($cacheKey, $availablePoints, self::BALANCE_CACHE_TTL);
-        
+
         return $availablePoints;
     }
 
     /**
      * Reconcile customer points balance.
-     * 
-     * @param int $customerId Customer ID
+     *
+     * @param  int  $customerId  Customer ID
      * @return array Reconciliation result
-     * 
+     *
      * Requirements: 23.4
      */
     public function reconcileBalance(int $customerId): array
@@ -409,18 +412,18 @@ class LoyaltyLedgerService
         try {
             // Get ledger balance
             $ledgerBalance = $this->getCurrentBalance($customerId);
-            
+
             // Calculate balance from expiry schedule
             $expiryScheduleBalance = DB::table('loyalty_points_expiry_schedule')
                 ->where('customer_id', $customerId)
                 ->sum('points_remaining');
-            
+
             // Calculate variance
             $variance = $ledgerBalance - $expiryScheduleBalance;
-            
+
             // Determine variance status
             $varianceStatus = $this->determineVarianceStatus($variance);
-            
+
             // Create reconciliation log
             $reconciliationId = DB::table('loyalty_reconciliation_log')->insertGetId([
                 'reconciliation_type' => 'customer_dispute',
@@ -444,10 +447,10 @@ class LoyaltyLedgerService
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now(),
             ]);
-            
+
             // Clear caches
             $this->clearBalanceCache($customerId);
-            
+
             // Audit log
             $this->auditService->log('loyalty_balance_reconciled', [
                 'reconciliation_id' => $reconciliationId,
@@ -457,7 +460,7 @@ class LoyaltyLedgerService
                 'variance' => $variance,
                 'variance_status' => $varianceStatus,
             ]);
-            
+
             return [
                 'success' => true,
                 'reconciliation_id' => $reconciliationId,
@@ -468,13 +471,13 @@ class LoyaltyLedgerService
                 'variance_status' => $varianceStatus,
                 'requires_manual_review' => $varianceStatus !== 'no_variance',
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Failed to reconcile balance', [
                 'customer_id' => $customerId,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -484,11 +487,11 @@ class LoyaltyLedgerService
 
     /**
      * Get customer transaction history.
-     * 
-     * @param int $customerId Customer ID
-     * @param array $options Query options
+     *
+     * @param  int  $customerId  Customer ID
+     * @param  array  $options  Query options
      * @return array Transaction history
-     * 
+     *
      * Requirements: 23.3, 23.4
      */
     public function getTransactionHistory(int $customerId, array $options = []): array
@@ -499,30 +502,30 @@ class LoyaltyLedgerService
             $transactionType = $options['transaction_type'] ?? null;
             $startDate = $options['start_date'] ?? null;
             $endDate = $options['end_date'] ?? null;
-            
+
             $query = DB::table('loyalty_ledger')
                 ->where('customer_id', $customerId);
-            
+
             if ($transactionType) {
                 $query->where('transaction_type', $transactionType);
             }
-            
+
             if ($startDate) {
                 $query->where('transaction_timestamp', '>=', $startDate);
             }
-            
+
             if ($endDate) {
                 $query->where('transaction_timestamp', '<=', $endDate);
             }
-            
+
             $transactions = $query->orderBy('transaction_timestamp', 'desc')
                 ->orderBy('id', 'desc')
                 ->limit($limit)
                 ->offset($offset)
                 ->get();
-            
+
             $totalCount = $query->count();
-            
+
             return [
                 'success' => true,
                 'customer_id' => $customerId,
@@ -534,13 +537,13 @@ class LoyaltyLedgerService
                     'has_more' => ($offset + $limit) < $totalCount,
                 ],
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Failed to get transaction history', [
                 'customer_id' => $customerId,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -556,20 +559,20 @@ class LoyaltyLedgerService
     private function validateTransactionData(array $transactionData): void
     {
         $requiredFields = ['customer_id', 'transaction_type', 'points_delta', 'idempotency_key', 'transaction_reason'];
-        
+
         foreach ($requiredFields as $field) {
-            if (!isset($transactionData[$field])) {
+            if (! isset($transactionData[$field])) {
                 throw new \InvalidArgumentException("Missing required field: {$field}");
             }
         }
-        
+
         $validTypes = ['earn', 'redeem', 'expire', 'adjustment', 'bonus', 'penalty', 'transfer_in', 'transfer_out', 'refund'];
-        if (!in_array($transactionData['transaction_type'], $validTypes)) {
+        if (! in_array($transactionData['transaction_type'], $validTypes)) {
             throw new \InvalidArgumentException("Invalid transaction type: {$transactionData['transaction_type']}");
         }
-        
+
         if ($transactionData['points_delta'] > self::MAX_TRANSACTION_AMOUNT || $transactionData['points_delta'] < self::MIN_TRANSACTION_AMOUNT) {
-            throw new \InvalidArgumentException("Transaction amount out of allowed range");
+            throw new \InvalidArgumentException('Transaction amount out of allowed range');
         }
     }
 
@@ -582,7 +585,7 @@ class LoyaltyLedgerService
         if ($transactionData['points_delta'] < 0) {
             $newBalance = $currentBalance + $transactionData['points_delta'];
             if ($newBalance < 0) {
-                throw new \InvalidArgumentException("Transaction would result in negative balance");
+                throw new \InvalidArgumentException('Transaction would result in negative balance');
             }
         }
     }
@@ -595,11 +598,11 @@ class LoyaltyLedgerService
         if ($transactionData['transaction_type'] !== 'earn' || $transactionData['points_delta'] <= 0) {
             return null;
         }
-        
+
         if (isset($transactionData['expiry_date'])) {
             return Carbon::parse($transactionData['expiry_date']);
         }
-        
+
         return Carbon::now()->addMonths(self::DEFAULT_EXPIRY_MONTHS);
     }
 
@@ -611,9 +614,9 @@ class LoyaltyLedgerService
         if ($transactionData['points_delta'] <= 0) {
             return;
         }
-        
+
         $expiryDate = $this->calculateExpiryDate($transactionData);
-        
+
         DB::table('loyalty_points_expiry_schedule')->insert([
             'customer_id' => $transactionData['customer_id'],
             'earning_transaction_id' => $transactionId,
@@ -634,7 +637,7 @@ class LoyaltyLedgerService
     private function updateExpiryScheduleForRedemption(int $customerId, int $pointsToRedeem): void
     {
         $remainingToRedeem = $pointsToRedeem;
-        
+
         // Get active points in FIFO order (oldest first)
         $activePoints = DB::table('loyalty_points_expiry_schedule')
             ->where('customer_id', $customerId)
@@ -643,19 +646,19 @@ class LoyaltyLedgerService
             ->orderBy('earned_date')
             ->orderBy('id')
             ->get();
-        
+
         foreach ($activePoints as $pointBatch) {
             if ($remainingToRedeem <= 0) {
                 break;
             }
-            
+
             $pointsToUseFromBatch = min($remainingToRedeem, $pointBatch->points_remaining);
             $newRemainingPoints = $pointBatch->points_remaining - $pointsToUseFromBatch;
             $newUsedPoints = $pointBatch->points_used + $pointsToUseFromBatch;
-            
+
             // Determine new status
             $newStatus = $newRemainingPoints > 0 ? 'partially_used' : 'fully_used';
-            
+
             // Update the batch
             DB::table('loyalty_points_expiry_schedule')
                 ->where('id', $pointBatch->id)
@@ -665,7 +668,7 @@ class LoyaltyLedgerService
                     'expiry_status' => $newStatus,
                     'updated_at' => Carbon::now(),
                 ]);
-            
+
             $remainingToRedeem -= $pointsToUseFromBatch;
         }
     }
@@ -688,7 +691,7 @@ class LoyaltyLedgerService
      */
     private function generateIdempotencyKey(int $customerId, string $type, $identifier): string
     {
-        return hash('sha256', "{$customerId}:{$type}:{$identifier}:" . Carbon::now()->format('Y-m-d'));
+        return hash('sha256', "{$customerId}:{$type}:{$identifier}:".Carbon::now()->format('Y-m-d'));
     }
 
     /**
@@ -717,7 +720,7 @@ class LoyaltyLedgerService
         } elseif ($variance > 0) {
             return "Ledger balance is {$variance} points higher than expiry schedule";
         } else {
-            return "Ledger balance is " . abs($variance) . " points lower than expiry schedule";
+            return 'Ledger balance is '.abs($variance).' points lower than expiry schedule';
         }
     }
 
@@ -727,10 +730,10 @@ class LoyaltyLedgerService
     private function clearBalanceCache(int $customerId): void
     {
         $cacheKeys = [
-            self::CACHE_PREFIX . "balance:{$customerId}",
-            self::CACHE_PREFIX . "available_balance:{$customerId}",
+            self::CACHE_PREFIX."balance:{$customerId}",
+            self::CACHE_PREFIX."available_balance:{$customerId}",
         ];
-        
+
         foreach ($cacheKeys as $key) {
             Cache::forget($key);
         }

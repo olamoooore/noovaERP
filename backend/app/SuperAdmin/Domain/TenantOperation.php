@@ -25,8 +25,8 @@ class TenantOperation extends Model
     ];
 
     protected $casts = [
-        'payload'    => 'array',
-        'result'     => 'array',
+        'payload' => 'array',
+        'result' => 'array',
         'created_at' => 'datetime',
     ];
 

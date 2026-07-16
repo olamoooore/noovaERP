@@ -8,9 +8,9 @@ use Modules\EventManagement\Traits\HasTenantScope;
 
 /**
  * CustomerJourneyEvent Model
- * 
+ *
  * Tracks comprehensive customer behavior and journey analytics.
- * 
+ *
  * @property int $id
  * @property string $tenant_id
  * @property string $customer_id
@@ -146,7 +146,7 @@ class CustomerJourneyEvent extends Model
         ?array $metadata = null
     ): self {
         $request = request();
-        
+
         return self::create([
             'tenant_id' => $tenantId,
             'customer_id' => $customerId,
@@ -206,17 +206,17 @@ class CustomerJourneyEvent extends Model
         int $days = 30
     ): array {
         $results = [];
-        
+
         foreach ($eventTypes as $eventType) {
             $count = self::forTenant($tenantId)
                 ->byEventType($eventType)
                 ->recent($days)
                 ->distinct('customer_id')
                 ->count('customer_id');
-                
+
             $results[$eventType] = $count;
         }
-        
+
         return $results;
     }
 
@@ -233,7 +233,7 @@ class CustomerJourneyEvent extends Model
             'booking_started' => 'Booking Started',
             'booking_completed' => 'Booking Completed',
         ];
-        
+
         return self::getFunnelAnalysis($tenantId, array_keys($funnelSteps), $days);
     }
 
@@ -279,10 +279,12 @@ class CustomerJourneyEvent extends Model
      */
     private static function detectDeviceType(?string $userAgent): ?string
     {
-        if (!$userAgent) return null;
-        
+        if (! $userAgent) {
+            return null;
+        }
+
         $userAgent = strtolower($userAgent);
-        
+
         if (strpos($userAgent, 'mobile') !== false || strpos($userAgent, 'android') !== false || strpos($userAgent, 'iphone') !== false) {
             return 'mobile';
         } elseif (strpos($userAgent, 'tablet') !== false || strpos($userAgent, 'ipad') !== false) {
@@ -297,16 +299,28 @@ class CustomerJourneyEvent extends Model
      */
     private static function detectBrowser(?string $userAgent): ?string
     {
-        if (!$userAgent) return null;
-        
+        if (! $userAgent) {
+            return null;
+        }
+
         $userAgent = strtolower($userAgent);
-        
-        if (strpos($userAgent, 'chrome') !== false) return 'Chrome';
-        if (strpos($userAgent, 'firefox') !== false) return 'Firefox';
-        if (strpos($userAgent, 'safari') !== false) return 'Safari';
-        if (strpos($userAgent, 'edge') !== false) return 'Edge';
-        if (strpos($userAgent, 'opera') !== false) return 'Opera';
-        
+
+        if (strpos($userAgent, 'chrome') !== false) {
+            return 'Chrome';
+        }
+        if (strpos($userAgent, 'firefox') !== false) {
+            return 'Firefox';
+        }
+        if (strpos($userAgent, 'safari') !== false) {
+            return 'Safari';
+        }
+        if (strpos($userAgent, 'edge') !== false) {
+            return 'Edge';
+        }
+        if (strpos($userAgent, 'opera') !== false) {
+            return 'Opera';
+        }
+
         return 'Other';
     }
 
@@ -315,16 +329,28 @@ class CustomerJourneyEvent extends Model
      */
     private static function detectOS(?string $userAgent): ?string
     {
-        if (!$userAgent) return null;
-        
+        if (! $userAgent) {
+            return null;
+        }
+
         $userAgent = strtolower($userAgent);
-        
-        if (strpos($userAgent, 'windows') !== false) return 'Windows';
-        if (strpos($userAgent, 'mac') !== false) return 'macOS';
-        if (strpos($userAgent, 'linux') !== false) return 'Linux';
-        if (strpos($userAgent, 'android') !== false) return 'Android';
-        if (strpos($userAgent, 'ios') !== false || strpos($userAgent, 'iphone') !== false || strpos($userAgent, 'ipad') !== false) return 'iOS';
-        
+
+        if (strpos($userAgent, 'windows') !== false) {
+            return 'Windows';
+        }
+        if (strpos($userAgent, 'mac') !== false) {
+            return 'macOS';
+        }
+        if (strpos($userAgent, 'linux') !== false) {
+            return 'Linux';
+        }
+        if (strpos($userAgent, 'android') !== false) {
+            return 'Android';
+        }
+        if (strpos($userAgent, 'ios') !== false || strpos($userAgent, 'iphone') !== false || strpos($userAgent, 'ipad') !== false) {
+            return 'iOS';
+        }
+
         return 'Other';
     }
 

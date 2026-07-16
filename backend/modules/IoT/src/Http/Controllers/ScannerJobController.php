@@ -7,13 +7,13 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\IoT\Events\BarcodeScanned;
 use Modules\IoT\Models\DeviceConfiguration;
 use Modules\IoT\Models\ScanResult;
-use Modules\IoT\Events\BarcodeScanned;
 use Modules\IoT\Services\DeviceCommandRouter;
-use Modules\IoT\Services\QRCodeParserService;
-use Modules\IoT\Services\PalmVeinParserService;
 use Modules\IoT\Services\PalmVeinAttendanceService;
+use Modules\IoT\Services\PalmVeinParserService;
+use Modules\IoT\Services\QRCodeParserService;
 
 class ScannerJobController extends Controller
 {
@@ -36,21 +36,21 @@ class ScannerJobController extends Controller
         }
 
         $host = $request->getHost();
-        if (!$host) {
+        if (! $host) {
             return;
         }
 
         try {
             // Always query domains from the central (public) schema.
             // Temporarily set search_path to public to avoid tenant schema pollution.
-            DB::statement("SET search_path TO public");
+            DB::statement('SET search_path TO public');
             $domain = DB::table('domains')->where('domain', $host)->first();
 
             if ($domain) {
                 $tenant = \App\Models\Tenant::find($domain->tenant_id);
                 if ($tenant) {
                     Log::info('ScannerJobController: Initializing tenant from Host header', [
-                        'host'      => $host,
+                        'host' => $host,
                         'tenant_id' => $tenant->id,
                     ]);
                     tenancy()->initialize($tenant);
@@ -58,7 +58,7 @@ class ScannerJobController extends Controller
             }
         } catch (\Throwable $e) {
             Log::warning('ScannerJobController: Tenant resolution from Host header failed', [
-                'host'  => $host,
+                'host' => $host,
                 'error' => $e->getMessage(),
             ]);
         }
@@ -66,7 +66,7 @@ class ScannerJobController extends Controller
 
     /**
      * Start scanner listening mode.
-     * 
+     *
      * POST /api/v1/iot/agents/{agentId}/scanner/start-listening
      */
     public function startListening(Request $request, string $agentId): JsonResponse
@@ -87,14 +87,14 @@ class ScannerJobController extends Controller
             ->where('device_type', 'scanner')
             ->first();
 
-        if (!$device) {
+        if (! $device) {
             return response()->json([
                 'success' => false,
                 'message' => 'Scanner device not found',
             ], 404);
         }
 
-        if (!$device->enabled) {
+        if (! $device->enabled) {
             return response()->json([
                 'success' => false,
                 'message' => 'Scanner device is disabled',
@@ -149,7 +149,7 @@ class ScannerJobController extends Controller
 
     /**
      * Stop scanner listening mode.
-     * 
+     *
      * POST /api/v1/iot/agents/{agentId}/scanner/stop-listening
      */
     public function stopListening(Request $request, string $agentId): JsonResponse
@@ -165,7 +165,7 @@ class ScannerJobController extends Controller
             ->where('agent_id', $agentId)
             ->first();
 
-        if (!$device) {
+        if (! $device) {
             return response()->json([
                 'success' => false,
                 'message' => 'Device not found',
@@ -205,7 +205,7 @@ class ScannerJobController extends Controller
 
     /**
      * Agent reports scan result.
-     * 
+     *
      * POST /api/v1/iot/agents/{agentId}/scanner/scan-result
      */
     public function reportScanResult(Request $request, string $agentId): JsonResponse
@@ -243,15 +243,15 @@ class ScannerJobController extends Controller
 
         // Parse data based on device type
         $parsedData = $request->input('parsed');
-        
+
         // Handle palm vein data
-        if ($isPalmVeinScanner && !$parsedData) {
+        if ($isPalmVeinScanner && ! $parsedData) {
             $parsedData = $this->palmVeinParser->parse($barcode);
         }
-        
+
         // Handle QR data
         $looksLikeQr = $this->looksLikeQrData($barcode);
-        if (!$parsedData && ($isQrScanner || $looksLikeQr)) {
+        if (! $parsedData && ($isQrScanner || $looksLikeQr)) {
             $parsedData = $this->qrParser->parse($barcode);
         }
 
@@ -260,7 +260,7 @@ class ScannerJobController extends Controller
             $format = $this->palmVeinParser->detectFormat($barcode);
         } elseif ($looksLikeQr || $isQrScanner || ($parsedData && $parsedData['type'] !== 'text')) {
             $format = $this->qrParser->detectFormat($barcode);
-        } elseif (!$format) {
+        } elseif (! $format) {
             $format = $this->qrParser->detectFormat($barcode);
         }
 
@@ -307,21 +307,21 @@ class ScannerJobController extends Controller
 
             $attendanceResult = $this->palmVeinAttendance->processScan(
                 subjectCode: (string) $subjectCode,
-                deviceId:    $deviceId,
-                agentId:     $agentId,
-                capturedAt:  $timestamp,
+                deviceId: $deviceId,
+                agentId: $agentId,
+                capturedAt: $timestamp,
             );
 
             if ($attendanceResult['success']) {
                 Log::info('Palm vein attendance recorded via scan-result', [
                     'subject_code' => $subjectCode,
-                    'event_type'   => $attendanceResult['event_type'] ?? null,
-                    'employee_id'  => $attendanceResult['event']?->employee_id ?? null,
+                    'event_type' => $attendanceResult['event_type'] ?? null,
+                    'employee_id' => $attendanceResult['event']?->employee_id ?? null,
                 ]);
             } else {
                 Log::warning('Palm vein attendance failed', [
                     'subject_code' => $subjectCode,
-                    'message'      => $attendanceResult['message'],
+                    'message' => $attendanceResult['message'],
                 ]);
             }
         }
@@ -330,10 +330,10 @@ class ScannerJobController extends Controller
             'success' => true,
             'message' => 'Scan result recorded',
             'data' => [
-                'id'         => $scanResult->id,
-                'barcode'    => $barcode,
-                'format'     => $format,
-                'parsed'     => $parsedData,
+                'id' => $scanResult->id,
+                'barcode' => $barcode,
+                'format' => $format,
+                'parsed' => $parsedData,
                 'attendance' => $attendanceResult,
             ],
         ]);
@@ -345,7 +345,7 @@ class ScannerJobController extends Controller
     private function looksLikeQrData(string $data): bool
     {
         $upper = strtoupper($data);
-        
+
         // JSON
         if (str_starts_with($data, '{') || str_starts_with($data, '[')) {
             return true;

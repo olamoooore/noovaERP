@@ -9,7 +9,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('pos_orders')) {
+        if (! Schema::hasTable('pos_orders')) {
             return;
         }
 
@@ -50,7 +50,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (!Schema::hasTable('pos_orders')) {
+        if (! Schema::hasTable('pos_orders')) {
             return;
         }
 

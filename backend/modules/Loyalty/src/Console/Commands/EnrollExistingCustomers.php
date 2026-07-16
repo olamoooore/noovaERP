@@ -2,10 +2,9 @@
 
 namespace Modules\Loyalty\Console\Commands;
 
-use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use App\Models\Customer;
 use App\Models\Tenant;
+use Illuminate\Console\Command;
 use Modules\Loyalty\Models\CustomerLoyalty;
 use Modules\Loyalty\Models\LoyaltyProgram;
 
@@ -32,9 +31,10 @@ class EnrollExistingCustomers extends Command
     {
         $tenantId = $this->option('tenant');
 
-        if (!$tenantId) {
+        if (! $tenantId) {
             $this->error('The --tenant flag is required for this command.');
             $this->info('Usage: php artisan loyalty:enroll-existing --tenant=<tenant-id>');
+
             return self::FAILURE;
         }
 
@@ -51,8 +51,9 @@ class EnrollExistingCustomers extends Command
         try {
             // Get tenant model
             $tenant = Tenant::find($tenantId);
-            if (!$tenant) {
+            if (! $tenant) {
                 $this->error("Tenant {$tenantId} not found.");
+
                 return;
             }
 
@@ -61,8 +62,9 @@ class EnrollExistingCustomers extends Command
                 // Get active loyalty program
                 $program = LoyaltyProgram::where('is_active', true)->first();
 
-                if (!$program) {
+                if (! $program) {
                     $this->warn("No active loyalty program found for tenant {$tenantId}. Skipping.");
+
                     return;
                 }
 
@@ -86,6 +88,7 @@ class EnrollExistingCustomers extends Command
 
                 if ($customersToEnroll->isEmpty()) {
                     $this->info('All customers are already enrolled in the loyalty program.');
+
                     return;
                 }
 
@@ -117,7 +120,7 @@ class EnrollExistingCustomers extends Command
                 }
 
                 $this->info("Tenant {$tenantId}: Enrolled {$enrolledCount} customers");
-                
+
                 if ($errorCount > 0) {
                     $this->warn("Tenant {$tenantId}: Failed to enroll {$errorCount} customers");
                 }

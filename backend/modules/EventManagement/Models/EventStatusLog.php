@@ -7,10 +7,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * EventStatusLog Model
- * 
+ *
  * Represents real-time event status tracking with comprehensive
  * change logging and impact assessment.
- * 
+ *
  * @property int $id
  * @property string $tenant_id
  * @property int $event_id
@@ -47,6 +47,7 @@ class EventStatusLog extends Model
 
     // No soft deletes - status logs are permanent records
     public $timestamps = true;
+
     const UPDATED_AT = null; // Only created_at, no updated_at
 
     protected $fillable = [
@@ -141,7 +142,7 @@ class EventStatusLog extends Model
      */
     public function isCurrentlyEffective(): bool
     {
-        if (!$this->effective_until) {
+        if (! $this->effective_until) {
             return true; // No expiration means it's still effective
         }
 
@@ -198,6 +199,7 @@ class EventStatusLog extends Model
             ->first();
 
         $endTime = $nextStatusChange ? $nextStatusChange->status_changed_at : now();
+
         return $this->status_changed_at->diffInMinutes($endTime);
     }
 
@@ -239,7 +241,7 @@ class EventStatusLog extends Model
      */
     public function getNotificationChannelsDisplayAttribute(): string
     {
-        if (!$this->notification_channels) {
+        if (! $this->notification_channels) {
             return 'None';
         }
 
@@ -336,7 +338,7 @@ class EventStatusLog extends Model
     {
         return $query->where(function ($q) {
             $q->whereNull('effective_until')
-              ->orWhere('effective_until', '>', now());
+                ->orWhere('effective_until', '>', now());
         });
     }
 

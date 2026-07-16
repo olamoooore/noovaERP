@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChartOfAccount;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class ChartOfAccountsController extends Controller
 {
@@ -31,27 +31,27 @@ class ChartOfAccountsController extends Controller
             // Search
             if ($request->has('search')) {
                 $search = $request->search;
-                $query->where(function($q) use ($search) {
+                $query->where(function ($q) use ($search) {
                     $q->where('code', 'ILIKE', "%{$search}%")
-                      ->orWhere('name', 'ILIKE', "%{$search}%");
+                        ->orWhere('name', 'ILIKE', "%{$search}%");
                 });
             }
 
             $accounts = $query->orderBy('code')->get();
 
             // Add balance to each account
-            $accounts->each(function($account) {
+            $accounts->each(function ($account) {
                 $account->balance = $account->getBalance();
             });
 
             return response()->json([
-                'data' => $accounts
+                'data' => $accounts,
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to fetch accounts',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -75,8 +75,9 @@ class ChartOfAccountsController extends Controller
                 if ($account->parent_id === null) {
                     return true;
                 }
+
                 // If parent is inactive or doesn't exist, treat as root
-                return !isset($accountMap[$account->parent_id]);
+                return ! isset($accountMap[$account->parent_id]);
             })->values();
 
             // Recursively build tree
@@ -104,14 +105,15 @@ class ChartOfAccountsController extends Controller
             };
 
             return response()->json([
-                'data' => $buildTree($roots)
+                'data' => $buildTree($roots),
             ]);
 
         } catch (\Exception $e) {
             \Log::error('Failed to fetch account tree', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'message' => 'Failed to fetch account tree',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -126,13 +128,13 @@ class ChartOfAccountsController extends Controller
             $account->balance = $account->getBalance();
 
             return response()->json([
-                'data' => $account
+                'data' => $account,
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Account not found',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 404);
         }
     }
@@ -158,19 +160,19 @@ class ChartOfAccountsController extends Controller
 
             return response()->json([
                 'data' => $account,
-                'message' => 'Account created successfully'
+                'message' => 'Account created successfully',
             ], 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
 
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to create account',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -196,12 +198,12 @@ class ChartOfAccountsController extends Controller
 
                 return response()->json([
                     'data' => $account,
-                    'message' => 'System account updated successfully'
+                    'message' => 'System account updated successfully',
                 ]);
             }
 
             $validated = $request->validate([
-                'code' => 'required|string|max:20|unique:chart_of_accounts,code,' . $id,
+                'code' => 'required|string|max:20|unique:chart_of_accounts,code,'.$id,
                 'name' => 'required|string|max:255',
                 'type' => 'required|in:asset,liability,equity,revenue,expense',
                 'subtype' => 'nullable|string|max:50',
@@ -211,10 +213,10 @@ class ChartOfAccountsController extends Controller
             ]);
 
             // Prevent setting self as parent
-            if (!empty($validated['parent_id']) && (int) $validated['parent_id'] === (int) $id) {
+            if (! empty($validated['parent_id']) && (int) $validated['parent_id'] === (int) $id) {
                 return response()->json([
                     'message' => 'Validation failed',
-                    'errors' => ['parent_id' => ['An account cannot be its own parent.']]
+                    'errors' => ['parent_id' => ['An account cannot be its own parent.']],
                 ], 422);
             }
 
@@ -222,19 +224,19 @@ class ChartOfAccountsController extends Controller
 
             return response()->json([
                 'data' => $account,
-                'message' => 'Account updated successfully'
+                'message' => 'Account updated successfully',
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
 
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to update account',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -250,34 +252,34 @@ class ChartOfAccountsController extends Controller
             // Prevent deleting system accounts
             if ($account->is_system) {
                 return response()->json([
-                    'message' => 'Cannot delete system accounts'
+                    'message' => 'Cannot delete system accounts',
                 ], 403);
             }
 
             // Check if account has transactions
             if ($account->journalEntryLines()->exists()) {
                 return response()->json([
-                    'message' => 'Cannot delete account with transactions'
+                    'message' => 'Cannot delete account with transactions',
                 ], 403);
             }
 
             // Check if account has children
             if ($account->children()->exists()) {
                 return response()->json([
-                    'message' => 'Cannot delete account with sub-accounts'
+                    'message' => 'Cannot delete account with sub-accounts',
                 ], 403);
             }
 
             $account->delete();
 
             return response()->json([
-                'message' => 'Account deleted successfully'
+                'message' => 'Account deleted successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to delete account',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -296,6 +298,7 @@ class ChartOfAccountsController extends Controller
         if (str_ends_with($code, '00')) {
             return 2;
         }
+
         return 3;
     }
 }

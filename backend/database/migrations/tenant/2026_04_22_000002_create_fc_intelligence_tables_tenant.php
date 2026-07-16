@@ -12,7 +12,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('fci_ai_findings')) {
+        if (! Schema::hasTable('fci_ai_findings')) {
             Schema::create('fci_ai_findings', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -37,7 +37,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fci_ai_feedback')) {
+        if (! Schema::hasTable('fci_ai_feedback')) {
             Schema::create('fci_ai_feedback', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -53,7 +53,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fci_close_readiness_snapshots')) {
+        if (! Schema::hasTable('fci_close_readiness_snapshots')) {
             Schema::create('fci_close_readiness_snapshots', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');

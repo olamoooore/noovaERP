@@ -6,13 +6,10 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Modules\EventManagement\Services\EventQueueService;
-use Modules\EventManagement\Models\QueueConfig;
-use Modules\EventManagement\Models\QueueSession;
 
 class EventQueueController extends Controller
 {
-    public function __construct(private EventQueueService $queueService)
-    {}
+    public function __construct(private EventQueueService $queueService) {}
 
     public function join(Request $request): JsonResponse
     {
@@ -52,7 +49,7 @@ class EventQueueController extends Controller
             $validated['queue_token']
         );
 
-        if (!$status) {
+        if (! $status) {
             return response()->json([
                 'success' => false,
                 'error' => 'QUEUE_TOKEN_NOT_FOUND',
@@ -78,7 +75,7 @@ class EventQueueController extends Controller
             $validated['queue_token']
         );
 
-        if (!$status) {
+        if (! $status) {
             return response()->json([
                 'success' => false,
                 'error' => 'QUEUE_TOKEN_NOT_FOUND',
@@ -160,7 +157,7 @@ class EventQueueController extends Controller
             'success' => true,
             'data' => [
                 'can_proceed' => $canProceed,
-                'requires_queue' => !$canProceed,
+                'requires_queue' => ! $canProceed,
             ],
         ]);
     }

@@ -11,10 +11,10 @@ return new class extends Migration
         Schema::table('pos_payments', function (Blueprint $table) {
             // Drop the foreign key constraint first
             $table->dropForeign(['received_by']);
-            
+
             // Make received_by nullable
             $table->unsignedBigInteger('received_by')->nullable()->change();
-            
+
             // Re-add the foreign key constraint with nullable
             $table->foreign('received_by')->references('id')->on('users')->nullOnDelete();
         });

@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class AccountingDashboardController extends Controller
@@ -31,9 +31,10 @@ class AccountingDashboardController extends Controller
 
             return response()->json($metrics);
         } catch (\Exception $e) {
-            \Log::error('Dashboard error: ' . $e->getMessage(), [
+            \Log::error('Dashboard error: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
                 'error' => 'Failed to load dashboard',
                 'message' => $e->getMessage(),
@@ -59,7 +60,7 @@ class AccountingDashboardController extends Controller
 
         return [
             'percentage' => round($coverage, 2),
-            'formatted' => round($coverage, 1) . '%',
+            'formatted' => round($coverage, 1).'%',
         ];
     }
 
@@ -76,7 +77,7 @@ class AccountingDashboardController extends Controller
             ->whereIn('status', ['posted', 'sent', 'overdue', 'partial'])
             ->where(function ($q) {
                 $q->whereNull('balance')
-                  ->orWhere('balance', '>', 0);
+                    ->orWhere('balance', '>', 0);
             })
             ->selectRaw('COALESCE(SUM(COALESCE(balance, total)), 0) as total')
             ->first();
@@ -85,7 +86,7 @@ class AccountingDashboardController extends Controller
 
         return [
             'amount' => $amount,
-            'formatted' => '$' . number_format($amount, 2),
+            'formatted' => '$'.number_format($amount, 2),
         ];
     }
 
@@ -107,7 +108,7 @@ class AccountingDashboardController extends Controller
 
         return [
             'amount' => $amount,
-            'formatted' => '$' . number_format($amount, 2),
+            'formatted' => '$'.number_format($amount, 2),
         ];
     }
 
@@ -129,7 +130,7 @@ class AccountingDashboardController extends Controller
 
         return [
             'amount' => round((float) $total, 2),
-            'formatted' => '$' . number_format(round((float) $total, 2), 2),
+            'formatted' => '$'.number_format(round((float) $total, 2), 2),
         ];
     }
 
@@ -145,7 +146,7 @@ class AccountingDashboardController extends Controller
     {
         $count = 0;
 
-        if (!Schema::hasTable('journal_entry_lines') || !Schema::hasTable('bank_accounts')) {
+        if (! Schema::hasTable('journal_entry_lines') || ! Schema::hasTable('bank_accounts')) {
             return ['count' => $count];
         }
 
@@ -196,7 +197,7 @@ class AccountingDashboardController extends Controller
                     ];
                 }
             }
-            
+
             \Log::debug('AccountingDashboard unreconciled count', [
                 'total_count' => $count,
                 'bank_accounts_considered' => $bankGlAccountIds->count(),
@@ -229,7 +230,7 @@ class AccountingDashboardController extends Controller
             ->orderBy('i.invoice_date', 'desc')
             ->limit(5)
             ->get()
-            ->map(function($invoice) {
+            ->map(function ($invoice) {
                 return [
                     'id' => $invoice->id,
                     'invoice_number' => $invoice->invoice_number,
@@ -259,7 +260,7 @@ class AccountingDashboardController extends Controller
             ->orderBy('b.bill_date', 'desc')
             ->limit(5)
             ->get()
-            ->map(function($bill) {
+            ->map(function ($bill) {
                 return [
                     'id' => $bill->id,
                     'bill_number' => $bill->bill_number,

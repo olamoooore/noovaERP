@@ -2,23 +2,27 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use App\Models\User;
-use App\Models\Product;
 use App\Models\Customer;
+use App\Models\Product;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class PosOrderStateMachineTest extends TestCase
 {
     use RefreshDatabase;
 
     protected User $user;
+
     protected Product $product;
+
     protected Customer $customer;
+
     protected PosTerminal $terminal;
+
     protected PosSession $session;
 
     protected function setUp(): void
@@ -149,7 +153,7 @@ class PosOrderStateMachineTest extends TestCase
         // Attempt invalid transition
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage("Invalid state transition from 'void' to 'paid'");
-        
+
         $order->transitionTo('paid');
     }
 
@@ -168,7 +172,7 @@ class PosOrderStateMachineTest extends TestCase
         // Attempt invalid transition
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage("Invalid state transition from 'refunded' to 'void'");
-        
+
         $order->transitionTo('void');
     }
 
@@ -185,7 +189,7 @@ class PosOrderStateMachineTest extends TestCase
         // Attempt invalid transition
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage("Invalid state transition from 'draft' to 'returned'");
-        
+
         $order->transitionTo('returned');
     }
 
@@ -202,7 +206,7 @@ class PosOrderStateMachineTest extends TestCase
         // Attempt invalid transition
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage("Invalid state transition from 'draft' to 'refunded'");
-        
+
         $order->transitionTo('refunded');
     }
 
@@ -260,14 +264,14 @@ class PosOrderStateMachineTest extends TestCase
     public function test_validate_transition_throws_exception_for_invalid_status()
     {
         $order = $this->createDraftOrder();
-        
+
         // Manually set invalid status
         $order->status = 'invalid_status';
 
         // Attempt transition
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage("Invalid current status: invalid_status");
-        
+        $this->expectExceptionMessage('Invalid current status: invalid_status');
+
         $order->validateTransition('paid');
     }
 
@@ -288,6 +292,7 @@ class PosOrderStateMachineTest extends TestCase
         ]);
 
         $response->assertStatus(201);
+
         return PosOrder::find($response->json('id'));
     }
 

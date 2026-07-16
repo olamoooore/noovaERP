@@ -4,9 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Chart of Accounts - Foundation of double-entry system
@@ -83,7 +83,7 @@ class ChartOfAccount extends Model
             ? $this->children->isNotEmpty()
             : $this->children()->exists();
 
-        if (!$hasParent && $hasChildren) {
+        if (! $hasParent && $hasChildren) {
             return 1;
         }
         if ($hasParent && $hasChildren) {
@@ -105,7 +105,7 @@ class ChartOfAccount extends Model
     public function getBalance(): float
     {
         $lines = $this->journalEntryLines()
-            ->whereHas('journalEntry', fn($q) => $q->where('status', 'posted'))
+            ->whereHas('journalEntry', fn ($q) => $q->where('status', 'posted'))
             ->selectRaw('SUM(debit) as total_debit, SUM(credit) as total_credit')
             ->first();
 

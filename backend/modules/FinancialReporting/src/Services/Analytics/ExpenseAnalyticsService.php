@@ -39,9 +39,9 @@ class ExpenseAnalyticsService
 
         // Categorize expenses by account code ranges
         $categorized = [
-            'cogs' => $expenses->filter(fn($e) => $e->account_code >= 5000 && $e->account_code < 6000),
-            'operating' => $expenses->filter(fn($e) => $e->account_code >= 6000 && $e->account_code < 7000),
-            'other' => $expenses->filter(fn($e) => $e->account_code >= 7000),
+            'cogs' => $expenses->filter(fn ($e) => $e->account_code >= 5000 && $e->account_code < 6000),
+            'operating' => $expenses->filter(fn ($e) => $e->account_code >= 6000 && $e->account_code < 7000),
+            'other' => $expenses->filter(fn ($e) => $e->account_code >= 7000),
         ];
 
         $summary = [
@@ -59,7 +59,7 @@ class ExpenseAnalyticsService
                 'start_date' => $startDate->format('Y-m-d'),
                 'end_date' => $endDate->format('Y-m-d'),
             ],
-            'data' => $expenses->map(fn($item) => [
+            'data' => $expenses->map(fn ($item) => [
                 'account_id' => $item->account_id,
                 'account_name' => $item->account_name,
                 'account_code' => $item->account_code,
@@ -100,7 +100,7 @@ class ExpenseAnalyticsService
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
 
         // Check if vendors table and dimensions column exist
-        if (!$this->tableExists('vendors')) {
+        if (! $this->tableExists('vendors')) {
             return [
                 'title' => 'Expenses by Vendor',
                 'period' => [
@@ -126,7 +126,7 @@ class ExpenseAnalyticsService
             $hasDimensions = false;
         }
 
-        if (!$hasDimensions) {
+        if (! $hasDimensions) {
             return [
                 'title' => 'Expenses by Vendor',
                 'period' => [
@@ -149,7 +149,7 @@ class ExpenseAnalyticsService
         $expenses = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
-            ->leftJoin('vendors as v', function($join) {
+            ->leftJoin('vendors as v', function ($join) {
                 $join->on(DB::raw("(je.dimensions->>'vendor_id')::bigint"), '=', 'v.id');
             })
             ->whereBetween('je.entry_date', [$startDate, $endDate])
@@ -180,7 +180,7 @@ class ExpenseAnalyticsService
                 'start_date' => $startDate->format('Y-m-d'),
                 'end_date' => $endDate->format('Y-m-d'),
             ],
-            'data' => $expenses->map(fn($item) => [
+            'data' => $expenses->map(fn ($item) => [
                 'vendor_id' => $item->vendor_id,
                 'vendor_name' => $item->vendor_name ?? 'Unknown',
                 'total_spending' => round($item->total_amount, 2),
@@ -201,7 +201,7 @@ class ExpenseAnalyticsService
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
 
         // Check if departments table and dimensions column exist
-        if (!$this->tableExists('departments')) {
+        if (! $this->tableExists('departments')) {
             return [
                 'title' => 'Expenses by Department',
                 'period' => [
@@ -227,7 +227,7 @@ class ExpenseAnalyticsService
             $hasDimensions = false;
         }
 
-        if (!$hasDimensions) {
+        if (! $hasDimensions) {
             return [
                 'title' => 'Expenses by Department',
                 'period' => [
@@ -250,7 +250,7 @@ class ExpenseAnalyticsService
         $expenses = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
-            ->leftJoin('departments as d', function($join) {
+            ->leftJoin('departments as d', function ($join) {
                 $join->on(DB::raw("(je.dimensions->>'department_id')::bigint"), '=', 'd.id');
             })
             ->whereBetween('je.entry_date', [$startDate, $endDate])
@@ -282,7 +282,7 @@ class ExpenseAnalyticsService
                 'start_date' => $startDate->format('Y-m-d'),
                 'end_date' => $endDate->format('Y-m-d'),
             ],
-            'data' => $expenses->map(fn($item) => [
+            'data' => $expenses->map(fn ($item) => [
                 'department_id' => $item->department_id,
                 'department_name' => $item->department_name ?? 'Unknown',
                 'total_expenses' => round($item->total_amount, 2),
@@ -303,7 +303,7 @@ class ExpenseAnalyticsService
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
 
         // Determine date format based on interval
-        $dateFormat = match($interval) {
+        $dateFormat = match ($interval) {
             'day' => 'YYYY-MM-DD',
             'week' => 'IYYY-IW',
             'month' => 'YYYY-MM',
@@ -375,12 +375,12 @@ class ExpenseAnalyticsService
     public function getTopExpenseAccounts(ReportFilter $filter, int $limit = 10): array
     {
         $report = $this->getExpensesByCategory($filter);
-        
+
         if (isset($report['data'])) {
             $report['data'] = array_slice($report['data'], 0, $limit);
             $report['title'] = "Top {$limit} Expense Accounts";
         }
-        
+
         return $report;
     }
 
@@ -396,7 +396,7 @@ class ExpenseAnalyticsService
         } elseif ($code >= 7000) {
             return 'Other Expenses';
         }
-        
+
         return 'Uncategorized';
     }
 

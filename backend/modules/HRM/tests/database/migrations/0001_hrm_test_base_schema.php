@@ -69,10 +69,10 @@ return new class extends Migration
         });
 
         // ── Spatie permissions ────────────────────────────────────────
-        $tableNames   = config('permission.table_names');
-        $columnNames  = config('permission.column_names');
-        $pivotRole    = $columnNames['role_pivot_key']       ?? 'role_id';
-        $pivotPerm    = $columnNames['permission_pivot_key'] ?? 'permission_id';
+        $tableNames = config('permission.table_names');
+        $columnNames = config('permission.column_names');
+        $pivotRole = $columnNames['role_pivot_key'] ?? 'role_id';
+        $pivotPerm = $columnNames['permission_pivot_key'] ?? 'permission_id';
 
         Schema::create($tableNames['permissions'], function (Blueprint $table) {
             $table->id();

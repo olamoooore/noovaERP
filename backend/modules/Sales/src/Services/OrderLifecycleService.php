@@ -3,10 +3,10 @@
 namespace Modules\Sales\Services;
 
 use Illuminate\Support\Facades\Auth;
-use Modules\Sales\Models\SalesOrder;
-use Modules\Sales\Models\SalesOrderStatusHistory;
 use Illuminate\Support\Facades\DB;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
+use Modules\Sales\Models\SalesOrder;
+use Modules\Sales\Models\SalesOrderStatusHistory;
 
 class OrderLifecycleService
 {
@@ -30,7 +30,7 @@ class OrderLifecycleService
             $fromStatus = $order->status;
             $actorId = TenantUserHelper::resolveTenantUserId(Auth::id());
 
-            if (!in_array($toStatus, self::TRANSITIONS[$fromStatus] ?? [])) {
+            if (! in_array($toStatus, self::TRANSITIONS[$fromStatus] ?? [])) {
                 throw new \InvalidArgumentException(
                     "Cannot transition sales order #{$order->id} from '{$fromStatus}' to '{$toStatus}'."
                 );

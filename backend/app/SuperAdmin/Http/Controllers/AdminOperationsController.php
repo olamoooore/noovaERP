@@ -11,8 +11,8 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
-use Stancl\Tenancy\Database\Models\Tenant;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
+use Stancl\Tenancy\Database\Models\Tenant;
 
 class AdminOperationsController extends Controller
 {
@@ -22,7 +22,7 @@ class AdminOperationsController extends Controller
         Gate::authorize('run-bulk-operations');
 
         $validated = $request->validate([
-            'tenant_ids'   => ['nullable', 'array', 'max:200'],
+            'tenant_ids' => ['nullable', 'array', 'max:200'],
             'tenant_ids.*' => ['string'],
         ]);
 
@@ -45,8 +45,8 @@ class AdminOperationsController extends Controller
         return response()->json([
             'data' => [
                 'batch_id' => $batchId,
-                'total'    => count($tenantIds),
-                'status'   => 'queued',
+                'total' => count($tenantIds),
+                'status' => 'queued',
             ],
         ], 202);
     }

@@ -10,12 +10,13 @@ use Modules\HRM\Tests\HrmTestCase;
 class EmployeeUserLinkApiTest extends HrmTestCase
 {
     private User $user;
+
     private Employee $employee;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user     = User::factory()->create();
+        $this->user = User::factory()->create();
         $this->employee = Employee::factory()->create(['status' => 'active']);
         $this->actingAs($this->user, 'sanctum');
     }
@@ -25,8 +26,8 @@ class EmployeeUserLinkApiTest extends HrmTestCase
         $linkedUser = User::factory()->create();
         EmployeeUserLink::create([
             'employee_id' => $this->employee->id,
-            'user_id'     => $linkedUser->id,
-            'type'        => 'primary',
+            'user_id' => $linkedUser->id,
+            'type' => 'primary',
         ]);
 
         $response = $this->getJson("/api/v1/hrm/employees/{$this->employee->id}/user-links");
@@ -43,7 +44,7 @@ class EmployeeUserLinkApiTest extends HrmTestCase
 
         $response = $this->postJson("/api/v1/hrm/employees/{$this->employee->id}/user-links", [
             'user_id' => $linkedUser->id,
-            'type'    => 'primary',
+            'type' => 'primary',
         ]);
 
         $response->assertStatus(201);
@@ -51,7 +52,7 @@ class EmployeeUserLinkApiTest extends HrmTestCase
         $response->assertJsonPath('data.type', 'primary');
         $this->assertDatabaseHas('hrm_employee_user_links', [
             'employee_id' => $this->employee->id,
-            'user_id'     => $linkedUser->id,
+            'user_id' => $linkedUser->id,
         ]);
     }
 
@@ -61,8 +62,8 @@ class EmployeeUserLinkApiTest extends HrmTestCase
 
         EmployeeUserLink::create([
             'employee_id' => $this->employee->id,
-            'user_id'     => $linkedUser->id,
-            'type'        => 'primary',
+            'user_id' => $linkedUser->id,
+            'type' => 'primary',
         ]);
 
         $response = $this->postJson("/api/v1/hrm/employees/{$this->employee->id}/user-links", [
@@ -78,8 +79,8 @@ class EmployeeUserLinkApiTest extends HrmTestCase
         $linkedUser = User::factory()->create();
         $link = EmployeeUserLink::create([
             'employee_id' => $this->employee->id,
-            'user_id'     => $linkedUser->id,
-            'type'        => 'primary',
+            'user_id' => $linkedUser->id,
+            'type' => 'primary',
         ]);
 
         $response = $this->deleteJson("/api/v1/hrm/employees/{$this->employee->id}/user-links/{$link->id}");

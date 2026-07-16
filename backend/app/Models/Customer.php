@@ -4,17 +4,16 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Notifications\Notifiable;
 use Modules\POS\Models\PosOrder;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class Customer extends Model
 {
-    use HasFactory, SoftDeletes, Notifiable;
+    use HasFactory, Notifiable, SoftDeletes;
 
     protected $fillable = [
         // Basic Info
@@ -30,36 +29,36 @@ class Customer extends Model
         'company_registration_number',
         'website',
         'language',
-        
+
         // Addresses (legacy - use customer_addresses for multiple)
         'billing_address',
         'shipping_address',
-        
+
         // Financial
         'credit_limit',
         'payment_terms',
         'total_outstanding',
         'price_list_id',
-        
+
         // Personal (for individuals)
         'date_of_birth',
         'gender',
-        
+
         // Relationships
         'parent_id',
         'salesperson_id',
-        
+
         // Preferences
         'preferred_contact',
         'marketing_opt_in',
-        
+
         // Stats
         'customer_since',
         'last_interaction_at',
         'total_purchases',
         'total_orders',
         'average_order_value',
-        
+
         // Status
         'is_active',
         'notes',
@@ -233,7 +232,8 @@ class Customer extends Model
         if ($this->type === 'company' && $this->company) {
             return $this->company;
         }
-        return $this->name . ($this->company ? " ({$this->company})" : '');
+
+        return $this->name.($this->company ? " ({$this->company})" : '');
     }
 
     /**
@@ -246,7 +246,7 @@ class Customer extends Model
         if ($customerLoyalty) {
             return $customerLoyalty->current_points ?? 0;
         }
-        
+
         // Fallback to legacy loyaltyBalances relationship
         return $this->loyaltyBalances()->sum('points_balance') ?? 0;
     }
@@ -275,15 +275,15 @@ class Customer extends Model
         $posOrderCount = $this->posOrders()->where('status', 'paid')->where('is_return', false)->count();
         $invoiceCount = $this->invoices()->whereIn('status', ['sent', 'paid'])->count();
         $this->total_orders = $posOrderCount + $invoiceCount;
-        
+
         $posTotal = $this->posOrders()->where('status', 'paid')->where('is_return', false)->sum('total');
         $invoiceTotal = $this->invoices()->whereIn('status', ['sent', 'paid'])->sum('total');
         $this->total_purchases = $posTotal + $invoiceTotal;
-        
-        $this->average_order_value = $this->total_orders > 0 
-            ? $this->total_purchases / $this->total_orders 
+
+        $this->average_order_value = $this->total_orders > 0
+            ? $this->total_purchases / $this->total_orders
             : 0;
-        
+
         $this->last_interaction_at = now();
         $this->save();
     }
@@ -291,7 +291,7 @@ class Customer extends Model
     /**
      * @deprecated Legacy loyalty methods removed. Use Modules\Loyalty\Services\PointsEarningService
      * and Modules\Loyalty\Services\RedemptionService instead.
-     * 
+     *
      * Migration: All loyalty operations must go through canonical Loyalty module services.
      * - For earning points: app(PointsEarningService::class)->awardPoints(...)
      * - For redeeming points: app(RedemptionService::class)->redeemForDiscount(...)
@@ -302,18 +302,18 @@ class Customer extends Model
      */
     public function getProductPrice(Product $product): ?float
     {
-        if (!$this->price_list_id) {
+        if (! $this->price_list_id) {
             return null;
         }
-        
+
         $priceListItem = CustomerPriceListItem::where('price_list_id', $this->price_list_id)
             ->where('product_id', $product->id)
             ->first();
-        
+
         if ($priceListItem) {
             return $priceListItem->price;
         }
-        
+
         // Apply general price list discount
         $priceList = $this->priceList;
         if ($priceList && $priceList->discount_value > 0) {
@@ -321,9 +321,10 @@ class Customer extends Model
             if ($priceList->discount_type === 'percentage') {
                 return $basePrice * (1 - $priceList->discount_value / 100);
             }
+
             return max(0, $basePrice - $priceList->discount_value);
         }
-        
+
         return null;
     }
 
@@ -333,17 +334,17 @@ class Customer extends Model
     public static function generateCode(string $prefix = 'CUST'): string
     {
         $lastCustomer = static::withTrashed()
-            ->where('code', 'like', $prefix . '%')
+            ->where('code', 'like', $prefix.'%')
             ->orderBy('code', 'desc')
             ->first();
-        
+
         if ($lastCustomer && preg_match('/(\d+)$/', $lastCustomer->code, $matches)) {
             $number = intval($matches[1]) + 1;
         } else {
             $number = 1;
         }
-        
-        return $prefix . str_pad($number, 6, '0', STR_PAD_LEFT);
+
+        return $prefix.str_pad($number, 6, '0', STR_PAD_LEFT);
     }
 
     /**
@@ -374,7 +375,7 @@ class Customer extends Model
                 $customer->marketing_opt_in = false;
             }
         });
-        
+
         static::creating(function ($customer) {
             if (empty($customer->code)) {
                 $customer->code = static::generateCode();

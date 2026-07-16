@@ -19,12 +19,19 @@ abstract class DomainEvent implements DomainEventContract
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     protected string $eventName;
+
     protected string $version = '1.0.0';
+
     protected string $tenantId;
+
     protected ?string $userId = null;
+
     protected string $correlationId;
+
     protected string $occurredAt;
+
     protected string $sourceModule;
+
     protected bool $idempotent = true;
 
     public function __construct(

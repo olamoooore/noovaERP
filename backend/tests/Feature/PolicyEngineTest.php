@@ -4,17 +4,15 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\User;
 use App\Platform\Policies\PolicyEngine;
 use App\Platform\Policies\PolicyResult;
-use App\Platform\Policies\PolicyRule;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TenantTestCase;
 
 class PolicyEngineTest extends TenantTestCase
 {
     protected string $tenantUuid;
+
     protected PolicyEngine $service;
 
     protected function setUp(): void
@@ -23,7 +21,7 @@ class PolicyEngineTest extends TenantTestCase
 
         $this->tenantUuid = Str::uuid()->toString();
         $this->bindTenantContext($this->tenantUuid);
-        $this->service = new PolicyEngine();
+        $this->service = new PolicyEngine;
     }
 
     public function test_register_creates_rule(): void

@@ -3,7 +3,6 @@
 namespace App\Platform\DataQuality;
 
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -94,9 +93,9 @@ class DataQualityRulesService
     /**
      * Run data quality rules on a specific table.
      *
-     * @param string $tableName The table to check
-     * @param array $rules Rules to apply (empty = all applicable rules)
-     * @param array $options Additional options (tenant_id, limit, etc.)
+     * @param  string  $tableName  The table to check
+     * @param  array  $rules  Rules to apply (empty = all applicable rules)
+     * @param  array  $options  Additional options (tenant_id, limit, etc.)
      * @return array{passed: bool, score: float, violations: array, summary: array}
      */
     public function validateTable(string $tableName, array $rules = [], array $options = []): array
@@ -133,7 +132,7 @@ class DataQualityRulesService
         // Run business rules if applicable
         $businessRules = $this->getBusinessRulesForTable($tableName);
         foreach ($businessRules as $ruleName) {
-            if (!empty($rules) && !in_array($ruleName, $rules)) {
+            if (! empty($rules) && ! in_array($ruleName, $rules)) {
                 continue;
             }
             $totalChecks++;
@@ -156,7 +155,7 @@ class DataQualityRulesService
                 'total_checks' => $totalChecks,
                 'passed_checks' => $passedChecks,
                 'failed_checks' => count($violations),
-                'score' => round($score * 100, 2) . '%',
+                'score' => round($score * 100, 2).'%',
             ],
         ];
     }
@@ -164,8 +163,7 @@ class DataQualityRulesService
     /**
      * Calculate overall data quality score across multiple tables.
      *
-     * @param array $tables Tables to check
-     * @param array $options
+     * @param  array  $tables  Tables to check
      * @return array{overall_score: float, table_scores: array, violations: array}
      */
     public function calculateOverallScore(array $tables, array $options = []): array
@@ -189,7 +187,7 @@ class DataQualityRulesService
             'violations' => $allViolations,
             'summary' => [
                 'tables_checked' => count($tables),
-                'overall_score' => round($overallScore * 100, 2) . '%',
+                'overall_score' => round($overallScore * 100, 2).'%',
                 'total_violations' => count($allViolations),
             ],
         ];
@@ -198,9 +196,6 @@ class DataQualityRulesService
     /**
      * Run a specific rule on a table.
      *
-     * @param string $tableName
-     * @param string $ruleName
-     * @param array $options
      * @return array{passed: bool, violations: array}
      */
     public function runRule(string $tableName, string $ruleName, array $options = []): array
@@ -216,8 +211,6 @@ class DataQualityRulesService
 
     /**
      * Get available rules.
-     *
-     * @return array
      */
     public function getAvailableRules(): array
     {
@@ -226,15 +219,12 @@ class DataQualityRulesService
 
     /**
      * Get rules by category.
-     *
-     * @param string $category
-     * @return array
      */
     public function getRulesByCategory(string $category): array
     {
         return array_filter(
             self::RULES,
-            fn($rule) => $rule['category'] === $category
+            fn ($rule) => $rule['category'] === $category
         );
     }
 
@@ -248,7 +238,8 @@ class DataQualityRulesService
                 "SELECT column_name FROM information_schema.columns WHERE table_name = ? AND table_schema = 'public'",
                 [$tableName]
             );
-            return array_map(fn($r) => $r->column_name, $results);
+
+            return array_map(fn ($r) => $r->column_name, $results);
         } catch (\Exception $e) {
             return [];
         }
@@ -286,7 +277,7 @@ class DataQualityRulesService
                     'null_count' => $nullCount,
                     'empty_count' => $emptyCount,
                     'total_rows' => $totalRows,
-                    'completeness' => round($completeness * 100, 2) . '%',
+                    'completeness' => round($completeness * 100, 2).'%',
                     'severity' => $completeness < 0.9 ? 'critical' : 'medium',
                 ];
             }

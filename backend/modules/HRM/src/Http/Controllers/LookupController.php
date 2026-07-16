@@ -2,10 +2,10 @@
 
 namespace Modules\HRM\Http\Controllers;
 
-use Illuminate\Http\JsonResponse;
-use Illuminate\Routing\Controller;
 use App\Models\Department;
 use App\Models\Location;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Routing\Controller;
 
 class LookupController extends Controller
 {

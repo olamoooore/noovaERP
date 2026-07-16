@@ -27,15 +27,16 @@ class TaxController extends Controller
             'is_inclusive' => 'boolean',
         ]);
 
-        if (!isset($validated['type'])) {
+        if (! isset($validated['type'])) {
             $validated['type'] = 'vat';
         }
 
-        if (!empty($validated['is_default'])) {
+        if (! empty($validated['is_default'])) {
             Tax::where('is_default', true)->update(['is_default' => false]);
         }
 
         $tax = Tax::create($validated);
+
         return response()->json($tax, 201);
     }
 
@@ -52,11 +53,12 @@ class TaxController extends Controller
             'is_inclusive' => 'sometimes|boolean',
         ]);
 
-        if (!empty($validated['is_default'])) {
+        if (! empty($validated['is_default'])) {
             Tax::where('id', '!=', $tax->id)->where('is_default', true)->update(['is_default' => false]);
         }
 
         $tax->update($validated);
+
         return response()->json($tax->fresh());
     }
 
@@ -64,6 +66,7 @@ class TaxController extends Controller
     {
         $tax = Tax::findOrFail($tax);
         $tax->delete();
+
         return response()->json(['message' => 'Tax deleted successfully']);
     }
 }

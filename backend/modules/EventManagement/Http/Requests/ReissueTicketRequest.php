@@ -24,28 +24,28 @@ class ReissueTicketRequest extends FormRequest
                 'required',
                 'string',
                 'regex:/^TKT-[A-Z0-9]{8}-[A-Z0-9]{4}$/',
-                'max:20'
+                'max:20',
             ],
             'reason' => [
                 'required',
                 'string',
                 'min:10',
                 'max:500',
-                'in:lost,damaged,stolen,system_error,customer_request,other'
+                'in:lost,damaged,stolen,system_error,customer_request,other',
             ],
             'reason_details' => [
                 'sometimes',
                 'string',
-                'max:1000'
+                'max:1000',
             ],
             'notify_customer' => [
                 'sometimes',
-                'boolean'
+                'boolean',
             ],
             'revoke_original' => [
                 'sometimes',
-                'boolean'
-            ]
+                'boolean',
+            ],
         ];
     }
 

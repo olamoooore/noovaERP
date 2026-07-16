@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Features\AI\Services\AIRawAccessGuard;
 use App\Features\AI\Services\AIContextBuilder;
-use App\Features\AI\Services\AIReasoningRecordService;
+use App\Features\AI\Services\AIRawAccessGuard;
 use App\Platform\DataQuality\DataQualityRulesService;
-use Illuminate\Support\Facades\DB;
 use Tests\TenantTestCase;
 
 /**
@@ -21,7 +19,9 @@ use Tests\TenantTestCase;
 class AiAccessBoundaryTest extends TenantTestCase
 {
     private AIRawAccessGuard $rawGuard;
+
     private AIContextBuilder $contextBuilder;
+
     private DataQualityRulesService $dataQuality;
 
     protected function setUp(): void
@@ -213,7 +213,7 @@ class AiAccessBoundaryTest extends TenantTestCase
         if ($result['success']) {
             // If it succeeds, verify no restricted fields in context
             $context = $result['context'];
-            if (is_array($context) && !empty($context)) {
+            if (is_array($context) && ! empty($context)) {
                 $firstRecord = (array) $context[0];
                 $this->assertArrayNotHasKey('salary', $firstRecord, 'HR salary must not appear in AI context');
                 $this->assertArrayNotHasKey('bank_account_number', $firstRecord, 'HR bank account must not appear in AI context');
@@ -310,7 +310,7 @@ class AiAccessBoundaryTest extends TenantTestCase
         );
 
         // Should not allow direct table access
-        if (!$result['success']) {
+        if (! $result['success']) {
             $this->assertStringContainsString('denied', $result['reason']);
         }
     }

@@ -6,8 +6,6 @@ use App\Platform\EventBus\Contracts\DomainEventContract;
 use App\Platform\EventBus\Contracts\EventHandlerContract;
 use App\Platform\EventBus\Contracts\EventSubscriptionContract;
 use App\Platform\EventBus\Events\EventRecord;
-use App\Platform\EventBus\EventDeadLetter;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -30,6 +28,7 @@ use Illuminate\Support\Str;
 class DomainEventDispatcher
 {
     private const MAX_RETRIES = 3;
+
     private const RETRY_DELAY_SECONDS = 60;
 
     /**
@@ -137,7 +136,9 @@ class DomainEventDispatcher
     public function retryDeadLetter(string $deadLetterId): bool
     {
         $deadLetter = EventDeadLetter::find($deadLetterId);
-        if (!$deadLetter) return false;
+        if (! $deadLetter) {
+            return false;
+        }
 
         try {
             $eventClass = $deadLetter->event_class;
@@ -151,12 +152,14 @@ class DomainEventDispatcher
             $this->dispatch($event);
 
             $deadLetter->update(['retried_at' => now()]);
+
             return true;
         } catch (\Throwable $e) {
             $deadLetter->update([
                 'retry_count' => $deadLetter->retry_count + 1,
                 'error' => array_merge($deadLetter->error ?? [], [['message' => $e->getMessage(), 'at' => now()->toIso8601String()]]),
             ]);
+
             return false;
         }
     }
@@ -199,7 +202,7 @@ class DomainEventDispatcher
             ->forEvent($event->getEventName())
             ->orderBy('priority')
             ->get()
-            ->filter(fn(EventSubscription $sub) => $this->matchesFilters($sub, $event));
+            ->filter(fn (EventSubscription $sub) => $this->matchesFilters($sub, $event));
     }
 
     private function matchesFilters(EventSubscription $sub, DomainEventContract $event): bool
@@ -226,15 +229,17 @@ class DomainEventDispatcher
     {
         $class = $subscription->handler_class;
 
-        if (!class_exists($class)) {
+        if (! class_exists($class)) {
             Log::warning("Event handler class not found: {$class}");
+
             return null;
         }
 
         $handler = app($class);
 
-        if (!$handler instanceof EventHandlerContract) {
+        if (! $handler instanceof EventHandlerContract) {
             Log::warning("Event handler does not implement EventHandlerContract: {$class}");
+
             return null;
         }
 
@@ -277,7 +282,9 @@ class DomainEventDispatcher
     {
         // Map event_name to class: 'contact.created' → ContactCreated::class
         $parts = explode('.', $record->event_name);
-        if (count($parts) !== 2) return null;
+        if (count($parts) !== 2) {
+            return null;
+        }
 
         $moduleName = ucfirst($parts[0]);
         $action = ucfirst($parts[1]);

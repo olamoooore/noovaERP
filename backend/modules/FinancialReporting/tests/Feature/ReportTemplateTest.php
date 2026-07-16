@@ -2,10 +2,10 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TenantTestCase;
+use App\Models\User;
 use Illuminate\Support\Facades\Artisan;
 use Modules\FinancialReporting\Models\ReportTemplate;
-use App\Models\User;
+use Tests\TenantTestCase;
 
 class ReportTemplateTest extends TenantTestCase
 {
@@ -53,8 +53,8 @@ class ReportTemplateTest extends TenantTestCase
                         'report_type',
                         'configuration',
                         'is_system',
-                    ]
-                ]
+                    ],
+                ],
             ]);
     }
 
@@ -79,7 +79,7 @@ class ReportTemplateTest extends TenantTestCase
             ->assertJsonStructure([
                 'success',
                 'message',
-                'data' => ['id', 'name', 'report_type']
+                'data' => ['id', 'name', 'report_type'],
             ]);
 
         $this->assertDatabaseHas('report_templates', [
@@ -135,7 +135,7 @@ class ReportTemplateTest extends TenantTestCase
                 'success' => true,
                 'data' => [
                     'name' => 'Updated Template Name',
-                ]
+                ],
             ]);
 
         $this->assertDatabaseHas('report_templates', [
@@ -322,7 +322,7 @@ class ReportTemplateTest extends TenantTestCase
 
         $response->assertStatus(200);
         $data = $response->json('data');
-        
+
         $this->assertCount(1, $data);
         $this->assertEquals('profit_loss', $data[0]['report_type']);
     }
@@ -338,7 +338,7 @@ class ReportTemplateTest extends TenantTestCase
 
         $response->assertStatus(200);
         $data = $response->json('data');
-        
+
         $this->assertCount(1, $data);
         $this->assertTrue($data[0]['is_system']);
     }

@@ -15,7 +15,7 @@ return new class extends Migration
             $table->string('company_logo')->nullable();
             $table->string('domain')->nullable();
             $table->timestamps();
-            
+
             $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
         });
     }

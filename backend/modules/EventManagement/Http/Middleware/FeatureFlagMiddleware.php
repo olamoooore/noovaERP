@@ -2,11 +2,11 @@
 
 namespace Modules\EventManagement\Http\Middleware;
 
+use App\Models\Feature;
+use App\SuperAdmin\Application\FeatureGateService;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
-use App\Models\Feature;
-use App\SuperAdmin\Application\FeatureGateService;
 
 class FeatureFlagMiddleware
 {
@@ -25,7 +25,7 @@ class FeatureFlagMiddleware
         $featureRecord = Feature::where('key', $feature)->first();
 
         // Feature doesn't exist in DB yet — allow through (will be seeded)
-        if (!$featureRecord) {
+        if (! $featureRecord) {
             return $next($request);
         }
 
@@ -46,7 +46,7 @@ class FeatureFlagMiddleware
 
         return response()->json([
             'message' => "Feature '{$feature}' is not enabled for this tenant",
-            'error'   => 'feature_not_enabled',
+            'error' => 'feature_not_enabled',
         ], 403);
     }
 }

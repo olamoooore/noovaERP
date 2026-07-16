@@ -10,8 +10,11 @@ class ContactGroup extends Model
     use HasFactory;
 
     protected $table = 'contact_groups';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [
@@ -44,8 +47,11 @@ class ContactGroupMember extends Model
     use HasFactory;
 
     protected $table = 'contact_group_members';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = ['id', 'tenant_id', 'contact_id', 'group_id'];

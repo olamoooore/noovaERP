@@ -12,7 +12,7 @@ class ExportTenantIsolationRegressionTest extends TenantTestCase
     {
         $this->bindTenantContext('tenant-report-a');
 
-        $service = new CsvExportService();
+        $service = new CsvExportService;
         $path = $service->exportReport([
             'title' => 'Scoped CSV',
             'data' => [
@@ -27,13 +27,13 @@ class ExportTenantIsolationRegressionTest extends TenantTestCase
 
     public function test_pdf_landscape_exports_write_into_the_current_tenant_directory(): void
     {
-        if (!class_exists('\Barryvdh\DomPDF\Facade\Pdf')) {
+        if (! class_exists('\Barryvdh\DomPDF\Facade\Pdf')) {
             $this->markTestSkipped('DomPDF not installed');
         }
 
         $this->bindTenantContext('tenant-report-b');
 
-        $service = new PdfExportService();
+        $service = new PdfExportService;
         $path = $service->exportLandscape([
             'title' => 'Scoped PDF',
             'data' => [
@@ -48,7 +48,7 @@ class ExportTenantIsolationRegressionTest extends TenantTestCase
 
     public function test_csv_exports_fail_closed_without_tenant_context(): void
     {
-        $service = new CsvExportService();
+        $service = new CsvExportService;
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Report exports require an active tenant context.');

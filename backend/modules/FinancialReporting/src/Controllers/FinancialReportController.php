@@ -5,13 +5,13 @@ namespace Modules\FinancialReporting\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Modules\FinancialReporting\Services\Reports\ProfitLossService;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Cache\ReportCacheService;
 use Modules\FinancialReporting\Services\Reports\BalanceSheetService;
 use Modules\FinancialReporting\Services\Reports\CashFlowService;
-use Modules\FinancialReporting\Services\Reports\TrialBalanceService;
 use Modules\FinancialReporting\Services\Reports\GeneralLedgerService;
-use Modules\FinancialReporting\Services\Cache\ReportCacheService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Reports\ProfitLossService;
+use Modules\FinancialReporting\Services\Reports\TrialBalanceService;
 
 class FinancialReportController extends Controller
 {
@@ -22,8 +22,7 @@ class FinancialReportController extends Controller
         protected TrialBalanceService $trialBalanceService,
         protected GeneralLedgerService $generalLedgerService,
         protected ReportCacheService $cacheService
-    ) {
-    }
+    ) {}
 
     /**
      * Generate Profit & Loss report
@@ -46,9 +45,9 @@ class FinancialReportController extends Controller
 
             // Validate date range
             $maxDays = config('financialreporting.reports.max_date_range', 365);
-            if (!$filter->validateDateRange($maxDays)) {
+            if (! $filter->validateDateRange($maxDays)) {
                 return response()->json([
-                    'error' => "Date range cannot exceed {$maxDays} days"
+                    'error' => "Date range cannot exceed {$maxDays} days",
                 ], 422);
             }
 
@@ -96,12 +95,12 @@ class FinancialReportController extends Controller
                 'success' => true,
                 'data' => $response,
             ])->header('Cache-Control', 'no-cache, no-store, must-revalidate')
-              ->header('Pragma', 'no-cache')
-              ->header('Expires', '0');
+                ->header('Pragma', 'no-cache')
+                ->header('Expires', '0');
 
         } catch (\InvalidArgumentException $e) {
             return response()->json([
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 422);
         } catch (\Exception $e) {
             \Log::error('Profit & Loss report generation failed', [
@@ -110,7 +109,7 @@ class FinancialReportController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate report. Please try again.'
+                'error' => 'Failed to generate report. Please try again.',
             ], 500);
         }
     }
@@ -236,12 +235,12 @@ class FinancialReportController extends Controller
                 'success' => true,
                 'data' => $response,
             ])->header('Cache-Control', 'no-cache, no-store, must-revalidate')
-              ->header('Pragma', 'no-cache')
-              ->header('Expires', '0');
+                ->header('Pragma', 'no-cache')
+                ->header('Expires', '0');
 
         } catch (\InvalidArgumentException $e) {
             return response()->json([
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 422);
         } catch (\Exception $e) {
             \Log::error('Balance Sheet report generation failed', [
@@ -250,7 +249,7 @@ class FinancialReportController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate report. Please try again.'
+                'error' => 'Failed to generate report. Please try again.',
             ], 500);
         }
     }
@@ -283,15 +282,15 @@ class FinancialReportController extends Controller
 
         try {
             $filter = ReportFilter::fromRequest($validated);
-            
+
             // Set method in interval field (reusing existing field)
             $filter->interval = $validated['method'] ?? 'indirect';
 
             // Validate date range
             $maxDays = config('financialreporting.reports.max_date_range', 365);
-            if (!$filter->validateDateRange($maxDays)) {
+            if (! $filter->validateDateRange($maxDays)) {
                 return response()->json([
-                    'error' => "Date range cannot exceed {$maxDays} days"
+                    'error' => "Date range cannot exceed {$maxDays} days",
                 ], 422);
             }
 
@@ -299,7 +298,7 @@ class FinancialReportController extends Controller
             $reportData = $this->cacheService->remember(
                 reportType: 'cash-flow',
                 filter: $filter,
-                callback: fn() => $this->cashFlowService->generate($filter),
+                callback: fn () => $this->cashFlowService->generate($filter),
                 userId: $request->user()?->id
             );
 
@@ -329,7 +328,7 @@ class FinancialReportController extends Controller
 
         } catch (\InvalidArgumentException $e) {
             return response()->json([
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 422);
         } catch (\Exception $e) {
             \Log::error('Cash Flow report generation failed', [
@@ -338,7 +337,7 @@ class FinancialReportController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate report. Please try again.'
+                'error' => 'Failed to generate report. Please try again.',
             ], 500);
         }
     }
@@ -363,12 +362,12 @@ class FinancialReportController extends Controller
 
         try {
             $filter = ReportFilter::fromRequest($validated);
-            
+
             \Log::info('ReportFilter created', [
                 'asOfDate' => $filter->asOfDate?->format('Y-m-d'),
                 'endDate' => $filter->endDate?->format('Y-m-d'),
             ]);
-            
+
             // Store account_type in the filter's interval field (reusing existing field)
             $filter->accountType = $validated['account_type'] ?? null;
 
@@ -378,7 +377,7 @@ class FinancialReportController extends Controller
             if ($grouped) {
                 // Get grouped trial balance
                 $reportData = $this->trialBalanceService->getGroupedByAccountType($filter->endDate);
-                
+
                 // Flatten the response structure
                 return response()->json([
                     'success' => true,
@@ -409,7 +408,7 @@ class FinancialReportController extends Controller
 
         } catch (\InvalidArgumentException $e) {
             return response()->json([
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 422);
         } catch (\Exception $e) {
             \Log::error('Trial Balance report generation failed', [
@@ -418,7 +417,7 @@ class FinancialReportController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate report. Please try again.'
+                'error' => 'Failed to generate report. Please try again.',
             ], 500);
         }
     }
@@ -442,21 +441,21 @@ class FinancialReportController extends Controller
             $filter = ReportFilter::fromRequest($validated);
 
             // If no account_id provided, show multi-account summary
-            if (!isset($validated['account_id'])) {
+            if (! isset($validated['account_id'])) {
                 $reportData = $this->generalLedgerService->getMultiAccountSummary($filter);
-                
+
                 // Transform accounts into transaction-like format for frontend compatibility
-                $transactions = array_map(function($account) {
+                $transactions = array_map(function ($account) {
                     return [
                         'date' => '',  // No specific date for summary
                         'reference' => $account['code'],
-                        'description' => $account['name'] . ' (' . $account['type'] . ')',
+                        'description' => $account['name'].' ('.$account['type'].')',
                         'debit' => $account['total_debit'],
                         'credit' => $account['total_credit'],
                         'balance' => $account['net_change'],
                     ];
                 }, $reportData['accounts']);
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => [
@@ -467,26 +466,26 @@ class FinancialReportController extends Controller
                         'pagination' => null,
                     ],
                 ])->header('Cache-Control', 'no-cache, no-store, must-revalidate')
-                  ->header('Pragma', 'no-cache')
-                  ->header('Expires', '0');
+                    ->header('Pragma', 'no-cache')
+                    ->header('Expires', '0');
             }
 
             // Check if summary view is requested (multi-account summary)
             if ($validated['summary'] ?? false) {
                 $reportData = $this->generalLedgerService->getMultiAccountSummary($filter);
-                
+
                 // Transform accounts into transaction-like format for frontend compatibility
-                $transactions = array_map(function($account) {
+                $transactions = array_map(function ($account) {
                     return [
                         'date' => '',  // No specific date for summary
                         'reference' => $account['code'],
-                        'description' => $account['name'] . ' (' . $account['type'] . ')',
+                        'description' => $account['name'].' ('.$account['type'].')',
                         'debit' => $account['total_debit'],
                         'credit' => $account['total_credit'],
                         'balance' => $account['net_change'],
                     ];
                 }, $reportData['accounts']);
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => [
@@ -497,16 +496,16 @@ class FinancialReportController extends Controller
                         'pagination' => null,
                     ],
                 ])->header('Cache-Control', 'no-cache, no-store, must-revalidate')
-                  ->header('Pragma', 'no-cache')
-                  ->header('Expires', '0');
+                    ->header('Pragma', 'no-cache')
+                    ->header('Expires', '0');
             }
 
             // Validate date range if provided
             if ($filter->startDate && $filter->endDate) {
                 $maxDays = config('financialreporting.reports.max_date_range', 365);
-                if (!$filter->validateDateRange($maxDays)) {
+                if (! $filter->validateDateRange($maxDays)) {
                     return response()->json([
-                        'error' => "Date range cannot exceed {$maxDays} days"
+                        'error' => "Date range cannot exceed {$maxDays} days",
                     ], 422);
                 }
             }
@@ -519,7 +518,7 @@ class FinancialReportController extends Controller
             $response = [
                 'account' => $reportData->metadata['account'] ?? null,
                 'opening_balance' => $reportData->summary['opening_balance'] ?? 0,
-                'transactions' => array_map(function($tx) {
+                'transactions' => array_map(function ($tx) {
                     return [
                         'date' => $tx['entry_date'],
                         'reference' => $tx['reference'],
@@ -538,12 +537,12 @@ class FinancialReportController extends Controller
                 'success' => true,
                 'data' => $response,
             ])->header('Cache-Control', 'no-cache, no-store, must-revalidate')
-              ->header('Pragma', 'no-cache')
-              ->header('Expires', '0');
+                ->header('Pragma', 'no-cache')
+                ->header('Expires', '0');
 
         } catch (\InvalidArgumentException $e) {
             return response()->json([
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 422);
         } catch (\Exception $e) {
             \Log::error('General Ledger report generation failed', [
@@ -552,7 +551,7 @@ class FinancialReportController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate report. Please try again.'
+                'error' => 'Failed to generate report. Please try again.',
             ], 500);
         }
     }

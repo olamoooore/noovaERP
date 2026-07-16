@@ -7,10 +7,10 @@ use Illuminate\Validation\Rule;
 
 /**
  * Search Artists Request
- * 
+ *
  * Validates search and filtering parameters for artist queries.
  * All parameters are optional for flexible searching.
- * 
+ *
  * Requirements: 12.1, 12.4
  */
 class SearchArtistsRequest extends FormRequest
@@ -32,17 +32,17 @@ class SearchArtistsRequest extends FormRequest
             'search' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', Rule::in(['active', 'inactive', 'hiatus', 'military_service', 'retired'])],
             'agency' => ['nullable', 'string', 'max:255'],
-            'debut_year' => ['nullable', 'integer', 'min:1900', 'max:' . date('Y')],
+            'debut_year' => ['nullable', 'integer', 'min:1900', 'max:'.date('Y')],
             'solo' => ['nullable', 'boolean'],
             'position' => ['nullable', 'string', Rule::in([
                 'leader', 'main_vocalist', 'lead_vocalist', 'vocalist',
                 'main_dancer', 'lead_dancer', 'dancer',
                 'main_rapper', 'lead_rapper', 'rapper',
-                'visual', 'center', 'face_of_group', 'maknae'
+                'visual', 'center', 'face_of_group', 'maknae',
             ])],
             'gender' => ['nullable', Rule::in(['male', 'female', 'non-binary', 'other'])],
             'sort_by' => ['nullable', 'string', Rule::in([
-                'name', 'stage_name', 'debut_date', 'birth_date', 'agency', 'created_at'
+                'name', 'stage_name', 'debut_date', 'birth_date', 'agency', 'created_at',
             ])],
             'sort_order' => ['nullable', Rule::in(['asc', 'desc'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -93,7 +93,7 @@ class SearchArtistsRequest extends FormRequest
         // Convert string boolean to actual boolean
         if ($this->has('solo')) {
             $this->merge([
-                'solo' => filter_var($this->solo, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)
+                'solo' => filter_var($this->solo, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE),
             ]);
         }
 

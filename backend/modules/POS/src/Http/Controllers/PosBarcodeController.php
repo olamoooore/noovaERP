@@ -15,8 +15,7 @@ class PosBarcodeController extends Controller
     public function index(Request $request)
     {
         $query = Product::query()
-            ->select(['id', 'name', 'sku', 'barcode', 'price', 'stock_quantity'])
-            ;
+            ->select(['id', 'name', 'sku', 'barcode', 'price', 'stock_quantity']);
 
         if ($request->has('search') && $request->search) {
             $search = $request->search;
@@ -32,6 +31,7 @@ class PosBarcodeController extends Controller
         }
 
         $perPage = $request->input('per_page', 50);
+
         return $query->paginate($perPage);
     }
 
@@ -52,7 +52,7 @@ class PosBarcodeController extends Controller
 
         $productsQuery = Product::query()->select(['id', 'name', 'sku', 'barcode', 'price']);
 
-        if (!empty($validated['search'])) {
+        if (! empty($validated['search'])) {
             $search = $validated['search'];
             $productsQuery->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
@@ -62,7 +62,7 @@ class PosBarcodeController extends Controller
         }
 
         $all = (bool) ($validated['all'] ?? false);
-        if (!$all) {
+        if (! $all) {
             $ids = $validated['product_ids'] ?? [];
             if (empty($ids)) {
                 return response()->json(['message' => 'No products selected'], 422);
@@ -117,13 +117,13 @@ class PosBarcodeController extends Controller
 
         // Persist to POS settings table with barcode_ prefix
         $map = [
-            'barcode_type'   => 'barcode_type',
+            'barcode_type' => 'barcode_type',
             'barcode_format' => 'barcode_format',
-            'show_price'     => 'barcode_show_price',
-            'show_name'      => 'barcode_show_name',
-            'show_sku'       => 'barcode_show_sku',
-            'bar_width'      => 'barcode_bar_width',
-            'bar_height'     => 'barcode_bar_height',
+            'show_price' => 'barcode_show_price',
+            'show_name' => 'barcode_show_name',
+            'show_sku' => 'barcode_show_sku',
+            'bar_width' => 'barcode_bar_width',
+            'bar_height' => 'barcode_bar_height',
         ];
         foreach ($validated as $k => $v) {
             $settingKey = $map[$k] ?? $k;
@@ -142,13 +142,13 @@ class PosBarcodeController extends Controller
     private function getBarcodeSettings(): array
     {
         return [
-            'barcode_type'   => PosSetting::getValue('barcode_type', 'code128'),
+            'barcode_type' => PosSetting::getValue('barcode_type', 'code128'),
             'barcode_format' => PosSetting::getValue('barcode_format', 'svg'),
-            'show_price'     => PosSetting::getValue('barcode_show_price', true),
-            'show_name'      => PosSetting::getValue('barcode_show_name', true),
-            'show_sku'       => PosSetting::getValue('barcode_show_sku', true),
-            'bar_width'      => PosSetting::getValue('barcode_bar_width', 2),
-            'bar_height'     => PosSetting::getValue('barcode_bar_height', 50),
+            'show_price' => PosSetting::getValue('barcode_show_price', true),
+            'show_name' => PosSetting::getValue('barcode_show_name', true),
+            'show_sku' => PosSetting::getValue('barcode_show_sku', true),
+            'bar_width' => PosSetting::getValue('barcode_bar_width', 2),
+            'bar_height' => PosSetting::getValue('barcode_bar_height', 50),
         ];
     }
 }

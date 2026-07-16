@@ -2,8 +2,8 @@
 
 namespace Modules\FinancialClose\Http\Controllers;
 
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Modules\FinancialClose\Services\FinancialCloseSignoffService;
 
@@ -19,7 +19,7 @@ class SignoffController
     public function index(string $reviewId): JsonResponse
     {
         $tenantId = tenant('id');
-        if (!$tenantId) {
+        if (! $tenantId) {
             return response()->json(['message' => 'Tenant context required'], 400);
         }
 
@@ -40,18 +40,18 @@ class SignoffController
 
         // Permission check: sign-off requires lock management permission
         $hasPermission = $user?->is_super_admin ?? false;
-        if (!$hasPermission && $user && method_exists($user, 'hasPermissionTo')) {
+        if (! $hasPermission && $user && method_exists($user, 'hasPermissionTo')) {
             try {
                 $hasPermission = $user->hasPermissionTo('accounting.lock');
             } catch (\Spatie\Permission\Exceptions\PermissionDoesNotExist $e) {
                 $hasPermission = false;
             }
         }
-        if (!$hasPermission && $user && method_exists($user, 'hasRole')) {
+        if (! $hasPermission && $user && method_exists($user, 'hasRole')) {
             $hasPermission = $user->hasRole(['admin', 'super-admin', 'Owner']);
         }
 
-        if (!$hasPermission) {
+        if (! $hasPermission) {
             return response()->json([
                 'message' => 'You do not have permission to sign off reviews.',
                 'required_permission' => 'accounting.lock',
@@ -64,7 +64,7 @@ class SignoffController
         ]);
 
         $tenantId = tenant('id');
-        if (!$tenantId) {
+        if (! $tenantId) {
             return response()->json(['message' => 'Tenant context required'], 400);
         }
 
@@ -76,7 +76,7 @@ class SignoffController
             $validated['notes'] ?? null,
         );
 
-        if (!$signoff) {
+        if (! $signoff) {
             return response()->json([
                 'message' => 'Unable to record sign-off. Review may not be in a signable state or SoD conflict exists.',
             ], 422);
@@ -97,18 +97,18 @@ class SignoffController
 
         // Same permission gate as recording
         $hasPermission = $user?->is_super_admin ?? false;
-        if (!$hasPermission && $user && method_exists($user, 'hasPermissionTo')) {
+        if (! $hasPermission && $user && method_exists($user, 'hasPermissionTo')) {
             try {
                 $hasPermission = $user->hasPermissionTo('accounting.lock');
             } catch (\Spatie\Permission\Exceptions\PermissionDoesNotExist $e) {
                 $hasPermission = false;
             }
         }
-        if (!$hasPermission && $user && method_exists($user, 'hasRole')) {
+        if (! $hasPermission && $user && method_exists($user, 'hasRole')) {
             $hasPermission = $user->hasRole(['admin', 'super-admin', 'Owner']);
         }
 
-        if (!$hasPermission) {
+        if (! $hasPermission) {
             return response()->json([
                 'message' => 'You do not have permission to revoke sign-offs.',
                 'required_permission' => 'accounting.lock',
@@ -116,13 +116,13 @@ class SignoffController
         }
 
         $tenantId = tenant('id');
-        if (!$tenantId) {
+        if (! $tenantId) {
             return response()->json(['message' => 'Tenant context required'], 400);
         }
 
         $success = $this->signoffService->revokeSignoff($tenantId, $signoffId, (string) $user->id);
 
-        if (!$success) {
+        if (! $success) {
             return response()->json([
                 'message' => 'Unable to revoke sign-off. It may not exist or the review is locked.',
             ], 422);

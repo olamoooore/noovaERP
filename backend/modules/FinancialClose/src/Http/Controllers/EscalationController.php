@@ -5,10 +5,10 @@ namespace Modules\FinancialClose\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Modules\FinancialClose\Services\FinancialCloseEscalationService;
 use Modules\FinancialClose\Http\Requests\CreateEscalationRequest;
 use Modules\FinancialClose\Http\Resources\EscalationResource;
 use Modules\FinancialClose\Models\EscalationEvent;
+use Modules\FinancialClose\Services\FinancialCloseEscalationService;
 
 class EscalationController extends Controller
 {
@@ -42,7 +42,7 @@ class EscalationController extends Controller
             $request->input('escalated_to'),
         );
 
-        if (!$escalation) {
+        if (! $escalation) {
             return response()->json(['message' => 'Escalation could not be created.'], 422);
         }
 
@@ -53,11 +53,11 @@ class EscalationController extends Controller
     public function resolve(Request $request, string $escalationId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         $success = $this->escalationService->resolveEscalation($tenantId, $escalationId, $userId);
 
-        if (!$success) {
+        if (! $success) {
             return response()->json(['message' => 'Escalation not found or already resolved.'], 422);
         }
 
@@ -68,12 +68,12 @@ class EscalationController extends Controller
     public function return(Request $request, string $escalationId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
-        $reason   = $request->input('reason');
+        $userId = $request->user()->id;
+        $reason = $request->input('reason');
 
         $success = $this->escalationService->returnEscalation($tenantId, $escalationId, $userId, $reason);
 
-        if (!$success) {
+        if (! $success) {
             return response()->json(['message' => 'Escalation not found or already resolved.'], 422);
         }
 
@@ -84,12 +84,12 @@ class EscalationController extends Controller
     public function approve(Request $request, string $escalationId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
-        $notes    = $request->input('notes');
+        $userId = $request->user()->id;
+        $notes = $request->input('notes');
 
         $success = $this->escalationService->approveEscalation($tenantId, $escalationId, $userId, $notes);
 
-        if (!$success) {
+        if (! $success) {
             return response()->json(['message' => 'Escalation not found or already resolved.'], 422);
         }
 

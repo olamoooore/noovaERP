@@ -17,34 +17,35 @@ class AccountMappingService
     /**
      * Well-known fallback codes — DEPRECATED.
      * Kept only for seedDefaults() migration tool; resolve() no longer uses these.
+     *
      * @deprecated Will be removed after all tenants have account_mappings configured.
      */
     private const FALLBACKS = [
-        'cash'                      => '1010',
-        'bank'                      => '1020',
-        'accounts_receivable'       => '1100',
-        'inventory'                 => '1200',
-        'accounts_payable'          => '2100',
-        'sales_tax_payable'         => '2200',
-        'input_tax'                 => '2200',
-        'sales_revenue'             => '4100',
-        'shipping_revenue'          => '4101',
-        'cogs'                      => '5100',
-        'general_expense'           => '5000',
-        'depreciation_expense'      => '6100',
-        'accumulated_depreciation'  => '1510',
-        'gain_loss_disposal'        => '7100',
-        'sales_discount'            => '4200',
-        'unrealized_fx_gain_loss'   => '7200',
-        'realized_fx_gain_loss'     => '7201',
+        'cash' => '1010',
+        'bank' => '1020',
+        'accounts_receivable' => '1100',
+        'inventory' => '1200',
+        'accounts_payable' => '2100',
+        'sales_tax_payable' => '2200',
+        'input_tax' => '2200',
+        'sales_revenue' => '4100',
+        'shipping_revenue' => '4101',
+        'cogs' => '5100',
+        'general_expense' => '5000',
+        'depreciation_expense' => '6100',
+        'accumulated_depreciation' => '1510',
+        'gain_loss_disposal' => '7100',
+        'sales_discount' => '4200',
+        'unrealized_fx_gain_loss' => '7200',
+        'realized_fx_gain_loss' => '7201',
     ];
 
     /**
      * Resolve a ChartOfAccount by mapping key.
      *
-     * @param string      $key          e.g. 'accounts_receivable'
-     * @param string|null $documentType e.g. 'invoice', 'bill', 'pos_order'
-     * @return ChartOfAccount
+     * @param  string  $key  e.g. 'accounts_receivable'
+     * @param  string|null  $documentType  e.g. 'invoice', 'bill', 'pos_order'
+     *
      * @throws \RuntimeException when no account can be resolved
      */
     public function resolve(string $key, ?string $documentType = null): ChartOfAccount
@@ -80,9 +81,9 @@ class AccountMappingService
         // Fallback codes have been removed — tenant must configure account_mappings
         // or use AccountRoleResolver (ACCOUNT_RESOLUTION=roles).
         throw new \RuntimeException(
-            "Cannot resolve GL account for mapping key '{$key}'" .
-            ($documentType ? " (document type: {$documentType})" : '') .
-            '. Please configure default accounts in Company Settings > Default Accounts, ' .
+            "Cannot resolve GL account for mapping key '{$key}'".
+            ($documentType ? " (document type: {$documentType})" : '').
+            '. Please configure default accounts in Company Settings > Default Accounts, '.
             'or ensure account_mappings are seeded for this tenant.'
         );
     }
@@ -103,7 +104,7 @@ class AccountMappingService
         foreach (self::FALLBACKS as $key => $code) {
             $account = ChartOfAccount::where('code', $code)->first();
 
-            if ($account && !AccountMapping::where('mapping_key', $key)->whereNull('document_type')->exists()) {
+            if ($account && ! AccountMapping::where('mapping_key', $key)->whereNull('document_type')->exists()) {
                 AccountMapping::create([
                     'mapping_key' => $key,
                     'account_id' => $account->id,

@@ -6,18 +6,18 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
-use Modules\FinancialClose\Services\FinancialCloseTaskService;
-use Modules\FinancialClose\Services\FinancialCloseAssignmentService;
-use Modules\FinancialClose\Services\FileAccessBrokerService;
+use Illuminate\Support\Facades\Storage;
 use Modules\FinancialClose\Http\Requests\BlockTaskRequest;
 use Modules\FinancialClose\Http\Requests\LinkDocumentRequest;
 use Modules\FinancialClose\Http\Resources\TaskResource;
-use Modules\FinancialClose\Models\CloseTask;
 use Modules\FinancialClose\Models\CloseCycle;
+use Modules\FinancialClose\Models\CloseTask;
+use Modules\FinancialClose\Models\RestrictedDocumentAccessLog;
 use Modules\FinancialClose\Models\SupportingEvidence;
 use Modules\FinancialClose\Models\TaskEvidenceLink;
-use Modules\FinancialClose\Models\RestrictedDocumentAccessLog;
-use Illuminate\Support\Facades\Storage;
+use Modules\FinancialClose\Services\FileAccessBrokerService;
+use Modules\FinancialClose\Services\FinancialCloseAssignmentService;
+use Modules\FinancialClose\Services\FinancialCloseTaskService;
 
 class TaskController extends Controller
 {
@@ -44,7 +44,7 @@ class TaskController extends Controller
             ->where('id', $cycleId)
             ->exists();
 
-        if (!$cycleExists) {
+        if (! $cycleExists) {
             return response()->json(['message' => 'Cycle not found.'], 404);
         }
 
@@ -60,8 +60,8 @@ class TaskController extends Controller
     public function myTasks(Request $request): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = (string) $request->user()->id;
-        $status   = $request->query('status');
+        $userId = (string) $request->user()->id;
+        $status = $request->query('status');
 
         $query = CloseTask::where('tenant_id', $tenantId)
             ->where('assigned_to', $userId);
@@ -89,7 +89,7 @@ class TaskController extends Controller
     public function reviewQueue(Request $request): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         // Submitted tasks awaiting review
         $submittedTasks = CloseTask::where('tenant_id', $tenantId)
@@ -106,7 +106,7 @@ class TaskController extends Controller
             ->all();
 
         $escalatedTasks = [];
-        if (!empty($escalatedTaskIds)) {
+        if (! empty($escalatedTaskIds)) {
             $escalatedTasks = CloseTask::where('tenant_id', $tenantId)
                 ->whereIn('id', $escalatedTaskIds)
                 ->whereNotIn('status', ['completed', 'cancelled'])
@@ -130,14 +130,14 @@ class TaskController extends Controller
         $tenantId = tenant()->getTenantKey();
 
         $task = CloseTask::with([
-                'dependencies.dependsOnTask',
-                'escalations',
-            ])
+            'dependencies.dependsOnTask',
+            'escalations',
+        ])
             ->where('tenant_id', $tenantId)
             ->where('id', $taskId)
             ->first();
 
-        if (!$task) {
+        if (! $task) {
             return response()->json(['message' => 'Task not found.'], 404);
         }
 
@@ -148,11 +148,11 @@ class TaskController extends Controller
     public function start(Request $request, string $taskId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         $success = $this->taskService->startTask($tenantId, $taskId, $userId);
 
-        if (!$success) {
+        if (! $success) {
             return response()->json(['message' => 'Task cannot be started.'], 422);
         }
 
@@ -163,11 +163,11 @@ class TaskController extends Controller
     public function submit(Request $request, string $taskId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         $success = $this->taskService->submitTask($tenantId, $taskId, $userId);
 
-        if (!$success) {
+        if (! $success) {
             return response()->json(['message' => 'Task cannot be submitted.'], 422);
         }
 
@@ -180,14 +180,14 @@ class TaskController extends Controller
         $tenantId = tenant()->getTenantKey();
 
         $task = CloseTask::where('tenant_id', $tenantId)->where('id', $taskId)->first();
-        if (!$task) {
+        if (! $task) {
             return response()->json(['message' => 'Task not found.'], 404);
         }
 
         $blockers = [];
 
         // Check dependency blockers
-        if (!$this->taskService->getDependencyService()->canComplete($tenantId, $taskId)) {
+        if (! $this->taskService->getDependencyService()->canComplete($tenantId, $taskId)) {
             $depBlockers = $this->taskService->getDependencyService()->getUnresolvedHardDependencies($tenantId, $taskId);
             foreach ($depBlockers as $dep) {
                 $blockers[] = [
@@ -212,14 +212,14 @@ class TaskController extends Controller
     public function complete(Request $request, string $taskId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
         $userRole = $this->getUserRole($request);
 
         $result = $this->taskService->completeTask($tenantId, $taskId, $userId, $userRole);
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             return response()->json([
-                'message'  => $result['reason'],
+                'message' => $result['reason'],
                 'blockers' => $result['blockers'] ?? [],
             ], 422);
         }
@@ -231,12 +231,12 @@ class TaskController extends Controller
     public function returnTask(Request $request, string $taskId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
         $userRole = $this->getUserRole($request);
 
         $success = $this->taskService->returnTask($tenantId, $taskId, $userId, $userRole);
 
-        if (!$success) {
+        if (! $success) {
             return response()->json(['message' => 'Task cannot be returned. Only reviewers (Manager, Admin, Owner) can return tasks.'], 422);
         }
 
@@ -249,7 +249,7 @@ class TaskController extends Controller
     private function getUserRole(Request $request): ?string
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         return \DB::table('public.user_company_access')
             ->where('user_id', $userId)
@@ -261,11 +261,11 @@ class TaskController extends Controller
     public function block(BlockTaskRequest $request, string $taskId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         $success = $this->taskService->blockTask($tenantId, $taskId, $userId, $request->input('reason'));
 
-        if (!$success) {
+        if (! $success) {
             return response()->json(['message' => 'Task cannot be blocked.'], 422);
         }
 
@@ -276,13 +276,13 @@ class TaskController extends Controller
     public function assign(Request $request, string $taskId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = (string) $request->user()->id;
+        $userId = (string) $request->user()->id;
 
         $request->validate(['assigned_to' => ['required', 'string']]);
 
         $success = $this->assignmentService->assignTask($tenantId, $taskId, $request->input('assigned_to'), $userId);
 
-        if (!$success) {
+        if (! $success) {
             return response()->json(['message' => 'Task cannot be assigned.'], 422);
         }
 
@@ -293,13 +293,13 @@ class TaskController extends Controller
     public function reassign(Request $request, string $taskId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = (string) $request->user()->id;
+        $userId = (string) $request->user()->id;
 
         $request->validate(['assigned_to' => ['required', 'string']]);
 
         $success = $this->assignmentService->reassignTask($tenantId, $taskId, $request->input('assigned_to'), $userId);
 
-        if (!$success) {
+        if (! $success) {
             return response()->json(['message' => 'Task cannot be reassigned.'], 422);
         }
 
@@ -310,7 +310,7 @@ class TaskController extends Controller
     public function assignmentHistory(string $taskId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $history  = $this->assignmentService->getAssignmentHistory($tenantId, $taskId);
+        $history = $this->assignmentService->getAssignmentHistory($tenantId, $taskId);
 
         return response()->json(['data' => $history]);
     }
@@ -321,7 +321,7 @@ class TaskController extends Controller
         $tenantId = tenant()->getTenantKey();
 
         $task = CloseTask::where('tenant_id', $tenantId)->where('id', $taskId)->first();
-        if (!$task) {
+        if (! $task) {
             return response()->json(['message' => 'Task not found.'], 404);
         }
 
@@ -337,10 +337,10 @@ class TaskController extends Controller
     public function uploadEvidence(Request $request, string $taskId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         $task = CloseTask::where('tenant_id', $tenantId)->where('id', $taskId)->first();
-        if (!$task) {
+        if (! $task) {
             return response()->json(['message' => 'Task not found.'], 404);
         }
 
@@ -352,29 +352,29 @@ class TaskController extends Controller
         $request->validate(['file' => ['required', 'file', 'max:10240']]);
 
         $file = $request->file('file');
-        $path = $file->store('close-evidence/' . $taskId, 'public');
+        $path = $file->store('close-evidence/'.$taskId, 'public');
 
         $evidence = SupportingEvidence::create([
-            'tenant_id'  => $tenantId,
-            'review_id'  => null,
-            'file_name'  => $file->getClientOriginalName(),
-            'file_path'  => $path,
-            'status'     => 'attached',
-            'uploaded_by'=> $userId,
+            'tenant_id' => $tenantId,
+            'review_id' => null,
+            'file_name' => $file->getClientOriginalName(),
+            'file_path' => $path,
+            'status' => 'attached',
+            'uploaded_by' => $userId,
         ]);
 
         TaskEvidenceLink::create([
-            'tenant_id'   => $tenantId,
-            'task_id'     => $taskId,
+            'tenant_id' => $tenantId,
+            'task_id' => $taskId,
             'evidence_id' => $evidence->id,
         ]);
 
         return response()->json(['message' => 'Evidence uploaded.', 'data' => [
-            'id'        => $evidence->id,
+            'id' => $evidence->id,
             'file_name' => $evidence->file_name,
             'file_path' => $evidence->file_path,
-            'status'    => $evidence->status,
-            'created_at'=> $evidence->created_at,
+            'status' => $evidence->status,
+            'created_at' => $evidence->created_at,
         ]], 201);
     }
 
@@ -389,15 +389,18 @@ class TaskController extends Controller
             ->get()
             ->map(function ($link) {
                 $e = $link->evidence;
-                if (!$e) return null;
+                if (! $e) {
+                    return null;
+                }
+
                 return [
-                    'id'         => $e->id,
-                    'file_name'  => $e->file_name,
-                    'file_path'  => $e->file_path,
-                    'status'     => $e->status,
-                    'uploaded_by'=> $e->uploaded_by,
+                    'id' => $e->id,
+                    'file_name' => $e->file_name,
+                    'file_path' => $e->file_path,
+                    'status' => $e->status,
+                    'uploaded_by' => $e->uploaded_by,
                     'created_at' => $e->created_at,
-                    'url'        => $e->file_path ? Storage::disk('public')->url($e->file_path) : null,
+                    'url' => $e->file_path ? Storage::disk('public')->url($e->file_path) : null,
                 ];
             })
             ->filter()
@@ -410,10 +413,10 @@ class TaskController extends Controller
     public function downloadEvidence(Request $request, string $taskId, string $evidenceId): Response|JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         // Check if user can download evidence
-        if (!$this->fileAccessBroker->authorizeAccess($tenantId, $userId, $evidenceId)) {
+        if (! $this->fileAccessBroker->authorizeAccess($tenantId, $userId, $evidenceId)) {
             return response()->json(['message' => 'Unauthorized to download this evidence.'], 403);
         }
 
@@ -421,7 +424,7 @@ class TaskController extends Controller
             ->where('id', $evidenceId)
             ->first();
 
-        if (!$evidence || !$evidence->file_path) {
+        if (! $evidence || ! $evidence->file_path) {
             return response()->json(['message' => 'Evidence not found or file missing.'], 404);
         }
 
@@ -436,7 +439,7 @@ class TaskController extends Controller
         ]);
 
         $path = $evidence->file_path;
-        if (!Storage::disk('public')->exists($path)) {
+        if (! Storage::disk('public')->exists($path)) {
             return response()->json(['message' => 'File not found on disk.'], 404);
         }
 
@@ -446,7 +449,7 @@ class TaskController extends Controller
 
         return response($fileContents, 200, [
             'Content-Type' => $mimeType,
-            'Content-Disposition' => 'inline; filename="' . $fileName . '"',
+            'Content-Disposition' => 'inline; filename="'.$fileName.'"',
         ]);
     }
 
@@ -490,7 +493,7 @@ class TaskController extends Controller
         $tenantId = tenant()->getTenantKey();
 
         $task = CloseTask::where('tenant_id', $tenantId)->where('id', $taskId)->first();
-        if (!$task) {
+        if (! $task) {
             return response()->json(['message' => 'Task not found.'], 404);
         }
 
@@ -498,9 +501,9 @@ class TaskController extends Controller
         $links = $metadata['document_links'] ?? [];
 
         $links[] = [
-            'type'  => $request->input('document_type'),
-            'id'    => (int) $request->input('document_id'),
-            'title' => $request->input('title') ?? ucfirst($request->input('document_type')) . ' #' . $request->input('document_id'),
+            'type' => $request->input('document_type'),
+            'id' => (int) $request->input('document_id'),
+            'title' => $request->input('title') ?? ucfirst($request->input('document_type')).' #'.$request->input('document_id'),
         ];
 
         $metadata['document_links'] = $links;
@@ -515,20 +518,20 @@ class TaskController extends Controller
         $tenantId = tenant()->getTenantKey();
 
         $task = CloseTask::where('tenant_id', $tenantId)->where('id', $taskId)->first();
-        if (!$task) {
+        if (! $task) {
             return response()->json(['message' => 'Task not found.'], 404);
         }
 
         $request->validate([
             'document_type' => ['required', 'string'],
-            'document_id'   => ['required', 'integer'],
+            'document_id' => ['required', 'integer'],
         ]);
 
         $metadata = is_array($task->metadata) ? $task->metadata : [];
         $links = $metadata['document_links'] ?? [];
 
         $metadata['document_links'] = array_values(array_filter($links, function ($link) use ($request) {
-            return !($link['type'] === $request->input('document_type') && (int) $link['id'] === (int) $request->input('document_id'));
+            return ! ($link['type'] === $request->input('document_type') && (int) $link['id'] === (int) $request->input('document_id'));
         }));
 
         $task->update(['metadata' => $metadata]);

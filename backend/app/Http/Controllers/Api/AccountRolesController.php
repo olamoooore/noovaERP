@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
 use App\Accounting\Services\AccountRoleResolver;
+use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -74,7 +74,7 @@ class AccountRolesController extends Controller
         }
 
         $entityId = $request->attributes->get('legal_entity_id');
-        if (!$entityId) {
+        if (! $entityId) {
             return response()->json(['success' => false, 'message' => 'No legal entity context resolved'], 422);
         }
 

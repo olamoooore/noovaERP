@@ -33,8 +33,11 @@ class CommunicationPreference extends Model
     protected $table = 'communication_preferences';
 
     const MODE_INSTANT = 'instant';
+
     const MODE_DIGEST_DAILY = 'digest_daily';
+
     const MODE_DIGEST_WEEKLY = 'digest_weekly';
+
     const MODE_MINIMAL = 'minimal';
 
     protected $fillable = [
@@ -112,6 +115,7 @@ class CommunicationPreference extends Model
     public function getSubtypeOverride(string $subtype): ?array
     {
         $overrides = $this->subtype_overrides ?? [];
+
         return $overrides[$subtype] ?? null;
     }
 
@@ -120,7 +124,7 @@ class CommunicationPreference extends Model
      */
     public function isInQuietHours(): bool
     {
-        if (!$this->quiet_hours_enabled || !$this->quiet_start || !$this->quiet_end) {
+        if (! $this->quiet_hours_enabled || ! $this->quiet_start || ! $this->quiet_end) {
             return false;
         }
 

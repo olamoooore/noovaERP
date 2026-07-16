@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use App\Models\Invoice;
-use App\Models\InvoiceLine;
 use Illuminate\Console\Command;
 
 class FixExistingInvoiceTaxCalculation extends Command
@@ -11,6 +10,7 @@ class FixExistingInvoiceTaxCalculation extends Command
     protected $signature = 'invoices:fix-tax-calculation
                             {--dry-run : Show what would be changed without applying}
                             {--tenant= : Specific tenant ID to fix}';
+
     protected $description = 'Fix double-taxation on existing invoices by recalculating line totals';
 
     public function handle(): int
@@ -44,7 +44,7 @@ class FixExistingInvoiceTaxCalculation extends Command
 
                 if ($line->tax_amount != $oldTax || $line->line_total != $oldTotal) {
                     $changed = true;
-                    if (!$dryRun) {
+                    if (! $dryRun) {
                         $line->save();
                     }
                 }
@@ -61,7 +61,7 @@ class FixExistingInvoiceTaxCalculation extends Command
 
         $this->info("Done. Fixed: {$fixed}, Skipped: {$skipped}");
         if ($dryRun) {
-            $this->warn("This was a dry run. No changes were applied.");
+            $this->warn('This was a dry run. No changes were applied.');
         }
 
         return Command::SUCCESS;

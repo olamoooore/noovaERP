@@ -54,13 +54,13 @@ class PointsReversalService
                 ->where('reference_id', $referenceId)
                 ->first();
 
-            if (!$originalTransaction) {
+            if (! $originalTransaction) {
                 Log::warning('No original earn transaction found for reversal', [
                     'customer_id' => $customerId,
                     'reference_type' => $referenceType,
                     'reference_id' => $referenceId,
                 ]);
-                
+
                 return [
                     'success' => false,
                     'message' => 'No original transaction found to reverse',
@@ -85,7 +85,7 @@ class PointsReversalService
                 'type' => 'reverse_earn',
                 'points' => -$actualReversed,
                 'balance_after' => $newBalance,
-                'reference_type' => $referenceType . '_reversal',
+                'reference_type' => $referenceType.'_reversal',
                 'reference_id' => $referenceId,
                 'idempotency_key' => $idempotencyKey,
                 'description' => $reason,
@@ -147,13 +147,13 @@ class PointsReversalService
                 ->where('reference_id', $referenceId)
                 ->first();
 
-            if (!$originalTransaction) {
+            if (! $originalTransaction) {
                 Log::warning('No original redeem transaction found for restoration', [
                     'customer_id' => $customerId,
                     'reference_type' => $referenceType,
                     'reference_id' => $referenceId,
                 ]);
-                
+
                 return [
                     'success' => false,
                     'message' => 'No original redemption found to restore',
@@ -177,7 +177,7 @@ class PointsReversalService
                 'type' => 'restore_redeem',
                 'points' => $pointsToRestore,
                 'balance_after' => $newBalance,
-                'reference_type' => $referenceType . '_restoration',
+                'reference_type' => $referenceType.'_restoration',
                 'reference_id' => $referenceId,
                 'idempotency_key' => $idempotencyKey,
                 'description' => $reason,
@@ -254,7 +254,7 @@ class PointsReversalService
 
     /**
      * TASK POS-010: Proportional loyalty reversal for partial returns
-     * 
+     *
      * Reverse loyalty points proportionally based on the return amount
      * relative to the original order total.
      */
@@ -323,7 +323,7 @@ class PointsReversalService
             // Reverse proportional earned points
             if ($originalEarnTransaction) {
                 $pointsToReverse = (int) round($originalEarnTransaction->points * $returnRatio);
-                
+
                 if ($pointsToReverse > 0) {
                     $newBalance = max(0, $customerLoyalty->current_points - $pointsToReverse);
                     $actualReversed = $customerLoyalty->current_points - $newBalance;
@@ -338,10 +338,10 @@ class PointsReversalService
                         'type' => 'reverse_earn',
                         'points' => -$actualReversed,
                         'balance_after' => $newBalance,
-                        'reference_type' => $referenceType . '_partial_reversal',
+                        'reference_type' => $referenceType.'_partial_reversal',
                         'reference_id' => $referenceId,
                         'idempotency_key' => $idempotencyKey,
-                        'description' => $reason . " (proportional: {$returnRatio})",
+                        'description' => $reason." (proportional: {$returnRatio})",
                         'created_by' => TenantUserHelper::resolveTenantUserId(),
                         'created_at' => now(),
                     ]);
@@ -358,7 +358,7 @@ class PointsReversalService
             // Restore proportional redeemed points
             if ($originalRedeemTransaction) {
                 $pointsToRestore = (int) round(abs($originalRedeemTransaction->points) * $returnRatio);
-                
+
                 if ($pointsToRestore > 0) {
                     $newBalance = $customerLoyalty->current_points + $pointsToRestore;
 
@@ -372,10 +372,10 @@ class PointsReversalService
                         'type' => 'restore_redeem',
                         'points' => $pointsToRestore,
                         'balance_after' => $newBalance,
-                        'reference_type' => $referenceType . '_partial_restoration',
+                        'reference_type' => $referenceType.'_partial_restoration',
                         'reference_id' => $referenceId,
-                        'idempotency_key' => $idempotencyKey ? $idempotencyKey . '_redeem' : null,
-                        'description' => $reason . " (proportional: {$returnRatio})",
+                        'idempotency_key' => $idempotencyKey ? $idempotencyKey.'_redeem' : null,
+                        'description' => $reason." (proportional: {$returnRatio})",
                         'created_by' => TenantUserHelper::resolveTenantUserId(),
                         'created_at' => now(),
                     ]);

@@ -14,15 +14,15 @@ class CopilotFunctions
 
             $period = $args['period'] ?? 'this_year';
 
-            $startDate = match($period) {
-                'this_year'  => now()->startOfYear(),
+            $startDate = match ($period) {
+                'this_year' => now()->startOfYear(),
                 'last_month' => now()->subMonth()->startOfMonth(),
-                default      => now()->startOfMonth(),
+                default => now()->startOfMonth(),
             };
-            $endDate = match($period) {
-                'this_year'  => now()->endOfYear(),
+            $endDate = match ($period) {
+                'this_year' => now()->endOfYear(),
                 'last_month' => now()->subMonth()->endOfMonth(),
-                default      => now()->endOfMonth(),
+                default => now()->endOfMonth(),
             };
 
             $entries = DB::table('journal_entries as je')
@@ -58,24 +58,24 @@ class CopilotFunctions
                     $reasons[] = 'Entry still in draft status - may need review';
                 }
 
-                if (!empty($reasons)) {
+                if (! empty($reasons)) {
                     $anomalies[] = [
                         'entry_number' => $entry->entry_number,
-                        'entry_date'   => $entry->entry_date,
-                        'type'         => $entry->type,
-                        'status'       => $entry->status,
-                        'total_debit'  => $entry->total_debit,
+                        'entry_date' => $entry->entry_date,
+                        'type' => $entry->type,
+                        'status' => $entry->status,
+                        'total_debit' => $entry->total_debit,
                         'total_credit' => $entry->total_credit,
-                        'reasons'      => $reasons,
+                        'reasons' => $reasons,
                     ];
                 }
             }
 
             DB::table('ai_accounting_audit_logs')->insert([
-                'user_id'    => auth()->id(),
-                'tool_name'  => 'detectCloseAnomalies',
-                'arguments'  => json_encode($args),
-                'tenant_id'  => null,
+                'user_id' => auth()->id(),
+                'tool_name' => 'detectCloseAnomalies',
+                'arguments' => json_encode($args),
+                'tenant_id' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -83,29 +83,29 @@ class CopilotFunctions
             if (empty($anomalies)) {
                 return [
                     'success' => true,
-                    'found'   => false,
-                    'period'  => $period,
+                    'found' => false,
+                    'period' => $period,
                     'message' => 'No anomalies detected for the selected period.',
                 ];
             }
 
             return [
-                'success'       => true,
-                'found'         => true,
-                'period'        => $period,
+                'success' => true,
+                'found' => true,
+                'period' => $period,
                 'anomaly_count' => count($anomalies),
-                'anomalies'     => $anomalies,
+                'anomalies' => $anomalies,
             ];
 
         } catch (\Exception $e) {
             Log::error('CopilotFunctions::detectCloseAnomalies failed', [
                 'error' => $e->getMessage(),
-                'args'  => $args,
+                'args' => $args,
             ]);
 
             return [
                 'success' => false,
-                'error'   => 'Failed to detect anomalies.',
+                'error' => 'Failed to detect anomalies.',
             ];
         }
     }
@@ -118,9 +118,9 @@ class CopilotFunctions
             $limit = $args['limit'] ?? 10;
 
             $customers = DB::table('customers as c')
-                ->leftJoin('invoices as i', function($join) {
+                ->leftJoin('invoices as i', function ($join) {
                     $join->on('i.customer_id', '=', 'c.id')
-                         ->whereNull('i.deleted_at');
+                        ->whereNull('i.deleted_at');
                 })
                 ->whereNull('c.deleted_at')
                 ->having(DB::raw('SUM(i.balance)'), '>', 0)
@@ -139,10 +139,10 @@ class CopilotFunctions
                 ]);
 
             DB::table('ai_accounting_audit_logs')->insert([
-                'user_id'    => auth()->id(),
-                'tool_name'  => 'prioritizeCollections',
-                'arguments'  => json_encode($args),
-                'tenant_id'  => null,
+                'user_id' => auth()->id(),
+                'tool_name' => 'prioritizeCollections',
+                'arguments' => json_encode($args),
+                'tenant_id' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -150,27 +150,27 @@ class CopilotFunctions
             if ($customers->isEmpty()) {
                 return [
                     'success' => true,
-                    'found'   => false,
+                    'found' => false,
                     'message' => 'No customers with outstanding balances found.',
                 ];
             }
 
             return [
-                'success'   => true,
-                'found'     => true,
-                'count'     => $customers->count(),
+                'success' => true,
+                'found' => true,
+                'count' => $customers->count(),
                 'customers' => $customers->toArray(),
             ];
 
         } catch (\Exception $e) {
             Log::error('CopilotFunctions::prioritizeCollections failed', [
                 'error' => $e->getMessage(),
-                'args'  => $args,
+                'args' => $args,
             ]);
 
             return [
                 'success' => false,
-                'error'   => 'Failed to prioritize collections.',
+                'error' => 'Failed to prioritize collections.',
             ];
         }
     }
@@ -199,10 +199,10 @@ class CopilotFunctions
                 ]);
 
             DB::table('ai_accounting_audit_logs')->insert([
-                'user_id'    => auth()->id(),
-                'tool_name'  => 'suggestAPCoding',
-                'arguments'  => json_encode($args),
-                'tenant_id'  => null,
+                'user_id' => auth()->id(),
+                'tool_name' => 'suggestAPCoding',
+                'arguments' => json_encode($args),
+                'tenant_id' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -210,7 +210,7 @@ class CopilotFunctions
             if ($documents->isEmpty()) {
                 return [
                     'success' => true,
-                    'found'   => false,
+                    'found' => false,
                     'message' => 'No past documents found to base suggestions on.',
                 ];
             }
@@ -221,27 +221,27 @@ class CopilotFunctions
             $topAccount = $documents->firstWhere('account_id', $topAccountId);
 
             return [
-                'success'           => true,
-                'found'             => true,
+                'success' => true,
+                'found' => true,
                 'suggested_account' => [
-                    'account_id'   => $topAccount->account_id,
+                    'account_id' => $topAccount->account_id,
                     'account_name' => $topAccount->account_name,
                     'account_code' => $topAccount->account_code,
                     'account_type' => $topAccount->account_type,
                 ],
                 'based_on_documents' => $documents->count(),
-                'recent_documents'   => $documents->toArray(),
+                'recent_documents' => $documents->toArray(),
             ];
 
         } catch (\Exception $e) {
             Log::error('CopilotFunctions::suggestAPCoding failed', [
                 'error' => $e->getMessage(),
-                'args'  => $args,
+                'args' => $args,
             ]);
 
             return [
                 'success' => false,
-                'error'   => 'Failed to retrieve AP coding suggestions.',
+                'error' => 'Failed to retrieve AP coding suggestions.',
             ];
         }
     }
@@ -265,10 +265,10 @@ class CopilotFunctions
                 ]);
 
             DB::table('ai_accounting_audit_logs')->insert([
-                'user_id'    => auth()->id(),
-                'tool_name'  => 'reviewRevenue',
-                'arguments'  => json_encode($args),
-                'tenant_id'  => null,
+                'user_id' => auth()->id(),
+                'tool_name' => 'reviewRevenue',
+                'arguments' => json_encode($args),
+                'tenant_id' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -276,7 +276,7 @@ class CopilotFunctions
             if ($invoices->isEmpty()) {
                 return [
                     'success' => true,
-                    'found'   => false,
+                    'found' => false,
                     'message' => 'No invoice data found to review.',
                 ];
             }
@@ -299,15 +299,15 @@ class CopilotFunctions
                     $risks[] = 'Invoice still in draft status';
                 }
 
-                if (!empty($risks)) {
+                if (! empty($risks)) {
                     $findings[] = [
                         'invoice_number' => $invoice->invoice_number,
-                        'invoice_date'   => $invoice->invoice_date,
-                        'due_date'       => $invoice->due_date,
-                        'total'          => $invoice->total,
-                        'balance'        => $invoice->balance,
-                        'status'         => $invoice->status,
-                        'risks'          => $risks,
+                        'invoice_date' => $invoice->invoice_date,
+                        'due_date' => $invoice->due_date,
+                        'total' => $invoice->total,
+                        'balance' => $invoice->balance,
+                        'status' => $invoice->status,
+                        'risks' => $risks,
                     ];
                 }
             }
@@ -315,31 +315,29 @@ class CopilotFunctions
             if (empty($findings)) {
                 return [
                     'success' => true,
-                    'found'   => false,
+                    'found' => false,
                     'message' => 'No revenue anomalies or risks detected.',
                 ];
             }
 
             return [
-                'success'       => true,
-                'found'         => true,
+                'success' => true,
+                'found' => true,
                 'finding_count' => count($findings),
                 'average_total' => round($avgTotal, 2),
-                'findings'      => $findings,
+                'findings' => $findings,
             ];
 
         } catch (\Exception $e) {
             Log::error('CopilotFunctions::reviewRevenue failed', [
                 'error' => $e->getMessage(),
-                'args'  => $args,
+                'args' => $args,
             ]);
 
             return [
                 'success' => false,
-                'error'   => 'Failed to review revenue.',
+                'error' => 'Failed to review revenue.',
             ];
         }
     }
-
-
 }

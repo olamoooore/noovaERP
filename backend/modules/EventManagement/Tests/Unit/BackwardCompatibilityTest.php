@@ -2,18 +2,16 @@
 
 namespace Modules\EventManagement\Tests\Unit;
 
-use Modules\EventManagement\Models\Event;
-use Modules\EventManagement\Models\EventType;
-use Modules\EventManagement\Models\Booking;
-use Modules\EventManagement\Services\EventService;
-use Modules\EventManagement\Services\PurchaseService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Modules\EventManagement\Models\Booking;
+use Modules\EventManagement\Models\Event;
+use Modules\EventManagement\Models\EventType;
 use Tests\TestCase;
 
 /**
  * Test backward compatibility with existing concert events
- * 
+ *
  * Requirements: 10.1, 10.2, 10.3, 10.4, 10.5
  */
 class BackwardCompatibilityTest extends TestCase
@@ -25,7 +23,7 @@ class BackwardCompatibilityTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         // Ensure Concert event type exists
         $this->concertType = EventType::firstOrCreate(
             ['slug' => 'concert'],
@@ -85,7 +83,7 @@ class BackwardCompatibilityTest extends TestCase
         ]);
 
         // Act - Verify purchase is allowed
-        $canPurchase = $event->canAcceptBookings() 
+        $canPurchase = $event->canAcceptBookings()
             && $event->ticket_acquisition_mode === Event::MODE_BUY;
 
         // Assert
@@ -121,7 +119,7 @@ class BackwardCompatibilityTest extends TestCase
         $this->assertArrayHasKey('ticket_acquisition_mode', $eventData);
         $this->assertArrayHasKey('sale_start_date', $eventData);
         $this->assertArrayHasKey('sale_end_date', $eventData);
-        
+
         // Verify values
         $this->assertEquals($this->concertType->id, $eventData['event_type_id']);
         $this->assertEquals(Event::MODE_BUY, $eventData['ticket_acquisition_mode']);
@@ -185,7 +183,7 @@ class BackwardCompatibilityTest extends TestCase
         // Arrange - Simulate a migrated event with sale window
         $createdAt = now()->subDays(10);
         $eventDate = now()->addDays(30);
-        
+
         $event = Event::create([
             'title' => 'Sale Window Test',
             'description' => 'Testing sale window migration',

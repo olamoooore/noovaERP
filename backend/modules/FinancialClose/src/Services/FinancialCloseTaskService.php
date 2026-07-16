@@ -3,23 +3,24 @@
 namespace Modules\FinancialClose\Services;
 
 use Illuminate\Support\Facades\Log;
-use Modules\FinancialClose\Models\CloseTask;
-use Modules\FinancialClose\Models\AuditLog;
-use Modules\FinancialClose\Events\FinancialCloseTaskStarted;
-use Modules\FinancialClose\Events\FinancialCloseTaskSubmitted;
+use Modules\FinancialClose\Events\FinancialCloseTaskBlocked;
 use Modules\FinancialClose\Events\FinancialCloseTaskCompleted;
 use Modules\FinancialClose\Events\FinancialCloseTaskReturned;
-use Modules\FinancialClose\Events\FinancialCloseTaskBlocked;
+use Modules\FinancialClose\Events\FinancialCloseTaskStarted;
+use Modules\FinancialClose\Events\FinancialCloseTaskSubmitted;
+use Modules\FinancialClose\Models\AuditLog;
+use Modules\FinancialClose\Models\CloseTask;
 
 class FinancialCloseTaskService
 {
     protected FinancialCloseDependencyService $dependencyService;
+
     protected FinancialCloseReadinessService $readinessService;
 
     public function __construct(FinancialCloseDependencyService $dependencyService, FinancialCloseReadinessService $readinessService)
     {
         $this->dependencyService = $dependencyService;
-        $this->readinessService  = $readinessService;
+        $this->readinessService = $readinessService;
     }
 
     /**
@@ -40,8 +41,8 @@ class FinancialCloseTaskService
         } catch (\Throwable $e) {
             Log::warning('FinancialClose: failed to dispatch readiness refresh', [
                 'tenant_id' => $tenantId,
-                'cycle_id'  => $cycleId,
-                'error'     => $e->getMessage(),
+                'cycle_id' => $cycleId,
+                'error' => $e->getMessage(),
             ]);
         }
     }
@@ -54,15 +55,15 @@ class FinancialCloseTaskService
         $query = CloseTask::where('tenant_id', $tenantId)
             ->where('cycle_id', $cycleId);
 
-        if (!empty($filters['status'])) {
+        if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
 
-        if (!empty($filters['assigned_to'])) {
+        if (! empty($filters['assigned_to'])) {
             $query->where('assigned_to', $filters['assigned_to']);
         }
 
-        if (!empty($filters['priority'])) {
+        if (! empty($filters['priority'])) {
             $query->where('priority', $filters['priority']);
         }
 
@@ -86,7 +87,7 @@ class FinancialCloseTaskService
     {
         $task = $this->getTask($tenantId, $taskId);
 
-        if (!$task || !in_array($task->status, ['assigned', 'created'])) {
+        if (! $task || ! in_array($task->status, ['assigned', 'created'])) {
             return false;
         }
 
@@ -105,7 +106,7 @@ class FinancialCloseTaskService
     {
         $task = $this->getTask($tenantId, $taskId);
 
-        if (!$task || $task->status !== 'in_progress') {
+        if (! $task || $task->status !== 'in_progress') {
             return false;
         }
 
@@ -125,17 +126,17 @@ class FinancialCloseTaskService
     {
         $task = $this->getTask($tenantId, $taskId);
 
-        if (!$task || $task->status !== 'submitted') {
+        if (! $task || $task->status !== 'submitted') {
             return false;
         }
 
         // Role-based access control: only reviewer roles can return tasks
         $reviewerRoles = ['owner', 'admin', 'manager'];
-        if ($userRole && !in_array(strtolower($userRole), $reviewerRoles)) {
+        if ($userRole && ! in_array(strtolower($userRole), $reviewerRoles)) {
             Log::warning('FinancialClose: task return denied — insufficient role', [
                 'tenant_id' => $tenantId,
-                'task_id'   => $taskId,
-                'user_id'   => $userId,
+                'task_id' => $taskId,
+                'user_id' => $userId,
                 'user_role' => $userRole,
             ]);
 
@@ -166,17 +167,17 @@ class FinancialCloseTaskService
     {
         $task = $this->getTask($tenantId, $taskId);
 
-        if (!$task || $task->status !== 'submitted') {
+        if (! $task || $task->status !== 'submitted') {
             return ['success' => false, 'reason' => 'Task not found or not in submitted state'];
         }
 
         // Role-based access control: only reviewer roles can complete/approve tasks
         $reviewerRoles = ['owner', 'admin', 'manager'];
-        if ($userRole && !in_array(strtolower($userRole), $reviewerRoles)) {
+        if ($userRole && ! in_array(strtolower($userRole), $reviewerRoles)) {
             Log::warning('FinancialClose: task completion denied — insufficient role', [
                 'tenant_id' => $tenantId,
-                'task_id'   => $taskId,
-                'user_id'   => $userId,
+                'task_id' => $taskId,
+                'user_id' => $userId,
                 'user_role' => $userRole,
             ]);
 
@@ -187,16 +188,16 @@ class FinancialCloseTaskService
 
             return [
                 'success' => false,
-                'reason'  => 'Only reviewers (Manager, Admin, Owner) can approve submitted tasks',
+                'reason' => 'Only reviewers (Manager, Admin, Owner) can approve submitted tasks',
             ];
         }
 
         // Separation-of-duties: the completer must not be the same user who prepared the task
         if ($task->assigned_to && (string) $task->assigned_to === (string) $userId) {
             Log::warning('FinancialClose: task completion denied — separation of duties violated', [
-                'tenant_id'  => $tenantId,
-                'task_id'    => $taskId,
-                'user_id'    => $userId,
+                'tenant_id' => $tenantId,
+                'task_id' => $taskId,
+                'user_id' => $userId,
                 'assigned_to' => $task->assigned_to,
             ]);
 
@@ -206,17 +207,17 @@ class FinancialCloseTaskService
 
             return [
                 'success' => false,
-                'reason'  => 'You cannot approve a task you prepared. Another reviewer must approve it.',
+                'reason' => 'You cannot approve a task you prepared. Another reviewer must approve it.',
             ];
         }
 
-        if (!$this->dependencyService->canComplete($tenantId, $taskId)) {
+        if (! $this->dependencyService->canComplete($tenantId, $taskId)) {
             $blockers = $this->dependencyService->getUnresolvedHardDependencies($tenantId, $taskId);
 
             Log::warning('FinancialClose: task completion denied — unresolved hard dependencies', [
                 'tenant_id' => $tenantId,
-                'task_id'   => $taskId,
-                'blockers'  => $blockers,
+                'task_id' => $taskId,
+                'blockers' => $blockers,
             ]);
 
             $this->writeAuditLog($tenantId, $userId, 'task_completion_denied_dependency', $taskId, [
@@ -225,18 +226,18 @@ class FinancialCloseTaskService
 
             return [
                 'success' => false,
-                'reason'  => 'Hard dependency unresolved',
+                'reason' => 'Hard dependency unresolved',
                 'blockers' => $blockers,
             ];
         }
 
         // Pre-flight checks: checklist + evidence
         $preFlightBlockers = $this->getPreFlightBlockers($tenantId, $task);
-        if (!empty($preFlightBlockers)) {
+        if (! empty($preFlightBlockers)) {
             Log::warning('FinancialClose: task completion denied — pre-flight checks failed', [
                 'tenant_id' => $tenantId,
-                'task_id'   => $taskId,
-                'blockers'  => $preFlightBlockers,
+                'task_id' => $taskId,
+                'blockers' => $preFlightBlockers,
             ]);
 
             $this->writeAuditLog($tenantId, $userId, 'task_completion_denied_preflight', $taskId, [
@@ -244,8 +245,8 @@ class FinancialCloseTaskService
             ]);
 
             return [
-                'success'  => false,
-                'reason'   => 'Pre-flight checks failed',
+                'success' => false,
+                'reason' => 'Pre-flight checks failed',
                 'blockers' => $preFlightBlockers,
             ];
         }
@@ -281,14 +282,14 @@ class FinancialCloseTaskService
         $metadata = is_array($task->metadata) ? $task->metadata : [];
 
         // 1. Checklist: all items must be checked
-        $checklistItems     = $metadata['checklist_items'] ?? [];
+        $checklistItems = $metadata['checklist_items'] ?? [];
         $checklistCompleted = $metadata['checklist_completed'] ?? [];
         if (count($checklistItems) > 0) {
             $missing = array_diff($checklistItems, $checklistCompleted);
-            if (!empty($missing)) {
+            if (! empty($missing)) {
                 $blockers[] = [
-                    'type'    => 'checklist',
-                    'message' => count($missing) . ' checklist item(s) not yet completed',
+                    'type' => 'checklist',
+                    'message' => count($missing).' checklist item(s) not yet completed',
                     'details' => array_values($missing),
                 ];
             }
@@ -299,9 +300,9 @@ class FinancialCloseTaskService
             ->where('task_id', $task->id)
             ->count();
         $documentLinks = $metadata['document_links'] ?? [];
-        if (!empty($documentLinks) && $evidenceCount === 0) {
+        if (! empty($documentLinks) && $evidenceCount === 0) {
             $blockers[] = [
-                'type'    => 'evidence',
+                'type' => 'evidence',
                 'message' => 'At least one evidence file must be uploaded for linked source documents',
             ];
         }
@@ -316,7 +317,7 @@ class FinancialCloseTaskService
     {
         $task = $this->getTask($tenantId, $taskId);
 
-        if (!$task) {
+        if (! $task) {
             return false;
         }
 
@@ -335,7 +336,7 @@ class FinancialCloseTaskService
     {
         $task = $this->getTask($tenantId, $taskId);
 
-        if (!$task || $task->status === 'completed') {
+        if (! $task || $task->status === 'completed') {
             return false;
         }
 
@@ -378,12 +379,12 @@ class FinancialCloseTaskService
     protected function writeAuditLog(string $tenantId, string $actorId, string $action, string $entityId, array $context = []): void
     {
         AuditLog::create([
-            'tenant_id'   => $tenantId,
-            'actor_id'    => $actorId,
-            'action'      => $action,
+            'tenant_id' => $tenantId,
+            'actor_id' => $actorId,
+            'action' => $action,
             'entity_type' => 'close_task',
-            'entity_id'   => $entityId,
-            'after'       => $context ?: null,
+            'entity_id' => $entityId,
+            'after' => $context ?: null,
         ]);
     }
 }

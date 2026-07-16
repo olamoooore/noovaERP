@@ -4,14 +4,15 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * Run the migrations.
      */
     public function up(): void
     {
         // Create eligibility_decisions table for access decision logging
-        if (!Schema::hasTable('eligibility_decisions')) {
+        if (! Schema::hasTable('eligibility_decisions')) {
             Schema::create('eligibility_decisions', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('customer_id');
@@ -20,7 +21,7 @@ return new class extends Migration {
                     'tier_access',
                     'early_access',
                     'discount_eligibility',
-                    'points_redemption'
+                    'points_redemption',
                 ]);
                 $table->enum('decision_result', ['allowed', 'blocked', 'conditional']);
                 $table->text('decision_reason');
@@ -42,7 +43,7 @@ return new class extends Migration {
         }
 
         // Create loyalty_ledger table for points transaction integrity
-        if (!Schema::hasTable('loyalty_ledger')) {
+        if (! Schema::hasTable('loyalty_ledger')) {
             Schema::create('loyalty_ledger', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('customer_id');
@@ -69,7 +70,7 @@ return new class extends Migration {
         }
 
         // Create rule_versions table for rule versioning and decision reasoning
-        if (!Schema::hasTable('loyalty_rule_versions')) {
+        if (! Schema::hasTable('loyalty_rule_versions')) {
             Schema::create('loyalty_rule_versions', function (Blueprint $table) {
                 $table->id();
                 $table->string('rule_name', 100);
@@ -90,7 +91,7 @@ return new class extends Migration {
         }
 
         // Create decision_appeals table for appeal and override workflows
-        if (!Schema::hasTable('eligibility_decision_appeals')) {
+        if (! Schema::hasTable('eligibility_decision_appeals')) {
             Schema::create('eligibility_decision_appeals', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('original_decision_id');
@@ -117,7 +118,7 @@ return new class extends Migration {
         }
 
         // Create points_balance_snapshots table for reconciliation and audit
-        if (!Schema::hasTable('loyalty_balance_snapshots')) {
+        if (! Schema::hasTable('loyalty_balance_snapshots')) {
             Schema::create('loyalty_balance_snapshots', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('customer_id');

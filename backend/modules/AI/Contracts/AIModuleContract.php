@@ -9,12 +9,35 @@ use App\Modules\Contracts\BaseModuleContract;
  */
 class AIModuleContract extends BaseModuleContract
 {
-    public function getKey(): string { return 'ai'; }
-    public function getName(): string { return 'AI'; }
-    public function getType(): string { return 'addon'; }
-    public function getDescription(): string { return 'AI-powered assistant, reasoning, and automation engine.'; }
-    public function getVersion(): string { return '1.0.0'; }
-    public function getDependencies(): array { return []; }
+    public function getKey(): string
+    {
+        return 'ai';
+    }
+
+    public function getName(): string
+    {
+        return 'AI';
+    }
+
+    public function getType(): string
+    {
+        return 'addon';
+    }
+
+    public function getDescription(): string
+    {
+        return 'AI-powered assistant, reasoning, and automation engine.';
+    }
+
+    public function getVersion(): string
+    {
+        return '1.0.0';
+    }
+
+    public function getDependencies(): array
+    {
+        return [];
+    }
 
     public function getPermissions(): array
     {
@@ -36,26 +59,26 @@ class AIModuleContract extends BaseModuleContract
     {
         return [
             'required_setup_steps' => ['api_key_setup', 'policy_review'],
-            'default_settings'     => ['risk_threshold' => 'medium', 'max_cost_per_request' => 0.05],
-            'recommended_roles'    => ['admin', 'ai_operator'],
+            'default_settings' => ['risk_threshold' => 'medium', 'max_cost_per_request' => 0.05],
+            'recommended_roles' => ['admin', 'ai_operator'],
         ];
     }
 
     public function getActivationRules(): array
     {
         return [
-            'requires'  => [],
-            'settings'  => ['api_key' => null],
-            'min_tier'  => null,
+            'requires' => [],
+            'settings' => ['api_key' => null],
+            'min_tier' => null,
         ];
     }
 
     public function getDeactivationRules(): array
     {
         return [
-            'removes_data'       => false,
+            'removes_data' => false,
             'preserves_entities' => ['ai_reasoning_records'],
-            'cleanup_jobs'       => ['cancel_pending_approvals'],
+            'cleanup_jobs' => ['cancel_pending_approvals'],
         ];
     }
 
@@ -71,9 +94,9 @@ class AIModuleContract extends BaseModuleContract
     {
         return [
             'has_ai_assistant' => true,
-            'ai_suggestions'   => true,
-            'ai_automation'    => true,
-            'ai_data_access'   => ['all_modules'],
+            'ai_suggestions' => true,
+            'ai_automation' => true,
+            'ai_data_access' => ['all_modules'],
         ];
     }
 

@@ -52,9 +52,10 @@ class StockLevel extends Model
      */
     public function isLowStock(): bool
     {
-        if (!$this->min_quantity || $this->min_quantity <= 0) {
+        if (! $this->min_quantity || $this->min_quantity <= 0) {
             return false;
         }
+
         return $this->quantity > 0 && $this->quantity <= $this->min_quantity;
     }
 

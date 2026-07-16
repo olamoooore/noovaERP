@@ -8,12 +8,12 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('products')) {
+        if (! Schema::hasTable('products')) {
             return;
         }
 
         Schema::table('products', function (Blueprint $table) {
-            if (!Schema::hasColumn('products', 'short_description')) {
+            if (! Schema::hasColumn('products', 'short_description')) {
                 $table->text('short_description')->nullable()->after('description');
             }
         });

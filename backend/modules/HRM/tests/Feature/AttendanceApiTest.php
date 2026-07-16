@@ -9,14 +9,14 @@ use Modules\HRM\Tests\HrmTestCase;
 
 class AttendanceApiTest extends HrmTestCase
 {
-
     protected User $user;
+
     protected Employee $employee;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user     = User::factory()->create();
+        $this->user = User::factory()->create();
         $this->employee = Employee::factory()->create();
         $this->actingAs($this->user, 'sanctum');
     }
@@ -47,9 +47,9 @@ class AttendanceApiTest extends HrmTestCase
     {
         $payload = [
             'employee_id' => $this->employee->id,
-            'date'        => '2026-03-30',
-            'check_in'    => '09:00',
-            'check_out'   => '18:00',
+            'date' => '2026-03-30',
+            'check_in' => '09:00',
+            'check_out' => '18:00',
         ];
 
         $response = $this->postJson('/api/v1/hrm/attendance', $payload);
@@ -64,9 +64,9 @@ class AttendanceApiTest extends HrmTestCase
     {
         $response = $this->postJson('/api/v1/hrm/attendance', [
             'employee_id' => $this->employee->id,
-            'date'        => '2026-03-30',
-            'check_in'    => '18:00',
-            'check_out'   => '09:00',
+            'date' => '2026-03-30',
+            'check_in' => '18:00',
+            'check_out' => '09:00',
         ]);
 
         $response->assertStatus(422);
@@ -77,7 +77,7 @@ class AttendanceApiTest extends HrmTestCase
     {
         $attendance = Attendance::factory()->create([
             'employee_id' => $this->employee->id,
-            'check_in'    => '09:00',
+            'check_in' => '09:00',
         ]);
 
         $response = $this->putJson("/api/v1/hrm/attendance/{$attendance->id}", [

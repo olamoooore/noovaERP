@@ -48,7 +48,7 @@ class AccountingPermissionSeeder extends Seeder
         Role::firstOrCreate(['name' => 'viewer', 'guard_name' => 'web']);
 
         if (isset($this->command)) {
-            $this->command->info('Accounting permissions seeded: ' . count($permissions) . ' permissions.');
+            $this->command->info('Accounting permissions seeded: '.count($permissions).' permissions.');
         }
     }
 }

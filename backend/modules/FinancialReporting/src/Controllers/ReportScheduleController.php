@@ -3,12 +3,12 @@
 namespace Modules\FinancialReporting\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Validator;
-use Modules\FinancialReporting\Models\ReportSchedule;
-use Modules\FinancialReporting\Jobs\GenerateScheduledReport;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+use Modules\FinancialReporting\Jobs\GenerateScheduledReport;
+use Modules\FinancialReporting\Models\ReportSchedule;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
@@ -78,7 +78,7 @@ class ReportScheduleController extends Controller
             ], 422);
         }
 
-        $schedule = new ReportSchedule();
+        $schedule = new ReportSchedule;
         $schedule->name = $request->input('name');
         $schedule->report_type = $request->input('report_type');
         $schedule->frequency = $request->input('frequency');
@@ -191,7 +191,7 @@ class ReportScheduleController extends Controller
     public function toggleActive(int $id): JsonResponse
     {
         $schedule = ReportSchedule::findOrFail($id);
-        $schedule->is_active = !$schedule->is_active;
+        $schedule->is_active = ! $schedule->is_active;
         $schedule->save();
 
         return response()->json([

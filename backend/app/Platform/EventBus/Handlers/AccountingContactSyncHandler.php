@@ -21,7 +21,7 @@ class AccountingContactSyncHandler implements EventHandlerContract
         $eventName = $event->getEventName();
         $contactId = $payload['contact_id'] ?? null;
 
-        if (!$contactId) {
+        if (! $contactId) {
             return;
         }
 
@@ -74,7 +74,7 @@ class AccountingContactSyncHandler implements EventHandlerContract
     private function handleContactCreated(string $contactId): void
     {
         $contact = CoreContact::find($contactId);
-        if (!$contact) {
+        if (! $contact) {
             return;
         }
 
@@ -124,7 +124,7 @@ class AccountingContactSyncHandler implements EventHandlerContract
             'id' => Str::uuid(),
             'tenant_id' => tenant()->id,
             'contact_id' => $contactId,
-            'customer_code' => 'CUST-' . strtoupper(substr($contactId, 0, 8)),
+            'customer_code' => 'CUST-'.strtoupper(substr($contactId, 0, 8)),
             'payment_terms' => 30,
             'credit_limit' => 0,
             'current_balance' => 0,
@@ -147,7 +147,7 @@ class AccountingContactSyncHandler implements EventHandlerContract
             'id' => Str::uuid(),
             'tenant_id' => tenant()->id,
             'contact_id' => $contactId,
-            'vendor_code' => 'VEND-' . strtoupper(substr($contactId, 0, 8)),
+            'vendor_code' => 'VEND-'.strtoupper(substr($contactId, 0, 8)),
             'payment_terms' => 30,
             'credit_limit' => 0,
             'current_balance' => 0,

@@ -3,9 +3,9 @@
 namespace Modules\Communication\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * CommunicationMessage — The heart of the communication bus.
@@ -45,19 +45,30 @@ class CommunicationMessage extends Model
 
     // Message types
     const TYPE_COMMENT = 'comment';
+
     const TYPE_EMAIL = 'email';
+
     const TYPE_NOTIFICATION = 'notification';
+
     const TYPE_SYSTEM = 'system';
+
     const TYPE_SMS = 'sms';
+
     const TYPE_WHATSAPP = 'whatsapp';
+
     const TYPE_INTERNAL_NOTE = 'internal_note';
 
     // Statuses
     const STATUS_DRAFT = 'draft';
+
     const STATUS_QUEUED = 'queued';
+
     const STATUS_SENT = 'sent';
+
     const STATUS_DELIVERED = 'delivered';
+
     const STATUS_FAILED = 'failed';
+
     const STATUS_CANCELLED = 'cancelled';
 
     protected $fillable = [
@@ -157,12 +168,12 @@ class CommunicationMessage extends Model
      */
     public function getLinkedRecord(): ?Model
     {
-        if (!$this->model || !$this->record_id) {
+        if (! $this->model || ! $this->record_id) {
             return null;
         }
 
         $modelClass = $this->resolveModelClass($this->model);
-        if (!$modelClass || !class_exists($modelClass)) {
+        if (! $modelClass || ! class_exists($modelClass)) {
             return null;
         }
 
@@ -175,6 +186,7 @@ class CommunicationMessage extends Model
     protected function resolveModelClass(string $model): ?string
     {
         $map = config('communication.model_map', []);
+
         return $map[$model] ?? null;
     }
 

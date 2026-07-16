@@ -2,10 +2,9 @@
 
 namespace Modules\POS\Services;
 
+use Illuminate\Support\Facades\Log;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosPayment;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
-use Illuminate\Support\Facades\Log;
 
 class PosReversalService
 {
@@ -94,7 +93,7 @@ class PosReversalService
         string $notes,
         ?string $idempotencyKey = null
     ): PosPayment {
-        $idempotencyKey = $idempotencyKey ?? "return_{$order->id}_" . md5(json_encode(['method' => $refundMethod, 'total' => $returnTotal]));
+        $idempotencyKey = $idempotencyKey ?? "return_{$order->id}_".md5(json_encode(['method' => $refundMethod, 'total' => $returnTotal]));
 
         $existing = PosPayment::where('pos_order_id', $order->id)
             ->where('method', $refundMethod)

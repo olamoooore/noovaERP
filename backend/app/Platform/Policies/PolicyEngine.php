@@ -3,7 +3,6 @@
 namespace App\Platform\Policies;
 
 use App\Platform\Policies\Contracts\PolicyEngineContract;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class PolicyEngine implements PolicyEngineContract
@@ -77,19 +76,29 @@ class PolicyEngine implements PolicyEngineContract
 
             switch ($operator) {
                 case 'equals':
-                    if ($contextValue !== $value) return false;
+                    if ($contextValue !== $value) {
+                        return false;
+                    }
                     break;
                 case 'not_equals':
-                    if ($contextValue === $value) return false;
+                    if ($contextValue === $value) {
+                        return false;
+                    }
                     break;
                 case 'in':
-                    if (!is_array($value) || !in_array($contextValue, $value)) return false;
+                    if (! is_array($value) || ! in_array($contextValue, $value)) {
+                        return false;
+                    }
                     break;
                 case 'greater_than':
-                    if ($contextValue <= $value) return false;
+                    if ($contextValue <= $value) {
+                        return false;
+                    }
                     break;
                 case 'less_than':
-                    if ($contextValue >= $value) return false;
+                    if ($contextValue >= $value) {
+                        return false;
+                    }
                     break;
             }
         }

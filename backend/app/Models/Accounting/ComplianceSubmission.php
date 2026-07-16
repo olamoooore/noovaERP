@@ -4,9 +4,9 @@ namespace App\Models\Accounting;
 
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Compliance Submission - Tracks provider submissions and status
@@ -51,13 +51,13 @@ class ComplianceSubmission extends Model
     ];
 
     protected $casts = [
-        'submitted_at'                  => 'datetime',
-        'last_status_check'             => 'datetime',
-        'cancelled_at'                  => 'datetime',
-        'buyer_rejection_responded_at'  => 'datetime',
-        'provider_response'             => 'array',
-        'status_details'                => 'array',
-        'signature_metadata'            => 'array',
+        'submitted_at' => 'datetime',
+        'last_status_check' => 'datetime',
+        'cancelled_at' => 'datetime',
+        'buyer_rejection_responded_at' => 'datetime',
+        'provider_response' => 'array',
+        'status_details' => 'array',
+        'signature_metadata' => 'array',
     ];
 
     public function document(): BelongsTo
@@ -99,7 +99,7 @@ class ComplianceSubmission extends Model
      */
     public function getStatusLabel(): string
     {
-        return match($this->submission_status) {
+        return match ($this->submission_status) {
             'pending' => 'Pending Submission',
             'ack' => 'Acknowledged by Provider',
             'accepted' => 'Accepted',

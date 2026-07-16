@@ -2,12 +2,11 @@
 
 namespace Modules\Fulfillment\Services;
 
+use Illuminate\Support\Facades\DB;
+use Modules\Fulfillment\Contracts\ShipmentRequest;
 use Modules\Fulfillment\Models\FulfillmentProvider;
 use Modules\Fulfillment\Models\Shipment;
 use Modules\Fulfillment\Models\ShipmentLine;
-use Modules\Fulfillment\Contracts\CarrierInterface;
-use Modules\Fulfillment\Contracts\ShipmentRequest;
-use Illuminate\Support\Facades\DB;
 
 class FulfillmentService
 {
@@ -33,7 +32,7 @@ class FulfillmentService
 
     public function createProvider(array $data): FulfillmentProvider
     {
-        if (!empty($data['config'])) {
+        if (! empty($data['config'])) {
             foreach ($data['config'] as $key => $value) {
                 if (in_array($key, ['api_key', 'api_secret', 'password', 'token'])) {
                     $data['config'][$key] = encrypt($value);
@@ -41,7 +40,7 @@ class FulfillmentService
             }
         }
 
-        if (!empty($data['is_default'])) {
+        if (! empty($data['is_default'])) {
             FulfillmentProvider::where('tenant_id', $data['tenant_id'])
                 ->where('is_default', true)
                 ->update(['is_default' => false]);
@@ -54,10 +53,10 @@ class FulfillmentService
     {
         $provider = FulfillmentProvider::findOrFail($providerId);
 
-        if (!empty($data['config'])) {
+        if (! empty($data['config'])) {
             $existingConfig = $provider->config ?? [];
             foreach ($data['config'] as $key => $value) {
-                if (in_array($key, ['api_key', 'api_secret', 'password', 'token']) && !empty($value)) {
+                if (in_array($key, ['api_key', 'api_secret', 'password', 'token']) && ! empty($value)) {
                     $existingConfig[$key] = encrypt($value);
                 } else {
                     $existingConfig[$key] = $value;
@@ -66,7 +65,7 @@ class FulfillmentService
             $data['config'] = $existingConfig;
         }
 
-        if (!empty($data['is_default'])) {
+        if (! empty($data['is_default'])) {
             FulfillmentProvider::where('tenant_id', $provider->tenant_id)
                 ->where('is_default', true)
                 ->where('id', '!=', $providerId)
@@ -147,7 +146,7 @@ class FulfillmentService
 
     public function cancelShipment(Shipment $shipment): bool
     {
-        if (!$shipment->canCancel()) {
+        if (! $shipment->canCancel()) {
             throw new \RuntimeException('Shipment cannot be cancelled in current status');
         }
 
@@ -169,23 +168,23 @@ class FulfillmentService
     {
         $query = Shipment::where('tenant_id', $tenantId);
 
-        if (!empty($filters['status'])) {
+        if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
 
-        if (!empty($filters['provider_id'])) {
+        if (! empty($filters['provider_id'])) {
             $query->where('provider_id', $filters['provider_id']);
         }
 
-        if (!empty($filters['order_id'])) {
+        if (! empty($filters['order_id'])) {
             $query->where('order_id', $filters['order_id']);
         }
 
-        if (!empty($filters['date_from'])) {
+        if (! empty($filters['date_from'])) {
             $query->whereDate('created_at', '>=', $filters['date_from']);
         }
 
-        if (!empty($filters['date_to'])) {
+        if (! empty($filters['date_to'])) {
             $query->whereDate('created_at', '<=', $filters['date_to']);
         }
 

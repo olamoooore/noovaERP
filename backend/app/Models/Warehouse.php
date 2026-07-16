@@ -4,9 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\StockMovement;
-use Modules\Inventory\Models\StockLevel;
 use Modules\Inventory\Models\PurchaseOrder;
+use Modules\Inventory\Models\StockLevel;
 use Modules\Inventory\Models\WarehouseTransfer;
 
 class Warehouse extends Model
@@ -82,7 +81,7 @@ class Warehouse extends Model
     {
         // Remove default from other warehouses
         static::where('is_default', true)->update(['is_default' => false]);
-        
+
         $this->is_default = true;
         $this->save();
     }

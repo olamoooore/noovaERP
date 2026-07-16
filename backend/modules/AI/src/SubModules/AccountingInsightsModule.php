@@ -36,7 +36,7 @@ class AccountingInsightsModule extends BaseModule
 
     public function getSystemPrompt(): string
     {
-        return <<<PROMPT
+        return <<<'PROMPT'
 **ACCOUNTING INSIGHTS MODULE ACTIVE**
 
 You are now in Accounting Insights mode. Your job is to:

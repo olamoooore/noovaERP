@@ -37,11 +37,12 @@ class PaymentRefundService
     /**
      * Process a refund for a completed payment transaction.
      *
-     * @param PaymentTransaction $transaction The completed transaction to refund
-     * @param float $amount The refund amount
-     * @param string $reason Human-readable refund reason
-     * @param int|null $actorUserId User performing the refund (null = current auth)
+     * @param  PaymentTransaction  $transaction  The completed transaction to refund
+     * @param  float  $amount  The refund amount
+     * @param  string  $reason  Human-readable refund reason
+     * @param  int|null  $actorUserId  User performing the refund (null = current auth)
      * @return array{transaction: PaymentTransaction, refundEntry: \App\Models\JournalEntry|null, refundPayment: Payment|null}
+     *
      * @throws \InvalidArgumentException If refund amount exceeds available balance
      * @throws \RuntimeException If refund processing fails
      */
@@ -80,7 +81,7 @@ class PaymentRefundService
             if ($invoice && $invoice->journal_entry_id) {
                 // Find the original payment to determine which journal entry to reverse
                 $originalPayment = Payment::where('reference', $transaction->transaction_id)->first();
-                
+
                 if ($originalPayment && $originalPayment->journal_entry_id) {
                     // Reverse the original payment journal entry
                     $reversalResult = $this->postingEngine->reverse(new ReversalRequest(
@@ -91,7 +92,7 @@ class PaymentRefundService
                         actorUserId: $actorUserId,
                     ));
 
-                    if (!$reversalResult->success) {
+                    if (! $reversalResult->success) {
                         throw new \RuntimeException(
                             "Failed to post GL reversal: {$reversalResult->error}"
                         );
@@ -109,23 +110,23 @@ class PaymentRefundService
 
             // Step 2: Update transaction refund tracking
             $transaction->increment('refunded_amount', $amount);
-            
+
             $updateData = [
                 'refund_reason' => $reason,
                 'refunded_at' => now(),
             ];
-            
+
             // If fully refunded, update status
             if ($transaction->refunded_amount >= $transaction->amount) {
                 $updateData['status'] = 'refunded';
             }
-            
+
             $transaction->update($updateData);
 
             // Step 3: Update invoice balances via canonical service
             if ($invoice) {
                 $this->invoiceService->applyRefundToInvoice($invoice, $amount);
-                
+
                 // Create refund payment record for audit trail
                 $refundPayment = Payment::create([
                     'customer_id' => $invoice->customer_id,
@@ -201,7 +202,7 @@ class PaymentRefundService
             userId: $actorUserId,
         ));
 
-        if (!$result->success) {
+        if (! $result->success) {
             throw new \RuntimeException("Failed to post refund GL entry: {$result->error}");
         }
 
@@ -218,6 +219,7 @@ class PaymentRefundService
         }
 
         $availableForRefund = $transaction->amount - ($transaction->refunded_amount ?? 0);
+
         return $amount <= $availableForRefund;
     }
 

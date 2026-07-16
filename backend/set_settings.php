@@ -1,4 +1,5 @@
 <?php
+
 require __DIR__.'/vendor/autoload.php';
 $app = require_once __DIR__.'/bootstrap/app.php';
 $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
@@ -13,5 +14,5 @@ Setting::setValue('iot_agent_token', 'ump_6d99550cafe0b09a68801c7d6b89061bd82218
 echo "Set iot_agent_token\n";
 
 // Verify
-echo "URL: " . Setting::getValue('iot_agent_url') . PHP_EOL;
-echo "Token: " . Setting::getValue('iot_agent_token') . PHP_EOL;
+echo 'URL: '.Setting::getValue('iot_agent_url').PHP_EOL;
+echo 'Token: '.Setting::getValue('iot_agent_token').PHP_EOL;

@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\PaymentTerm;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 
 /**
  * Payment Terms Controller
@@ -34,16 +34,16 @@ class PaymentTermsController extends Controller
         // Search by name or code
         if ($request->has('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('name', 'LIKE', "%{$search}%")
-                  ->orWhere('code', 'LIKE', "%{$search}%");
+                    ->orWhere('code', 'LIKE', "%{$search}%");
             });
         }
 
         $terms = $query->orderBy('name')->get();
 
         // Add usage count for each term
-        $terms->each(function($term) {
+        $terms->each(function ($term) {
             $term->usage_count = $this->getUsageCount($term->id);
         });
 
@@ -57,7 +57,7 @@ class PaymentTermsController extends Controller
     {
         $term = PaymentTerm::findOrFail($id);
         $term->usage_count = $this->getUsageCount($id);
-        
+
         return response()->json($term);
     }
 
@@ -82,15 +82,15 @@ class PaymentTermsController extends Controller
         }
 
         // Validate discount configuration
-        if ($request->discount_percentage && !$request->discount_days) {
+        if ($request->discount_percentage && ! $request->discount_days) {
             return response()->json([
-                'error' => 'Discount days required when discount percentage is set'
+                'error' => 'Discount days required when discount percentage is set',
             ], 422);
         }
 
-        if ($request->discount_days && !$request->discount_percentage) {
+        if ($request->discount_days && ! $request->discount_percentage) {
             return response()->json([
-                'error' => 'Discount percentage required when discount days is set'
+                'error' => 'Discount percentage required when discount days is set',
             ], 422);
         }
 
@@ -113,7 +113,7 @@ class PaymentTermsController extends Controller
 
         return response()->json([
             'message' => 'Payment term created successfully',
-            'term' => $term
+            'term' => $term,
         ], 201);
     }
 
@@ -126,7 +126,7 @@ class PaymentTermsController extends Controller
 
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|string|max:100',
-            'code' => 'sometimes|string|max:20|unique:payment_terms,code,' . $id,
+            'code' => 'sometimes|string|max:20|unique:payment_terms,code,'.$id,
             'type' => 'sometimes|in:net_days,end_of_month,immediate',
             'days' => 'sometimes|integer|min:0',
             'discount_percentage' => 'nullable|numeric|min:0|max:100',
@@ -141,22 +141,22 @@ class PaymentTermsController extends Controller
         }
 
         // Validate discount configuration
-        $discountPercentage = $request->has('discount_percentage') 
-            ? $request->discount_percentage 
+        $discountPercentage = $request->has('discount_percentage')
+            ? $request->discount_percentage
             : $term->discount_percentage;
-        $discountDays = $request->has('discount_days') 
-            ? $request->discount_days 
+        $discountDays = $request->has('discount_days')
+            ? $request->discount_days
             : $term->discount_days;
 
-        if ($discountPercentage && !$discountDays) {
+        if ($discountPercentage && ! $discountDays) {
             return response()->json([
-                'error' => 'Discount days required when discount percentage is set'
+                'error' => 'Discount days required when discount percentage is set',
             ], 422);
         }
 
-        if ($discountDays && !$discountPercentage) {
+        if ($discountDays && ! $discountPercentage) {
             return response()->json([
-                'error' => 'Discount percentage required when discount days is set'
+                'error' => 'Discount percentage required when discount days is set',
             ], 422);
         }
 
@@ -169,12 +169,12 @@ class PaymentTermsController extends Controller
 
         $term->update($request->only([
             'name', 'code', 'type', 'days', 'discount_percentage',
-            'discount_days', 'description', 'is_default', 'is_active'
+            'discount_days', 'description', 'is_default', 'is_active',
         ]));
 
         return response()->json([
             'message' => 'Payment term updated successfully',
-            'term' => $term->fresh()
+            'term' => $term->fresh(),
         ]);
     }
 
@@ -189,14 +189,14 @@ class PaymentTermsController extends Controller
         $usageCount = $this->getUsageCount($id);
         if ($usageCount > 0) {
             return response()->json([
-                'error' => "Cannot delete payment term that is in use by {$usageCount} customer(s)/vendor(s)"
+                'error' => "Cannot delete payment term that is in use by {$usageCount} customer(s)/vendor(s)",
             ], 422);
         }
 
         $term->update(['is_active' => false]);
 
         return response()->json([
-            'message' => 'Payment term deactivated successfully'
+            'message' => 'Payment term deactivated successfully',
         ]);
     }
 
@@ -232,9 +232,9 @@ class PaymentTermsController extends Controller
     {
         $term = PaymentTerm::getDefault();
 
-        if (!$term) {
+        if (! $term) {
             return response()->json([
-                'error' => 'No default payment term configured'
+                'error' => 'No default payment term configured',
             ], 404);
         }
 
@@ -248,9 +248,9 @@ class PaymentTermsController extends Controller
     {
         $term = PaymentTerm::findOrFail($id);
 
-        if (!$term->is_active) {
+        if (! $term->is_active) {
             return response()->json([
-                'error' => 'Cannot set inactive payment term as default'
+                'error' => 'Cannot set inactive payment term as default',
             ], 422);
         }
 
@@ -263,7 +263,7 @@ class PaymentTermsController extends Controller
 
         return response()->json([
             'message' => 'Payment term set as default successfully',
-            'term' => $term
+            'term' => $term,
         ]);
     }
 

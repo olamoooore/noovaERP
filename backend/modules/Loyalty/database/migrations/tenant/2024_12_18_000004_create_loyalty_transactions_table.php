@@ -23,7 +23,7 @@ return new class extends Migration
             $table->timestamp('expires_at')->nullable()->comment('For earn transactions');
             $table->foreignId('created_by')->nullable()->constrained('users')->onDelete('set null');
             $table->timestamps();
-            
+
             $table->index('customer_loyalty_id');
             $table->index('type');
             $table->index('expires_at');

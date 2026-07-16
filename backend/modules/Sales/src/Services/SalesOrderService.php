@@ -3,18 +3,16 @@
 namespace Modules\Sales\Services;
 
 use App\Models\JournalEntryLink;
-use App\Models\Customer;
-use App\Services\InvoiceCreationToken;
 use App\Services\InvoiceService;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
+use Modules\Sales\Models\SalesChannelReference;
+use Modules\Sales\Models\SalesInvoiceLink;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Models\SalesOrderLine;
-use Modules\Sales\Models\SalesInvoiceLink;
-use Modules\Sales\Models\SalesChannelReference;
 use Modules\Sales\Models\SalesOrderStatusHistory;
-use Illuminate\Support\Facades\DB;
 
 class SalesOrderService
 {
@@ -66,7 +64,7 @@ class SalesOrderService
             $order->refresh();
             $order->calculateTotals();
 
-            if (!empty($data['channel_reference'])) {
+            if (! empty($data['channel_reference'])) {
                 $this->createChannelReference($order, $data['channel_reference']);
             }
 
@@ -86,7 +84,7 @@ class SalesOrderService
 
     public function confirmOrder(SalesOrder $order): SalesOrder
     {
-        if (!$order->isDraft()) {
+        if (! $order->isDraft()) {
             throw new \Exception('Only draft orders can be confirmed.');
         }
 
@@ -104,7 +102,7 @@ class SalesOrderService
 
     public function allocateOrder(SalesOrder $order): SalesOrder
     {
-        if (!$order->isConfirmed()) {
+        if (! $order->isConfirmed()) {
             throw new \Exception('Only confirmed orders can be allocated.');
         }
 
@@ -129,7 +127,7 @@ class SalesOrderService
 
     public function fulfilOrder(SalesOrder $order): SalesOrder
     {
-        if (!$order->isAllocated()) {
+        if (! $order->isAllocated()) {
             throw new \Exception('Only allocated orders can be fulfilled.');
         }
 
@@ -150,7 +148,7 @@ class SalesOrderService
 
     private function requireCommitmentWarehouseId(SalesOrder $order, string $phase): int
     {
-        if (!$order->warehouse_id) {
+        if (! $order->warehouse_id) {
             Log::error('Sales commitment failed: warehouse_id is required for stock-tracked order', [
                 'phase' => $phase,
                 'sales_order_id' => $order->id,
@@ -168,7 +166,7 @@ class SalesOrderService
     private function hasStockTrackedLines(SalesOrder $order): bool
     {
         return $order->lines->contains(function ($line) {
-            if (!$line->product_id) {
+            if (! $line->product_id) {
                 return false;
             }
 
@@ -178,7 +176,7 @@ class SalesOrderService
 
     public function createInvoice(SalesOrder $order, ?array $totalOverrides = null, ?InvoiceService $invoiceServiceOverride = null): \App\Models\Invoice
     {
-        if (!$order->isFulfilled() && !$order->isAllocated() && !$order->isConfirmed() && !$order->isInvoiced()) {
+        if (! $order->isFulfilled() && ! $order->isAllocated() && ! $order->isConfirmed() && ! $order->isInvoiced()) {
             throw new \Exception('Only confirmed, allocated, fulfilled, or partially invoiced orders can be invoiced.');
         }
 
@@ -259,7 +257,7 @@ class SalesOrderService
 
             $invoice->update(['sales_order_id' => $order->id]);
 
-            if (!empty($totalOverrides)) {
+            if (! empty($totalOverrides)) {
                 $invoice->update($totalOverrides);
             }
 
@@ -421,7 +419,7 @@ class SalesOrderService
 
             $description = 'Labor';
             if ($log->description) {
-                $description .= ' - ' . $log->description;
+                $description .= ' - '.$log->description;
             }
 
             $lines[] = [
@@ -576,7 +574,7 @@ class SalesOrderService
             default => null,
         };
 
-        if (!$documentType) {
+        if (! $documentType) {
             return 'not_posted';
         }
 
@@ -609,19 +607,19 @@ class SalesOrderService
     {
         $order->loadMissing('lines.product');
 
-        if (!$order->warehouse_id) {
+        if (! $order->warehouse_id) {
             return;
         }
 
         $warehouseId = (int) $order->warehouse_id;
 
         foreach ($order->lines as $line) {
-            if (!$line->product_id) {
+            if (! $line->product_id) {
                 continue;
             }
 
             $product = $line->product;
-            if (!$product || !(bool) ($product->track_inventory ?? false)) {
+            if (! $product || ! (bool) ($product->track_inventory ?? false)) {
                 continue;
             }
 

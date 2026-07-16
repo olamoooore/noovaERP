@@ -3,11 +3,11 @@
 namespace Modules\POS\Models;
 
 use App\Models\User;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PosSession extends Model
 {
@@ -80,7 +80,7 @@ class PosSession extends Model
     {
         // Start with opening balance
         $balance = $this->opening_balance;
-        
+
         // Add cash sales — POS paid orders use status 'paid', not 'completed'
         $cashSales = $this->orders()
             ->where('status', 'paid')
@@ -92,19 +92,19 @@ class PosSession extends Model
                 return $order->payments->where('method', 'cash')->sum('amount');
             });
         $balance += $cashSales;
-        
+
         // Add cash movements
         $cashIn = $this->cashMovements()->where('type', 'in')->sum('amount');
         $cashOut = $this->cashMovements()->where('type', 'out')->sum('amount');
         $balance += $cashIn - $cashOut;
-        
+
         return $balance;
     }
 
     /**
      * Close the session
      */
-    public function close(float $closingBalance, string $notes = null): void
+    public function close(float $closingBalance, ?string $notes = null): void
     {
         $this->expected_balance = $this->calculateExpectedBalance();
         $this->closing_balance = $closingBalance;
@@ -119,7 +119,7 @@ class PosSession extends Model
     /**
      * Close the session with per-payment-method reconciliation
      */
-    public function closeWithPaymentBreakdown(array $paymentCounts, string $notes = null): void
+    public function closeWithPaymentBreakdown(array $paymentCounts, ?string $notes = null): void
     {
         $this->expected_balance = $this->calculateExpectedBalance();
         $this->closing_notes = $notes;
@@ -176,9 +176,9 @@ class PosSession extends Model
         $payments = PosPayment::whereHas('order', function ($q) {
             $q->where('session_id', $this->id)->where('status', 'paid');
         })
-        ->selectRaw('method, SUM(amount) as total')
-        ->groupBy('method')
-        ->get();
+            ->selectRaw('method, SUM(amount) as total')
+            ->groupBy('method')
+            ->get();
 
         foreach ($payments as $payment) {
             $breakdown[] = [
@@ -196,7 +196,7 @@ class PosSession extends Model
     public function getSummary(): array
     {
         $orders = $this->orders()->where('status', 'paid')->get();
-        
+
         return [
             'total_orders' => $orders->count(),
             'total_sales' => $orders->sum('total'),
@@ -217,10 +217,10 @@ class PosSession extends Model
         return PosPayment::whereHas('order', function ($q) {
             $q->where('session_id', $this->id)->where('status', 'completed');
         })
-        ->selectRaw('method, SUM(amount) as total')
-        ->groupBy('method')
-        ->pluck('total', 'method')
-        ->toArray();
+            ->selectRaw('method, SUM(amount) as total')
+            ->groupBy('method')
+            ->pluck('total', 'method')
+            ->toArray();
     }
 
     /**
@@ -232,20 +232,20 @@ class PosSession extends Model
         $last = static::where('session_number', 'like', "S{$date}%")
             ->orderBy('session_number', 'desc')
             ->first();
-        
+
         if ($last && preg_match('/(\d+)$/', $last->session_number, $matches)) {
             $number = intval($matches[1]) + 1;
         } else {
             $number = 1;
         }
-        
-        return 'S' . $date . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        return 'S'.$date.str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($session) {
             if (empty($session->session_number)) {
                 $session->session_number = static::generateSessionNumber();

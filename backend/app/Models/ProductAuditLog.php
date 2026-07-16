@@ -35,12 +35,19 @@ class ProductAuditLog extends Model
     ];
 
     public const ACTION_CREATED = 'created';
+
     public const ACTION_UPDATED = 'updated';
+
     public const ACTION_DELETED = 'deleted';
+
     public const ACTION_STATUS_CHANGED = 'status_changed';
+
     public const ACTION_PRICE_CHANGED = 'price_changed';
+
     public const ACTION_STOCK_CHANGED = 'stock_changed';
+
     public const ACTION_APPROVED = 'approved';
+
     public const ACTION_DISCONTINUED = 'discontinued';
 
     public function product(): BelongsTo
@@ -83,14 +90,14 @@ class ProductAuditLog extends Model
     {
         foreach ($changes as $field => $newValue) {
             $oldValue = $original[$field] ?? null;
-            
+
             // Skip if value hasn't changed
             if ($oldValue === $newValue) {
                 continue;
             }
 
             // Determine action based on field
-            $action = match(true) {
+            $action = match (true) {
                 $field === 'status' => self::ACTION_STATUS_CHANGED,
                 in_array($field, ['price', 'cost', 'wholesale_price', 'msrp']) => self::ACTION_PRICE_CHANGED,
                 in_array($field, ['stock_quantity']) => self::ACTION_STOCK_CHANGED,

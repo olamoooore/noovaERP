@@ -4,17 +4,16 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\User;
 use App\Platform\Evidence\EvidenceItem;
 use App\Platform\Evidence\EvidencePack;
 use App\Platform\Evidence\EvidencePackService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TenantTestCase;
 
 class EvidencePackServiceTest extends TenantTestCase
 {
     protected string $tenantUuid;
+
     protected EvidencePackService $service;
 
     protected function setUp(): void
@@ -23,7 +22,7 @@ class EvidencePackServiceTest extends TenantTestCase
 
         $this->tenantUuid = Str::uuid()->toString();
         $this->bindTenantContext($this->tenantUuid);
-        $this->service = new EvidencePackService();
+        $this->service = new EvidencePackService;
     }
 
     public function test_create_pack_creates_record(): void

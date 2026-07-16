@@ -34,10 +34,10 @@ class BankAccountsController extends Controller
         // Search by account name or bank name
         if ($request->has('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('bank_accounts.account_name', 'LIKE', "%{$search}%")
-                  ->orWhere('bank_accounts.bank_name', 'LIKE', "%{$search}%")
-                  ->orWhere('bank_accounts.account_number', 'LIKE', "%{$search}%");
+                    ->orWhere('bank_accounts.bank_name', 'LIKE', "%{$search}%")
+                    ->orWhere('bank_accounts.account_number', 'LIKE', "%{$search}%");
             });
         }
 
@@ -61,7 +61,7 @@ class BankAccountsController extends Controller
             )
             ->first();
 
-        if (!$bankAccount) {
+        if (! $bankAccount) {
             return response()->json(['error' => 'Bank account not found'], 404);
         }
 
@@ -94,7 +94,7 @@ class BankAccountsController extends Controller
 
             if ($exists) {
                 return response()->json([
-                    'error' => 'Bank account with this account number already exists'
+                    'error' => 'Bank account with this account number already exists',
                 ], 422);
             }
         }
@@ -114,7 +114,7 @@ class BankAccountsController extends Controller
 
         return response()->json([
             'message' => 'Bank account created successfully',
-            'data' => $bankAccount
+            'data' => $bankAccount,
         ], 201);
     }
 
@@ -125,7 +125,7 @@ class BankAccountsController extends Controller
     {
         $bankAccount = DB::table('bank_accounts')->where('id', $id)->first();
 
-        if (!$bankAccount) {
+        if (! $bankAccount) {
             return response()->json(['error' => 'Bank account not found'], 404);
         }
 
@@ -152,18 +152,30 @@ class BankAccountsController extends Controller
 
             if ($exists) {
                 return response()->json([
-                    'error' => 'Bank account with this account number already exists'
+                    'error' => 'Bank account with this account number already exists',
                 ], 422);
             }
         }
 
         $updateData = [];
-        if ($request->has('account_name')) $updateData['account_name'] = $request->account_name;
-        if ($request->has('account_number')) $updateData['account_number'] = $request->account_number;
-        if ($request->has('bank_name')) $updateData['bank_name'] = $request->bank_name;
-        if ($request->has('currency_code')) $updateData['currency_code'] = $request->currency_code;
-        if ($request->has('gl_account_id')) $updateData['gl_account_id'] = $request->gl_account_id;
-        if ($request->has('is_active')) $updateData['is_active'] = $request->is_active;
+        if ($request->has('account_name')) {
+            $updateData['account_name'] = $request->account_name;
+        }
+        if ($request->has('account_number')) {
+            $updateData['account_number'] = $request->account_number;
+        }
+        if ($request->has('bank_name')) {
+            $updateData['bank_name'] = $request->bank_name;
+        }
+        if ($request->has('currency_code')) {
+            $updateData['currency_code'] = $request->currency_code;
+        }
+        if ($request->has('gl_account_id')) {
+            $updateData['gl_account_id'] = $request->gl_account_id;
+        }
+        if ($request->has('is_active')) {
+            $updateData['is_active'] = $request->is_active;
+        }
         $updateData['updated_at'] = now();
 
         DB::table('bank_accounts')->where('id', $id)->update($updateData);
@@ -172,7 +184,7 @@ class BankAccountsController extends Controller
 
         return response()->json([
             'message' => 'Bank account updated successfully',
-            'data' => $updatedBankAccount
+            'data' => $updatedBankAccount,
         ]);
     }
 
@@ -183,7 +195,7 @@ class BankAccountsController extends Controller
     {
         $bankAccount = DB::table('bank_accounts')->where('id', $id)->first();
 
-        if (!$bankAccount) {
+        if (! $bankAccount) {
             return response()->json(['error' => 'Bank account not found'], 404);
         }
 
@@ -195,7 +207,7 @@ class BankAccountsController extends Controller
 
         if ($hasTransactions) {
             return response()->json([
-                'error' => 'Cannot delete bank account with transactions. Deactivate it instead.'
+                'error' => 'Cannot delete bank account with transactions. Deactivate it instead.',
             ], 422);
         }
 
@@ -204,11 +216,11 @@ class BankAccountsController extends Controller
             ->where('id', $id)
             ->update([
                 'is_active' => false,
-                'updated_at' => now()
+                'updated_at' => now(),
             ]);
 
         return response()->json([
-            'message' => 'Bank account deactivated successfully'
+            'message' => 'Bank account deactivated successfully',
         ]);
     }
 
@@ -219,7 +231,7 @@ class BankAccountsController extends Controller
     {
         $bankAccount = DB::table('bank_accounts')->where('id', $id)->first();
 
-        if (!$bankAccount) {
+        if (! $bankAccount) {
             return response()->json(['error' => 'Bank account not found'], 404);
         }
 
@@ -237,7 +249,7 @@ class BankAccountsController extends Controller
             'data' => [
                 'current_balance' => $currentBalance,
                 'currency_code' => $bankAccount->currency_code,
-            ]
+            ],
         ]);
     }
 }

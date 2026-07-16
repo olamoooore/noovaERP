@@ -14,7 +14,7 @@ class WebCustomerTicketController extends Controller
     {
         $customer = $request->attributes->get('web_customer');
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
@@ -28,7 +28,7 @@ class WebCustomerTicketController extends Controller
             ->where(function ($query) use ($customer, $orderIds) {
                 $query->where('customer_id', $customer->id);
 
-                if (!empty($customer->email)) {
+                if (! empty($customer->email)) {
                     $query->orWhere('buyer_email', $customer->email);
                 }
 

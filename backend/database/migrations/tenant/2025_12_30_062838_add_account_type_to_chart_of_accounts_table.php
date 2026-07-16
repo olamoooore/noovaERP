@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::table('chart_of_accounts', function (Blueprint $table) {
             // Add account_type column if it doesn't exist
-            if (!Schema::hasColumn('chart_of_accounts', 'account_type')) {
+            if (! Schema::hasColumn('chart_of_accounts', 'account_type')) {
                 $table->string('account_type', 50)->nullable()->after('account_code');
             }
         });

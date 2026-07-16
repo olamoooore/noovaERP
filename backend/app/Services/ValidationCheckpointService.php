@@ -15,12 +15,12 @@ class ValidationCheckpointService
     public function runAll(): array
     {
         return [
-            'trial_balance_tie_out'    => $this->checkTrialBalance(),
+            'trial_balance_tie_out' => $this->checkTrialBalance(),
             'mandatory_roles_assigned' => $this->checkMandatoryRoles(),
             'system_accounts_complete' => $this->checkSystemAccounts(),
-            'sample_posting'           => $this->checkSamplePosting(),
-            'coa_mapped'               => $this->checkCoaMapped(),
-            'opening_balances'         => $this->checkOpeningBalances(),
+            'sample_posting' => $this->checkSamplePosting(),
+            'coa_mapped' => $this->checkCoaMapped(),
+            'opening_balances' => $this->checkOpeningBalances(),
         ];
     }
 
@@ -31,10 +31,11 @@ class ValidationCheckpointService
     {
         $results = $this->runAll();
         foreach ($results as $gate) {
-            if (!$gate['passed']) {
+            if (! $gate['passed']) {
                 return false;
             }
         }
+
         return true;
     }
 
@@ -53,8 +54,8 @@ class ValidationCheckpointService
         $passed = abs($net) < 0.01;
 
         return [
-            'passed'  => $passed,
-            'detail'  => $passed
+            'passed' => $passed,
+            'detail' => $passed
                 ? 'Trial balance ties out (net = 0).'
                 : "Trial balance does not tie out. Net difference: {$net}.",
         ];
@@ -69,9 +70,9 @@ class ValidationCheckpointService
             ->where('is_mandatory', true)
             ->whereNotExists(function ($q) {
                 $q->select(DB::raw(1))
-                  ->from('entity_account_roles')
-                  ->whereColumn('entity_account_roles.role_id', 'account_roles.id')
-                  ->where('entity_account_roles.is_active', true);
+                    ->from('entity_account_roles')
+                    ->whereColumn('entity_account_roles.role_id', 'account_roles.id')
+                    ->where('entity_account_roles.is_active', true);
             })
             ->pluck('code')
             ->toArray();
@@ -79,10 +80,10 @@ class ValidationCheckpointService
         $passed = empty($unassigned);
 
         return [
-            'passed'  => $passed,
-            'detail'  => $passed
+            'passed' => $passed,
+            'detail' => $passed
                 ? 'All mandatory account roles are assigned.'
-                : 'Unassigned mandatory roles: ' . implode(', ', $unassigned),
+                : 'Unassigned mandatory roles: '.implode(', ', $unassigned),
         ];
     }
 
@@ -101,7 +102,7 @@ class ValidationCheckpointService
                 ->where('entity_account_roles.is_active', true)
                 ->exists();
 
-            if (!$exists) {
+            if (! $exists) {
                 $missing[] = $roleCode;
             }
         }
@@ -109,10 +110,10 @@ class ValidationCheckpointService
         $passed = empty($missing);
 
         return [
-            'passed'  => $passed,
-            'detail'  => $passed
+            'passed' => $passed,
+            'detail' => $passed
                 ? 'All system accounts are configured.'
-                : 'Missing system accounts: ' . implode(', ', $missing),
+                : 'Missing system accounts: '.implode(', ', $missing),
         ];
     }
 
@@ -134,7 +135,7 @@ class ValidationCheckpointService
             ->where('entity_account_roles.is_active', true)
             ->value('entity_account_roles.account_id');
 
-        if (!$arAccount || !$cashAccount) {
+        if (! $arAccount || ! $cashAccount) {
             return [
                 'passed' => false,
                 'detail' => 'Cannot verify sample posting: AR_CONTROL or CASH_MAIN not assigned.',
@@ -148,8 +149,8 @@ class ValidationCheckpointService
         $passed = $arExists && $cashExists;
 
         return [
-            'passed'  => $passed,
-            'detail'  => $passed
+            'passed' => $passed,
+            'detail' => $passed
                 ? 'Sample posting verification passed (AR and Cash accounts resolve correctly).'
                 : 'Sample posting failed: assigned accounts do not exist in chart_of_accounts.',
         ];
@@ -174,9 +175,9 @@ class ValidationCheckpointService
         $passed = $pct >= 80; // 80% threshold
 
         return [
-            'passed'  => $passed,
-            'detail'  => "{$mappedAccounts}/{$totalAccounts} accounts mapped to master COA ({$pct}%)."
-                . ($passed ? '' : ' Minimum 80% mapping required.'),
+            'passed' => $passed,
+            'detail' => "{$mappedAccounts}/{$totalAccounts} accounts mapped to master COA ({$pct}%)."
+                .($passed ? '' : ' Minimum 80% mapping required.'),
         ];
     }
 
@@ -191,8 +192,8 @@ class ValidationCheckpointService
             ->exists();
 
         return [
-            'passed'  => $hasOpening,
-            'detail'  => $hasOpening
+            'passed' => $hasOpening,
+            'detail' => $hasOpening
                 ? 'Opening balances have been posted.'
                 : 'No opening balances posted yet. This is recommended before go-live.',
         ];

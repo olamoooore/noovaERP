@@ -23,7 +23,7 @@ class EditorApiController extends Controller
         ]);
 
         $page = Page::findOrFail($validated['page_id']);
-        
+
         // Create new version
         $version = PageVersion::create([
             'page_id' => $page->id,
@@ -51,7 +51,7 @@ class EditorApiController extends Controller
         // Get current version
         $version = $page->currentVersion;
 
-        if (!$version) {
+        if (! $version) {
             return response()->json(['html' => '', 'css' => '', 'json' => null]);
         }
 
@@ -63,19 +63,21 @@ class EditorApiController extends Controller
         // Microweber sends 'file' in mulitpart form data
         // We reuse AssetController logic or call it directly
         // Ideally we resolve the website_id from the page or session
-        
+
         // For MVP, if page_id is passed, we get website_id
         $websiteId = null;
         if ($request->has('page_id')) {
             $page = Page::find($request->page_id);
-            if ($page) $websiteId = $page->website_id;
+            if ($page) {
+                $websiteId = $page->website_id;
+            }
         }
 
-        if (!$websiteId && $request->has('website_id')) {
-             $websiteId = $request->website_id;
+        if (! $websiteId && $request->has('website_id')) {
+            $websiteId = $request->website_id;
         }
 
-        if (!$websiteId) {
+        if (! $websiteId) {
             return response()->json(['error' => 'Website ID required'], 400);
         }
 

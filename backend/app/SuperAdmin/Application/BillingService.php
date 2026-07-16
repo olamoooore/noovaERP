@@ -11,9 +11,11 @@ use Illuminate\Validation\ValidationException;
 
 class BillingService
 {
-    private const PAYABLE_STATUSES   = ['open', 'draft'];
-    private const VOIDABLE_STATUSES  = ['open', 'draft'];
-    private const INVOICE_DUE_DAYS   = 14;
+    private const PAYABLE_STATUSES = ['open', 'draft'];
+
+    private const VOIDABLE_STATUSES = ['open', 'draft'];
+
+    private const INVOICE_DUE_DAYS = 14;
 
     public function __construct(
         private readonly AdminAuditLogger $auditLogger,
@@ -32,18 +34,18 @@ class BillingService
         $subtotal = $price?->unit_amount ?? 0;
 
         $invoice = SubscriptionInvoice::create([
-            'subscription_id'  => $subscription->id,
-            'tenant_id'        => $subscription->tenant_id,
-            'invoice_number'   => $this->generateInvoiceNumber(),
+            'subscription_id' => $subscription->id,
+            'tenant_id' => $subscription->tenant_id,
+            'invoice_number' => $this->generateInvoiceNumber(),
             'billing_interval' => $billingInterval,
-            'currency'         => $price?->currency ?? 'USD',
-            'subtotal'         => $subtotal,
-            'tax'              => 0,
-            'total'            => $subtotal,
-            'status'           => 'open',
-            'due_date'         => now()->addDays(self::INVOICE_DUE_DAYS)->toDateString(),
-            'period_start'     => $subscription->current_period_start,
-            'period_end'       => $subscription->current_period_end,
+            'currency' => $price?->currency ?? 'USD',
+            'subtotal' => $subtotal,
+            'tax' => 0,
+            'total' => $subtotal,
+            'status' => 'open',
+            'due_date' => now()->addDays(self::INVOICE_DUE_DAYS)->toDateString(),
+            'period_start' => $subscription->current_period_start,
+            'period_end' => $subscription->current_period_end,
         ]);
 
         $this->auditLogger->log(
@@ -58,7 +60,7 @@ class BillingService
 
     public function markPaid(SubscriptionInvoice $invoice): SubscriptionInvoice
     {
-        if (!in_array($invoice->status, self::PAYABLE_STATUSES, true)) {
+        if (! in_array($invoice->status, self::PAYABLE_STATUSES, true)) {
             throw ValidationException::withMessages([
                 'status' => "Cannot mark a [{$invoice->status}] invoice as paid. Only open or draft invoices are payable.",
             ]);
@@ -67,7 +69,7 @@ class BillingService
         $before = $invoice->toAuditSnapshot();
 
         $invoice->update([
-            'status'  => 'paid',
+            'status' => 'paid',
             'paid_at' => now(),
         ]);
 
@@ -91,7 +93,7 @@ class BillingService
         SubscriptionInvoice $invoice,
         ?string $reason = null,
     ): SubscriptionInvoice {
-        if (!in_array($invoice->status, self::VOIDABLE_STATUSES, true)) {
+        if (! in_array($invoice->status, self::VOIDABLE_STATUSES, true)) {
             throw ValidationException::withMessages([
                 'status' => "Cannot void a [{$invoice->status}] invoice.",
             ]);
@@ -101,7 +103,7 @@ class BillingService
 
         $invoice->update([
             'status' => 'void',
-            'notes'  => $reason ?? $invoice->notes,
+            'notes' => $reason ?? $invoice->notes,
         ]);
 
         $this->auditLogger->log(
@@ -121,8 +123,8 @@ class BillingService
      */
     public function generateInvoiceNumber(): string
     {
-        $year     = now()->year;
-        $nextVal  = DB::selectOne("SELECT nextval('invoice_number_seq') AS val")->val;
+        $year = now()->year;
+        $nextVal = DB::selectOne("SELECT nextval('invoice_number_seq') AS val")->val;
         $sequence = str_pad((string) $nextVal, 5, '0', STR_PAD_LEFT);
 
         return "INV-{$year}-{$sequence}";

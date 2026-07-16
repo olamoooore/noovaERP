@@ -2,10 +2,10 @@
 
 namespace App\Services;
 
-use App\Models\Payment;
-use App\Models\Invoice;
 use App\Models\Bill;
+use App\Models\Invoice;
 use App\Models\JournalEntry;
+use App\Models\Payment;
 use Illuminate\Support\Facades\Auth;
 
 class PaymentCorrectionService
@@ -20,7 +20,7 @@ class PaymentCorrectionService
         $originalInvoice = $payment->invoice;
         $originalBill = $payment->bill ?? null;
 
-        if (!$originalInvoice && !$originalBill) {
+        if (! $originalInvoice && ! $originalBill) {
             throw new \RuntimeException('Payment must be linked to an invoice or bill');
         }
 
@@ -41,7 +41,7 @@ class PaymentCorrectionService
             'payment_date' => now()->toDateString(),
             'amount' => -$payment->amount,
             'method' => $payment->method,
-            'reference' => 'Reversal: ' . $payment->payment_number,
+            'reference' => 'Reversal: '.$payment->payment_number,
             'notes' => $request->reasonText,
             'received_by' => $request->userId ?? Auth::id(),
             'payment_status' => 'reversed',
@@ -95,7 +95,7 @@ class PaymentCorrectionService
         $originalInvoice = $payment->invoice;
         $originalBill = $payment->bill ?? null;
 
-        if (!$originalInvoice && !$originalBill) {
+        if (! $originalInvoice && ! $originalBill) {
             throw new \RuntimeException('Payment must be linked to an invoice or bill');
         }
 
@@ -116,7 +116,7 @@ class PaymentCorrectionService
             'payment_date' => now()->toDateString(),
             'amount' => -$payment->amount,
             'method' => $payment->method,
-            'reference' => 'Refund: ' . $payment->payment_number,
+            'reference' => 'Refund: '.$payment->payment_number,
             'notes' => $request->reasonText,
             'received_by' => $request->userId ?? Auth::id(),
             'payment_status' => 'refunded',
@@ -173,7 +173,7 @@ class PaymentCorrectionService
         $originalInvoice = $payment->invoice;
         $originalBill = $payment->bill ?? null;
 
-        if (!$originalInvoice && !$originalBill) {
+        if (! $originalInvoice && ! $originalBill) {
             throw new \RuntimeException('Payment must be linked to an invoice or bill');
         }
 
@@ -215,7 +215,8 @@ class PaymentCorrectionService
     {
         $latest = Payment::orderBy('id', 'desc')->first();
         $number = $latest ? (int) substr($latest->payment_number, -4) + 1 : 1;
-        return $prefix . '-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        return $prefix.'-'.date('Y').'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 }
 

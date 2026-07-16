@@ -4,17 +4,20 @@ namespace Modules\Contact\src\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class CoreContact extends Model
 {
     use HasFactory, SoftDeletes;
 
     protected $table = 'core_contacts';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [
@@ -170,13 +173,14 @@ class CoreContact extends Model
 
     public function getFullNameAttribute(): string
     {
-        return trim($this->first_name . ' ' . $this->last_name) ?: $this->company_name ?: $this->display_name;
+        return trim($this->first_name.' '.$this->last_name) ?: $this->company_name ?: $this->display_name;
     }
 
     public function getInitialsAttribute(): string
     {
         $first = strtoupper(substr($this->first_name ?? '', 0, 1));
         $last = strtoupper(substr($this->last_name ?? '', 0, 1));
-        return $first . $last ?: strtoupper(substr($this->display_name, 0, 2));
+
+        return $first.$last ?: strtoupper(substr($this->display_name, 0, 2));
     }
 }

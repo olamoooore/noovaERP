@@ -2,10 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Accounting\Contracts\PostingEngineInterface;
 use App\Models\Bill;
 use App\Models\BillPayment;
-use App\Models\ChartOfAccount;
 use App\Models\Vendor;
 use App\Services\BillPaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;

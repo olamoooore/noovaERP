@@ -10,8 +10,11 @@ class ContactSearchIndex extends Model
     use HasFactory;
 
     protected $table = 'contact_search_index';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [

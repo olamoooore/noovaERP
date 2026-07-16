@@ -33,7 +33,9 @@ class CustomerGameReward extends Model
     ];
 
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_REDEEMED = 'redeemed';
+
     public const STATUS_EXPIRED = 'expired';
 
     public function customer()
@@ -64,6 +66,7 @@ class CustomerGameReward extends Model
         if ($this->expires_at && $this->expires_at->isPast()) {
             return true;
         }
+
         return false;
     }
 

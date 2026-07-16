@@ -9,7 +9,7 @@ interface PaymentGatewayInterface
     /**
      * Create a payment intent/request
      *
-     * @param array $data Payment data including amount, currency, metadata
+     * @param  array  $data  Payment data including amount, currency, metadata
      * @return array Payment response with transaction_id and payment_url
      */
     public function createPayment(array $data): array;
@@ -17,7 +17,7 @@ interface PaymentGatewayInterface
     /**
      * Get payment status from gateway
      *
-     * @param string $transactionId Gateway's transaction ID
+     * @param  string  $transactionId  Gateway's transaction ID
      * @return array Status information
      */
     public function getPaymentStatus(string $transactionId): array;
@@ -25,8 +25,8 @@ interface PaymentGatewayInterface
     /**
      * Process a refund
      *
-     * @param string $transactionId Gateway's transaction ID
-     * @param float $amount Amount to refund
+     * @param  string  $transactionId  Gateway's transaction ID
+     * @param  float  $amount  Amount to refund
      * @return array Refund response
      */
     public function refundPayment(string $transactionId, float $amount): array;
@@ -34,7 +34,7 @@ interface PaymentGatewayInterface
     /**
      * Verify webhook signature
      *
-     * @param Request $request Incoming webhook request
+     * @param  Request  $request  Incoming webhook request
      * @return bool True if signature is valid
      */
     public function verifyWebhook(Request $request): bool;
@@ -42,7 +42,7 @@ interface PaymentGatewayInterface
     /**
      * Process webhook payload
      *
-     * @param Request $request Incoming webhook request
+     * @param  Request  $request  Incoming webhook request
      * @return array Processed webhook data
      */
     public function processWebhook(Request $request): array;

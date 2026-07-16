@@ -6,20 +6,21 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Migration: Create Observability Tables - Task 11.1
- * 
+ *
  * Creates observability database schema for tenant health metrics,
  * API performance logging, and queue health monitoring.
- * 
+ *
  * Requirements: 27.1, 27.2, 27.3
  */
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * Run the migrations.
      */
     public function up(): void
     {
         // Tenant Health Metrics table for tenant-aware monitoring
-        if (!Schema::hasTable('tenant_health_metrics')) {
+        if (! Schema::hasTable('tenant_health_metrics')) {
             Schema::create('tenant_health_metrics', function (Blueprint $table) {
                 $table->id();
                 $table->string('tenant_id', 100);
@@ -43,7 +44,7 @@ return new class extends Migration {
         }
 
         // API Performance Log table for API monitoring
-        if (!Schema::hasTable('api_performance_log')) {
+        if (! Schema::hasTable('api_performance_log')) {
             Schema::create('api_performance_log', function (Blueprint $table) {
                 $table->id();
                 $table->string('tenant_id', 100);
@@ -74,7 +75,7 @@ return new class extends Migration {
         }
 
         // Queue Health Metrics table for job performance tracking
-        if (!Schema::hasTable('queue_health_metrics')) {
+        if (! Schema::hasTable('queue_health_metrics')) {
             Schema::create('queue_health_metrics', function (Blueprint $table) {
                 $table->id();
                 $table->string('tenant_id', 100);
@@ -103,7 +104,7 @@ return new class extends Migration {
         }
 
         // System Resource Metrics table for infrastructure monitoring
-        if (!Schema::hasTable('system_resource_metrics')) {
+        if (! Schema::hasTable('system_resource_metrics')) {
             Schema::create('system_resource_metrics', function (Blueprint $table) {
                 $table->id();
                 $table->string('server_id', 100);
@@ -123,7 +124,7 @@ return new class extends Migration {
         }
 
         // Alert Rules table for configurable alerting
-        if (!Schema::hasTable('alert_rules')) {
+        if (! Schema::hasTable('alert_rules')) {
             Schema::create('alert_rules', function (Blueprint $table) {
                 $table->id();
                 $table->string('rule_name', 200)->unique();
@@ -149,7 +150,7 @@ return new class extends Migration {
         }
 
         // Alert Instances table for tracking fired alerts
-        if (!Schema::hasTable('alert_instances')) {
+        if (! Schema::hasTable('alert_instances')) {
             Schema::create('alert_instances', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('rule_id');
@@ -177,7 +178,7 @@ return new class extends Migration {
         }
 
         // Performance Baselines table for anomaly detection
-        if (!Schema::hasTable('performance_baselines')) {
+        if (! Schema::hasTable('performance_baselines')) {
             Schema::create('performance_baselines', function (Blueprint $table) {
                 $table->id();
                 $table->string('tenant_id', 100);
@@ -203,7 +204,7 @@ return new class extends Migration {
         }
 
         // Capacity Planning Metrics table for resource forecasting
-        if (!Schema::hasTable('capacity_planning_metrics')) {
+        if (! Schema::hasTable('capacity_planning_metrics')) {
             Schema::create('capacity_planning_metrics', function (Blueprint $table) {
                 $table->id();
                 $table->string('tenant_id', 100);

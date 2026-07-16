@@ -22,15 +22,15 @@ class AISafetyRulesService
     /**
      * Check if an AI action is allowed
      *
-     * @param string $action The AI action being attempted
-     * @param User $user The user requesting the action
-     * @param array $context Additional context (module, entity, etc.)
+     * @param  string  $action  The AI action being attempted
+     * @param  User  $user  The user requesting the action
+     * @param  array  $context  Additional context (module, entity, etc.)
      * @return array{allowed: bool, reason: string|null, requires_approval: bool}
      */
     public function checkActionAllowed(string $action, User $user, array $context = []): array
     {
         // 1. Check if user has AI access permission
-        if (!$this->userHasAIPermission($user)) {
+        if (! $this->userHasAIPermission($user)) {
             return [
                 'allowed' => false,
                 'reason' => 'User does not have AI access permission',
@@ -40,13 +40,13 @@ class AISafetyRulesService
 
         // 2. Check data scope boundaries
         $scopeCheck = $this->checkDataScope($action, $user, $context);
-        if (!$scopeCheck['allowed']) {
+        if (! $scopeCheck['allowed']) {
             return $scopeCheck;
         }
 
         // 3. Check cost limits
         $costCheck = $this->checkCostLimits($user, $context);
-        if (!$costCheck['allowed']) {
+        if (! $costCheck['allowed']) {
             return $costCheck;
         }
 
@@ -103,7 +103,7 @@ class AISafetyRulesService
         }
 
         // Check if user has access to the specific module
-        if ($module && !$this->userHasModuleAccess($user, $module)) {
+        if ($module && ! $this->userHasModuleAccess($user, $module)) {
             return [
                 'allowed' => false,
                 'reason' => "User does not have access to module '{$module}'",
@@ -112,7 +112,7 @@ class AISafetyRulesService
         }
 
         // Check if user has access to the specific entity
-        if ($entityType && $entityId && !$this->userHasEntityAccess($user, $entityType, $entityId)) {
+        if ($entityType && $entityId && ! $this->userHasEntityAccess($user, $entityType, $entityId)) {
             return [
                 'allowed' => false,
                 'reason' => 'User does not have access to this specific record',
@@ -135,7 +135,7 @@ class AISafetyRulesService
         $tenantId = $context['tenant_id'] ?? tenant('id');
 
         // Get daily usage
-        $dailyKey = "ai_usage:{$tenantId}:" . date('Y-m-d');
+        $dailyKey = "ai_usage:{$tenantId}:".date('Y-m-d');
         $dailyUsage = Cache::get($dailyKey, 0);
 
         // Get daily limit from config
@@ -150,7 +150,7 @@ class AISafetyRulesService
         }
 
         // Get monthly usage
-        $monthlyKey = "ai_usage:{$tenantId}:" . date('Y-m');
+        $monthlyKey = "ai_usage:{$tenantId}:".date('Y-m');
         $monthlyUsage = Cache::get($monthlyKey, 0);
 
         // Get monthly limit from config
@@ -214,6 +214,7 @@ class AISafetyRulesService
         if ($tenantId) {
             $featureGate = app('feature_gate');
             $check = $featureGate->check((string) $tenantId, $module);
+
             return $check['is_entitled'];
         }
 
@@ -245,12 +246,12 @@ class AISafetyRulesService
     public function recordUsage(string $tenantId, float $cost, array $metadata = []): void
     {
         // Daily usage
-        $dailyKey = "ai_usage:{$tenantId}:" . date('Y-m-d');
+        $dailyKey = "ai_usage:{$tenantId}:".date('Y-m-d');
         Cache::increment($dailyKey, $cost);
         Cache::expire($dailyKey, 86400 * 2); // 2 days
 
         // Monthly usage
-        $monthlyKey = "ai_usage:{$tenantId}:" . date('Y-m');
+        $monthlyKey = "ai_usage:{$tenantId}:".date('Y-m');
         Cache::increment($monthlyKey, $cost);
         Cache::expire($monthlyKey, 86400 * 35); // 35 days
 
@@ -267,8 +268,8 @@ class AISafetyRulesService
      */
     public function getUsageStats(string $tenantId): array
     {
-        $dailyKey = "ai_usage:{$tenantId}:" . date('Y-m-d');
-        $monthlyKey = "ai_usage:{$tenantId}:" . date('Y-m');
+        $dailyKey = "ai_usage:{$tenantId}:".date('Y-m-d');
+        $monthlyKey = "ai_usage:{$tenantId}:".date('Y-m');
 
         return [
             'daily_usage' => Cache::get($dailyKey, 0),

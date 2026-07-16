@@ -12,7 +12,7 @@ return new class extends Migration
             $table->foreignId('department_id')->nullable()->after('exchange_rate')->constrained('analytic_accounts')->onDelete('set null');
             $table->foreignId('project_id')->nullable()->after('department_id')->constrained('analytic_accounts')->onDelete('set null');
             $table->foreignId('location_id')->nullable()->after('project_id')->constrained('analytic_accounts')->onDelete('set null');
-            
+
             $table->index('department_id');
             $table->index('project_id');
             $table->index('location_id');

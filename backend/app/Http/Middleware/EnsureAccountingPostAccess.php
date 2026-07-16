@@ -29,11 +29,11 @@ class EnsureAccountingPostAccess
         /** @var User|null $user */
         $user = $request->user();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
-        if (!$this->accessService->canPost($user)) {
+        if (! $this->accessService->canPost($user)) {
             return response()->json([
                 'message' => 'You do not have permission to post journal entries.',
                 'required_permission' => 'accounting.post',

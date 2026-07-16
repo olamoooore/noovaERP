@@ -2,34 +2,36 @@
 
 namespace Modules\EventManagement\Services;
 
+use Exception;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
-use Carbon\Carbon;
-use Exception;
 
 /**
  * TicketStatusService - Task 10.2
- * 
+ *
  * Centralized ticket status management with validation, logging, resend functionality,
  * and synchronization across all customer touchpoints for hub consistency.
- * 
+ *
  * Requirements: 26.1, 26.3, 26.4
  */
 class TicketStatusService
 {
     private const CACHE_PREFIX = 'ticket_status:';
+
     private const STATUS_CACHE_TTL = 300; // 5 minutes
+
     private const RESEND_RATE_LIMIT = 3; // Max resends per hour
+
     private const SYNC_BATCH_SIZE = 50;
 
     /**
      * Update ticket status with comprehensive validation and logging
-     * 
-     * @param int $ticketId Ticket identifier
-     * @param string $newStatus New status to set
-     * @param array $context Status change context
+     *
+     * @param  int  $ticketId  Ticket identifier
+     * @param  string  $newStatus  New status to set
+     * @param  array  $context  Status change context
      * @return array Status update result
      */
     public function updateTicketStatus(int $ticketId, string $newStatus, array $context = []): array
@@ -39,8 +41,8 @@ class TicketStatusService
 
             // Get current ticket status
             $currentStatus = $this->getCurrentTicketStatus($ticketId);
-            
-            if (!$currentStatus) {
+
+            if (! $currentStatus) {
                 throw new Exception("Ticket {$ticketId} not found");
             }
 
@@ -51,7 +53,7 @@ class TicketStatusService
                 $context
             );
 
-            if (!$validationResult['valid']) {
+            if (! $validationResult['valid']) {
                 throw new Exception($validationResult['reason']);
             }
 
@@ -76,7 +78,7 @@ class TicketStatusService
                 'ticket_id' => $ticketId,
                 'old_status' => $currentStatus['status'],
                 'new_status' => $newStatus,
-                'change_id' => $statusChangeId
+                'change_id' => $statusChangeId,
             ]);
 
             return [
@@ -85,7 +87,7 @@ class TicketStatusService
                 'old_status' => $currentStatus['status'],
                 'new_status' => $newStatus,
                 'change_id' => $statusChangeId,
-                'message' => 'Status updated successfully'
+                'message' => 'Status updated successfully',
             ];
 
         } catch (Exception $e) {
@@ -93,42 +95,42 @@ class TicketStatusService
             Log::error('Failed to update ticket status', [
                 'ticket_id' => $ticketId,
                 'new_status' => $newStatus,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to update status',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Get comprehensive ticket status with history
-     * 
-     * @param int $ticketId Ticket identifier
-     * @param array $options Query options
+     *
+     * @param  int  $ticketId  Ticket identifier
+     * @param  array  $options  Query options
      * @return array Ticket status data
      */
     public function getTicketStatus(int $ticketId, array $options = []): array
     {
         try {
             // Check cache first
-            $cacheKey = self::CACHE_PREFIX . "status:{$ticketId}";
+            $cacheKey = self::CACHE_PREFIX."status:{$ticketId}";
             $cachedStatus = Cache::get($cacheKey);
 
-            if ($cachedStatus && !($options['force_refresh'] ?? false)) {
+            if ($cachedStatus && ! ($options['force_refresh'] ?? false)) {
                 return $cachedStatus;
             }
 
             // Get current status
             $currentStatus = $this->getCurrentTicketStatus($ticketId);
-            
-            if (!$currentStatus) {
+
+            if (! $currentStatus) {
                 return [
                     'success' => false,
-                    'error' => 'Ticket not found'
+                    'error' => 'Ticket not found',
                 ];
             }
 
@@ -151,7 +153,7 @@ class TicketStatusService
                 'validity_info' => $validityInfo,
                 'sync_status' => $syncStatus,
                 'status_history' => $statusHistory,
-                'last_updated' => $currentStatus['status_changed_at']
+                'last_updated' => $currentStatus['status_changed_at'],
             ];
 
             // Cache the result
@@ -162,23 +164,23 @@ class TicketStatusService
         } catch (Exception $e) {
             Log::error('Failed to get ticket status', [
                 'ticket_id' => $ticketId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to retrieve status',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Resend ticket with security controls and rate limiting
-     * 
-     * @param int $ticketId Ticket identifier
-     * @param array $resendOptions Resend configuration
-     * @param int $requestedBy Staff or customer ID requesting resend
+     *
+     * @param  int  $ticketId  Ticket identifier
+     * @param  array  $resendOptions  Resend configuration
+     * @param  int  $requestedBy  Staff or customer ID requesting resend
      * @return array Resend operation result
      */
     public function resendTicket(int $ticketId, array $resendOptions = [], ?int $requestedBy = null): array
@@ -188,26 +190,26 @@ class TicketStatusService
 
             // Get ticket status and validity
             $ticketStatus = $this->getTicketStatus($ticketId);
-            
-            if (!$ticketStatus['success']) {
+
+            if (! $ticketStatus['success']) {
                 throw new Exception('Ticket not found or invalid');
             }
 
             // Check if ticket is in resendable state
             $resendableStatuses = ['ticket_issued', 'ready_for_delivery', 'delivered'];
-            if (!in_array($ticketStatus['current_status']['status'], $resendableStatuses)) {
+            if (! in_array($ticketStatus['current_status']['status'], $resendableStatuses)) {
                 throw new Exception('Ticket is not in a resendable state');
             }
 
             // Check rate limiting
             $rateLimitCheck = $this->checkResendRateLimit($ticketId);
-            if (!$rateLimitCheck['allowed']) {
+            if (! $rateLimitCheck['allowed']) {
                 throw new Exception($rateLimitCheck['reason']);
             }
 
             // Validate resend permissions
             $permissionCheck = $this->validateResendPermissions($ticketId, $requestedBy, $resendOptions);
-            if (!$permissionCheck['allowed']) {
+            if (! $permissionCheck['allowed']) {
                 throw new Exception($permissionCheck['reason']);
             }
 
@@ -228,7 +230,7 @@ class TicketStatusService
             Log::info('Ticket resend initiated', [
                 'ticket_id' => $ticketId,
                 'requested_by' => $requestedBy,
-                'delivery_method' => $resendOptions['delivery_method'] ?? 'default'
+                'delivery_method' => $resendOptions['delivery_method'] ?? 'default',
             ]);
 
             return [
@@ -237,7 +239,7 @@ class TicketStatusService
                 'resend_id' => $deliveryResult['delivery_id'],
                 'delivery_method' => $resendOptions['delivery_method'] ?? 'email',
                 'estimated_delivery' => $deliveryResult['estimated_delivery'],
-                'message' => 'Ticket resend initiated successfully'
+                'message' => 'Ticket resend initiated successfully',
             ];
 
         } catch (Exception $e) {
@@ -245,22 +247,22 @@ class TicketStatusService
             Log::error('Failed to resend ticket', [
                 'ticket_id' => $ticketId,
                 'requested_by' => $requestedBy,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to resend ticket',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Synchronize ticket status across all customer touchpoints
-     * 
-     * @param int $ticketId Ticket identifier
-     * @param array $touchpoints Specific touchpoints to sync (optional)
+     *
+     * @param  int  $ticketId  Ticket identifier
+     * @param  array  $touchpoints  Specific touchpoints to sync (optional)
      * @return array Synchronization result
      */
     public function synchronizeAcrossTouchpoints(int $ticketId, array $touchpoints = []): array
@@ -268,8 +270,8 @@ class TicketStatusService
         try {
             // Get current ticket status
             $ticketStatus = $this->getTicketStatus($ticketId);
-            
-            if (!$ticketStatus['success']) {
+
+            if (! $ticketStatus['success']) {
                 throw new Exception('Ticket not found');
             }
 
@@ -278,14 +280,14 @@ class TicketStatusService
             $availableTouchpoints = $this->getCustomerTouchpoints($customerId);
 
             // Filter touchpoints if specific ones requested
-            if (!empty($touchpoints)) {
+            if (! empty($touchpoints)) {
                 $availableTouchpoints = array_filter($availableTouchpoints, function ($tp) use ($touchpoints) {
                     return in_array($tp['type'], $touchpoints);
                 });
             }
 
             $syncResults = [];
-            $correlationId = 'sync_' . uniqid();
+            $correlationId = 'sync_'.uniqid();
 
             foreach ($availableTouchpoints as $touchpoint) {
                 $syncResult = $this->syncToTouchpoint($ticketId, $touchpoint, $correlationId);
@@ -304,30 +306,30 @@ class TicketStatusService
                 'touchpoints_synced' => $successfulSyncs,
                 'total_touchpoints' => $totalSyncs,
                 'success_rate' => round($successRate, 2),
-                'sync_results' => $syncResults
+                'sync_results' => $syncResults,
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to synchronize across touchpoints', [
                 'ticket_id' => $ticketId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Synchronization failed',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Resolve status change conflicts
-     * 
-     * @param string $conflictId Conflict identifier
-     * @param string $resolutionStrategy Resolution strategy
-     * @param array $resolutionData Resolution data
-     * @param int $resolvedBy Staff member resolving conflict
+     *
+     * @param  string  $conflictId  Conflict identifier
+     * @param  string  $resolutionStrategy  Resolution strategy
+     * @param  array  $resolutionData  Resolution data
+     * @param  int  $resolvedBy  Staff member resolving conflict
      * @return array Resolution result
      */
     public function resolveStatusConflict(string $conflictId, string $resolutionStrategy, array $resolutionData, int $resolvedBy): array
@@ -341,7 +343,7 @@ class TicketStatusService
                 ->where('conflict_status', '!=', 'resolved')
                 ->first();
 
-            if (!$conflict) {
+            if (! $conflict) {
                 throw new Exception('Conflict not found or already resolved');
             }
 
@@ -366,7 +368,7 @@ class TicketStatusService
                     'resolved_at' => now(),
                     'resolution_data' => json_encode($resolutionResult),
                     'resolution_notes' => $resolutionData['notes'] ?? null,
-                    'updated_at' => now()
+                    'updated_at' => now(),
                 ]);
 
             // Notify customer if required
@@ -379,7 +381,7 @@ class TicketStatusService
             Log::info('Status conflict resolved', [
                 'conflict_id' => $conflictId,
                 'strategy' => $resolutionStrategy,
-                'resolved_by' => $resolvedBy
+                'resolved_by' => $resolvedBy,
             ]);
 
             return [
@@ -387,28 +389,29 @@ class TicketStatusService
                 'conflict_id' => $conflictId,
                 'resolution_strategy' => $resolutionStrategy,
                 'resolution_result' => $resolutionResult,
-                'message' => 'Conflict resolved successfully'
+                'message' => 'Conflict resolved successfully',
             ];
 
         } catch (Exception $e) {
             DB::rollBack();
             Log::error('Failed to resolve status conflict', [
                 'conflict_id' => $conflictId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to resolve conflict',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
+
     /**
      * Get customer hub dashboard data
-     * 
-     * @param int $customerId Customer identifier
-     * @param array $options Dashboard options
+     *
+     * @param  int  $customerId  Customer identifier
+     * @param  array  $options  Dashboard options
      * @return array Dashboard data
      */
     public function getCustomerHubDashboard(int $customerId, array $options = []): array
@@ -420,7 +423,7 @@ class TicketStatusService
             // Get recent notifications
             $notifications = $this->getCustomerNotifications($customerId, [
                 'limit' => $options['notification_limit'] ?? 10,
-                'unread_only' => $options['unread_only'] ?? false
+                'unread_only' => $options['unread_only'] ?? false,
             ]);
 
             // Get customer preferences
@@ -440,21 +443,21 @@ class TicketStatusService
                     'summary' => [
                         'total_tickets' => count($tickets),
                         'active_tickets' => collect($tickets)->whereIn('status', ['ticket_issued', 'ready_for_delivery', 'delivered'])->count(),
-                        'unread_notifications' => collect($notifications)->where('read_at', null)->count()
-                    ]
-                ]
+                        'unread_notifications' => collect($notifications)->where('read_at', null)->count(),
+                    ],
+                ],
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to get customer hub dashboard', [
                 'customer_id' => $customerId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to load dashboard',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
@@ -468,7 +471,7 @@ class TicketStatusService
             ->where('is_current_status', true)
             ->first();
 
-        if (!$status) {
+        if (! $status) {
             return null;
         }
 
@@ -480,7 +483,7 @@ class TicketStatusService
             'status' => $status->status,
             'status_changed_at' => $status->status_changed_at,
             'change_source' => $status->change_source,
-            'metadata' => json_decode($status->status_metadata, true)
+            'metadata' => json_decode($status->status_metadata, true),
         ];
     }
 
@@ -499,28 +502,28 @@ class TicketStatusService
             'refunded' => [], // Terminal state
             'expired' => [], // Terminal state
             'suspended' => ['ticket_issued', 'cancelled'], // Can be reactivated
-            'invalid' => [] // Terminal state
+            'invalid' => [], // Terminal state
         ];
 
-        if (!isset($validTransitions[$currentStatus])) {
+        if (! isset($validTransitions[$currentStatus])) {
             return [
                 'valid' => false,
-                'reason' => "Unknown current status: {$currentStatus}"
+                'reason' => "Unknown current status: {$currentStatus}",
             ];
         }
 
-        if (!in_array($newStatus, $validTransitions[$currentStatus])) {
+        if (! in_array($newStatus, $validTransitions[$currentStatus])) {
             return [
                 'valid' => false,
-                'reason' => "Invalid transition from {$currentStatus} to {$newStatus}"
+                'reason' => "Invalid transition from {$currentStatus} to {$newStatus}",
             ];
         }
 
         // Additional validation based on context
-        if ($newStatus === 'refunded' && !($context['refund_authorized'] ?? false)) {
+        if ($newStatus === 'refunded' && ! ($context['refund_authorized'] ?? false)) {
             return [
                 'valid' => false,
-                'reason' => 'Refund not authorized'
+                'reason' => 'Refund not authorized',
             ];
         }
 
@@ -554,7 +557,7 @@ class TicketStatusService
             'effective_until' => $context['effective_until'] ?? null,
             'validation_data' => json_encode($context['validation'] ?? []),
             'external_reference' => $context['external_reference'] ?? null,
-            'created_at' => now()
+            'created_at' => now(),
         ]);
     }
 
@@ -581,9 +584,9 @@ class TicketStatusService
                 break;
         }
 
-        if (!empty($validityUpdates)) {
+        if (! empty($validityUpdates)) {
             $validityUpdates['updated_at'] = now();
-            
+
             DB::table('ticket_validity_registry')
                 ->where('ticket_id', $ticketId)
                 ->update($validityUpdates);
@@ -593,13 +596,13 @@ class TicketStatusService
     private function queueStatusSynchronization(int $ticketId, string $newStatus, array $context): void
     {
         // Get customer ID for touchpoint identification
-        $customerId = $context['customer_id'] ?? 
+        $customerId = $context['customer_id'] ??
             DB::table('ticket_status_log')
                 ->where('ticket_id', $ticketId)
                 ->where('is_current_status', true)
                 ->value('customer_id');
 
-        if (!$customerId) {
+        if (! $customerId) {
             return;
         }
 
@@ -612,14 +615,14 @@ class TicketStatusService
             'sync_operation' => 'status_change',
             'operation_data' => json_encode([
                 'new_status' => $newStatus,
-                'context' => $context
+                'context' => $context,
             ]),
             'target_touchpoints' => json_encode($touchpoints),
             'priority' => $context['priority'] ?? 'normal',
             'sync_status' => 'pending',
             'queued_at' => now(),
             'correlation_id' => $context['correlation_id'] ?? null,
-            'created_at' => now()
+            'created_at' => now(),
         ]);
     }
 
@@ -627,18 +630,18 @@ class TicketStatusService
     {
         // Determine if notification is needed for this status change
         $notificationStatuses = ['payment_confirmed', 'ticket_issued', 'delivered', 'cancelled', 'refunded'];
-        
-        if (!in_array($newStatus, $notificationStatuses)) {
+
+        if (! in_array($newStatus, $notificationStatuses)) {
             return;
         }
 
-        $customerId = $context['customer_id'] ?? 
+        $customerId = $context['customer_id'] ??
             DB::table('ticket_status_log')
                 ->where('ticket_id', $ticketId)
                 ->where('is_current_status', true)
                 ->value('customer_id');
 
-        if (!$customerId) {
+        if (! $customerId) {
             return;
         }
 
@@ -658,14 +661,14 @@ class TicketStatusService
                 'priority' => $context['notification_priority'] ?? 'normal',
                 'delivery_status' => 'pending',
                 'scheduled_at' => now(),
-                'created_at' => now()
+                'created_at' => now(),
             ]);
         }
     }
 
     private function clearStatusCache(int $ticketId): void
     {
-        $cacheKey = self::CACHE_PREFIX . "status:{$ticketId}";
+        $cacheKey = self::CACHE_PREFIX."status:{$ticketId}";
         Cache::forget($cacheKey);
     }
 
@@ -687,7 +690,7 @@ class TicketStatusService
                 'changed_by' => $record->changed_by_staff_id,
                 'reason' => $record->change_reason,
                 'source' => $record->change_source,
-                'metadata' => json_decode($record->status_metadata, true)
+                'metadata' => json_decode($record->status_metadata, true),
             ];
         })->toArray();
     }
@@ -698,7 +701,7 @@ class TicketStatusService
             ->where('ticket_id', $ticketId)
             ->first();
 
-        if (!$validity) {
+        if (! $validity) {
             return ['valid' => false, 'reason' => 'No validity record found'];
         }
 
@@ -710,7 +713,7 @@ class TicketStatusService
             'resend_count' => $validity->resend_count,
             'last_resent_at' => $validity->last_resent_at,
             'is_transferable' => $validity->is_transferable,
-            'security_hash' => $validity->ticket_hash
+            'security_hash' => $validity->ticket_hash,
         ];
     }
 
@@ -734,8 +737,8 @@ class TicketStatusService
             'last_sync' => $recentSyncs->first() ? [
                 'status' => $recentSyncs->first()->sync_status,
                 'initiated_at' => $recentSyncs->first()->sync_initiated_at,
-                'completed_at' => $recentSyncs->first()->sync_completed_at
-            ] : null
+                'completed_at' => $recentSyncs->first()->sync_completed_at,
+            ] : null,
         ];
     }
 
@@ -749,7 +752,7 @@ class TicketStatusService
         if ($recentResends >= self::RESEND_RATE_LIMIT) {
             return [
                 'allowed' => false,
-                'reason' => 'Resend rate limit exceeded. Please wait before requesting another resend.'
+                'reason' => 'Resend rate limit exceeded. Please wait before requesting another resend.',
             ];
         }
 
@@ -765,9 +768,9 @@ class TicketStatusService
     private function generateTicketSecurityFeatures(int $ticketId, array $options): array
     {
         return [
-            'hash' => hash('sha256', $ticketId . now()->timestamp . uniqid()),
-            'qr_code' => 'QR_' . $ticketId . '_' . uniqid(),
-            'barcode' => 'BC_' . $ticketId . '_' . time()
+            'hash' => hash('sha256', $ticketId.now()->timestamp.uniqid()),
+            'qr_code' => 'QR_'.$ticketId.'_'.uniqid(),
+            'barcode' => 'BC_'.$ticketId.'_'.time(),
         ];
     }
 
@@ -780,7 +783,7 @@ class TicketStatusService
                 'last_resent_at' => now(),
                 'last_resent_by' => $requestedBy,
                 'resend_history' => DB::raw("JSON_ARRAY_APPEND(COALESCE(resend_history, JSON_ARRAY()), '$', JSON_OBJECT('timestamp', NOW(), 'requested_by', {$requestedBy}, 'method', '{$options['delivery_method']}'))"),
-                'updated_at' => now()
+                'updated_at' => now(),
             ]);
     }
 
@@ -788,9 +791,9 @@ class TicketStatusService
     {
         // Queue ticket delivery - this would integrate with actual delivery system
         return [
-            'delivery_id' => 'delivery_' . uniqid(),
+            'delivery_id' => 'delivery_'.uniqid(),
             'estimated_delivery' => now()->addMinutes(5),
-            'method' => $options['delivery_method'] ?? 'email'
+            'method' => $options['delivery_method'] ?? 'email',
         ];
     }
 
@@ -800,7 +803,7 @@ class TicketStatusService
             'ticket_id' => $ticketId,
             'requested_by' => $requestedBy,
             'delivery_method' => $options['delivery_method'] ?? 'email',
-            'delivery_id' => $deliveryResult['delivery_id']
+            'delivery_id' => $deliveryResult['delivery_id'],
         ]);
     }
 
@@ -810,7 +813,7 @@ class TicketStatusService
         return [
             ['type' => 'mobile_app', 'id' => "app_{$customerId}"],
             ['type' => 'web_portal', 'id' => "web_{$customerId}"],
-            ['type' => 'email', 'id' => "email_{$customerId}"]
+            ['type' => 'email', 'id' => "email_{$customerId}"],
         ];
     }
 
@@ -828,21 +831,21 @@ class TicketStatusService
             'sync_data' => json_encode(['ticket_id' => $ticketId]),
             'sync_result' => json_encode(['success' => true]),
             'correlation_id' => $correlationId,
-            'created_at' => now()
+            'created_at' => now(),
         ]);
 
         return [
             'success' => true,
             'touchpoint' => $touchpoint,
-            'sync_id' => $syncId
+            'sync_id' => $syncId,
         ];
     }
 
     private function validateResolutionStrategy(string $strategy, object $conflict): void
     {
         $validStrategies = ['last_write_wins', 'first_write_wins', 'merge_changes', 'manual_resolution', 'rollback_changes'];
-        
-        if (!in_array($strategy, $validStrategies)) {
+
+        if (! in_array($strategy, $validStrategies)) {
             throw new Exception("Invalid resolution strategy: {$strategy}");
         }
     }
@@ -854,7 +857,7 @@ class TicketStatusService
             'strategy' => $strategy,
             'applied_by' => $resolvedBy,
             'applied_at' => now(),
-            'result' => 'resolved'
+            'result' => 'resolved',
         ];
     }
 
@@ -869,7 +872,7 @@ class TicketStatusService
             'priority' => 'normal',
             'delivery_status' => 'pending',
             'scheduled_at' => now(),
-            'created_at' => now()
+            'created_at' => now(),
         ]);
     }
 
@@ -889,7 +892,7 @@ class TicketStatusService
                 'booking_id' => $ticket->booking_id,
                 'event_id' => $ticket->event_id,
                 'status' => $ticket->status,
-                'status_changed_at' => $ticket->status_changed_at
+                'status_changed_at' => $ticket->status_changed_at,
             ];
         })->toArray();
     }
@@ -917,7 +920,7 @@ class TicketStatusService
             ->where('customer_id', $customerId)
             ->first();
 
-        if (!$preferences) {
+        if (! $preferences) {
             return $this->getDefaultPreferences();
         }
 
@@ -930,7 +933,7 @@ class TicketStatusService
             'push_notifications_enabled' => $preferences->push_notifications_enabled,
             'preferred_language' => $preferences->preferred_language,
             'timezone' => $preferences->timezone,
-            'communication_frequency' => $preferences->communication_frequency
+            'communication_frequency' => $preferences->communication_frequency,
         ];
     }
 
@@ -951,22 +954,22 @@ class TicketStatusService
             'push_notifications_enabled' => true,
             'preferred_language' => 'en',
             'timezone' => 'UTC',
-            'communication_frequency' => 'immediate'
+            'communication_frequency' => 'immediate',
         ];
     }
 
     private function getEnabledNotificationChannels(array $preferences): array
     {
         $channels = [];
-        
+
         if ($preferences['email_notifications_enabled'] ?? true) {
             $channels[] = 'email';
         }
-        
+
         if ($preferences['sms_notifications_enabled'] ?? true) {
             $channels[] = 'sms';
         }
-        
+
         if ($preferences['push_notifications_enabled'] ?? true) {
             $channels[] = 'push';
         }
@@ -981,7 +984,7 @@ class TicketStatusService
             'ticket_issued' => 'Your ticket has been issued and will be delivered shortly.',
             'delivered' => 'Your ticket has been delivered successfully.',
             'cancelled' => 'Your ticket has been cancelled.',
-            'refunded' => 'Your ticket has been refunded.'
+            'refunded' => 'Your ticket has been refunded.',
         ];
 
         return $messages[$status] ?? "Your ticket status has been updated to: {$status}";

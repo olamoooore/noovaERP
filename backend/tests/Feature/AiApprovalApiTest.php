@@ -34,6 +34,7 @@ class AiApprovalApiTest extends TenantTestCase
     {
         $user = User::factory()->create();
         $user->assignRole('admin');
+
         return $user;
     }
 
@@ -42,7 +43,7 @@ class AiApprovalApiTest extends TenantTestCase
     {
         return $this->actingAs($user, 'sanctum')
             ->withoutMiddleware()
-            ->{$method . 'Json'}($uri, $body);
+            ->{$method.'Json'}($uri, $body);
     }
 
     public function test_full_approval_lifecycle_e2e(): void
@@ -69,11 +70,11 @@ class AiApprovalApiTest extends TenantTestCase
             ->assertOk()->assertJsonPath('success', true);
 
         // 3. Show status.
-        $this->callAs($approver, 'get', '/api/v1/ai/approvals/' . $approvalId)
+        $this->callAs($approver, 'get', '/api/v1/ai/approvals/'.$approvalId)
             ->assertOk()->assertJsonPath('data.status', 'pending');
 
         // 4. Approve (different user) -> success.
-        $this->callAs($approver, 'post', '/api/v1/ai/approvals/' . $approvalId . '/approve', ['comment' => 'Approved'])
+        $this->callAs($approver, 'post', '/api/v1/ai/approvals/'.$approvalId.'/approve', ['comment' => 'Approved'])
             ->assertOk()->assertJsonPath('data.success', true);
 
         $this->assertSame('approved', DB::table('ai_approval_requests')->where('id', $approvalId)->value('status'));
@@ -87,7 +88,7 @@ class AiApprovalApiTest extends TenantTestCase
         $approvalId = $this->callAs($requestor, 'post', '/api/v1/ai/approvals', ['action' => 'ai.delete_record'])
             ->json('data.approval_id');
 
-        $this->callAs($approver, 'post', '/api/v1/ai/approvals/' . $approvalId . '/reject', ['reason' => 'Not permitted under policy'])
+        $this->callAs($approver, 'post', '/api/v1/ai/approvals/'.$approvalId.'/reject', ['reason' => 'Not permitted under policy'])
             ->assertOk()->assertJsonPath('data.success', true);
 
         $this->assertSame('rejected', DB::table('ai_approval_requests')->where('id', $approvalId)->value('status'));
@@ -100,7 +101,7 @@ class AiApprovalApiTest extends TenantTestCase
         $approvalId = $this->callAs($user, 'post', '/api/v1/ai/approvals', ['action' => 'ai.execute_transaction'])
             ->json('data.approval_id');
 
-        $this->callAs($user, 'post', '/api/v1/ai/approvals/' . $approvalId . '/approve', ['comment' => 'me'])
+        $this->callAs($user, 'post', '/api/v1/ai/approvals/'.$approvalId.'/approve', ['comment' => 'me'])
             ->assertStatus(422)->assertJsonPath('success', false);
 
         $this->assertSame('pending', DB::table('ai_approval_requests')->where('id', $approvalId)->value('status'));

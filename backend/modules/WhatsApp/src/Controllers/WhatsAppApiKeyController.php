@@ -3,12 +3,11 @@
 namespace Modules\WhatsApp\Controllers;
 
 use App\Http\Controllers\Controller;
-use Modules\WhatsApp\Models\WhatsAppApiKey;
-use Modules\WhatsApp\Services\WhatsAppService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\Rule;
+use Modules\WhatsApp\Models\WhatsAppApiKey;
+use Modules\WhatsApp\Services\WhatsAppService;
 
 class WhatsAppApiKeyController extends Controller
 {
@@ -280,7 +279,7 @@ class WhatsAppApiKeyController extends Controller
             ]);
 
             // Check if API key is valid
-            if (!$apiKey->isValid()) {
+            if (! $apiKey->isValid()) {
                 Log::warning('API key is invalid', [
                     'api_key_id' => $id,
                     'is_active' => $apiKey->is_active,
@@ -314,7 +313,7 @@ class WhatsAppApiKeyController extends Controller
             }
 
             // Check if endpoint is configured for custom provider
-            if ($apiKey->whatsapp_provider === 'custom' && !$apiKey->api_endpoint) {
+            if ($apiKey->whatsapp_provider === 'custom' && ! $apiKey->api_endpoint) {
                 Log::warning('Custom provider missing endpoint', ['api_key_id' => $id]);
 
                 return response()->json([
@@ -327,7 +326,7 @@ class WhatsAppApiKeyController extends Controller
             // For custom provider, send as webhook format (order-created)
             if ($apiKey->whatsapp_provider === 'custom') {
                 $testOrderData = [
-                    'order_id' => 'TEST-' . time(),
+                    'order_id' => 'TEST-'.time(),
                     'customer_name' => 'Test Customer',
                     'customer_phone' => $validated['phone_number'],
                     'customer_email' => 'test@example.com',

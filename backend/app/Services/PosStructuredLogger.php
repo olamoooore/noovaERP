@@ -14,9 +14,7 @@ use Illuminate\Support\Facades\Log;
  */
 class PosStructuredLogger
 {
-    public function __construct(private readonly Request $request)
-    {
-    }
+    public function __construct(private readonly Request $request) {}
 
     /**
      * Log a POS payment completion

@@ -2,19 +2,19 @@
 
 namespace Modules\EventManagement\Console\Commands;
 
-use Modules\EventManagement\Jobs\AnalyticsAggregationJob;
-use Modules\EventManagement\Services\AuditService;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Modules\EventManagement\Jobs\AnalyticsAggregationJob;
+use Modules\EventManagement\Services\AuditService;
 
 /**
  * ScheduleAnalyticsAggregationCommand
- * 
+ *
  * Console command to schedule analytics aggregation jobs for all tenants.
  * Handles both daily and hourly aggregation with proper error handling
  * and monitoring capabilities.
- * 
+ *
  * Requirements: 11.1, 11.5
  */
 class ScheduleAnalyticsAggregationCommand extends Command
@@ -55,8 +55,9 @@ class ScheduleAnalyticsAggregationCommand extends Command
 
         $this->info("Starting analytics aggregation: {$type}");
 
-        if (!$tenantId) {
+        if (! $tenantId) {
             $this->error('--tenant is required. Tenant enumeration is not allowed.');
+
             return Command::FAILURE;
         }
 
@@ -64,11 +65,12 @@ class ScheduleAnalyticsAggregationCommand extends Command
             $this->processTenant($tenantId, $type, $date, $hour, $force);
 
             $this->info('Analytics aggregation completed successfully');
+
             return Command::SUCCESS;
 
         } catch (\Exception $e) {
             $this->error("Analytics aggregation failed: {$e->getMessage()}");
-            
+
             // Log the error
             $this->auditService->logActivity(
                 'analytics_aggregation_error',
@@ -76,7 +78,7 @@ class ScheduleAnalyticsAggregationCommand extends Command
                 [
                     'type' => $type,
                     'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
+                    'trace' => $e->getTraceAsString(),
                 ]
             );
 
@@ -96,7 +98,7 @@ class ScheduleAnalyticsAggregationCommand extends Command
             ->where('status', 'active')
             ->first();
 
-        if (!$tenant) {
+        if (! $tenant) {
             throw new \Exception("Tenant {$tenantId} not found or inactive");
         }
 
@@ -113,13 +115,14 @@ class ScheduleAnalyticsAggregationCommand extends Command
     private function processHourlyAggregation(string $tenantId, ?Carbon $date, ?int $hour, bool $force): void
     {
         $targetDate = $date ?? now()->subHour();
-        
+
         if ($hour !== null) {
             // Process specific hour
             $targetHour = $hour;
-            
-            if (!$force && $this->isAlreadyProcessed($tenantId, $targetDate, $targetHour)) {
+
+            if (! $force && $this->isAlreadyProcessed($tenantId, $targetDate, $targetHour)) {
                 $this->warn("Hourly aggregation for tenant {$tenantId} on {$targetDate->toDateString()} hour {$targetHour} already processed");
+
                 return;
             }
 
@@ -130,7 +133,7 @@ class ScheduleAnalyticsAggregationCommand extends Command
         } else {
             // Process all hours for the date
             for ($h = 0; $h < 24; $h++) {
-                if (!$force && $this->isAlreadyProcessed($tenantId, $targetDate, $h)) {
+                if (! $force && $this->isAlreadyProcessed($tenantId, $targetDate, $h)) {
                     continue;
                 }
 
@@ -149,8 +152,9 @@ class ScheduleAnalyticsAggregationCommand extends Command
     {
         $targetDate = $date ?? now()->subDay();
 
-        if (!$force && $this->isAlreadyProcessed($tenantId, $targetDate)) {
+        if (! $force && $this->isAlreadyProcessed($tenantId, $targetDate)) {
             $this->warn("Daily aggregation for tenant {$tenantId} on {$targetDate->toDateString()} already processed");
+
             return;
         }
 
@@ -167,7 +171,7 @@ class ScheduleAnalyticsAggregationCommand extends Command
     {
         // Set tenant database connection
         config(['database.connections.tenant.database' => "tenant_{$tenantId}"]);
-        
+
         $query = DB::connection('tenant')
             ->table('daily_sales_metrics')
             ->where('tenant_id', $tenantId)
@@ -181,5 +185,4 @@ class ScheduleAnalyticsAggregationCommand extends Command
 
         return $query->exists();
     }
-
-    }
+}

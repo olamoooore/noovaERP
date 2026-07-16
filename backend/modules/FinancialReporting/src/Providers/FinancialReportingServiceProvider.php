@@ -3,11 +3,11 @@
 namespace Modules\FinancialReporting\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Facades\Route;
 
 class FinancialReportingServiceProvider extends ServiceProvider
 {
     protected string $moduleName = 'FinancialReporting';
+
     protected string $moduleNameLower = 'financialreporting';
 
     /**
@@ -36,12 +36,12 @@ class FinancialReportingServiceProvider extends ServiceProvider
      */
     protected function registerConfig(): void
     {
-        $configPath = __DIR__ . '/../../config/config.php';
-        
+        $configPath = __DIR__.'/../../config/config.php';
+
         $this->publishes([
-            $configPath => config_path($this->moduleNameLower . '.php'),
+            $configPath => config_path($this->moduleNameLower.'.php'),
         ], 'config');
-        
+
         $this->mergeConfigFrom($configPath, $this->moduleNameLower);
     }
 
@@ -50,12 +50,12 @@ class FinancialReportingServiceProvider extends ServiceProvider
      */
     public function registerViews(): void
     {
-        $viewPath = resource_path('views/modules/' . $this->moduleNameLower);
-        $sourcePath = __DIR__ . '/../../resources/views';
+        $viewPath = resource_path('views/modules/'.$this->moduleNameLower);
+        $sourcePath = __DIR__.'/../../resources/views';
 
         $this->publishes([
-            $sourcePath => $viewPath
-        ], ['views', $this->moduleNameLower . '-module-views']);
+            $sourcePath => $viewPath,
+        ], ['views', $this->moduleNameLower.'-module-views']);
 
         $this->loadViewsFrom(array_merge($this->getPublishableViewPaths(), [$sourcePath]), $this->moduleNameLower);
     }
@@ -72,10 +72,11 @@ class FinancialReportingServiceProvider extends ServiceProvider
     {
         $paths = [];
         foreach ($this->app['config']->get('view.paths') as $path) {
-            if (is_dir($path . '/modules/' . $this->moduleNameLower)) {
-                $paths[] = $path . '/modules/' . $this->moduleNameLower;
+            if (is_dir($path.'/modules/'.$this->moduleNameLower)) {
+                $paths[] = $path.'/modules/'.$this->moduleNameLower;
             }
         }
+
         return $paths;
     }
 }

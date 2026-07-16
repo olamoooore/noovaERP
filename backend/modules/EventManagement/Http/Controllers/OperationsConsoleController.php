@@ -2,25 +2,26 @@
 
 namespace Modules\EventManagement\Http\Controllers;
 
-use Illuminate\Http\Request;
+use Exception;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Validator;
 use Modules\EventManagement\Services\OfflineOperationsService;
 use Modules\EventManagement\Services\StaffOverrideService;
-use Illuminate\Support\Facades\Validator;
-use Exception;
 
 /**
  * OperationsConsoleController - Task 9.4
- * 
+ *
  * Enhanced operations console UI controller with offline mode indicators,
  * conflict resolution interface, override reason capture, and staff scoping.
- * 
+ *
  * Requirements: 25.4, 25.5
  */
 class OperationsConsoleController extends Controller
 {
     private OfflineOperationsService $offlineOpsService;
+
     private StaffOverrideService $overrideService;
 
     public function __construct(
@@ -47,12 +48,12 @@ class OperationsConsoleController extends Controller
             // Get pending conflicts for resolution
             $pendingConflicts = $this->offlineOpsService->getPendingConflicts([
                 'event_id' => $eventId,
-                'requires_manual' => true
+                'requires_manual' => true,
             ]);
 
             // Get pending approvals for supervisor
             $pendingApprovals = $this->overrideService->getPendingApprovals($staffId, [
-                'event_id' => $eventId
+                'event_id' => $eventId,
             ]);
 
             // Get staff assignment details
@@ -73,16 +74,16 @@ class OperationsConsoleController extends Controller
                         'enabled' => $deviceStatus['capable'],
                         'is_offline' => $deviceStatus['is_offline'],
                         'pending_operations' => $deviceStatus['pending_operations'],
-                        'sync_health' => $deviceStatus['sync_health']
-                    ]
-                ]
+                        'sync_health' => $deviceStatus['sync_health'],
+                    ],
+                ],
             ]);
 
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to load dashboard',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -97,14 +98,14 @@ class OperationsConsoleController extends Controller
             'event_id' => 'required|integer',
             'device_id' => 'required|string',
             'checkin_timestamp' => 'nullable|date',
-            'additional_data' => 'nullable|array'
+            'additional_data' => 'nullable|array',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -115,7 +116,7 @@ class OperationsConsoleController extends Controller
                 'event_id' => $request->input('event_id'),
                 'device_id' => $request->input('device_id'),
                 'checkin_timestamp' => $request->input('checkin_timestamp', now()),
-                'additional_data' => $request->input('additional_data', [])
+                'additional_data' => $request->input('additional_data', []),
             ];
 
             $result = $this->offlineOpsService->queueOfflineCheckin($checkinData);
@@ -126,7 +127,7 @@ class OperationsConsoleController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to queue check-in',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -139,21 +140,21 @@ class OperationsConsoleController extends Controller
         $validator = Validator::make($request->all(), [
             'device_id' => 'required|string',
             'sync_type' => 'nullable|in:full_sync,incremental_sync,emergency_sync',
-            'event_id' => 'nullable|integer'
+            'event_id' => 'nullable|integer',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         try {
             $options = [
                 'sync_type' => $request->input('sync_type', 'incremental_sync'),
-                'event_id' => $request->input('event_id')
+                'event_id' => $request->input('event_id'),
             ];
 
             $result = $this->offlineOpsService->synchronizeOfflineOperations(
@@ -167,7 +168,7 @@ class OperationsConsoleController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Synchronization failed',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -180,13 +181,13 @@ class OperationsConsoleController extends Controller
         try {
             // Get conflict details
             $conflicts = $this->offlineOpsService->getPendingConflicts([
-                'conflict_id' => $conflictId
+                'conflict_id' => $conflictId,
             ]);
 
             if (empty($conflicts['conflicts'])) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'Conflict not found'
+                    'error' => 'Conflict not found',
                 ], 404);
             }
 
@@ -199,14 +200,14 @@ class OperationsConsoleController extends Controller
                 'success' => true,
                 'conflict' => $conflict,
                 'resolution_options' => $resolutionOptions,
-                'recommended_action' => $this->getRecommendedResolution($conflict)
+                'recommended_action' => $this->getRecommendedResolution($conflict),
             ]);
 
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to load conflict resolution',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -219,21 +220,21 @@ class OperationsConsoleController extends Controller
         $validator = Validator::make($request->all(), [
             'resolution_strategy' => 'required|in:offline_wins,online_wins,merge_data,manual_resolution,create_duplicate,reject_offline',
             'resolution_notes' => 'nullable|string|max:1000',
-            'resolution_data' => 'nullable|array'
+            'resolution_data' => 'nullable|array',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         try {
             $resolutionData = [
                 'notes' => $request->input('resolution_notes'),
-                'data' => $request->input('resolution_data', [])
+                'data' => $request->input('resolution_data', []),
             ];
 
             $result = $this->offlineOpsService->resolveConflict(
@@ -249,7 +250,7 @@ class OperationsConsoleController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to resolve conflict',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -268,14 +269,14 @@ class OperationsConsoleController extends Controller
             'event_id' => 'nullable|integer',
             'is_emergency' => 'nullable|boolean',
             'override_data' => 'required|array',
-            'context_data' => 'nullable|array'
+            'context_data' => 'nullable|array',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -292,7 +293,7 @@ class OperationsConsoleController extends Controller
                 'override_data' => $request->input('override_data'),
                 'context_data' => $request->input('context_data', []),
                 'device_id' => $request->input('device_id'),
-                'ip_address' => $request->ip()
+                'ip_address' => $request->ip(),
             ];
 
             $result = $this->overrideService->createOverride($overrideData);
@@ -303,7 +304,7 @@ class OperationsConsoleController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to create override',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -315,14 +316,14 @@ class OperationsConsoleController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'decision' => 'required|in:approved,rejected',
-            'approval_notes' => 'nullable|string|max:1000'
+            'approval_notes' => 'nullable|string|max:1000',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -340,7 +341,7 @@ class OperationsConsoleController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to process approval',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -357,14 +358,14 @@ class OperationsConsoleController extends Controller
             'override_type' => 'nullable|string',
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date',
-            'limit' => 'nullable|integer|min:1|max:100'
+            'limit' => 'nullable|integer|min:1|max:100',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -374,7 +375,7 @@ class OperationsConsoleController extends Controller
                 'override_type' => $request->input('override_type'),
                 'date_from' => $request->input('date_from'),
                 'date_to' => $request->input('date_to'),
-                'limit' => $request->input('limit', 50)
+                'limit' => $request->input('limit', 50),
             ]);
 
             $result = $this->overrideService->getOverrideAuditTrail(
@@ -389,7 +390,7 @@ class OperationsConsoleController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to get audit trail',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -409,14 +410,14 @@ class OperationsConsoleController extends Controller
                 'success' => true,
                 'staff_id' => $staffId,
                 'event_id' => $eventId,
-                'assignments' => $assignments
+                'assignments' => $assignments,
             ]);
 
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to get zone assignments',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -430,14 +431,14 @@ class OperationsConsoleController extends Controller
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date',
             'event_id' => 'nullable|integer',
-            'staff_id' => 'nullable|integer'
+            'staff_id' => 'nullable|integer',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -446,7 +447,7 @@ class OperationsConsoleController extends Controller
                 'date_from' => $request->input('date_from'),
                 'date_to' => $request->input('date_to'),
                 'event_id' => $request->input('event_id'),
-                'staff_id' => $request->input('staff_id')
+                'staff_id' => $request->input('staff_id'),
             ]);
 
             $result = $this->overrideService->generateOverrideAnalytics($filters);
@@ -457,7 +458,7 @@ class OperationsConsoleController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to generate analytics',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -475,10 +476,10 @@ class OperationsConsoleController extends Controller
 
         $assignment = $query->first();
 
-        if (!$assignment) {
+        if (! $assignment) {
             return [
                 'assigned' => false,
-                'message' => 'No active assignment found'
+                'message' => 'No active assignment found',
             ];
         }
 
@@ -491,7 +492,7 @@ class OperationsConsoleController extends Controller
             'can_approve_overrides' => $assignment->can_approve_overrides,
             'is_supervisor' => $assignment->is_supervisor,
             'assignment_start' => $assignment->assignment_start,
-            'assignment_end' => $assignment->assignment_end
+            'assignment_end' => $assignment->assignment_end,
         ];
     }
 
@@ -505,18 +506,18 @@ class OperationsConsoleController extends Controller
                     'offline_wins' => [
                         'label' => 'Use Offline Check-in',
                         'description' => 'Accept the offline check-in time and update online record',
-                        'risk_level' => 'low'
+                        'risk_level' => 'low',
                     ],
                     'online_wins' => [
                         'label' => 'Keep Online Check-in',
                         'description' => 'Reject offline check-in, keep existing online record',
-                        'risk_level' => 'low'
+                        'risk_level' => 'low',
                     ],
                     'manual_resolution' => [
                         'label' => 'Manual Review',
                         'description' => 'Escalate to supervisor for manual decision',
-                        'risk_level' => 'medium'
-                    ]
+                        'risk_level' => 'medium',
+                    ],
                 ];
                 break;
 
@@ -525,13 +526,13 @@ class OperationsConsoleController extends Controller
                     'create_duplicate' => [
                         'label' => 'Create Missing Ticket',
                         'description' => 'Create ticket record based on offline data',
-                        'risk_level' => 'high'
+                        'risk_level' => 'high',
                     ],
                     'reject_offline' => [
                         'label' => 'Reject Offline Operation',
                         'description' => 'Discard offline check-in due to invalid ticket',
-                        'risk_level' => 'low'
-                    ]
+                        'risk_level' => 'low',
+                    ],
                 ];
                 break;
 
@@ -540,18 +541,18 @@ class OperationsConsoleController extends Controller
                     'offline_wins' => [
                         'label' => 'Use Offline Timestamp',
                         'description' => 'Accept offline timestamp as authoritative',
-                        'risk_level' => 'medium'
+                        'risk_level' => 'medium',
                     ],
                     'online_wins' => [
                         'label' => 'Use Online Timestamp',
                         'description' => 'Use online system timestamp',
-                        'risk_level' => 'medium'
+                        'risk_level' => 'medium',
                     ],
                     'merge_data' => [
                         'label' => 'Merge Timestamps',
                         'description' => 'Create composite record with both timestamps',
-                        'risk_level' => 'low'
-                    ]
+                        'risk_level' => 'low',
+                    ],
                 ];
                 break;
 
@@ -560,8 +561,8 @@ class OperationsConsoleController extends Controller
                     'manual_resolution' => [
                         'label' => 'Manual Resolution Required',
                         'description' => 'This conflict type requires supervisor review',
-                        'risk_level' => 'high'
-                    ]
+                        'risk_level' => 'high',
+                    ],
                 ];
         }
 
@@ -574,29 +575,29 @@ class OperationsConsoleController extends Controller
             'duplicate_checkin' => [
                 'strategy' => 'offline_wins',
                 'reason' => 'Offline check-ins typically have more accurate timestamps',
-                'confidence' => 'medium'
+                'confidence' => 'medium',
             ],
             'ticket_not_found' => [
                 'strategy' => 'reject_offline',
                 'reason' => 'Invalid tickets should not be processed',
-                'confidence' => 'high'
+                'confidence' => 'high',
             ],
             'timestamp_mismatch' => [
                 'strategy' => 'merge_data',
                 'reason' => 'Preserves both timestamps for audit purposes',
-                'confidence' => 'high'
+                'confidence' => 'high',
             ],
             'data_integrity_violation' => [
                 'strategy' => 'manual_resolution',
                 'reason' => 'Data integrity issues require supervisor review',
-                'confidence' => 'high'
-            ]
+                'confidence' => 'high',
+            ],
         ];
 
         return $recommendations[$conflict['type']] ?? [
             'strategy' => 'manual_resolution',
             'reason' => 'Unknown conflict type requires manual review',
-            'confidence' => 'low'
+            'confidence' => 'low',
         ];
     }
 
@@ -622,13 +623,13 @@ class OperationsConsoleController extends Controller
             $operationPerms = json_decode($assignment->operation_permissions, true) ?? [];
 
             foreach ($zonePerms as $zoneCode) {
-                if (!isset($zonePermissions[$zoneCode])) {
+                if (! isset($zonePermissions[$zoneCode])) {
                     $zonePermissions[$zoneCode] = [
                         'zone_code' => $zoneCode,
                         'zone_name' => $assignment->zone_name ?? $zoneCode,
                         'zone_type' => $assignment->zone_type ?? 'general',
                         'operations' => [],
-                        'requires_supervisor' => $assignment->requires_supervisor ?? false
+                        'requires_supervisor' => $assignment->requires_supervisor ?? false,
                     ];
                 }
 

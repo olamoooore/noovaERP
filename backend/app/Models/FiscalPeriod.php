@@ -2,15 +2,15 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Carbon\Carbon;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * Fiscal Period Model
- * 
+ *
  * Represents accounting periods that can be locked to prevent modifications
  * Ensures historical financial statements remain unchanged
  */
@@ -43,7 +43,6 @@ class FiscalPeriod extends Model
     /**
      * Relationships
      */
-
     public function lockedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'locked_by');
@@ -83,7 +82,7 @@ class FiscalPeriod extends Model
     public function scopeForDate($query, $date)
     {
         return $query->where('period_start', '<=', $date)
-                     ->where('period_end', '>=', $date);
+            ->where('period_end', '>=', $date);
     }
 
     public function scopeForYear($query, int $year)
@@ -93,13 +92,13 @@ class FiscalPeriod extends Model
 
     /**
      * Check if a date falls within this period
-     * 
-     * @param string|Carbon $date
-     * @return bool
+     *
+     * @param  string|Carbon  $date
      */
     public function containsDate($date): bool
     {
         $date = Carbon::parse($date);
+
         return $date->between($this->period_start, $this->period_end);
     }
 
@@ -108,8 +107,6 @@ class FiscalPeriod extends Model
      *
      * Uses the status column (single source of truth) instead of the is_locked boolean
      * to avoid dual-state drift when the two fields are written separately.
-     *
-     * @return bool
      */
     public function isLocked(): bool
     {
@@ -118,8 +115,6 @@ class FiscalPeriod extends Model
 
     /**
      * Check if the period is open
-     * 
-     * @return bool
      */
     public function isOpen(): bool
     {
@@ -128,8 +123,6 @@ class FiscalPeriod extends Model
 
     /**
      * Check if the period is closed
-     * 
-     * @return bool
      */
     public function isClosed(): bool
     {
@@ -138,8 +131,6 @@ class FiscalPeriod extends Model
 
     /**
      * Lock the period
-     * 
-     * @return bool
      */
     public function lock(): bool
     {
@@ -157,12 +148,10 @@ class FiscalPeriod extends Model
 
     /**
      * Unlock the period (requires special permission)
-     * 
-     * @return bool
      */
     public function unlock(): bool
     {
-        if (!$this->isLocked()) {
+        if (! $this->isLocked()) {
             throw new \Exception('Period is not locked');
         }
 
@@ -176,8 +165,6 @@ class FiscalPeriod extends Model
 
     /**
      * Close the period (but not lock it)
-     * 
-     * @return bool
      */
     public function close(): bool
     {
@@ -192,8 +179,6 @@ class FiscalPeriod extends Model
 
     /**
      * Reopen the period
-     * 
-     * @return bool
      */
     public function reopen(): bool
     {
@@ -208,21 +193,20 @@ class FiscalPeriod extends Model
 
     /**
      * Static helper: Check if a date is in a locked period
-     * 
-     * @param string|Carbon $date
-     * @return bool
+     *
+     * @param  string|Carbon  $date
      */
     public static function isDateLocked($date): bool
     {
         $period = static::forDate($date)->locked()->first();
+
         return $period !== null;
     }
 
     /**
      * Static helper: Get the period for a specific date
-     * 
-     * @param string|Carbon $date
-     * @return FiscalPeriod|null
+     *
+     * @param  string|Carbon  $date
      */
     public static function getPeriodForDate($date): ?FiscalPeriod
     {
@@ -231,8 +215,6 @@ class FiscalPeriod extends Model
 
     /**
      * Static helper: Get the current open period
-     * 
-     * @return FiscalPeriod|null
      */
     public static function getCurrentPeriod(): ?FiscalPeriod
     {
@@ -241,8 +223,7 @@ class FiscalPeriod extends Model
 
     /**
      * Static helper: Create monthly periods for a year
-     * 
-     * @param int $year
+     *
      * @return int Number of periods created
      */
     public static function createMonthlyPeriodsForYear(int $year): int

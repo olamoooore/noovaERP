@@ -2,13 +2,12 @@
 
 namespace Modules\FinancialClose\Services;
 
-use Illuminate\Support\Facades\Log;
-use Modules\FinancialClose\Models\CloseReadinessSnapshot;
-use Modules\FinancialClose\Models\AccountReview;
-use Modules\FinancialClose\Models\AiFinding;
-use Modules\FinancialClose\Models\CloseTask;
 use Modules\FinancialClose\Events\FinancialCloseReadinessSnapshotGenerated;
 use Modules\FinancialClose\Jobs\RefreshReadinessSnapshotJob;
+use Modules\FinancialClose\Models\AccountReview;
+use Modules\FinancialClose\Models\AiFinding;
+use Modules\FinancialClose\Models\CloseReadinessSnapshot;
+use Modules\FinancialClose\Models\CloseTask;
 
 class FinancialCloseReadinessService
 {
@@ -30,14 +29,14 @@ class FinancialCloseReadinessService
             ->where('entity_id', $entityId)
             ->get();
 
-        $totalAccounts     = $reviews->count();
-        $reviewedAccounts  = $reviews->whereIn('status', ['submitted', 'approved', 'locked'])->count();
+        $totalAccounts = $reviews->count();
+        $reviewedAccounts = $reviews->whereIn('status', ['submitted', 'approved', 'locked'])->count();
         $signedOffAccounts = $reviews->whereIn('status', ['approved', 'locked'])->count();
 
         $sectionBreakdown = $this->buildSectionBreakdown($reviews);
 
-        $weightedSum    = array_sum(array_column($sectionBreakdown, 'score'));
-        $accountScore   = $totalAccounts > 0 ? round($weightedSum / $totalAccounts, 2) : null;
+        $weightedSum = array_sum(array_column($sectionBreakdown, 'score'));
+        $accountScore = $totalAccounts > 0 ? round($weightedSum / $totalAccounts, 2) : null;
 
         // --- AI findings (entity-wide) ---
         $openFindings = AiFinding::where('tenant_id', $tenantId)
@@ -51,16 +50,16 @@ class FinancialCloseReadinessService
             $taskQuery->where('cycle_id', $cycleId);
         }
 
-        $totalTasks      = (clone $taskQuery)->count();
-        $completedTasks  = (clone $taskQuery)->where('status', 'completed')->count();
-        $blockedTasks    = (clone $taskQuery)->whereIn('status', ['blocked', 'escalated'])->count();
-        $cancelledTasks  = (clone $taskQuery)->where('status', 'cancelled')->count();
+        $totalTasks = (clone $taskQuery)->count();
+        $completedTasks = (clone $taskQuery)->where('status', 'completed')->count();
+        $blockedTasks = (clone $taskQuery)->whereIn('status', ['blocked', 'escalated'])->count();
+        $cancelledTasks = (clone $taskQuery)->where('status', 'cancelled')->count();
         $inProgressTasks = (clone $taskQuery)->where('status', 'in_progress')->count();
-        $submittedTasks  = (clone $taskQuery)->where('status', 'submitted')->count();
-        $createdTasks    = (clone $taskQuery)->where('status', 'created')->count();
+        $submittedTasks = (clone $taskQuery)->where('status', 'submitted')->count();
+        $createdTasks = (clone $taskQuery)->where('status', 'created')->count();
 
-        $activeTasks     = $totalTasks - $completedTasks - $cancelledTasks;
-        $effectiveTotal  = $totalTasks - $cancelledTasks;
+        $activeTasks = $totalTasks - $completedTasks - $cancelledTasks;
+        $effectiveTotal = $totalTasks - $cancelledTasks;
         $taskCompletionRate = $effectiveTotal > 0 ? round(($completedTasks / $effectiveTotal) * 100, 2) : 0;
 
         // Penalize blocked/escalated tasks (each blocked task reduces score by up to 10%)
@@ -75,28 +74,28 @@ class FinancialCloseReadinessService
         }
 
         $snapshot = CloseReadinessSnapshot::create([
-            'tenant_id'          => $tenantId,
-            'entity_id'          => $entityId,
-            'period_id'          => $periodId,
-            'readiness_score'    => $readinessScore,
-            'total_accounts'     => $totalAccounts,
-            'reviewed_accounts'  => $reviewedAccounts,
+            'tenant_id' => $tenantId,
+            'entity_id' => $entityId,
+            'period_id' => $periodId,
+            'readiness_score' => $readinessScore,
+            'total_accounts' => $totalAccounts,
+            'reviewed_accounts' => $reviewedAccounts,
             'signed_off_accounts' => $signedOffAccounts,
-            'open_blockers'      => $blockedTasks,
-            'open_findings'      => $openFindings,
-            'section_breakdown'  => $sectionBreakdown,
-            'generated_at'       => now(),
-            'metadata'           => [
-                'total_tasks'      => $totalTasks,
-                'completed_tasks'  => $completedTasks,
-                'blocked_tasks'    => $blockedTasks,
-                'cancelled_tasks'  => $cancelledTasks,
+            'open_blockers' => $blockedTasks,
+            'open_findings' => $openFindings,
+            'section_breakdown' => $sectionBreakdown,
+            'generated_at' => now(),
+            'metadata' => [
+                'total_tasks' => $totalTasks,
+                'completed_tasks' => $completedTasks,
+                'blocked_tasks' => $blockedTasks,
+                'cancelled_tasks' => $cancelledTasks,
                 'in_progress_tasks' => $inProgressTasks,
-                'submitted_tasks'  => $submittedTasks,
-                'created_tasks'    => $createdTasks,
-                'active_tasks'     => $activeTasks,
+                'submitted_tasks' => $submittedTasks,
+                'created_tasks' => $createdTasks,
+                'active_tasks' => $activeTasks,
                 'task_completion_rate' => $taskCompletionRate,
-                'account_score'    => $accountScore,
+                'account_score' => $accountScore,
             ],
         ]);
 
@@ -125,22 +124,22 @@ class FinancialCloseReadinessService
     {
         $snapshot = $this->getLatestSnapshot($tenantId, $entityId, $periodId);
 
-        if (!$snapshot) {
+        if (! $snapshot) {
             $snapshot = $this->generateSnapshot($tenantId, $entityId, $periodId, $cycleId);
         }
 
-        if (!$snapshot) {
+        if (! $snapshot) {
             return [
-                'total_accounts'      => 0,
-                'reviewed_accounts'   => 0,
+                'total_accounts' => 0,
+                'reviewed_accounts' => 0,
                 'signed_off_accounts' => 0,
-                'open_blockers'       => 0,
-                'open_findings'       => 0,
-                'readiness_score'     => 0,
-                'is_ready'            => false,
-                'snapshot_available'  => false,
-                'generated_at'        => null,
-                'accounts'            => [],
+                'open_blockers' => 0,
+                'open_findings' => 0,
+                'readiness_score' => 0,
+                'is_ready' => false,
+                'snapshot_available' => false,
+                'generated_at' => null,
+                'accounts' => [],
             ];
         }
 
@@ -148,12 +147,12 @@ class FinancialCloseReadinessService
             ->where('entity_id', $entityId)
             ->get();
 
-        $totalAccounts     = $reviews->count();
+        $totalAccounts = $reviews->count();
         $signedOffAccounts = $reviews->whereIn('status', ['approved', 'locked'])->count();
 
         $sectionBreakdown = $this->buildSectionBreakdown($reviews);
 
-        $weightedSum  = array_sum(array_column($sectionBreakdown, 'score'));
+        $weightedSum = array_sum(array_column($sectionBreakdown, 'score'));
         $accountScore = $totalAccounts > 0 ? round($weightedSum / $totalAccounts, 2) : null;
 
         $taskQuery = CloseTask::where('tenant_id', $tenantId);
@@ -161,13 +160,13 @@ class FinancialCloseReadinessService
             $taskQuery->where('cycle_id', $cycleId);
         }
 
-        $totalTasks     = (clone $taskQuery)->count();
+        $totalTasks = (clone $taskQuery)->count();
         $completedTasks = (clone $taskQuery)->where('status', 'completed')->count();
-        $blockedTasks   = (clone $taskQuery)->whereIn('status', ['blocked', 'escalated'])->count();
+        $blockedTasks = (clone $taskQuery)->whereIn('status', ['blocked', 'escalated'])->count();
         $cancelledTasks = (clone $taskQuery)->where('status', 'cancelled')->count();
 
-        $activeTasks        = $totalTasks - $completedTasks - $cancelledTasks;
-        $effectiveTotal     = $totalTasks - $cancelledTasks;
+        $activeTasks = $totalTasks - $completedTasks - $cancelledTasks;
+        $effectiveTotal = $totalTasks - $cancelledTasks;
         $taskCompletionRate = $effectiveTotal > 0 ? round(($completedTasks / $effectiveTotal) * 100, 2) : 0;
 
         $blockedPenalty = $effectiveTotal > 0 ? min(30, round(($blockedTasks / $effectiveTotal) * 100, 2)) : 0;
@@ -185,16 +184,16 @@ class FinancialCloseReadinessService
             ->count();
 
         return [
-            'readiness_score'     => $readinessScore,
-            'total_accounts'      => $totalAccounts,
-            'reviewed_accounts'   => $reviews->whereIn('status', ['submitted', 'approved', 'locked'])->count(),
+            'readiness_score' => $readinessScore,
+            'total_accounts' => $totalAccounts,
+            'reviewed_accounts' => $reviews->whereIn('status', ['submitted', 'approved', 'locked'])->count(),
             'signed_off_accounts' => $signedOffAccounts,
-            'open_blockers'       => $blockedTasks,
-            'open_findings'       => $openFindings,
-            'is_ready'            => $readinessScore >= 100 && $blockedTasks === 0,
-            'snapshot_available'  => true,
-            'generated_at'        => $snapshot->generated_at,
-            'accounts'            => $sectionBreakdown,
+            'open_blockers' => $blockedTasks,
+            'open_findings' => $openFindings,
+            'is_ready' => $readinessScore >= 100 && $blockedTasks === 0,
+            'snapshot_available' => true,
+            'generated_at' => $snapshot->generated_at,
+            'accounts' => $sectionBreakdown,
         ];
     }
 
@@ -207,7 +206,7 @@ class FinancialCloseReadinessService
             ->where('id', $cycleId)
             ->first();
 
-        if (!$cycle) {
+        if (! $cycle) {
             return;
         }
 

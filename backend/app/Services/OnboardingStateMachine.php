@@ -28,25 +28,25 @@ class OnboardingStateMachine
         $steps = $this->steps();
 
         $sessionId = DB::table('onboarding_sessions')->insertGetId([
-            'tenant_id'   => $tenantId,
-            'mode'        => $mode,
-            'current_step'=> array_key_first($steps),
-            'status'      => 'in_progress',
-            'started_at'  => now(),
-            'created_by'  => $createdBy,
-            'created_at'  => now(),
-            'updated_at'  => now(),
+            'tenant_id' => $tenantId,
+            'mode' => $mode,
+            'current_step' => array_key_first($steps),
+            'status' => 'in_progress',
+            'started_at' => now(),
+            'created_by' => $createdBy,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         foreach ($steps as $code => $def) {
             DB::table('onboarding_step_states')->insert([
-                'session_id'   => $sessionId,
-                'step_code'    => $code,
-                'status'       => $code === array_key_first($steps) ? 'in_progress' : 'pending',
-                'data'         => null,
+                'session_id' => $sessionId,
+                'step_code' => $code,
+                'status' => $code === array_key_first($steps) ? 'in_progress' : 'pending',
+                'data' => null,
                 'completed_at' => null,
-                'created_at'   => now(),
-                'updated_at'   => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
         }
 
@@ -62,12 +62,12 @@ class OnboardingStateMachine
 
         $steps = DB::table('onboarding_step_states')
             ->where('session_id', $sessionId)
-            ->orderByRaw("CASE step_code " . $this->stepOrderCase() . " END")
+            ->orderByRaw('CASE step_code '.$this->stepOrderCase().' END')
             ->get();
 
         return [
             'session' => $session,
-            'steps'   => $steps,
+            'steps' => $steps,
         ];
     }
 
@@ -85,7 +85,7 @@ class OnboardingStateMachine
 
         $currentTenant = tenant('id');
 
-        if (!$session || ($currentTenant !== null && $session->tenant_id !== $currentTenant)) {
+        if (! $session || ($currentTenant !== null && $session->tenant_id !== $currentTenant)) {
             throw new \RuntimeException("Onboarding session {$sessionId} not found.");
         }
 
@@ -120,10 +120,10 @@ class OnboardingStateMachine
             ->where('session_id', $sessionId)
             ->where('step_code', $currentStep)
             ->update([
-                'status'       => 'completed',
-                'data'         => $stepData ? json_encode($stepData) : null,
+                'status' => 'completed',
+                'data' => $stepData ? json_encode($stepData) : null,
                 'completed_at' => now(),
-                'updated_at'   => now(),
+                'updated_at' => now(),
             ]);
 
         // If last step, complete session
@@ -131,9 +131,9 @@ class OnboardingStateMachine
             DB::table('onboarding_sessions')
                 ->where('id', $sessionId)
                 ->update([
-                    'status'       => 'completed',
+                    'status' => 'completed',
                     'completed_at' => now(),
-                    'updated_at'   => now(),
+                    'updated_at' => now(),
                 ]);
 
             return $this->getSession($sessionId);
@@ -161,7 +161,7 @@ class OnboardingStateMachine
             ->where('session_id', $sessionId)
             ->where('step_code', $nextStep)
             ->update([
-                'status'     => 'in_progress',
+                'status' => 'in_progress',
                 'updated_at' => now(),
             ]);
 
@@ -169,7 +169,7 @@ class OnboardingStateMachine
             ->where('id', $sessionId)
             ->update([
                 'current_step' => $nextStep,
-                'updated_at'   => now(),
+                'updated_at' => now(),
             ]);
 
         return $this->getSession($sessionId);
@@ -218,7 +218,7 @@ class OnboardingStateMachine
             ->where('session_id', $sessionId)
             ->where('step_code', $previousStep)
             ->update([
-                'status'     => 'in_progress',
+                'status' => 'in_progress',
                 'updated_at' => now(),
             ]);
 
@@ -227,7 +227,7 @@ class OnboardingStateMachine
             ->where('id', $sessionId)
             ->update([
                 'current_step' => $previousStep,
-                'updated_at'   => now(),
+                'updated_at' => now(),
             ]);
 
         return $this->getSession($sessionId);
@@ -259,7 +259,7 @@ class OnboardingStateMachine
             ->where('id', $sessionId)
             ->where('status', 'in_progress')
             ->update([
-                'status'     => 'abandoned',
+                'status' => 'abandoned',
                 'updated_at' => now(),
             ]);
     }
@@ -271,19 +271,19 @@ class OnboardingStateMachine
     {
         $session = $this->sessionForCurrentTenant($sessionId);
         if ($session->mode !== 'expert') {
-            throw new \RuntimeException("Step skipping is only available in expert mode.");
+            throw new \RuntimeException('Step skipping is only available in expert mode.');
         }
 
         // Cannot skip go_live step
         if ($stepCode === 'go_live') {
-            throw new \RuntimeException("Cannot skip the go_live step.");
+            throw new \RuntimeException('Cannot skip the go_live step.');
         }
 
         DB::table('onboarding_step_states')
             ->where('session_id', $sessionId)
             ->where('step_code', $stepCode)
             ->update([
-                'status'     => 'skipped',
+                'status' => 'skipped',
                 'updated_at' => now(),
             ]);
 
@@ -301,6 +301,7 @@ class OnboardingStateMachine
             $parts[] = "WHEN '{$code}' THEN {$i}";
             $i++;
         }
+
         return implode(' ', $parts);
     }
 }

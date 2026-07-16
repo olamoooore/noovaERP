@@ -90,11 +90,12 @@ class EventTicketType extends Model
      */
     public function reserveCapacity(int $quantity): bool
     {
-        if (!$this->canAccommodate($quantity)) {
+        if (! $this->canAccommodate($quantity)) {
             return false;
         }
 
         $this->available_capacity -= $quantity;
+
         return $this->save();
     }
 
@@ -104,13 +105,14 @@ class EventTicketType extends Model
     public function releaseCapacity(int $quantity): bool
     {
         $newCapacity = $this->available_capacity + $quantity;
-        
+
         // Don't exceed original capacity
         if ($newCapacity > $this->capacity) {
             $newCapacity = $this->capacity;
         }
 
         $this->available_capacity = $newCapacity;
+
         return $this->save();
     }
 
@@ -160,7 +162,8 @@ class EventTicketType extends Model
         ];
 
         $symbol = $symbols[$currency] ?? $currency;
-        return $symbol . number_format($this->price, 2);
+
+        return $symbol.number_format($this->price, 2);
     }
 
     /**
@@ -169,6 +172,7 @@ class EventTicketType extends Model
     public function canUpdateCapacity(int $newCapacity): bool
     {
         $soldTickets = $this->getSoldCount();
+
         return $newCapacity >= $soldTickets;
     }
 
@@ -177,14 +181,14 @@ class EventTicketType extends Model
      */
     public function updateCapacity(int $newCapacity): bool
     {
-        if (!$this->canUpdateCapacity($newCapacity)) {
+        if (! $this->canUpdateCapacity($newCapacity)) {
             return false;
         }
 
         $soldTickets = $this->getSoldCount();
         $this->capacity = $newCapacity;
         $this->available_capacity = $newCapacity - $soldTickets;
-        
+
         return $this->save();
     }
 
@@ -198,7 +202,7 @@ class EventTicketType extends Model
         }
 
         $utilization = $this->getUtilizationPercentage();
-        
+
         if ($utilization >= 90) {
             return 'limited';
         }

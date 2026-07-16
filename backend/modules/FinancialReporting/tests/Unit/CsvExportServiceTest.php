@@ -2,20 +2,19 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Modules\FinancialReporting\Services\Export\CsvExportService;
 use Illuminate\Support\Facades\Storage;
+use Modules\FinancialReporting\Services\Export\CsvExportService;
+use Tests\TenantTestCase;
 
 class CsvExportServiceTest extends TenantTestCase
 {
-
     protected CsvExportService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->bindTenantContext();
-        $this->service = new CsvExportService();
+        $this->service = new CsvExportService;
         Storage::fake('local');
     }
 

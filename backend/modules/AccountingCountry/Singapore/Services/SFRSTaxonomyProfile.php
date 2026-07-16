@@ -5,6 +5,7 @@ namespace Modules\AccountingCountry\Singapore\Services;
 class SFRSTaxonomyProfile
 {
     public const TAXONOMY_VERSION = 'ACRA-SFRS-2024';
+
     public const SCHEMA_HREF = 'sg-sfrs-2024.xsd';
 
     private const CODE_GROUP_RANGES = [
@@ -31,11 +32,11 @@ class SFRSTaxonomyProfile
         $accountType = strtolower(trim($accountType));
         $accountCode = trim($accountCode);
 
-        if ($accountCode === '' || !preg_match('/^\d{4,}$/', $accountCode)) {
+        if ($accountCode === '' || ! preg_match('/^\d{4,}$/', $accountCode)) {
             $errors[] = 'Account code must be numeric and at least 4 digits';
         }
 
-        if (!array_key_exists($accountType, self::CODE_GROUP_RANGES)) {
+        if (! array_key_exists($accountType, self::CODE_GROUP_RANGES)) {
             $errors[] = "Unsupported account type: {$accountType}";
         }
 

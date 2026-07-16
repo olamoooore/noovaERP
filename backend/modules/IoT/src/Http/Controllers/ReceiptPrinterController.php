@@ -19,7 +19,7 @@ class ReceiptPrinterController extends Controller
 
     /**
      * Send a receipt print job to the printer.
-     * 
+     *
      * POST /api/v1/iot/print-jobs/receipt
      */
     public function printReceipt(Request $request): JsonResponse
@@ -28,7 +28,7 @@ class ReceiptPrinterController extends Controller
             'request_data' => $request->all(),
             'url' => $request->fullUrl(),
         ]);
-        
+
         $request->validate([
             'agent_id' => 'required|string',
             'device_id' => 'required|string',
@@ -59,14 +59,14 @@ class ReceiptPrinterController extends Controller
             ->where('device_type', 'printer')
             ->first();
 
-        if (!$device) {
+        if (! $device) {
             return response()->json([
                 'success' => false,
                 'message' => 'Receipt printer device not found',
             ], 404);
         }
 
-        if (!$device->enabled) {
+        if (! $device->enabled) {
             return response()->json([
                 'success' => false,
                 'message' => 'Receipt printer device is disabled',
@@ -74,7 +74,7 @@ class ReceiptPrinterController extends Controller
         }
 
         // Verify it's a receipt printer
-        if (!str_contains($device->driver_type, 'receipt')) {
+        if (! str_contains($device->driver_type, 'receipt')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Device is not configured as a receipt printer',
@@ -84,14 +84,14 @@ class ReceiptPrinterController extends Controller
         try {
             // Generate ESC/POS commands
             $escposCommands = $this->receiptGenerator->generateSalesReceipt($receiptData);
-            
+
             // Encode for JSON transmission
             $encodedCommands = $this->receiptGenerator->encodeForJson($escposCommands);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to generate receipt: ' . $e->getMessage(),
+                'message' => 'Failed to generate receipt: '.$e->getMessage(),
             ], 400);
         }
 
@@ -167,7 +167,7 @@ class ReceiptPrinterController extends Controller
 
     /**
      * Test receipt printer.
-     * 
+     *
      * POST /api/v1/iot/agents/{agentId}/printer/test-receipt
      */
     public function testReceipt(Request $request, string $agentId): JsonResponse
@@ -177,7 +177,7 @@ class ReceiptPrinterController extends Controller
             'request_data' => $request->all(),
             'url' => $request->fullUrl(),
         ]);
-        
+
         $request->validate([
             'device_id' => 'required|string',
         ]);
@@ -192,26 +192,26 @@ class ReceiptPrinterController extends Controller
                 ->where('device_type', 'printer')
                 ->first();
         }
-        if (!$device) {
+        if (! $device) {
             $device = DeviceConfiguration::where('agent_id', $agentId)
                 ->where('device_type', 'printer')
                 ->where(function ($q) use ($deviceId) {
                     $q->where('connection_info->ump_device_id', $deviceId)
-                      ->orWhere('connection_info->serialNumber', $deviceId)
-                      ->orWhere('connection_info->umpId', $deviceId)
-                      ->orWhere('name', $deviceId);
+                        ->orWhere('connection_info->serialNumber', $deviceId)
+                        ->orWhere('connection_info->umpId', $deviceId)
+                        ->orWhere('name', $deviceId);
                 })
                 ->first();
         }
 
-        if (!$device) {
+        if (! $device) {
             return response()->json([
                 'success' => false,
                 'message' => 'Receipt printer device not found',
             ], 404);
         }
 
-        if (!$device->enabled) {
+        if (! $device->enabled) {
             return response()->json([
                 'success' => false,
                 'message' => 'Receipt printer device is disabled',
@@ -221,14 +221,14 @@ class ReceiptPrinterController extends Controller
         try {
             // Generate test receipt
             $escposCommands = $this->receiptGenerator->generateTestReceipt();
-            
+
             // Encode for JSON transmission
             $encodedCommands = $this->receiptGenerator->encodeForJson($escposCommands);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to generate test receipt: ' . $e->getMessage(),
+                'message' => 'Failed to generate test receipt: '.$e->getMessage(),
             ], 400);
         }
 
@@ -252,7 +252,7 @@ class ReceiptPrinterController extends Controller
                 'device_id' => $deviceId,
                 'job_id' => $printJob->id,
             ]);
-            
+
             $result = $this->deviceRouter->sendCommand($device, '/api/printer/receipt', [
                 'deviceId' => $deviceId,
                 'jobId' => $printJob->id,

@@ -7,9 +7,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * OutboxEventConsumer Model
- * 
+ *
  * Tracks processing status for each consumer of outbox events.
- * 
+ *
  * @property int $id
  * @property int $outbox_event_id
  * @property string $consumer_name
@@ -26,9 +26,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class OutboxEventConsumer extends Model
 {
     protected $table = 'outbox_event_consumers';
-    
+
     public $timestamps = false; // Custom timestamp handling
-    
+
     protected $fillable = [
         'outbox_event_id',
         'consumer_name',
@@ -39,7 +39,7 @@ class OutboxEventConsumer extends Model
         'error_message',
         'processing_metadata',
         'started_at',
-        'completed_at'
+        'completed_at',
     ];
 
     protected $casts = [
@@ -47,20 +47,27 @@ class OutboxEventConsumer extends Model
         'created_at' => 'datetime',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
-        'next_retry_at' => 'datetime'
+        'next_retry_at' => 'datetime',
     ];
 
     // Status constants
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_PROCESSING = 'processing';
+
     public const STATUS_COMPLETED = 'completed';
+
     public const STATUS_FAILED = 'failed';
 
     // Consumer name constants
     public const CONSUMER_NOTIFICATION = 'notification_service';
+
     public const CONSUMER_ANALYTICS = 'analytics_service';
+
     public const CONSUMER_ACCOUNTING = 'accounting_service';
+
     public const CONSUMER_LOYALTY = 'loyalty_service';
+
     public const CONSUMER_FRAUD_DETECTION = 'fraud_detection_service';
 
     /**
@@ -108,7 +115,7 @@ class OutboxEventConsumer extends Model
      */
     public function canRetry(): bool
     {
-        return $this->isFailed() && 
+        return $this->isFailed() &&
                $this->retry_count < $this->max_retries &&
                ($this->next_retry_at === null || $this->next_retry_at <= now());
     }
@@ -121,7 +128,7 @@ class OutboxEventConsumer extends Model
         $this->update([
             'status' => self::STATUS_PROCESSING,
             'started_at' => now(),
-            'completed_at' => null
+            'completed_at' => null,
         ]);
     }
 
@@ -134,7 +141,7 @@ class OutboxEventConsumer extends Model
             'status' => self::STATUS_COMPLETED,
             'completed_at' => now(),
             'error_message' => null,
-            'processing_metadata' => $metadata
+            'processing_metadata' => $metadata,
         ]);
     }
 
@@ -144,14 +151,14 @@ class OutboxEventConsumer extends Model
     public function markAsFailed(string $errorMessage, ?int $retryDelayMinutes = null): void
     {
         $retryDelayMinutes = $retryDelayMinutes ?? $this->calculateRetryDelay();
-        
+
         $this->update([
             'status' => self::STATUS_FAILED,
             'retry_count' => $this->retry_count + 1,
             'error_message' => $errorMessage,
-            'next_retry_at' => $this->retry_count < $this->max_retries 
-                ? now()->addMinutes($retryDelayMinutes) 
-                : null
+            'next_retry_at' => $this->retry_count < $this->max_retries
+                ? now()->addMinutes($retryDelayMinutes)
+                : null,
         ]);
     }
 
@@ -169,11 +176,12 @@ class OutboxEventConsumer extends Model
      */
     public function getProcessingDuration(): ?int
     {
-        if (!$this->started_at) {
+        if (! $this->started_at) {
             return null;
         }
-        
+
         $endTime = $this->completed_at ?? now();
+
         return $this->started_at->diffInSeconds($endTime);
     }
 
@@ -211,11 +219,11 @@ class OutboxEventConsumer extends Model
         return $query->where('status', self::STATUS_PENDING)
             ->orWhere(function ($q) {
                 $q->where('status', self::STATUS_FAILED)
-                  ->where('retry_count', '<', DB::raw('max_retries'))
-                  ->where(function ($retryQuery) {
-                      $retryQuery->whereNull('next_retry_at')
-                                 ->orWhere('next_retry_at', '<=', now());
-                  });
+                    ->where('retry_count', '<', DB::raw('max_retries'))
+                    ->where(function ($retryQuery) {
+                        $retryQuery->whereNull('next_retry_at')
+                            ->orWhere('next_retry_at', '<=', now());
+                    });
             });
     }
 
@@ -241,7 +249,7 @@ class OutboxEventConsumer extends Model
     public function scopeProcessingLongerThan($query, int $minutes)
     {
         return $query->where('status', self::STATUS_PROCESSING)
-                    ->where('started_at', '<', now()->subMinutes($minutes));
+            ->where('started_at', '<', now()->subMinutes($minutes));
     }
 
     /**
@@ -252,7 +260,7 @@ class OutboxEventConsumer extends Model
         return self::create([
             'outbox_event_id' => $outboxEventId,
             'consumer_name' => $consumerName,
-            'max_retries' => $maxRetries
+            'max_retries' => $maxRetries,
         ]);
     }
 }

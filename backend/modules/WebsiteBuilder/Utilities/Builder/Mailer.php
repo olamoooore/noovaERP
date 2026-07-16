@@ -1,65 +1,72 @@
 <?php
+
 namespace Modules\WebsiteBuilder\Utilities\Builder;
-use Modules\WebsiteBuilder\Utilities\Builder\Request;
-class Mailer extends Request {
 
-	private $_current_form = null;
-	private $_current_zip = null;
-	private $_smtp_trigger = true;
-	private $_aweber_trigger = true;
+class Mailer extends Request
+{
+    private $_current_form = null;
 
-	public function __construct($form, $zip) {
-		$this->_current_form = $form;
-		$this->_current_zip = $zip;
-	}
+    private $_current_zip = null;
 
-	public function Get_sanding_mail_code($type) {
+    private $_smtp_trigger = true;
 
-		switch ($type) {
-			case "smtp":
-				return $this->_smtp();
-				break;
-			case "mailchimp":
-				return $this->_mailchimp();
-				break;
-			case "mailerlite":
-				return $this->_mailerlite();
-				break;
-			case "activecampaing":
-				return $this->_activecampaing();
-				break;
-			case "getresponse":
-				return $this->_getresponse();
-				break;
-			case "aweber":
-				return $this->_aweber();
-				break;
-			case "campaignmonitor":
-				return $this->_campaignmonitor();
-				break;
-			case "simple-mail-php":
-			default:
-				return $this->_simple_mail_php();
-				break;
-		}
-	}
+    private $_aweber_trigger = true;
 
-	private function _simple_mail_php() {
-	    if(!empty($this->_current_form->settings)){
-            $subject = $this->_validation( $this->_current_form->settings->subject,
-                'string' ) ? $this->_current_form->settings->subject : '';
-            $email   = $this->_validation( $this->_current_form->settings->email, 'email' ) ?
+    public function __construct($form, $zip)
+    {
+        $this->_current_form = $form;
+        $this->_current_zip = $zip;
+    }
+
+    public function Get_sanding_mail_code($type)
+    {
+
+        switch ($type) {
+            case 'smtp':
+                return $this->_smtp();
+                break;
+            case 'mailchimp':
+                return $this->_mailchimp();
+                break;
+            case 'mailerlite':
+                return $this->_mailerlite();
+                break;
+            case 'activecampaing':
+                return $this->_activecampaing();
+                break;
+            case 'getresponse':
+                return $this->_getresponse();
+                break;
+            case 'aweber':
+                return $this->_aweber();
+                break;
+            case 'campaignmonitor':
+                return $this->_campaignmonitor();
+                break;
+            case 'simple-mail-php':
+            default:
+                return $this->_simple_mail_php();
+                break;
+        }
+    }
+
+    private function _simple_mail_php()
+    {
+        if (! empty($this->_current_form->settings)) {
+            $subject = $this->_validation($this->_current_form->settings->subject,
+                'string') ? $this->_current_form->settings->subject : '';
+            $email = $this->_validation($this->_current_form->settings->email, 'email') ?
                 $this->_current_form->settings->email : '';
-            $id      = $this->_validation( $this->_current_form->settings->id, 'string' ) ?
+            $id = $this->_validation($this->_current_form->settings->id, 'string') ?
                 $this->_current_form->settings->id : '';
-        }else{
+        } else {
             $subject = '';
             $email = '';
             $id = '';
         }
-        
+
         $content = '
-		$mailto = "' . $email . '";
+		$mailto = "'.$email.'";
 
 		$data_array = json_decode($_POST[\'data\']);
 		$message = "";
@@ -69,7 +76,7 @@ class Mailer extends Request {
 			}
 		}
 
-		$subject = "' . $subject . '";
+		$subject = "'.$subject.'";
 
 		// a random hash will be necessary to send mixed content
 		$separator = md5(time());
@@ -122,19 +129,20 @@ class Mailer extends Request {
 		}
 	';
 
-			return $content;
-		}
+        return $content;
+    }
 
-		private function _mailchimp() {
-			$api_key = $this->_validation( $this->_current_form->settings->apiKeymailchimp,
-				'string' ) ? $this->_current_form->settings->apiKeymailchimp : '';
-			$list_id   = $this->_validation( $this->_current_form->settings->listIdmailchimp, 'string' ) ?
-				$this->_current_form->settings->listIdmailchimp : '';
-			$id      = $this->_validation( $this->_current_form->settings->id, 'string' ) ?
-				$this->_current_form->settings->id : '';
+    private function _mailchimp()
+    {
+        $api_key = $this->_validation($this->_current_form->settings->apiKeymailchimp,
+            'string') ? $this->_current_form->settings->apiKeymailchimp : '';
+        $list_id = $this->_validation($this->_current_form->settings->listIdmailchimp, 'string') ?
+            $this->_current_form->settings->listIdmailchimp : '';
+        $id = $this->_validation($this->_current_form->settings->id, 'string') ?
+            $this->_current_form->settings->id : '';
 
-			$content = '
-	if($_POST[\'id\'] === "' . $id . '") {
+        $content = '
+	if($_POST[\'id\'] === "'.$id.'") {
 		$stack = json_decode($_POST[\'data\']);
 		$email = "";
 		foreach ($stack as $key => $value) {
@@ -188,32 +196,33 @@ class Mailer extends Request {
 		}
 	}';
 
-			return $content;
-		}
+        return $content;
+    }
 
-		private function _smtp() {
-			$subject = $this->_validation( $this->_current_form->settings->subject,
-				'string' ) ? $this->_current_form->settings->subject : '';
-			$email   = $this->_validation( $this->_current_form->settings->email, 'email' ) ?
-				$this->_current_form->settings->email : '';
-			$id      = $this->_validation( $this->_current_form->settings->id, 'string' ) ?
-				$this->_current_form->settings->id : '';
-			$host = $this->_validation( $this->_current_form->settings->host, 'string' ) ?
-				$this->_current_form->settings->host : '';
-			$user_name = $this->_validation( $this->_current_form->settings->userName, 'string' ) ?
-				$this->_current_form->settings->userName : '';
-			$pass = $this->_validation( $this->_current_form->settings->password, 'string' ) ?
-				$this->_current_form->settings->password : '';
-			$secure = $this->_validation( $this->_current_form->settings->secure, 'string' ) ?
-				$this->_current_form->settings->secure : '';
-			$port = $this->_validation( $this->_current_form->settings->port, 'string' ) ?
-				$this->_current_form->settings->port : '';
+    private function _smtp()
+    {
+        $subject = $this->_validation($this->_current_form->settings->subject,
+            'string') ? $this->_current_form->settings->subject : '';
+        $email = $this->_validation($this->_current_form->settings->email, 'email') ?
+            $this->_current_form->settings->email : '';
+        $id = $this->_validation($this->_current_form->settings->id, 'string') ?
+            $this->_current_form->settings->id : '';
+        $host = $this->_validation($this->_current_form->settings->host, 'string') ?
+            $this->_current_form->settings->host : '';
+        $user_name = $this->_validation($this->_current_form->settings->userName, 'string') ?
+            $this->_current_form->settings->userName : '';
+        $pass = $this->_validation($this->_current_form->settings->password, 'string') ?
+            $this->_current_form->settings->password : '';
+        $secure = $this->_validation($this->_current_form->settings->secure, 'string') ?
+            $this->_current_form->settings->secure : '';
+        $port = $this->_validation($this->_current_form->settings->port, 'string') ?
+            $this->_current_form->settings->port : '';
 
-			$content = '
+        $content = '
 	
 		require_once \'smtp/PHPMailerAutoload.php\';
 
-		$to = "' . $email . '"; // Your e-mail address here.
+		$to = "'.$email.'"; // Your e-mail address here.
 
 		$data_array = json_decode($_POST[\'data\']);
 
@@ -229,19 +238,19 @@ class Mailer extends Request {
 		//$mail->SMTPDebug = 3;                               	// Enable verbose debug output
 
 		$mail->isSMTP();                                      	// Set mailer to use SMTP
-		$mail->Host = "' . $host . '";  		// Specify main and backup SMTP servers
+		$mail->Host = "'.$host.'";  		// Specify main and backup SMTP servers
 		$mail->SMTPAuth = true;                               	// Enable SMTP authentication
-		$mail->Username = "' . $user_name . '";  // SMTP username
-		$mail->Password = "' . $pass . '";  // SMTP password
-		$mail->SMTPSecure = "' . $secure . '";  // Enable TLS encryption, `ssl` also accepted
-		$mail->Port = "' . $port . '";          // TCP port to connect to
+		$mail->Username = "'.$user_name.'";  // SMTP username
+		$mail->Password = "'.$pass.'";  // SMTP password
+		$mail->SMTPSecure = "'.$secure.'";  // Enable TLS encryption, `ssl` also accepted
+		$mail->Port = "'.$port.'";          // TCP port to connect to
 
-		$mail->setFrom("' . $user_name . '");
+		$mail->setFrom("'.$user_name.'");
 		$mail->addAddress($to);     							// Add a recipient
 
 		$mail->isHTML(true);                                  	// Set email format to HTML
 
-		$mail->Subject = "' . $subject . '";
+		$mail->Subject = "'.$subject.'";
 		$mail->Body    = $body;
 		$mail->AltBody = \'This is the body in plain text for non-HTML mail clients\';
 
@@ -264,24 +273,25 @@ class Mailer extends Request {
 		}
 	';
 
-			if ($this->_smtp_trigger) {
-				$this->_smtp_trigger = false;
-				$this->_add_api(SUPRA_BASE_PATH.'/include/common/smtp', 'scripts/smtp');
-			}
+        if ($this->_smtp_trigger) {
+            $this->_smtp_trigger = false;
+            $this->_add_api(SUPRA_BASE_PATH.'/include/common/smtp', 'scripts/smtp');
+        }
 
-			return $content;
-		}
+        return $content;
+    }
 
-		private function _mailerlite() {
-			$api_key = $this->_validation( $this->_current_form->settings->apiKeymailerlite,
-				'string' ) ? $this->_current_form->settings->apiKeymailerlite : '';
-			$list_id   = $this->_validation( $this->_current_form->settings->listIdmailerlite, 'string' ) ?
-				$this->_current_form->settings->listIdmailerlite : '';
-			$id      = $this->_validation( $this->_current_form->settings->id, 'string' ) ?
-				$this->_current_form->settings->id : '';
+    private function _mailerlite()
+    {
+        $api_key = $this->_validation($this->_current_form->settings->apiKeymailerlite,
+            'string') ? $this->_current_form->settings->apiKeymailerlite : '';
+        $list_id = $this->_validation($this->_current_form->settings->listIdmailerlite, 'string') ?
+            $this->_current_form->settings->listIdmailerlite : '';
+        $id = $this->_validation($this->_current_form->settings->id, 'string') ?
+            $this->_current_form->settings->id : '';
 
-			$content = '
-	if($_POST[\'id\'] === "' . $id . '") {
+        $content = '
+	if($_POST[\'id\'] === "'.$id.'") {
 
 		$stack = json_decode($_POST[\'data\']);
 
@@ -309,7 +319,7 @@ class Mailer extends Request {
 		$curl = curl_init();
 
 		curl_setopt_array($curl, array(
-		  CURLOPT_URL => "https://api.mailerlite.com/api/v2/groups/' . $list_id . '/subscribers",
+		  CURLOPT_URL => "https://api.mailerlite.com/api/v2/groups/'.$list_id.'/subscribers",
 		  CURLOPT_RETURNTRANSFER => true,
 		  CURLOPT_ENCODING => "",
 		  CURLOPT_MAXREDIRS => 10,
@@ -319,7 +329,7 @@ class Mailer extends Request {
 		  CURLOPT_POSTFIELDS => json_encode($subscriber),
 		  CURLOPT_HTTPHEADER => array(
 		    "content-type: application/json",
-		    "x-mailerlite-apikey: ' . $api_key . '"
+		    "x-mailerlite-apikey: '.$api_key.'"
 		  ),
 		));
 
@@ -336,28 +346,29 @@ class Mailer extends Request {
 		}
 	}';
 
-		return $content;
-	}
+        return $content;
+    }
 
-	private function _activecampaing() {
-		$api_key = $this->_validation( $this->_current_form->settings->apiKeyactivecampaing,
-			'string' ) ? $this->_current_form->settings->apiKeyactivecampaing : '';
-		$list_id = $this->_validation( $this->_current_form->settings->listIdactivecampaing,
-			'string' ) ? $this->_current_form->settings->listIdactivecampaing : '';
+    private function _activecampaing()
+    {
+        $api_key = $this->_validation($this->_current_form->settings->apiKeyactivecampaing,
+            'string') ? $this->_current_form->settings->apiKeyactivecampaing : '';
+        $list_id = $this->_validation($this->_current_form->settings->listIdactivecampaing,
+            'string') ? $this->_current_form->settings->listIdactivecampaing : '';
 
-		$id      = '';
-		if ( $this->_validation( $this->_current_form->settings->id, 'string' ) ) {
-			$id = $this->_current_form->settings->id;
-		}
+        $id = '';
+        if ($this->_validation($this->_current_form->settings->id, 'string')) {
+            $id = $this->_current_form->settings->id;
+        }
 
-		$url      = '';
-		if ( $this->_validation( $this->_current_form->settings->accessUrl, 'url' ) ) {
-			$url = $this->_current_form->settings->accessUrl;
-		}
+        $url = '';
+        if ($this->_validation($this->_current_form->settings->accessUrl, 'url')) {
+            $url = $this->_current_form->settings->accessUrl;
+        }
 
-		$content = '
-	if($_POST[\'id\'] === "' . $id . '") {
-		$url = \'' . $url . '\';
+        $content = '
+	if($_POST[\'id\'] === "'.$id.'") {
+		$url = \''.$url.'\';
 
 		$stack = json_decode($_POST[\'data\']);
 
@@ -383,7 +394,7 @@ class Mailer extends Request {
 		}
 
 		$params = array(
-		    \'api_key\'      => \'' . $api_key . '\',
+		    \'api_key\'      => \''.$api_key.'\',
 		    \'api_action\'   => \'contact_add\',
 		    \'api_output\'   => \'json\',
 		);
@@ -395,9 +406,9 @@ class Mailer extends Request {
 		    \'phone\'                    => isset($data[\'phone\']) ? $data[\'phone\'] : "",
 		    \'orgname\'                  => isset($data[\'orgname\']) ? $data[\'orgname\'] : "",
 		    \'tags\'                     => isset($data[\'tags\']) ? $data[\'tags\'] : "",
-		    \'p[' . $list_id . ']\'                 => ' . $list_id . ',
-		    \'status[' . $list_id . ']\'            => 1,
-		    \'instantresponders[' . $list_id . ']\' => 1,
+		    \'p['.$list_id.']\'                 => '.$list_id.',
+		    \'status['.$list_id.']\'            => 1,
+		    \'instantresponders['.$list_id.']\' => 1,
 		);
 
 		$post = array_merge($custom_fields, $post);
@@ -440,22 +451,23 @@ class Mailer extends Request {
 		}
 	}';
 
-			return $content;
-		}
+        return $content;
+    }
 
-		private function _getresponse() {
-			$api_key = $this->_validation( $this->_current_form->settings->apiKeyGetresponse,
-				'string' ) ? $this->_current_form->settings->apiKeyGetresponse : '';
-			$campaing_token = $this->_validation( $this->_current_form->settings->campaingToken,
-				'string' ) ? $this->_current_form->settings->campaingToken : '';
+    private function _getresponse()
+    {
+        $api_key = $this->_validation($this->_current_form->settings->apiKeyGetresponse,
+            'string') ? $this->_current_form->settings->apiKeyGetresponse : '';
+        $campaing_token = $this->_validation($this->_current_form->settings->campaingToken,
+            'string') ? $this->_current_form->settings->campaingToken : '';
 
-			$id      = '';
-			if ( $this->_validation( $this->_current_form->settings->id, 'string' ) ) {
-				$id = $this->_current_form->settings->id;
-			}
+        $id = '';
+        if ($this->_validation($this->_current_form->settings->id, 'string')) {
+            $id = $this->_current_form->settings->id;
+        }
 
-			$content = '
-	if($_POST[\'id\'] === "' . $id . '") {
+        $content = '
+	if($_POST[\'id\'] === "'.$id.'") {
 
 		$stack = json_decode($_POST[\'data\']);
 
@@ -479,7 +491,7 @@ class Mailer extends Request {
 		  CURLOPT_CUSTOMREQUEST => "GET",
 		  CURLOPT_HTTPHEADER => array(
 		    "content-type: application/json",
-		    "X-Auth-Token: api-key ' . $api_key . '"
+		    "X-Auth-Token: api-key '.$api_key.'"
 		  ),
 		));
 
@@ -509,7 +521,7 @@ class Mailer extends Request {
 		    \'email\' => $data[\'email\'],
 		    \'name\' => $data[\'name\'],
 		    \'campaign\' => array(
-		        \'campaignId\' => \'' . $campaing_token . '\'
+		        \'campaignId\' => \''.$campaing_token.'\'
 		    ),
 		    \'customFieldValues\' => $custom_fields
 		);
@@ -526,7 +538,7 @@ class Mailer extends Request {
 		  CURLOPT_POSTFIELDS => json_encode($subscriber),
 		  CURLOPT_HTTPHEADER => array(
 		    "content-type: application/json",
-		    "X-Auth-Token: api-key ' . $api_key . '"
+		    "X-Auth-Token: api-key '.$api_key.'"
 		  ),
 		));
 
@@ -543,21 +555,22 @@ class Mailer extends Request {
 		}
 	}';
 
-			return $content;
+        return $content;
 
-		}
+    }
 
-		private function _aweber() {
-			$list_id = $this->_validation( $this->_current_form->settings->listIdAweber,
-				'string' ) ? $this->_current_form->settings->listIdAweber : '';
+    private function _aweber()
+    {
+        $list_id = $this->_validation($this->_current_form->settings->listIdAweber,
+            'string') ? $this->_current_form->settings->listIdAweber : '';
 
-			$id      = '';
-			if ( $this->_validation( $this->_current_form->settings->id, 'string' ) ) {
-				$id = $this->_current_form->settings->id;
-			}
+        $id = '';
+        if ($this->_validation($this->_current_form->settings->id, 'string')) {
+            $id = $this->_current_form->settings->id;
+        }
 
-			$content = '
-	if($_POST[\'id\'] === "' . $id . '") {
+        $content = '
+	if($_POST[\'id\'] === "'.$id.'") {
 
 		require_once(\'aweber_api/aweber_api.php\');
 
@@ -580,9 +593,9 @@ class Mailer extends Request {
 
 	$consumerKey    = \'Ak48wjRm2ynLzEWlfu1wTWv1\';
 	$consumerSecret = \'PrJWMR4ggpMT4oInOlxt5b91IkkRJ7K9otLEprc4\';
-	$accessKey      = \'' . $_COOKIE['accessToken'] . '\';
-	$accessSecret   = \'' . $_COOKIE['accessTokenSecret'] . '\';
-	$list_id        = \'' . $list_id . '\';
+	$accessKey      = \''.$_COOKIE['accessToken'].'\';
+	$accessSecret   = \''.$_COOKIE['accessTokenSecret'].'\';
+	$list_id        = \''.$list_id.'\';
 
 	$aweber = new AWeberAPI($consumerKey, $consumerSecret);
 
@@ -595,7 +608,7 @@ class Mailer extends Request {
 		    \'email\' => $data[\'email\'],
 		    \'name\' => $data[\'name\'],
 		    \'campaign\' => array(
-		        \'campaignId\' => \'' . $list_id . '\'
+		        \'campaignId\' => \''.$list_id.'\'
 		    ),
 		    \'custom_fields\' => $custom_fields
 		);
@@ -617,27 +630,28 @@ class Mailer extends Request {
 	}
 	}';
 
-		if ($this->_aweber_trigger) {
-			$this->_aweber_trigger = false;
-			$this->_add_api(SUPRA_BASE_PATH.'/include/common/aweber_api', 'scripts/aweber_api');
-		}
+        if ($this->_aweber_trigger) {
+            $this->_aweber_trigger = false;
+            $this->_add_api(SUPRA_BASE_PATH.'/include/common/aweber_api', 'scripts/aweber_api');
+        }
 
-		return $content;
-	}
+        return $content;
+    }
 
-	private function _campaignmonitor() {
-		$api_key = $this->_validation( $this->_current_form->settings->apiKeycampaignmonitor,
-			'string' ) ? $this->_current_form->settings->apiKeycampaignmonitor : '';
-		$list_id = $this->_validation( $this->_current_form->settings->listIdcampaignmonitor,
-			'string' ) ? $this->_current_form->settings->listIdcampaignmonitor : '';
+    private function _campaignmonitor()
+    {
+        $api_key = $this->_validation($this->_current_form->settings->apiKeycampaignmonitor,
+            'string') ? $this->_current_form->settings->apiKeycampaignmonitor : '';
+        $list_id = $this->_validation($this->_current_form->settings->listIdcampaignmonitor,
+            'string') ? $this->_current_form->settings->listIdcampaignmonitor : '';
 
-		$id      = '';
-		if ( $this->_validation( $this->_current_form->settings->id, 'string' ) ) {
-			$id = $this->_current_form->settings->id;
-		}
+        $id = '';
+        if ($this->_validation($this->_current_form->settings->id, 'string')) {
+            $id = $this->_current_form->settings->id;
+        }
 
-		$content = '
-if($_POST[\'id\'] === "' . $id . '") {
+        $content = '
+if($_POST[\'id\'] === "'.$id.'") {
 
 	$stack = json_decode($_POST[\'data\']);
 
@@ -667,12 +681,12 @@ if($_POST[\'id\'] === "' . $id . '") {
 	$curl = curl_init();
 
 	curl_setopt_array($curl, array(
-	  CURLOPT_URL => "https://api.createsend.com/api/v3.1/subscribers/' . $list_id . '.json",
+	  CURLOPT_URL => "https://api.createsend.com/api/v3.1/subscribers/'.$list_id.'.json",
 	  CURLOPT_ENCODING => "",
 	  CURLOPT_MAXREDIRS => 10,
 	  CURLOPT_TIMEOUT => 30,
 	  CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-	  CURLOPT_USERPWD => "' . $api_key . ':x",
+	  CURLOPT_USERPWD => "'.$api_key.':x",
 	  CURLOPT_CUSTOMREQUEST => "POST",
 	  CURLOPT_SSL_VERIFYPEER => false,
 	  CURLOPT_POSTFIELDS => json_encode($subscriber)
@@ -691,18 +705,18 @@ if($_POST[\'id\'] === "' . $id . '") {
 	}
 }';
 
-		return $content;
-	}
+        return $content;
+    }
 
-	private function _add_api($source, $destionation) {
-		$files  = scandir( $source );
-		unset( $files[0] );
-		unset( $files[1] );
-		foreach ( $files as $file ) {
-			$this->_current_zip->addFile(
-				$source . '/' . $file
-				, $destionation . '/' . $file
-			);
-		}
-	}
+    private function _add_api($source, $destionation)
+    {
+        $files = scandir($source);
+        unset($files[0]);
+        unset($files[1]);
+        foreach ($files as $file) {
+            $this->_current_zip->addFile(
+                $source.'/'.$file, $destionation.'/'.$file
+            );
+        }
+    }
 }

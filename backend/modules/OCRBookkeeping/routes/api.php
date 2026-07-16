@@ -1,25 +1,25 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 use App\Http\Middleware\ResolveEntityContext;
+use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum', 'entitlement:ocr-bookkeeping', ResolveEntityContext::class])->prefix('ocr')->group(function () {
     // Document upload routes
     Route::post('/documents/upload', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'upload']);
     Route::post('/documents/batch-upload', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'batchUpload']);
-    
+
     // Document management routes
     Route::get('/documents', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'index']);
     Route::get('/documents/{uuid}', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'show']);
     Route::get('/documents/{uuid}/file', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'getFile']);
     Route::put('/documents/{uuid}', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'update']);
     Route::delete('/documents/{uuid}', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'destroy']);
-    
+
     // Document posting routes
     Route::post('/documents/{uuid}/post', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'post']);
     Route::post('/documents/{uuid}/unpost', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'unpost']);
     Route::post('/documents/batch-post', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'batchPost']);
-    
+
     // Suggestions route
     Route::get('/documents/{uuid}/suggestions', [\Modules\OCRBookkeeping\Http\Controllers\OcrDocumentController::class, 'suggestions']);
 

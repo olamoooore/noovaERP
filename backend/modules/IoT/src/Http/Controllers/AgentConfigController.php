@@ -2,11 +2,11 @@
 
 namespace Modules\IoT\Http\Controllers;
 
+use App\Models\Setting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Validator;
-use App\Models\Setting;
 
 class AgentConfigController extends Controller
 {
@@ -27,7 +27,7 @@ class AgentConfigController extends Controller
 
     /**
      * Get agent configuration.
-     * 
+     *
      * GET /api/v1/iot/agent-config
      */
     public function show(): JsonResponse
@@ -46,7 +46,7 @@ class AgentConfigController extends Controller
 
     /**
      * Update agent configuration.
-     * 
+     *
      * PUT /api/v1/iot/agent-config
      */
     public function update(Request $request): JsonResponse
@@ -80,7 +80,7 @@ class AgentConfigController extends Controller
 
     /**
      * Test agent connection.
-     * 
+     *
      * POST /api/v1/iot/agent-config/test
      */
     public function test(Request $request): JsonResponse
@@ -106,18 +106,18 @@ class AgentConfigController extends Controller
 
             if ($agentToken) {
                 $http = $http->withHeaders([
-                    'Authorization' => 'Bearer ' . $agentToken,
+                    'Authorization' => 'Bearer '.$agentToken,
                 ]);
             }
 
             // Step 1: Verify basic connectivity
-            $response = $http->get($request->agent_url . '/api/health');
+            $response = $http->get($request->agent_url.'/api/health');
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Connection failed',
-                    'error' => 'HTTP ' . $response->status(),
+                    'error' => 'HTTP '.$response->status(),
                 ], 500);
             }
 
@@ -130,7 +130,7 @@ class AgentConfigController extends Controller
             $agentId = $request->agent_id;
             if ($agentId) {
                 try {
-                    $discoverResponse = $http->post($request->agent_url . '/api/devices/discover', [
+                    $discoverResponse = $http->post($request->agent_url.'/api/devices/discover', [
                         'agent_id' => $agentId,
                     ]);
 

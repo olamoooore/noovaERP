@@ -2,7 +2,6 @@
 
 namespace Modules\FinancialClose\Services;
 
-use Illuminate\Support\Facades\Log;
 use Modules\FinancialClose\Models\SubledgerTieout;
 use Modules\FinancialClose\Models\UnreconciledItem;
 
@@ -54,6 +53,7 @@ class FinancialCloseTieoutService
                 'variance' => $variance,
                 'status' => $status,
             ]);
+
             return $existing;
         }
 
@@ -98,7 +98,7 @@ class FinancialCloseTieoutService
             ->where('id', $itemId)
             ->first();
 
-        if (!$item) {
+        if (! $item) {
             return false;
         }
 

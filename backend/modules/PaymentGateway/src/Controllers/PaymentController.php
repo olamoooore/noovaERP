@@ -7,10 +7,7 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Services\PaymentRefundService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
-use Illuminate\Validation\Rule;
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\PaymentGateway\Services\PaymentGatewayFactory;
@@ -23,6 +20,7 @@ class PaymentController extends Controller
         private PaymentTransactionCompletionService $completionService,
         private PaymentRefundService $refundService,
     ) {}
+
     /**
      * Create a new payment
      */
@@ -46,15 +44,15 @@ class PaymentController extends Controller
         }
 
         $gateway = PaymentGateway::findOrFail($validated['gateway_id']);
-        
+
         // Get payment source (invoice or POS order)
         $invoice = null;
         $posOrder = null;
         $customerEmail = null;
         $description = '';
         $reference = '';
-        
-        if (!empty($validated['invoice_id'])) {
+
+        if (! empty($validated['invoice_id'])) {
             $invoice = Invoice::findOrFail($validated['invoice_id']);
             $customerEmail = $invoice->customer->email ?? null;
             $description = "Payment for Invoice {$invoice->invoice_number}";
@@ -66,7 +64,7 @@ class PaymentController extends Controller
             $reference = $posOrder->order_number;
         }
 
-        if (!$gateway->is_active) {
+        if (! $gateway->is_active) {
             return response()->json([
                 'message' => 'Payment gateway is not active',
             ], 422);
@@ -77,7 +75,7 @@ class PaymentController extends Controller
 
             // Determine currency: priority is validated > invoice > POS order > gateway defaults
             $currency = $validated['currency'] ?? $invoice?->currency ?? $posOrder?->currency ?? null;
-            if (!$currency) {
+            if (! $currency) {
                 // Default currencies by gateway
                 $currency = match ($gateway->gateway_name) {
                     'hitpay' => 'SGD',
@@ -88,7 +86,7 @@ class PaymentController extends Controller
             }
 
             $frontendUrl = config('app.frontend_url', 'http://localhost:5173');
-            $redirectUrl = $validated['redirect_url'] ?? ($frontendUrl . '/payment/success');
+            $redirectUrl = $validated['redirect_url'] ?? ($frontendUrl.'/payment/success');
             $paymentData = [
                 'amount' => $validated['amount'],
                 'currency' => $currency,
@@ -116,7 +114,7 @@ class PaymentController extends Controller
                 // Clean up old pending transactions for this invoice/order (older than 30 minutes)
                 $query = PaymentTransaction::where('status', 'pending')
                     ->where('created_at', '<', now()->subMinutes(30));
-                
+
                 if ($invoice) {
                     $query->where('invoice_id', $invoice->id);
                 } elseif ($posOrder) {
@@ -174,13 +172,13 @@ class PaymentController extends Controller
                     'is_test_mode' => $gateway->is_test_mode ?? false,
                     'gateway_name' => $gateway->gateway_name,
                 ];
-                
+
                 if ($invoice) {
                     $response['invoice'] = $invoice->load('customer');
                 } elseif ($posOrder) {
                     $response['pos_order'] = $posOrder;
                 }
-                
+
                 return response()->json($response, 201);
             }
 
@@ -267,10 +265,10 @@ class PaymentController extends Controller
 
                     // If payment completed, create Payment record and update invoice
                     if (in_array($captureResult['status'], ['completed', 'succeeded'])) {
-                    \Log::info('Processing completed PayPal payment', [
-                        'transaction_id' => $transaction->transaction_id,
-                    ]);
-                    $this->completionService->complete($transaction, $captureResult['payment_method'] ?? null);
+                        \Log::info('Processing completed PayPal payment', [
+                            'transaction_id' => $transaction->transaction_id,
+                        ]);
+                        $this->completionService->complete($transaction, $captureResult['payment_method'] ?? null);
                     }
 
                     return response()->json([
@@ -325,7 +323,7 @@ class PaymentController extends Controller
                     'message' => 'Payment status updated',
                     'transaction' => $transaction->fresh(),
                     'invoice' => $transaction->invoice?->fresh(),
-                    'pos_order' => !empty($transaction->metadata['pos_order_id']) ? \Modules\POS\Models\PosOrder::find($transaction->metadata['pos_order_id']) : null,
+                    'pos_order' => ! empty($transaction->metadata['pos_order_id']) ? \Modules\POS\Models\PosOrder::find($transaction->metadata['pos_order_id']) : null,
                 ]);
             }
 
@@ -346,7 +344,7 @@ class PaymentController extends Controller
             ]);
 
             return response()->json([
-                'message' => 'Error confirming payment: ' . $e->getMessage(),
+                'message' => 'Error confirming payment: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -357,6 +355,7 @@ class PaymentController extends Controller
     public function status($transaction)
     {
         $transaction = $this->resolvePaymentTransaction($transaction);
+
         return response()->json($transaction->load(['gateway', 'invoice', 'customer']));
     }
 
@@ -387,10 +386,10 @@ class PaymentController extends Controller
 
     /**
      * Process completed payment (internal helper)
-     * 
+     *
      * Workstream 1 (2026-04-15): Delegated to PaymentTransactionCompletionService
      * to route all payment completion through the canonical posting control plane.
-     * 
+     *
      * @deprecated Use PaymentTransactionCompletionService::complete() directly
      */
     protected function processCompletedPayment(PaymentTransaction $transaction): void
@@ -406,7 +405,7 @@ class PaymentController extends Controller
         $transaction = PaymentTransaction::where('transaction_id', $reference)
             ->first();
 
-        if (!$transaction) {
+        if (! $transaction) {
             return response()->json([
                 'message' => 'Transaction not found',
             ], 404);
@@ -416,6 +415,7 @@ class PaymentController extends Controller
             'data' => $transaction->load('invoice', 'gateway'),
         ]);
     }
+
     /**
      * Process a refund for a payment transaction
      *
@@ -459,7 +459,7 @@ class PaymentController extends Controller
             // Process refund with payment gateway first
             $refundResult = $gatewayService->refund($transaction->transaction_id, $validated['amount']);
 
-            if (!$refundResult['success']) {
+            if (! $refundResult['success']) {
                 throw new \Exception($refundResult['message'] ?? 'Refund failed');
             }
 
@@ -499,7 +499,7 @@ class PaymentController extends Controller
             ]);
 
             return response()->json([
-                'message' => 'Failed to process refund: ' . $e->getMessage(),
+                'message' => 'Failed to process refund: '.$e->getMessage(),
             ], 500);
         }
     }

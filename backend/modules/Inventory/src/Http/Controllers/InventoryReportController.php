@@ -22,15 +22,15 @@ class InventoryReportController extends Controller
      */
     public function dashboard()
     {
-        $totalProducts   = Product::where('is_active', true)->where('track_inventory', true)->count();
+        $totalProducts = Product::where('is_active', true)->where('track_inventory', true)->count();
         $totalWarehouses = Warehouse::where('is_active', true)->count();
 
         // Stock values sourced from stock_levels (the operational source of truth).
         // Joining to products to get unit cost/price for valuation.
         $stockLevels = StockLevel::with(['product:id,cost,price'])->get();
 
-        $totalStockValue  = $stockLevels->sum(fn($sl) => $sl->quantity * ($sl->product->cost ?? 0));
-        $totalRetailValue = $stockLevels->sum(fn($sl) => $sl->quantity * ($sl->product->price ?? 0));
+        $totalStockValue = $stockLevels->sum(fn ($sl) => $sl->quantity * ($sl->product->cost ?? 0));
+        $totalRetailValue = $stockLevels->sum(fn ($sl) => $sl->quantity * ($sl->product->price ?? 0));
 
         // Low/out-of-stock counts from stock_levels
         $lowStockCount = StockLevel::where('quantity', '>', 0)
@@ -41,13 +41,13 @@ class InventoryReportController extends Controller
                             ->where('quantity', '<=', 10);
                     });
             })
-            ->whereHas('product', fn($q) => $q->where('is_active', true)->where('track_inventory', true))
+            ->whereHas('product', fn ($q) => $q->where('is_active', true)->where('track_inventory', true))
             ->distinct('product_id')
             ->count('product_id');
 
         $outOfStockCount = Product::where('is_active', true)
             ->where('track_inventory', true)
-            ->whereDoesntHave('stockLevels', fn($q) => $q->where('quantity', '>', 0))
+            ->whereDoesntHave('stockLevels', fn ($q) => $q->where('quantity', '>', 0))
             ->count();
 
         // Recent movements
@@ -85,6 +85,7 @@ class InventoryReportController extends Controller
     public function valuation(Request $request)
     {
         $warehouseId = $request->input('warehouse_id');
+
         return response()->json($this->inventoryService->getInventoryValuation($warehouseId));
     }
 
@@ -143,11 +144,11 @@ class InventoryReportController extends Controller
 
         if ($request->filled('search')) {
             $search = $request->input('search');
-            $query->whereHas('product', fn($q) => $q->where('name', 'like', "%{$search}%")->orWhere('sku', 'like', "%{$search}%"));
+            $query->whereHas('product', fn ($q) => $q->where('name', 'like', "%{$search}%")->orWhere('sku', 'like', "%{$search}%"));
         }
 
         if ($request->filled('category_id')) {
-            $query->whereHas('product', fn($q) => $q->where('category_id', $request->input('category_id')));
+            $query->whereHas('product', fn ($q) => $q->where('category_id', $request->input('category_id')));
         }
 
         $stockLevels = $query->get();
@@ -156,10 +157,10 @@ class InventoryReportController extends Controller
             'warehouse' => $warehouse,
             'total_products' => $stockLevels->count(),
             'total_quantity' => $stockLevels->sum('quantity'),
-            'total_cost_value' => $stockLevels->sum(fn($sl) => $sl->quantity * ($sl->product->cost ?? 0)),
-            'total_retail_value' => $stockLevels->sum(fn($sl) => $sl->quantity * ($sl->product->price ?? 0)),
-            'low_stock_count' => $stockLevels->filter(fn($sl) => $sl->isLowStock())->count(),
-            'out_of_stock_count' => $stockLevels->filter(fn($sl) => $sl->isOutOfStock())->count(),
+            'total_cost_value' => $stockLevels->sum(fn ($sl) => $sl->quantity * ($sl->product->cost ?? 0)),
+            'total_retail_value' => $stockLevels->sum(fn ($sl) => $sl->quantity * ($sl->product->price ?? 0)),
+            'low_stock_count' => $stockLevels->filter(fn ($sl) => $sl->isLowStock())->count(),
+            'out_of_stock_count' => $stockLevels->filter(fn ($sl) => $sl->isOutOfStock())->count(),
         ];
 
         $perPage = min(100, max(1, (int) $request->input('per_page', 50)));
@@ -231,18 +232,18 @@ class InventoryReportController extends Controller
         }
 
         // Get products with their last movement date
-        $stockLevels = $query->get()->map(function ($sl) use ($daysThreshold) {
+        $stockLevels = $query->get()->map(function ($sl) {
             $lastMovement = StockMovement::where('product_id', $sl->product_id)
                 ->where('warehouse_id', $sl->warehouse_id)
                 ->where('type', 'in')
                 ->orderBy('created_at', 'desc')
                 ->first();
 
-            $daysSinceLastIn = $lastMovement 
-                ? now()->diffInDays($lastMovement->created_at) 
+            $daysSinceLastIn = $lastMovement
+                ? now()->diffInDays($lastMovement->created_at)
                 : 999;
 
-            $ageCategory = match(true) {
+            $ageCategory = match (true) {
                 $daysSinceLastIn <= 30 => '0-30 days',
                 $daysSinceLastIn <= 60 => '31-60 days',
                 $daysSinceLastIn <= 90 => '61-90 days',
@@ -265,7 +266,7 @@ class InventoryReportController extends Controller
         });
 
         // Group by age category
-        $byCategory = $stockLevels->groupBy('age_category')->map(fn($items) => [
+        $byCategory = $stockLevels->groupBy('age_category')->map(fn ($items) => [
             'count' => $items->count(),
             'total_quantity' => $items->sum('quantity'),
             'total_value' => $items->sum('cost_value'),
@@ -273,7 +274,7 @@ class InventoryReportController extends Controller
 
         return response()->json([
             'summary' => $byCategory,
-            'items' => $stockLevels->filter(fn($item) => $item['days_since_last_in'] >= $daysThreshold)->values(),
+            'items' => $stockLevels->filter(fn ($item) => $item['days_since_last_in'] >= $daysThreshold)->values(),
         ]);
     }
 }

@@ -2,20 +2,20 @@
 
 namespace Modules\EventManagement\Http\Controllers;
 
-use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Modules\EventManagement\Services\TenantObservabilityService;
-use App\Http\Controllers\Controller;
 
 /**
  * ObservabilityDashboardController - Task 11.3
- * 
+ *
  * Provides tenant-specific health and performance dashboards, API usage monitoring,
  * queue health visualization, and automated alerting workflows for multi-tenant
  * observability management.
- * 
+ *
  * Requirements: 27.3, 27.4, 27.5
  */
 class ObservabilityDashboardController extends Controller
@@ -29,7 +29,7 @@ class ObservabilityDashboardController extends Controller
 
     private function currentTenantId(): string
     {
-        if (!function_exists('tenant') || !tenant()) {
+        if (! function_exists('tenant') || ! tenant()) {
             throw new \RuntimeException('Observability endpoints require canonical tenant context.');
         }
 
@@ -38,22 +38,19 @@ class ObservabilityDashboardController extends Controller
 
     /**
      * Get tenant observability dashboard
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getDashboard(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
             'time_range' => 'sometimes|string|in:15m,1h,6h,24h,7d,30d',
-            'refresh_cache' => 'sometimes|boolean'
+            'refresh_cache' => 'sometimes|boolean',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'details' => $validator->errors()
+                'details' => $validator->errors(),
             ], 400);
         }
 
@@ -63,12 +60,12 @@ class ObservabilityDashboardController extends Controller
 
         $options = [
             'time_range' => $timeRange,
-            'refresh_cache' => $refreshCache
+            'refresh_cache' => $refreshCache,
         ];
 
         $dashboard = $this->observabilityService->getTenantDashboard($tenantId, $options);
 
-        if (!$dashboard['success']) {
+        if (! $dashboard['success']) {
             return response()->json($dashboard, 500);
         }
 
@@ -77,9 +74,6 @@ class ObservabilityDashboardController extends Controller
 
     /**
      * Get tenant health metrics
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getHealthMetrics(Request $request): JsonResponse
     {
@@ -87,14 +81,14 @@ class ObservabilityDashboardController extends Controller
             'metric_names' => 'sometimes|array',
             'metric_names.*' => 'string|max:100',
             'time_range' => 'sometimes|string|in:15m,1h,6h,24h,7d,30d',
-            'aggregation' => 'sometimes|string|in:avg,min,max,sum,count'
+            'aggregation' => 'sometimes|string|in:avg,min,max,sum,count',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'details' => $validator->errors()
+                'details' => $validator->errors(),
             ], 400);
         }
 
@@ -105,12 +99,12 @@ class ObservabilityDashboardController extends Controller
 
         try {
             $startTime = $this->calculateStartTime($timeRange);
-            
+
             $query = DB::table('tenant_health_metrics')
                 ->where('tenant_id', $tenantId)
                 ->where('collected_at', '>=', $startTime);
 
-            if (!empty($metricNames)) {
+            if (! empty($metricNames)) {
                 $query->whereIn('metric_name', $metricNames);
             }
 
@@ -134,23 +128,20 @@ class ObservabilityDashboardController extends Controller
                 'time_range' => $timeRange,
                 'aggregation' => $aggregation,
                 'metrics' => $metrics,
-                'total_metrics' => $metrics->count()
+                'total_metrics' => $metrics->count(),
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to retrieve health metrics',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Get API performance analytics
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getApiPerformance(Request $request): JsonResponse
     {
@@ -159,14 +150,14 @@ class ObservabilityDashboardController extends Controller
             'endpoints' => 'sometimes|array',
             'endpoints.*' => 'string|max:255',
             'status_codes' => 'sometimes|array',
-            'status_codes.*' => 'integer|min:100|max:599'
+            'status_codes.*' => 'integer|min:100|max:599',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'details' => $validator->errors()
+                'details' => $validator->errors(),
             ], 400);
         }
 
@@ -177,16 +168,16 @@ class ObservabilityDashboardController extends Controller
 
         try {
             $startTime = $this->calculateStartTime($timeRange);
-            
+
             $query = DB::table('api_performance_log')
                 ->where('tenant_id', $tenantId)
                 ->where('request_started_at', '>=', $startTime);
 
-            if (!empty($endpoints)) {
+            if (! empty($endpoints)) {
                 $query->whereIn('endpoint', $endpoints);
             }
 
-            if (!empty($statusCodes)) {
+            if (! empty($statusCodes)) {
                 $query->whereIn('response_status', $statusCodes);
             }
 
@@ -243,37 +234,34 @@ class ObservabilityDashboardController extends Controller
                 'time_range' => $timeRange,
                 'summary' => $summary,
                 'endpoint_performance' => $endpointPerformance,
-                'trends' => $trends
+                'trends' => $trends,
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to retrieve API performance data',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Get queue health dashboard
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getQueueHealth(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
             'time_range' => 'sometimes|string|in:15m,1h,6h,24h,7d,30d',
             'queue_names' => 'sometimes|array',
-            'queue_names.*' => 'string|max:100'
+            'queue_names.*' => 'string|max:100',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'details' => $validator->errors()
+                'details' => $validator->errors(),
             ], 400);
         }
 
@@ -283,21 +271,21 @@ class ObservabilityDashboardController extends Controller
 
         // Get current queue health
         $queueHealth = $this->observabilityService->monitorQueueHealth($tenantId, [
-            'queues' => $queueNames
+            'queues' => $queueNames,
         ]);
 
-        if (!$queueHealth['success']) {
+        if (! $queueHealth['success']) {
             return response()->json($queueHealth, 500);
         }
 
         try {
             $startTime = $this->calculateStartTime($timeRange);
-            
+
             $query = DB::table('queue_health_metrics')
                 ->where('tenant_id', $tenantId)
                 ->where('measured_at', '>=', $startTime);
 
-            if (!empty($queueNames)) {
+            if (! empty($queueNames)) {
                 $query->whereIn('queue_name', $queueNames);
             }
 
@@ -337,37 +325,34 @@ class ObservabilityDashboardController extends Controller
                 'current_health' => $queueHealth['queue_health'],
                 'overall_health' => $queueHealth['overall_health'],
                 'historical_metrics' => $historical,
-                'trends' => $trends
+                'trends' => $trends,
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to retrieve queue health data',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Get active alerts and incidents
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getAlerts(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
             'status' => 'sometimes|string|in:triggered,acknowledged,investigating,resolved,closed,suppressed',
             'severity' => 'sometimes|string|in:info,warning,critical',
-            'limit' => 'sometimes|integer|min:1|max:100'
+            'limit' => 'sometimes|integer|min:1|max:100',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'details' => $validator->errors()
+                'details' => $validator->errors(),
             ], 400);
         }
 
@@ -415,24 +400,21 @@ class ObservabilityDashboardController extends Controller
                 'filters' => [
                     'status' => $status,
                     'severity' => $severity,
-                    'limit' => $limit
-                ]
+                    'limit' => $limit,
+                ],
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to retrieve alerts',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Create or update alert rule
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function createAlertRule(Request $request): JsonResponse
     {
@@ -449,14 +431,14 @@ class ObservabilityDashboardController extends Controller
             'evaluation_interval' => 'sometimes|integer|min:30|max:3600',
             'cooldown_seconds' => 'sometimes|integer|min:60|max:7200',
             'notification_channels' => 'sometimes|array',
-            'notification_templates' => 'sometimes|array'
+            'notification_templates' => 'sometimes|array',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'details' => $validator->errors()
+                'details' => $validator->errors(),
             ], 400);
         }
 
@@ -464,12 +446,12 @@ class ObservabilityDashboardController extends Controller
         $ruleData = $request->only([
             'rule_name', 'rule_type', 'metric_name', 'metric_category',
             'conditions', 'severity_level', 'is_enabled', 'evaluation_interval',
-            'cooldown_seconds', 'notification_channels', 'notification_templates'
+            'cooldown_seconds', 'notification_channels', 'notification_templates',
         ]);
 
         $result = $this->observabilityService->createAlertRule($tenantId, $ruleData);
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             return response()->json($result, 500);
         }
 
@@ -478,23 +460,20 @@ class ObservabilityDashboardController extends Controller
 
     /**
      * Get resource usage analytics
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getResourceUsage(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
             'time_range' => 'sometimes|string|in:15m,1h,6h,24h,7d,30d',
             'resource_types' => 'sometimes|array',
-            'resource_types.*' => 'string|in:cpu,memory,storage,network,database'
+            'resource_types.*' => 'string|in:cpu,memory,storage,network,database',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'error' => 'Validation failed',
-                'details' => $validator->errors()
+                'details' => $validator->errors(),
             ], 400);
         }
 
@@ -504,12 +483,12 @@ class ObservabilityDashboardController extends Controller
 
         try {
             $startTime = $this->calculateStartTime($timeRange);
-            
+
             $query = DB::table('tenant_resource_usage')
                 ->where('tenant_id', $tenantId)
                 ->where('measured_at', '>=', $startTime);
 
-            if (!empty($resourceTypes)) {
+            if (! empty($resourceTypes)) {
                 $query->whereIn('resource_type', $resourceTypes);
             }
 
@@ -546,14 +525,14 @@ class ObservabilityDashboardController extends Controller
                 'tenant_id' => $tenantId,
                 'time_range' => $timeRange,
                 'resource_usage' => $usage,
-                'usage_trends' => $trends
+                'usage_trends' => $trends,
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to retrieve resource usage data',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -563,7 +542,7 @@ class ObservabilityDashboardController extends Controller
      */
     private function calculateStartTime(string $timeRange): \Carbon\Carbon
     {
-        return match($timeRange) {
+        return match ($timeRange) {
             '15m' => now()->subMinutes(15),
             '1h' => now()->subHour(),
             '6h' => now()->subHours(6),

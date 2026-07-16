@@ -6,9 +6,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Validator;
-use Modules\EventManagement\Services\FanTierService;
 use Modules\EventManagement\Http\Requests\CreateFanTierRequest;
 use Modules\EventManagement\Http\Requests\UpdateFanTierRequest;
+use Modules\EventManagement\Services\FanTierService;
 
 class FanTierController extends Controller
 {
@@ -50,7 +50,7 @@ class FanTierController extends Controller
 
         try {
             $fanTier = $this->fanTierService->getFanTier($tenantId, $fanTierId);
-            
+
             return response()->json([
                 'success' => true,
                 'data' => $fanTier->load(['tierBenefits', 'customerTiers', 'earlyAccessWindows']),
@@ -81,7 +81,7 @@ class FanTierController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create fan tier: ' . $e->getMessage(),
+                'message' => 'Failed to create fan tier: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -104,7 +104,7 @@ class FanTierController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update fan tier: ' . $e->getMessage(),
+                'message' => 'Failed to update fan tier: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -126,7 +126,7 @@ class FanTierController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to delete fan tier: ' . $e->getMessage(),
+                'message' => 'Failed to delete fan tier: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -167,7 +167,7 @@ class FanTierController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to assign customer to tier: ' . $e->getMessage(),
+                'message' => 'Failed to assign customer to tier: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -211,7 +211,7 @@ class FanTierController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create early access window: ' . $e->getMessage(),
+                'message' => 'Failed to create early access window: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -236,7 +236,7 @@ class FanTierController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to get tier benefits: ' . $e->getMessage(),
+                'message' => 'Failed to get tier benefits: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -275,7 +275,7 @@ class FanTierController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create tier benefit: ' . $e->getMessage(),
+                'message' => 'Failed to create tier benefit: '.$e->getMessage(),
             ], 400);
         }
     }

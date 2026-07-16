@@ -1,8 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Modules\Sales\Http\Controllers\SalesOrderController;
 use Modules\Sales\Http\Controllers\DeliveryOrderController;
+use Modules\Sales\Http\Controllers\SalesOrderController;
 
 Route::middleware([
     'auth:sanctum',

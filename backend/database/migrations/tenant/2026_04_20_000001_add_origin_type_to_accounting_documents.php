@@ -2,8 +2,8 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -86,10 +86,10 @@ return new class extends Migration
         }
 
         // Journal entries: infer from type column
-        DB::statement("
+        DB::statement('
             UPDATE journal_entries SET origin_type = type
             WHERE origin_type IS NULL
-        ");
+        ');
     }
 
     public function down(): void

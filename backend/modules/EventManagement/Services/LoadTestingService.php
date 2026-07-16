@@ -2,22 +2,20 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Queue;
-use Illuminate\Support\Collection;
 use Exception;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 
 /**
  * Load Testing Service
- * 
+ *
  * Performs comprehensive load testing and performance validation
  * for Phase 3 components under high-load scenarios.
  */
 class LoadTestingService
 {
     private array $loadTestResults = [];
+
     private array $performanceBaselines = [];
 
     public function __construct(
@@ -44,7 +42,7 @@ class LoadTestingService
             'outbox_pattern_throughput' => $this->testOutboxPatternThroughput(),
             'fraud_scoring_latency' => $this->testFraudScoringLatency(),
             'offline_sync_capacity' => $this->testOfflineSyncCapacity(),
-            'multi_tenant_isolation' => $this->testMultiTenantIsolation()
+            'multi_tenant_isolation' => $this->testMultiTenantIsolation(),
         ];
 
         foreach ($testSuites as $testName => $testResult) {
@@ -71,7 +69,7 @@ class LoadTestingService
             for ($i = 0; $i < $concurrentBookings; $i++) {
                 try {
                     $bookingData = $this->generateBookingData();
-                    
+
                     // Measure facts capture time
                     $factsCaptureStart = microtime(true);
                     $this->bookingFactsService->captureBookingFacts($bookingData);
@@ -84,7 +82,7 @@ class LoadTestingService
                     }
 
                 } catch (Exception $e) {
-                    $errors[] = "Booking {$i}: " . $e->getMessage();
+                    $errors[] = "Booking {$i}: ".$e->getMessage();
                 }
             }
 
@@ -99,14 +97,14 @@ class LoadTestingService
                 'total_time' => $totalTime,
                 'throughput_per_second' => $throughput,
                 'errors' => array_slice($errors, 0, 10), // Limit error reporting
-                'requirement' => 'Facts capture under high booking load'
+                'requirement' => 'Facts capture under high booking load',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Facts capture under high booking load'
+                'requirement' => 'Facts capture under high booking load',
             ];
         }
     }
@@ -136,13 +134,13 @@ class LoadTestingService
                     $result = $this->capacityReservationService->reserveCapacity(
                         $eventId,
                         rand(1, 5), // Random quantity 1-5
-                        'tenant_' . rand(1, 10)
+                        'tenant_'.rand(1, 10)
                     );
                     $reservationTime = microtime(true) - $reservationStart;
 
                     if ($result['success']) {
                         $successCount++;
-                        
+
                         // Check if reservation time meets requirement (100ms)
                         if ($reservationTime > 0.1) {
                             $errors[] = "Reservation took {$reservationTime}s (exceeds 100ms limit)";
@@ -150,7 +148,7 @@ class LoadTestingService
                     }
 
                 } catch (Exception $e) {
-                    $errors[] = "Reservation {$i}: " . $e->getMessage();
+                    $errors[] = "Reservation {$i}: ".$e->getMessage();
                 }
             }
 
@@ -170,14 +168,14 @@ class LoadTestingService
                 'total_time' => $totalTime,
                 'avg_reservation_time' => $totalTime / $concurrentReservations,
                 'errors' => array_slice($errors, 0, 10),
-                'requirement' => 'Zero overselling under concurrent load'
+                'requirement' => 'Zero overselling under concurrent load',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Zero overselling under concurrent load'
+                'requirement' => 'Zero overselling under concurrent load',
             ];
         }
     }
@@ -199,9 +197,9 @@ class LoadTestingService
             for ($i = 0; $i < $recordCount; $i++) {
                 try {
                     $piiData = $this->generatePIIData();
-                    
+
                     $storeStart = microtime(true);
-                    $vaultId = $this->piiVaultService->storePII($piiData, 'tenant_' . rand(1, 10));
+                    $vaultId = $this->piiVaultService->storePII($piiData, 'tenant_'.rand(1, 10));
                     $storeTime = microtime(true) - $storeStart;
 
                     // Test retrieval performance
@@ -217,7 +215,7 @@ class LoadTestingService
                     }
 
                 } catch (Exception $e) {
-                    $errors[] = "Record {$i}: " . $e->getMessage();
+                    $errors[] = "Record {$i}: ".$e->getMessage();
                 }
             }
 
@@ -232,14 +230,14 @@ class LoadTestingService
                 'total_time' => $totalTime,
                 'throughput_per_second' => $throughput,
                 'errors' => array_slice($errors, 0, 10),
-                'requirement' => 'PII vault performance under load'
+                'requirement' => 'PII vault performance under load',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'PII vault performance under load'
+                'requirement' => 'PII vault performance under load',
             ];
         }
     }
@@ -261,10 +259,10 @@ class LoadTestingService
             for ($tenantId = 1; $tenantId <= $tenantCount; $tenantId++) {
                 try {
                     $tenant = "tenant_{$tenantId}";
-                    
+
                     // Generate test data for reconciliation
                     $this->generateAnalyticsTestData($tenant, $recordsPerTenant);
-                    
+
                     $reconciliationStart = microtime(true);
                     $result = $this->analyticsReconciliationService->reconcileTenantData($tenant);
                     $reconciliationTime = microtime(true) - $reconciliationStart;
@@ -277,7 +275,7 @@ class LoadTestingService
                     }
 
                 } catch (Exception $e) {
-                    $errors[] = "Tenant {$tenantId}: " . $e->getMessage();
+                    $errors[] = "Tenant {$tenantId}: ".$e->getMessage();
                 }
             }
 
@@ -291,14 +289,14 @@ class LoadTestingService
                 'total_time' => $totalTime,
                 'avg_reconciliation_time' => $totalTime / $tenantCount,
                 'errors' => array_slice($errors, 0, 10),
-                'requirement' => 'Analytics reconciliation performance at scale'
+                'requirement' => 'Analytics reconciliation performance at scale',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Analytics reconciliation performance at scale'
+                'requirement' => 'Analytics reconciliation performance at scale',
             ];
         }
     }
@@ -321,14 +319,14 @@ class LoadTestingService
             for ($i = 0; $i < $eventCount; $i++) {
                 try {
                     $eventData = $this->generateOutboxEvent();
-                    
+
                     $publishStart = microtime(true);
                     $result = $this->publishOutboxEvent($eventData);
                     $publishTime = microtime(true) - $publishStart;
 
                     if ($result['success']) {
                         $successCount++;
-                        
+
                         // Check for duplicate processing
                         if ($result['duplicate']) {
                             $duplicateCount++;
@@ -336,7 +334,7 @@ class LoadTestingService
                     }
 
                 } catch (Exception $e) {
-                    $errors[] = "Event {$i}: " . $e->getMessage();
+                    $errors[] = "Event {$i}: ".$e->getMessage();
                 }
             }
 
@@ -351,14 +349,14 @@ class LoadTestingService
                 'throughput_per_second' => $throughput,
                 'total_time' => $totalTime,
                 'errors' => array_slice($errors, 0, 10),
-                'requirement' => 'Exactly-once processing under load'
+                'requirement' => 'Exactly-once processing under load',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Exactly-once processing under load'
+                'requirement' => 'Exactly-once processing under load',
             ];
         }
     }
@@ -379,7 +377,7 @@ class LoadTestingService
             for ($i = 0; $i < $scoringRequests; $i++) {
                 try {
                     $bookingData = $this->generateBookingData();
-                    
+
                     $scoringStart = microtime(true);
                     $riskScore = $this->calculateRiskScore($bookingData);
                     $scoringTime = microtime(true) - $scoringStart;
@@ -392,7 +390,7 @@ class LoadTestingService
                     }
 
                 } catch (Exception $e) {
-                    $errors[] = "Request {$i}: " . $e->getMessage();
+                    $errors[] = "Request {$i}: ".$e->getMessage();
                 }
             }
 
@@ -407,14 +405,14 @@ class LoadTestingService
                 'throughput_per_second' => $throughput,
                 'avg_latency' => $totalTime / $scoringRequests,
                 'errors' => array_slice($errors, 0, 10),
-                'requirement' => 'Fraud scoring latency under 50ms'
+                'requirement' => 'Fraud scoring latency under 50ms',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Fraud scoring latency under 50ms'
+                'requirement' => 'Fraud scoring latency under 50ms',
             ];
         }
     }
@@ -435,9 +433,9 @@ class LoadTestingService
         try {
             // Generate offline check-in queue
             $offlineQueue = $this->generateOfflineQueue($queueSize);
-            
+
             $syncStart = microtime(true);
-            
+
             foreach ($offlineQueue as $index => $queueItem) {
                 try {
                     $itemSyncStart = microtime(true);
@@ -447,11 +445,11 @@ class LoadTestingService
                     if ($result['success']) {
                         $successCount++;
                     } else {
-                        $errors[] = "Item {$index}: " . $result['error'];
+                        $errors[] = "Item {$index}: ".$result['error'];
                     }
 
                 } catch (Exception $e) {
-                    $errors[] = "Item {$index}: " . $e->getMessage();
+                    $errors[] = "Item {$index}: ".$e->getMessage();
                 }
             }
 
@@ -465,14 +463,14 @@ class LoadTestingService
                 'sync_time_limit' => $syncTimeLimit,
                 'items_per_second' => $queueSize / $totalSyncTime,
                 'errors' => array_slice($errors, 0, 10),
-                'requirement' => 'Offline sync within 30 seconds for 1000+ entries'
+                'requirement' => 'Offline sync within 30 seconds for 1000+ entries',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Offline sync within 30 seconds for 1000+ entries'
+                'requirement' => 'Offline sync within 30 seconds for 1000+ entries',
             ];
         }
     }
@@ -497,7 +495,7 @@ class LoadTestingService
             // Run concurrent operations for multiple tenants
             for ($tenantId = 1; $tenantId <= $tenantCount; $tenantId++) {
                 $tenant = "tenant_{$tenantId}";
-                
+
                 $tenantStart = microtime(true);
                 $tenantSuccessCount = 0;
 
@@ -505,10 +503,10 @@ class LoadTestingService
                     try {
                         // Perform tenant-specific operations
                         $result = $this->performTenantOperation($tenant);
-                        
+
                         if ($result['success']) {
                             $tenantSuccessCount++;
-                            
+
                             // Check for isolation violations
                             if ($result['cross_tenant_access']) {
                                 $isolationViolations++;
@@ -516,7 +514,7 @@ class LoadTestingService
                         }
 
                     } catch (Exception $e) {
-                        $errors[] = "Tenant {$tenant}, Op {$op}: " . $e->getMessage();
+                        $errors[] = "Tenant {$tenant}, Op {$op}: ".$e->getMessage();
                     }
                 }
 
@@ -525,7 +523,7 @@ class LoadTestingService
                     'operations' => $operationsPerTenant,
                     'successful' => $tenantSuccessCount,
                     'time' => $tenantTime,
-                    'ops_per_second' => $operationsPerTenant / $tenantTime
+                    'ops_per_second' => $operationsPerTenant / $tenantTime,
                 ];
             }
 
@@ -536,7 +534,7 @@ class LoadTestingService
                 if ($degradation > 20) { // More than 20% degradation
                     $performanceDegradation[] = [
                         'tenant' => $tenant,
-                        'degradation_percent' => $degradation
+                        'degradation_percent' => $degradation,
                     ];
                 }
             }
@@ -552,14 +550,14 @@ class LoadTestingService
                 'total_time' => $totalTime,
                 'tenant_results' => $tenantResults,
                 'errors' => array_slice($errors, 0, 10),
-                'requirement' => 'Multi-tenant isolation under load'
+                'requirement' => 'Multi-tenant isolation under load',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Multi-tenant isolation under load'
+                'requirement' => 'Multi-tenant isolation under load',
             ];
         }
     }
@@ -585,14 +583,14 @@ class LoadTestingService
     private function generateBookingData(): array
     {
         return [
-            'tenant_id' => 'tenant_' . rand(1, 10),
+            'tenant_id' => 'tenant_'.rand(1, 10),
             'event_id' => rand(1, 100),
             'customer_id' => rand(1, 10000),
             'ticket_type_id' => rand(1, 20),
             'quantity' => rand(1, 10),
             'price' => rand(50, 500),
             'booking_time' => now(),
-            'payment_method' => 'credit_card'
+            'payment_method' => 'credit_card',
         ];
     }
 
@@ -602,10 +600,10 @@ class LoadTestingService
     private function generatePIIData(): array
     {
         return [
-            'email' => 'test' . rand(1, 100000) . '@example.com',
-            'phone' => '+1555' . rand(1000000, 9999999),
-            'name' => 'Test Customer ' . rand(1, 100000),
-            'address' => rand(1, 9999) . ' Test Street, Test City, TC ' . rand(10000, 99999)
+            'email' => 'test'.rand(1, 100000).'@example.com',
+            'phone' => '+1555'.rand(1000000, 9999999),
+            'name' => 'Test Customer '.rand(1, 100000),
+            'address' => rand(1, 9999).' Test Street, Test City, TC '.rand(10000, 99999),
         ];
     }
 
@@ -636,9 +634,9 @@ class LoadTestingService
             'event_type' => 'booking_confirmed',
             'payload' => [
                 'booking_id' => rand(1, 100000),
-                'customer_id' => rand(1, 10000)
+                'customer_id' => rand(1, 10000),
             ],
-            'idempotency_key' => bin2hex(random_bytes(16))
+            'idempotency_key' => bin2hex(random_bytes(16)),
         ];
     }
 
@@ -650,7 +648,7 @@ class LoadTestingService
         // Simulate outbox event publishing
         return [
             'success' => true,
-            'duplicate' => false
+            'duplicate' => false,
         ];
     }
 
@@ -661,6 +659,7 @@ class LoadTestingService
     {
         // Simulate risk score calculation
         usleep(rand(10000, 40000)); // 10-40ms simulation
+
         return rand(0, 100) / 100;
     }
 
@@ -674,9 +673,10 @@ class LoadTestingService
             $queue[] = [
                 'type' => 'check_in',
                 'ticket_id' => rand(1, 100000),
-                'timestamp' => now()->subMinutes(rand(1, 240))
+                'timestamp' => now()->subMinutes(rand(1, 240)),
             ];
         }
+
         return $queue;
     }
 
@@ -687,6 +687,7 @@ class LoadTestingService
     {
         // Simulate offline item synchronization
         usleep(rand(5000, 15000)); // 5-15ms simulation
+
         return ['success' => true];
     }
 
@@ -697,9 +698,10 @@ class LoadTestingService
     {
         // Simulate tenant-specific operation
         usleep(rand(1000, 5000)); // 1-5ms simulation
+
         return [
             'success' => true,
-            'cross_tenant_access' => false
+            'cross_tenant_access' => false,
         ];
     }
 
@@ -721,11 +723,11 @@ class LoadTestingService
                 'errors' => $errorTests,
                 'success_rate' => $totalTests > 0 ? ($passedTests / $totalTests) * 100 : 0,
                 'execution_time' => now(),
-                'overall_status' => ($failedTests === 0 && $errorTests === 0) ? 'PASSED' : 'FAILED'
+                'overall_status' => ($failedTests === 0 && $errorTests === 0) ? 'PASSED' : 'FAILED',
             ],
             'load_test_results' => $this->loadTestResults,
             'performance_baselines' => $this->performanceBaselines,
-            'recommendations' => $this->generateLoadTestRecommendations()
+            'recommendations' => $this->generateLoadTestRecommendations(),
         ];
     }
 
@@ -741,7 +743,7 @@ class LoadTestingService
             $recommendations[] = [
                 'type' => 'PERFORMANCE',
                 'message' => 'Performance optimization required for failed load tests',
-                'failed_tests' => $failedTests->keys()->toArray()
+                'failed_tests' => $failedTests->keys()->toArray(),
             ];
         }
 

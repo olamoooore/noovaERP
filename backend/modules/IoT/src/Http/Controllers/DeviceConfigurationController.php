@@ -5,12 +5,12 @@ namespace Modules\IoT\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Modules\IoT\Models\DeviceConfiguration;
 use Modules\IoT\Http\Requests\StoreDeviceConfigurationRequest;
 use Modules\IoT\Http\Requests\UpdateDeviceConfigurationRequest;
 use Modules\IoT\Http\Resources\DeviceConfigurationResource;
-use Modules\IoT\Services\DeviceManagementService;
+use Modules\IoT\Models\DeviceConfiguration;
 use Modules\IoT\Services\AgentHttpClient;
+use Modules\IoT\Services\DeviceManagementService;
 
 class DeviceConfigurationController extends Controller
 {
@@ -21,7 +21,7 @@ class DeviceConfigurationController extends Controller
 
     /**
      * Get all device configurations for an agent.
-     * 
+     *
      * GET /api/v1/iot/agents/{agentId}/device-configs
      */
     public function index(Request $request, string $agentId): JsonResponse
@@ -42,7 +42,7 @@ class DeviceConfigurationController extends Controller
         }
 
         $configs = $query->latest()->get();
-        
+
         // Sync status from agent if requested or by default for UI calls
         if ($request->boolean('sync_status', true)) {
             $this->syncDeviceStatusFromAgent($agentId, $configs);
@@ -53,7 +53,7 @@ class DeviceConfigurationController extends Controller
             'data' => DeviceConfigurationResource::collection($configs),
         ]);
     }
-    
+
     /**
      * Sync device status from agent.
      * Queries the agent for current device status and updates the database.
@@ -68,23 +68,23 @@ class DeviceConfigurationController extends Controller
             $agentDevices = collect($devicesResult['success']
                 ? ($devicesResult['devices'] ?? $devicesResult['discovered'] ?? [])
                 : []);
-            
+
             // Also get discovered devices from agent
             $discoveredResult = $this->agentClient->getDiscoveredDevices($agentId);
             $discoveredDevices = collect($discoveredResult['success']
                 ? ($discoveredResult['discovered'] ?? $discoveredResult['devices'] ?? [])
                 : []);
-            
+
             // Check if agent is online
             $healthResult = $this->agentClient->checkHealth($agentId);
             $agentOnline = $healthResult['success'];
-            
+
             foreach ($configs as $config) {
                 $connectionInfo = $config->connection_info ?? [];
                 $umpDeviceId = $connectionInfo['ump_device_id'] ?? null;
                 $vendorId = $connectionInfo['vendorId'] ?? $connectionInfo['vendor_id'] ?? null;
                 $productId = $connectionInfo['productId'] ?? $connectionInfo['product_id'] ?? null;
-                
+
                 // Helper to check if a device entry matches this config
                 $matchesConfig = function ($device) use ($config, $umpDeviceId, $vendorId, $productId) {
                     // Match by ump_device_id (primary — this is what UMP/agent knows)
@@ -104,12 +104,13 @@ class DeviceConfigurationController extends Controller
                                 && $this->normalizeHex($productId) === $this->normalizeHex($deviceProduct);
                         }
                     }
+
                     return false;
                 };
-                
+
                 // First check registered devices
                 $matchedDevice = $agentDevices->first($matchesConfig);
-                
+
                 if ($matchedDevice) {
                     // Device found in registered devices - it's active
                     $status = $matchedDevice['status'] ?? 'ready';
@@ -118,12 +119,13 @@ class DeviceConfigurationController extends Controller
                         'status_message' => 'Device active on agent',
                         'last_seen_at' => now(),
                     ]);
+
                     continue;
                 }
-                
+
                 // Check discovered devices (device exists but not yet initialized by agent)
                 $discoveredMatch = $discoveredDevices->first($matchesConfig);
-                
+
                 if ($discoveredMatch) {
                     // Device found in discovered devices - it's connected but not initialized
                     $config->update([
@@ -131,16 +133,17 @@ class DeviceConfigurationController extends Controller
                         'status_message' => 'Device connected, pending initialization',
                         'last_seen_at' => now(),
                     ]);
+
                     continue;
                 }
-                
+
                 // Device not found anywhere
                 if ($agentOnline) {
                     // Only mark as disconnected if device hasn't been active recently
                     // (within last 5 minutes based on last_seen_at)
                     $recentlyActive = $config->last_seen_at && $config->last_seen_at->gt(now()->subMinutes(5));
-                    
-                    if (!$recentlyActive) {
+
+                    if (! $recentlyActive) {
                         $config->update([
                             'current_status' => 'offline',
                             'status_message' => 'Device not found on agent',
@@ -153,26 +156,26 @@ class DeviceConfigurationController extends Controller
             \Log::warning("Failed to sync device status from agent: {$e->getMessage()}");
         }
     }
-    
+
     /**
      * Normalize hex value for comparison.
      */
     private function normalizeHex(?string $value): ?string
     {
-        if (!$value) {
+        if (! $value) {
             return null;
         }
-        
+
         // Remove 0x prefix and convert to lowercase
         $normalized = strtolower(str_replace('0x', '', $value));
-        
+
         // Remove leading zeros
         return ltrim($normalized, '0') ?: '0';
     }
 
     /**
      * Create a new device configuration.
-     * 
+     *
      * POST /api/v1/iot/agents/{agentId}/device-configs
      */
     public function store(StoreDeviceConfigurationRequest $request, string $agentId): JsonResponse
@@ -191,7 +194,7 @@ class DeviceConfigurationController extends Controller
 
     /**
      * Get a specific device configuration.
-     * 
+     *
      * GET /api/v1/iot/agents/{agentId}/device-configs/{deviceId}
      */
     public function show(string $agentId, string $deviceId): JsonResponse
@@ -208,7 +211,7 @@ class DeviceConfigurationController extends Controller
 
     /**
      * Update a device configuration.
-     * 
+     *
      * PUT /api/v1/iot/agents/{agentId}/device-configs/{deviceId}
      */
     public function update(
@@ -232,7 +235,7 @@ class DeviceConfigurationController extends Controller
 
     /**
      * Delete a device configuration.
-     * 
+     *
      * DELETE /api/v1/iot/agents/{agentId}/device-configs/{deviceId}
      */
     public function destroy(string $agentId, string $deviceId): JsonResponse
@@ -250,7 +253,7 @@ class DeviceConfigurationController extends Controller
 
     /**
      * Reload a specific device.
-     * 
+     *
      * POST /api/v1/iot/agents/{agentId}/device-configs/{deviceId}/reload
      */
     public function reload(string $agentId, string $deviceId): JsonResponse
@@ -268,7 +271,7 @@ class DeviceConfigurationController extends Controller
 
     /**
      * Reload all devices for an agent.
-     * 
+     *
      * POST /api/v1/iot/agents/{agentId}/device-configs/reload-all
      */
     public function reloadAll(string $agentId): JsonResponse

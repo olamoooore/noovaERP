@@ -8,8 +8,8 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
-use Modules\FinancialClose\Services\FinancialCloseCompletionService;
 use Modules\FinancialClose\Models\JobRunHistory;
+use Modules\FinancialClose\Services\FinancialCloseCompletionService;
 
 /**
  * Async job — appends a completion snapshot for a cycle.
@@ -34,8 +34,8 @@ class GenerateCompletionSnapshotJob implements ShouldQueue
         $startedAt = now();
 
         Log::info('FinancialClose: GenerateCompletionSnapshotJob started', [
-            'tenant_id'      => $this->tenantId,
-            'cycle_id'       => $this->cycleId,
+            'tenant_id' => $this->tenantId,
+            'cycle_id' => $this->cycleId,
             'correlation_id' => $this->correlationId,
         ]);
 
@@ -43,29 +43,29 @@ class GenerateCompletionSnapshotJob implements ShouldQueue
             $snapshot = $completionService->generateSnapshot($this->tenantId, $this->cycleId);
 
             JobRunHistory::create([
-                'tenant_id'      => $this->tenantId,
-                'job_type'       => 'completion_snapshot',
-                'status'         => 'completed',
-                'started_at'     => $startedAt,
-                'completed_at'   => now(),
-                'duration_ms'    => (int) ($startedAt->diffInMilliseconds(now())),
-                'metadata'       => [
-                    'cycle_id'             => $this->cycleId,
+                'tenant_id' => $this->tenantId,
+                'job_type' => 'completion_snapshot',
+                'status' => 'completed',
+                'started_at' => $startedAt,
+                'completed_at' => now(),
+                'duration_ms' => (int) ($startedAt->diffInMilliseconds(now())),
+                'metadata' => [
+                    'cycle_id' => $this->cycleId,
                     'completion_percentage' => $snapshot?->completion_percentage,
-                    'correlation_id'       => $this->correlationId,
+                    'correlation_id' => $this->correlationId,
                 ],
             ]);
         } catch (\Throwable $e) {
             JobRunHistory::create([
-                'tenant_id'      => $this->tenantId,
-                'job_type'       => 'completion_snapshot',
-                'status'         => 'failed',
-                'started_at'     => $startedAt,
-                'completed_at'   => now(),
-                'duration_ms'    => (int) ($startedAt->diffInMilliseconds(now())),
-                'error_message'  => $e->getMessage(),
-                'metadata'       => [
-                    'cycle_id'       => $this->cycleId,
+                'tenant_id' => $this->tenantId,
+                'job_type' => 'completion_snapshot',
+                'status' => 'failed',
+                'started_at' => $startedAt,
+                'completed_at' => now(),
+                'duration_ms' => (int) ($startedAt->diffInMilliseconds(now())),
+                'error_message' => $e->getMessage(),
+                'metadata' => [
+                    'cycle_id' => $this->cycleId,
                     'correlation_id' => $this->correlationId,
                 ],
             ]);

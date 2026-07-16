@@ -2,15 +2,16 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TenantTestCase;
-use Modules\OCRBookkeeping\Models\OcrVendorMapping;
-use Modules\OCRBookkeeping\Services\VendorMappingService;
 use App\Models\Customer;
 use App\Models\User;
+use Modules\OCRBookkeeping\Models\OcrVendorMapping;
+use Modules\OCRBookkeeping\Services\VendorMappingService;
+use Tests\TenantTestCase;
 
 class VendorMappingTest extends TenantTestCase
 {
     protected User $user;
+
     protected VendorMappingService $service;
 
     protected function setUp(): void
@@ -218,7 +219,7 @@ class VendorMappingTest extends TenantTestCase
             'usage_count' => 1,
         ]);
 
-        $matches = $this->service->findVendorMatch("OReillys Supplies and Co");
+        $matches = $this->service->findVendorMatch('OReillys Supplies and Co');
 
         $this->assertNotEmpty($matches);
     }

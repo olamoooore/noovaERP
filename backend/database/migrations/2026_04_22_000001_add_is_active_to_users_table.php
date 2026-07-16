@@ -30,11 +30,11 @@ return new class extends Migration
 
         if (Schema::hasColumn('users', 'is_active') && Schema::hasColumn('users', 'deactivated_at')) {
             // Backfill: users with is_active = false but no deactivated_at timestamp.
-            DB::statement("
+            DB::statement('
                 UPDATE users
                 SET deactivated_at = updated_at
                 WHERE is_active = false AND deactivated_at IS NULL
-            ");
+            ');
         }
     }
 

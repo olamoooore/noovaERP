@@ -37,21 +37,21 @@ class OcrPromotionService
             $billTotal = $doc->total_amount ?? 0;
 
             $billId = DB::table('bills')->insertGetId([
-                'vendor_id'       => $doc->vendor_id,
-                'bill_number'     => $doc->document_reference ?? $this->generateBillNumber(),
-                'bill_date'       => $doc->document_date,
-                'due_date'        => $doc->due_date,
-                'status'          => 'draft',
-                'subtotal'        => $doc->subtotal ?? 0,
-                'tax_amount'      => $doc->tax_amount ?? 0,
+                'vendor_id' => $doc->vendor_id,
+                'bill_number' => $doc->document_reference ?? $this->generateBillNumber(),
+                'bill_date' => $doc->document_date,
+                'due_date' => $doc->due_date,
+                'status' => 'draft',
+                'subtotal' => $doc->subtotal ?? 0,
+                'tax_amount' => $doc->tax_amount ?? 0,
                 'discount_amount' => 0,
-                'total'           => $billTotal,
-                'paid_amount'     => 0,
-                'balance'         => $billTotal,
-                'notes'           => "Promoted from OCR document {$doc->uuid}",
-                'created_by'      => TenantUserHelper::resolveTenantUserId(),
-                'created_at'      => now(),
-                'updated_at'      => now(),
+                'total' => $billTotal,
+                'paid_amount' => 0,
+                'balance' => $billTotal,
+                'notes' => "Promoted from OCR document {$doc->uuid}",
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
 
             if ($doc->line_items && is_array($doc->line_items)) {
@@ -62,17 +62,17 @@ class OcrPromotionService
                     $lineTotal = $item['line_total'] ?? $item['amount'] ?? (($quantity * $unitPrice) + $taxAmount);
 
                     DB::table('bill_lines')->insert([
-                        'bill_id'     => $billId,
-                        'product_id'  => $item['product_id'] ?? null,
+                        'bill_id' => $billId,
+                        'product_id' => $item['product_id'] ?? null,
                         'description' => $item['description'] ?? 'Line item',
-                        'quantity'    => $quantity,
-                        'unit_price'  => $unitPrice,
-                        'tax_rate'    => $item['tax_rate'] ?? 0,
-                        'tax_amount'  => $taxAmount,
-                        'line_total'  => $lineTotal,
-                        'account_id'  => $item['account_id'] ?? null,
-                        'created_at'  => now(),
-                        'updated_at'  => now(),
+                        'quantity' => $quantity,
+                        'unit_price' => $unitPrice,
+                        'tax_rate' => $item['tax_rate'] ?? 0,
+                        'tax_amount' => $taxAmount,
+                        'line_total' => $lineTotal,
+                        'account_id' => $item['account_id'] ?? null,
+                        'created_at' => now(),
+                        'updated_at' => now(),
                     ]);
                 }
             }
@@ -81,14 +81,14 @@ class OcrPromotionService
                 'status' => 'PROMOTED',
             ]);
 
-            Log::info("OCR document promoted to bill", [
+            Log::info('OCR document promoted to bill', [
                 'ocr_uuid' => $doc->uuid,
-                'bill_id'  => $billId,
+                'bill_id' => $billId,
             ]);
 
             return [
                 'bill_id' => $billId,
-                'status'  => 'draft',
+                'status' => 'draft',
             ];
         });
     }
@@ -109,21 +109,21 @@ class OcrPromotionService
             $invoiceTotal = $doc->total_amount ?? 0;
 
             $invoiceId = DB::table('invoices')->insertGetId([
-                'customer_id'     => $doc->customer_id,
-                'invoice_number'  => $doc->document_reference ?? $this->generateInvoiceNumber(),
-                'invoice_date'    => $doc->document_date,
+                'customer_id' => $doc->customer_id,
+                'invoice_number' => $doc->document_reference ?? $this->generateInvoiceNumber(),
+                'invoice_date' => $doc->document_date,
                 'due_date' => $doc->due_date ?? $doc->document_date ?? now()->toDateString(),
-                'status'          => 'draft',
-                'subtotal'        => $doc->subtotal ?? 0,
-                'tax_amount'      => $doc->tax_amount ?? 0,
+                'status' => 'draft',
+                'subtotal' => $doc->subtotal ?? 0,
+                'tax_amount' => $doc->tax_amount ?? 0,
                 'discount_amount' => 0,
-                'total'           => $invoiceTotal,
-                'paid_amount'     => 0,
-                'balance'         => $invoiceTotal,
-                'notes'           => "Promoted from OCR document {$doc->uuid}",
-                'created_by'      => TenantUserHelper::resolveTenantUserId(),
-                'created_at'      => now(),
-                'updated_at'      => now(),
+                'total' => $invoiceTotal,
+                'paid_amount' => 0,
+                'balance' => $invoiceTotal,
+                'notes' => "Promoted from OCR document {$doc->uuid}",
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
 
             if ($doc->line_items && is_array($doc->line_items)) {
@@ -134,17 +134,17 @@ class OcrPromotionService
                     $lineTotal = $item['line_total'] ?? $item['amount'] ?? (($quantity * $unitPrice) + $taxAmount);
 
                     DB::table('invoice_items')->insert([
-                        'invoice_id'      => $invoiceId,
-                        'product_id'      => $item['product_id'] ?? null,
-                        'description'     => $item['description'] ?? 'Line item',
-                        'quantity'        => $quantity,
-                        'unit_price'      => $unitPrice,
-                        'tax_rate'        => $item['tax_rate'] ?? 0,
-                        'tax_amount'      => $taxAmount,
+                        'invoice_id' => $invoiceId,
+                        'product_id' => $item['product_id'] ?? null,
+                        'description' => $item['description'] ?? 'Line item',
+                        'quantity' => $quantity,
+                        'unit_price' => $unitPrice,
+                        'tax_rate' => $item['tax_rate'] ?? 0,
+                        'tax_amount' => $taxAmount,
                         'discount_amount' => $item['discount_amount'] ?? 0,
-                        'line_total'      => $lineTotal,
-                        'created_at'      => now(),
-                        'updated_at'      => now(),
+                        'line_total' => $lineTotal,
+                        'created_at' => now(),
+                        'updated_at' => now(),
                     ]);
                 }
             }
@@ -153,14 +153,14 @@ class OcrPromotionService
                 'status' => 'PROMOTED',
             ]);
 
-            Log::info("OCR document promoted to invoice", [
-                'ocr_uuid'   => $doc->uuid,
+            Log::info('OCR document promoted to invoice', [
+                'ocr_uuid' => $doc->uuid,
                 'invoice_id' => $invoiceId,
             ]);
 
             return [
                 'invoice_id' => $invoiceId,
-                'status'     => 'draft',
+                'status' => 'draft',
             ];
         });
     }
@@ -170,13 +170,13 @@ class OcrPromotionService
      */
     private function resolveVendorForPromotion(OcrDocument $doc): void
     {
-        if ($doc->vendor_id || !$doc->vendor_name) {
+        if ($doc->vendor_id || ! $doc->vendor_name) {
             return;
         }
 
         $match = app(VendorMappingService::class)->getBestMatch($doc->vendor_name);
 
-        if (!$match) {
+        if (! $match) {
             return;
         }
 
@@ -188,7 +188,7 @@ class OcrPromotionService
             $vendorId = $match->vendor_id ?? $match->id ?? data_get($match, 'vendor.id');
         }
 
-        if (!$vendorId) {
+        if (! $vendorId) {
             return;
         }
 
@@ -198,10 +198,10 @@ class OcrPromotionService
 
         $doc->refresh();
 
-        Log::info("OCR promotion vendor auto-matched", [
-            'ocr_uuid'    => $doc->uuid,
+        Log::info('OCR promotion vendor auto-matched', [
+            'ocr_uuid' => $doc->uuid,
             'vendor_name' => $doc->vendor_name,
-            'vendor_id'   => $vendorId,
+            'vendor_id' => $vendorId,
         ]);
     }
 
@@ -216,13 +216,13 @@ class OcrPromotionService
 
         $customerName = $doc->customer_name ?? $doc->vendor_name;
 
-        if (!$customerName) {
+        if (! $customerName) {
             return;
         }
 
         $match = app(CustomerMappingService::class)->getBestMatch($customerName);
 
-        if (!$match) {
+        if (! $match) {
             return;
         }
 
@@ -234,7 +234,7 @@ class OcrPromotionService
             $customerId = $match->customer_id ?? $match->id ?? data_get($match, 'customer.id');
         }
 
-        if (!$customerId) {
+        if (! $customerId) {
             return;
         }
 
@@ -245,10 +245,10 @@ class OcrPromotionService
 
         $doc->refresh();
 
-        Log::info("OCR promotion customer auto-matched", [
-            'ocr_uuid'      => $doc->uuid,
+        Log::info('OCR promotion customer auto-matched', [
+            'ocr_uuid' => $doc->uuid,
             'customer_name' => $customerName,
-            'customer_id'   => $customerId,
+            'customer_id' => $customerId,
         ]);
     }
 
@@ -263,19 +263,19 @@ class OcrPromotionService
             );
         }
 
-        if (!$doc->vendor_id) {
+        if (! $doc->vendor_id) {
             throw new \RuntimeException(
                 "OCR document {$doc->uuid} missing vendor_id."
             );
         }
 
-        if (!$doc->total_amount || $doc->total_amount <= 0) {
+        if (! $doc->total_amount || $doc->total_amount <= 0) {
             throw new \RuntimeException(
                 "OCR document {$doc->uuid} missing total_amount."
             );
         }
 
-        if (!$doc->document_date) {
+        if (! $doc->document_date) {
             throw new \RuntimeException(
                 "OCR document {$doc->uuid} missing document_date."
             );
@@ -293,19 +293,19 @@ class OcrPromotionService
             );
         }
 
-        if (!$doc->customer_id) {
+        if (! $doc->customer_id) {
             throw new \RuntimeException(
                 "OCR document {$doc->uuid} missing customer_id."
             );
         }
 
-        if (!$doc->total_amount || $doc->total_amount <= 0) {
+        if (! $doc->total_amount || $doc->total_amount <= 0) {
             throw new \RuntimeException(
                 "OCR document {$doc->uuid} missing total_amount."
             );
         }
 
-        if (!$doc->document_date) {
+        if (! $doc->document_date) {
             throw new \RuntimeException(
                 "OCR document {$doc->uuid} missing document_date."
             );
@@ -315,12 +315,14 @@ class OcrPromotionService
     private function generateBillNumber(): string
     {
         $last = DB::table('bills')->max('id') ?? 0;
-        return 'BILL-' . str_pad($last + 1, 6, '0', STR_PAD_LEFT);
+
+        return 'BILL-'.str_pad($last + 1, 6, '0', STR_PAD_LEFT);
     }
 
     private function generateInvoiceNumber(): string
     {
         $last = DB::table('invoices')->max('id') ?? 0;
-        return 'INV-' . str_pad($last + 1, 6, '0', STR_PAD_LEFT);
+
+        return 'INV-'.str_pad($last + 1, 6, '0', STR_PAD_LEFT);
     }
 }

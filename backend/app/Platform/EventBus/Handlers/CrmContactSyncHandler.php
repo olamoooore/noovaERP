@@ -20,7 +20,7 @@ class CrmContactSyncHandler implements EventHandlerContract
         $eventName = $event->getEventName();
         $contactId = $payload['contact_id'] ?? null;
 
-        if (!$contactId) {
+        if (! $contactId) {
             return;
         }
 
@@ -66,7 +66,7 @@ class CrmContactSyncHandler implements EventHandlerContract
     private function handleContactCreated(string $contactId): void
     {
         $contact = CoreContact::find($contactId);
-        if (!$contact) {
+        if (! $contact) {
             return;
         }
 
@@ -76,6 +76,7 @@ class CrmContactSyncHandler implements EventHandlerContract
         foreach ($roles as $role) {
             if (in_array($role, $crmRoles)) {
                 $this->provisionCrmProfile($contactId, $role);
+
                 return;
             }
         }

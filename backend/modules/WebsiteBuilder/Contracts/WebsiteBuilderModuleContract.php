@@ -9,12 +9,35 @@ use App\Modules\Contracts\BaseModuleContract;
  */
 class WebsiteBuilderModuleContract extends BaseModuleContract
 {
-    public function getKey(): string { return 'website-builder'; }
-    public function getName(): string { return 'Website Builder'; }
-    public function getType(): string { return 'core'; }
-    public function getDescription(): string { return 'Website Builder — pages, components, templates, assets, publishing'; }
-    public function getVersion(): string { return '1.0.0'; }
-    public function getDependencies(): array { return []; }
+    public function getKey(): string
+    {
+        return 'website-builder';
+    }
+
+    public function getName(): string
+    {
+        return 'Website Builder';
+    }
+
+    public function getType(): string
+    {
+        return 'core';
+    }
+
+    public function getDescription(): string
+    {
+        return 'Website Builder — pages, components, templates, assets, publishing';
+    }
+
+    public function getVersion(): string
+    {
+        return '1.0.0';
+    }
+
+    public function getDependencies(): array
+    {
+        return [];
+    }
 
     public function getPermissions(): array
     {
@@ -33,26 +56,26 @@ class WebsiteBuilderModuleContract extends BaseModuleContract
     {
         return [
             'required_setup_steps' => ['website_setup'],
-            'default_settings'     => [],
-            'recommended_roles'    => ['admin'],
+            'default_settings' => [],
+            'recommended_roles' => ['admin'],
         ];
     }
 
     public function getActivationRules(): array
     {
         return [
-            'requires'  => [],
-            'settings'  => [],
-            'min_tier'  => null,
+            'requires' => [],
+            'settings' => [],
+            'min_tier' => null,
         ];
     }
 
     public function getDeactivationRules(): array
     {
         return [
-            'removes_data'       => false,
+            'removes_data' => false,
             'preserves_entities' => [],
-            'cleanup_jobs'       => [],
+            'cleanup_jobs' => [],
         ];
     }
 
@@ -71,9 +94,9 @@ class WebsiteBuilderModuleContract extends BaseModuleContract
     {
         return [
             'has_ai_assistant' => false,
-            'ai_suggestions'   => false,
-            'ai_automation'    => false,
-            'ai_data_access'   => [],
+            'ai_suggestions' => false,
+            'ai_automation' => false,
+            'ai_data_access' => [],
         ];
     }
 }

@@ -4,16 +4,15 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\User;
 use App\Platform\SystemLog\SystemLog;
 use App\Platform\SystemLog\SystemLogService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TenantTestCase;
 
 class SystemLogServiceTest extends TenantTestCase
 {
     protected string $tenantUuid;
+
     protected SystemLogService $service;
 
     protected function setUp(): void
@@ -22,7 +21,7 @@ class SystemLogServiceTest extends TenantTestCase
 
         $this->tenantUuid = Str::uuid()->toString();
         $this->bindTenantContext($this->tenantUuid);
-        $this->service = new SystemLogService();
+        $this->service = new SystemLogService;
     }
 
     public function test_log_creates_entry(): void

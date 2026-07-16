@@ -44,10 +44,11 @@ class SalesAnalyticsService
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return [
                 'title' => 'Sales by Product',
                 'data' => [],
-                'message' => 'Error retrieving sales data: ' . $e->getMessage(),
+                'message' => 'Error retrieving sales data: '.$e->getMessage(),
             ];
         }
 
@@ -66,7 +67,7 @@ class SalesAnalyticsService
                 'start_date' => $startDate->format('Y-m-d'),
                 'end_date' => $endDate->format('Y-m-d'),
             ],
-            'data' => $sales->map(fn($item) => [
+            'data' => $sales->map(fn ($item) => [
                 'id' => $item->id,
                 'name' => $item->name,
                 'product_name' => $item->name,
@@ -115,10 +116,11 @@ class SalesAnalyticsService
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return [
                 'title' => 'Sales by Customer',
                 'data' => [],
-                'message' => 'Error retrieving sales data: ' . $e->getMessage(),
+                'message' => 'Error retrieving sales data: '.$e->getMessage(),
             ];
         }
 
@@ -137,7 +139,7 @@ class SalesAnalyticsService
                 'start_date' => $startDate->format('Y-m-d'),
                 'end_date' => $endDate->format('Y-m-d'),
             ],
-            'data' => $sales->map(fn($item) => [
+            'data' => $sales->map(fn ($item) => [
                 'id' => $item->customer_id,
                 'name' => $item->customer_name ?? 'Walk-in Customer',
                 'customer_name' => $item->customer_name ?? 'Walk-in Customer',
@@ -161,7 +163,7 @@ class SalesAnalyticsService
         $endDate = $filter->endDate ?? Carbon::now()->endOfMonth();
 
         // Determine date format based on interval
-        $dateFormat = match($interval) {
+        $dateFormat = match ($interval) {
             'day' => 'YYYY-MM-DD',
             'week' => 'IYYY-IW',
             'month' => 'YYYY-MM',
@@ -188,10 +190,11 @@ class SalesAnalyticsService
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return [
                 'title' => 'Sales Trends',
                 'data' => [],
-                'message' => 'Error retrieving sales data: ' . $e->getMessage(),
+                'message' => 'Error retrieving sales data: '.$e->getMessage(),
             ];
         }
 
@@ -273,10 +276,11 @@ class SalesAnalyticsService
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return [
                 'title' => 'Sales by Category',
                 'data' => [],
-                'message' => 'Error retrieving category data: ' . $e->getMessage(),
+                'message' => 'Error retrieving category data: '.$e->getMessage(),
             ];
         }
 
@@ -295,7 +299,7 @@ class SalesAnalyticsService
                 'start_date' => $startDate->format('Y-m-d'),
                 'end_date' => $endDate->format('Y-m-d'),
             ],
-            'data' => $sales->map(fn($item) => [
+            'data' => $sales->map(fn ($item) => [
                 'category_id' => $item->category_id,
                 'category_name' => $item->category_name ?? 'Uncategorized',
                 'product_count' => (int) $item->product_count,
@@ -318,12 +322,12 @@ class SalesAnalyticsService
     public function getTopSellingProducts(ReportFilter $filter, int $limit = 10): array
     {
         $report = $this->getSalesByProduct($filter);
-        
+
         if (isset($report['data'])) {
             $report['data'] = array_slice($report['data'], 0, $limit);
             $report['title'] = "Top {$limit} Selling Products";
         }
-        
+
         return $report;
     }
 
@@ -333,23 +337,23 @@ class SalesAnalyticsService
     public function getProfitMargins(ReportFilter $filter): array
     {
         $report = $this->getSalesByProduct($filter);
-        
+
         if (isset($report['data'])) {
             // Sort by profit margin
-            usort($report['data'], fn($a, $b) => $b['profit_margin'] <=> $a['profit_margin']);
-            
+            usort($report['data'], fn ($a, $b) => $b['profit_margin'] <=> $a['profit_margin']);
+
             $report['title'] = 'Profit Margin Analysis';
-            
+
             // Add margin categories
-            $highMargin = array_filter($report['data'], fn($item) => $item['profit_margin'] >= 30);
-            $mediumMargin = array_filter($report['data'], fn($item) => $item['profit_margin'] >= 15 && $item['profit_margin'] < 30);
-            $lowMargin = array_filter($report['data'], fn($item) => $item['profit_margin'] < 15);
-            
+            $highMargin = array_filter($report['data'], fn ($item) => $item['profit_margin'] >= 30);
+            $mediumMargin = array_filter($report['data'], fn ($item) => $item['profit_margin'] >= 15 && $item['profit_margin'] < 30);
+            $lowMargin = array_filter($report['data'], fn ($item) => $item['profit_margin'] < 15);
+
             $report['summary']['high_margin_products'] = count($highMargin);
             $report['summary']['medium_margin_products'] = count($mediumMargin);
             $report['summary']['low_margin_products'] = count($lowMargin);
         }
-        
+
         return $report;
     }
 

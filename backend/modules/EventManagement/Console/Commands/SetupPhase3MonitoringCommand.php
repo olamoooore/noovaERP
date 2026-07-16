@@ -9,7 +9,7 @@ use Modules\EventManagement\Services\OperationalDocumentationService;
 
 /**
  * Setup Phase 3 Monitoring Command
- * 
+ *
  * Executes Task 14 monitoring and observability integration
  * including dashboard integration, alerting setup, health checks,
  * and operational documentation creation.
@@ -50,11 +50,11 @@ class SetupPhase3MonitoringCommand extends Command
             // Task 14.1: Integrate with existing monitoring infrastructure
             if ($component === 'all' || $component === 'monitoring') {
                 $this->info("\n🔧 Task 14.1: Integrating with existing monitoring infrastructure");
-                
-                if (!$dryRun) {
+
+                if (! $dryRun) {
                     $monitoringResults = $this->monitoringService->integratePhase3Monitoring();
                     $results['monitoring_integration'] = $monitoringResults;
-                    
+
                     $this->displayMonitoringResults($monitoringResults);
                 } else {
                     $this->line('Would integrate Phase 3 monitoring infrastructure');
@@ -64,11 +64,11 @@ class SetupPhase3MonitoringCommand extends Command
             // Task 14.2: Create Phase 3 operational documentation
             if ($component === 'all' || $component === 'documentation') {
                 $this->info("\n📚 Task 14.2: Creating Phase 3 operational documentation");
-                
-                if (!$dryRun) {
+
+                if (! $dryRun) {
                     $documentationResults = $this->documentationService->createPhase3Documentation();
                     $results['documentation_creation'] = $documentationResults;
-                    
+
                     $this->displayDocumentationResults($documentationResults);
                 } else {
                     $this->line('Would create Phase 3 operational documentation');
@@ -78,19 +78,19 @@ class SetupPhase3MonitoringCommand extends Command
             $totalTime = microtime(true) - $startTime;
 
             // Display final summary
-            if (!$dryRun) {
+            if (! $dryRun) {
                 $this->displayFinalSummary($results, $totalTime);
             }
 
             return 0;
 
         } catch (\Exception $e) {
-            $this->error("Phase 3 monitoring setup failed: " . $e->getMessage());
+            $this->error('Phase 3 monitoring setup failed: '.$e->getMessage());
             Log::error('Phase 3 monitoring setup failed', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return 1;
         }
     }
@@ -111,7 +111,7 @@ class SetupPhase3MonitoringCommand extends Command
                 ['Component', 'Status'],
                 [
                     ['Dashboards Created', $dashboards['dashboards_created']],
-                    ['Integration Status', $dashboards['integration_status']]
+                    ['Integration Status', $dashboards['integration_status']],
                 ]
             );
 
@@ -132,7 +132,7 @@ class SetupPhase3MonitoringCommand extends Command
                     ['Warning Alerts', count($alerting['alert_rules']['warning_alerts'])],
                     ['Performance Alerts', count($alerting['alert_rules']['performance_alerts'])],
                     ['Security Alerts', count($alerting['alert_rules']['security_alerts'])],
-                    ['Compliance Alerts', count($alerting['alert_rules']['compliance_alerts'])]
+                    ['Compliance Alerts', count($alerting['alert_rules']['compliance_alerts'])],
                 ]
             );
         }
@@ -147,7 +147,7 @@ class SetupPhase3MonitoringCommand extends Command
                     ['Service Health Checks', count($healthChecks['health_checks']['service_health_checks'])],
                     ['Job Health Checks', count($healthChecks['health_checks']['job_health_checks'])],
                     ['Database Health Checks', count($healthChecks['health_checks']['database_health_checks'])],
-                    ['Integration Health Checks', count($healthChecks['health_checks']['integration_health_checks'])]
+                    ['Integration Health Checks', count($healthChecks['health_checks']['integration_health_checks'])],
                 ]
             );
         }
@@ -157,7 +157,7 @@ class SetupPhase3MonitoringCommand extends Command
             $runbooks = $integrationResults['runbooks'];
             $this->info("\n📖 Runbooks Created:");
             foreach ($runbooks['runbooks_created'] as $runbook) {
-                $this->line("  • " . ucwords(str_replace('_', ' ', $runbook)));
+                $this->line('  • '.ucwords(str_replace('_', ' ', $runbook)));
             }
         }
 
@@ -165,9 +165,9 @@ class SetupPhase3MonitoringCommand extends Command
         if (isset($integrationResults['metrics_collection'])) {
             $metrics = $integrationResults['metrics_collection'];
             $this->info("\n📏 Metrics Collection Setup:");
-            $this->line("  • Metrics Endpoints: " . count($metrics['metrics_endpoints']));
-            $this->line("  • Collection Intervals: " . count($metrics['collection_intervals']));
-            $this->line("  • Retention Policies: " . count($metrics['retention_policies']));
+            $this->line('  • Metrics Endpoints: '.count($metrics['metrics_endpoints']));
+            $this->line('  • Collection Intervals: '.count($metrics['collection_intervals']));
+            $this->line('  • Retention Policies: '.count($metrics['retention_policies']));
         }
     }
 
@@ -188,39 +188,39 @@ class SetupPhase3MonitoringCommand extends Command
                 ['Capacity Planning Guidance', $documentationResults['capacity_planning_guidance']['guidance_created']],
                 ['Rollback Procedures', $documentationResults['rollback_procedures']['procedures_created']],
                 ['Detailed Runbooks', $documentationResults['runbooks']['runbooks_created']],
-                ['Training Materials', $documentationResults['training_materials']['materials_created']]
+                ['Training Materials', $documentationResults['training_materials']['materials_created']],
             ]
         );
 
         $this->info("\n📁 Documentation Structure:");
-        $this->line("  📂 operational_procedures/");
+        $this->line('  📂 operational_procedures/');
         foreach ($documentationResults['operational_procedures']['procedure_names'] as $procedure) {
-            $this->line("    📄 " . str_replace('_', ' ', $procedure) . ".md");
+            $this->line('    📄 '.str_replace('_', ' ', $procedure).'.md');
         }
 
-        $this->line("  📂 troubleshooting_guides/");
+        $this->line('  📂 troubleshooting_guides/');
         foreach ($documentationResults['troubleshooting_guides']['guide_names'] as $guide) {
-            $this->line("    📄 " . str_replace('_', ' ', $guide) . ".md");
+            $this->line('    📄 '.str_replace('_', ' ', $guide).'.md');
         }
 
-        $this->line("  📂 incident_response/");
+        $this->line('  📂 incident_response/');
         foreach ($documentationResults['incident_response_procedures']['procedure_names'] as $procedure) {
-            $this->line("    📄 " . str_replace('_', ' ', $procedure) . ".md");
+            $this->line('    📄 '.str_replace('_', ' ', $procedure).'.md');
         }
 
-        $this->line("  📂 capacity_planning/");
+        $this->line('  📂 capacity_planning/');
         foreach ($documentationResults['capacity_planning_guidance']['guidance_names'] as $guidance) {
-            $this->line("    📄 " . str_replace('_', ' ', $guidance) . ".md");
+            $this->line('    📄 '.str_replace('_', ' ', $guidance).'.md');
         }
 
-        $this->line("  📂 rollback_procedures/");
+        $this->line('  📂 rollback_procedures/');
         foreach ($documentationResults['rollback_procedures']['procedure_names'] as $procedure) {
-            $this->line("    📄 " . str_replace('_', ' ', $procedure) . ".md");
+            $this->line('    📄 '.str_replace('_', ' ', $procedure).'.md');
         }
 
         $this->info("\n📍 Documentation Location:");
-        $this->line("  Path: " . $results['documentation_path']);
-        $this->line("  Total Documents: " . $results['total_documents_created']);
+        $this->line('  Path: '.$results['documentation_path']);
+        $this->line('  Total Documents: '.$results['total_documents_created']);
     }
 
     /**
@@ -228,7 +228,7 @@ class SetupPhase3MonitoringCommand extends Command
      */
     private function displayFinalSummary(array $results, float $totalTime): void
     {
-        $this->info("\n" . str_repeat('=', 70));
+        $this->info("\n".str_repeat('=', 70));
         $this->info('PHASE 3 MONITORING & OBSERVABILITY SETUP SUMMARY');
         $this->info(str_repeat('=', 70));
 
@@ -250,29 +250,29 @@ class SetupPhase3MonitoringCommand extends Command
             $summaryData[] = ['Total Documents Created', $documentation['total_documents_created']];
         }
 
-        $summaryData[] = ['Setup Time', number_format($totalTime, 2) . ' seconds'];
+        $summaryData[] = ['Setup Time', number_format($totalTime, 2).' seconds'];
         $summaryData[] = ['Overall Status', 'COMPLETED'];
 
         $this->table(['Component', 'Result'], $summaryData);
 
         // Success message
         $this->info("\n✅ Phase 3 Monitoring & Observability Integration completed successfully!");
-        
+
         // Next steps
         $this->info("\n🚀 Next Steps:");
-        $this->line("  1. Review created dashboards in monitoring system");
-        $this->line("  2. Test alert rules and notification channels");
-        $this->line("  3. Verify health check endpoints are responding");
-        $this->line("  4. Review operational documentation with team");
-        $this->line("  5. Schedule training sessions for operational procedures");
-        $this->line("  6. Proceed with Task 15: Deployment & Rollout");
+        $this->line('  1. Review created dashboards in monitoring system');
+        $this->line('  2. Test alert rules and notification channels');
+        $this->line('  3. Verify health check endpoints are responding');
+        $this->line('  4. Review operational documentation with team');
+        $this->line('  5. Schedule training sessions for operational procedures');
+        $this->line('  6. Proceed with Task 15: Deployment & Rollout');
 
         // Important notes
         $this->warn("\n⚠️  Important Notes:");
-        $this->line("  • Verify monitoring system integration before production deployment");
-        $this->line("  • Test alert escalation procedures with actual incidents");
-        $this->line("  • Ensure all team members have access to documentation");
-        $this->line("  • Schedule regular review of operational procedures");
+        $this->line('  • Verify monitoring system integration before production deployment');
+        $this->line('  • Test alert escalation procedures with actual incidents');
+        $this->line('  • Ensure all team members have access to documentation');
+        $this->line('  • Schedule regular review of operational procedures');
     }
 
     /**
@@ -281,16 +281,16 @@ class SetupPhase3MonitoringCommand extends Command
     private function displayMonitoringStatus(): void
     {
         $this->info("\n🔍 Current Monitoring Integration Status:");
-        
+
         $status = $this->monitoringService->getIntegrationStatus();
-        
+
         $statusTable = [
             ['Dashboards Integrated', $status['dashboards_integrated'] ? '✅ Yes' : '❌ No'],
             ['Alerts Configured', $status['alerts_configured'] ? '✅ Yes' : '❌ No'],
             ['Health Checks Active', $status['health_checks_active'] ? '✅ Yes' : '❌ No'],
             ['Runbooks Available', $status['runbooks_available'] ? '✅ Yes' : '❌ No'],
             ['Metrics Collecting', $status['metrics_collecting'] ? '✅ Yes' : '❌ No'],
-            ['Last Updated', $status['last_updated']->format('Y-m-d H:i:s')]
+            ['Last Updated', $status['last_updated']->format('Y-m-d H:i:s')],
         ];
 
         $this->table(['Component', 'Status'], $statusTable);
@@ -302,16 +302,16 @@ class SetupPhase3MonitoringCommand extends Command
     private function displayDocumentationStatus(): void
     {
         $this->info("\n📚 Current Documentation Status:");
-        
+
         $status = $this->documentationService->getDocumentationStatus();
-        
-        $this->line("Documentation Path: " . $status['documentation_path']);
-        $this->line("Total Categories: " . $status['total_categories']);
-        $this->line("Last Updated: " . $status['last_updated']->format('Y-m-d H:i:s'));
-        
+
+        $this->line('Documentation Path: '.$status['documentation_path']);
+        $this->line('Total Categories: '.$status['total_categories']);
+        $this->line('Last Updated: '.$status['last_updated']->format('Y-m-d H:i:s'));
+
         $this->info("\nDocumentation Structure:");
         foreach ($status['structure'] as $category => $items) {
-            $this->line("  📂 {$category}/ (" . count($items) . " items)");
+            $this->line("  📂 {$category}/ (".count($items).' items)');
         }
     }
 
@@ -320,13 +320,13 @@ class SetupPhase3MonitoringCommand extends Command
      */
     private function validatePrerequisites(): bool
     {
-        $this->info("🔍 Validating prerequisites...");
-        
+        $this->info('🔍 Validating prerequisites...');
+
         $checks = [
             'Phase 1 & 2 Deployed' => true, // Assume previous phases are deployed
             'Monitoring System Available' => true, // Assume monitoring infrastructure exists
             'Documentation Storage Available' => true, // Assume storage is available
-            'Required Services Running' => true // Assume Phase 3 services are running
+            'Required Services Running' => true, // Assume Phase 3 services are running
         ];
 
         foreach ($checks as $check => $passed) {
@@ -334,14 +334,16 @@ class SetupPhase3MonitoringCommand extends Command
             $this->line("  {$status} {$check}");
         }
 
-        $allPassed = collect($checks)->every(fn($passed) => $passed);
-        
-        if (!$allPassed) {
-            $this->error("Prerequisites not met. Please resolve issues before proceeding.");
+        $allPassed = collect($checks)->every(fn ($passed) => $passed);
+
+        if (! $allPassed) {
+            $this->error('Prerequisites not met. Please resolve issues before proceeding.');
+
             return false;
         }
 
-        $this->info("✅ All prerequisites validated");
+        $this->info('✅ All prerequisites validated');
+
         return true;
     }
 }

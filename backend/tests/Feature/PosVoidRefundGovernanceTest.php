@@ -2,17 +2,16 @@
 
 namespace Tests\Feature;
 
-use Modules\POS\Models\PosOrder;
-use Modules\POS\Models\PosSession;
-use Modules\POS\Models\PosTerminal;
-use Modules\POS\Models\PosPayment;
 use App\Models\ApprovalRequest;
-use Tests\TestCase;
-use App\Models\Product;
 use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Modules\POS\Models\PosOrder;
+use Modules\POS\Models\PosPayment;
+use Modules\POS\Models\PosSession;
+use Modules\POS\Models\PosTerminal;
+use Tests\TestCase;
 
 /**
  * POS Void/Refund Governance Tests
@@ -81,7 +80,7 @@ class PosVoidRefundGovernanceTest extends TestCase
     private function createPaidOrder(PosTerminal $terminal, PosSession $session): PosOrder
     {
         $order = PosOrder::create([
-            'order_number' => 'POS-TEST-' . uniqid(),
+            'order_number' => 'POS-TEST-'.uniqid(),
             'status' => 'paid',
             'paid_at' => now(),
             'terminal_id' => $terminal->id,
@@ -121,7 +120,7 @@ class PosVoidRefundGovernanceTest extends TestCase
             'source_type' => 'PosOrder',
             'source_id' => $order->id,
             'amount' => $order->total,
-            'reason' => 'Test approval reason for ' . $type,
+            'reason' => 'Test approval reason for '.$type,
             'status' => 'approved',
             'requested_by' => 1,
             'reviewed_by' => $reviewer->id,

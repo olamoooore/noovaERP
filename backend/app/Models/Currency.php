@@ -14,7 +14,9 @@ class Currency extends Model
     use HasFactory;
 
     protected $primaryKey = 'code';
+
     public $incrementing = false;
+
     protected $keyType = 'string';
 
     protected $fillable = [
@@ -51,7 +53,7 @@ class Currency extends Model
      */
     public function formatAmount(float $amount): string
     {
-        return $this->symbol . ' ' . number_format($amount, $this->decimal_places);
+        return $this->symbol.' '.number_format($amount, $this->decimal_places);
     }
 
     /**

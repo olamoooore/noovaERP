@@ -35,28 +35,28 @@ class PayrollService
         Payroll::where('payroll_run_id', $run->id)->forceDelete();
 
         $periodStart = $run->period_start;
-        $periodEnd   = $run->period_end;
+        $periodEnd = $run->period_end;
 
         // Active employees who have at least one active contract covering this period
         $employees = Employee::where('status', 'active')
             ->with(['contracts' => function ($q) use ($periodStart, $periodEnd) {
                 $q->where('status', 'active')
-                  ->where('start_date', '<=', $periodEnd)
-                  ->where(function ($q2) use ($periodStart) {
-                      $q2->whereNull('end_date')
-                         ->orWhere('end_date', '>=', $periodStart);
-                  });
+                    ->where('start_date', '<=', $periodEnd)
+                    ->where(function ($q2) use ($periodStart) {
+                        $q2->whereNull('end_date')
+                            ->orWhere('end_date', '>=', $periodStart);
+                    });
             }])
             ->get()
             ->filter(fn ($e) => $e->contracts->isNotEmpty());
 
-        $totalGross      = 0.0;
+        $totalGross = 0.0;
         $totalDeductions = 0.0;
 
         foreach ($employees as $employee) {
-            $contract   = $employee->contracts->first();
+            $contract = $employee->contracts->first();
             $baseSalary = (float) $contract->base_monthly_salary;
-            $deduction  = $this->calculateLeaveDeduction(
+            $deduction = $this->calculateLeaveDeduction(
                 $employee,
                 $periodStart,
                 $periodEnd,
@@ -65,36 +65,36 @@ class PayrollService
             $netPay = max(0.0, $baseSalary - $deduction);
 
             $payroll = Payroll::create([
-                'payroll_run_id'      => $run->id,
-                'employee_id'         => $employee->id,
-                'contract_id'         => $contract->id,
-                'period_start'        => $periodStart,
-                'period_end'          => $periodEnd,
+                'payroll_run_id' => $run->id,
+                'employee_id' => $employee->id,
+                'contract_id' => $contract->id,
+                'period_start' => $periodStart,
+                'period_end' => $periodEnd,
                 'base_monthly_salary' => $baseSalary,
-                'net_pay'             => $netPay,
-                'status'              => 'draft',
-                'generated_by'        => TenantUserHelper::resolveTenantUserId(),
+                'net_pay' => $netPay,
+                'status' => 'draft',
+                'generated_by' => TenantUserHelper::resolveTenantUserId(),
             ]);
 
             if ($deduction > 0) {
                 PayrollItem::create([
-                    'payroll_id'  => $payroll->id,
-                    'type'        => 'deduction',
-                    'category'    => 'leave_deduction',
-                    'amount'      => $deduction,
+                    'payroll_id' => $payroll->id,
+                    'type' => 'deduction',
+                    'category' => 'leave_deduction',
+                    'amount' => $deduction,
                     'description' => 'Unpaid leave deduction',
                 ]);
             }
 
-            $totalGross      += $baseSalary;
+            $totalGross += $baseSalary;
             $totalDeductions += $deduction;
         }
 
         $run->update([
-            'total_gross'      => round($totalGross, 2),
+            'total_gross' => round($totalGross, 2),
             'total_deductions' => round($totalDeductions, 2),
-            'total_net'        => round($totalGross - $totalDeductions, 2),
-            'status'           => 'calculated',
+            'total_net' => round($totalGross - $totalDeductions, 2),
+            'status' => 'calculated',
         ]);
 
         return $run->fresh(['payrolls.employee', 'payrolls.items']);
@@ -147,7 +147,7 @@ class PayrollService
             ->sum(function (LeaveRequest $lr) use ($periodStart, $periodEnd) {
                 // Clamp leave dates to period boundaries
                 $start = $lr->start_date->max($periodStart);
-                $end   = $lr->end_date->min($periodEnd);
+                $end = $lr->end_date->min($periodEnd);
 
                 return $start->diffInDays($end) + 1;
             });

@@ -7,13 +7,13 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Platform\Archive\ArchiveRecord;
 use App\Platform\Archive\ArchiveService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TenantTestCase;
 
 class ArchiveServiceTest extends TenantTestCase
 {
     protected string $tenantUuid;
+
     protected ArchiveService $service;
 
     protected function setUp(): void
@@ -22,7 +22,7 @@ class ArchiveServiceTest extends TenantTestCase
 
         $this->tenantUuid = Str::uuid()->toString();
         $this->bindTenantContext($this->tenantUuid);
-        $this->service = new ArchiveService();
+        $this->service = new ArchiveService;
     }
 
     public function test_archive_creates_record(): void

@@ -27,10 +27,10 @@ return new class extends Migration
             $table->timestamp('anonymized_at')->nullable()->comment('When this data was anonymized');
             $table->string('anonymization_method', 50)->nullable()->comment('Method used for anonymization');
             $table->json('metadata')->nullable()->comment('Additional metadata for the PII field');
-            
+
             // Unique constraint to prevent duplicate PII entries
             $table->unique(['entity_type', 'entity_id', 'field_name'], 'unique_entity_field');
-            
+
             // Indexes for efficient queries
             $table->index(['entity_type', 'entity_id'], 'idx_pii_vault_entity');
             $table->index(['retention_policy', 'expires_at'], 'idx_pii_vault_retention_expires');
@@ -55,10 +55,10 @@ return new class extends Migration
             $table->string('session_id', 255)->nullable()->comment('Session ID');
             $table->json('request_context')->nullable()->comment('Additional request context');
             $table->timestamp('accessed_at')->useCurrent();
-            
+
             // Foreign key constraint
             $table->foreign('vault_id')->references('id')->on('pii_vault')->onDelete('cascade');
-            
+
             // Indexes for audit queries
             $table->index(['vault_id', 'accessed_at'], 'idx_pii_access_vault_time');
             $table->index(['accessor_type', 'accessor_id'], 'idx_pii_access_accessor');
@@ -80,7 +80,7 @@ return new class extends Migration
             $table->string('compliance_framework', 100)->nullable()->comment('GDPR, CCPA, etc.');
             $table->timestamp('created_at')->useCurrent();
             $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
-            
+
             // Indexes
             $table->index(['is_active'], 'idx_retention_policies_active');
             $table->index(['compliance_framework'], 'idx_retention_policies_compliance');
@@ -98,10 +98,10 @@ return new class extends Migration
             $table->text('error_message')->nullable()->comment('Error message if anonymization failed');
             $table->string('processed_by', 255)->comment('System/job that performed anonymization');
             $table->timestamp('processed_at')->useCurrent();
-            
+
             // Foreign key constraint
             $table->foreign('vault_id')->references('id')->on('pii_vault')->onDelete('cascade');
-            
+
             // Indexes
             $table->index(['vault_id'], 'idx_anonymization_log_vault');
             $table->index(['policy_applied', 'processed_at'], 'idx_anonymization_log_policy_time');
@@ -124,7 +124,7 @@ return new class extends Migration
             $table->timestamp('consent_expires_at')->nullable()->comment('When consent expires');
             $table->timestamp('consent_withdrawn_at')->nullable()->comment('When consent was withdrawn');
             $table->string('withdrawal_reason', 255)->nullable()->comment('Reason for consent withdrawal');
-            
+
             // Indexes
             $table->index(['entity_type', 'entity_id'], 'idx_consent_entity');
             $table->index(['consent_type', 'consent_given'], 'idx_consent_type_given');
@@ -149,7 +149,7 @@ return new class extends Migration
             $table->json('processing_log')->nullable()->comment('Log of processing steps');
             $table->timestamp('requested_at')->useCurrent();
             $table->timestamp('completed_at')->nullable();
-            
+
             // Indexes
             $table->index(['entity_type', 'entity_id'], 'idx_export_requests_entity');
             $table->index(['status', 'requested_at'], 'idx_export_requests_status_time');

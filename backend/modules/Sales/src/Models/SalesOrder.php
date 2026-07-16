@@ -2,11 +2,11 @@
 
 namespace Modules\Sales\Models;
 
+use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\Warehouse;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class SalesOrder extends Model
 {
@@ -186,7 +186,7 @@ class SalesOrder extends Model
     public static function generateOrderNumber(): string
     {
         $latest = static::withTrashed()
-            ->where('sales_order_number', 'like', 'SO-' . date('Y') . '-%')
+            ->where('sales_order_number', 'like', 'SO-'.date('Y').'-%')
             ->orderBy('id', 'desc')
             ->first();
 
@@ -194,6 +194,6 @@ class SalesOrder extends Model
             ? (int) substr($latest->sales_order_number, -4) + 1
             : 1;
 
-        return 'SO-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+        return 'SO-'.date('Y').'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 }

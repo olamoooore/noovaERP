@@ -43,21 +43,21 @@ class PosReconciliationReport extends Command
         $this->info('Stats:');
         $this->table(
             ['Metric', 'Count'],
-            collect($result['stats'])->map(fn($v, $k) => [
+            collect($result['stats'])->map(fn ($v, $k) => [
                 str_replace('_', ' ', ucfirst($k)),
                 $v,
             ])->values()->toArray()
         );
 
         // Display exceptions
-        if (!empty($result['exceptions'])) {
+        if (! empty($result['exceptions'])) {
             $this->newLine();
             $this->warn('Exceptions Found:');
 
             if ($format === 'table') {
                 $this->table(
                     ['Type', 'Severity', 'Entity', 'ID', 'Message'],
-                    collect($result['exceptions'])->map(fn($e) => [
+                    collect($result['exceptions'])->map(fn ($e) => [
                         $e['type'],
                         $e['severity'],
                         $e['entity'],
@@ -80,7 +80,7 @@ class PosReconciliationReport extends Command
             $this->info("Report written to: {$output}");
         }
 
-        if ($failOnExceptions && !empty($result['exceptions'])) {
+        if ($failOnExceptions && ! empty($result['exceptions'])) {
             return 1;
         }
 

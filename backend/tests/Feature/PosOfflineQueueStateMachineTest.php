@@ -2,9 +2,9 @@
 
 namespace Tests\Feature;
 
-use Tests\TenantTestCase;
-use Modules\POS\Models\PosOfflineQueue;
 use Illuminate\Support\Str;
+use Modules\POS\Models\PosOfflineQueue;
+use Tests\TenantTestCase;
 
 class PosOfflineQueueStateMachineTest extends TenantTestCase
 {
@@ -27,7 +27,7 @@ class PosOfflineQueueStateMachineTest extends TenantTestCase
         ]);
 
         $this->assertTrue($queue->canTransitionTo('syncing'));
-        
+
         $queue->transitionTo('syncing');
         $queue->save();
 
@@ -51,7 +51,7 @@ class PosOfflineQueueStateMachineTest extends TenantTestCase
         $queue->save();
 
         $this->assertTrue($queue->canTransitionTo('synced'));
-        
+
         $queue->transitionTo('synced');
         $queue->save();
 
@@ -71,7 +71,7 @@ class PosOfflineQueueStateMachineTest extends TenantTestCase
         ]);
 
         $this->assertTrue($queue->canTransitionTo('failed'));
-        
+
         $queue->transitionTo('failed');
         $queue->save();
 
@@ -90,7 +90,7 @@ class PosOfflineQueueStateMachineTest extends TenantTestCase
         ]);
 
         $this->assertTrue($queue->canTransitionTo('pending'));
-        
+
         $queue->transitionTo('pending');
         $queue->save();
 
@@ -109,7 +109,7 @@ class PosOfflineQueueStateMachineTest extends TenantTestCase
         ]);
 
         $this->assertTrue($queue->canTransitionTo('conflict'));
-        
+
         $queue->transitionTo('conflict');
         $queue->save();
 
@@ -128,7 +128,7 @@ class PosOfflineQueueStateMachineTest extends TenantTestCase
         ]);
 
         $this->assertTrue($queue->canTransitionTo('pending'));
-        
+
         $queue->transitionTo('pending');
         $queue->save();
 
@@ -150,7 +150,7 @@ class PosOfflineQueueStateMachineTest extends TenantTestCase
 
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage("Invalid state transition from 'synced' to 'syncing'");
-        
+
         $queue->transitionTo('syncing');
     }
 
@@ -169,7 +169,7 @@ class PosOfflineQueueStateMachineTest extends TenantTestCase
 
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage("Invalid state transition from 'pending' to 'synced'");
-        
+
         $queue->transitionTo('synced');
     }
 

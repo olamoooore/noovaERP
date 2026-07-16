@@ -24,50 +24,84 @@ class RolePermissionSeeder extends Seeder
         'dashboard.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::CASHIER, UserRole::VIEWER],
 
         // POS
-        'pos.view'     => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::CASHIER, UserRole::VIEWER],
-        'pos.create'   => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::CASHIER],
+        'pos.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::CASHIER, UserRole::VIEWER],
+        'pos.create' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::CASHIER],
         'pos.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
         // Inventory
-        'inventory.view'     => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
-        'inventory.write'    => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'inventory.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
+        'inventory.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
         'inventory.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
         // Sales
-        'sales.view'     => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::VIEWER],
-        'sales.write'    => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        'sales.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::VIEWER],
+        'sales.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'sales.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
         // Accounting
-        'accounting.view'     => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
-        'accounting.write'    => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
-        'accounting.post'     => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
-        'accounting.reverse'  => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
-        'accounting.lock'     => [UserRole::OWNER, UserRole::ADMIN],
+        'accounting.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
+        'accounting.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        'accounting.post' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        'accounting.reverse' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        'accounting.lock' => [UserRole::OWNER, UserRole::ADMIN],
         'accounting.settings' => [UserRole::OWNER, UserRole::ADMIN],
         'reconciliation.complete' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
 
         // HRM
-        'hrm.view'     => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::VIEWER],
-        'hrm.write'    => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'hrm.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::VIEWER],
+        'hrm.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
         'hrm.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
         // Loyalty
-        'loyalty.view'     => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::VIEWER],
-        'loyalty.write'    => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        'loyalty.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::VIEWER],
+        'loyalty.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'loyalty.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
         // Reports
         'reports.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::VIEWER],
 
         // Settings
-        'settings.view'  => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::VIEWER],
+        'settings.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::VIEWER],
         'settings.write' => [UserRole::OWNER, UserRole::ADMIN],
 
         // Users
-        'users.view'   => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::VIEWER],
-        'users.write'  => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'users.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::VIEWER],
+        'users.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
         'users.delete' => [UserRole::OWNER, UserRole::ADMIN],
+
+        // ADR-004 Universal Template Platform — Designer / Reviewer / Publisher / Assigner segregation (§14).
+        // Ordinary Sales/CRM/Accounting users do NOT receive publish or default-assignment automatically.
+        // Template authoring
+        'template.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::CASHIER, UserRole::VIEWER],
+        'template.create' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'template.edit_draft' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'template.duplicate' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'template.validate' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        // Controlled publication (Reviewer / Publisher / Assigner)
+        'template.review' => [UserRole::OWNER, UserRole::ADMIN],
+        'template.publish' => [UserRole::OWNER, UserRole::ADMIN],
+        'template.assign' => [UserRole::OWNER, UserRole::ADMIN],
+        'template.archive' => [UserRole::OWNER, UserRole::ADMIN],
+        'template.restore' => [UserRole::OWNER, UserRole::ADMIN],
+        // Restricted capability
+        'template.asset.manage' => [UserRole::OWNER, UserRole::ADMIN],
+        'template.custom_code' => [UserRole::OWNER],
+        // Documents
+        'document.generate' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT],
+        'document.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::CASHIER, UserRole::VIEWER],
+        'document.regenerate' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'document.distribute' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        // Forms
+        'form.open' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::CASHIER, UserRole::VIEWER],
+        'form.submit' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::CASHIER, UserRole::VIEWER],
+        'form.submission.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'form.approve' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'form.export' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        // Surveys
+        'survey.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'survey.respond' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::CASHIER, UserRole::VIEWER],
+        'survey.analyse' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'survey.export' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
     ];
 
     public function run(): void
@@ -75,6 +109,7 @@ class RolePermissionSeeder extends Seeder
         // Ensure Spatie tables exist before seeding
         if (! $this->tablesExist()) {
             $this->command?->warn('Spatie permission tables not found. Skipping RolePermissionSeeder.');
+
             return;
         }
 

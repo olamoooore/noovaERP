@@ -4,23 +4,23 @@ namespace Modules\Ecommerce\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
-use Illuminate\Http\Request;
+use App\Models\Warehouse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\Ecommerce\Models\WebOrder;
 use Modules\Ecommerce\Models\WebOrderItem;
-use Modules\PaymentGateway\Services\PaymentService;
-use Modules\PaymentGateway\Services\PaymentTransactionCompletionService;
-use App\Models\Warehouse;
-use Modules\PaymentGateway\Models\PaymentTransaction;
-use Modules\Inventory\Services\InventoryService;
-use Modules\Inventory\Services\StockReservationService;
 use Modules\Ecommerce\Services\CheckoutQueueAdmissionService;
 use Modules\Ecommerce\Services\WebOrderEventReservationService;
 use Modules\Ecommerce\Services\WebOrderNotificationService;
 use Modules\EventManagement\Services\WebOrderTicketFulfillmentService;
+use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Services\StockReservationService;
+use Modules\PaymentGateway\Models\PaymentTransaction;
+use Modules\PaymentGateway\Services\PaymentService;
+use Modules\PaymentGateway\Services\PaymentTransactionCompletionService;
 
 class WebCheckoutController extends Controller
 {
@@ -46,7 +46,7 @@ class WebCheckoutController extends Controller
                 $campaignKey = (string) $request->input('campaign_key', 'default');
                 $queueToken = (string) $request->input('queue_token', '');
 
-                if ($queueToken === '' || !$this->queueAdmissionService->canProceedToCheckout($campaignKey, $queueToken)) {
+                if ($queueToken === '' || ! $this->queueAdmissionService->canProceedToCheckout($campaignKey, $queueToken)) {
                     return response()->json([
                         'error' => 'QUEUE_ADMISSION_REQUIRED',
                         'message' => 'You must hold an active queue slot before checkout.',
@@ -82,7 +82,7 @@ class WebCheckoutController extends Controller
             ];
 
             // Only require email for guests
-            if (!$webCustomer) {
+            if (! $webCustomer) {
                 $validationRules['email'] = 'required|email|max:255';
             }
 
@@ -95,7 +95,7 @@ class WebCheckoutController extends Controller
 
             foreach ($validated['items'] as $item) {
                 $product = Product::find($item['product_id']);
-                if (!$product || !$product->is_active) {
+                if (! $product || ! $product->is_active) {
                     $insufficientStock[] = [
                         'product_id' => $item['product_id'],
                         'name' => $product?->name ?? 'Unknown',
@@ -118,7 +118,7 @@ class WebCheckoutController extends Controller
                         ->values()
                         ->all();
 
-                    if (!($availability['is_available'] ?? false)) {
+                    if (! ($availability['is_available'] ?? false)) {
                         $insufficientStock[] = [
                             'product_id' => $item['product_id'],
                             'name' => $product->name,
@@ -136,7 +136,7 @@ class WebCheckoutController extends Controller
                         ];
                     }
 
-                    if (!empty($eligibleWarehouseIds)) {
+                    if (! empty($eligibleWarehouseIds)) {
                         $requiresWarehouseFulfillment = true;
                         $candidateWarehouseIds = $candidateWarehouseIds === null
                             ? $eligibleWarehouseIds
@@ -145,7 +145,7 @@ class WebCheckoutController extends Controller
                 }
             }
 
-            if (!empty($insufficientStock)) {
+            if (! empty($insufficientStock)) {
                 return response()->json([
                     'error' => 'Stock issues found',
                     'items' => $insufficientStock,
@@ -174,7 +174,7 @@ class WebCheckoutController extends Controller
                     ->orderBy('id')
                     ->value('id');
 
-                if (!$fulfillmentWarehouseId) {
+                if (! $fulfillmentWarehouseId) {
                     return response()->json([
                         'error' => 'Stock issues found',
                         'items' => [[
@@ -200,11 +200,11 @@ class WebCheckoutController extends Controller
                 $systemCustomer = Customer::find($webCustomer->id);
             }
 
-            if (!$systemCustomer) {
+            if (! $systemCustomer) {
                 // Try to find existing customer by email
                 $systemCustomer = Customer::where('email', $email)->first();
 
-                if (!$systemCustomer) {
+                if (! $systemCustomer) {
                     // Create new customer record (like Odoo res.partner)
                     $shippingAddr = is_array($validated['shipping_address']) ? json_encode($validated['shipping_address']) : $validated['shipping_address'];
                     $customerData = [
@@ -249,7 +249,7 @@ class WebCheckoutController extends Controller
                 $taxRate = $taxInfo['rate'];
 
                 $lineSubtotal = $product->price * $item['quantity'];
-                
+
                 // Calculate tax using canonical service
                 $taxCalc = $taxResolutionService->calculateTax($lineSubtotal, $taxRate, $taxInfo['is_inclusive']);
 
@@ -304,7 +304,7 @@ class WebCheckoutController extends Controller
                     if ($matchedRate) {
                         $shippingCost = (float) $matchedRate->price;
                         $shippingMethod = [
-                            'id' => (string) ($matchedRate->provider_code . '_' . $matchedRate->service_code),
+                            'id' => (string) ($matchedRate->provider_code.'_'.$matchedRate->service_code),
                             'provider_code' => (string) ($matchedRate->provider_code ?? ''),
                             'provider_name' => (string) ($matchedRate->provider_name ?? ''),
                             'service_code' => (string) ($matchedRate->service_code ?? ''),
@@ -312,7 +312,7 @@ class WebCheckoutController extends Controller
                             'price' => (float) $matchedRate->price,
                             'currency' => (string) ($matchedRate->currency ?? 'USD'),
                         ];
-                    } elseif (!empty($validated['shipping_method']['price'])) {
+                    } elseif (! empty($validated['shipping_method']['price'])) {
                         $shippingCost = (float) $validated['shipping_method']['price'];
                     }
                 } catch (\Throwable $e) {
@@ -322,11 +322,11 @@ class WebCheckoutController extends Controller
                         'error' => $e->getMessage(),
                     ]);
 
-                    if (!empty($validated['shipping_method']['price'])) {
+                    if (! empty($validated['shipping_method']['price'])) {
                         $shippingCost = (float) $validated['shipping_method']['price'];
                     }
                 }
-            } elseif (!empty($validated['shipping_method']['price'])) {
+            } elseif (! empty($validated['shipping_method']['price'])) {
                 $shippingCost = (float) $validated['shipping_method']['price'];
             }
 
@@ -429,14 +429,14 @@ class WebCheckoutController extends Controller
                     if ($product && $product->track_inventory) {
                         try {
                             $this->stockReservationService->reserve(
-                                productId:            $orderItem->product_id,
-                                warehouseId:          $warehouseId,
-                                quantity:             $orderItem->quantity,
-                                sourceDocumentType:   'WebOrder',
-                                sourceDocumentId:     $order->id,
+                                productId: $orderItem->product_id,
+                                warehouseId: $warehouseId,
+                                quantity: $orderItem->quantity,
+                                sourceDocumentType: 'WebOrder',
+                                sourceDocumentId: $order->id,
                                 sourceDocumentLineId: $orderItem->id,
-                                expiresAt:            now()->addMinutes(30), // 30-min TTL for unpaid orders
-                                notes:                "Web checkout reservation for {$order->order_number}",
+                                expiresAt: now()->addMinutes(30), // 30-min TTL for unpaid orders
+                                notes: "Web checkout reservation for {$order->order_number}",
                             );
                         } catch (\Exception $e) {
                             Log::warning('Stock reservation failed during checkout — proceeding without reservation', [
@@ -462,8 +462,8 @@ class WebCheckoutController extends Controller
                     'email' => $email,
                     'gateway_id' => $request->input('gateway_id'),
                     'customer_id' => $customerId,
-                    'redirect_url' => $frontendOrigin . '/payment/callback',
-                    'cancel_url' => $frontendOrigin . '/store/checkout',
+                    'redirect_url' => $frontendOrigin.'/payment/callback',
+                    'cancel_url' => $frontendOrigin.'/store/checkout',
                     'metadata' => [
                         'order_id' => $order->id,
                         'order_number' => $order->order_number,
@@ -539,14 +539,14 @@ class WebCheckoutController extends Controller
         $webCustomer = $request->attributes->get('web_customer');
         if ($webCustomer) {
             $query->where('customer_id', $webCustomer->id);
-        } elseif (!empty($validated['guest_token'])) {
+        } elseif (! empty($validated['guest_token'])) {
             $query->where('guest_token', $validated['guest_token']);
         } else {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
         $order = $query->first();
-        if (!$order) {
+        if (! $order) {
             return response()->json(['error' => 'Order not found'], 404);
         }
 
@@ -567,7 +567,7 @@ class WebCheckoutController extends Controller
                 return DB::transaction(function () use ($order, $paymentStatus, $paymentIntentId) {
                     $transaction = PaymentTransaction::where('transaction_id', $paymentIntentId)->first();
 
-                    if (!$transaction) {
+                    if (! $transaction) {
                         throw new \RuntimeException('Payment transaction not found for confirmed web order payment.');
                     }
 
@@ -582,7 +582,7 @@ class WebCheckoutController extends Controller
                             (string) ($paymentStatus['payment_method'] ?? 'card')
                         );
                     } catch (\Throwable $e) {
-                        if (!$this->shouldOperationallyRecoverCapturedPayment($e)) {
+                        if (! $this->shouldOperationallyRecoverCapturedPayment($e)) {
                             throw $e;
                         }
 
@@ -606,7 +606,7 @@ class WebCheckoutController extends Controller
 
                     $workingOrder = $order->fresh(['invoice', 'items']);
 
-                    if (!$alreadyProcessed) {
+                    if (! $alreadyProcessed) {
                         $this->webOrderNotificationService->dispatchPaidOrderNotifications($workingOrder);
                     }
 
@@ -665,7 +665,7 @@ class WebCheckoutController extends Controller
             $order->markPaid();
         }
 
-        if (!$order->invoice_id) {
+        if (! $order->invoice_id) {
             $order->convertToInvoice();
             $order->refresh();
         }
@@ -719,7 +719,7 @@ class WebCheckoutController extends Controller
             'total' => (float) $order->total,
             'loyalty_points_earned' => $order->loyalty_points_earned,
             'loyalty_points_redeemed' => $order->loyalty_points_redeemed,
-            'items' => $order->items->map(fn($item) => [
+            'items' => $order->items->map(fn ($item) => [
                 'id' => $item->id,
                 'product_name' => $item->product_name,
                 'product_sku' => $item->product_sku,
@@ -754,7 +754,7 @@ class WebCheckoutController extends Controller
             ];
         }
 
-        if (!is_array($shippingMethod)) {
+        if (! is_array($shippingMethod)) {
             return null;
         }
 
@@ -796,9 +796,10 @@ class WebCheckoutController extends Controller
         $referer = trim((string) $request->headers->get('referer', ''));
         if ($referer !== '') {
             $parts = parse_url($referer);
-            if (!empty($parts['scheme']) && !empty($parts['host'])) {
-                $port = isset($parts['port']) ? ':' . $parts['port'] : '';
-                return rtrim($parts['scheme'] . '://' . $parts['host'] . $port, '/');
+            if (! empty($parts['scheme']) && ! empty($parts['host'])) {
+                $port = isset($parts['port']) ? ':'.$parts['port'] : '';
+
+                return rtrim($parts['scheme'].'://'.$parts['host'].$port, '/');
             }
         }
 

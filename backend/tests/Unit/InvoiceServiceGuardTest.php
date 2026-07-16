@@ -2,7 +2,6 @@
 
 namespace Tests\Unit;
 
-use App\Services\InvoiceCreationToken;
 use App\Services\InvoiceService;
 use PHPUnit\Framework\TestCase;
 

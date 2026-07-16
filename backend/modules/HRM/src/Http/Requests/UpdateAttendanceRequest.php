@@ -14,10 +14,10 @@ class UpdateAttendanceRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'date'      => ['sometimes', 'date'],
-            'check_in'  => ['sometimes', 'date_format:H:i'],
+            'date' => ['sometimes', 'date'],
+            'check_in' => ['sometimes', 'date_format:H:i'],
             'check_out' => ['sometimes', 'nullable', 'date_format:H:i', 'after:check_in'],
-            'notes'     => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
         ];
     }
 }

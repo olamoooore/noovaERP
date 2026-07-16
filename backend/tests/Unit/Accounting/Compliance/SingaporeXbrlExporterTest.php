@@ -11,7 +11,7 @@ class SingaporeXbrlExporterTest extends TestCase
 {
     public function test_sfrs_profile_maps_core_balance_sheet_and_profit_loss_accounts(): void
     {
-        $profile = new SFRSTaxonomyProfile();
+        $profile = new SFRSTaxonomyProfile;
 
         $cash = $profile->mapAccount([
             'code' => '1010',
@@ -43,7 +43,7 @@ class SingaporeXbrlExporterTest extends TestCase
 
     public function test_sfrs_validator_rejects_account_code_grouping_mismatch(): void
     {
-        $validator = new SFRSValidationService(new SFRSTaxonomyProfile());
+        $validator = new SFRSValidationService(new SFRSTaxonomyProfile);
 
         $this->assertFalse($validator->validateAccountMapping('4100', 'asset'));
         $this->assertNotEmpty($validator->getErrors());
@@ -52,7 +52,7 @@ class SingaporeXbrlExporterTest extends TestCase
 
     public function test_exporter_generates_structured_xbrl_xml_from_fixture_report_data(): void
     {
-        $exporter = new XBRLReportExporter(new SFRSTaxonomyProfile());
+        $exporter = new XBRLReportExporter(new SFRSTaxonomyProfile);
 
         $xml = $exporter->exportXBRL([
             'type' => 'trial_balance',
@@ -89,7 +89,7 @@ class SingaporeXbrlExporterTest extends TestCase
     {
         putenv('COMPLIANCE_SG_TAXONOMY_ENTRY_XSD=definitely-not-present.xsd');
 
-        $exporter = new XBRLReportExporter(new SFRSTaxonomyProfile());
+        $exporter = new XBRLReportExporter(new SFRSTaxonomyProfile);
 
         $xml = $exporter->exportXBRL([
             'type' => 'trial_balance',

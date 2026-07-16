@@ -48,7 +48,7 @@ class UpdateFanTierRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         // Auto-generate slug from name if name is being updated but slug is not provided
-        if ($this->has('name') && !$this->has('slug')) {
+        if ($this->has('name') && ! $this->has('slug')) {
             $this->merge([
                 'slug' => \Str::slug($this->name),
             ]);

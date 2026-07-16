@@ -99,7 +99,61 @@ export interface LayoutConfig {
 
 export type DocumentType = 'invoice' | 'quotation' | 'purchase_order' | 'receipt'
 export type TemplateMode = 'block' | 'code' | 'blade'
-export type TemplateStatus = 'draft' | 'published' | 'archived'
+
+// ADR-004 §9 — 5-state editorial lifecycle (supersedes the legacy 3-state).
+export type TemplateStatus =
+  | 'draft'
+  | 'in_review'
+  | 'published'
+  | 'superseded'
+  | 'archived'
+
+// ADR-004 §3 — Template Interaction Type.
+export type InteractionType = 'BUSINESS_DOCUMENT' | 'DATA_ENTRY_FORM' | 'SURVEY_ASSESSMENT'
+
+// ADR-004 §7 — Runtime Mode.
+export type RuntimeMode = 'COUPLED' | 'DECOUPLED' | 'EXTERNAL_INTEGRATION'
+
+// ADR-004 §11 — Assignment resolution outcome.
+export type AssignmentOutcome =
+  | 'RESOLVED'
+  | 'DEFAULT_APPLIED'
+  | 'TEMPLATE_NOT_ASSIGNED'
+  | 'TEMPLATE_RESOLUTION_AMBIGUOUS'
+  | 'INCOMPATIBLE_FALLBACK'
+
+export type TemplateChannel =
+  | 'html'
+  | 'pdf'
+  | 'print'
+  | 'email'
+  | 'portal'
+  | 'authenticated_form'
+  | 'public_link'
+  | 'sms'
+  | 'letter'
+
+export const INTERACTION_TYPE_LABELS: Record<InteractionType, string> = {
+  BUSINESS_DOCUMENT: 'Business Document',
+  DATA_ENTRY_FORM: 'Data-Entry Form',
+  SURVEY_ASSESSMENT: 'Survey / Assessment',
+}
+
+export const STATUS_LABELS: Record<TemplateStatus, string> = {
+  draft: 'Draft',
+  in_review: 'In Review',
+  published: 'Published',
+  superseded: 'Superseded',
+  archived: 'Archived',
+}
+
+export const STATUS_COLORS: Record<TemplateStatus, string> = {
+  draft: 'gray',
+  in_review: 'amber',
+  published: 'green',
+  superseded: 'blue',
+  archived: 'red',
+}
 
 export interface DocumentTemplate {
   id: string
@@ -117,9 +171,19 @@ export interface DocumentTemplate {
   html: string | null
   css: string | null
   status: TemplateStatus
+  interaction_type: InteractionType
+  domain_module_code: string | null
+  registration_id: string | null
+  data_contract_version: string | null
   published_version: number
   is_system_default: boolean
   metadata: Record<string, unknown> | null
+  review_status: string | null
+  reviewed_by: number | null
+  reviewed_at: string | null
+  review_decision: string | null
+  review_notes: string | null
+  superseded_by: string | null
   created_at: string | null
   updated_at: string | null
 }
@@ -156,4 +220,85 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   quotation: 'Quotation',
   purchase_order: 'Purchase Order',
   receipt: 'Receipt',
+}
+
+// ─── ADR-004 §7 — Universal Registry ────────────────────────────────────────
+export interface TemplateRegistration {
+  id: string
+  domain_module_code: string
+  template_type_code: string
+  interaction_type: InteractionType
+  runtime_mode: RuntimeMode
+  name: string
+  description: string | null
+  required_platform_services: string[] | null
+  entitlement_codes: string[] | null
+  channels: TemplateChannel[] | null
+  component_profile: Record<string, unknown> | null
+  scope_jurisdiction: Record<string, unknown> | null
+  security_retention: Record<string, unknown> | null
+  is_system: boolean
+  is_active: boolean
+  acceptance_reference: string | null
+}
+
+// ─── ADR-004 §13 — Form / Survey historical records ────────────────────────
+export type FormSubmissionStatus = 'draft' | 'submitted' | 'processed' | 'rejected'
+
+export interface FormSubmission {
+  id: string
+  template_id: string
+  template_version: number
+  schema_hash: string
+  answers: Record<string, unknown> | null
+  consent: Record<string, unknown> | null
+  submitter_email: string | null
+  status: FormSubmissionStatus
+  target_record_type: string | null
+  target_record_id: string | null
+  workflow_outcome: Record<string, unknown> | null
+  submitted_at: string | null
+  processed_at: string | null
+}
+
+export type SurveyResponseStatus = 'submitted' | 'closed' | 'excluded'
+
+export interface SurveyResponse {
+  id: string
+  template_id: string
+  template_version: number
+  scoring_version: string
+  answers: Record<string, unknown> | null
+  identity_policy: 'anonymous' | 'identified' | 'known_customer'
+  calculated_result: {
+    score: number
+    bands: string[]
+    thresholds_crossed: unknown[]
+    answer_count: number
+  } | null
+  status: SurveyResponseStatus
+  responded_at: string | null
+}
+
+// ─── ADR-004 §10 — Eligibility evaluation result ───────────────────────────
+export interface EligibilityCheck {
+  step: number
+  name: string
+  passed: boolean
+  detail: string | null
+}
+
+export interface EligibilityResult {
+  resolved: boolean
+  outcome: AssignmentOutcome
+  template: DocumentTemplate | null
+  explanation: Array<{ step: string; message: string }>
+  checks: EligibilityCheck[]
+}
+
+// ─── ADR-004 §11 — Assignment resolution result ────────────────────────────
+export interface ResolutionResult {
+  outcome: AssignmentOutcome
+  template_id: string | null
+  explanation: Array<{ step: string; message: string }>
 }

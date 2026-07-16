@@ -20,24 +20,24 @@ class AccountRoleResolver
 {
     /** Maps posting mapping keys to account_roles.code */
     private const KEY_TO_ROLE = [
-        'cash'                     => 'CASH_MAIN',
-        'bank'                     => 'BANK_MAIN',
-        'accounts_receivable'      => 'AR_CONTROL',
-        'accounts_payable'         => 'AP_CONTROL',
-        'inventory'                => 'INVENTORY',
-        'cogs'                     => 'COGS',
-        'sales_tax_payable'        => 'TAX_OUTPUT',
-        'input_tax'                => 'TAX_INPUT',
-        'unrealized_fx_gain_loss'  => 'FX_GAIN',
-        'realized_fx_gain_loss'    => 'FX_LOSS',
-        'retained_earnings'        => 'RETAINED_EARNINGS',
-        'general_expense'          => 'SUSPENSE',
-        'sales_revenue'            => null, // no direct role — use AccountMappingService
-        'shipping_revenue'         => null, // no direct role — use AccountMappingService
-        'depreciation_expense'     => null,
+        'cash' => 'CASH_MAIN',
+        'bank' => 'BANK_MAIN',
+        'accounts_receivable' => 'AR_CONTROL',
+        'accounts_payable' => 'AP_CONTROL',
+        'inventory' => 'INVENTORY',
+        'cogs' => 'COGS',
+        'sales_tax_payable' => 'TAX_OUTPUT',
+        'input_tax' => 'TAX_INPUT',
+        'unrealized_fx_gain_loss' => 'FX_GAIN',
+        'realized_fx_gain_loss' => 'FX_LOSS',
+        'retained_earnings' => 'RETAINED_EARNINGS',
+        'general_expense' => 'SUSPENSE',
+        'sales_revenue' => null, // no direct role — use AccountMappingService
+        'shipping_revenue' => null, // no direct role — use AccountMappingService
+        'depreciation_expense' => null,
         'accumulated_depreciation' => null,
-        'gain_loss_disposal'       => null,
-        'sales_discount'           => null,
+        'gain_loss_disposal' => null,
+        'sales_discount' => null,
     ];
 
     private array $cache = [];
@@ -59,7 +59,7 @@ class AccountRoleResolver
      */
     public function resolve(string $key, ?string $documentType = null, ?int $legalEntityId = null): ChartOfAccount
     {
-        if (!$this->isRoleBased()) {
+        if (! $this->isRoleBased()) {
             return $this->legacyMapper->resolve($key, $documentType);
         }
 
@@ -76,13 +76,13 @@ class AccountRoleResolver
             // NOTE: 'general_expense' maps to SUSPENSE which is intentionally wrong for
             // expense lines — callers must supply an explicit accountId for expense postings.
             Log::debug('AccountRoleResolver: no role mapping for key, using legacy mapper', [
-                'key'           => $key,
+                'key' => $key,
                 'document_type' => $documentType,
-                'legal_entity'  => $legalEntityId,
+                'legal_entity' => $legalEntityId,
             ]);
         } elseif ($roleCode === 'SUSPENSE') {
             Log::warning('AccountRoleResolver: key resolves to SUSPENSE account — verify this is intentional', [
-                'key'           => $key,
+                'key' => $key,
                 'document_type' => $documentType,
             ]);
         }
@@ -122,7 +122,7 @@ class AccountRoleResolver
 
         $accountId = $query->value('ear.chart_of_account_id');
 
-        if (!$accountId) {
+        if (! $accountId) {
             return null;
         }
 
@@ -149,7 +149,7 @@ class AccountRoleResolver
 
         $unassigned = [];
         foreach ($mandatoryRoles as $id => $code) {
-            if (!$assignedRoleIds->contains($id)) {
+            if (! $assignedRoleIds->contains($id)) {
                 $unassigned[] = $code;
             }
         }

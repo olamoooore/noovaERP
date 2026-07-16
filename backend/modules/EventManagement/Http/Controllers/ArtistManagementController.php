@@ -2,21 +2,21 @@
 
 namespace Modules\EventManagement\Http\Controllers;
 
-use Illuminate\Http\Request;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Modules\EventManagement\Services\ArtistCanonicalizationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
-use Carbon\Carbon;
+use Modules\EventManagement\Services\ArtistCanonicalizationService;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * ArtistManagementController - Task 6.4
- * 
+ *
  * Provides admin interface for artist canonicalization, merge conflict resolution,
  * bulk alias import and management, and artist relationship visualization.
- * 
+ *
  * Requirements: 22.3, 22.4
  */
 class ArtistManagementController extends Controller
@@ -30,24 +30,22 @@ class ArtistManagementController extends Controller
 
     /**
      * Get artist management dashboard overview.
-     * 
-     * @return JsonResponse
      */
     public function getDashboardOverview(): JsonResponse
     {
         try {
             // Get artist statistics
             $artistStats = $this->getArtistStatistics();
-            
+
             // Get recent merge activities
             $recentMerges = $this->getRecentMergeActivities();
-            
+
             // Get canonicalization queue status
             $queueStatus = $this->getCanonicalizationQueueStatus();
-            
+
             // Get data quality metrics
             $qualityMetrics = $this->getDataQualityMetrics();
-            
+
             return response()->json([
                 'success' => true,
                 'dashboard' => [
@@ -58,7 +56,7 @@ class ArtistManagementController extends Controller
                     'last_updated' => Carbon::now()->toISOString(),
                 ],
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -69,9 +67,6 @@ class ArtistManagementController extends Controller
 
     /**
      * Search artists with canonicalization support.
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function searchArtists(Request $request): JsonResponse
     {
@@ -83,28 +78,28 @@ class ArtistManagementController extends Controller
                 'include_inactive' => 'nullable|boolean',
                 'limit' => 'nullable|integer|min:1|max:100',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $searchOptions = [
                 'artist_type' => $request->artist_type,
                 'language_code' => $request->language_code,
                 'include_inactive' => $request->get('include_inactive', false),
                 'limit' => $request->get('limit', 20),
             ];
-            
+
             $result = $this->canonicalizationService->searchArtists(
                 $request->search_term,
                 $searchOptions
             );
-            
+
             return response()->json($result);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -115,16 +110,14 @@ class ArtistManagementController extends Controller
 
     /**
      * Get canonical artist details with aliases and relationships.
-     * 
-     * @param int $canonicalId
-     * @return JsonResponse
      */
     public function getCanonicalArtist(int $canonicalId): JsonResponse
     {
         try {
             $result = $this->canonicalizationService->getCanonicalArtist($canonicalId);
+
             return response()->json($result);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -135,9 +128,6 @@ class ArtistManagementController extends Controller
 
     /**
      * Create new canonical artist.
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function createCanonicalArtist(Request $request): JsonResponse
     {
@@ -153,21 +143,21 @@ class ArtistManagementController extends Controller
                 'metadata' => 'nullable|array',
                 'is_active' => 'nullable|boolean',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $artistData = $request->all();
             $artistData['created_by'] = auth()->user()->name ?? 'admin';
-            
+
             $result = $this->canonicalizationService->createCanonicalArtist($artistData);
-            
+
             return response()->json($result);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -178,10 +168,6 @@ class ArtistManagementController extends Controller
 
     /**
      * Create artist alias.
-     * 
-     * @param Request $request
-     * @param int $canonicalId
-     * @return JsonResponse
      */
     public function createAlias(Request $request, int $canonicalId): JsonResponse
     {
@@ -200,21 +186,21 @@ class ArtistManagementController extends Controller
                 'confidence_score' => 'nullable|numeric|min:0|max:1',
                 'metadata' => 'nullable|array',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $aliasData = $request->all();
             $aliasData['created_by'] = auth()->user()->name ?? 'admin';
-            
+
             $result = $this->canonicalizationService->createAlias($canonicalId, $aliasData);
-            
+
             return response()->json($result);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -225,9 +211,6 @@ class ArtistManagementController extends Controller
 
     /**
      * Initiate artist merge with conflict resolution.
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function mergeArtists(Request $request): JsonResponse
     {
@@ -241,14 +224,14 @@ class ArtistManagementController extends Controller
                 'preserve_aliases' => 'nullable|boolean',
                 'preserve_relationships' => 'nullable|boolean',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $mergeOptions = [
                 'reason' => $request->reason,
                 'notes' => $request->notes,
@@ -257,15 +240,15 @@ class ArtistManagementController extends Controller
                 'preserve_relationships' => $request->get('preserve_relationships', true),
                 'merged_by_user_id' => TenantUserHelper::resolveTenantUserId(),
             ];
-            
+
             $result = $this->canonicalizationService->mergeArtists(
                 $request->source_artist_id,
                 $request->target_artist_id,
                 $mergeOptions
             );
-            
+
             return response()->json($result);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -276,9 +259,6 @@ class ArtistManagementController extends Controller
 
     /**
      * Get merge conflicts for review before merging.
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getMergeConflicts(Request $request): JsonResponse
     {
@@ -287,24 +267,24 @@ class ArtistManagementController extends Controller
                 'source_artist_id' => 'required|integer|exists:artist_canonical,id',
                 'target_artist_id' => 'required|integer|exists:artist_canonical,id|different:source_artist_id',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $conflicts = $this->analyzeMergeConflicts(
                 $request->source_artist_id,
                 $request->target_artist_id
             );
-            
+
             return response()->json([
                 'success' => true,
                 'conflicts' => $conflicts,
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -315,9 +295,6 @@ class ArtistManagementController extends Controller
 
     /**
      * Bulk import aliases from CSV or JSON.
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function bulkImportAliases(Request $request): JsonResponse
     {
@@ -330,18 +307,18 @@ class ArtistManagementController extends Controller
                 'default_alias_type' => 'nullable|in:stage_name,romanized,translated,former_name,nickname,legal_name,localized,abbreviated',
                 'default_language_code' => 'nullable|string|max:5',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $result = $this->processBulkAliasImport($request->all());
-            
+
             return response()->json($result);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -352,20 +329,17 @@ class ArtistManagementController extends Controller
 
     /**
      * Get artist relationship visualization data.
-     * 
-     * @param int $canonicalId
-     * @return JsonResponse
      */
     public function getArtistRelationshipVisualization(int $canonicalId): JsonResponse
     {
         try {
             $visualization = $this->buildRelationshipVisualization($canonicalId);
-            
+
             return response()->json([
                 'success' => true,
                 'visualization' => $visualization,
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -376,9 +350,6 @@ class ArtistManagementController extends Controller
 
     /**
      * Get merge history and audit trail.
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getMergeHistory(Request $request): JsonResponse
     {
@@ -391,18 +362,18 @@ class ArtistManagementController extends Controller
                 'page' => 'nullable|integer|min:1',
                 'per_page' => 'nullable|integer|min:1|max:100',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $history = $this->getMergeHistoryData($request->all());
-            
+
             return response()->json($history);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -424,7 +395,7 @@ class ArtistManagementController extends Controller
                 SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) as inactive_artists
             ')
             ->first();
-        
+
         $aliasStats = DB::table('artist_aliases')
             ->selectRaw('
                 COUNT(*) as total_aliases,
@@ -432,7 +403,7 @@ class ArtistManagementController extends Controller
                 AVG(usage_frequency) as avg_usage_frequency
             ')
             ->first();
-        
+
         return [
             'total_artists' => $stats->total_artists,
             'individual_artists' => $stats->individual_artists,
@@ -476,7 +447,7 @@ class ArtistManagementController extends Controller
             ->groupBy('status')
             ->get()
             ->keyBy('status');
-        
+
         return [
             'pending' => $queueStats->get('pending')->count ?? 0,
             'processing' => $queueStats->get('processing')->count ?? 0,
@@ -493,19 +464,19 @@ class ArtistManagementController extends Controller
             ->leftJoin('artist_aliases as aa', 'ac.id', '=', 'aa.canonical_id')
             ->whereNull('aa.canonical_id')
             ->count();
-        
+
         // Duplicate potential (similar names)
         $potentialDuplicates = DB::table('artist_canonical')
             ->selectRaw('canonical_name, COUNT(*) as count')
             ->groupBy('canonical_name')
             ->having('count', '>', 1)
             ->count();
-        
+
         // Low confidence aliases
         $lowConfidenceAliases = DB::table('artist_aliases')
             ->where('confidence_score', '<', 0.7)
             ->count();
-        
+
         return [
             'artists_without_aliases' => $artistsWithoutAliases,
             'potential_duplicates' => $potentialDuplicates,
@@ -518,26 +489,29 @@ class ArtistManagementController extends Controller
     {
         // Simple quality score calculation
         $totalArtists = DB::table('artist_canonical')->count();
-        if ($totalArtists == 0) return 100.0;
-        
+        if ($totalArtists == 0) {
+            return 100.0;
+        }
+
         $artistsWithAliases = DB::table('artist_canonical as ac')
             ->join('artist_aliases as aa', 'ac.id', '=', 'aa.canonical_id')
             ->distinct('ac.id')
             ->count();
-        
+
         $aliasRatio = $artistsWithAliases / $totalArtists;
+
         return round($aliasRatio * 100, 2);
     }
 
     private function analyzeMergeConflicts(int $sourceArtistId, int $targetArtistId): array
     {
         $conflicts = [];
-        
+
         // Check alias conflicts
         $aliasConflicts = DB::table('artist_aliases as source_alias')
             ->join('artist_aliases as target_alias', function ($join) {
                 $join->on('source_alias.alias_name', '=', 'target_alias.alias_name')
-                     ->on('source_alias.alias_type', '=', 'target_alias.alias_type');
+                    ->on('source_alias.alias_type', '=', 'target_alias.alias_type');
             })
             ->where('source_alias.canonical_id', $sourceArtistId)
             ->where('target_alias.canonical_id', $targetArtistId)
@@ -548,16 +522,16 @@ class ArtistManagementController extends Controller
                 'target_alias.confidence_score as target_confidence',
             ])
             ->get();
-        
+
         if ($aliasConflicts->isNotEmpty()) {
             $conflicts['aliases'] = $aliasConflicts->toArray();
         }
-        
+
         // Check relationship conflicts
         $relationshipConflicts = DB::table('artist_relationships as source_rel')
             ->join('artist_relationships as target_rel', function ($join) {
                 $join->on('source_rel.related_artist_id', '=', 'target_rel.related_artist_id')
-                     ->on('source_rel.relationship_type', '=', 'target_rel.relationship_type');
+                    ->on('source_rel.relationship_type', '=', 'target_rel.relationship_type');
             })
             ->where('source_rel.primary_artist_id', $sourceArtistId)
             ->where('target_rel.primary_artist_id', $targetArtistId)
@@ -568,11 +542,11 @@ class ArtistManagementController extends Controller
                 'target_rel.relationship_strength as target_strength',
             ])
             ->get();
-        
+
         if ($relationshipConflicts->isNotEmpty()) {
             $conflicts['relationships'] = $relationshipConflicts->toArray();
         }
-        
+
         return $conflicts;
     }
 
@@ -582,11 +556,11 @@ class ArtistManagementController extends Controller
         $format = $importData['import_format'];
         $data = $importData['import_data'];
         $overwrite = $importData['overwrite_existing'] ?? false;
-        
+
         $imported = 0;
         $skipped = 0;
         $errors = [];
-        
+
         try {
             if ($format === 'json') {
                 $aliases = json_decode($data, true);
@@ -605,16 +579,16 @@ class ArtistManagementController extends Controller
                     }
                 }
             }
-            
+
             foreach ($aliases as $aliasData) {
                 $aliasData['created_by'] = auth()->user()->name ?? 'bulk_import';
-                
+
                 $result = $this->canonicalizationService->createAlias($canonicalId, $aliasData);
-                
+
                 if ($result['success']) {
                     $imported++;
                 } else {
-                    if (str_contains($result['error'], 'already exists') && !$overwrite) {
+                    if (str_contains($result['error'], 'already exists') && ! $overwrite) {
                         $skipped++;
                     } else {
                         $errors[] = [
@@ -624,14 +598,14 @@ class ArtistManagementController extends Controller
                     }
                 }
             }
-            
+
             return [
                 'success' => true,
                 'imported' => $imported,
                 'skipped' => $skipped,
                 'errors' => $errors,
             ];
-            
+
         } catch (\Exception $e) {
             return [
                 'success' => false,
@@ -644,11 +618,11 @@ class ArtistManagementController extends Controller
     {
         // Get the main artist
         $mainArtist = DB::table('artist_canonical')->where('id', $canonicalId)->first();
-        
-        if (!$mainArtist) {
+
+        if (! $mainArtist) {
             return ['nodes' => [], 'edges' => []];
         }
-        
+
         // Get relationships
         $relationships = DB::table('artist_relationships as ar')
             ->leftJoin('artist_canonical as ac', 'ar.related_artist_id', '=', 'ac.id')
@@ -662,7 +636,7 @@ class ArtistManagementController extends Controller
                 'ar.relationship_strength',
             ])
             ->get();
-        
+
         // Build nodes
         $nodes = [
             [
@@ -670,12 +644,12 @@ class ArtistManagementController extends Controller
                 'label' => $mainArtist->canonical_name,
                 'type' => $mainArtist->canonical_type,
                 'is_main' => true,
-            ]
+            ],
         ];
-        
+
         // Build edges
         $edges = [];
-        
+
         foreach ($relationships as $rel) {
             $nodes[] = [
                 'id' => $rel->related_artist_id,
@@ -683,7 +657,7 @@ class ArtistManagementController extends Controller
                 'type' => $rel->canonical_type,
                 'is_main' => false,
             ];
-            
+
             $edges[] = [
                 'from' => $canonicalId,
                 'to' => $rel->related_artist_id,
@@ -691,7 +665,7 @@ class ArtistManagementController extends Controller
                 'strength' => $rel->relationship_strength,
             ];
         }
-        
+
         return [
             'nodes' => $nodes,
             'edges' => $edges,
@@ -716,38 +690,38 @@ class ArtistManagementController extends Controller
                 'aml.merge_completed_at',
                 'aml.merge_notes',
             ]);
-        
+
         // Apply filters
         if (isset($filters['artist_id'])) {
             $query->where(function ($q) use ($filters) {
                 $q->where('aml.source_artist_id', $filters['artist_id'])
-                  ->orWhere('aml.target_artist_id', $filters['artist_id']);
+                    ->orWhere('aml.target_artist_id', $filters['artist_id']);
             });
         }
-        
+
         if (isset($filters['status'])) {
             $query->where('aml.merge_status', $filters['status']);
         }
-        
+
         if (isset($filters['date_from'])) {
             $query->where('aml.merge_initiated_at', '>=', $filters['date_from']);
         }
-        
+
         if (isset($filters['date_to'])) {
             $query->where('aml.merge_initiated_at', '<=', $filters['date_to']);
         }
-        
+
         // Pagination
         $perPage = $filters['per_page'] ?? 20;
         $page = $filters['page'] ?? 1;
         $offset = ($page - 1) * $perPage;
-        
+
         $total = $query->count();
         $history = $query->orderBy('aml.merge_initiated_at', 'desc')
             ->offset($offset)
             ->limit($perPage)
             ->get();
-        
+
         return [
             'success' => true,
             'history' => $history,

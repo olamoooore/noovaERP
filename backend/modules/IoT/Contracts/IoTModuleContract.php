@@ -9,12 +9,35 @@ use App\Modules\Contracts\BaseModuleContract;
  */
 class IoTModuleContract extends BaseModuleContract
 {
-    public function getKey(): string { return 'iot'; }
-    public function getName(): string { return 'NoovaERP IoT Hub'; }
-    public function getType(): string { return 'addon'; }
-    public function getDescription(): string { return 'Connect and manage IoT devices — printers, payment terminals, scanners, kiosks'; }
-    public function getVersion(): string { return '1.0.0'; }
-    public function getDependencies(): array { return []; }
+    public function getKey(): string
+    {
+        return 'iot';
+    }
+
+    public function getName(): string
+    {
+        return 'NoovaERP IoT Hub';
+    }
+
+    public function getType(): string
+    {
+        return 'addon';
+    }
+
+    public function getDescription(): string
+    {
+        return 'Connect and manage IoT devices — printers, payment terminals, scanners, kiosks';
+    }
+
+    public function getVersion(): string
+    {
+        return '1.0.0';
+    }
+
+    public function getDependencies(): array
+    {
+        return [];
+    }
 
     public function getPermissions(): array
     {
@@ -32,26 +55,26 @@ class IoTModuleContract extends BaseModuleContract
     {
         return [
             'required_setup_steps' => ['device_registration'],
-            'default_settings'     => [],
-            'recommended_roles'    => ['admin'],
+            'default_settings' => [],
+            'recommended_roles' => ['admin'],
         ];
     }
 
     public function getActivationRules(): array
     {
         return [
-            'requires'  => [],
-            'settings'  => [],
-            'min_tier'  => null,
+            'requires' => [],
+            'settings' => [],
+            'min_tier' => null,
         ];
     }
 
     public function getDeactivationRules(): array
     {
         return [
-            'removes_data'       => false,
+            'removes_data' => false,
             'preserves_entities' => [],
-            'cleanup_jobs'       => [],
+            'cleanup_jobs' => [],
         ];
     }
 
@@ -69,9 +92,9 @@ class IoTModuleContract extends BaseModuleContract
     {
         return [
             'has_ai_assistant' => false,
-            'ai_suggestions'   => false,
-            'ai_automation'    => false,
-            'ai_data_access'   => [],
+            'ai_suggestions' => false,
+            'ai_automation' => false,
+            'ai_data_access' => [],
         ];
     }
 }

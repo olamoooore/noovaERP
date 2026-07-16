@@ -45,15 +45,15 @@ class PackagingService
         $matrix = [];
         foreach ($defaults as $key => $default) {
             $matrix[$key] = [
-                'id'           => $default->id,
+                'id' => $default->id,
                 'availability' => $default->availability,
-                'notes'        => $default->notes,
+                'notes' => $default->notes,
             ];
         }
 
         return [
-            'tiers'  => $tiers,
-            'items'  => $items,
+            'tiers' => $tiers,
+            'items' => $items,
             'matrix' => $matrix,
         ];
     }
@@ -89,10 +89,10 @@ class PackagingService
      * This is the primary write operation — called when an admin clicks a cell.
      */
     public function setDefault(
-        PlanFamily   $tier,
-        CatalogItem  $item,
-        string       $availability,
-        ?string      $notes = null,
+        PlanFamily $tier,
+        CatalogItem $item,
+        string $availability,
+        ?string $notes = null,
     ): PlanItemDefault {
         $this->validateAvailability($availability);
 
@@ -110,7 +110,7 @@ class PackagingService
                 ],
                 [
                     'availability' => $availability,
-                    'notes'        => $notes,
+                    'notes' => $notes,
                 ],
             );
         });
@@ -160,7 +160,7 @@ class PackagingService
 
                 PlanItemDefault::updateOrCreate(
                     [
-                        'plan_family_id'  => $tier->id,
+                        'plan_family_id' => $tier->id,
                         'catalog_item_id' => (int) $catalogItemId,
                     ],
                     ['availability' => $availability],
@@ -188,7 +188,7 @@ class PackagingService
     {
         if (! in_array($value, PlanItemDefault::AVAILABILITIES, true)) {
             throw new \InvalidArgumentException(
-                "Invalid availability \"{$value}\". Must be one of: " .
+                "Invalid availability \"{$value}\". Must be one of: ".
                 implode(', ', PlanItemDefault::AVAILABILITIES)
             );
         }

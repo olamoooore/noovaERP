@@ -311,19 +311,22 @@ export function setupContextMenu(editor: Editor): () => void {
   const handleIframeContextMenu = (e: MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    
+
+    if (!editor?.Canvas?.getElement) return false
     const canvas = editor.Canvas.getElement()
     const iframe = canvas?.querySelector('iframe') as HTMLIFrameElement
     if (!iframe) return false
-    
+
     const frameRect = iframe.getBoundingClientRect()
     showMenu(e.clientX + frameRect.left, e.clientY + frameRect.top)
-    
+
     return false
   }
-  
+
   // Setup iframe listener
   const setupIframe = () => {
+    // Editor may have been destroyed by the time this delayed callback runs.
+    if (!editor?.Canvas?.getElement) return
     const canvas = editor.Canvas.getElement()
     const iframe = canvas?.querySelector('iframe') as HTMLIFrameElement
     

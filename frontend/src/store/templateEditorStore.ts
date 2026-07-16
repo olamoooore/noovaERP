@@ -152,6 +152,7 @@ interface EditorState {
   previewHtml: string | null
   previewWarnings: string[]
   loadingPreview: boolean
+  clipboard: Block | null
 
   loadTemplate: (t: DocumentTemplate) => void
   updateMeta: (patch: Partial<DocumentTemplate>) => void
@@ -162,122 +163,220 @@ interface EditorState {
   moveBlockTo: (id: string, parentId: string | null, index: number) => void
   duplicateBlock: (id: string) => void
   updateBlock: (id: string, patch: Partial<Block>) => void
+  copyBlock: (id: string) => void
+  pasteBlock: (parentId?: string | null, index?: number) => void
+  undo: () => void
+  redo: () => void
   markSaved: (t: DocumentTemplate) => void
   setPreview: (html: string | null, warnings: string[]) => void
   setLoadingPreview: (v: boolean) => void
   reset: () => void
 }
 
-export const useTemplateEditorStore = create<EditorState>((set, get) => ({
-  template: null,
-  selectedBlockId: null,
-  dirty: false,
-  previewHtml: null,
-  previewWarnings: [],
-  loadingPreview: false,
+const HISTORY_LIMIT = 50
 
-  loadTemplate: (t) => {
-    const layout: LayoutConfig = t.layout_config
-      ? { blocks: ensureIds(t.layout_config.blocks ?? []) }
-      : { blocks: [] }
-    set({ template: { ...t, layout_config: layout }, selectedBlockId: null, dirty: false, previewHtml: null })
-  },
+export const useTemplateEditorStore = create<EditorState>((set, get) => {
+  // Undo/redo history (ADR-004 §12). Snapshots of the block tree.
+  let past: Block[][] = []
+  let future: Block[][] = []
 
-  updateMeta: (patch) =>
-    set((s) => (s.template ? { template: { ...s.template, ...patch }, dirty: true } : s)),
+  const snapshot = (): Block[] => {
+    const t = get().template?.layout_config?.blocks
+    return t ? (JSON.parse(JSON.stringify(t)) as Block[]) : []
+  }
 
-  selectBlock: (id) => set({ selectedBlockId: id }),
+  /** Push current tree to past, clear future (call BEFORE a mutation). */
+  const commit = (): void => {
+    past = [...past.slice(-(HISTORY_LIMIT - 1)), snapshot()]
+    future = []
+  }
 
-  addBlock: (type, parentId = null, index = -1) => {
+  const replaceBlocks = (next: Block[], extra: Partial<EditorState> = {}): void => {
     const s = get()
     if (!s.template) return
-    const block = createBlock(type)
-    const blocks = s.template.layout_config?.blocks ?? []
-    const next = insertIntoTree(blocks, block, parentId, index)
-    set({
-      template: { ...s.template, layout_config: { blocks: next } },
-      selectedBlockId: block.id,
-      dirty: true,
-    })
-  },
+    set({ template: { ...s.template, layout_config: { blocks: next } }, dirty: true, ...extra })
+  }
 
-  removeBlock: (id) => {
-    const s = get()
-    if (!s.template?.layout_config) return
-    const next = removeFromTree(s.template.layout_config.blocks, id)
-    set({
-      template: { ...s.template, layout_config: { blocks: next } },
-      selectedBlockId: s.selectedBlockId === id ? null : s.selectedBlockId,
-      dirty: true,
-    })
-  },
+  return {
+    template: null,
+    selectedBlockId: null,
+    dirty: false,
+    previewHtml: null,
+    previewWarnings: [],
+    loadingPreview: false,
+    clipboard: null,
 
-  moveBlock: (id, dir) => {
-    const s = get()
-    if (!s.template?.layout_config) return
-    const blocks = s.template.layout_config.blocks
-    const loc = findLocation(blocks, id)
-    if (!loc) return
-    const block = walk(blocks, id)
-    if (!block) return
-    const newIdx = dir === 'up' ? loc.index - 1 : loc.index + 1
-    if (newIdx < 0) return
-    let next = removeFromTree(blocks, id)
-    next = insertIntoTree(next, block, loc.parentId, newIdx)
-    set({ template: { ...s.template, layout_config: { blocks: next } }, dirty: true })
-  },
+    loadTemplate: (t) => {
+      const layout: LayoutConfig = t.layout_config
+        ? { blocks: ensureIds(t.layout_config.blocks ?? []) }
+        : { blocks: [] }
+      past = []
+      future = []
+      set({ template: { ...t, layout_config: layout }, selectedBlockId: null, dirty: false, previewHtml: null })
+    },
 
-  moveBlockTo: (id, parentId, index) => {
-    const s = get()
-    if (!s.template?.layout_config) return
-    const blocks = s.template.layout_config.blocks
-    const block = walk(blocks, id)
-    if (!block) return
-    // Don't allow dropping a block into itself or its own descendant.
-    if (parentId && (parentId === id || isDescendant(blocks, id, parentId))) return
-    let next = removeFromTree(blocks, id)
-    next = insertIntoTree(next, block, parentId, index)
-    set({ template: { ...s.template, layout_config: { blocks: next } }, dirty: true })
-  },
+    updateMeta: (patch) =>
+      set((s) => (s.template ? { template: { ...s.template, ...patch }, dirty: true } : s)),
 
-  duplicateBlock: (id) => {
-    const s = get()
-    if (!s.template?.layout_config) return
-    const blocks = s.template.layout_config.blocks
-    const loc = findLocation(blocks, id)
-    if (!loc) return
-    const block = walk(blocks, id)
-    if (!block) return
-    const clone = JSON.parse(JSON.stringify(block)) as Block
-    const reId = (b: Block) => {
-      b.id = nanoid()
-      if ('children' in b && b.children.length) b.children.forEach(reId)
-    }
-    reId(clone)
-    const next = insertIntoTree(blocks, clone, loc.parentId, loc.index + 1)
-    set({
-      template: { ...s.template, layout_config: { blocks: next } },
-      selectedBlockId: clone.id,
-      dirty: true,
-    })
-  },
+    selectBlock: (id) => set({ selectedBlockId: id }),
 
-  updateBlock: (id, patch) => {
-    const s = get()
-    if (!s.template?.layout_config) return
-    const next = updateInTree(s.template.layout_config.blocks, id, patch)
-    set({ template: { ...s.template, layout_config: { blocks: next } }, dirty: true })
-  },
+    addBlock: (type, parentId = null, index = -1) => {
+      const s = get()
+      if (!s.template) return
+      commit()
+      const block = createBlock(type)
+      const blocks = s.template.layout_config?.blocks ?? []
+      const next = insertIntoTree(blocks, block, parentId, index)
+      set({
+        template: { ...s.template, layout_config: { blocks: next } },
+        selectedBlockId: block.id,
+        dirty: true,
+      })
+    },
 
-  markSaved: (t) => {
-    const s = get()
-    // Preserve the local working layout (server echoes the same) and reset dirty.
-    set({ template: { ...s.template, ...t }, dirty: false })
-  },
+    removeBlock: (id) => {
+      const s = get()
+      if (!s.template?.layout_config) return
+      commit()
+      const next = removeFromTree(s.template.layout_config.blocks, id)
+      set({
+        template: { ...s.template, layout_config: { blocks: next } },
+        selectedBlockId: s.selectedBlockId === id ? null : s.selectedBlockId,
+        dirty: true,
+      })
+    },
 
-  setPreview: (html, warnings) => set({ previewHtml: html, previewWarnings: warnings }),
-  setLoadingPreview: (v) => set({ loadingPreview: v }),
+    moveBlock: (id, dir) => {
+      const s = get()
+      if (!s.template?.layout_config) return
+      const blocks = s.template.layout_config.blocks
+      const loc = findLocation(blocks, id)
+      if (!loc) return
+      const block = walk(blocks, id)
+      if (!block) return
+      const newIdx = dir === 'up' ? loc.index - 1 : loc.index + 1
+      if (newIdx < 0) return
+      commit()
+      let next = removeFromTree(blocks, id)
+      next = insertIntoTree(next, block, loc.parentId, newIdx)
+      replaceBlocks(next)
+    },
 
-  reset: () =>
-    set({ template: null, selectedBlockId: null, dirty: false, previewHtml: null, previewWarnings: [] }),
-}))
+    moveBlockTo: (id, parentId, index) => {
+      const s = get()
+      if (!s.template?.layout_config) return
+      const blocks = s.template.layout_config.blocks
+      const block = walk(blocks, id)
+      if (!block) return
+      // Don't allow dropping a block into itself or its own descendant.
+      if (parentId && (parentId === id || isDescendant(blocks, id, parentId))) return
+      commit()
+      let next = removeFromTree(blocks, id)
+      next = insertIntoTree(next, block, parentId, index)
+      replaceBlocks(next)
+    },
+
+    duplicateBlock: (id) => {
+      const s = get()
+      if (!s.template?.layout_config) return
+      const blocks = s.template.layout_config.blocks
+      const loc = findLocation(blocks, id)
+      if (!loc) return
+      const block = walk(blocks, id)
+      if (!block) return
+      commit()
+      const clone = JSON.parse(JSON.stringify(block)) as Block
+      const reId = (b: Block) => {
+        b.id = nanoid()
+        if ('children' in b && b.children.length) b.children.forEach(reId)
+      }
+      reId(clone)
+      const next = insertIntoTree(blocks, clone, loc.parentId, loc.index + 1)
+      set({
+        template: { ...s.template, layout_config: { blocks: next } },
+        selectedBlockId: clone.id,
+        dirty: true,
+      })
+    },
+
+    updateBlock: (id, patch) => {
+      const s = get()
+      if (!s.template?.layout_config) return
+      commit()
+      const next = updateInTree(s.template.layout_config.blocks, id, patch)
+      replaceBlocks(next)
+    },
+
+    // ADR-004 §12 — copy/paste.
+    copyBlock: (id) => {
+      const s = get()
+      if (!s.template?.layout_config) return
+      const block = walk(s.template.layout_config.blocks, id)
+      if (!block) return
+      const clone = JSON.parse(JSON.stringify(block)) as Block
+      const reId = (b: Block) => {
+        b.id = nanoid()
+        if ('children' in b && b.children.length) b.children.forEach(reId)
+      }
+      reId(clone)
+      set({ clipboard: clone })
+    },
+
+    pasteBlock: (parentId = null, index = -1) => {
+      const s = get()
+      if (!s.template?.layout_config || !s.clipboard) return
+      commit()
+      // Re-id again so repeated pastes produce distinct blocks.
+      const clone = JSON.parse(JSON.stringify(s.clipboard)) as Block
+      const reId = (b: Block) => {
+        b.id = nanoid()
+        if ('children' in b && b.children.length) b.children.forEach(reId)
+      }
+      reId(clone)
+      const next = insertIntoTree(s.template.layout_config.blocks, clone, parentId, index)
+      set({
+        template: { ...s.template, layout_config: { blocks: next } },
+        selectedBlockId: clone.id,
+        dirty: true,
+      })
+    },
+
+    // ADR-004 §12 — undo/redo.
+    undo: () => {
+      if (past.length === 0) return
+      const s = get()
+      if (!s.template?.layout_config) return
+      const current = snapshot()
+      const prev = past[past.length - 1]
+      past = past.slice(0, -1)
+      future = [current, ...future].slice(0, HISTORY_LIMIT)
+      set({ template: { ...s.template, layout_config: { blocks: prev } }, dirty: true })
+    },
+
+    redo: () => {
+      if (future.length === 0) return
+      const s = get()
+      if (!s.template?.layout_config) return
+      const current = snapshot()
+      const nextTree = future[0]
+      future = future.slice(1)
+      past = [...past, current].slice(-HISTORY_LIMIT)
+      set({ template: { ...s.template, layout_config: { blocks: nextTree } }, dirty: true })
+    },
+
+    markSaved: (t) => {
+      const s = get()
+      // Preserve the local working layout (server echoes the same) and reset dirty.
+      set({ template: { ...s.template, ...t }, dirty: false })
+    },
+
+    setPreview: (html, warnings) => set({ previewHtml: html, previewWarnings: warnings }),
+    setLoadingPreview: (v) => set({ loadingPreview: v }),
+
+    reset: () => {
+      past = []
+      future = []
+      set({ template: null, selectedBlockId: null, dirty: false, previewHtml: null, previewWarnings: [], clipboard: null })
+    },
+  }
+})

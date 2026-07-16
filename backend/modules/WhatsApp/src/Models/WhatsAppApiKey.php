@@ -77,7 +77,7 @@ class WhatsAppApiKey extends Model
     public static function webhookTenantLookupTable(): string
     {
         return DB::connection()->getDriverName() === 'pgsql'
-            ? 'public.' . static::webhookTenantLookupBaseTable()
+            ? 'public.'.static::webhookTenantLookupBaseTable()
             : static::webhookTenantLookupBaseTable();
     }
 
@@ -87,7 +87,7 @@ class WhatsAppApiKey extends Model
     public static function generateApiKey(): string
     {
         do {
-            $key = 'wapibiz_' . Str::random(64);
+            $key = 'wapibiz_'.Str::random(64);
         } while (static::where('key', $key)->exists());
 
         return $key;
@@ -115,6 +115,7 @@ class WhatsAppApiKey extends Model
                 return null;
             }
         }
+
         return null;
     }
 
@@ -140,6 +141,7 @@ class WhatsAppApiKey extends Model
                 return null;
             }
         }
+
         return null;
     }
 
@@ -164,16 +166,16 @@ class WhatsAppApiKey extends Model
      */
     public function isValid(): bool
     {
-        return $this->is_active && !$this->isExpired();
+        return $this->is_active && ! $this->isExpired();
     }
 
     public function syncWebhookTenantLookup(): void
     {
-        if (!function_exists('tenant') || !tenant() || !$this->key) {
+        if (! function_exists('tenant') || ! tenant() || ! $this->key) {
             return;
         }
 
-        if (!Schema::hasTable(static::webhookTenantLookupBaseTable())) {
+        if (! Schema::hasTable(static::webhookTenantLookupBaseTable())) {
             return;
         }
 
@@ -193,7 +195,7 @@ class WhatsAppApiKey extends Model
 
     public function deleteWebhookTenantLookup(): void
     {
-        if (!Schema::hasTable(static::webhookTenantLookupBaseTable()) || !$this->key) {
+        if (! Schema::hasTable(static::webhookTenantLookupBaseTable()) || ! $this->key) {
             return;
         }
 
@@ -233,17 +235,17 @@ class WhatsAppApiKey extends Model
     public function getMaskedKey(): string
     {
         $key = $this->key;
-        if (!$key) {
+        if (! $key) {
             return '****';
         }
 
         // Show first 16 chars and last 4 chars
         $length = strlen($key);
         if ($length <= 20) {
-            return substr($key, 0, 8) . '****';
+            return substr($key, 0, 8).'****';
         }
 
-        return substr($key, 0, 16) . '...' . substr($key, -4);
+        return substr($key, 0, 16).'...'.substr($key, -4);
     }
 
     /**

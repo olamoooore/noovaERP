@@ -2,23 +2,23 @@
 
 namespace Modules\EventManagement\Services;
 
-use Modules\EventManagement\Models\Event;
-use Modules\EventManagement\Exceptions\EventManagementException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Modules\EventManagement\Exceptions\EventManagementException;
+use Modules\EventManagement\Models\Event;
 
 /**
  * StaffManagementService
- * 
+ *
  * Handles staff role assignment, zone-based access control, scheduling,
  * and performance tracking for event operations.
- * 
+ *
  * Requirements: 15.2, 15.5
  */
 class StaffManagementService
 {
     private AuditService $auditService;
+
     private TenantSchemaManager $tenantManager;
 
     public function __construct(
@@ -31,19 +31,16 @@ class StaffManagementService
 
     /**
      * Assign staff member to an event with specific role and zone
-     * 
-     * @param int $eventId
-     * @param string $staffUserId
-     * @param array $assignmentData
+     *
      * @return int Assignment ID
      */
     public function assignStaffToEvent(int $eventId, string $staffUserId, array $assignmentData): int
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         // Validate event exists
         $event = Event::where('tenant_id', $tenantId)->findOrFail($eventId);
-        
+
         // Check for existing assignment
         $existingAssignment = DB::table('staff_assignments')
             ->where('event_id', $eventId)
@@ -68,7 +65,7 @@ class StaffManagementService
                 ->whereNull('deleted_at')
                 ->first();
 
-            if (!$zone) {
+            if (! $zone) {
                 throw new EventManagementException("Zone {$assignmentData['zone']} not found for this event");
             }
         }
@@ -81,8 +78,8 @@ class StaffManagementService
             'role' => $assignmentData['role'],
             'zone' => $assignmentData['zone'] ?? null,
             'responsibilities' => $assignmentData['responsibilities'] ?? null,
-            'permissions' => isset($assignmentData['permissions']) 
-                ? json_encode($assignmentData['permissions']) 
+            'permissions' => isset($assignmentData['permissions'])
+                ? json_encode($assignmentData['permissions'])
                 : null,
             'shift_start' => $assignmentData['shift_start'] ?? null,
             'shift_end' => $assignmentData['shift_end'] ?? null,
@@ -116,22 +113,20 @@ class StaffManagementService
 
     /**
      * Update staff assignment details
-     * 
-     * @param int $assignmentId
-     * @param array $updateData
+     *
      * @return bool Success status
      */
     public function updateStaffAssignment(int $assignmentId, array $updateData): bool
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         $assignment = DB::table('staff_assignments')
             ->where('id', $assignmentId)
             ->where('tenant_id', $tenantId)
             ->whereNull('deleted_at')
             ->first();
 
-        if (!$assignment) {
+        if (! $assignment) {
             throw new EventManagementException("Staff assignment not found: {$assignmentId}");
         }
 
@@ -139,8 +134,8 @@ class StaffManagementService
         $updates = array_filter([
             'zone' => $updateData['zone'] ?? null,
             'responsibilities' => $updateData['responsibilities'] ?? null,
-            'permissions' => isset($updateData['permissions']) 
-                ? json_encode($updateData['permissions']) 
+            'permissions' => isset($updateData['permissions'])
+                ? json_encode($updateData['permissions'])
                 : null,
             'shift_start' => $updateData['shift_start'] ?? null,
             'shift_end' => $updateData['shift_end'] ?? null,
@@ -178,22 +173,21 @@ class StaffManagementService
 
     /**
      * Check staff member in/out for their shift
-     * 
-     * @param int $assignmentId
-     * @param string $action 'check_in' or 'check_out'
+     *
+     * @param  string  $action  'check_in' or 'check_out'
      * @return bool Success status
      */
     public function checkInOutStaff(int $assignmentId, string $action): bool
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         $assignment = DB::table('staff_assignments')
             ->where('id', $assignmentId)
             ->where('tenant_id', $tenantId)
             ->whereNull('deleted_at')
             ->first();
 
-        if (!$assignment) {
+        if (! $assignment) {
             throw new EventManagementException("Staff assignment not found: {$assignmentId}");
         }
 
@@ -201,20 +195,20 @@ class StaffManagementService
 
         if ($action === 'check_in') {
             if ($assignment->status === 'checked_in' || $assignment->status === 'active') {
-                throw new EventManagementException("Staff member is already checked in");
+                throw new EventManagementException('Staff member is already checked in');
             }
-            
+
             $updates['status'] = 'checked_in';
             $updates['checked_in_at'] = now();
-            
+
         } elseif ($action === 'check_out') {
             if ($assignment->status === 'checked_out') {
-                throw new EventManagementException("Staff member is already checked out");
+                throw new EventManagementException('Staff member is already checked out');
             }
-            
+
             $updates['status'] = 'checked_out';
             $updates['checked_out_at'] = now();
-            
+
         } else {
             throw new EventManagementException("Invalid action: {$action}");
         }
@@ -240,18 +234,16 @@ class StaffManagementService
 
     /**
      * Update staff member status during event
-     * 
-     * @param int $assignmentId
-     * @param string $status
+     *
      * @return bool Success status
      */
     public function updateStaffStatus(int $assignmentId, string $status): bool
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         $validStatuses = ['assigned', 'checked_in', 'active', 'break', 'checked_out', 'absent'];
-        
-        if (!in_array($status, $validStatuses)) {
+
+        if (! in_array($status, $validStatuses)) {
             throw new EventManagementException("Invalid status: {$status}");
         }
 
@@ -261,7 +253,7 @@ class StaffManagementService
             ->whereNull('deleted_at')
             ->first();
 
-        if (!$assignment) {
+        if (! $assignment) {
             throw new EventManagementException("Staff assignment not found: {$assignmentId}");
         }
 
@@ -289,15 +281,13 @@ class StaffManagementService
 
     /**
      * Get staff assignments for an event
-     * 
-     * @param int $eventId
-     * @param array $filters
+     *
      * @return Collection Staff assignments
      */
     public function getEventStaffAssignments(int $eventId, array $filters = []): Collection
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         $query = DB::table('staff_assignments')
             ->where('event_id', $eventId)
             ->where('tenant_id', $tenantId)
@@ -321,22 +311,20 @@ class StaffManagementService
         }
 
         return $query->orderBy('role')
-                    ->orderBy('zone')
-                    ->orderBy('is_lead', 'desc')
-                    ->get();
+            ->orderBy('zone')
+            ->orderBy('is_lead', 'desc')
+            ->get();
     }
 
     /**
      * Get staff member's assignment history
-     * 
-     * @param string $staffUserId
-     * @param array $filters
+     *
      * @return Collection Assignment history
      */
     public function getStaffAssignmentHistory(string $staffUserId, array $filters = []): Collection
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         $query = DB::table('staff_assignments')
             ->join('events', 'staff_assignments.event_id', '=', 'events.id')
             ->where('staff_assignments.staff_user_id', $staffUserId)
@@ -357,28 +345,26 @@ class StaffManagementService
         }
 
         return $query->select([
-                'staff_assignments.*',
-                'events.title as event_title',
-                'events.event_date',
-                'events.venue'
-            ])
+            'staff_assignments.*',
+            'events.title as event_title',
+            'events.event_date',
+            'events.venue',
+        ])
             ->orderBy('events.event_date', 'desc')
             ->get();
     }
 
     /**
      * Calculate staff performance metrics
-     * 
-     * @param string $staffUserId
-     * @param array $filters
+     *
      * @return array Performance metrics
      */
     public function calculateStaffPerformance(string $staffUserId, array $filters = []): array
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         $assignments = $this->getStaffAssignmentHistory($staffUserId, $filters);
-        
+
         if ($assignments->isEmpty()) {
             return [
                 'staff_user_id' => $staffUserId,
@@ -394,12 +380,12 @@ class StaffManagementService
         $totalAssignments = $assignments->count();
         $ratedAssignments = $assignments->whereNotNull('performance_rating');
         $averageRating = $ratedAssignments->avg('performance_rating');
-        
+
         $attendedAssignments = $assignments->whereNotIn('status', ['absent']);
         $attendanceRate = ($attendedAssignments->count() / $totalAssignments) * 100;
-        
+
         $leadershipAssignments = $assignments->where('is_lead', true)->count();
-        
+
         $rolesPerformed = $assignments->pluck('role')->unique()->values();
         $zonesWorked = $assignments->whereNotNull('zone')->pluck('zone')->unique()->values();
 
@@ -418,15 +404,13 @@ class StaffManagementService
 
     /**
      * Get zone-based access permissions for staff member
-     * 
-     * @param string $staffUserId
-     * @param int $eventId
+     *
      * @return array Access permissions
      */
     public function getStaffZoneAccess(string $staffUserId, int $eventId): array
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         $assignments = DB::table('staff_assignments')
             ->where('staff_user_id', $staffUserId)
             ->where('event_id', $eventId)
@@ -439,7 +423,7 @@ class StaffManagementService
 
         foreach ($assignments as $assignment) {
             $permissions = json_decode($assignment->permissions ?? '[]', true);
-            
+
             if ($assignment->zone) {
                 $zoneAccess[$assignment->zone] = [
                     'role' => $assignment->role,
@@ -466,16 +450,15 @@ class StaffManagementService
 
     /**
      * Generate staff scheduling report for an event
-     * 
-     * @param int $eventId
+     *
      * @return array Scheduling report
      */
     public function generateStaffSchedulingReport(int $eventId): array
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         $assignments = $this->getEventStaffAssignments($eventId);
-        
+
         // Group by role
         $roleBreakdown = $assignments->groupBy('role')->map(function ($roleAssignments, $role) {
             return [
@@ -525,22 +508,20 @@ class StaffManagementService
 
     /**
      * Remove staff assignment
-     * 
-     * @param int $assignmentId
-     * @param string $reason
+     *
      * @return bool Success status
      */
-    public function removeStaffAssignment(int $assignmentId, string $reason = null): bool
+    public function removeStaffAssignment(int $assignmentId, ?string $reason = null): bool
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         $assignment = DB::table('staff_assignments')
             ->where('id', $assignmentId)
             ->where('tenant_id', $tenantId)
             ->whereNull('deleted_at')
             ->first();
 
-        if (!$assignment) {
+        if (! $assignment) {
             throw new EventManagementException("Staff assignment not found: {$assignmentId}");
         }
 
@@ -570,8 +551,7 @@ class StaffManagementService
 
     /**
      * Identify staffing gaps and coverage issues
-     * 
-     * @param Collection $assignments
+     *
      * @return array Coverage gaps
      */
     private function identifyStaffingGaps(Collection $assignments): array
@@ -582,7 +562,7 @@ class StaffManagementService
         $roleGroups = $assignments->groupBy('role');
         foreach ($roleGroups as $role => $roleAssignments) {
             $hasLead = $roleAssignments->where('is_lead', true)->isNotEmpty();
-            if (!$hasLead && $roleAssignments->count() > 1) {
+            if (! $hasLead && $roleAssignments->count() > 1) {
                 $gaps[] = [
                     'type' => 'missing_lead',
                     'role' => $role,

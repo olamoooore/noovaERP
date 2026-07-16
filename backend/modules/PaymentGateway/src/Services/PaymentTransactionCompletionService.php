@@ -9,13 +9,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Ecommerce\Models\WebOrder;
 use Modules\Ecommerce\Services\WebOrderPostingService;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Services\PosPaymentCompletionService;
 use Modules\POS\Services\PosPostingService;
 use Modules\Sales\Models\SalesInvoiceLink;
 use Modules\Sales\Services\SalesOrderService;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PaymentTransactionCompletionService
 {
@@ -36,35 +36,37 @@ class PaymentTransactionCompletionService
 
             $invoice = $transaction->invoice;
 
-            if (!$invoice && !empty($transaction->metadata['pos_order_id'])) {
+            if (! $invoice && ! empty($transaction->metadata['pos_order_id'])) {
                 $posOrder = PosOrder::find($transaction->metadata['pos_order_id']);
 
-                if (!$posOrder) {
+                if (! $posOrder) {
                     throw new \RuntimeException('No invoice or POS order found for transaction.');
                 }
 
                 $this->completePosOrderPayment($transaction, $posOrder, $paymentMethod);
+
                 return $transaction->fresh();
             }
 
-            if (!$invoice && (($transaction->metadata['type'] ?? null) === 'web_order' || !empty($transaction->metadata['order_id']))) {
+            if (! $invoice && (($transaction->metadata['type'] ?? null) === 'web_order' || ! empty($transaction->metadata['order_id']))) {
                 $webOrder = $this->resolveWebOrder($transaction);
 
-                if (!$webOrder) {
+                if (! $webOrder) {
                     throw new \RuntimeException('No invoice, POS order, or web order found for transaction.');
                 }
 
                 $this->completeWebOrderPayment($transaction, $webOrder, $paymentMethod);
+
                 return $transaction->fresh();
             }
 
-            if (!$invoice) {
+            if (! $invoice) {
                 throw new \RuntimeException('No invoice, POS order, or web order found for transaction.');
             }
 
             $existingPayment = Payment::where('reference', $transaction->transaction_id)->first();
 
-            if (!$existingPayment) {
+            if (! $existingPayment) {
                 $this->invoiceService->recordPayment($invoice, [
                     'payment_date' => now(),
                     'amount' => (float) $transaction->amount,
@@ -120,12 +122,12 @@ class PaymentTransactionCompletionService
         }
 
         $invoice = $webOrder->invoice;
-        if (!$invoice) {
+        if (! $invoice) {
             $invoice = $webOrder->convertToInvoice();
             $webOrder->refresh();
         }
 
-        if (!$invoice) {
+        if (! $invoice) {
             throw new \RuntimeException('Invoice not created for web order.');
         }
 
@@ -135,7 +137,7 @@ class PaymentTransactionCompletionService
             $this->normalizeWebOrderPaymentMethod($paymentMethod ?? $transaction->payment_method)
         );
 
-        if (!$entry) {
+        if (! $entry) {
             throw new \RuntimeException('Web order payment was confirmed but posting did not produce a journal entry.');
         }
 
@@ -166,7 +168,7 @@ class PaymentTransactionCompletionService
     {
         $customerId = $posOrder->customer_id;
 
-        if (!$customerId) {
+        if (! $customerId) {
             $walkInCustomer = \App\Models\Customer::firstOrCreate(
                 ['email' => 'walkin@system.local'],
                 [
@@ -235,7 +237,7 @@ class PaymentTransactionCompletionService
             }
         }
 
-        if (!$transaction->transaction_id) {
+        if (! $transaction->transaction_id) {
             return null;
         }
 
@@ -244,7 +246,7 @@ class PaymentTransactionCompletionService
 
     private function awardWebOrderLoyaltyPoints(WebOrder $order): void
     {
-        if (!$order->customer_id || ($order->loyalty_points_earned ?? 0) > 0) {
+        if (! $order->customer_id || ($order->loyalty_points_earned ?? 0) > 0) {
             return;
         }
 
@@ -272,14 +274,14 @@ class PaymentTransactionCompletionService
 
     private function updateWebOrderCustomerStats(WebOrder $order): void
     {
-        if (!$order->customer_id) {
+        if (! $order->customer_id) {
             return;
         }
 
         try {
             $customer = \App\Models\Customer::find($order->customer_id);
 
-            if (!$customer) {
+            if (! $customer) {
                 return;
             }
 

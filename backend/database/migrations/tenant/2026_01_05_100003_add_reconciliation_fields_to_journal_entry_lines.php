@@ -8,7 +8,7 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
-     * 
+     *
      * Add reconciliation tracking fields to journal_entry_lines table
      */
     public function up(): void
@@ -17,7 +17,7 @@ return new class extends Migration
             $table->boolean('reconciled')->default(false)->after('reference');
             $table->foreignId('reconciliation_id')->nullable()->after('reconciled')->constrained('bank_reconciliations')->onDelete('set null');
             $table->date('reconciliation_date')->nullable()->after('reconciliation_id');
-            
+
             $table->index('reconciled');
             $table->index('reconciliation_id');
         });

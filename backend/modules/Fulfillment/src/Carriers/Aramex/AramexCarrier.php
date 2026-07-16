@@ -56,7 +56,7 @@ class AramexCarrier extends AbstractCarrier
         $isInternational = $request->originCountry !== $request->destinationCountry;
 
         foreach ($services as $code => $service) {
-            if (!$isInternational && $code === 'DROP_AND_SHIP') {
+            if (! $isInternational && $code === 'DROP_AND_SHIP') {
                 continue;
             }
 
@@ -99,14 +99,14 @@ class AramexCarrier extends AbstractCarrier
             );
         }
 
-        usort($rates, fn($a, $b) => $a->price <=> $b->price);
+        usort($rates, fn ($a, $b) => $a->price <=> $b->price);
 
         return $rates;
     }
 
     public function createShipment(ShipmentRequest $request): ShipmentResponse
     {
-        $trackingNumber = 'ARN' . strtoupper(bin2hex(random_bytes(8)));
+        $trackingNumber = 'ARN'.strtoupper(bin2hex(random_bytes(8)));
         $trackingUrl = "https://www.aramex.com/track/results?number={$trackingNumber}";
 
         $serviceType = $request->serviceType ?? 'EXPRESS';
@@ -163,7 +163,7 @@ class AramexCarrier extends AbstractCarrier
             statusDescription: 'Shipment in transit',
             estimatedDelivery: now()->addDays(2)->format('Y-m-d'),
             actualDelivery: null,
-            events: array_map(fn($e) => [
+            events: array_map(fn ($e) => [
                 'status' => $e['status'],
                 'description' => $e['description'],
                 'location' => $e['location'],
@@ -179,6 +179,6 @@ class AramexCarrier extends AbstractCarrier
 
     public function validateCredentials(array $config): bool
     {
-        return !empty($config['api_key'] ?? $config['account_id'] ?? $config['customer_code']);
+        return ! empty($config['api_key'] ?? $config['account_id'] ?? $config['customer_code']);
     }
 }

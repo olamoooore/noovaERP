@@ -2,8 +2,8 @@
 
 use App\Http\Controllers\Api\AIApprovalController;
 use Illuminate\Support\Facades\Route;
-use Modules\AI\Http\Controllers\ChatbotController;
 use Modules\AI\Http\Controllers\AIStatusController;
+use Modules\AI\Http\Controllers\ChatbotController;
 use Modules\AI\Http\Controllers\ModuleController;
 
 /*
@@ -16,16 +16,16 @@ use Modules\AI\Http\Controllers\ModuleController;
 */
 
 Route::middleware(['auth:sanctum', 'entitlement:ai'])->prefix('ai')->group(function () {
-    
+
     // AI Service Status
     Route::get('/health', [AIStatusController::class, 'health']);
     Route::get('/info', [AIStatusController::class, 'info']);
-    
+
     // Module Management
     Route::get('/modules', [ModuleController::class, 'index']);
     Route::post('/conversations/{id}/select-module', [ModuleController::class, 'selectModule']);
     Route::get('/conversations/{id}/module', [ModuleController::class, 'getCurrentModule']);
-    
+
     // Chatbot Endpoints
     Route::post('/chat', [ChatbotController::class, 'sendMessage']);
     Route::get('/conversations/{id}/poll', [ChatbotController::class, 'pollMessage']);

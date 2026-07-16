@@ -17,13 +17,13 @@ class StoreEmployeeBiometricSubjectRequest extends FormRequest
 
         return [
             'subject_code' => ['required', 'string', 'max:255'],
-            'type'         => [
+            'type' => [
                 'required',
                 'in:palm_vein,face,fingerprint,rfid',
                 // One subject per modality per employee (ignore soft-deleted rows)
                 "unique:hrm_employee_biometric_subjects,type,NULL,id,employee_id,{$employeeId},deleted_at,NULL",
             ],
-            'status'       => ['nullable', 'in:active,inactive,pending'],
+            'status' => ['nullable', 'in:active,inactive,pending'],
         ];
     }
 

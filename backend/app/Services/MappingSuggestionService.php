@@ -19,7 +19,7 @@ class MappingSuggestionService
     /**
      * Suggest master COA mappings for a list of imported accounts.
      *
-     * @param array $importedAccounts Each: ['code' => '1100', 'name' => 'Accounts Receivable', 'type' => 'asset']
+     * @param  array  $importedAccounts  Each: ['code' => '1100', 'name' => 'Accounts Receivable', 'type' => 'asset']
      * @return array Each: ['imported' => [...], 'suggestion' => [...], 'confidence' => float, 'requires_approval' => bool]
      */
     public function suggestMappings(array $importedAccounts): array
@@ -42,14 +42,14 @@ class MappingSuggestionService
             $requiresApproval = $this->requiresManualApproval($imported, $bestScore);
 
             $results[] = [
-                'imported'          => $imported,
-                'suggestion'        => $bestMatch ? [
+                'imported' => $imported,
+                'suggestion' => $bestMatch ? [
                     'master_node_id' => $bestMatch->id,
-                    'code'           => $bestMatch->code,
-                    'name'           => $bestMatch->name,
+                    'code' => $bestMatch->code,
+                    'name' => $bestMatch->name,
                 ] : null,
-                'confidence'        => round($bestScore, 2),
-                'confidence_level'  => $this->confidenceLevel($bestScore),
+                'confidence' => round($bestScore, 2),
+                'confidence_level' => $this->confidenceLevel($bestScore),
                 'requires_approval' => $requiresApproval,
             ];
         }
@@ -67,7 +67,7 @@ class MappingSuggestionService
         // Code prefix match (weight: 0.4)
         if (isset($imported['code']) && isset($masterNode->code)) {
             $importedCode = ltrim($imported['code'], '0');
-            $masterCode   = ltrim($masterNode->code, '0');
+            $masterCode = ltrim($masterNode->code, '0');
 
             if ($importedCode === $masterCode) {
                 $score += 0.4;
@@ -81,7 +81,7 @@ class MappingSuggestionService
         // Name similarity (weight: 0.35)
         if (isset($imported['name']) && isset($masterNode->name)) {
             $importedName = strtolower(trim($imported['name']));
-            $masterName   = strtolower(trim($masterNode->name));
+            $masterName = strtolower(trim($masterNode->name));
 
             similar_text($importedName, $masterName, $pct);
             $score += ($pct / 100) * 0.35;
@@ -127,8 +127,13 @@ class MappingSuggestionService
 
     private function confidenceLevel(float $score): string
     {
-        if ($score >= 0.8) return 'high';
-        if ($score >= 0.5) return 'medium';
+        if ($score >= 0.8) {
+            return 'high';
+        }
+        if ($score >= 0.5) {
+            return 'medium';
+        }
+
         return 'low';
     }
 }

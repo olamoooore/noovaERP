@@ -49,7 +49,7 @@ export function WebsitesIndex() {
   const createMutation = useMutation({
     mutationFn: async (name: string) => {
       const response = await api.post('/website-builder/websites', { name })
-      return response.data
+      return response.data.data ?? response.data
     },
     onSuccess: (website) => {
       toast({ title: 'Website Created', description: `${website.name} created successfully.` })

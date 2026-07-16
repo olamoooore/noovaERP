@@ -6,10 +6,10 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Migration: Create API Governance Tables - Task 12.1 & 12.2
- * 
+ *
  * Creates comprehensive API governance database schema for contract management,
  * violation tracking, usage analytics, and RBAC permission matrix verification.
- * 
+ *
  * Requirements: 28.1, 28.2, 28.3, 28.4, 28.5
  */
 class CreateApiGovernanceTables extends Migration
@@ -33,7 +33,7 @@ class CreateApiGovernanceTables extends Migration
             $table->timestamp('deprecated_at')->nullable();
             $table->bigInteger('created_by_staff_id')->nullable()->index();
             $table->timestamps();
-            
+
             $table->unique(['endpoint', 'method', 'version', 'is_active']);
             $table->index(['version', 'is_active']);
             $table->index(['deprecated_at', 'is_active']);
@@ -57,7 +57,7 @@ class CreateApiGovernanceTables extends Migration
             $table->timestamp('occurred_at')->index();
             $table->timestamp('resolved_at')->nullable();
             $table->timestamps();
-            
+
             $table->index(['violation_type', 'occurred_at']);
             $table->index(['tenant_id', 'occurred_at']);
             $table->index(['is_resolved', 'severity']);
@@ -83,7 +83,7 @@ class CreateApiGovernanceTables extends Migration
             $table->date('usage_date')->index();
             $table->string('aggregation_period', 20)->default('daily'); // hourly, daily, weekly
             $table->timestamps();
-            
+
             $table->index(['endpoint', 'method', 'usage_date']);
             $table->index(['tenant_id', 'usage_date']);
             $table->index(['consumer_type', 'usage_date']);
@@ -100,7 +100,7 @@ class CreateApiGovernanceTables extends Migration
                 'announced',
                 'deprecated',
                 'sunset_warning',
-                'sunset'
+                'sunset',
             ])->index();
             $table->timestamp('announced_at')->nullable();
             $table->timestamp('deprecated_at')->nullable();
@@ -113,7 +113,7 @@ class CreateApiGovernanceTables extends Migration
             $table->boolean('breaking_change')->default(false)->index();
             $table->bigInteger('created_by_staff_id')->nullable()->index();
             $table->timestamps();
-            
+
             $table->unique(['endpoint', 'method', 'version']);
             $table->index(['deprecation_status', 'sunset_at']);
             $table->index(['breaking_change', 'deprecated_at']);
@@ -129,7 +129,7 @@ class CreateApiGovernanceTables extends Migration
             $table->enum('permission_level', [
                 'allow',
                 'deny',
-                'conditional'
+                'conditional',
             ])->index();
             $table->json('conditions')->nullable(); // Conditional access rules
             $table->json('field_permissions')->nullable(); // Field-level permissions
@@ -139,7 +139,7 @@ class CreateApiGovernanceTables extends Migration
             $table->timestamp('effective_from')->nullable();
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
-            
+
             $table->unique(['role_name', 'endpoint', 'method', 'version', 'is_active']);
             $table->index(['permission_level', 'is_active']);
             $table->index(['expires_at', 'is_active']);
@@ -162,7 +162,7 @@ class CreateApiGovernanceTables extends Migration
             $table->timestamp('tested_at')->index();
             $table->string('test_environment', 50)->default('automated');
             $table->timestamps();
-            
+
             $table->index(['test_suite_id', 'tested_at']);
             $table->index(['test_passed', 'tested_at']);
             $table->index(['role_name', 'test_passed']);
@@ -184,13 +184,13 @@ class CreateApiGovernanceTables extends Migration
             $table->enum('enforcement_action', [
                 'throttle',
                 'reject',
-                'warn'
+                'warn',
             ])->default('throttle');
             $table->timestamp('effective_from')->nullable();
             $table->timestamp('expires_at')->nullable();
             $table->bigInteger('created_by_staff_id')->nullable()->index();
             $table->timestamps();
-            
+
             $table->index(['consumer_type', 'consumer_id', 'is_active']);
             $table->index(['endpoint_pattern', 'method']);
             $table->index(['expires_at', 'is_active']);
@@ -213,7 +213,7 @@ class CreateApiGovernanceTables extends Migration
             $table->timestamp('occurred_at')->index();
             $table->json('violation_context')->nullable(); // Additional context
             $table->timestamps();
-            
+
             $table->index(['consumer_type', 'consumer_id', 'occurred_at']);
             $table->index(['endpoint', 'method', 'occurred_at']);
             $table->index(['enforcement_action', 'occurred_at']);
@@ -235,7 +235,7 @@ class CreateApiGovernanceTables extends Migration
             $table->timestamp('last_used_at')->nullable();
             $table->bigInteger('created_by_staff_id')->nullable()->index();
             $table->timestamps();
-            
+
             $table->index(['consumer_type', 'is_active']);
             $table->index(['tenant_id', 'is_active']);
             $table->index(['last_used_at', 'is_active']);

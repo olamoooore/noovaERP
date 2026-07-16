@@ -18,17 +18,17 @@ class WhatsAppServiceProvider extends ServiceProvider
             if (strpos($class, 'Modules\\WhatsApp\\') !== 0) {
                 return;
             }
-            
+
             // Convert namespace to file path
             $classPath = str_replace('Modules\\WhatsApp\\', '', $class);
             $classPath = str_replace('\\', '/', $classPath);
-            $file = __DIR__ . '/../../src/' . $classPath . '.php';
-            
+            $file = __DIR__.'/../../src/'.$classPath.'.php';
+
             // Also check Console directory for commands
-            if (!file_exists($file)) {
-                $file = __DIR__ . '/../../Console/' . $classPath . '.php';
+            if (! file_exists($file)) {
+                $file = __DIR__.'/../../Console/'.$classPath.'.php';
             }
-            
+
             if (file_exists($file)) {
                 require_once $file;
             }

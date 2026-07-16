@@ -54,7 +54,7 @@ return new class extends Migration
     private function indexExists(string $indexName): bool
     {
         return (bool) DB::selectOne(
-            "SELECT 1 FROM pg_indexes WHERE schemaname = current_schema() AND indexname = ?",
+            'SELECT 1 FROM pg_indexes WHERE schemaname = current_schema() AND indexname = ?',
             [$indexName]
         );
     }

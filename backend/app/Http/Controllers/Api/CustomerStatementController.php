@@ -3,15 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\CustomerStatementMail;
 use App\Models\Customer;
 use App\Models\CustomerStatement;
-use App\Mail\CustomerStatementMail;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
-use Barryvdh\DomPDF\Facade\Pdf;
 
 class CustomerStatementController extends Controller
 {
@@ -47,7 +47,7 @@ class CustomerStatementController extends Controller
             'pdf_path' => $pdfRelativePath,
         ])->save();
 
-        if (!empty($validated['send_email']) && !empty($customer->email)) {
+        if (! empty($validated['send_email']) && ! empty($customer->email)) {
             Mail::to($customer->email)->send(new CustomerStatementMail($statement->fresh()));
             $statement->forceFill([
                 'email_sent' => true,
@@ -118,7 +118,7 @@ class CustomerStatementController extends Controller
                 'date' => $transaction->transaction_date,
                 'type' => $transaction->transaction_type,
                 'document_number' => $transaction->document_number,
-                'description' => ucfirst($transaction->transaction_type) . ' ' . $transaction->document_number,
+                'description' => ucfirst($transaction->transaction_type).' '.$transaction->document_number,
                 'debit' => (float) $transaction->debit,
                 'credit' => (float) $transaction->credit,
                 'balance' => round($runningBalance, 2),

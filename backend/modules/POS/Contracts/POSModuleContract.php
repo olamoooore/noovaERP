@@ -9,11 +9,30 @@ use App\Modules\Contracts\BaseModuleContract;
  */
 class POSModuleContract extends BaseModuleContract
 {
-    public function getKey(): string { return 'pos'; }
-    public function getName(): string { return 'POS'; }
-    public function getType(): string { return 'core'; }
-    public function getDescription(): string { return 'Point of Sale terminal operations and offline queue.'; }
-    public function getVersion(): string { return '1.0.0'; }
+    public function getKey(): string
+    {
+        return 'pos';
+    }
+
+    public function getName(): string
+    {
+        return 'POS';
+    }
+
+    public function getType(): string
+    {
+        return 'core';
+    }
+
+    public function getDescription(): string
+    {
+        return 'Point of Sale terminal operations and offline queue.';
+    }
+
+    public function getVersion(): string
+    {
+        return '1.0.0';
+    }
 
     public function getDependencies(): array
     {
@@ -36,9 +55,9 @@ class POSModuleContract extends BaseModuleContract
     public function getActivationRules(): array
     {
         return [
-            'requires'  => ['sales', 'inventory'],
-            'settings'  => ['terminal_id' => null],
-            'min_tier'  => null,
+            'requires' => ['sales', 'inventory'],
+            'settings' => ['terminal_id' => null],
+            'min_tier' => null,
         ];
     }
 
@@ -54,10 +73,10 @@ class POSModuleContract extends BaseModuleContract
     public function getExternalModeConfig(): array
     {
         return [
-            'supports_coupled'        => true,
-            'supports_decoupled'      => true,
-            'supports_external'       => true,
-            'external_api_endpoints'  => ['/api/v1/pos/orders'],
+            'supports_coupled' => true,
+            'supports_decoupled' => true,
+            'supports_external' => true,
+            'external_api_endpoints' => ['/api/v1/pos/orders'],
         ];
     }
 }

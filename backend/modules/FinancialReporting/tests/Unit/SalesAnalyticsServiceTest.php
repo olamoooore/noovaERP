@@ -2,20 +2,19 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Modules\FinancialReporting\Services\Analytics\SalesAnalyticsService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
 use Carbon\Carbon;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Analytics\SalesAnalyticsService;
+use Tests\TenantTestCase;
 
 class SalesAnalyticsServiceTest extends TenantTestCase
 {
-
     protected SalesAnalyticsService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new SalesAnalyticsService();
+        $this->service = new SalesAnalyticsService;
     }
 
     /** @test */
@@ -102,7 +101,7 @@ class SalesAnalyticsServiceTest extends TenantTestCase
             $result = $this->service->getSalesTrends($filter, $interval);
 
             // Error path won't have interval key
-            if (!isset($result['message'])) {
+            if (! isset($result['message'])) {
                 $this->assertEquals($interval, $result['interval']);
             }
         }
@@ -164,14 +163,14 @@ class SalesAnalyticsServiceTest extends TenantTestCase
     /** @test */
     public function it_uses_default_dates_when_not_provided()
     {
-        $filter = new ReportFilter();
+        $filter = new ReportFilter;
 
         $result = $this->service->getSalesByProduct($filter);
 
         $this->assertIsArray($result);
         $this->assertArrayHasKey('title', $result);
 
-        if (!isset($result['message'])) {
+        if (! isset($result['message'])) {
             $this->assertArrayHasKey('period', $result);
             $this->assertArrayHasKey('start_date', $result['period']);
             $this->assertArrayHasKey('end_date', $result['period']);

@@ -3,18 +3,18 @@
 namespace App\Services\Reconciliation;
 
 use App\Models\ARTransaction;
-use App\Models\JournalEntryLine;
 use App\Models\ChartOfAccount;
+use App\Models\JournalEntryLine;
 use App\Models\ReconciliationControlResult;
 use App\Models\ReconciliationException;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * ARGLReconciliationService
- * 
+ *
  * Provides monthly reconciliation between AR subledger and GL control account.
  * Identifies discrepancies and generates control reports.
  *
@@ -32,40 +32,39 @@ class ARGLReconciliationService
 {
     /**
      * Run AR to GL reconciliation control
-     * 
-     * @param string $asOfDate Date to reconcile as of (YYYY-MM-DD)
-     * @param int|null $controlAccountId Optional specific AR control account
-     * @return ReconciliationControlResult
+     *
+     * @param  string  $asOfDate  Date to reconcile as of (YYYY-MM-DD)
+     * @param  int|null  $controlAccountId  Optional specific AR control account
      */
     public function reconcile(string $asOfDate, ?int $controlAccountId = null): ReconciliationControlResult
     {
         $asOfDate = Carbon::parse($asOfDate);
-        
+
         // Get AR control account if not specified
-        if (!$controlAccountId) {
+        if (! $controlAccountId) {
             $controlAccount = $this->getARControlAccount();
             $controlAccountId = $controlAccount?->id;
         }
-        
-        if (!$controlAccountId) {
+
+        if (! $controlAccountId) {
             throw new \Exception('AR control account not found');
         }
-        
+
         // Get subledger balance
         $subledgerBalance = $this->getSubledgerBalance($asOfDate);
-        
+
         // Get GL control account balance
         $glBalance = $this->getGLBalance($controlAccountId, $asOfDate);
-        
+
         // Calculate difference
         $difference = round($subledgerBalance - $glBalance, 2);
-        
+
         // Identify discrepancies if any
         $discrepancies = [];
         if (abs($difference) > 0.01) {
             $discrepancies = $this->identifyDiscrepancies($asOfDate, $controlAccountId);
         }
-        
+
         // Create control result record
         $result = ReconciliationControlResult::create([
             'control_name' => 'ar_gl_reconciliation',
@@ -80,21 +79,21 @@ class ARGLReconciliationService
         ]);
 
         // Automatically create reconciliation exceptions for each discrepancy
-        if ($result->status === 'failed' && !empty($discrepancies)) {
+        if ($result->status === 'failed' && ! empty($discrepancies)) {
             $this->createExceptionsFromDiscrepancies($result, $discrepancies);
         }
-        
+
         Log::info('AR to GL reconciliation completed', [
             'as_of_date' => $asOfDate->toDateString(),
             'subledger_balance' => $subledgerBalance,
             'gl_balance' => $glBalance,
             'difference' => $difference,
-            'status' => $result->status
+            'status' => $result->status,
         ]);
-        
+
         return $result;
     }
-    
+
     /**
      * Get AR control account from chart of accounts.
      *
@@ -119,7 +118,7 @@ class ARGLReconciliationService
             ->orWhere('name', 'like', '%Accounts Receivable%')
             ->first();
     }
-    
+
     /**
      * Get AR subledger balance as of date
      *
@@ -133,7 +132,7 @@ class ARGLReconciliationService
             ->selectRaw('SUM(debit - credit) as balance')
             ->value('balance') ?? 0.0;
     }
-    
+
     /**
      * Get GL control account balance as of date
      */
@@ -142,22 +141,22 @@ class ARGLReconciliationService
         return JournalEntryLine::where('account_id', $controlAccountId)
             ->whereHas('journalEntry', function ($q) use ($asOfDate) {
                 $q->where('entry_date', '<=', $asOfDate)
-                  ->where('status', 'posted');
+                    ->where('status', 'posted');
             })
             ->selectRaw('SUM(debit - credit) as balance')
             ->value('balance') ?? 0.0;
     }
-    
+
     /**
      * Identify specific discrepancies between subledger and GL
      */
     private function identifyDiscrepancies(Carbon $asOfDate, int $controlAccountId): array
     {
         $discrepancies = [];
-        
+
         // 1. Find unposted invoices
         $unpostedInvoices = $this->findUnpostedInvoices($asOfDate);
-        if (!empty($unpostedInvoices)) {
+        if (! empty($unpostedInvoices)) {
             $discrepancies[] = [
                 'type' => 'unposted_invoices',
                 'description' => 'Invoices in subledger but not posted to GL',
@@ -166,10 +165,10 @@ class ARGLReconciliationService
                 'items' => $unpostedInvoices,
             ];
         }
-        
+
         // 2. Find unposted payments
         $unpostedPayments = $this->findUnpostedPayments($asOfDate);
-        if (!empty($unpostedPayments)) {
+        if (! empty($unpostedPayments)) {
             $discrepancies[] = [
                 'type' => 'unposted_payments',
                 'description' => 'Payments in subledger but not posted to GL',
@@ -178,10 +177,10 @@ class ARGLReconciliationService
                 'items' => $unpostedPayments,
             ];
         }
-        
+
         // 3. Find GL entries without subledger record
         $missingSubledger = $this->findGLEntriesWithoutSubledger($asOfDate, $controlAccountId);
-        if (!empty($missingSubledger)) {
+        if (! empty($missingSubledger)) {
             $discrepancies[] = [
                 'type' => 'missing_subledger',
                 'description' => 'GL entries without corresponding subledger record',
@@ -190,10 +189,10 @@ class ARGLReconciliationService
                 'items' => $missingSubledger,
             ];
         }
-        
+
         // 4. Find timing differences (posted in different periods)
         $timingDifferences = $this->findTimingDifferences($asOfDate, $controlAccountId);
-        if (!empty($timingDifferences)) {
+        if (! empty($timingDifferences)) {
             $discrepancies[] = [
                 'type' => 'timing_differences',
                 'description' => 'Transactions posted in different periods',
@@ -201,10 +200,10 @@ class ARGLReconciliationService
                 'items' => $timingDifferences,
             ];
         }
-        
+
         return $discrepancies;
     }
-    
+
     /**
      * Find invoices in subledger not posted to GL.
      *
@@ -220,7 +219,7 @@ class ARGLReconciliationService
             ->get()
             ->toArray();
     }
-    
+
     /**
      * Find payments in subledger not posted to GL.
      *
@@ -242,7 +241,7 @@ class ARGLReconciliationService
             ->get()
             ->toArray();
     }
-    
+
     /**
      * Find GL entries on the AR control account without a corresponding subledger record.
      *
@@ -253,15 +252,15 @@ class ARGLReconciliationService
         return JournalEntryLine::where('account_id', $controlAccountId)
             ->whereHas('journalEntry', function ($q) use ($asOfDate) {
                 $q->where('entry_date', '<=', $asOfDate)
-                  ->where('status', 'posted');
+                    ->where('status', 'posted');
             })
             ->where(function ($q) {
                 $q->whereNull('reference')
-                  ->orWhereNotExists(function ($sub) {
-                      $sub->select(DB::raw(1))
-                          ->from('ar_transactions')
-                          ->whereColumn('ar_transactions.document_number', 'journal_entry_lines.reference');
-                  });
+                    ->orWhereNotExists(function ($sub) {
+                        $sub->select(DB::raw(1))
+                            ->from('ar_transactions')
+                            ->whereColumn('ar_transactions.document_number', 'journal_entry_lines.reference');
+                    });
             })
             ->join('journal_entries as je', 'je.id', '=', 'journal_entry_lines.journal_entry_id')
             ->select(
@@ -285,7 +284,7 @@ class ARGLReconciliationService
             ])
             ->toArray();
     }
-    
+
     /**
      * Find timing differences between subledger and GL posting.
      *
@@ -311,23 +310,22 @@ class ARGLReconciliationService
             LIMIT 100
         ", [$asOfDate->toDateString(), $controlAccountId]);
     }
-    
+
     /**
      * Generate reconciliation report
-     * 
-     * @param string $asOfDate
+     *
      * @return array Report data
      */
     public function generateReport(string $asOfDate): array
     {
         $result = $this->reconcile($asOfDate);
-        
+
         // Get aging summary
         $agingSummary = $this->getAgingSummary(Carbon::parse($asOfDate));
-        
+
         // Get customer balances
         $customerBalances = $this->getCustomerBalances(Carbon::parse($asOfDate));
-        
+
         return [
             'report_date' => now()->toDateTimeString(),
             'as_of_date' => $asOfDate,
@@ -343,7 +341,7 @@ class ARGLReconciliationService
             'discrepancies' => $result->discrepancies,
         ];
     }
-    
+
     /**
      * Get aging summary for AR.
      *
@@ -368,7 +366,7 @@ class ARGLReconciliationService
                 AND transaction_date <= ?::date
         ", [$date, $date, $date, $date, $date, $date, $date, $date, $date]);
     }
-    
+
     /**
      * Get customer balances
      */
@@ -385,12 +383,11 @@ class ARGLReconciliationService
             ->get()
             ->toArray();
     }
-    
+
     /**
      * Get reconciliation history
-     * 
-     * @param int $limit Number of historical results
-     * @return array
+     *
+     * @param  int  $limit  Number of historical results
      */
     public function getHistory(int $limit = 12): array
     {
@@ -417,31 +414,31 @@ class ARGLReconciliationService
 
     /**
      * Create reconciliation exceptions from discrepancies
-     * 
+     *
      * Idempotent: only creates exceptions for items that don't already have an open exception
      */
     private function createExceptionsFromDiscrepancies(ReconciliationControlResult $result, array $discrepancies): void
     {
         foreach ($discrepancies as $discrepancy) {
             $exceptionType = $this->mapDiscrepancyType($discrepancy['type']);
-            
+
             foreach ($discrepancy['items'] ?? [] as $item) {
                 $reference = $item['document_number'] ?? $item['reference'] ?? null;
-                
+
                 // Skip if no reference to track
-                if (!$reference) {
+                if (! $reference) {
                     continue;
                 }
-                
+
                 // Idempotent: check if an open exception already exists for this reference
                 $existingException = ReconciliationException::where('reference', $reference)
                     ->whereIn('status', [ReconciliationException::STATUS_OPEN, ReconciliationException::STATUS_IN_PROGRESS])
                     ->first();
-                
+
                 if ($existingException) {
                     continue;
                 }
-                
+
                 ReconciliationException::create([
                     'exception_type' => $exceptionType,
                     'amount' => $item['amount'] ?? $item['total_amount'] ?? null,
@@ -456,7 +453,7 @@ class ARGLReconciliationService
                 ]);
             }
         }
-        
+
         Log::info('AR reconciliation exceptions created', [
             'control_result_id' => $result->id,
             'discrepancy_count' => count($discrepancies),

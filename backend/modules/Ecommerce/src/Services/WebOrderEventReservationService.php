@@ -38,6 +38,7 @@ class WebOrderEventReservationService
                         'reserved_until' => now()->addMinutes(self::RESERVATION_MINUTES),
                         'updated_at' => now(),
                     ]);
+
                 continue;
             }
 
@@ -141,7 +142,7 @@ class WebOrderEventReservationService
             ->where('reserved_until', '<=', now())
             ->orderBy('id');
 
-        if (!empty($eventIds)) {
+        if (! empty($eventIds)) {
             $query->whereIn('event_id', $eventIds);
         }
 
@@ -189,7 +190,7 @@ class WebOrderEventReservationService
 
         return $orderItems->reduce(function (Collection $carry, $item) use ($events) {
             $event = $events->get((int) $item->product_id);
-            if (!$event) {
+            if (! $event) {
                 return $carry;
             }
 
@@ -204,7 +205,7 @@ class WebOrderEventReservationService
     private function generateReservationToken(): string
     {
         do {
-            $token = 'WOR_' . strtoupper(Str::random(20));
+            $token = 'WOR_'.strtoupper(Str::random(20));
         } while (DB::table('web_order_event_reservations')->where('reservation_token', $token)->exists());
 
         return $token;

@@ -17,7 +17,7 @@ class FeatureController
         $query = FeatureModel::query()
             ->when($request->has('search'), function ($q) use ($request) {
                 $q->where('name', 'like', "%{$request->search}%")
-                  ->orWhere('key', 'like', "%{$request->search}%");
+                    ->orWhere('key', 'like', "%{$request->search}%");
             })
             ->when($request->has('key'), function ($q) use ($request) {
                 $q->where('key', $request->key);

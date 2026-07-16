@@ -2,26 +2,32 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TenantTestCase;
-use Modules\OCRBookkeeping\Models\OcrDocument;
-use Modules\OCRBookkeeping\Services\OcrPostingService;
+use App\Models\ChartOfAccount;
+use App\Models\FiscalPeriod;
 use App\Models\Product;
 use App\Models\StockMovement;
-use App\Models\ChartOfAccount;
-use App\Models\Vendor;
-use App\Models\FiscalPeriod;
 use App\Models\User;
+use App\Models\Vendor;
 use App\Models\Warehouse;
 use Carbon\Carbon;
+use Modules\OCRBookkeeping\Models\OcrDocument;
+use Modules\OCRBookkeeping\Services\OcrPostingService;
+use Tests\TenantTestCase;
 
 class InventoryIntegrationTest extends TenantTestCase
 {
     protected User $user;
+
     protected OcrPostingService $service;
+
     protected Vendor $vendor;
+
     protected Product $product;
+
     protected ChartOfAccount $inventoryAccount;
+
     protected ChartOfAccount $payableAccount;
+
     protected Warehouse $warehouse;
 
     protected function setUp(): void

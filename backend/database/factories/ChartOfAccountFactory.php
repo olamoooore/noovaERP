@@ -2,8 +2,8 @@
 
 namespace Database\Factories;
 
-use Illuminate\Database\Eloquent\Factories\Factory;
 use App\Models\ChartOfAccount;
+use Illuminate\Database\Eloquent\Factories\Factory;
 
 class ChartOfAccountFactory extends Factory
 {
@@ -29,5 +29,4 @@ class ChartOfAccountFactory extends Factory
             'is_active' => true,
         ];
     }
-
-    }
+}

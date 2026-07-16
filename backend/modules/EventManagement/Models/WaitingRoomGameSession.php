@@ -57,10 +57,11 @@ class WaitingRoomGameSession extends Model
 
     public function canPlay(): bool
     {
-        if (!$this->isActive()) {
+        if (! $this->isActive()) {
             return false;
         }
         $maxPlays = $this->game?->max_plays_per_session ?? 3;
+
         return $this->play_count < $maxPlays;
     }
 
@@ -71,7 +72,7 @@ class WaitingRoomGameSession extends Model
         $this->play_results = $results;
         $this->total_score += $score;
         $this->play_count++;
-        if (!$this->started_at) {
+        if (! $this->started_at) {
             $this->started_at = now();
         }
         $this->save();

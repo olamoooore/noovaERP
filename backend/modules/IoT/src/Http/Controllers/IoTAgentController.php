@@ -4,17 +4,17 @@ namespace Modules\IoT\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
+use App\Models\Tenant;
 use Illuminate\Http\Request;
-use Modules\IoT\Models\IoTDevice;
-use Modules\IoT\Services\DeviceManager;
-use Modules\IoT\Services\AgentHttpClient;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use App\Models\Tenant;
+use Modules\IoT\Models\IoTDevice;
+use Modules\IoT\Services\AgentHttpClient;
+use Modules\IoT\Services\DeviceManager;
 
 /**
  * IoT Agent Controller
- * 
+ *
  * Manages Local Agent connections, registration, and health monitoring.
  */
 class IoTAgentController extends Controller
@@ -27,7 +27,6 @@ class IoTAgentController extends Controller
     /**
      * Register a new Local Agent.
      *
-     * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function register(Request $request)
@@ -52,7 +51,7 @@ class IoTAgentController extends Controller
                 $query->where('domain', $validated['tenant']);
             })->first();
 
-            if (!$tenant) {
+            if (! $tenant) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Tenant not found',
@@ -96,10 +95,10 @@ class IoTAgentController extends Controller
 
             // Register connected devices
             $registeredDevices = [];
-            if (!empty($validated['devices'])) {
+            if (! empty($validated['devices'])) {
                 foreach ($validated['devices'] as $deviceData) {
                     $device = IoTDevice::create([
-                        'name' => $deviceData['model'] ?? $deviceData['vendor'] . ' ' . $deviceData['type'],
+                        'name' => $deviceData['model'] ?? $deviceData['vendor'].' '.$deviceData['type'],
                         'type' => $deviceData['type'],
                         'vendor' => $deviceData['vendor'],
                         'agent_id' => $validated['agent_id'],
@@ -147,7 +146,7 @@ class IoTAgentController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Agent registration failed: ' . $e->getMessage(),
+                'message' => 'Agent registration failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -155,7 +154,6 @@ class IoTAgentController extends Controller
     /**
      * Agent heartbeat endpoint.
      *
-     * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function heartbeat(Request $request)
@@ -175,7 +173,7 @@ class IoTAgentController extends Controller
                 $query->where('domain', $validated['tenant']);
             })->first();
 
-            if (!$tenant) {
+            if (! $tenant) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Tenant not found',
@@ -190,7 +188,7 @@ class IoTAgentController extends Controller
                 ->where('agent_id', $validated['agent_id'])
                 ->first();
 
-            if (!$agentDevice) {
+            if (! $agentDevice) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Agent not found',
@@ -201,20 +199,20 @@ class IoTAgentController extends Controller
             $agentDevice->markOnline();
 
             // Update device statuses
-            if (!empty($validated['devices'])) {
+            if (! empty($validated['devices'])) {
                 // Get all devices for this agent
                 $agentDevices = IoTDevice::where('agent_id', $validated['agent_id'])->get();
-                
+
                 foreach ($validated['devices'] as $deviceData) {
                     // Find device by agent_device_id in decrypted config
                     $device = $agentDevices->first(function ($d) use ($deviceData) {
-                        return isset($d->config['agent_device_id']) && 
+                        return isset($d->config['agent_device_id']) &&
                                $d->config['agent_device_id'] === $deviceData['device_id'];
                     });
 
                     if ($device) {
                         $device->markOnline();
-                        
+
                         // Log status change if different
                         if ($device->status !== $deviceData['status']) {
                             $device->logAction('status_change', 'info', [
@@ -248,8 +246,7 @@ class IoTAgentController extends Controller
     /**
      * Get agent health status.
      *
-     * @param Request $request
-     * @param IoTDevice $device
+     * @param  IoTDevice  $device
      * @return \Illuminate\Http\JsonResponse
      */
     public function health(Request $request, $device)
@@ -265,7 +262,7 @@ class IoTAgentController extends Controller
         try {
             $driver = $this->deviceManager->getDriver($device);
 
-            if (!method_exists($driver, 'getAgentHealth')) {
+            if (! method_exists($driver, 'getAgentHealth')) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Driver does not support agent health check',
@@ -287,7 +284,7 @@ class IoTAgentController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Health check failed: ' . $e->getMessage(),
+                'message' => 'Health check failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -295,7 +292,6 @@ class IoTAgentController extends Controller
     /**
      * Unregister an agent.
      *
-     * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function unregister(Request $request)
@@ -311,7 +307,7 @@ class IoTAgentController extends Controller
                 $query->where('domain', $validated['tenant']);
             })->first();
 
-            if (!$tenant) {
+            if (! $tenant) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Tenant not found',
@@ -326,7 +322,7 @@ class IoTAgentController extends Controller
                 ->where('agent_id', $validated['agent_id'])
                 ->first();
 
-            if (!$agentDevice) {
+            if (! $agentDevice) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Agent not found',
@@ -335,7 +331,7 @@ class IoTAgentController extends Controller
 
             // Find and deactivate all devices connected to this agent
             $connectedDevices = IoTDevice::where('agent_id', $validated['agent_id'])->get();
-            
+
             foreach ($connectedDevices as $device) {
                 $device->update(['is_active' => false]);
                 $device->logAction('unregistered', 'info', [
@@ -364,19 +360,17 @@ class IoTAgentController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Unregistration failed: ' . $e->getMessage(),
+                'message' => 'Unregistration failed: '.$e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Verify agent connection.
-     * 
+     *
      * This endpoint verifies if a Local Agent is reachable via UMP middleware.
      * It does NOT require the agent to be registered in the database first.
      *
-     * @param Request $request
-     * @param string $agentId
      * @return \Illuminate\Http\JsonResponse
      */
     public function verifyAgent(Request $request, string $agentId)
@@ -392,7 +386,7 @@ class IoTAgentController extends Controller
                 ?? ($agentDevice?->config['agent_url'] ?? null)
                 ?? Setting::getValue('iot_agent_url');
 
-            if (!$agentUrl) {
+            if (! $agentUrl) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Agent URL not configured. Set it in IoT Device config (agent_url) or Settings (iot_agent_url).',
@@ -448,6 +442,7 @@ class IoTAgentController extends Controller
 
                 if ($response->successful()) {
                     $healthData = $response->json();
+
                     return response()->json([
                         'success' => true,
                         'message' => 'Agent is online and responding (direct)',
@@ -489,7 +484,7 @@ class IoTAgentController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Verification failed: ' . $e->getMessage(),
+                'message' => 'Verification failed: '.$e->getMessage(),
             ], 500);
         }
     }

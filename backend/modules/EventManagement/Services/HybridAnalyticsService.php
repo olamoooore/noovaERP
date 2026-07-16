@@ -2,17 +2,19 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Redis;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 use Exception;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
 
 class HybridAnalyticsService
 {
     private const REDIS_PREFIX = 'analytics:';
+
     private const CACHE_TTL = 3600; // 1 hour
+
     private const BATCH_SIZE = 1000;
 
     private $redis;
@@ -45,7 +47,7 @@ class HybridAnalyticsService
                 'key' => $key,
                 'delta' => $delta,
                 'dimensions' => $dimensions,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
         }
     }
@@ -57,6 +59,7 @@ class HybridAnalyticsService
     {
         try {
             $redisKey = $this->buildRedisKey($metric, $key, $dimensions);
+
             return (int) $this->redis->get($redisKey) ?: 0;
 
         } catch (Exception $e) {
@@ -64,7 +67,7 @@ class HybridAnalyticsService
                 'metric' => $metric,
                 'key' => $key,
                 'dimensions' => $dimensions,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return 0;
@@ -102,7 +105,7 @@ class HybridAnalyticsService
                 'metric' => $metric,
                 'start_time' => $startTime->toISOString(),
                 'end_time' => $endTime->toISOString(),
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             throw $e;
@@ -302,7 +305,7 @@ class HybridAnalyticsService
 
             Log::info("Completed backfill for {$metric}", [
                 'start_date' => $startDate->toDateString(),
-                'end_date' => $endDate->toDateString()
+                'end_date' => $endDate->toDateString(),
             ]);
 
         } catch (Exception $e) {
@@ -310,7 +313,7 @@ class HybridAnalyticsService
                 'metric' => $metric,
                 'start_date' => $startDate->toDateString(),
                 'end_date' => $endDate->toDateString(),
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             throw $e;
@@ -334,7 +337,7 @@ class HybridAnalyticsService
             $redisPattern = $this->buildRedisKey($metric, $date->format('Y-m-d'), []);
             $keys = $this->redis->keys("{$redisPattern}*");
 
-            if (!empty($keys)) {
+            if (! empty($keys)) {
                 $this->redis->del($keys);
             }
 
@@ -342,7 +345,7 @@ class HybridAnalyticsService
             Log::error('Failed to invalidate analytics cache', [
                 'metric' => $metric,
                 'date' => $date->toDateString(),
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
         }
     }
@@ -366,7 +369,7 @@ class HybridAnalyticsService
             Log::error('Failed to get hybrid analytics', [
                 'metric' => $metric,
                 'filters' => $filters,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             throw $e;
@@ -378,8 +381,9 @@ class HybridAnalyticsService
      */
     private function buildRedisKey(string $metric, string $key, array $dimensions = []): string
     {
-        $dimensionString = empty($dimensions) ? '' : ':' . implode(':', array_values($dimensions));
-        return self::REDIS_PREFIX . "{$metric}:{$key}{$dimensionString}";
+        $dimensionString = empty($dimensions) ? '' : ':'.implode(':', array_values($dimensions));
+
+        return self::REDIS_PREFIX."{$metric}:{$key}{$dimensionString}";
     }
 
     /**
@@ -404,7 +408,7 @@ class HybridAnalyticsService
                 'cache_value' => json_encode(['key' => $key, 'dimensions' => $dimensions]),
                 'calculated_at' => Carbon::now(),
                 'expires_at' => Carbon::now()->addHours(24),
-                'is_dirty' => true
+                'is_dirty' => true,
             ]
         );
     }
@@ -423,7 +427,7 @@ class HybridAnalyticsService
                 'cache_value' => json_encode($results),
                 'calculated_at' => Carbon::now(),
                 'expires_at' => Carbon::now()->addHours(24),
-                'is_dirty' => false
+                'is_dirty' => false,
             ]
         );
     }
@@ -442,7 +446,7 @@ class HybridAnalyticsService
             'metric' => $metric,
             'date' => $today,
             'value' => $counter,
-            'type' => 'real_time'
+            'type' => 'real_time',
         ];
     }
 
@@ -476,7 +480,7 @@ class HybridAnalyticsService
         return [
             'real_time' => $realTimeData,
             'batch' => $batchData,
-            'merged_at' => Carbon::now()->toISOString()
+            'merged_at' => Carbon::now()->toISOString(),
         ];
     }
 }

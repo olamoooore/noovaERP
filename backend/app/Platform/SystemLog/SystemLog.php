@@ -7,9 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 class SystemLog extends Model
 {
     protected $table = 'platform_system_logs';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
+
     protected $guarded = [];
 
     protected $casts = [

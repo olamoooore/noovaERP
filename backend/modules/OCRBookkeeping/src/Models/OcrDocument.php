@@ -2,21 +2,21 @@
 
 namespace Modules\OCRBookkeeping\Models;
 
-use Database\Factories\OcrDocumentFactory;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Support\Str;
-use App\Models\Vendor;
 use App\Models\JournalEntry;
 use App\Models\User;
+use App\Models\Vendor;
+use Database\Factories\OcrDocumentFactory;
+use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * OCR Document Model
- * 
+ *
  * Represents an uploaded document and tracks its processing lifecycle.
  * Status flow: PENDING -> PROCESSING -> NEEDS_REVIEW -> POSTED / PROMOTED
  *              PROCESSING -> EXTRACTION_FAILED (on error)
@@ -114,7 +114,6 @@ class OcrDocument extends Model
     /**
      * Relationships
      */
-
     public function vendor(): BelongsTo
     {
         return $this->belongsTo(Vendor::class, 'vendor_id');
@@ -143,7 +142,6 @@ class OcrDocument extends Model
     /**
      * Scopes
      */
-
     public function scopePending($query)
     {
         return $query->where('status', 'PENDING');
@@ -177,10 +175,9 @@ class OcrDocument extends Model
     /**
      * Accessors
      */
-
     public function getFileUrlAttribute(): ?string
     {
-        if (!$this->file_path) {
+        if (! $this->file_path) {
             return null;
         }
 
@@ -190,7 +187,6 @@ class OcrDocument extends Model
     /**
      * Helper Methods
      */
-
     public function isPending(): bool
     {
         return $this->status === 'PENDING';
@@ -228,14 +224,14 @@ class OcrDocument extends Model
 
     public function canBePosted(): bool
     {
-        return $this->status === 'NEEDS_REVIEW' 
-            && $this->total_amount !== null 
+        return $this->status === 'NEEDS_REVIEW'
+            && $this->total_amount !== null
             && $this->document_date !== null;
     }
 
     public function canBeDeleted(): bool
     {
-        return !in_array($this->status, ['POSTED', 'PROMOTED']);
+        return ! in_array($this->status, ['POSTED', 'PROMOTED']);
     }
 
     /**
@@ -244,8 +240,6 @@ class OcrDocument extends Model
      *
      * Delegates GL reversal to OcrPostingService to avoid calling PostingEngine
      * directly from the model layer (WS-08 FIX-03).
-     *
-     * @return bool
      */
     public function unpost(): bool
     {
@@ -266,7 +260,7 @@ class OcrDocument extends Model
      */
     public function markAsProcessing(): bool
     {
-        if (!$this->isPending() && !$this->hasFailed()) {
+        if (! $this->isPending() && ! $this->hasFailed()) {
             throw new \Exception("Cannot mark document as processing. Current status: {$this->status}");
         }
 
@@ -279,13 +273,12 @@ class OcrDocument extends Model
     /**
      * Mark document as needs review with OCR data
      * Transition: PROCESSING -> NEEDS_REVIEW
-     * 
-     * @param array $ocrData The extracted OCR data
-     * @return bool
+     *
+     * @param  array  $ocrData  The extracted OCR data
      */
     public function markAsNeedsReview(array $ocrData): bool
     {
-        if (!$this->isProcessing()) {
+        if (! $this->isProcessing()) {
             throw new \Exception("Cannot mark document as needs review. Current status: {$this->status}");
         }
 
@@ -309,13 +302,12 @@ class OcrDocument extends Model
     /**
      * Mark document as extraction failed
      * Transition: PROCESSING -> EXTRACTION_FAILED
-     * 
-     * @param string $error The error message
-     * @return bool
+     *
+     * @param  string  $error  The error message
      */
     public function markAsExtractionFailed(string $error): bool
     {
-        if (!$this->isProcessing()) {
+        if (! $this->isProcessing()) {
             throw new \Exception("Cannot mark document as failed. Current status: {$this->status}");
         }
 
@@ -328,18 +320,17 @@ class OcrDocument extends Model
     /**
      * Mark document as posted
      * Transition: NEEDS_REVIEW -> POSTED
-     * 
-     * @param JournalEntry $journalEntry The created journal entry
-     * @return bool
+     *
+     * @param  JournalEntry  $journalEntry  The created journal entry
      */
     public function markAsPosted(JournalEntry $journalEntry): bool
     {
-        if (!$this->needsReview()) {
+        if (! $this->needsReview()) {
             throw new \Exception("Cannot mark document as posted. Current status: {$this->status}");
         }
 
-        if (!$this->canBePosted()) {
-            throw new \Exception("Document is not ready to be posted. Missing required fields.");
+        if (! $this->canBePosted()) {
+            throw new \Exception('Document is not ready to be posted. Missing required fields.');
         }
 
         return $this->update([
@@ -353,12 +344,10 @@ class OcrDocument extends Model
     /**
      * Reset document to pending for retry
      * Transition: EXTRACTION_FAILED -> PENDING
-     * 
-     * @return bool
      */
     public function resetForRetry(): bool
     {
-        if (!$this->hasFailed()) {
+        if (! $this->hasFailed()) {
             throw new \Exception("Can only retry failed documents. Current status: {$this->status}");
         }
 
@@ -374,13 +363,13 @@ class OcrDocument extends Model
 
     /**
      * Get confidence score for a specific field
-     * 
-     * @param string $field The field name (e.g., 'vendor_name', 'total_amount', 'document_date')
+     *
+     * @param  string  $field  The field name (e.g., 'vendor_name', 'total_amount', 'document_date')
      * @return float|null The confidence score (0-1) or null if not available
      */
     public function getConfidenceScore(string $field): ?float
     {
-        if (!$this->ocr_confidence_scores || !is_array($this->ocr_confidence_scores)) {
+        if (! $this->ocr_confidence_scores || ! is_array($this->ocr_confidence_scores)) {
             return null;
         }
 
@@ -390,8 +379,6 @@ class OcrDocument extends Model
     /**
      * Check if all critical fields have high confidence (>70%)
      * Critical fields: total_amount, document_date
-     * 
-     * @return bool
      */
     public function isHighConfidence(): bool
     {
@@ -400,7 +387,7 @@ class OcrDocument extends Model
 
         foreach ($criticalFields as $field) {
             $score = $this->getConfidenceScore($field);
-            
+
             // If score is null or below threshold, return false
             if ($score === null || $score < $threshold) {
                 return false;
@@ -412,12 +399,12 @@ class OcrDocument extends Model
 
     /**
      * Get all fields with low confidence (<70%)
-     * 
+     *
      * @return array Array of field names with low confidence
      */
     public function getLowConfidenceFields(): array
     {
-        if (!$this->ocr_confidence_scores || !is_array($this->ocr_confidence_scores)) {
+        if (! $this->ocr_confidence_scores || ! is_array($this->ocr_confidence_scores)) {
             return [];
         }
 
@@ -435,17 +422,17 @@ class OcrDocument extends Model
 
     /**
      * Get average confidence score across all fields
-     * 
+     *
      * @return float|null Average confidence score or null if no scores available
      */
     public function getAverageConfidence(): ?float
     {
-        if (!$this->ocr_confidence_scores || !is_array($this->ocr_confidence_scores)) {
+        if (! $this->ocr_confidence_scores || ! is_array($this->ocr_confidence_scores)) {
             return null;
         }
 
         $scores = array_values($this->ocr_confidence_scores);
-        
+
         if (empty($scores)) {
             return null;
         }
@@ -455,14 +442,13 @@ class OcrDocument extends Model
 
     /**
      * Check if a specific field needs mandatory verification
-     * 
-     * @param string $field The field name
-     * @return bool
+     *
+     * @param  string  $field  The field name
      */
     public function fieldNeedsVerification(string $field): bool
     {
         $score = $this->getConfidenceScore($field);
-        
+
         if ($score === null) {
             return true; // No score means needs verification
         }
@@ -477,10 +463,9 @@ class OcrDocument extends Model
     /**
      * Update with optimistic locking
      * Checks if the document was modified since it was loaded
-     * 
-     * @param array $attributes
-     * @param string $expectedUpdatedAt ISO 8601 timestamp from client
-     * @return bool
+     *
+     * @param  string  $expectedUpdatedAt  ISO 8601 timestamp from client
+     *
      * @throws \Modules\OCRBookkeeping\Exceptions\OcrConcurrentModificationException
      */
     public function updateWithLock(array $attributes, string $expectedUpdatedAt): bool
@@ -490,7 +475,7 @@ class OcrDocument extends Model
         $current = \Carbon\Carbon::parse($this->updated_at);
 
         // Check if document was modified since client loaded it
-        if (!$current->equalTo($expected)) {
+        if (! $current->equalTo($expected)) {
             throw new \Modules\OCRBookkeeping\Exceptions\OcrConcurrentModificationException(
                 'Document was modified by another user. Please refresh and try again.',
                 [
@@ -507,9 +492,7 @@ class OcrDocument extends Model
 
     /**
      * Check if document can be posted with optimistic locking
-     * 
-     * @param string $expectedUpdatedAt
-     * @return bool
+     *
      * @throws \Modules\OCRBookkeeping\Exceptions\OcrConcurrentModificationException
      */
     public function canBePostedWithLock(string $expectedUpdatedAt): bool
@@ -518,7 +501,7 @@ class OcrDocument extends Model
         $expected = \Carbon\Carbon::parse($expectedUpdatedAt);
         $current = \Carbon\Carbon::parse($this->updated_at);
 
-        if (!$current->equalTo($expected)) {
+        if (! $current->equalTo($expected)) {
             throw new \Modules\OCRBookkeeping\Exceptions\OcrConcurrentModificationException(
                 'Document was modified by another user. Please refresh and try again.',
                 [

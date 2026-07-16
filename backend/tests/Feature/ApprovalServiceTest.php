@@ -6,16 +6,19 @@ namespace Tests\Feature;
 
 use App\Models\ApprovalRequest;
 use App\Models\User;
-use App\Platform\Approvals\ApprovalService;
-use App\Platform\Approvals\ApprovalPolicy;
 use App\Platform\Approvals\ApprovalDelegation;
+use App\Platform\Approvals\ApprovalPolicy;
+use App\Platform\Approvals\ApprovalService;
 use Tests\TenantTestCase;
 
 class ApprovalServiceTest extends TenantTestCase
 {
     protected ApprovalService $service;
+
     protected User $userA;
+
     protected User $userB;
+
     protected User $admin;
 
     protected function setUp(): void

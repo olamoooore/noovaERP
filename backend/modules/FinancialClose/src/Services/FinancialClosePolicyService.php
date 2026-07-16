@@ -14,11 +14,12 @@ class FinancialClosePolicyService
         // Deny by default if feature key is not recognised
         $allowedFeatures = config('financial_close.features', []);
 
-        if (!in_array($featureKey, $allowedFeatures)) {
+        if (! in_array($featureKey, $allowedFeatures)) {
             Log::warning('FinancialClose: unknown feature key denied', [
                 'tenant_id' => $tenantId,
                 'feature_key' => $featureKey,
             ]);
+
             return false;
         }
 
@@ -49,7 +50,7 @@ class FinancialClosePolicyService
 
         $allowedActions = ['view', 'submit', 'return', 'approve', 'lock'];
 
-        if (!in_array($action, $allowedActions)) {
+        if (! in_array($action, $allowedActions)) {
             return false;
         }
 
@@ -67,7 +68,7 @@ class FinancialClosePolicyService
 
         $allowedActions = ['view', 'start', 'submit', 'return', 'complete', 'block', 'cancel'];
 
-        if (!in_array($action, $allowedActions)) {
+        if (! in_array($action, $allowedActions)) {
             return false;
         }
 
@@ -90,6 +91,7 @@ class FinancialClosePolicyService
                 'preparer_id' => $preparerId,
                 'reviewer_id' => $reviewerId,
             ]);
+
             return true;
         }
 

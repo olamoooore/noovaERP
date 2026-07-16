@@ -3,9 +3,9 @@
 namespace Modules\FieldService\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Modules\FieldService\Models\WorksheetTemplate;
 
 class WorksheetTemplateController extends Controller
@@ -27,23 +27,23 @@ class WorksheetTemplateController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name'        => 'required|string|max:100',
+            'name' => 'required|string|max:100',
             'description' => 'nullable|string',
-            'is_default'  => 'boolean',
-            'is_active'   => 'boolean',
-            'fields'      => 'required|array',
-            'fields.*.id'          => 'required|string',
-            'fields.*.label'       => 'required|string|max:255',
-            'fields.*.type'        => 'required|string|in:text,number,checkbox,dropdown,date,photo,signature',
-            'fields.*.required'    => 'boolean',
-            'fields.*.sort_order'  => 'integer|min:0',
-            'fields.*.options'     => 'nullable|array',
+            'is_default' => 'boolean',
+            'is_active' => 'boolean',
+            'fields' => 'required|array',
+            'fields.*.id' => 'required|string',
+            'fields.*.label' => 'required|string|max:255',
+            'fields.*.type' => 'required|string|in:text,number,checkbox,dropdown,date,photo,signature',
+            'fields.*.required' => 'boolean',
+            'fields.*.sort_order' => 'integer|min:0',
+            'fields.*.options' => 'nullable|array',
             'fields.*.placeholder' => 'nullable|string|max:255',
         ]);
 
         $template = WorksheetTemplate::create($validated);
 
-        if (!empty($validated['is_default'])) {
+        if (! empty($validated['is_default'])) {
             $template->setAsDefault();
         }
 
@@ -55,23 +55,23 @@ class WorksheetTemplateController extends Controller
         $template = $this->findTemplateOrFail($template_id);
 
         $validated = $request->validate([
-            'name'        => 'sometimes|string|max:100',
+            'name' => 'sometimes|string|max:100',
             'description' => 'nullable|string',
-            'is_default'  => 'boolean',
-            'is_active'   => 'boolean',
-            'fields'      => 'sometimes|array',
-            'fields.*.id'          => 'required_with:fields|string',
-            'fields.*.label'       => 'required_with:fields|string|max:255',
-            'fields.*.type'        => 'required_with:fields|string|in:text,number,checkbox,dropdown,date,photo,signature',
-            'fields.*.required'    => 'boolean',
-            'fields.*.sort_order'  => 'integer|min:0',
-            'fields.*.options'     => 'nullable|array',
+            'is_default' => 'boolean',
+            'is_active' => 'boolean',
+            'fields' => 'sometimes|array',
+            'fields.*.id' => 'required_with:fields|string',
+            'fields.*.label' => 'required_with:fields|string|max:255',
+            'fields.*.type' => 'required_with:fields|string|in:text,number,checkbox,dropdown,date,photo,signature',
+            'fields.*.required' => 'boolean',
+            'fields.*.sort_order' => 'integer|min:0',
+            'fields.*.options' => 'nullable|array',
             'fields.*.placeholder' => 'nullable|string|max:255',
         ]);
 
         $template->update($validated);
 
-        if (!empty($validated['is_default'])) {
+        if (! empty($validated['is_default'])) {
             $template->setAsDefault();
         }
 
@@ -98,8 +98,8 @@ class WorksheetTemplateController extends Controller
     {
         $template = WorksheetTemplate::query()->find($templateId);
 
-        if (!$template) {
-            throw (new ModelNotFoundException())->setModel(WorksheetTemplate::class, [$templateId]);
+        if (! $template) {
+            throw (new ModelNotFoundException)->setModel(WorksheetTemplate::class, [$templateId]);
         }
 
         return $template;

@@ -30,17 +30,17 @@ class WorkOrderPartsController extends Controller
         $workOrder = $this->findWorkOrderOrFail($work_order_id);
 
         $validated = $request->validate([
-            'product_id'    => 'required|exists:products,id',
-            'description'   => 'nullable|string|max:255',
-            'quantity'      => 'required|numeric|min:0.001',
-            'unit_price'    => 'required|numeric|min:0',
-            'lot_number'    => 'nullable|string|max:100',
+            'product_id' => 'required|exists:products,id',
+            'description' => 'nullable|string|max:255',
+            'quantity' => 'required|numeric|min:0.001',
+            'unit_price' => 'required|numeric|min:0',
+            'lot_number' => 'nullable|string|max:100',
             'serial_number' => 'nullable|string|max:100',
-            'warehouse_id'  => 'nullable|exists:warehouses,id',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
         ]);
 
         // Pull default price from product if not provided
-        if (!isset($validated['unit_price']) || $validated['unit_price'] == 0) {
+        if (! isset($validated['unit_price']) || $validated['unit_price'] == 0) {
             $product = Product::find($validated['product_id']);
             $validated['unit_price'] = $product?->price ?? 0;
         }
@@ -68,11 +68,11 @@ class WorkOrderPartsController extends Controller
         $this->ensurePartBelongs($workOrder, $part);
 
         $validated = $request->validate([
-            'description'  => 'nullable|string|max:255',
-            'quantity'     => 'nullable|numeric|min:0.001',
-            'unit_price'   => 'nullable|numeric|min:0',
-            'lot_number'   => 'nullable|string|max:100',
-            'serial_number'=> 'nullable|string|max:100',
+            'description' => 'nullable|string|max:255',
+            'quantity' => 'nullable|numeric|min:0.001',
+            'unit_price' => 'nullable|numeric|min:0',
+            'lot_number' => 'nullable|string|max:100',
+            'serial_number' => 'nullable|string|max:100',
             'warehouse_id' => 'nullable|exists:warehouses,id',
         ]);
 
@@ -103,7 +103,7 @@ class WorkOrderPartsController extends Controller
         $this->findWorkOrderOrFail($work_order_id);
 
         $validated = $request->validate([
-            'product_id'   => 'required|exists:products,id',
+            'product_id' => 'required|exists:products,id',
             'warehouse_id' => 'required|exists:warehouses,id',
         ]);
 
@@ -126,8 +126,8 @@ class WorkOrderPartsController extends Controller
     {
         $workOrder = WorkOrder::query()->find($workOrderId);
 
-        if (!$workOrder) {
-            throw (new ModelNotFoundException())->setModel(WorkOrder::class, [$workOrderId]);
+        if (! $workOrder) {
+            throw (new ModelNotFoundException)->setModel(WorkOrder::class, [$workOrderId]);
         }
 
         return $workOrder;
@@ -137,8 +137,8 @@ class WorkOrderPartsController extends Controller
     {
         $part = WorkOrderPart::query()->find($partId);
 
-        if (!$part) {
-            throw (new ModelNotFoundException())->setModel(WorkOrderPart::class, [$partId]);
+        if (! $part) {
+            throw (new ModelNotFoundException)->setModel(WorkOrderPart::class, [$partId]);
         }
 
         return $part;

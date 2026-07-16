@@ -2,18 +2,19 @@
 
 namespace Modules\EventManagement\Http\Controllers;
 
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Modules\EventManagement\Models\IdentityVerification;
-use Modules\EventManagement\Services\FraudDetectionService;
 use Modules\EventManagement\Services\AuditService;
+use Modules\EventManagement\Services\FraudDetectionService;
 
 class IdentityVerificationController extends Controller
 {
     protected FraudDetectionService $fraudDetectionService;
+
     protected AuditService $auditService;
 
     public function __construct(
@@ -36,7 +37,7 @@ class IdentityVerificationController extends Controller
             ->orderBy('created_at', 'desc')
             ->first();
 
-        if (!$verification) {
+        if (! $verification) {
             return response()->json([
                 'customer_id' => $customerId,
                 'verification_level' => 'none',
@@ -97,7 +98,7 @@ class IdentityVerificationController extends Controller
             $riskScore
         );
 
-        if (!$requiresVerification) {
+        if (! $requiresVerification) {
             return response()->json([
                 'required' => false,
                 'current_level' => $currentLevel,
@@ -254,6 +255,7 @@ class IdentityVerificationController extends Controller
 
         // Submit new verification
         $request->merge(['customer_id' => $customerId]);
+
         return $this->submitVerification($request);
     }
 
@@ -309,7 +311,7 @@ class IdentityVerificationController extends Controller
             ->orderBy('created_at', 'desc')
             ->first();
 
-        if (!$verification) {
+        if (! $verification) {
             return response()->json([
                 'success' => false,
                 'message' => 'No pending verification found',
@@ -362,7 +364,7 @@ class IdentityVerificationController extends Controller
             ->orderBy('created_at', 'desc')
             ->first();
 
-        if (!$verification) {
+        if (! $verification) {
             return response()->json([
                 'success' => false,
                 'message' => 'No pending verification found',
@@ -457,7 +459,7 @@ class IdentityVerificationController extends Controller
 
         // File type validation
         $allowedMimes = ['image/jpeg', 'image/png', 'application/pdf'];
-        if (!in_array($file->getMimeType(), $allowedMimes)) {
+        if (! in_array($file->getMimeType(), $allowedMimes)) {
             $errors[] = 'Invalid file format. Please use JPG, PNG, or PDF';
         }
 
@@ -552,7 +554,7 @@ class IdentityVerificationController extends Controller
             'customer_id' => $customerId,
         ]));
 
-        if (!empty($patterns)) {
+        if (! empty($patterns)) {
             $riskFactors[] = 'suspicious_pattern';
         }
 

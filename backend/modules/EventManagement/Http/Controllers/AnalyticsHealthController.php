@@ -2,27 +2,28 @@
 
 namespace Modules\EventManagement\Http\Controllers;
 
-use Illuminate\Http\Request;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Modules\EventManagement\Services\DataHealthCheckService;
-use Modules\EventManagement\Services\HybridAnalyticsService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
-use Carbon\Carbon;
+use Modules\EventManagement\Services\DataHealthCheckService;
+use Modules\EventManagement\Services\HybridAnalyticsService;
 
 /**
  * AnalyticsHealthController - Task 5.4
- * 
+ *
  * Provides admin interface for data health check results, KPI definition management
  * and versioning UI, analytics reconciliation reporting, and data quality alerts
  * and resolution workflows.
- * 
+ *
  * Requirements: 21.5
  */
 class AnalyticsHealthController extends Controller
 {
     protected DataHealthCheckService $healthCheckService;
+
     protected HybridAnalyticsService $hybridAnalyticsService;
 
     public function __construct(
@@ -35,27 +36,25 @@ class AnalyticsHealthController extends Controller
 
     /**
      * Get analytics health dashboard overview.
-     * 
-     * @return JsonResponse
      */
     public function getDashboardOverview(): JsonResponse
     {
         try {
             // Get health check summary
             $healthCheckSummary = $this->getHealthCheckSummary();
-            
+
             // Get KPI registry summary
             $kpiSummary = $this->getKPISummary();
-            
+
             // Get recent alerts
             $recentAlerts = $this->getRecentAlerts();
-            
+
             // Get reconciliation summary
             $reconciliationSummary = $this->getReconciliationSummary();
-            
+
             // Get performance metrics
             $performanceMetrics = $this->getPerformanceMetrics();
-            
+
             return response()->json([
                 'success' => true,
                 'dashboard' => [
@@ -67,7 +66,7 @@ class AnalyticsHealthController extends Controller
                     'last_updated' => Carbon::now()->toISOString(),
                 ],
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -78,9 +77,6 @@ class AnalyticsHealthController extends Controller
 
     /**
      * Get detailed health check results.
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getHealthCheckResults(Request $request): JsonResponse
     {
@@ -92,14 +88,14 @@ class AnalyticsHealthController extends Controller
                 'page' => 'nullable|integer|min:1',
                 'per_page' => 'nullable|integer|min:1|max:100',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $query = DB::table('data_health_checks')
                 ->select([
                     'id',
@@ -116,31 +112,31 @@ class AnalyticsHealthController extends Controller
                     'last_checked_at',
                     'created_at',
                 ]);
-            
+
             // Apply filters
             if ($request->filled('target_table')) {
                 $query->where('target_table', $request->target_table);
             }
-            
+
             if ($request->filled('check_type')) {
                 $query->where('check_type', $request->check_type);
             }
-            
+
             if ($request->filled('status')) {
                 $query->where('status', $request->status);
             }
-            
+
             // Pagination
             $perPage = $request->get('per_page', 20);
             $page = $request->get('page', 1);
             $offset = ($page - 1) * $perPage;
-            
+
             $total = $query->count();
             $healthChecks = $query->orderBy('last_checked_at', 'desc')
                 ->offset($offset)
                 ->limit($perPage)
                 ->get();
-            
+
             // Format results
             $formattedResults = $healthChecks->map(function ($check) {
                 return [
@@ -159,7 +155,7 @@ class AnalyticsHealthController extends Controller
                     'created_at' => $check->created_at,
                 ];
             });
-            
+
             return response()->json([
                 'success' => true,
                 'health_checks' => $formattedResults,
@@ -170,7 +166,7 @@ class AnalyticsHealthController extends Controller
                     'last_page' => ceil($total / $perPage),
                 ],
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -181,9 +177,6 @@ class AnalyticsHealthController extends Controller
 
     /**
      * Execute health checks manually.
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function executeHealthChecks(Request $request): JsonResponse
     {
@@ -193,21 +186,21 @@ class AnalyticsHealthController extends Controller
                 'check_types' => 'nullable|array',
                 'check_types.*' => 'in:reconciliation,consistency,completeness,accuracy,freshness,uniqueness',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $result = $this->healthCheckService->executeHealthChecks(
                 $request->target_table,
                 $request->get('check_types', [])
             );
-            
+
             return response()->json($result);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -218,21 +211,18 @@ class AnalyticsHealthController extends Controller
 
     /**
      * Get KPI registry with management interface.
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getKPIRegistry(Request $request): JsonResponse
     {
         try {
             $activeOnly = $request->get('active_only', true);
             $kpis = $this->healthCheckService->getKPIRegistry($activeOnly);
-            
+
             // Group by KPI name to show versions
             $groupedKPIs = [];
             foreach ($kpis as $kpi) {
                 $name = $kpi['name'];
-                if (!isset($groupedKPIs[$name])) {
+                if (! isset($groupedKPIs[$name])) {
                     $groupedKPIs[$name] = [
                         'name' => $name,
                         'current_version' => $kpi,
@@ -241,13 +231,13 @@ class AnalyticsHealthController extends Controller
                 }
                 $groupedKPIs[$name]['versions'][] = $kpi;
             }
-            
+
             return response()->json([
                 'success' => true,
                 'kpi_registry' => array_values($groupedKPIs),
                 'total_kpis' => count($groupedKPIs),
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -258,9 +248,6 @@ class AnalyticsHealthController extends Controller
 
     /**
      * Create or update KPI definition.
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function createOrUpdateKPI(Request $request): JsonResponse
     {
@@ -277,18 +264,18 @@ class AnalyticsHealthController extends Controller
                 'criticality' => 'nullable|in:low,medium,high,critical',
                 'metadata' => 'nullable|array',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $result = $this->healthCheckService->registerKPI($request->all());
-            
+
             return response()->json($result);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -299,9 +286,6 @@ class AnalyticsHealthController extends Controller
 
     /**
      * Get reconciliation reports.
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getReconciliationReports(Request $request): JsonResponse
     {
@@ -314,14 +298,14 @@ class AnalyticsHealthController extends Controller
                 'page' => 'nullable|integer|min:1',
                 'per_page' => 'nullable|integer|min:1|max:100',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $query = DB::table('analytics_reconciliation_log')
                 ->select([
                     'id',
@@ -336,35 +320,35 @@ class AnalyticsHealthController extends Controller
                     'reconciled_at',
                     'reconciled_by',
                 ]);
-            
+
             // Apply filters
             if ($request->filled('reconciliation_type')) {
                 $query->where('reconciliation_type', $request->reconciliation_type);
             }
-            
+
             if ($request->filled('status')) {
                 $query->where('status', $request->status);
             }
-            
+
             if ($request->filled('date_from')) {
                 $query->where('reconciled_at', '>=', $request->date_from);
             }
-            
+
             if ($request->filled('date_to')) {
                 $query->where('reconciled_at', '<=', $request->date_to);
             }
-            
+
             // Pagination
             $perPage = $request->get('per_page', 20);
             $page = $request->get('page', 1);
             $offset = ($page - 1) * $perPage;
-            
+
             $total = $query->count();
             $reconciliations = $query->orderBy('reconciled_at', 'desc')
                 ->offset($offset)
                 ->limit($perPage)
                 ->get();
-            
+
             // Format results
             $formattedResults = $reconciliations->map(function ($reconciliation) {
                 return [
@@ -376,13 +360,13 @@ class AnalyticsHealthController extends Controller
                     'variance_absolute' => $reconciliation->variance_absolute,
                     'status' => $reconciliation->status,
                     'variance_explanation' => $reconciliation->variance_explanation,
-                    'remediation_actions' => $reconciliation->remediation_actions ? 
+                    'remediation_actions' => $reconciliation->remediation_actions ?
                         json_decode($reconciliation->remediation_actions, true) : [],
                     'reconciled_at' => $reconciliation->reconciled_at,
                     'reconciled_by' => $reconciliation->reconciled_by,
                 ];
             });
-            
+
             return response()->json([
                 'success' => true,
                 'reconciliations' => $formattedResults,
@@ -393,7 +377,7 @@ class AnalyticsHealthController extends Controller
                     'last_page' => ceil($total / $perPage),
                 ],
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -404,9 +388,6 @@ class AnalyticsHealthController extends Controller
 
     /**
      * Get data quality alerts.
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getDataQualityAlerts(Request $request): JsonResponse
     {
@@ -418,14 +399,14 @@ class AnalyticsHealthController extends Controller
                 'page' => 'nullable|integer|min:1',
                 'per_page' => 'nullable|integer|min:1|max:100',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $query = DB::table('data_quality_alerts')
                 ->leftJoin('data_health_checks', 'data_quality_alerts.health_check_id', '=', 'data_health_checks.id')
                 ->select([
@@ -441,31 +422,31 @@ class AnalyticsHealthController extends Controller
                     'data_health_checks.check_name',
                     'data_health_checks.target_table',
                 ]);
-            
+
             // Apply filters
             if ($request->filled('alert_level')) {
                 $query->where('data_quality_alerts.alert_level', $request->alert_level);
             }
-            
+
             if ($request->filled('status')) {
                 $query->where('data_quality_alerts.status', $request->status);
             }
-            
+
             if ($request->filled('assigned_to')) {
                 $query->where('data_quality_alerts.assigned_to', $request->assigned_to);
             }
-            
+
             // Pagination
             $perPage = $request->get('per_page', 20);
             $page = $request->get('page', 1);
             $offset = ($page - 1) * $perPage;
-            
+
             $total = $query->count();
             $alerts = $query->orderBy('data_quality_alerts.created_at', 'desc')
                 ->offset($offset)
                 ->limit($perPage)
                 ->get();
-            
+
             return response()->json([
                 'success' => true,
                 'alerts' => $alerts,
@@ -476,7 +457,7 @@ class AnalyticsHealthController extends Controller
                     'last_page' => ceil($total / $perPage),
                 ],
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -487,10 +468,6 @@ class AnalyticsHealthController extends Controller
 
     /**
      * Update data quality alert status.
-     * 
-     * @param Request $request
-     * @param int $alertId
-     * @return JsonResponse
      */
     public function updateAlertStatus(Request $request, int $alertId): JsonResponse
     {
@@ -500,49 +477,49 @@ class AnalyticsHealthController extends Controller
                 'assigned_to' => 'nullable|string',
                 'resolution_notes' => 'nullable|string',
             ]);
-            
+
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
                     'errors' => $validator->errors(),
                 ], 400);
             }
-            
+
             $updateData = [
                 'status' => $request->status,
                 'updated_at' => Carbon::now(),
             ];
-            
+
             if ($request->filled('assigned_to')) {
                 $updateData['assigned_to'] = $request->assigned_to;
             }
-            
+
             if ($request->filled('resolution_notes')) {
                 $updateData['resolution_notes'] = $request->resolution_notes;
             }
-            
+
             if ($request->status === 'acknowledged') {
                 $updateData['acknowledged_at'] = Carbon::now();
             } elseif ($request->status === 'resolved') {
                 $updateData['resolved_at'] = Carbon::now();
             }
-            
+
             $updated = DB::table('data_quality_alerts')
                 ->where('id', $alertId)
                 ->update($updateData);
-            
-            if (!$updated) {
+
+            if (! $updated) {
                 return response()->json([
                     'success' => false,
                     'error' => 'Alert not found',
                 ], 404);
             }
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Alert status updated successfully',
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -564,7 +541,7 @@ class AnalyticsHealthController extends Controller
             ->groupBy('status')
             ->get()
             ->keyBy('status');
-        
+
         return [
             'total' => $summary->sum('count'),
             'passed' => $summary->get('passed')->count ?? 0,
@@ -584,7 +561,7 @@ class AnalyticsHealthController extends Controller
                 COUNT(DISTINCT kpi_name) as unique_kpis
             ')
             ->first();
-        
+
         return [
             'total_definitions' => $summary->total,
             'active_definitions' => $summary->active,
@@ -615,7 +592,7 @@ class AnalyticsHealthController extends Controller
             ->groupBy('status')
             ->get()
             ->keyBy('status');
-        
+
         return [
             'total_reconciliations' => $summary->sum('count'),
             'matches' => $summary->get('match')->count ?? 0,

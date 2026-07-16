@@ -7,21 +7,21 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Modules\EventManagement\Traits\HasTenantScope;
 use Modules\EventManagement\Traits\HasAuditTrail;
+use Modules\EventManagement\Traits\HasTenantScope;
 
 /**
  * Artist Model
- * 
+ *
  * Represents individual K-POP artists (solo or group members).
  * Supports comprehensive artist metadata, social media links,
  * and performance history tracking.
- * 
+ *
  * Requirements: 12.1, 12.5
  */
 class Artist extends Model
 {
-    use HasFactory, SoftDeletes, HasTenantScope, HasAuditTrail;
+    use HasAuditTrail, HasFactory, HasTenantScope, SoftDeletes;
 
     protected $fillable = [
         'tenant_id',
@@ -73,7 +73,7 @@ class Artist extends Model
                 'left_date',
                 'status',
                 'departure_reason',
-                'metadata'
+                'metadata',
             ])
             ->withTimestamps()
             ->wherePivot('deleted_at', null);
@@ -105,7 +105,7 @@ class Artist extends Model
                 'status',
                 'confirmed_at',
                 'confirmed_by',
-                'metadata'
+                'metadata',
             ])
             ->withTimestamps()
             ->wherePivot('deleted_at', null);
@@ -252,8 +252,8 @@ class Artist extends Model
     {
         return $query->where(function ($q) use ($search) {
             $q->where('name', 'like', "%{$search}%")
-              ->orWhere('stage_name', 'like', "%{$search}%")
-              ->orWhere('korean_name', 'like', "%{$search}%");
+                ->orWhere('stage_name', 'like', "%{$search}%")
+                ->orWhere('korean_name', 'like', "%{$search}%");
         });
     }
 
@@ -289,7 +289,7 @@ class Artist extends Model
     public function addPosition(string $position): void
     {
         $positions = $this->positions ?? [];
-        if (!in_array($position, $positions)) {
+        if (! in_array($position, $positions)) {
             $positions[] = $position;
             $this->positions = $positions;
         }
@@ -301,6 +301,6 @@ class Artist extends Model
     public function removePosition(string $position): void
     {
         $positions = $this->positions ?? [];
-        $this->positions = array_values(array_filter($positions, fn($p) => $p !== $position));
+        $this->positions = array_values(array_filter($positions, fn ($p) => $p !== $position));
     }
 }

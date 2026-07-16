@@ -16,9 +16,13 @@ class WorkflowSchema extends Model
     use HasFactory;
 
     protected $table = 'workflow_schemas';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
+
     protected $guarded = [];
 
     protected $casts = [

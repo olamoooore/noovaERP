@@ -17,12 +17,12 @@ return new class extends Migration
             $table->text('reason')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
-            
+
             $table->index('lock_type');
             $table->index('lock_date');
             $table->index('is_active');
         });
-        
+
         Schema::create('lock_date_overrides', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained('users');
@@ -32,7 +32,7 @@ return new class extends Migration
             $table->text('override_reason');
             $table->foreignId('approved_by')->nullable()->constrained('users');
             $table->timestamps();
-            
+
             $table->index('user_id');
             $table->index('transaction_date');
         });

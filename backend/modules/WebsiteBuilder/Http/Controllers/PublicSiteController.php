@@ -4,9 +4,9 @@ namespace Modules\WebsiteBuilder\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
-use Modules\WebsiteBuilder\Models\Website;
-use Modules\WebsiteBuilder\Models\Page;
 use Illuminate\Support\Facades\Log;
+use Modules\WebsiteBuilder\Models\Page;
+use Modules\WebsiteBuilder\Models\Website;
 
 class PublicSiteController extends Controller
 {
@@ -25,8 +25,9 @@ class PublicSiteController extends Controller
             // Find website by slug
             $website = Website::where('slug', $websiteSlug)->first();
 
-            if (!$website) {
+            if (! $website) {
                 Log::warning('Website not found', ['slug' => $websiteSlug]);
+
                 return response()->json([
                     'error' => 'Website not found',
                     'message' => "No website found with slug: {$websiteSlug}",
@@ -43,7 +44,7 @@ class PublicSiteController extends Controller
                     ->first();
 
                 // If no home page, get the first page
-                if (!$page) {
+                if (! $page) {
                     Log::info('No home page found, getting first page');
                     $page = $website->pages()
                         ->orderBy('sort_order')
@@ -57,11 +58,12 @@ class PublicSiteController extends Controller
                     ->first();
             }
 
-            if (!$page) {
+            if (! $page) {
                 Log::warning('Page not found', [
                     'websiteSlug' => $websiteSlug,
                     'pageSlug' => $pageSlug,
                 ]);
+
                 return response()->json([
                     'error' => 'Page not found',
                     'message' => $pageSlug
@@ -109,4 +111,3 @@ class PublicSiteController extends Controller
         }
     }
 }
-

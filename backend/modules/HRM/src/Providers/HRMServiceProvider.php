@@ -17,7 +17,7 @@ class HRMServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__ . '/../../config/hrm.php', 'hrm');
+        $this->mergeConfigFrom(__DIR__.'/../../config/hrm.php', 'hrm');
     }
 
     public function boot(): void
@@ -25,9 +25,9 @@ class HRMServiceProvider extends ServiceProvider
         // Routes are loaded via ModuleManager::tenantApiRouteFiles() in routes/tenant.php.
         // Tenant migrations are registered centrally via config/tenancy.php migration_parameters.
 
-        Gate::policy(EmployeeUserLink::class,        EmployeeUserLinkPolicy::class);
+        Gate::policy(EmployeeUserLink::class, EmployeeUserLinkPolicy::class);
         Gate::policy(EmployeeBiometricSubject::class, EmployeeBiometricSubjectPolicy::class);
-        Gate::policy(AttendanceEvent::class,          AttendanceEventPolicy::class);
-        Gate::policy(AttendanceDailySummary::class,   AttendanceSummaryPolicy::class);
+        Gate::policy(AttendanceEvent::class, AttendanceEventPolicy::class);
+        Gate::policy(AttendanceDailySummary::class, AttendanceSummaryPolicy::class);
     }
 }

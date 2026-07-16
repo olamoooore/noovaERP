@@ -14,9 +14,11 @@ class AccountingPoliciesController extends Controller
     {
         try {
             $policies = AccountingPolicy::current();
+
             return response()->json(['success' => true, 'data' => $policies]);
         } catch (\Exception $e) {
             \Log::error('Failed to fetch accounting policies', ['error' => $e->getMessage()]);
+
             return response()->json(['success' => false, 'message' => 'Failed to fetch policies'], 500);
         }
     }
@@ -37,7 +39,7 @@ class AccountingPoliciesController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -59,10 +61,11 @@ class AccountingPoliciesController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Accounting policies updated successfully',
-                'data' => $policies->fresh()
+                'data' => $policies->fresh(),
             ]);
         } catch (\Exception $e) {
             \Log::error('Failed to update accounting policies', ['error' => $e->getMessage()]);
+
             return response()->json(['success' => false, 'message' => 'Failed to update policies'], 500);
         }
     }

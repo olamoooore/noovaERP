@@ -67,8 +67,9 @@ class EarlyAccessWindow extends Model
     public function scopeCurrentlyOpen($query)
     {
         $now = now();
+
         return $query->where('access_starts_at', '<=', $now)
-                    ->where('access_ends_at', '>', $now);
+            ->where('access_ends_at', '>', $now);
     }
 
     /**
@@ -101,8 +102,9 @@ class EarlyAccessWindow extends Model
     public function isCurrentlyOpen(): bool
     {
         $now = now();
-        return $this->is_active 
-            && $this->access_starts_at <= $now 
+
+        return $this->is_active
+            && $this->access_starts_at <= $now
             && $this->access_ends_at > $now;
     }
 

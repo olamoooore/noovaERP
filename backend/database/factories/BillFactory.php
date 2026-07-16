@@ -5,7 +5,6 @@ namespace Database\Factories;
 use App\Models\Bill;
 use App\Models\Vendor;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Support\Str;
 
 class BillFactory extends Factory
 {
@@ -14,7 +13,7 @@ class BillFactory extends Factory
     public function definition(): array
     {
         return [
-            'bill_number' => 'BILL-' . date('Y') . '-' . str_pad((string) (Bill::count() + 1), 4, '0', STR_PAD_LEFT),
+            'bill_number' => 'BILL-'.date('Y').'-'.str_pad((string) (Bill::count() + 1), 4, '0', STR_PAD_LEFT),
             'vendor_id' => Vendor::factory(),
             'bill_date' => now()->toDateString(),
             'due_date' => now()->addDays(30)->toDateString(),

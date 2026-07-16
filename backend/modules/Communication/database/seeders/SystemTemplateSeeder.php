@@ -29,7 +29,7 @@ class SystemTemplateSeeder extends Seeder
             );
         }
 
-        $this->command->info('Seeded ' . count($templates) . ' system communication templates.');
+        $this->command->info('Seeded '.count($templates).' system communication templates.');
     }
 
     protected function getTemplates(): array
@@ -161,7 +161,7 @@ class SystemTemplateSeeder extends Seeder
                     <p>Invoice <strong>#{{invoice.number}}</strong> for <strong>{{invoice.total}}</strong> was due on <strong>{{invoice.due_date}}</strong>.</p>
                     <p>Please arrange payment at your earliest convenience.</p>
                 '),
-                'body_plain' => "OVERDUE: Invoice #{{invoice.number}} for {{invoice.total}} was due {{invoice.due_date}}. Please arrange payment.",
+                'body_plain' => 'OVERDUE: Invoice #{{invoice.number}} for {{invoice.total}} was due {{invoice.due_date}}. Please arrange payment.',
                 'channels' => ['email', 'sms'],
                 'variables' => ['customer.name', 'invoice.number', 'invoice.total', 'invoice.due_date'],
                 'locale' => 'en',
@@ -471,7 +471,7 @@ class SystemTemplateSeeder extends Seeder
         <h1 style="color:#ffffff; margin:0; font-size:22px;">{{company.name}}</h1>
     </div>
     <div style="padding:24px 32px;">
-        ' . trim($content) . '
+        '.trim($content).'
     </div>
     <div style="background:#f8f9fa; padding:16px 32px; text-align:center; font-size:12px; color:#999;">
         <p style="margin:0;">© {{company.name}} | Powered by NoovaERP</p>

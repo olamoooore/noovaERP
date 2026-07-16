@@ -8,7 +8,7 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
-     * 
+     *
      * Reconciliation Items table for linking transactions to reconciliations
      */
     public function up(): void
@@ -21,7 +21,7 @@ return new class extends Migration
 
             $table->index('reconciliation_id');
             $table->index('journal_entry_line_id');
-            
+
             // Ensure a transaction can only be reconciled once
             $table->unique('journal_entry_line_id');
         });

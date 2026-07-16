@@ -2,14 +2,15 @@
 
 namespace Modules\EventManagement\Services;
 
-use Modules\EventManagement\Models\ActivityLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Modules\EventManagement\Models\ActivityLog;
 
 class AuditService
 {
     protected TenantSchemaManager $tenantSchemaManager;
+
     protected ?Request $request;
 
     public function __construct(TenantSchemaManager $tenantSchemaManager, ?Request $request = null)
@@ -25,8 +26,8 @@ class AuditService
     {
         // Get current tenant ID from schema manager
         $tenantId = $this->tenantSchemaManager->getCurrentTenantId();
-        
-        if (!$tenantId) {
+
+        if (! $tenantId) {
             throw new \RuntimeException('Cannot log activity without tenant context');
         }
 
@@ -67,15 +68,15 @@ class AuditService
                 'actor_type' => $actorType,
                 'actor_id' => $actorId,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             // In test environment, log to error_log for verification
             if (app()->environment('testing')) {
                 error_log("AuditService: Would log activity - Action: {$action}, Subject: {$subjectType}:{$subjectId}, Actor: {$actorType}:{$actorId}");
             } else {
                 // In production, re-throw the exception to ensure audit failures are noticed
-                throw new \RuntimeException("Failed to log audit activity: " . $e->getMessage(), 0, $e);
+                throw new \RuntimeException('Failed to log audit activity: '.$e->getMessage(), 0, $e);
             }
         }
     }
@@ -94,8 +95,8 @@ class AuditService
     public function getActivityLogs(string $subjectType, int $subjectId, int $limit = 100): array
     {
         $tenantId = $this->tenantSchemaManager->getCurrentTenantId();
-        
-        if (!$tenantId) {
+
+        if (! $tenantId) {
             throw new \RuntimeException('Cannot retrieve activity logs without tenant context');
         }
 
@@ -111,15 +112,15 @@ class AuditService
                 'tenant_id' => $tenantId,
                 'subject_type' => $subjectType,
                 'subject_id' => $subjectId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
-            
+
             // In test environment, return empty array
             if (app()->environment('testing')) {
                 return [];
             } else {
                 // In production, re-throw to ensure failures are noticed
-                throw new \RuntimeException("Failed to retrieve activity logs: " . $e->getMessage(), 0, $e);
+                throw new \RuntimeException('Failed to retrieve activity logs: '.$e->getMessage(), 0, $e);
             }
         }
     }
@@ -130,8 +131,8 @@ class AuditService
     public function getActivityLogsByRequestId(string $requestId): array
     {
         $tenantId = $this->tenantSchemaManager->getCurrentTenantId();
-        
-        if (!$tenantId) {
+
+        if (! $tenantId) {
             throw new \RuntimeException('Cannot retrieve activity logs without tenant context');
         }
 
@@ -145,13 +146,13 @@ class AuditService
             \Log::error('Failed to retrieve activity logs by request ID', [
                 'tenant_id' => $tenantId,
                 'request_id' => $requestId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
-            
+
             if (app()->environment('testing')) {
                 return [];
             } else {
-                throw new \RuntimeException("Failed to retrieve activity logs by request ID: " . $e->getMessage(), 0, $e);
+                throw new \RuntimeException('Failed to retrieve activity logs by request ID: '.$e->getMessage(), 0, $e);
             }
         }
     }
@@ -162,8 +163,8 @@ class AuditService
     public function getActivityLogsByActor(string $actorType, ?string $actorId = null, int $limit = 100): array
     {
         $tenantId = $this->tenantSchemaManager->getCurrentTenantId();
-        
-        if (!$tenantId) {
+
+        if (! $tenantId) {
             throw new \RuntimeException('Cannot retrieve activity logs without tenant context');
         }
 
@@ -179,13 +180,13 @@ class AuditService
                 'tenant_id' => $tenantId,
                 'actor_type' => $actorType,
                 'actor_id' => $actorId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
-            
+
             if (app()->environment('testing')) {
                 return [];
             } else {
-                throw new \RuntimeException("Failed to retrieve activity logs by actor: " . $e->getMessage(), 0, $e);
+                throw new \RuntimeException('Failed to retrieve activity logs by actor: '.$e->getMessage(), 0, $e);
             }
         }
     }
@@ -197,7 +198,7 @@ class AuditService
     {
         try {
             $cutoffDate = $this->getCurrentTimestamp()->subDays($retentionDays);
-            
+
             return ActivityLog::forTenant($tenantId)
                 ->where('created_at', '<', $cutoffDate)
                 ->delete();
@@ -205,13 +206,13 @@ class AuditService
             \Log::error('Failed to cleanup old activity logs', [
                 'tenant_id' => $tenantId,
                 'retention_days' => $retentionDays,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
-            
+
             if (app()->environment('testing')) {
                 return 0;
             } else {
-                throw new \RuntimeException("Failed to cleanup old activity logs: " . $e->getMessage(), 0, $e);
+                throw new \RuntimeException('Failed to cleanup old activity logs: '.$e->getMessage(), 0, $e);
             }
         }
     }
@@ -226,7 +227,7 @@ class AuditService
         }
 
         // Generate a UUID-like request ID if not provided
-        return 'req_' . $this->generateUuid();
+        return 'req_'.$this->generateUuid();
     }
 
     /**
@@ -236,6 +237,7 @@ class AuditService
     {
         try {
             $user = Auth::user();
+
             return $user ? (string) $user->id : null;
         } catch (\Exception $e) {
             // In test environment, return null
@@ -248,7 +250,7 @@ class AuditService
      */
     protected function getClientIpAddress(): ?string
     {
-        if (!$this->request) {
+        if (! $this->request) {
             return null;
         }
 
@@ -257,7 +259,7 @@ class AuditService
             'HTTP_X_FORWARDED_FOR',
             'HTTP_X_REAL_IP',
             'HTTP_CLIENT_IP',
-            'REMOTE_ADDR'
+            'REMOTE_ADDR',
         ];
 
         foreach ($ipHeaders as $header) {
@@ -265,6 +267,7 @@ class AuditService
             if ($ip && $ip !== 'unknown') {
                 // Handle comma-separated IPs (X-Forwarded-For can contain multiple IPs)
                 $ips = explode(',', $ip);
+
                 return trim($ips[0]);
             }
         }
@@ -297,8 +300,8 @@ class AuditService
         } catch (\Exception $e) {
             // Fall back to DateTime
         }
-        
-        return new \DateTime();
+
+        return new \DateTime;
     }
 
     /**
@@ -309,11 +312,11 @@ class AuditService
         // Simple UUID v4 generation fallback
         return sprintf(
             '%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
-            mt_rand(0, 0xffff), mt_rand(0, 0xffff),
-            mt_rand(0, 0xffff),
-            mt_rand(0, 0x0fff) | 0x4000,
-            mt_rand(0, 0x3fff) | 0x8000,
-            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+            mt_rand(0, 0xFFFF), mt_rand(0, 0xFFFF),
+            mt_rand(0, 0xFFFF),
+            mt_rand(0, 0x0FFF) | 0x4000,
+            mt_rand(0, 0x3FFF) | 0x8000,
+            mt_rand(0, 0xFFFF), mt_rand(0, 0xFFFF), mt_rand(0, 0xFFFF)
         );
     }
 }

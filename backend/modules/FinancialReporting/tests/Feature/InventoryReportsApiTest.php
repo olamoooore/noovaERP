@@ -2,9 +2,9 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TenantTestCase;
-use Illuminate\Support\Facades\Artisan;
 use App\Models\User;
+use Illuminate\Support\Facades\Artisan;
+use Tests\TenantTestCase;
 
 class InventoryReportsApiTest extends TenantTestCase
 {
@@ -34,7 +34,7 @@ class InventoryReportsApiTest extends TenantTestCase
     public function it_can_generate_stock_valuation_report()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/inventory/valuation?' . http_build_query([
+            ->getJson('/api/v1/reports/inventory/valuation?'.http_build_query([
                 'as_of_date' => '2024-01-31',
             ]));
 
@@ -45,7 +45,7 @@ class InventoryReportsApiTest extends TenantTestCase
     public function it_can_generate_stock_movement_report()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/inventory/movement?' . http_build_query([
+            ->getJson('/api/v1/reports/inventory/movement?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
@@ -66,7 +66,7 @@ class InventoryReportsApiTest extends TenantTestCase
     public function it_can_generate_inventory_aging_report()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/inventory/aging?' . http_build_query([
+            ->getJson('/api/v1/reports/inventory/aging?'.http_build_query([
                 'as_of_date' => '2024-01-31',
             ]));
 
@@ -77,7 +77,7 @@ class InventoryReportsApiTest extends TenantTestCase
     public function it_can_generate_inventory_turnover_report()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/inventory/turnover?' . http_build_query([
+            ->getJson('/api/v1/reports/inventory/turnover?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));

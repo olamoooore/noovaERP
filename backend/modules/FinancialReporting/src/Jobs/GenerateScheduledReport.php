@@ -2,6 +2,7 @@
 
 namespace Modules\FinancialReporting\Jobs;
 
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -10,18 +11,17 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\Models\ReportSchedule;
-use Modules\FinancialReporting\Services\Reports\ProfitLossService;
+use Modules\FinancialReporting\Services\Export\ExcelExportService;
+use Modules\FinancialReporting\Services\Export\PdfExportService;
+use Modules\FinancialReporting\Services\Inventory\StockMovementService;
+use Modules\FinancialReporting\Services\Inventory\StockValuationService;
 use Modules\FinancialReporting\Services\Reports\BalanceSheetService;
 use Modules\FinancialReporting\Services\Reports\CashFlowService;
-use Modules\FinancialReporting\Services\Reports\TrialBalanceService;
 use Modules\FinancialReporting\Services\Reports\GeneralLedgerService;
-use Modules\FinancialReporting\Services\Inventory\StockValuationService;
-use Modules\FinancialReporting\Services\Inventory\StockMovementService;
-use Modules\FinancialReporting\Services\Export\PdfExportService;
-use Modules\FinancialReporting\Services\Export\ExcelExportService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
-use Carbon\Carbon;
+use Modules\FinancialReporting\Services\Reports\ProfitLossService;
+use Modules\FinancialReporting\Services\Reports\TrialBalanceService;
 use Stancl\Tenancy\Facades\Tenancy;
 
 /**
@@ -52,13 +52,13 @@ class GenerateScheduledReport implements ShouldQueue
             $tenantId = $this->schedule->tenant_id ?? null;
             if ($tenantId) {
                 Tenancy::initialize($tenantId);
-                Log::info("Initialized tenancy for scheduled report", [
+                Log::info('Initialized tenancy for scheduled report', [
                     'schedule_id' => $this->schedule->id,
                     'tenant_id' => $tenantId,
                 ]);
             }
 
-            Log::info("Generating scheduled report", [
+            Log::info('Generating scheduled report', [
                 'schedule_id' => $this->schedule->id,
                 'report_type' => $this->schedule->report_type,
             ]);
@@ -75,12 +75,12 @@ class GenerateScheduledReport implements ShouldQueue
             // Update schedule
             $this->updateSchedule();
 
-            Log::info("Scheduled report generated successfully", [
+            Log::info('Scheduled report generated successfully', [
                 'schedule_id' => $this->schedule->id,
                 'file_path' => $filePath,
             ]);
         } catch (\Exception $e) {
-            Log::error("Failed to generate scheduled report", [
+            Log::error('Failed to generate scheduled report', [
                 'schedule_id' => $this->schedule->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
@@ -122,7 +122,7 @@ class GenerateScheduledReport implements ShouldQueue
      */
     protected function createReportFilter(array $parameters): ReportFilter
     {
-        $filter = new ReportFilter();
+        $filter = new ReportFilter;
 
         // Set date range based on frequency
         $dateRange = $this->getDateRangeForFrequency();
@@ -191,7 +191,7 @@ class GenerateScheduledReport implements ShouldQueue
         return [
             'type' => 'profit_loss',
             'title' => 'Profit & Loss Statement',
-            'period' => $filter->startDate->format('Y-m-d') . ' to ' . $filter->endDate->format('Y-m-d'),
+            'period' => $filter->startDate->format('Y-m-d').' to '.$filter->endDate->format('Y-m-d'),
             'data' => $data->toArray(),
         ];
     }
@@ -223,7 +223,7 @@ class GenerateScheduledReport implements ShouldQueue
         return [
             'type' => 'cash_flow',
             'title' => 'Cash Flow Statement',
-            'period' => $filter->startDate->format('Y-m-d') . ' to ' . $filter->endDate->format('Y-m-d'),
+            'period' => $filter->startDate->format('Y-m-d').' to '.$filter->endDate->format('Y-m-d'),
             'data' => $data->toArray(),
         ];
     }
@@ -255,7 +255,7 @@ class GenerateScheduledReport implements ShouldQueue
         return [
             'type' => 'general_ledger',
             'title' => 'General Ledger',
-            'period' => $filter->startDate->format('Y-m-d') . ' to ' . $filter->endDate->format('Y-m-d'),
+            'period' => $filter->startDate->format('Y-m-d').' to '.$filter->endDate->format('Y-m-d'),
             'data' => $data->toArray(),
         ];
     }
@@ -287,7 +287,7 @@ class GenerateScheduledReport implements ShouldQueue
         return [
             'type' => 'stock_movement',
             'title' => 'Stock Movement Report',
-            'period' => $filter->startDate->format('Y-m-d') . ' to ' . $filter->endDate->format('Y-m-d'),
+            'period' => $filter->startDate->format('Y-m-d').' to '.$filter->endDate->format('Y-m-d'),
             'data' => $data->toArray(),
         ];
     }
@@ -331,9 +331,10 @@ class GenerateScheduledReport implements ShouldQueue
         $recipients = $this->schedule->recipients ?? [];
 
         if (empty($recipients)) {
-            Log::warning("No recipients configured for scheduled report", [
+            Log::warning('No recipients configured for scheduled report', [
                 'schedule_id' => $this->schedule->id,
             ]);
+
             return;
         }
 
@@ -350,12 +351,12 @@ class GenerateScheduledReport implements ShouldQueue
                         ->attach(Storage::path($filePath));
                 });
 
-                Log::info("Scheduled report email sent", [
+                Log::info('Scheduled report email sent', [
                     'schedule_id' => $this->schedule->id,
                     'recipient' => $recipient,
                 ]);
             } catch (\Exception $e) {
-                Log::error("Failed to send scheduled report email", [
+                Log::error('Failed to send scheduled report email', [
                     'schedule_id' => $this->schedule->id,
                     'recipient' => $recipient,
                     'error' => $e->getMessage(),

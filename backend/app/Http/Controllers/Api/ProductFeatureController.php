@@ -28,7 +28,7 @@ class ProductFeatureController extends Controller
         $baseSlug = $slug;
         $counter = 1;
         while (ProductFeature::where('slug', $slug)->exists()) {
-            $slug = $baseSlug . '-' . $counter++;
+            $slug = $baseSlug.'-'.$counter++;
         }
 
         $feature = ProductFeature::create([
@@ -38,7 +38,7 @@ class ProductFeatureController extends Controller
             'is_active' => $validated['is_active'] ?? true,
         ]);
 
-        if (!empty($validated['values'])) {
+        if (! empty($validated['values'])) {
             foreach ($validated['values'] as $val) {
                 $feature->values()->create($val);
             }
@@ -64,13 +64,19 @@ class ProductFeatureController extends Controller
         if (isset($validated['name'])) {
             $updateData['name'] = $validated['name'];
             $newSlug = Str::slug($validated['name']);
-            if ($newSlug !== $productFeature->slug && !ProductFeature::where('slug', $newSlug)->where('id', '!=', $productFeature->id)->exists()) {
+            if ($newSlug !== $productFeature->slug && ! ProductFeature::where('slug', $newSlug)->where('id', '!=', $productFeature->id)->exists()) {
                 $updateData['slug'] = $newSlug;
             }
         }
-        if (isset($validated['type'])) $updateData['type'] = $validated['type'];
-        if (isset($validated['is_active'])) $updateData['is_active'] = $validated['is_active'];
-        if (!empty($updateData)) $productFeature->update($updateData);
+        if (isset($validated['type'])) {
+            $updateData['type'] = $validated['type'];
+        }
+        if (isset($validated['is_active'])) {
+            $updateData['is_active'] = $validated['is_active'];
+        }
+        if (! empty($updateData)) {
+            $productFeature->update($updateData);
+        }
 
         if (isset($validated['values'])) {
             $currentIds = collect($validated['values'])->pluck('id')->filter()->toArray();
@@ -96,6 +102,7 @@ class ProductFeatureController extends Controller
     {
         $productFeature = ProductFeature::findOrFail($id);
         $productFeature->delete();
+
         return response()->json(['message' => 'Feature deleted successfully']);
     }
 }

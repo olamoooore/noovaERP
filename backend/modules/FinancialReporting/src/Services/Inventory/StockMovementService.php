@@ -3,8 +3,8 @@
 namespace Modules\FinancialReporting\Services\Inventory;
 
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Modules\FinancialReporting\DTOs\ReportData;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\Services\BaseReportService;
@@ -13,7 +13,7 @@ class StockMovementService extends BaseReportService
 {
     /**
      * Generate Stock Movement report
-     * 
+     *
      * Shows all stock movements with running balances per product
      */
     public function generate(ReportFilter $filter): ReportData
@@ -96,7 +96,7 @@ class StockMovementService extends BaseReportService
      */
     protected function getOpeningBalance(int $productId, ?Carbon $startDate): int
     {
-        if (!$startDate) {
+        if (! $startDate) {
             return 0;
         }
 
@@ -136,21 +136,21 @@ class StockMovementService extends BaseReportService
         }
 
         return $query->select([
-                'sm.id',
-                'sm.product_id',
-                'p.sku',
-                'p.name as product_name',
-                'p.unit',
-                'sm.type',
-                'sm.quantity',
-                'sm.reference',
-                'sm.reference_type',
-                'sm.reference_id',
-                'sm.notes',
-                'sm.balance_after',
-                'sm.created_at',
-                'u.name as created_by_name',
-            ])
+            'sm.id',
+            'sm.product_id',
+            'p.sku',
+            'p.name as product_name',
+            'p.unit',
+            'sm.type',
+            'sm.quantity',
+            'sm.reference',
+            'sm.reference_type',
+            'sm.reference_id',
+            'sm.notes',
+            'sm.balance_after',
+            'sm.created_at',
+            'u.name as created_by_name',
+        ])
             ->orderBy('sm.created_at', 'desc')
             ->orderBy('sm.id', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
@@ -172,8 +172,8 @@ class StockMovementService extends BaseReportService
             }
         }
 
-        $closingBalance = count($movements) > 0 
-            ? $movements[0]->balance_after 
+        $closingBalance = count($movements) > 0
+            ? $movements[0]->balance_after
             : $openingBalance;
 
         return [
@@ -209,12 +209,12 @@ class StockMovementService extends BaseReportService
         }
 
         $summary = $query->select([
-                'sm.type',
-                DB::raw('COUNT(*) as movement_count'),
-                DB::raw('SUM(CASE WHEN sm.quantity > 0 THEN sm.quantity ELSE 0 END) as total_in'),
-                DB::raw('SUM(CASE WHEN sm.quantity < 0 THEN ABS(sm.quantity) ELSE 0 END) as total_out'),
-                DB::raw('SUM(sm.quantity) as net_change'),
-            ])
+            'sm.type',
+            DB::raw('COUNT(*) as movement_count'),
+            DB::raw('SUM(CASE WHEN sm.quantity > 0 THEN sm.quantity ELSE 0 END) as total_in'),
+            DB::raw('SUM(CASE WHEN sm.quantity < 0 THEN ABS(sm.quantity) ELSE 0 END) as total_out'),
+            DB::raw('SUM(sm.quantity) as net_change'),
+        ])
             ->groupBy('sm.type')
             ->orderBy('movement_count', 'desc')
             ->get();

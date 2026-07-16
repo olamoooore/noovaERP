@@ -27,13 +27,13 @@ class InventoryService
             ->where('track_inventory', true)
             ->whereHas('stockLevels', function ($q) {
                 $q->where('quantity', '>', 0)
-                  ->where(function ($inner) {
-                      $inner->whereRaw('quantity <= NULLIF(min_quantity, 0)')
+                    ->where(function ($inner) {
+                        $inner->whereRaw('quantity <= NULLIF(min_quantity, 0)')
                             ->orWhere(function ($fallback) {
                                 $fallback->whereRaw('(min_quantity IS NULL OR min_quantity = 0)')
-                                         ->where('quantity', '<=', 10);
+                                    ->where('quantity', '<=', 10);
                             });
-                  });
+                    });
             })
             ->orderBy('id');
     }
@@ -86,8 +86,9 @@ class InventoryService
                 if ($existing) {
                     Log::info('InventoryService: idempotent adjustStock — returning existing movement', [
                         'idempotency_key' => $idempotencyKey,
-                        'movement_id'     => $existing->id,
+                        'movement_id' => $existing->id,
                     ]);
+
                     return $existing;
                 }
             }
@@ -96,7 +97,7 @@ class InventoryService
 
             // ── Guard: warehouse must be active ──────────────────────────────
             $warehouse = Warehouse::where('id', $warehouseId)->where('is_active', true)->first();
-            if (!$warehouse) {
+            if (! $warehouse) {
                 throw new \InvalidArgumentException(
                     "Warehouse ID {$warehouseId} does not exist or is not active."
                 );
@@ -104,7 +105,7 @@ class InventoryService
 
             // ── Guard: product must exist and track inventory ─────────────────
             $product = Product::find($productId);
-            if (!$product) {
+            if (! $product) {
                 throw new \InvalidArgumentException("Product ID {$productId} does not exist.");
             }
 
@@ -114,30 +115,30 @@ class InventoryService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$stockLevel) {
+            if (! $stockLevel) {
                 // If no stock_levels row exists for ANY warehouse for this product, the product
                 // was likely imported or created with stock_quantity set directly on the products
                 // table without a corresponding stock_levels entry. Seed from products.stock_quantity
                 // so the first sale doesn't immediately fail with "Insufficient stock".
                 $hasAnyLevel = StockLevel::where('product_id', $productId)->exists();
-                $initialQty = (!$hasAnyLevel && $product->stock_quantity > 0)
+                $initialQty = (! $hasAnyLevel && $product->stock_quantity > 0)
                     ? (int) $product->stock_quantity
                     : 0;
 
                 if ($initialQty > 0) {
                     Log::info('InventoryService: seeding StockLevel from products.stock_quantity', [
-                        'product_id'   => $productId,
+                        'product_id' => $productId,
                         'warehouse_id' => $warehouseId,
-                        'initial_qty'  => $initialQty,
+                        'initial_qty' => $initialQty,
                     ]);
                 }
 
                 $stockLevel = StockLevel::create([
-                    'product_id'       => $productId,
-                    'warehouse_id'     => $warehouseId,
-                    'quantity'         => $initialQty,
-                    'reserved_quantity'=> 0,
-                    'min_quantity'     => 0,
+                    'product_id' => $productId,
+                    'warehouse_id' => $warehouseId,
+                    'quantity' => $initialQty,
+                    'reserved_quantity' => 0,
+                    'min_quantity' => 0,
                 ]);
             }
 
@@ -165,8 +166,8 @@ class InventoryService
             }
 
             // Check for negative stock
-            if (!$settings->allow_negative_stock && $newQuantity < 0) {
-                throw new \Exception("Insufficient stock. Available: {$oldQuantity}, Requested: " . abs($quantity));
+            if (! $settings->allow_negative_stock && $newQuantity < 0) {
+                throw new \Exception("Insufficient stock. Available: {$oldQuantity}, Requested: ".abs($quantity));
             }
 
             // Update stock level
@@ -282,7 +283,7 @@ class InventoryService
         $query = StockLevel::with(['product', 'warehouse'])
             ->where('warehouse_id', $warehouseId);
 
-        if (!empty($filters['search'])) {
+        if (! empty($filters['search'])) {
             $search = $filters['search'];
             $query->whereHas('product', function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
@@ -326,19 +327,19 @@ class InventoryService
             ->where('product_id', $productId)
             ->orderBy('created_at', 'desc');
 
-        if (!empty($filters['warehouse_id'])) {
+        if (! empty($filters['warehouse_id'])) {
             $query->where('warehouse_id', $filters['warehouse_id']);
         }
 
-        if (!empty($filters['type'])) {
+        if (! empty($filters['type'])) {
             $query->where('type', $filters['type']);
         }
 
-        if (!empty($filters['from_date'])) {
+        if (! empty($filters['from_date'])) {
             $query->whereDate('created_at', '>=', $filters['from_date']);
         }
 
-        if (!empty($filters['to_date'])) {
+        if (! empty($filters['to_date'])) {
             $query->whereDate('created_at', '<=', $filters['to_date']);
         }
 
@@ -365,7 +366,7 @@ class InventoryService
         foreach ($stockLevels as $level) {
             $costValue = $level->quantity * ($level->product->cost ?? 0);
             $retailValue = $level->quantity * ($level->product->price ?? 0);
-            
+
             $totalCostValue += $costValue;
             $totalRetailValue += $retailValue;
 
@@ -441,7 +442,7 @@ class InventoryService
             'requested_quantity' => $quantity,
             'total_available' => $totalAvailable,
             'shortage' => $isAvailable ? 0 : $quantity - $totalAvailable,
-            'warehouses' => $stockLevels->map(fn($sl) => [
+            'warehouses' => $stockLevels->map(fn ($sl) => [
                 'warehouse_id' => $sl->warehouse_id,
                 'available' => $sl->available_quantity,
             ])->toArray(),

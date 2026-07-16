@@ -18,7 +18,7 @@ class VendorDebitNoteService
     public function createDebitNote(array $data): VendorDebitNote
     {
         DB::beginTransaction();
-        
+
         try {
             $lines = $data['lines'] ?? [];
             unset($data['lines']);
@@ -55,9 +55,9 @@ class VendorDebitNoteService
             }
 
             DB::commit();
-            
+
             return $debitNote->load(['vendor', 'bill', 'lines.product']);
-            
+
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -75,19 +75,19 @@ class VendorDebitNoteService
             ->where('status', 'posted')
             ->where('id', '!=', $debitNote->id)
             ->sum('total_amount');
-        
+
         $totalDebited = $existingDebitNotes + $debitNote->total_amount;
-        
+
         if ($totalDebited > $bill->total) {
             throw new \Exception(
-                "Debit note amount exceeds bill amount. " .
-                "Bill: {$bill->total}, Already debited: {$existingDebitNotes}, " .
+                'Debit note amount exceeds bill amount. '.
+                "Bill: {$bill->total}, Already debited: {$existingDebitNotes}, ".
                 "This debit note: {$debitNote->total_amount}"
             );
         }
 
         DB::beginTransaction();
-        
+
         try {
             $lines = [];
 
@@ -127,10 +127,10 @@ class VendorDebitNoteService
                 userId: TenantUserHelper::resolveTenantUserId(),
             ));
 
-            if (!$result->success) {
+            if (! $result->success) {
                 throw new \Exception($result->error);
             }
-            
+
             $debitNote->update([
                 'status' => 'posted',
                 'posted_at' => now(),
@@ -142,9 +142,9 @@ class VendorDebitNoteService
                 ->decrement('balance', (float) $debitNote->total_amount);
 
             DB::commit();
-            
+
             return $debitNote->fresh(['journalEntry', 'lines', 'vendor', 'bill']);
-            
+
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -154,13 +154,13 @@ class VendorDebitNoteService
     public function validateDebitNote(int $billId, float $amount): array
     {
         $bill = \App\Models\Bill::findOrFail($billId);
-        
+
         $existingDebitNotes = VendorDebitNote::where('bill_id', $billId)
             ->where('status', 'posted')
             ->sum('total_amount');
-        
+
         $remainingAmount = $bill->total - $existingDebitNotes;
-        
+
         return [
             'valid' => $amount <= $remainingAmount,
             'bill_amount' => $bill->total,

@@ -27,7 +27,7 @@ class LoyaltyController extends Controller
 
         // Check if user can access this customer's data
         $user = $request->user();
-        if (!$user->hasRole('admin') && $user->customer_id !== $customerId) {
+        if (! $user->hasRole('admin') && $user->customer_id !== $customerId) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized access to customer data',
@@ -44,7 +44,7 @@ class LoyaltyController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to get points information: ' . $e->getMessage(),
+                'message' => 'Failed to get points information: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -57,7 +57,7 @@ class LoyaltyController extends Controller
         $tenantId = $request->header('X-Tenant-ID', 'default');
 
         // Admin-only endpoint
-        if (!$request->user()->hasRole('admin')) {
+        if (! $request->user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Admin access required',
@@ -97,7 +97,7 @@ class LoyaltyController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to award points: ' . $e->getMessage(),
+                'message' => 'Failed to award points: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -111,7 +111,7 @@ class LoyaltyController extends Controller
 
         // Check if user can access this customer's data
         $user = $request->user();
-        if (!$user->hasRole('admin') && $user->customer_id !== $customerId) {
+        if (! $user->hasRole('admin') && $user->customer_id !== $customerId) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized access to customer data',
@@ -143,7 +143,7 @@ class LoyaltyController extends Controller
                 $request->description
             );
 
-            if (!$result['success']) {
+            if (! $result['success']) {
                 return response()->json([
                     'success' => false,
                     'message' => $result['error'],
@@ -159,7 +159,7 @@ class LoyaltyController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to redeem points: ' . $e->getMessage(),
+                'message' => 'Failed to redeem points: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -173,7 +173,7 @@ class LoyaltyController extends Controller
 
         // Check if user can access this customer's data
         $user = $request->user();
-        if (!$user->hasRole('admin') && $user->customer_id !== $customerId) {
+        if (! $user->hasRole('admin') && $user->customer_id !== $customerId) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized access to customer data',
@@ -208,7 +208,7 @@ class LoyaltyController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to calculate discount: ' . $e->getMessage(),
+                'message' => 'Failed to calculate discount: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -221,7 +221,7 @@ class LoyaltyController extends Controller
         $tenantId = $request->header('X-Tenant-ID', 'default');
 
         // Admin-only endpoint
-        if (!$request->user()->hasRole('admin')) {
+        if (! $request->user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Admin access required',
@@ -238,7 +238,7 @@ class LoyaltyController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to get earning rules: ' . $e->getMessage(),
+                'message' => 'Failed to get earning rules: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -251,7 +251,7 @@ class LoyaltyController extends Controller
         $tenantId = $request->header('X-Tenant-ID', 'default');
 
         // Admin-only endpoint
-        if (!$request->user()->hasRole('admin')) {
+        if (! $request->user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Admin access required',
@@ -269,7 +269,7 @@ class LoyaltyController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to process expired points: ' . $e->getMessage(),
+                'message' => 'Failed to process expired points: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -306,7 +306,7 @@ class LoyaltyController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to calculate booking points: ' . $e->getMessage(),
+                'message' => 'Failed to calculate booking points: '.$e->getMessage(),
             ], 400);
         }
     }

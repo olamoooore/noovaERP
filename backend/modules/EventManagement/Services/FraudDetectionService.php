@@ -2,14 +2,11 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Modules\EventManagement\Models\BookingVelocityLog;
-use Modules\EventManagement\Models\FraudDetectionRule;
 use Modules\EventManagement\Models\FraudAlert;
-use Modules\EventManagement\Models\IpRestriction;
+use Modules\EventManagement\Models\FraudDetectionRule;
 use Modules\EventManagement\Models\IdentityVerification;
-use Modules\EventManagement\Models\ManualReviewQueue;
+use Modules\EventManagement\Models\IpRestriction;
 
 class FraudDetectionService
 {
@@ -19,10 +16,10 @@ class FraudDetectionService
     public function analyzeBookingAttempt(array $bookingData): array
     {
         $tenantId = $this->resolveTenantIdFromPayload($bookingData);
-        
+
         // Log the booking attempt
         $this->logBookingVelocity($bookingData);
-        
+
         // Get active fraud detection rules
         $rules = FraudDetectionRule::forTenant($tenantId)
             ->active()
@@ -38,13 +35,13 @@ class FraudDetectionService
         foreach ($rules as $rule) {
             if ($rule->shouldEvaluate($bookingData)) {
                 $result = $rule->evaluate($bookingData);
-                
+
                 if ($result['triggered']) {
                     $triggeredRules[] = $rule;
                     $riskScore += $result['risk_score'];
                     $evidence = array_merge($evidence, $result['evidence']);
                     $recommendedActions = array_merge($recommendedActions, $result['recommended_actions']);
-                    
+
                     // Create fraud alert
                     $this->createFraudAlert($rule, $bookingData, $result);
                 }
@@ -53,7 +50,7 @@ class FraudDetectionService
 
         // Normalize risk score (0-100)
         $riskScore = min(100, $riskScore);
-        
+
         // Determine final recommendation
         $recommendation = $this->determineRecommendation($riskScore, $recommendedActions);
 
@@ -78,7 +75,7 @@ class FraudDetectionService
                 return $restriction->matchesIp($ipAddress);
             });
 
-        if (!$restriction) {
+        if (! $restriction) {
             return [
                 'restricted' => false,
                 'restriction_type' => null,
@@ -256,7 +253,7 @@ class FraudDetectionService
             ->where('verification_status', 'verified')
             ->where(function ($query) {
                 $query->whereNull('expires_at')
-                      ->orWhere('expires_at', '>', now());
+                    ->orWhere('expires_at', '>', now());
             })
             ->first();
 
@@ -269,7 +266,7 @@ class FraudDetectionService
             return true; // High risk requires verification
         }
 
-        if ($riskScore >= 60 && (!$verification || $verification->verification_level === 'none')) {
+        if ($riskScore >= 60 && (! $verification || $verification->verification_level === 'none')) {
             return true; // Medium-high risk requires at least basic verification
         }
 
@@ -400,11 +397,11 @@ class FraudDetectionService
     {
         $suspiciousPatterns = [
             'bot', 'crawler', 'spider', 'scraper', 'curl', 'wget', 'python', 'java',
-            'automated', 'script', 'headless', 'phantom', 'selenium'
+            'automated', 'script', 'headless', 'phantom', 'selenium',
         ];
 
         $userAgentLower = strtolower($userAgent);
-        
+
         foreach ($suspiciousPatterns as $pattern) {
             if (strpos($userAgentLower, $pattern) !== false) {
                 return true;
@@ -455,7 +452,7 @@ class FraudDetectionService
         } elseif ($riskScore >= 40) {
             return FraudAlert::SEVERITY_MEDIUM;
         }
-        
+
         return FraudAlert::SEVERITY_LOW;
     }
 
@@ -467,11 +464,11 @@ class FraudDetectionService
         if (isset($bookingData['customer_id'])) {
             return FraudAlert::ENTITY_CUSTOMER;
         }
-        
+
         if (isset($bookingData['ip_address'])) {
             return FraudAlert::ENTITY_IP_ADDRESS;
         }
-        
+
         return FraudAlert::ENTITY_SESSION;
     }
 

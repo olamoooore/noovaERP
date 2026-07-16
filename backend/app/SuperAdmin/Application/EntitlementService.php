@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\SuperAdmin\Application;
 
+use App\Services\SearchPathGuard;
 use App\SuperAdmin\Domain\CatalogItem;
 use App\SuperAdmin\Domain\EntitlementRebuildJob;
 use App\SuperAdmin\Domain\PlanFamily;
@@ -11,7 +12,6 @@ use App\SuperAdmin\Domain\PlanItemDefault;
 use App\SuperAdmin\Domain\Subscription;
 use App\SuperAdmin\Domain\TenantEntitlement;
 use App\SuperAdmin\Domain\TenantSelectedItem;
-use App\Services\SearchPathGuard;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -98,13 +98,13 @@ class EntitlementService
                 ->get();
 
             return [
-                'tenant_id'     => $tenantId,
-                'active_tier'   => $tier,
-                'items'         => $allItems,
+                'tenant_id' => $tenantId,
+                'active_tier' => $tier,
+                'items' => $allItems,
                 'tier_defaults' => $tierDefaults,
-                'selections'    => $selections,
-                'entitlements'  => $entitlements,
-                'recent_jobs'   => $recentJobs,
+                'selections' => $selections,
+                'entitlements' => $entitlements,
+                'recent_jobs' => $recentJobs,
             ];
         });
     }
@@ -129,17 +129,17 @@ class EntitlementService
     {
         return $this->onCentralSchema(function () use ($tenantId, $adminId, $reason) {
             $job = EntitlementRebuildJob::create([
-                'tenant_id'              => $tenantId,
-                'status'                 => EntitlementRebuildJob::STATUS_PENDING,
-                'reason'                 => $reason ?? 'manual_rebuild',
-                'triggered_by_admin_id'  => $adminId,
+                'tenant_id' => $tenantId,
+                'status' => EntitlementRebuildJob::STATUS_PENDING,
+                'reason' => $reason ?? 'manual_rebuild',
+                'triggered_by_admin_id' => $adminId,
             ]);
 
             try {
                 $job->markRunning();
 
-                $resolved   = $this->resolveEntitlementsInner($tenantId);
-                $itemCount  = count($resolved);
+                $resolved = $this->resolveEntitlementsInner($tenantId);
+                $itemCount = count($resolved);
 
                 DB::transaction(function () use ($tenantId, $resolved) {
                     TenantEntitlement::forTenant($tenantId)->delete();
@@ -147,8 +147,8 @@ class EntitlementService
                     $now = now();
                     $rows = array_map(fn ($row) => array_merge($row, [
                         'resolved_at' => $now,
-                        'created_at'  => $now,
-                        'updated_at'  => $now,
+                        'created_at' => $now,
+                        'updated_at' => $now,
                     ]), $resolved);
 
                     foreach (array_chunk($rows, 200) as $chunk) {
@@ -198,10 +198,10 @@ class EntitlementService
 
             foreach ($includedDefaults as $default) {
                 $resolved[$default->catalog_item_id] = [
-                    'tenant_id'       => $tenantId,
+                    'tenant_id' => $tenantId,
                     'catalog_item_id' => $default->catalog_item_id,
-                    'is_entitled'     => true,
-                    'source'          => TenantEntitlement::SOURCE_TIER_INCLUDED,
+                    'is_entitled' => true,
+                    'source' => TenantEntitlement::SOURCE_TIER_INCLUDED,
                 ];
             }
         }
@@ -212,10 +212,10 @@ class EntitlementService
         foreach ($selections as $selection) {
             if ($selection->selection_type === TenantSelectedItem::TYPE_ADD_ON_PURCHASED) {
                 $resolved[$selection->catalog_item_id] = [
-                    'tenant_id'       => $tenantId,
+                    'tenant_id' => $tenantId,
                     'catalog_item_id' => $selection->catalog_item_id,
-                    'is_entitled'     => true,
-                    'source'          => TenantEntitlement::SOURCE_ADD_ON_PURCHASED,
+                    'is_entitled' => true,
+                    'source' => TenantEntitlement::SOURCE_ADD_ON_PURCHASED,
                 ];
             }
         }
@@ -224,10 +224,10 @@ class EntitlementService
         foreach ($selections as $selection) {
             if ($selection->selection_type === TenantSelectedItem::TYPE_OVERRIDE_INCLUDE) {
                 $resolved[$selection->catalog_item_id] = [
-                    'tenant_id'       => $tenantId,
+                    'tenant_id' => $tenantId,
                     'catalog_item_id' => $selection->catalog_item_id,
-                    'is_entitled'     => true,
-                    'source'          => TenantEntitlement::SOURCE_OVERRIDE_INCLUDE,
+                    'is_entitled' => true,
+                    'source' => TenantEntitlement::SOURCE_OVERRIDE_INCLUDE,
                 ];
             }
         }
@@ -236,10 +236,10 @@ class EntitlementService
         foreach ($selections as $selection) {
             if ($selection->selection_type === TenantSelectedItem::TYPE_OVERRIDE_EXCLUDE) {
                 $resolved[$selection->catalog_item_id] = [
-                    'tenant_id'       => $tenantId,
+                    'tenant_id' => $tenantId,
                     'catalog_item_id' => $selection->catalog_item_id,
-                    'is_entitled'     => false,
-                    'source'          => TenantEntitlement::SOURCE_OVERRIDE_EXCLUDE,
+                    'is_entitled' => false,
+                    'source' => TenantEntitlement::SOURCE_OVERRIDE_EXCLUDE,
                 ];
             }
         }

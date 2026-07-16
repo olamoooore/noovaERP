@@ -2,22 +2,24 @@
 
 namespace Modules\EventManagement\Services;
 
+use Exception;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
-use Exception;
 
 /**
  * Migration Validation Service
- * 
+ *
  * Implements migration timestamp validation to prevent future conflicts,
  * automated dependency checking, and production safety monitoring.
- * 
+ *
  * Long-term operational improvements for migration management.
  */
 class MigrationValidationService
 {
     private string $migrationsPath;
+
     private array $validationRules = [];
+
     private array $dependencyMap = [];
 
     public function __construct()
@@ -41,13 +43,14 @@ class MigrationValidationService
 
         foreach ($migrations as $migration) {
             $timestamp = $this->extractTimestamp($migration);
-            
-            if (!$timestamp) {
+
+            if (! $timestamp) {
                 $warnings[] = [
                     'type' => 'invalid_timestamp',
                     'file' => $migration,
-                    'message' => 'Could not extract valid timestamp from filename'
+                    'message' => 'Could not extract valid timestamp from filename',
                 ];
+
                 continue;
             }
 
@@ -57,7 +60,7 @@ class MigrationValidationService
                     'timestamp' => $timestamp,
                     'files' => array_merge([$timestamps[$timestamp]], [$migration]),
                     'severity' => 'critical',
-                    'message' => "Duplicate timestamp {$timestamp} found in multiple migrations"
+                    'message' => "Duplicate timestamp {$timestamp} found in multiple migrations",
                 ];
             } else {
                 $timestamps[$timestamp] = $migration;
@@ -66,14 +69,14 @@ class MigrationValidationService
 
         // Check for sequential gaps
         $sequentialIssues = $this->validateSequentialOrder($timestamps);
-        
+
         return [
             'status' => empty($conflicts) ? 'PASSED' : 'FAILED',
             'total_migrations' => count($migrations),
             'conflicts' => $conflicts,
             'warnings' => array_merge($warnings, $sequentialIssues),
             'validation_time' => now(),
-            'recommendations' => $this->generateRecommendations($conflicts, $warnings)
+            'recommendations' => $this->generateRecommendations($conflicts, $warnings),
         ];
     }
 
@@ -90,15 +93,15 @@ class MigrationValidationService
 
         foreach ($migrations as $migration) {
             $dependencies = $this->extractDependencies($migration);
-            
+
             foreach ($dependencies as $dependency) {
-                if (!$this->migrationExists($dependency)) {
+                if (! $this->migrationExists($dependency)) {
                     $dependencyIssues[] = [
                         'type' => 'missing_dependency',
                         'migration' => $migration,
                         'missing_dependency' => $dependency,
                         'severity' => 'critical',
-                        'message' => "Migration {$migration} depends on {$dependency} which does not exist"
+                        'message' => "Migration {$migration} depends on {$dependency} which does not exist",
                     ];
                 }
 
@@ -109,7 +112,7 @@ class MigrationValidationService
                         'migration' => $migration,
                         'dependency' => $dependency,
                         'severity' => 'critical',
-                        'message' => "Circular dependency detected between {$migration} and {$dependency}"
+                        'message' => "Circular dependency detected between {$migration} and {$dependency}",
                     ];
                 }
             }
@@ -119,7 +122,7 @@ class MigrationValidationService
             'status' => empty($dependencyIssues) && empty($circularDependencies) ? 'PASSED' : 'FAILED',
             'dependency_issues' => $dependencyIssues,
             'circular_dependencies' => $circularDependencies,
-            'validation_time' => now()
+            'validation_time' => now(),
         ];
     }
 
@@ -135,16 +138,16 @@ class MigrationValidationService
             'failed_migrations' => $this->checkFailedMigrations(),
             'rollback_safety' => $this->validateRollbackSafety(),
             'schema_integrity' => $this->validateSchemaIntegrity(),
-            'performance_impact' => $this->assessMigrationPerformance()
+            'performance_impact' => $this->assessMigrationPerformance(),
         ];
 
-        $overallStatus = collect($productionChecks)->every(fn($check) => $check['status'] === 'OK') ? 'HEALTHY' : 'ISSUES_DETECTED';
+        $overallStatus = collect($productionChecks)->every(fn ($check) => $check['status'] === 'OK') ? 'HEALTHY' : 'ISSUES_DETECTED';
 
         return [
             'overall_status' => $overallStatus,
             'checks' => $productionChecks,
             'monitoring_time' => now(),
-            'alerts' => $this->generateProductionAlerts($productionChecks)
+            'alerts' => $this->generateProductionAlerts($productionChecks),
         ];
     }
 
@@ -171,8 +174,8 @@ class MigrationValidationService
 
         return [
             'resolutions' => $resolutions,
-            'automated_fixes_available' => count(array_filter($resolutions, fn($r) => $r['can_auto_fix'])),
-            'manual_fixes_required' => count(array_filter($resolutions, fn($r) => !$r['can_auto_fix']))
+            'automated_fixes_available' => count(array_filter($resolutions, fn ($r) => $r['can_auto_fix'])),
+            'manual_fixes_required' => count(array_filter($resolutions, fn ($r) => ! $r['can_auto_fix'])),
         ];
     }
 
@@ -192,9 +195,9 @@ class MigrationValidationService
 
         return [
             'fixes_attempted' => count($fixResults),
-            'fixes_successful' => count(array_filter($fixResults, fn($r) => $r['success'])),
+            'fixes_successful' => count(array_filter($fixResults, fn ($r) => $r['success'])),
             'fix_results' => $fixResults,
-            'fix_time' => now()
+            'fix_time' => now(),
         ];
     }
 
@@ -203,14 +206,14 @@ class MigrationValidationService
      */
     private function getAllMigrationFiles(): array
     {
-        if (!File::exists($this->migrationsPath)) {
+        if (! File::exists($this->migrationsPath)) {
             return [];
         }
 
         return collect(File::files($this->migrationsPath))
-            ->filter(fn($file) => $file->getExtension() === 'php')
-            ->map(fn($file) => $file->getFilename())
-            ->filter(fn($filename) => $filename !== '.gitkeep')
+            ->filter(fn ($file) => $file->getExtension() === 'php')
+            ->map(fn ($file) => $file->getFilename())
+            ->filter(fn ($filename) => $filename !== '.gitkeep')
             ->sort()
             ->values()
             ->toArray();
@@ -224,6 +227,7 @@ class MigrationValidationService
         if (preg_match('/^(\d{4}_\d{2}_\d{2}_\d{6})_/', $filename, $matches)) {
             return $matches[1];
         }
+
         return null;
     }
 
@@ -239,10 +243,10 @@ class MigrationValidationService
         for ($i = 1; $i < count($sortedTimestamps); $i++) {
             $current = $sortedTimestamps[$i];
             $previous = $sortedTimestamps[$i - 1];
-            
+
             $currentNum = (int) substr($current, -6);
             $previousNum = (int) substr($previous, -6);
-            
+
             if ($currentNum - $previousNum > 1) {
                 $issues[] = [
                     'type' => 'sequence_gap',
@@ -250,7 +254,7 @@ class MigrationValidationService
                     'current' => $current,
                     'gap_size' => $currentNum - $previousNum - 1,
                     'severity' => 'warning',
-                    'message' => "Gap in migration sequence between {$previous} and {$current}"
+                    'message' => "Gap in migration sequence between {$previous} and {$current}",
                 ];
             }
         }
@@ -263,9 +267,9 @@ class MigrationValidationService
      */
     private function extractDependencies(string $migration): array
     {
-        $filePath = $this->migrationsPath . '/' . $migration;
-        
-        if (!File::exists($filePath)) {
+        $filePath = $this->migrationsPath.'/'.$migration;
+
+        if (! File::exists($filePath)) {
             return [];
         }
 
@@ -295,8 +299,9 @@ class MigrationValidationService
     private function migrationExists(string $migration): bool
     {
         $migrations = $this->getAllMigrationFiles();
-        return in_array($migration, $migrations) || 
-               collect($migrations)->contains(fn($m) => str_contains($m, $migration));
+
+        return in_array($migration, $migrations) ||
+               collect($migrations)->contains(fn ($m) => str_contains($m, $migration));
     }
 
     /**
@@ -306,7 +311,7 @@ class MigrationValidationService
     {
         $deps1 = $this->extractDependencies($migration1);
         $deps2 = $this->extractDependencies($migration2);
-        
+
         return in_array($migration1, $deps2) && in_array($migration2, $deps1);
     }
 
@@ -318,14 +323,14 @@ class MigrationValidationService
         try {
             $files = $conflict['files'];
             $timestamp = $conflict['timestamp'];
-            
+
             // Keep the first file, rename subsequent ones
             for ($i = 1; $i < count($files); $i++) {
-                $oldPath = $this->migrationsPath . '/' . $files[$i];
+                $oldPath = $this->migrationsPath.'/'.$files[$i];
                 $newTimestamp = $this->generateNextTimestamp($timestamp, $i);
                 $newFilename = str_replace($timestamp, $newTimestamp, $files[$i]);
-                $newPath = $this->migrationsPath . '/' . $newFilename;
-                
+                $newPath = $this->migrationsPath.'/'.$newFilename;
+
                 if (File::move($oldPath, $newPath)) {
                     Log::info("Renamed migration {$files[$i]} to {$newFilename}");
                 } else {
@@ -337,19 +342,19 @@ class MigrationValidationService
                 'success' => true,
                 'conflict' => $conflict,
                 'action' => 'renamed_duplicates',
-                'files_renamed' => array_slice($files, 1)
+                'files_renamed' => array_slice($files, 1),
             ];
 
         } catch (Exception $e) {
-            Log::error("Failed to auto-fix duplicate timestamp", [
+            Log::error('Failed to auto-fix duplicate timestamp', [
                 'conflict' => $conflict,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'conflict' => $conflict,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
@@ -361,7 +366,8 @@ class MigrationValidationService
     {
         $baseNum = (int) substr($baseTimestamp, -6);
         $newNum = str_pad($baseNum + $increment, 6, '0', STR_PAD_LEFT);
-        return substr($baseTimestamp, 0, -6) . $newNum;
+
+        return substr($baseTimestamp, 0, -6).$newNum;
     }
 
     /**
@@ -373,7 +379,7 @@ class MigrationValidationService
             'timestamp_format' => '/^\d{4}_\d{2}_\d{2}_\d{6}_/',
             'filename_pattern' => '/^(\d{4}_\d{2}_\d{2}_\d{6})_([a-z0-9_]+)\.php$/',
             'max_migrations_per_day' => 50,
-            'required_methods' => ['up', 'down']
+            'required_methods' => ['up', 'down'],
         ];
     }
 
@@ -390,7 +396,7 @@ class MigrationValidationService
             'kpi_definitions' => 'create_analytics_governance_schema',
             'artist_canonical' => 'create_artist_canonicalization_schema',
             'pii_vault' => 'create_pii_vault_tables',
-            'outbox_events' => 'create_outbox_pattern_tables'
+            'outbox_events' => 'create_outbox_pattern_tables',
         ];
     }
 
@@ -401,12 +407,12 @@ class MigrationValidationService
     {
         $recommendations = [];
 
-        if (!empty($conflicts)) {
+        if (! empty($conflicts)) {
             $recommendations[] = [
                 'priority' => 'critical',
                 'action' => 'Fix migration timestamp conflicts immediately',
                 'description' => 'Duplicate timestamps will prevent migrations from running',
-                'automated_fix_available' => true
+                'automated_fix_available' => true,
             ];
         }
 
@@ -415,7 +421,7 @@ class MigrationValidationService
                 'priority' => 'medium',
                 'action' => 'Review migration naming conventions',
                 'description' => 'Multiple warnings suggest inconsistent migration practices',
-                'automated_fix_available' => false
+                'automated_fix_available' => false,
             ];
         }
 
@@ -423,13 +429,48 @@ class MigrationValidationService
     }
 
     // Production monitoring methods (placeholder implementations)
-    private function checkPendingMigrations(): array { return ['status' => 'OK', 'count' => 0]; }
-    private function checkFailedMigrations(): array { return ['status' => 'OK', 'count' => 0]; }
-    private function validateRollbackSafety(): array { return ['status' => 'OK', 'rollback_safe' => true]; }
-    private function validateSchemaIntegrity(): array { return ['status' => 'OK', 'integrity_check' => 'passed']; }
-    private function assessMigrationPerformance(): array { return ['status' => 'OK', 'avg_time_ms' => 150]; }
-    private function generateProductionAlerts(array $checks): array { return []; }
-    private function resolveDuplicateTimestamp(array $conflict): array { return ['can_auto_fix' => true, 'steps' => []]; }
-    private function resolveMissingDependency(array $conflict): array { return ['can_auto_fix' => false, 'steps' => []]; }
-    private function resolveCircularDependency(array $conflict): array { return ['can_auto_fix' => false, 'steps' => []]; }
+    private function checkPendingMigrations(): array
+    {
+        return ['status' => 'OK', 'count' => 0];
+    }
+
+    private function checkFailedMigrations(): array
+    {
+        return ['status' => 'OK', 'count' => 0];
+    }
+
+    private function validateRollbackSafety(): array
+    {
+        return ['status' => 'OK', 'rollback_safe' => true];
+    }
+
+    private function validateSchemaIntegrity(): array
+    {
+        return ['status' => 'OK', 'integrity_check' => 'passed'];
+    }
+
+    private function assessMigrationPerformance(): array
+    {
+        return ['status' => 'OK', 'avg_time_ms' => 150];
+    }
+
+    private function generateProductionAlerts(array $checks): array
+    {
+        return [];
+    }
+
+    private function resolveDuplicateTimestamp(array $conflict): array
+    {
+        return ['can_auto_fix' => true, 'steps' => []];
+    }
+
+    private function resolveMissingDependency(array $conflict): array
+    {
+        return ['can_auto_fix' => false, 'steps' => []];
+    }
+
+    private function resolveCircularDependency(array $conflict): array
+    {
+        return ['can_auto_fix' => false, 'steps' => []];
+    }
 }

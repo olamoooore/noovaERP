@@ -6,7 +6,6 @@ use Illuminate\Support\Facades\Log;
 use Modules\FinancialClose\Interfaces\FileAccessBrokerInterface;
 use Modules\FinancialClose\Models\AccessDecisionLog;
 use Modules\FinancialClose\Models\RestrictedDocumentAccessLog;
-use Modules\FinancialClose\Services\FinancialClosePolicyService;
 
 class FileAccessBrokerService implements FileAccessBrokerInterface
 {
@@ -27,7 +26,7 @@ class FileAccessBrokerService implements FileAccessBrokerInterface
 
         $this->logAccess($tenantId, $userId, $fileId, $authorized);
 
-        if (!$authorized) {
+        if (! $authorized) {
             Log::warning('FinancialClose: unauthorized file access attempt', [
                 'tenant_id' => $tenantId,
                 'user_id' => $userId,
@@ -45,7 +44,7 @@ class FileAccessBrokerService implements FileAccessBrokerInterface
     {
         // Generate a signed URL with expiry
         // In production this would integrate with your storage provider
-        $token = hash_hmac('sha256', "{$tenantId}:{$fileId}:" . time(), config('app.key'));
+        $token = hash_hmac('sha256', "{$tenantId}:{$fileId}:".time(), config('app.key'));
         $expiry = time() + $expirySeconds;
 
         return url("/api/financial-close/files/{$fileId}/download?token={$token}&expires={$expiry}");

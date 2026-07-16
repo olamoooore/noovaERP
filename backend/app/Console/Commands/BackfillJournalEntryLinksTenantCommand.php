@@ -27,15 +27,17 @@ class BackfillJournalEntryLinksTenantCommand extends Command
     {
         $tenantId = $this->option('tenant');
 
-        if (!$tenantId) {
+        if (! $tenantId) {
             $this->error('The --tenant flag is required for this command.');
             $this->info('Usage: php artisan accounting:backfill-journal-entry-links-tenant --tenant=<tenant-id>');
+
             return Command::FAILURE;
         }
 
         $tenant = \App\Models\Tenant::find($tenantId);
-        if (!$tenant) {
+        if (! $tenant) {
             $this->error("Tenant not found: {$tenantId}");
+
             return Command::FAILURE;
         }
 
@@ -54,7 +56,7 @@ class BackfillJournalEntryLinksTenantCommand extends Command
         $dryRun = $this->option('dry-run');
         $batchSize = (int) $this->option('batch');
 
-        $this->info("Starting backfill (dry-run: " . ($dryRun ? 'yes' : 'no') . ')');
+        $this->info('Starting backfill (dry-run: '.($dryRun ? 'yes' : 'no').')');
 
         $totalProcessed = 0;
         $totalSkipped = 0;
@@ -68,6 +70,7 @@ class BackfillJournalEntryLinksTenantCommand extends Command
 
         if ($totalWithoutTenant === 0) {
             $this->info('All journal_entry_links already have tenant_id');
+
             return Command::SUCCESS;
         }
 
@@ -82,7 +85,7 @@ class BackfillJournalEntryLinksTenantCommand extends Command
                 $tenantId = $this->findTenantIdForLink($link);
 
                 if ($tenantId) {
-                    if (!$dryRun) {
+                    if (! $dryRun) {
                         DB::table('journal_entry_links')
                             ->where('id', $link->id)
                             ->update(['tenant_id' => $tenantId]);

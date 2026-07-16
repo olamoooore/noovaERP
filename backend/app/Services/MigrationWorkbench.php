@@ -26,13 +26,13 @@ class MigrationWorkbench
         $this->validatePrerequisites();
 
         return DB::table('migration_jobs')->insertGetId([
-            'session_id'      => $sessionId,
-            'type'            => $type,
-            'status'          => 'pending',
-            'created_by'      => $createdBy,
+            'session_id' => $sessionId,
+            'type' => $type,
+            'status' => 'pending',
+            'created_by' => $createdBy,
             'legal_entity_id' => $legalEntityId,
-            'created_at'      => now(),
-            'updated_at'      => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 
@@ -48,12 +48,12 @@ class MigrationWorkbench
 
         foreach ($batches as $index => $batchRows) {
             $batchId = DB::table('migration_batches')->insertGetId([
-                'job_id'       => $jobId,
+                'job_id' => $jobId,
                 'batch_number' => $index + 1,
                 'record_count' => count($batchRows),
-                'status'       => 'pending',
-                'created_at'   => now(),
-                'updated_at'   => now(),
+                'status' => 'pending',
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
             $batchIds[] = $batchId;
         }
@@ -76,15 +76,15 @@ class MigrationWorkbench
                 foreach ($validator->errors()->all() as $message) {
                     $field = array_key_first($validator->failed());
                     DB::table('migration_exceptions')->insert([
-                        'batch_id'      => $batchId,
-                        'row_number'    => $index + 1,
-                        'field'         => $field,
-                        'error_type'    => 'validation',
+                        'batch_id' => $batchId,
+                        'row_number' => $index + 1,
+                        'field' => $field,
+                        'error_type' => 'validation',
                         'error_message' => $message,
-                        'raw_data'      => json_encode($row),
-                        'resolution'    => 'pending',
-                        'created_at'    => now(),
-                        'updated_at'    => now(),
+                        'raw_data' => json_encode($row),
+                        'resolution' => 'pending',
+                        'created_at' => now(),
+                        'updated_at' => now(),
                     ]);
                     $errors[] = ['row' => $index + 1, 'message' => $message];
                 }
@@ -97,16 +97,16 @@ class MigrationWorkbench
             ->where('id', $batchId)
             ->update([
                 'success_count' => count($valid),
-                'error_count'   => count($errors),
-                'status'        => count($errors) > 0 ? 'completed' : 'completed',
-                'updated_at'    => now(),
+                'error_count' => count($errors),
+                'status' => count($errors) > 0 ? 'completed' : 'completed',
+                'updated_at' => now(),
             ]);
 
         return [
             'valid_count' => count($valid),
             'error_count' => count($errors),
-            'errors'      => $errors,
-            'valid_rows'  => $valid,
+            'errors' => $errors,
+            'valid_rows' => $valid,
         ];
     }
 
@@ -116,7 +116,7 @@ class MigrationWorkbench
     public function preview(int $jobId): array
     {
         $job = DB::table('migration_jobs')->find($jobId);
-        if (!$job) {
+        if (! $job) {
             throw new \RuntimeException("Migration job {$jobId} not found.");
         }
 
@@ -126,7 +126,7 @@ class MigrationWorkbench
 
         $totalRecords = $batches->sum('record_count');
         $totalSuccess = $batches->sum('success_count');
-        $totalErrors  = $batches->sum('error_count');
+        $totalErrors = $batches->sum('error_count');
 
         $unresolvedExceptions = DB::table('migration_exceptions')
             ->whereIn('batch_id', $batches->pluck('id'))
@@ -134,13 +134,13 @@ class MigrationWorkbench
             ->count();
 
         return [
-            'job_id'                => $jobId,
-            'type'                  => $job->type,
-            'total_records'         => $totalRecords,
-            'valid_records'         => $totalSuccess,
-            'error_records'         => $totalErrors,
+            'job_id' => $jobId,
+            'type' => $job->type,
+            'total_records' => $totalRecords,
+            'valid_records' => $totalSuccess,
+            'error_records' => $totalErrors,
             'unresolved_exceptions' => $unresolvedExceptions,
-            'can_commit'            => $unresolvedExceptions === 0,
+            'can_commit' => $unresolvedExceptions === 0,
         ];
     }
 
@@ -151,7 +151,7 @@ class MigrationWorkbench
     {
         $preview = $this->preview($jobId);
 
-        if (!$preview['can_commit']) {
+        if (! $preview['can_commit']) {
             throw new \RuntimeException(
                 "Cannot commit: {$preview['unresolved_exceptions']} unresolved exception(s)."
             );
@@ -175,16 +175,16 @@ class MigrationWorkbench
      */
     public function resolveException(int $exceptionId, string $resolution, ?int $resolvedBy = null): void
     {
-        if (!in_array($resolution, ['resolved', 'skipped'])) {
+        if (! in_array($resolution, ['resolved', 'skipped'])) {
             throw new \InvalidArgumentException("Resolution must be 'resolved' or 'skipped'.");
         }
 
         DB::table('migration_exceptions')
             ->where('id', $exceptionId)
             ->update([
-                'resolution'  => $resolution,
+                'resolution' => $resolution,
                 'resolved_by' => $resolvedBy,
-                'updated_at'  => now(),
+                'updated_at' => now(),
             ]);
     }
 
@@ -218,7 +218,7 @@ class MigrationWorkbench
         // Check company_settings has a country_pack assigned
         $settings = DB::table('company_settings')->first();
 
-        if (!$settings || empty($settings->country ?? null)) {
+        if (! $settings || empty($settings->country ?? null)) {
             throw new \RuntimeException(
                 'Cannot start import: country pack must be selected in company settings.'
             );
@@ -229,9 +229,9 @@ class MigrationWorkbench
             ->where('is_mandatory', true)
             ->whereNotExists(function ($q) {
                 $q->select(DB::raw(1))
-                  ->from('entity_account_roles')
-                  ->whereColumn('entity_account_roles.role_id', 'account_roles.id')
-                  ->where('entity_account_roles.is_active', true);
+                    ->from('entity_account_roles')
+                    ->whereColumn('entity_account_roles.role_id', 'account_roles.id')
+                    ->where('entity_account_roles.is_active', true);
             })
             ->count();
 

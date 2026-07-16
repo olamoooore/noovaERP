@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasColumn('inventory_settings', 'sme_mode')) {
+        if (! Schema::hasColumn('inventory_settings', 'sme_mode')) {
             Schema::table('inventory_settings', function (Blueprint $table) {
                 $table->boolean('sme_mode')->default(false)->after('enable_barcode_scanning');
             });

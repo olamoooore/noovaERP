@@ -27,6 +27,6 @@ class PostingAuditLog extends Model
 
     protected $casts = [
         'payload_snapshot' => 'array',
-        'created_at'       => 'datetime',
+        'created_at' => 'datetime',
     ];
 }

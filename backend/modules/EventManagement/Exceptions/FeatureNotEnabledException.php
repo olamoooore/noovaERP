@@ -5,6 +5,7 @@ namespace Modules\EventManagement\Exceptions;
 class FeatureNotEnabledException extends EventManagementException
 {
     protected $feature;
+
     protected $tenantId;
 
     public function __construct(string $feature, ?string $tenantId = null, string $message = '', int $code = 0, ?\Throwable $previous = null)
@@ -35,7 +36,7 @@ class FeatureNotEnabledException extends EventManagementException
     public function getDetails(): ?array
     {
         $details = [
-            'feature' => $this->feature
+            'feature' => $this->feature,
         ];
 
         if ($this->tenantId) {

@@ -20,7 +20,7 @@ return new class extends Migration
             $table->decimal('line_total', 15, 2);
             $table->foreignId('account_id')->nullable()->constrained('chart_of_accounts');
             $table->timestamps();
-            
+
             $table->index('credit_note_id');
         });
     }

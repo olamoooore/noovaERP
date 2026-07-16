@@ -28,7 +28,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (!$this->centralFeaturesTableExists()) {
+        if (! $this->centralFeaturesTableExists()) {
             return;
         }
 
@@ -49,7 +49,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        if (!$this->centralFeaturesTableExists()) {
+        if (! $this->centralFeaturesTableExists()) {
             return;
         }
 

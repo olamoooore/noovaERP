@@ -11,20 +11,18 @@ use App\SuperAdmin\Domain\SubscriptionInvoice;
 use App\SuperAdmin\Domain\TenantPlanChange;
 use App\SuperAdmin\Domain\TenantPlanChangeInvoice;
 use Carbon\Carbon;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 class PlanChangeService
 {
     public function __construct(
-        private readonly EntitlementService   $entitlements,
+        private readonly EntitlementService $entitlements,
         private readonly PricingEngineService $pricing,
-        private readonly BillingService       $billing,
-        private readonly SubscriptionService  $subscriptions,
-        private readonly AdminAuditLogger     $audit,
+        private readonly BillingService $billing,
+        private readonly SubscriptionService $subscriptions,
+        private readonly AdminAuditLogger $audit,
     ) {}
 
     // ── Request ───────────────────────────────────────────────────────────────
@@ -34,11 +32,11 @@ class PlanChangeService
      * Calculates proration at request time so the admin can review amounts.
      */
     public function requestChange(
-        string  $tenantId,
-        int     $toFamilyId,
-        string  $effectiveDate,
+        string $tenantId,
+        int $toFamilyId,
+        string $effectiveDate,
         ?string $reason = null,
-        ?int    $adminId = null,
+        ?int $adminId = null,
     ): TenantPlanChange {
         $toFamily = PlanFamily::where('id', $toFamilyId)
             ->where('is_active', true)
@@ -55,26 +53,26 @@ class PlanChangeService
             throw new InvalidArgumentException('A pending plan change already exists for this tenant. Cancel or apply it first.');
         }
 
-        $changeDate  = Carbon::parse($effectiveDate);
-        $proration   = $this->calculateProration($tenantId, $changeDate);
+        $changeDate = Carbon::parse($effectiveDate);
+        $proration = $this->calculateProration($tenantId, $changeDate);
 
         $change = TenantPlanChange::create([
-            'tenant_id'              => $tenantId,
-            'from_family_id'         => $fromFamily?->id,
-            'to_family_id'           => $toFamilyId,
-            'effective_date'         => $changeDate->toDateString(),
-            'status'                 => TenantPlanChange::STATUS_PENDING,
+            'tenant_id' => $tenantId,
+            'from_family_id' => $fromFamily?->id,
+            'to_family_id' => $toFamilyId,
+            'effective_date' => $changeDate->toDateString(),
+            'status' => TenantPlanChange::STATUS_PENDING,
             'proration_credit_cents' => $proration['credit_cents'],
             'proration_charge_cents' => $proration['charge_cents'],
-            'reason'                 => $reason,
-            'created_by_admin_id'    => $adminId,
+            'reason' => $reason,
+            'created_by_admin_id' => $adminId,
         ]);
 
         $this->audit->log(
-            action:  'plan_change.requested',
-            target:  null,
-            before:  [],
-            after:   $change->toAuditSnapshot(),
+            action: 'plan_change.requested',
+            target: null,
+            before: [],
+            after: $change->toAuditSnapshot(),
         );
 
         return $change->load('fromFamily', 'toFamily', 'createdByAdmin');
@@ -98,8 +96,8 @@ class PlanChangeService
 
         if ($planChange->effective_date->isFuture()) {
             throw new InvalidArgumentException(
-                'Cannot apply a future-dated change before its effective date (' .
-                $planChange->effective_date->toDateString() . ').'
+                'Cannot apply a future-dated change before its effective date ('.
+                $planChange->effective_date->toDateString().').'
             );
         }
 
@@ -127,28 +125,28 @@ class PlanChangeService
             // ── Step 1: Create proration credit invoice ───────────────────────
             if ($planChange->proration_credit_cents > 0) {
                 $creditInvoice = SubscriptionInvoice::create([
-                    'subscription_id'              => $subscription?->id,
-                    'tenant_id'                    => $planChange->tenant_id,
-                    'invoice_number'               => $this->billing->generateInvoiceNumber(),
-                    'billing_interval'             => $billingInterval,
-                    'currency'                     => 'USD',
-                    'subtotal'                     => 0,
-                    'tax'                          => 0,
-                    'total'                        => 0,
-                    'status'                       => 'paid',
-                    'is_prorated'                  => true,
-                    'proration_adjustment_amount'  => -$planChange->proration_credit_cents,
-                    'notes'                        => 'Proration credit for plan change #' . $planChange->id .
-                                                     ' — unused days on ' . ($planChange->fromFamily?->name ?? 'previous plan'),
-                    'period_start'                 => $subscription?->current_period_start ?? now(),
-                    'period_end'                   => $subscription?->current_period_end ?? now(),
+                    'subscription_id' => $subscription?->id,
+                    'tenant_id' => $planChange->tenant_id,
+                    'invoice_number' => $this->billing->generateInvoiceNumber(),
+                    'billing_interval' => $billingInterval,
+                    'currency' => 'USD',
+                    'subtotal' => 0,
+                    'tax' => 0,
+                    'total' => 0,
+                    'status' => 'paid',
+                    'is_prorated' => true,
+                    'proration_adjustment_amount' => -$planChange->proration_credit_cents,
+                    'notes' => 'Proration credit for plan change #'.$planChange->id.
+                                                     ' — unused days on '.($planChange->fromFamily?->name ?? 'previous plan'),
+                    'period_start' => $subscription?->current_period_start ?? now(),
+                    'period_end' => $subscription?->current_period_end ?? now(),
                 ]);
 
                 TenantPlanChangeInvoice::create([
                     'plan_change_id' => $planChange->id,
-                    'invoice_id'     => $creditInvoice->id,
-                    'type'           => TenantPlanChangeInvoice::TYPE_CREDIT,
-                    'amount_cents'   => $planChange->proration_credit_cents,
+                    'invoice_id' => $creditInvoice->id,
+                    'type' => TenantPlanChangeInvoice::TYPE_CREDIT,
+                    'amount_cents' => $planChange->proration_credit_cents,
                 ]);
             }
 
@@ -158,7 +156,7 @@ class PlanChangeService
                     $subscription,
                     $newVersion,
                     $billingInterval,
-                    'Plan change #' . $planChange->id,
+                    'Plan change #'.$planChange->id,
                 );
 
                 // Find the newly generated charge invoice
@@ -168,22 +166,22 @@ class PlanChangeService
 
                 if ($chargeInvoice && $planChange->proration_charge_cents > 0) {
                     $chargeInvoice->update([
-                        'is_prorated'                 => true,
+                        'is_prorated' => true,
                         'proration_adjustment_amount' => $planChange->proration_charge_cents,
                     ]);
 
                     TenantPlanChangeInvoice::create([
                         'plan_change_id' => $planChange->id,
-                        'invoice_id'     => $chargeInvoice->id,
-                        'type'           => TenantPlanChangeInvoice::TYPE_CHARGE,
-                        'amount_cents'   => $planChange->proration_charge_cents,
+                        'invoice_id' => $chargeInvoice->id,
+                        'type' => TenantPlanChangeInvoice::TYPE_CHARGE,
+                        'amount_cents' => $planChange->proration_charge_cents,
                     ]);
                 }
             } else {
                 // No existing subscription — create a fresh one
                 $this->subscriptions->createSubscription(
-                    tenantId:        $planChange->tenant_id,
-                    planVersionId:   $newVersion->id,
+                    tenantId: $planChange->tenant_id,
+                    planVersionId: $newVersion->id,
                     billingInterval: $billingInterval,
                 );
             }
@@ -197,24 +195,24 @@ class PlanChangeService
 
             // ── Step 4: Generate new quote ────────────────────────────────────
             $this->pricing->generateQuote(
-                tenantId:       $planChange->tenant_id,
-                billingInterval:$billingInterval,
-                currency:       'USD',
-                planFamilyId:   $planChange->to_family_id,
+                tenantId: $planChange->tenant_id,
+                billingInterval: $billingInterval,
+                currency: 'USD',
+                planFamilyId: $planChange->to_family_id,
             );
 
             // ── Step 5: Mark applied ──────────────────────────────────────────
             $planChange->update([
-                'status'              => TenantPlanChange::STATUS_APPLIED,
-                'applied_at'          => now(),
+                'status' => TenantPlanChange::STATUS_APPLIED,
+                'applied_at' => now(),
                 'applied_by_admin_id' => $adminId,
             ]);
 
             $this->audit->log(
-                action:  'plan_change.applied',
-                target:  null,
-                before:  [],
-                after:   $planChange->fresh()->toAuditSnapshot(),
+                action: 'plan_change.applied',
+                target: null,
+                before: [],
+                after: $planChange->fresh()->toAuditSnapshot(),
             );
 
             return $planChange->fresh()->load('fromFamily', 'toFamily', 'appliedByAdmin', 'changeInvoices.invoice');
@@ -232,10 +230,10 @@ class PlanChangeService
         $planChange->update(['status' => TenantPlanChange::STATUS_CANCELLED]);
 
         $this->audit->log(
-            action:  'plan_change.cancelled',
-            target:  null,
-            before:  [],
-            after:   $planChange->fresh()->toAuditSnapshot(),
+            action: 'plan_change.cancelled',
+            target: null,
+            before: [],
+            after: $planChange->fresh()->toAuditSnapshot(),
         );
 
         return $planChange->fresh()->load('fromFamily', 'toFamily');
@@ -263,12 +261,12 @@ class PlanChangeService
         $chargeCents = 0;
 
         if ($subscription && $subscription->status !== 'trialing') {
-            $periodStart     = $subscription->current_period_start;
-            $periodEnd       = $subscription->current_period_end;
+            $periodStart = $subscription->current_period_start;
+            $periodEnd = $subscription->current_period_end;
             $totalDaysInPeriod = (int) $periodStart->diffInDays($periodEnd);
 
             if ($totalDaysInPeriod > 0) {
-                $daysUsed      = (int) $periodStart->diffInDays($changeDate);
+                $daysUsed = (int) $periodStart->diffInDays($changeDate);
                 $daysRemaining = max(0, $totalDaysInPeriod - $daysUsed);
 
                 // Use the latest invoice amount as the basis
@@ -278,8 +276,8 @@ class PlanChangeService
                     ->first();
 
                 $currentTotal = $latestInvoice?->total ?? 0;
-                $dailyRate    = $currentTotal / $totalDaysInPeriod;
-                $creditCents  = (int) round($dailyRate * $daysRemaining);
+                $dailyRate = $currentTotal / $totalDaysInPeriod;
+                $creditCents = (int) round($dailyRate * $daysRemaining);
             }
         }
 
@@ -296,7 +294,7 @@ class PlanChangeService
      */
     public function previewProration(string $tenantId, int $toFamilyId, string $effectiveDate): array
     {
-        $toFamily   = PlanFamily::with('versions.prices')->findOrFail($toFamilyId);
+        $toFamily = PlanFamily::with('versions.prices')->findOrFail($toFamilyId);
         $fromFamily = $this->entitlements->resolveActiveTier($tenantId);
         $changeDate = Carbon::parse($effectiveDate);
 
@@ -308,12 +306,12 @@ class PlanChangeService
             ->first();
 
         return [
-            'from_family'        => $fromFamily,
-            'to_family'          => $toFamily,
-            'credit_cents'       => $proration['credit_cents'],
-            'charge_cents'       => $proration['charge_cents'],
-            'net_cents'          => $proration['charge_cents'] - $proration['credit_cents'],
-            'effective_date'     => $changeDate->toDateString(),
+            'from_family' => $fromFamily,
+            'to_family' => $toFamily,
+            'credit_cents' => $proration['credit_cents'],
+            'charge_cents' => $proration['charge_cents'],
+            'net_cents' => $proration['charge_cents'] - $proration['credit_cents'],
+            'effective_date' => $changeDate->toDateString(),
             'current_period_end' => $subscription?->current_period_end?->toDateString(),
         ];
     }

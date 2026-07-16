@@ -26,15 +26,15 @@ class FinancialCloseRoleAccountsSeeder extends Seeder
     /** @var array<int, array{email:string,name:string,role:string,password:string}> */
     private const ACCOUNTS = [
         [
-            'email'    => 'accountant@demo.com',
-            'name'     => 'Demo Accountant',
-            'role'     => 'accountant',
+            'email' => 'accountant@demo.com',
+            'name' => 'Demo Accountant',
+            'role' => 'accountant',
             'password' => 'Accountant@123',
         ],
         [
-            'email'    => 'manager@demo.com',
-            'name'     => 'Demo Manager',
-            'role'     => 'manager',
+            'email' => 'manager@demo.com',
+            'name' => 'Demo Manager',
+            'role' => 'manager',
             'password' => 'Manager@123',
         ],
     ];
@@ -71,15 +71,15 @@ class FinancialCloseRoleAccountsSeeder extends Seeder
 
         $user = User::where('email', $account['email'])->first();
 
-        if (!$user) {
+        if (! $user) {
             $user = User::create([
-                'name'     => $account['name'],
-                'email'    => $account['email'],
+                'name' => $account['name'],
+                'email' => $account['email'],
                 'password' => Hash::make($account['password']),
             ]);
         } else {
             $user->update([
-                'name'     => $account['name'],
+                'name' => $account['name'],
                 'password' => Hash::make($account['password']),
             ]);
         }
@@ -87,10 +87,10 @@ class FinancialCloseRoleAccountsSeeder extends Seeder
         DB::table('user_company_access')->updateOrInsert(
             ['user_id' => $user->id, 'tenant_id' => self::TENANT_ID],
             [
-                'role'         => $account['role'],
-                'is_default'   => true,
-                'created_at'   => now(),
-                'updated_at'   => now(),
+                'role' => $account['role'],
+                'is_default' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]
         );
 
@@ -105,16 +105,16 @@ class FinancialCloseRoleAccountsSeeder extends Seeder
         // Mirror the central user id into the tenant schema so auth resolves cleanly.
         $tenantUser = User::find($centralUserId);
 
-        if (!$tenantUser) {
+        if (! $tenantUser) {
             User::create([
-                'id'       => $centralUserId,
-                'name'     => $account['name'],
-                'email'    => $account['email'],
+                'id' => $centralUserId,
+                'name' => $account['name'],
+                'email' => $account['email'],
                 'password' => Hash::make($account['password']),
             ]);
         } else {
             $tenantUser->update([
-                'name'     => $account['name'],
+                'name' => $account['name'],
                 'password' => Hash::make($account['password']),
             ]);
         }
@@ -127,9 +127,9 @@ class FinancialCloseRoleAccountsSeeder extends Seeder
             ->where('guard_name', 'web')
             ->value('id');
 
-        if (!$roleId) {
+        if (! $roleId) {
             $roleId = DB::table('roles')->insertGetId([
-                'name'       => $spatieRoleName,
+                'name' => $spatieRoleName,
                 'guard_name' => 'web',
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -138,9 +138,9 @@ class FinancialCloseRoleAccountsSeeder extends Seeder
 
         DB::table('model_has_roles')->updateOrInsert(
             [
-                'role_id'    => $roleId,
+                'role_id' => $roleId,
                 'model_type' => User::class,
-                'model_id'   => $centralUserId,
+                'model_id' => $centralUserId,
             ],
             []
         );

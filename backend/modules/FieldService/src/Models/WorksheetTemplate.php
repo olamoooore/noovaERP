@@ -4,7 +4,6 @@ namespace Modules\FieldService\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class WorksheetTemplate extends Model
 {
@@ -19,9 +18,9 @@ class WorksheetTemplate extends Model
     ];
 
     protected $casts = [
-        'fields'     => 'array',
+        'fields' => 'array',
         'is_default' => 'boolean',
-        'is_active'  => 'boolean',
+        'is_active' => 'boolean',
     ];
 
     // ──────────────── RELATIONSHIPS ────────────────

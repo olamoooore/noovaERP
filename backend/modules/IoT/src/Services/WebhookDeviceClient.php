@@ -2,14 +2,14 @@
 
 namespace Modules\IoT\Services;
 
-use Modules\IoT\Contracts\DeviceClientInterface;
-use Modules\IoT\Models\DeviceConfiguration;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Modules\IoT\Contracts\DeviceClientInterface;
+use Modules\IoT\Models\DeviceConfiguration;
 
 /**
  * Webhook Device Client
- * 
+ *
  * Sends commands to external services via webhooks
  * Useful for integrating with third-party APIs and services
  */
@@ -24,14 +24,14 @@ class WebhookDeviceClient implements DeviceClientInterface
         array $payload = []
     ): array {
         $config = $device->connection_info;
-        
-        if (!isset($config['webhook_url'])) {
+
+        if (! isset($config['webhook_url'])) {
             throw new \InvalidArgumentException('Invalid webhook configuration: webhook_url required');
         }
 
         $url = $config['webhook_url'];
         $method = strtoupper($config['method'] ?? 'POST');
-        
+
         $http = Http::timeout($config['timeout'] ?? 10)
             ->retry($config['retry_attempts'] ?? 2, 1000);
 
@@ -56,7 +56,7 @@ class WebhookDeviceClient implements DeviceClientInterface
         ]);
 
         try {
-            $response = match($method) {
+            $response = match ($method) {
                 'POST' => $http->post($url, $webhookPayload),
                 'PUT' => $http->put($url, $webhookPayload),
                 'PATCH' => $http->patch($url, $webhookPayload),
@@ -66,7 +66,7 @@ class WebhookDeviceClient implements DeviceClientInterface
 
             if ($response->failed()) {
                 throw new \RuntimeException(
-                    "Webhook request failed: " . $response->body()
+                    'Webhook request failed: '.$response->body()
                 );
             }
 
@@ -77,7 +77,7 @@ class WebhookDeviceClient implements DeviceClientInterface
                 'url' => $url,
                 'error' => $e->getMessage(),
             ]);
-            
+
             throw $e;
         }
     }
@@ -97,12 +97,14 @@ class WebhookDeviceClient implements DeviceClientInterface
     {
         try {
             $result = $this->send($device, 'ping', []);
+
             return $result['success'] ?? false;
         } catch (\Exception $e) {
             Log::error('Webhook connection test failed', [
                 'device_id' => $device->id,
                 'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -128,7 +130,7 @@ class WebhookDeviceClient implements DeviceClientInterface
         $authType = $config['auth_type'] ?? null;
         $authConfig = $config['auth_config'] ?? [];
 
-        return match($authType) {
+        return match ($authType) {
             'bearer' => $http->withToken($authConfig['token'] ?? ''),
             'basic' => $http->withBasicAuth(
                 $authConfig['username'] ?? '',
@@ -146,7 +148,7 @@ class WebhookDeviceClient implements DeviceClientInterface
     {
         $secret = $authConfig['secret'] ?? '';
         $algorithm = $authConfig['algorithm'] ?? 'sha256';
-        
+
         // Note: Actual HMAC signing would happen in the request
         // This is a simplified version
         return $http->withHeaders([

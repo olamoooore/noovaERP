@@ -26,7 +26,7 @@ class CustomerTierController extends Controller
 
         // Check if user can access this customer's data
         $user = $request->user();
-        if (!$user->hasRole('admin') && $user->customer_id !== $customerId) {
+        if (! $user->hasRole('admin') && $user->customer_id !== $customerId) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized access to customer data',
@@ -36,7 +36,7 @@ class CustomerTierController extends Controller
         try {
             $customerTier = $this->fanTierService->getCustomerTier($tenantId, $customerId);
 
-            if (!$customerTier) {
+            if (! $customerTier) {
                 return response()->json([
                     'success' => true,
                     'data' => null,
@@ -51,7 +51,7 @@ class CustomerTierController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to get customer tier: ' . $e->getMessage(),
+                'message' => 'Failed to get customer tier: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -65,7 +65,7 @@ class CustomerTierController extends Controller
 
         // Check if user can access this customer's data
         $user = $request->user();
-        if (!$user->hasRole('admin') && $user->customer_id !== $customerId) {
+        if (! $user->hasRole('admin') && $user->customer_id !== $customerId) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized access to customer data',
@@ -82,7 +82,7 @@ class CustomerTierController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to calculate tier progression: ' . $e->getMessage(),
+                'message' => 'Failed to calculate tier progression: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -96,7 +96,7 @@ class CustomerTierController extends Controller
 
         // Check if user can access this customer's data
         $user = $request->user();
-        if (!$user->hasRole('admin') && $user->customer_id !== $customerId) {
+        if (! $user->hasRole('admin') && $user->customer_id !== $customerId) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized access to customer data',
@@ -116,7 +116,7 @@ class CustomerTierController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to get customer benefits: ' . $e->getMessage(),
+                'message' => 'Failed to get customer benefits: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -130,7 +130,7 @@ class CustomerTierController extends Controller
 
         // Check if user can access this customer's data
         $user = $request->user();
-        if (!$user->hasRole('admin') && $user->customer_id !== $customerId) {
+        if (! $user->hasRole('admin') && $user->customer_id !== $customerId) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized access to customer data',
@@ -147,7 +147,7 @@ class CustomerTierController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to check early access: ' . $e->getMessage(),
+                'message' => 'Failed to check early access: '.$e->getMessage(),
             ], 400);
         }
     }
@@ -160,7 +160,7 @@ class CustomerTierController extends Controller
         $tenantId = $request->header('X-Tenant-ID', 'default');
 
         // Admin-only endpoint
-        if (!$request->user()->hasRole('admin')) {
+        if (! $request->user()->hasRole('admin')) {
             return response()->json([
                 'success' => false,
                 'message' => 'Admin access required',
@@ -178,7 +178,7 @@ class CustomerTierController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to process tier progression: ' . $e->getMessage(),
+                'message' => 'Failed to process tier progression: '.$e->getMessage(),
             ], 400);
         }
     }

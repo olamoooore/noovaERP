@@ -209,10 +209,10 @@ class WS04InventoryMutationTest extends TestCase
             base_path('modules/POS/src/Services/PosPaymentCompletionService.php')
         );
 
-        $glPosition    = strpos($source, 'posPostingService->postPaidOrder(');
+        $glPosition = strpos($source, 'posPostingService->postPaidOrder(');
         $stockPosition = strpos($source, 'adjustStock(');
 
-        $this->assertNotFalse($glPosition,    'GL posting call must be present');
+        $this->assertNotFalse($glPosition, 'GL posting call must be present');
         $this->assertNotFalse($stockPosition, 'Stock deduction call must be present');
         $this->assertLessThan($stockPosition, $glPosition,
             'GL posting must occur before stock deduction in PosPaymentCompletionService');

@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('product_custom_fields')) {
+        if (! Schema::hasTable('product_custom_fields')) {
             Schema::create('product_custom_fields', function (Blueprint $table) {
                 $table->id();
                 $table->string('name');

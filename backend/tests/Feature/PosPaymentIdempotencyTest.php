@@ -2,19 +2,15 @@
 
 namespace Tests\Feature;
 
-use Modules\Inventory\Services\InventoryService;
+use App\Models\Product;
+use App\Models\Warehouse;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosPayment;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Modules\POS\Services\PosPaymentCompletionService;
-use Modules\POS\Services\PosPostingService;
 use Tests\TestCase;
-use App\Models\Product;
-use App\Models\Warehouse;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class PosPaymentIdempotencyTest extends TestCase
 {
@@ -67,7 +63,7 @@ class PosPaymentIdempotencyTest extends TestCase
         ]);
 
         return PosOrder::create([
-            'order_number' => 'POS-TEST-' . uniqid(),
+            'order_number' => 'POS-TEST-'.uniqid(),
             'status' => 'draft',
             'terminal_id' => $terminal->id,
             'session_id' => $session->id,

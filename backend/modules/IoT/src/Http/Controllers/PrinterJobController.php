@@ -19,7 +19,7 @@ class PrinterJobController extends Controller
 
     /**
      * Send a label print job to the printer.
-     * 
+     *
      * POST /api/v1/iot/agents/{agentId}/printer/print-label
      */
     public function printLabel(Request $request, string $agentId): JsonResponse
@@ -53,26 +53,26 @@ class PrinterJobController extends Controller
                 ->where('device_type', 'printer')
                 ->first();
         }
-        if (!$device) {
+        if (! $device) {
             $device = DeviceConfiguration::where('agent_id', $agentId)
                 ->where('device_type', 'printer')
                 ->where(function ($q) use ($deviceId) {
                     $q->where('connection_info->ump_device_id', $deviceId)
-                      ->orWhere('connection_info->serialNumber', $deviceId)
-                      ->orWhere('connection_info->umpId', $deviceId)
-                      ->orWhere('name', $deviceId);
+                        ->orWhere('connection_info->serialNumber', $deviceId)
+                        ->orWhere('connection_info->umpId', $deviceId)
+                        ->orWhere('name', $deviceId);
                 })
                 ->first();
         }
 
-        if (!$device) {
+        if (! $device) {
             return response()->json([
                 'success' => false,
                 'message' => 'Printer device not found',
             ], 404);
         }
 
-        if (!$device->enabled) {
+        if (! $device->enabled) {
             return response()->json([
                 'success' => false,
                 'message' => 'Printer device is disabled',
@@ -85,7 +85,7 @@ class PrinterJobController extends Controller
         // Generate commands based on job type
         // For receipt printers, we send to a different endpoint
         $isReceiptJob = $jobType === 'test_receipt';
-        
+
         try {
             if ($isReceiptJob) {
                 // For receipt printers, we don't generate TSPL commands
@@ -113,7 +113,7 @@ class PrinterJobController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to generate label: ' . $e->getMessage(),
+                'message' => 'Failed to generate label: '.$e->getMessage(),
             ], 400);
         }
 
@@ -140,11 +140,11 @@ class PrinterJobController extends Controller
                 'jobType' => $jobType,
                 'copies' => $copies,
             ];
-            
-            if (!$isReceiptJob) {
+
+            if (! $isReceiptJob) {
                 $payload['commands'] = $tsplCommands;
             }
-            
+
             $result = $this->deviceRouter->sendCommand($device, $endpoint, $payload);
 
             if ($result['success'] ?? false) {
@@ -197,7 +197,7 @@ class PrinterJobController extends Controller
 
     /**
      * Agent reports print job result.
-     * 
+     *
      * POST /api/v1/iot/agents/{agentId}/printer/job-result
      */
     public function reportJobResult(Request $request, string $agentId): JsonResponse
@@ -216,7 +216,7 @@ class PrinterJobController extends Controller
 
         $printJob = PrintJob::find($jobId);
 
-        if (!$printJob) {
+        if (! $printJob) {
             return response()->json([
                 'success' => false,
                 'message' => 'Print job not found',
@@ -260,14 +260,14 @@ class PrinterJobController extends Controller
 
     /**
      * Get printer status.
-     * 
+     *
      * GET /api/v1/iot/agents/{agentId}/printer/status
      */
     public function getStatus(Request $request, string $agentId): JsonResponse
     {
         $deviceId = $request->input('device_id');
 
-        if (!$deviceId) {
+        if (! $deviceId) {
             return response()->json([
                 'success' => false,
                 'message' => 'device_id is required',
@@ -278,7 +278,7 @@ class PrinterJobController extends Controller
             ->where('agent_id', $agentId)
             ->first();
 
-        if (!$device) {
+        if (! $device) {
             return response()->json([
                 'success' => false,
                 'message' => 'Device not found',
@@ -317,7 +317,7 @@ class PrinterJobController extends Controller
 
     /**
      * Get print job history.
-     * 
+     *
      * GET /api/v1/iot/agents/{agentId}/printer/history
      */
     public function getHistory(Request $request, string $agentId): JsonResponse

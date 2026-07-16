@@ -2,34 +2,37 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 use Exception;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * CapacityPlanningService - Task 11.4
- * 
+ *
  * Implements tenant resource usage analysis, capacity forecasting, optimization
  * recommendations, automated scaling triggers, and tenant onboarding resource
  * allocation tools for multi-tenant capacity planning.
- * 
+ *
  * Requirements: 27.5
  */
 class CapacityPlanningService
 {
     private const CACHE_PREFIX = 'capacity_planning:';
+
     private const FORECAST_PERIODS = ['1w', '1m', '3m', '6m', '1y'];
+
     private const RESOURCE_TYPES = ['cpu', 'memory', 'storage', 'network', 'database'];
+
     private const DEFAULT_BUFFER_PERCENT = 20.0;
+
     private const MIN_CONFIDENCE_LEVEL = 70.0;
 
     /**
      * Analyze tenant resource usage patterns
-     * 
-     * @param string $tenantId Tenant identifier
-     * @param array $options Analysis options
+     *
+     * @param  string  $tenantId  Tenant identifier
+     * @param  array  $options  Analysis options
      * @return array Usage analysis result
      */
     public function analyzeResourceUsage(string $tenantId, array $options = []): array
@@ -37,27 +40,27 @@ class CapacityPlanningService
         try {
             $analysisWindow = $options['analysis_window'] ?? '30d';
             $resourceTypes = $options['resource_types'] ?? self::RESOURCE_TYPES;
-            
+
             $startTime = $this->calculateStartTime($analysisWindow);
             $usageData = $this->collectUsageData($tenantId, $startTime, $resourceTypes);
-            
+
             $analysis = [];
             foreach ($resourceTypes as $resourceType) {
                 $resourceUsage = $usageData->where('resource_type', $resourceType);
-                
+
                 if ($resourceUsage->isEmpty()) {
                     continue;
                 }
-                
+
                 $analysis[$resourceType] = $this->analyzeResourcePattern($resourceUsage, $resourceType);
             }
-            
+
             // Calculate overall tenant health score
             $healthScore = $this->calculateTenantHealthScore($analysis);
-            
+
             // Generate recommendations
             $recommendations = $this->generateUsageRecommendations($analysis);
-            
+
             return [
                 'success' => true,
                 'tenant_id' => $tenantId,
@@ -65,28 +68,28 @@ class CapacityPlanningService
                 'resource_analysis' => $analysis,
                 'health_score' => $healthScore,
                 'recommendations' => $recommendations,
-                'analyzed_at' => now()
+                'analyzed_at' => now(),
             ];
-            
+
         } catch (Exception $e) {
             Log::error('Failed to analyze resource usage', [
                 'tenant_id' => $tenantId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => 'Failed to analyze resource usage',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Generate capacity forecasts for tenant
-     * 
-     * @param string $tenantId Tenant identifier
-     * @param array $options Forecasting options
+     *
+     * @param  string  $tenantId  Tenant identifier
+     * @param  array  $options  Forecasting options
      * @return array Forecasting result
      */
     public function generateCapacityForecasts(string $tenantId, array $options = []): array
@@ -95,53 +98,54 @@ class CapacityPlanningService
             $forecastPeriods = $options['periods'] ?? self::FORECAST_PERIODS;
             $resourceTypes = $options['resource_types'] ?? self::RESOURCE_TYPES;
             $modelVersion = $options['model_version'] ?? 'v1.0';
-            
+
             $forecasts = [];
-            
+
             foreach ($resourceTypes as $resourceType) {
                 foreach ($forecastPeriods as $period) {
                     $forecast = $this->generateResourceForecast($tenantId, $resourceType, $period, $modelVersion);
-                    
+
                     if ($forecast['success']) {
                         $forecasts[] = $forecast['forecast'];
-                        
+
                         // Store forecast in database
                         $this->storeForecast($tenantId, $resourceType, $period, $forecast['forecast']);
                     }
                 }
             }
-            
+
             return [
                 'success' => true,
                 'tenant_id' => $tenantId,
                 'forecasts' => $forecasts,
                 'model_version' => $modelVersion,
-                'generated_at' => now()
+                'generated_at' => now(),
             ];
-            
+
         } catch (Exception $e) {
             Log::error('Failed to generate capacity forecasts', [
                 'tenant_id' => $tenantId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => 'Failed to generate forecasts',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
+
     /**
      * Generate optimization recommendations
-     * 
-     * @param string $tenantId Tenant ident
+     *
+     * @param  string  $tenantId  Tenant ident
     /**
      * Calculate start time for time range
      */
     private function calculateStartTime(string $timeRange): Carbon
     {
-        return match($timeRange) {
+        return match ($timeRange) {
             '15m' => now()->subMinutes(15),
             '1h' => now()->subHour(),
             '6h' => now()->subHours(6),
@@ -173,7 +177,7 @@ class CapacityPlanningService
     private function analyzeResourcePattern(\Illuminate\Support\Collection $resourceUsage, string $resourceType): array
     {
         $values = $resourceUsage->pluck('usage_percentage');
-        
+
         return [
             'resource_type' => $resourceType,
             'sample_count' => $values->count(),
@@ -186,7 +190,7 @@ class CapacityPlanningService
             'trend' => $this->calculateTrend($values),
             'volatility' => $this->calculateVolatility($values),
             'growth_rate' => $this->calculateGrowthRate($resourceUsage),
-            'seasonal_patterns' => $this->detectSeasonalPatterns($resourceUsage)
+            'seasonal_patterns' => $this->detectSeasonalPatterns($resourceUsage),
         ];
     }
 
@@ -197,14 +201,14 @@ class CapacityPlanningService
     {
         $sorted = $values->sort()->values();
         $index = ($percentile / 100) * ($sorted->count() - 1);
-        
+
         if ($index == floor($index)) {
             return $sorted[$index];
         }
-        
+
         $lower = $sorted[floor($index)];
         $upper = $sorted[ceil($index)];
-        
+
         return $lower + ($upper - $lower) * ($index - floor($index));
     }
 
@@ -216,14 +220,19 @@ class CapacityPlanningService
         if ($values->count() < 2) {
             return 'stable';
         }
-        
+
         $first = $values->take(ceil($values->count() / 3))->avg();
         $last = $values->slice(-ceil($values->count() / 3))->avg();
-        
+
         $change = (($last - $first) / $first) * 100;
-        
-        if ($change > 5) return 'increasing';
-        if ($change < -5) return 'decreasing';
+
+        if ($change > 5) {
+            return 'increasing';
+        }
+        if ($change < -5) {
+            return 'decreasing';
+        }
+
         return 'stable';
     }
 
@@ -233,11 +242,13 @@ class CapacityPlanningService
     private function calculateVolatility(\Illuminate\Support\Collection $values): float
     {
         $mean = $values->avg();
-        if ($mean == 0) return 0;
-        
-        $variance = $values->map(fn($x) => pow($x - $mean, 2))->avg();
+        if ($mean == 0) {
+            return 0;
+        }
+
+        $variance = $values->map(fn ($x) => pow($x - $mean, 2))->avg();
         $stdDev = sqrt($variance);
-        
+
         return round(($stdDev / $mean) * 100, 2);
     }
 
@@ -249,15 +260,17 @@ class CapacityPlanningService
         if ($resourceUsage->count() < 2) {
             return 0;
         }
-        
+
         $first = $resourceUsage->first();
         $last = $resourceUsage->last();
-        
+
         $daysDiff = Carbon::parse($last->measured_at)->diffInDays(Carbon::parse($first->measured_at));
-        if ($daysDiff == 0) return 0;
-        
+        if ($daysDiff == 0) {
+            return 0;
+        }
+
         $growthRate = (($last->usage_value - $first->usage_value) / $first->usage_value) * 100;
-        
+
         // Annualize the growth rate
         return round($growthRate * (365 / $daysDiff), 2);
     }
@@ -273,19 +286,19 @@ class CapacityPlanningService
         })->map(function ($group) {
             return $group->avg('usage_percentage');
         });
-        
+
         // Group by day of week
         $dailyPattern = $resourceUsage->groupBy(function ($item) {
             return Carbon::parse($item->measured_at)->dayOfWeek;
         })->map(function ($group) {
             return $group->avg('usage_percentage');
         });
-        
+
         return [
             'hourly_pattern' => $hourlyPattern->toArray(),
             'daily_pattern' => $dailyPattern->toArray(),
             'peak_hour' => $hourlyPattern->keys()->first(),
-            'peak_day' => $dailyPattern->keys()->first()
+            'peak_day' => $dailyPattern->keys()->first(),
         ];
     }
 
@@ -296,22 +309,22 @@ class CapacityPlanningService
     {
         $scores = [];
         $totalWeight = 0;
-        
+
         foreach ($analysis as $resourceType => $resourceAnalysis) {
             $weight = $this->getResourceWeight($resourceType);
             $resourceScore = $this->calculateResourceHealthScore($resourceAnalysis);
-            
+
             $scores[$resourceType] = $resourceScore;
             $totalWeight += $weight * $resourceScore;
         }
-        
+
         $overallScore = count($analysis) > 0 ? $totalWeight / count($analysis) : 100;
-        
+
         return [
             'overall_score' => round($overallScore, 1),
             'resource_scores' => $scores,
             'health_status' => $this->getHealthStatus($overallScore),
-            'calculated_at' => now()
+            'calculated_at' => now(),
         ];
     }
 
@@ -320,7 +333,7 @@ class CapacityPlanningService
      */
     private function getResourceWeight(string $resourceType): float
     {
-        return match($resourceType) {
+        return match ($resourceType) {
             'cpu' => 1.2,
             'memory' => 1.1,
             'database' => 1.0,
@@ -336,23 +349,35 @@ class CapacityPlanningService
     private function calculateResourceHealthScore(array $resourceAnalysis): float
     {
         $score = 100;
-        
+
         // Penalize high average usage
-        if ($resourceAnalysis['avg_usage'] > 80) $score -= 20;
-        elseif ($resourceAnalysis['avg_usage'] > 60) $score -= 10;
-        
+        if ($resourceAnalysis['avg_usage'] > 80) {
+            $score -= 20;
+        } elseif ($resourceAnalysis['avg_usage'] > 60) {
+            $score -= 10;
+        }
+
         // Penalize high peak usage
-        if ($resourceAnalysis['p95_usage'] > 90) $score -= 15;
-        elseif ($resourceAnalysis['p95_usage'] > 75) $score -= 8;
-        
+        if ($resourceAnalysis['p95_usage'] > 90) {
+            $score -= 15;
+        } elseif ($resourceAnalysis['p95_usage'] > 75) {
+            $score -= 8;
+        }
+
         // Penalize high volatility
-        if ($resourceAnalysis['volatility'] > 50) $score -= 15;
-        elseif ($resourceAnalysis['volatility'] > 30) $score -= 8;
-        
+        if ($resourceAnalysis['volatility'] > 50) {
+            $score -= 15;
+        } elseif ($resourceAnalysis['volatility'] > 30) {
+            $score -= 8;
+        }
+
         // Penalize rapid growth
-        if ($resourceAnalysis['growth_rate'] > 100) $score -= 20;
-        elseif ($resourceAnalysis['growth_rate'] > 50) $score -= 10;
-        
+        if ($resourceAnalysis['growth_rate'] > 100) {
+            $score -= 20;
+        } elseif ($resourceAnalysis['growth_rate'] > 50) {
+            $score -= 10;
+        }
+
         return max(0, $score);
     }
 
@@ -361,9 +386,16 @@ class CapacityPlanningService
      */
     private function getHealthStatus(float $score): string
     {
-        if ($score >= 80) return 'excellent';
-        if ($score >= 60) return 'good';
-        if ($score >= 40) return 'warning';
+        if ($score >= 80) {
+            return 'excellent';
+        }
+        if ($score >= 60) {
+            return 'good';
+        }
+        if ($score >= 40) {
+            return 'warning';
+        }
+
         return 'critical';
     }
 }

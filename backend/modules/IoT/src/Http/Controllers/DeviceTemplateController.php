@@ -5,14 +5,14 @@ namespace Modules\IoT\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Modules\IoT\Models\DeviceTemplate;
 use Modules\IoT\Http\Resources\DeviceTemplateResource;
+use Modules\IoT\Models\DeviceTemplate;
 
 class DeviceTemplateController extends Controller
 {
     /**
      * Get all device templates.
-     * 
+     *
      * GET /api/v1/iot/device-templates
      */
     public function index(Request $request): JsonResponse
@@ -42,7 +42,7 @@ class DeviceTemplateController extends Controller
 
     /**
      * Get a specific device template.
-     * 
+     *
      * GET /api/v1/iot/device-templates/{templateId}
      */
     public function show(string $templateId): JsonResponse

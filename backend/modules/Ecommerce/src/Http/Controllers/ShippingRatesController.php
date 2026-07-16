@@ -3,10 +3,10 @@
 namespace Modules\Ecommerce\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Modules\Fulfillment\Services\RateShopperService;
-use Modules\Fulfillment\Contracts\RateRequest;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Modules\Fulfillment\Contracts\RateRequest;
+use Modules\Fulfillment\Services\RateShopperService;
 
 class ShippingRatesController extends Controller
 {
@@ -54,7 +54,7 @@ class ShippingRatesController extends Controller
 
         $formattedRates = $rates->map(function ($rate) {
             return [
-                'id' => $rate->provider_code . '_' . $rate->service_code,
+                'id' => $rate->provider_code.'_'.$rate->service_code,
                 'provider_code' => $rate->provider_code,
                 'provider_name' => $rate->provider_name,
                 'service_code' => $rate->service_code,

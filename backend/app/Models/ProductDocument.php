@@ -35,9 +35,13 @@ class ProductDocument extends Model
     ];
 
     public const TYPE_MANUAL = 'manual';
+
     public const TYPE_CERTIFICATE = 'certificate';
+
     public const TYPE_SAFETY_SHEET = 'safety_sheet';
+
     public const TYPE_DATASHEET = 'datasheet';
+
     public const TYPE_OTHER = 'other';
 
     public static function types(): array
@@ -63,12 +67,12 @@ class ProductDocument extends Model
     {
         $bytes = $this->file_size ?? 0;
         $units = ['B', 'KB', 'MB', 'GB'];
-        
+
         for ($i = 0; $bytes > 1024 && $i < count($units) - 1; $i++) {
             $bytes /= 1024;
         }
-        
-        return round($bytes, 2) . ' ' . $units[$i];
+
+        return round($bytes, 2).' '.$units[$i];
     }
 
     /**
@@ -76,9 +80,10 @@ class ProductDocument extends Model
      */
     public function isExpired(): bool
     {
-        if (!$this->valid_until) {
+        if (! $this->valid_until) {
             return false;
         }
+
         return $this->valid_until->isPast();
     }
 
@@ -87,9 +92,10 @@ class ProductDocument extends Model
      */
     public function isExpiringSoon(int $days = 30): bool
     {
-        if (!$this->valid_until) {
+        if (! $this->valid_until) {
             return false;
         }
-        return $this->valid_until->lte(now()->addDays($days)) && !$this->isExpired();
+
+        return $this->valid_until->lte(now()->addDays($days)) && ! $this->isExpired();
     }
 }

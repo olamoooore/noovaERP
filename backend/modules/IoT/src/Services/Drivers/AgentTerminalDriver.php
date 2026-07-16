@@ -2,13 +2,13 @@
 
 namespace Modules\IoT\Services\Drivers;
 
-use Modules\IoT\Models\IoTDevice;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Modules\IoT\Models\IoTDevice;
 
 /**
  * Agent Terminal Driver
- * 
+ *
  * Communicates with USB payment terminals via Local Agent.
  * The Local Agent runs on the Windows POS machine and bridges
  * USB devices to the cloud backend via WebSocket.
@@ -16,29 +16,26 @@ use Illuminate\Support\Facades\Log;
 class AgentTerminalDriver implements TerminalDriverInterface
 {
     protected IoTDevice $device;
+
     protected string $agentUrl;
+
     protected string $agentToken;
 
     public function __construct(IoTDevice $device)
     {
         $this->device = $device;
-        
+
         // Agent URL from device config
         $this->agentUrl = $device->config['agent_url'] ?? 'http://localhost:3001';
         $this->agentToken = $device->config['agent_token'] ?? '';
-        
+
         if (empty($this->agentToken)) {
-            throw new \Exception('Agent token not configured for device: ' . $device->name);
+            throw new \Exception('Agent token not configured for device: '.$device->name);
         }
     }
 
     /**
      * Create a payment request via Local Agent.
-     *
-     * @param float $amount
-     * @param string $currency
-     * @param array $options
-     * @return array
      */
     public function createPaymentRequest(float $amount, string $currency, array $options = []): array
     {
@@ -46,10 +43,10 @@ class AgentTerminalDriver implements TerminalDriverInterface
             $response = Http::timeout(30)
                 ->withoutVerifying() // Disable SSL verification for development
                 ->withHeaders([
-                    'Authorization' => 'Bearer ' . $this->agentToken,
+                    'Authorization' => 'Bearer '.$this->agentToken,
                     'Content-Type' => 'application/json',
                 ])
-                ->post($this->agentUrl . '/api/terminal/payment', [
+                ->post($this->agentUrl.'/api/terminal/payment', [
                     'device_id' => $this->device->config['agent_device_id'] ?? 'terminal-1',
                     'amount' => $amount,
                     'currency' => $currency,
@@ -57,8 +54,8 @@ class AgentTerminalDriver implements TerminalDriverInterface
                     'metadata' => $options['metadata'] ?? [],
                 ]);
 
-            if (!$response->successful()) {
-                throw new \Exception('Agent returned error: ' . $response->body());
+            if (! $response->successful()) {
+                throw new \Exception('Agent returned error: '.$response->body());
             }
 
             $data = $response->json();
@@ -90,9 +87,6 @@ class AgentTerminalDriver implements TerminalDriverInterface
 
     /**
      * Check payment status via Local Agent.
-     *
-     * @param string $paymentRequestId
-     * @return array
      */
     public function checkPaymentStatus(string $paymentRequestId): array
     {
@@ -100,12 +94,12 @@ class AgentTerminalDriver implements TerminalDriverInterface
             $response = Http::timeout(10)
                 ->withoutVerifying() // Disable SSL verification for development
                 ->withHeaders([
-                    'Authorization' => 'Bearer ' . $this->agentToken,
+                    'Authorization' => 'Bearer '.$this->agentToken,
                 ])
-                ->get($this->agentUrl . '/api/terminal/payment/' . $paymentRequestId);
+                ->get($this->agentUrl.'/api/terminal/payment/'.$paymentRequestId);
 
-            if (!$response->successful()) {
-                throw new \Exception('Agent returned error: ' . $response->body());
+            if (! $response->successful()) {
+                throw new \Exception('Agent returned error: '.$response->body());
             }
 
             $data = $response->json();
@@ -131,9 +125,6 @@ class AgentTerminalDriver implements TerminalDriverInterface
 
     /**
      * Cancel a pending payment via Local Agent.
-     *
-     * @param string $paymentRequestId
-     * @return bool
      */
     public function cancelPayment(string $paymentRequestId): bool
     {
@@ -141,12 +132,12 @@ class AgentTerminalDriver implements TerminalDriverInterface
             $response = Http::timeout(10)
                 ->withoutVerifying() // Disable SSL verification for development
                 ->withHeaders([
-                    'Authorization' => 'Bearer ' . $this->agentToken,
+                    'Authorization' => 'Bearer '.$this->agentToken,
                 ])
-                ->post($this->agentUrl . '/api/terminal/payment/' . $paymentRequestId . '/cancel');
+                ->post($this->agentUrl.'/api/terminal/payment/'.$paymentRequestId.'/cancel');
 
-            if (!$response->successful()) {
-                throw new \Exception('Agent returned error: ' . $response->body());
+            if (! $response->successful()) {
+                throw new \Exception('Agent returned error: '.$response->body());
             }
 
             $data = $response->json();
@@ -168,21 +159,18 @@ class AgentTerminalDriver implements TerminalDriverInterface
 
     /**
      * Verify webhook signature from Local Agent.
-     * 
-     * Note: Agent webhooks use the same signature mechanism as cloud terminals.
      *
-     * @param array $payload
-     * @param string $signature
-     * @return bool
+     * Note: Agent webhooks use the same signature mechanism as cloud terminals.
      */
     public function verifyWebhookSignature(array $payload, string $signature): bool
     {
         $salt = $this->device->config['agent_webhook_secret'] ?? '';
-        
+
         if (empty($salt)) {
             Log::warning('Agent webhook secret not configured', [
                 'device_id' => $this->device->id,
             ]);
+
             return false;
         }
 
@@ -195,7 +183,7 @@ class AgentTerminalDriver implements TerminalDriverInterface
         })->implode('');
 
         // Append salt and hash
-        $expectedSignature = hash_hmac('sha256', $data . $salt, $salt);
+        $expectedSignature = hash_hmac('sha256', $data.$salt, $salt);
 
         // Timing-safe comparison
         return hash_equals($expectedSignature, $signature);
@@ -212,21 +200,22 @@ class AgentTerminalDriver implements TerminalDriverInterface
             $response = Http::timeout(5)
                 ->withoutVerifying() // Disable SSL verification for development
                 ->withHeaders([
-                    'Authorization' => 'Bearer ' . $this->agentToken,
+                    'Authorization' => 'Bearer '.$this->agentToken,
                 ])
-                ->get($this->agentUrl . '/api/health');
+                ->get($this->agentUrl.'/api/health');
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::error('Agent connection test failed', [
                     'device_id' => $this->device->id,
                     'agent_url' => $this->agentUrl,
                     'status' => $response->status(),
                 ]);
+
                 return false;
             }
 
             $data = $response->json();
-            
+
             // Check if our specific device is connected to the agent
             $deviceId = $this->device->config['agent_device_id'] ?? null;
             if ($deviceId) {
@@ -234,13 +223,14 @@ class AgentTerminalDriver implements TerminalDriverInterface
                 $deviceFound = collect($devices)->contains(function ($device) use ($deviceId) {
                     return ($device['device_id'] ?? null) === $deviceId;
                 });
-                
-                if (!$deviceFound) {
+
+                if (! $deviceFound) {
                     Log::warning('Device not found in agent', [
                         'device_id' => $this->device->id,
                         'agent_device_id' => $deviceId,
                         'available_devices' => $devices,
                     ]);
+
                     return false;
                 }
             }
@@ -252,14 +242,13 @@ class AgentTerminalDriver implements TerminalDriverInterface
                 'device_id' => $this->device->id,
                 'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
 
     /**
      * Get agent health status.
-     *
-     * @return array
      */
     public function getAgentHealth(): array
     {
@@ -267,11 +256,11 @@ class AgentTerminalDriver implements TerminalDriverInterface
             $response = Http::timeout(5)
                 ->withoutVerifying() // Disable SSL verification for development
                 ->withHeaders([
-                    'Authorization' => 'Bearer ' . $this->agentToken,
+                    'Authorization' => 'Bearer '.$this->agentToken,
                 ])
-                ->get($this->agentUrl . '/api/health');
+                ->get($this->agentUrl.'/api/health');
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 return [
                     'status' => 'offline',
                     'error' => 'Agent unreachable',

@@ -4,13 +4,12 @@ namespace Modules\Communication\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\Communication\Jobs\ProcessOutboxBatch;
+use Modules\Communication\Models\CommunicationChannelLog;
 use Modules\Communication\Models\CommunicationMessage;
-use Modules\Communication\Models\CommunicationSubscriber;
 use Modules\Communication\Models\CommunicationOutbox;
 use Modules\Communication\Models\CommunicationPreference;
-use Modules\Communication\Models\CommunicationChannelLog;
-use Modules\Communication\Jobs\ProcessOutboxBatch;
-use Modules\Communication\Jobs\ProcessDigestQueue;
+use Modules\Communication\Models\CommunicationSubscriber;
 
 /**
  * CommunicationEngine — The central communication bus for NoovaERP.
@@ -93,7 +92,7 @@ class CommunicationEngine
         // Get all active subscribers for this record
         $subscribers = CommunicationSubscriber::forRecord($model, $recordId)
             ->active()
-            ->when($tenantId, fn($q) => $q->forTenant($tenantId))
+            ->when($tenantId, fn ($q) => $q->forTenant($tenantId))
             ->get();
 
         // Route to channels and create outbox items
@@ -160,7 +159,9 @@ class CommunicationEngine
         // Create outbox items for each recipient × channel
         foreach ($recipientUserIds as $userId) {
             $user = \App\Models\User::find($userId);
-            if (!$user) continue;
+            if (! $user) {
+                continue;
+            }
 
             foreach ($channels as $channel) {
                 $this->createOutboxItem($message, $channel, [
@@ -172,7 +173,9 @@ class CommunicationEngine
 
         foreach ($recipientCustomerIds as $customerId) {
             $customer = \App\Models\Customer::find($customerId);
-            if (!$customer) continue;
+            if (! $customer) {
+                continue;
+            }
 
             foreach ($channels as $channel) {
                 $this->createOutboxItem($message, $channel, [
@@ -229,10 +232,10 @@ class CommunicationEngine
         ]);
 
         // Notify subscribers (unless internal note — only notify staff)
-        if (!$isInternalNote) {
+        if (! $isInternalNote) {
             $subscribers = CommunicationSubscriber::forRecord($model, $recordId)
                 ->active()
-                ->when($tenantId, fn($q) => $q->forTenant($tenantId))
+                ->when($tenantId, fn ($q) => $q->forTenant($tenantId))
                 ->get();
 
             $this->routeToSubscribers($message, $subscribers, $message->subtype);
@@ -342,7 +345,7 @@ class CommunicationEngine
     {
         return CommunicationSubscriber::forRecord($model, $recordId)
             ->active()
-            ->when($tenantId, fn($q) => $q->forTenant($tenantId))
+            ->when($tenantId, fn ($q) => $q->forTenant($tenantId))
             ->get();
     }
 
@@ -361,8 +364,8 @@ class CommunicationEngine
         ?string $messageType = null,
     ): \Illuminate\Support\Collection {
         return CommunicationMessage::forRecord($model, $recordId)
-            ->when($tenantId, fn($q) => $q->forTenant($tenantId))
-            ->when($messageType, fn($q) => $q->ofType($messageType))
+            ->when($tenantId, fn ($q) => $q->forTenant($tenantId))
+            ->when($messageType, fn ($q) => $q->ofType($messageType))
             ->with('author')
             ->orderByDesc('created_at')
             ->limit($limit)
@@ -379,7 +382,9 @@ class CommunicationEngine
     public function processOutbox(int $messageId): void
     {
         $message = CommunicationMessage::find($messageId);
-        if (!$message) return;
+        if (! $message) {
+            return;
+        }
 
         $outboxItems = CommunicationOutbox::where('message_id', $messageId)
             ->readyToSend()
@@ -438,6 +443,7 @@ class CommunicationEngine
             // Check if subscriber should get digest instead of instant
             if ($this->channelRouter->shouldDigest($subscriber)) {
                 $this->queueForDigest($message, $subscriber);
+
                 continue;
             }
 
@@ -479,8 +485,9 @@ class CommunicationEngine
     {
         $driver = $this->channelRouter->getDriver($outbox->channel);
 
-        if (!$driver) {
+        if (! $driver) {
             $outbox->markAsFailed("No driver for channel: {$outbox->channel}", false);
+
             return;
         }
 

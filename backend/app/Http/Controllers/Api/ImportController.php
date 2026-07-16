@@ -6,9 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\ChartOfAccount;
 use App\Services\BillPaymentService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 /**
@@ -29,12 +29,12 @@ class ImportController extends Controller
     {
         $request->validate([
             'file' => 'required|file|mimes:xlsx,xls|max:10240', // 10MB max
-            'type' => 'required|in:chart-of-accounts,payments'
+            'type' => 'required|in:chart-of-accounts,payments',
         ]);
 
         try {
             $type = $request->type;
-            
+
             // Route to appropriate import handler
             switch ($type) {
                 case 'chart-of-accounts':
@@ -44,19 +44,19 @@ class ImportController extends Controller
                 default:
                     return response()->json([
                         'message' => 'Invalid import type',
-                        'error' => 'Unknown import type'
+                        'error' => 'Unknown import type',
                     ], 400);
             }
 
         } catch (\Exception $e) {
             Log::error('Import error', [
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'message' => 'Import failed',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -67,13 +67,13 @@ class ImportController extends Controller
     private function importChartOfAccounts(Request $request)
     {
         $file = $request->file('file');
-        $filename = time() . '_' . $file->getClientOriginalName();
+        $filename = time().'_'.$file->getClientOriginalName();
         $path = $file->storeAs('imports', $filename);
         $fullPath = Storage::path($path);
 
         Log::info('Chart of Accounts import started', [
             'file' => $filename,
-            'path' => $fullPath
+            'path' => $fullPath,
         ]);
 
         try {
@@ -85,7 +85,7 @@ class ImportController extends Controller
             // Find header row and map columns
             $headerRow = null;
             $columnMap = [];
-            
+
             foreach ($rows as $index => $row) {
                 if ($this->isHeaderRow($row)) {
                     $headerRow = $index;
@@ -105,14 +105,14 @@ class ImportController extends Controller
                 'created' => 0,
                 'updated' => 0,
                 'skipped' => 0,
-                'errors' => []
+                'errors' => [],
             ];
 
             DB::beginTransaction();
 
             foreach ($dataRows as $rowIndex => $row) {
                 $actualRowNumber = $headerRow + $rowIndex + 2; // +2 for header and 0-index
-                
+
                 // Skip empty rows
                 if ($this->isEmptyRow($row)) {
                     continue;
@@ -122,11 +122,12 @@ class ImportController extends Controller
 
                 try {
                     $accountData = $this->extractAccountData($row, $columnMap);
-                    
+
                     // Validate required fields
                     if (empty($accountData['code']) || empty($accountData['name'])) {
                         $results['errors'][] = "Row {$actualRowNumber}: Missing code or name";
                         $results['skipped']++;
+
                         continue;
                     }
 
@@ -145,10 +146,10 @@ class ImportController extends Controller
                     }
 
                 } catch (\Exception $e) {
-                    $results['errors'][] = "Row {$actualRowNumber}: " . $e->getMessage();
+                    $results['errors'][] = "Row {$actualRowNumber}: ".$e->getMessage();
                     $results['skipped']++;
                     Log::warning("Failed to import row {$actualRowNumber}", [
-                        'error' => $e->getMessage()
+                        'error' => $e->getMessage(),
                     ]);
                 }
             }
@@ -162,16 +163,16 @@ class ImportController extends Controller
 
             return response()->json([
                 'message' => 'Import completed',
-                'results' => $results
+                'results' => $results,
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
             Storage::delete($path);
-            
+
             Log::error('Chart of Accounts import failed', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             throw $e;
@@ -185,13 +186,13 @@ class ImportController extends Controller
     {
         $headerKeywords = ['code', 'account', 'name', 'type'];
         $rowString = strtolower(implode(' ', array_filter($row)));
-        
+
         foreach ($headerKeywords as $keyword) {
             if (strpos($rowString, $keyword) !== false) {
                 return true;
             }
         }
-        
+
         return false;
     }
 
@@ -201,10 +202,10 @@ class ImportController extends Controller
     private function mapColumns(array $headerRow): array
     {
         $map = [];
-        
+
         foreach ($headerRow as $index => $header) {
             $header = strtolower(trim($header));
-            
+
             // Map various column name variations
             if (in_array($header, ['code', 'account code', 'account_code', 'acct code'])) {
                 $map['code'] = $index;
@@ -224,7 +225,7 @@ class ImportController extends Controller
                 $map['account_group'] = $index;
             }
         }
-        
+
         return $map;
     }
 
@@ -233,8 +234,8 @@ class ImportController extends Controller
      */
     private function isEmptyRow(array $row): bool
     {
-        return empty(array_filter($row, function($cell) {
-            return !empty(trim($cell));
+        return empty(array_filter($row, function ($cell) {
+            return ! empty(trim($cell));
         }));
     }
 
@@ -245,32 +246,32 @@ class ImportController extends Controller
     {
         // Get type from internal_group column (or type column as fallback)
         $typeValue = 'asset';
-        if (isset($columnMap['type']) && !empty($row[$columnMap['type']])) {
+        if (isset($columnMap['type']) && ! empty($row[$columnMap['type']])) {
             $typeValue = trim($row[$columnMap['type']]);
         }
         $normalizedType = $this->normalizeAccountType($typeValue);
-        
+
         // Get subtype from account_type column and normalize it
         $subtypeValue = '';
-        if (isset($columnMap['subtype']) && !empty($row[$columnMap['subtype']])) {
+        if (isset($columnMap['subtype']) && ! empty($row[$columnMap['subtype']])) {
             $subtypeValue = trim($row[$columnMap['subtype']]);
         }
         $normalizedSubtype = $this->normalizeAccountSubtype($subtypeValue, $normalizedType);
-        
+
         $data = [
             'code' => isset($columnMap['code']) ? trim($row[$columnMap['code']]) : null,
             'name' => isset($columnMap['name']) ? trim($row[$columnMap['name']]) : null,
             'type' => $normalizedType,
             'subtype' => $normalizedSubtype,
-            'account_group' => isset($columnMap['account_group']) && !empty($row[$columnMap['account_group']]) 
-                ? trim($row[$columnMap['account_group']]) 
+            'account_group' => isset($columnMap['account_group']) && ! empty($row[$columnMap['account_group']])
+                ? trim($row[$columnMap['account_group']])
                 : null,
             'currency_code' => isset($columnMap['currency']) ? strtoupper(trim($row[$columnMap['currency']])) : 'USD',
             'is_active' => true,
         ];
 
         // Handle parent account
-        if (isset($columnMap['parent_code']) && !empty($row[$columnMap['parent_code']])) {
+        if (isset($columnMap['parent_code']) && ! empty($row[$columnMap['parent_code']])) {
             $parentCode = trim($row[$columnMap['parent_code']]);
             $parent = ChartOfAccount::where('code', $parentCode)->first();
             if ($parent) {
@@ -293,7 +294,7 @@ class ImportController extends Controller
     private function normalizeAccountType(string $type): string
     {
         $type = strtolower(trim($type));
-        
+
         // Map various type names to database enum values (singular)
         $typeMap = [
             'asset' => 'asset',
@@ -327,11 +328,12 @@ class ImportController extends Controller
                 'revenue' => 'income',
                 'expense' => 'expense',
             ];
+
             return $defaultSubtypes[$normalizedType] ?? 'asset_current';
         }
 
         $originalSubtype = strtolower(trim($originalSubtype));
-        
+
         // Comprehensive mapping for all possible input variations
         // Maps to Jingxi-specific values (preferred) or keeps generic values for backward compatibility
         $subtypeMap = [
@@ -342,7 +344,7 @@ class ImportController extends Controller
             'asset_fixed' => 'asset_fixed',
             'asset_non_current' => 'asset_non_current',
             'asset_noncurrent' => 'asset_non_current',
-            
+
             // Asset subtypes - Generic format (keep for backward compatibility)
             'current_asset' => 'current_asset',
             'current asset' => 'current_asset',
@@ -350,7 +352,7 @@ class ImportController extends Controller
             'fixed asset' => 'fixed_asset',
             'other_asset' => 'other_asset',
             'other asset' => 'other_asset',
-            
+
             // Asset subtypes - Alternative names (map to Jingxi format)
             'receivable' => 'asset_receivable',
             'receivables' => 'asset_receivable',
@@ -358,48 +360,48 @@ class ImportController extends Controller
             'fixed' => 'asset_fixed',
             'non-current' => 'asset_non_current',
             'noncurrent' => 'asset_non_current',
-            
+
             // Liability subtypes - Jingxi format (store as-is)
             'liability_payable' => 'liability_payable',
             'liability_current' => 'liability_current',
             'liability_non_current' => 'liability_non_current',
             'liability_noncurrent' => 'liability_non_current',
-            
+
             // Liability subtypes - Generic format (keep for backward compatibility)
             'current_liability' => 'current_liability',
             'current liability' => 'current_liability',
             'long_term_liability' => 'long_term_liability',
             'long term liability' => 'long_term_liability',
             'longterm_liability' => 'long_term_liability',
-            
+
             // Liability subtypes - Alternative names (map to Jingxi format)
             'payable' => 'liability_payable',
             'payables' => 'liability_payable',
             'long-term' => 'liability_non_current',
             'longterm' => 'liability_non_current',
-            
+
             // Equity subtype
             'equity' => 'equity',
-            
+
             // Revenue subtypes - Jingxi format (store as-is)
             'income' => 'income',
             'income_other' => 'income_other',
-            
+
             // Revenue subtypes - Generic format (keep for backward compatibility)
             'operating_revenue' => 'operating_revenue',
             'operating revenue' => 'operating_revenue',
             'other_revenue' => 'other_revenue',
             'other revenue' => 'other_revenue',
-            
+
             // Revenue subtypes - Alternative names (map to Jingxi format)
             'revenue' => 'income',
             'sales' => 'income',
-            
+
             // Expense subtypes - Jingxi format (store as-is)
             'expense_direct_cost' => 'expense_direct_cost',
             'expense' => 'expense',
             'expense_depreciation' => 'expense_depreciation',
-            
+
             // Expense subtypes - Generic format (keep for backward compatibility)
             'cost_of_goods_sold' => 'cost_of_goods_sold',
             'cost of goods sold' => 'cost_of_goods_sold',
@@ -407,7 +409,7 @@ class ImportController extends Controller
             'operating expense' => 'operating_expense',
             'other_expense' => 'other_expense',
             'other expense' => 'other_expense',
-            
+
             // Expense subtypes - Alternative names (map to Jingxi format)
             'cogs' => 'expense_direct_cost',
             'direct cost' => 'expense_direct_cost',
@@ -435,20 +437,20 @@ class ImportController extends Controller
 
     /**
      * Import Vendor Payments from Excel
-     * 
+     *
      * Workstream 1 (2026-04-15): Routed through BillPaymentService to ensure
      * all vendor payments post to GL via the canonical posting control plane.
      */
     private function importVendorPayments(Request $request)
     {
         $file = $request->file('file');
-        $filename = time() . '_' . $file->getClientOriginalName();
+        $filename = time().'_'.$file->getClientOriginalName();
         $path = $file->storeAs('imports', $filename);
         $fullPath = Storage::path($path);
 
         Log::info('Vendor Payments import started', [
             'file' => $filename,
-            'path' => $fullPath
+            'path' => $fullPath,
         ]);
 
         try {
@@ -460,7 +462,7 @@ class ImportController extends Controller
             // Find header row and map columns
             $headerRow = null;
             $columnMap = [];
-            
+
             foreach ($rows as $index => $row) {
                 if ($this->isPaymentHeaderRow($row)) {
                     $headerRow = $index;
@@ -479,12 +481,12 @@ class ImportController extends Controller
                 'total' => 0,
                 'created' => 0,
                 'skipped' => 0,
-                'errors' => []
+                'errors' => [],
             ];
 
             foreach ($dataRows as $rowIndex => $row) {
                 $actualRowNumber = $headerRow + $rowIndex + 2;
-                
+
                 // Skip empty rows
                 if ($this->isEmptyRow($row)) {
                     continue;
@@ -494,31 +496,33 @@ class ImportController extends Controller
 
                 try {
                     $paymentData = $this->extractPaymentData($row, $columnMap);
-                    
+
                     // Validate required fields
                     if (empty($paymentData['vendor_id'])) {
                         $results['errors'][] = "Row {$actualRowNumber}: Vendor not found";
                         $results['skipped']++;
+
                         continue;
                     }
 
                     if (empty($paymentData['payment_date']) || empty($paymentData['amount'])) {
                         $results['errors'][] = "Row {$actualRowNumber}: Missing payment date or amount";
                         $results['skipped']++;
+
                         continue;
                     }
 
                     // Create payment via BillPaymentService (posts to GL and updates bill balances)
                     $payment = $this->billPaymentService->recordPayment($paymentData, $paymentData['created_by'] ?? null);
                     $results['created']++;
-                    
+
                     Log::info("Created payment via BillPaymentService: {$payment->payment_number}");
 
                 } catch (\Exception $e) {
-                    $results['errors'][] = "Row {$actualRowNumber}: " . $e->getMessage();
+                    $results['errors'][] = "Row {$actualRowNumber}: ".$e->getMessage();
                     $results['skipped']++;
                     Log::warning("Failed to import payment row {$actualRowNumber}", [
-                        'error' => $e->getMessage()
+                        'error' => $e->getMessage(),
                     ]);
                 }
             }
@@ -530,15 +534,15 @@ class ImportController extends Controller
 
             return response()->json([
                 'message' => 'Import completed',
-                'results' => $results
+                'results' => $results,
             ]);
 
         } catch (\Exception $e) {
             Storage::delete($path);
-            
+
             Log::error('Vendor Payments import failed', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             throw $e;
@@ -552,14 +556,14 @@ class ImportController extends Controller
     {
         $headerKeywords = ['payment', 'vendor', 'date', 'amount'];
         $rowString = strtolower(implode(' ', array_filter($row)));
-        
+
         $matchCount = 0;
         foreach ($headerKeywords as $keyword) {
             if (strpos($rowString, $keyword) !== false) {
                 $matchCount++;
             }
         }
-        
+
         return $matchCount >= 2;
     }
 
@@ -569,10 +573,10 @@ class ImportController extends Controller
     private function mapPaymentColumns(array $headerRow): array
     {
         $map = [];
-        
+
         foreach ($headerRow as $index => $header) {
             $header = strtolower(trim($header));
-            
+
             if (in_array($header, ['payment number', 'payment_number', 'number', 'payment no'])) {
                 $map['payment_number'] = $index;
             } elseif (in_array($header, ['vendor', 'vendor name', 'vendor_name', 'supplier', 'customer/vendor', 'customer\/vendor'])) {
@@ -591,7 +595,7 @@ class ImportController extends Controller
                 $map['memo'] = $index;
             }
         }
-        
+
         return $map;
     }
 
@@ -603,23 +607,23 @@ class ImportController extends Controller
         // Get vendor
         $vendorName = isset($columnMap['vendor_name']) ? trim($row[$columnMap['vendor_name']]) : null;
         $vendor = null;
-        
+
         if ($vendorName) {
             // Try exact match first (case-insensitive)
             $vendor = \App\Models\Vendor::whereRaw('LOWER(name) = ?', [strtolower($vendorName)])->first();
-            
+
             // If no exact match, try partial match
-            if (!$vendor) {
+            if (! $vendor) {
                 $vendor = \App\Models\Vendor::where('name', 'LIKE', "%{$vendorName}%")->first();
             }
         }
 
         // Get bill if specified - try to match from memo column
-        $billNumber = isset($columnMap['bill_number']) && !empty($row[$columnMap['bill_number']]) 
-            ? trim($row[$columnMap['bill_number']]) 
+        $billNumber = isset($columnMap['bill_number']) && ! empty($row[$columnMap['bill_number']])
+            ? trim($row[$columnMap['bill_number']])
             : null;
         $bill = null;
-        
+
         if ($billNumber && $vendor) {
             $bill = \App\Models\Bill::where('bill_number', $billNumber)
                 ->where('vendor_id', $vendor->id)
@@ -628,9 +632,9 @@ class ImportController extends Controller
 
         // Parse payment date
         $paymentDate = null;
-        if (isset($columnMap['payment_date']) && !empty($row[$columnMap['payment_date']])) {
+        if (isset($columnMap['payment_date']) && ! empty($row[$columnMap['payment_date']])) {
             $dateValue = $row[$columnMap['payment_date']];
-            
+
             // Handle Excel date serial numbers
             if (is_numeric($dateValue)) {
                 $paymentDate = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($dateValue)->format('Y-m-d');
@@ -647,8 +651,8 @@ class ImportController extends Controller
         $amount = abs(floatval($amount)); // Use absolute value to ensure positive
 
         // Get payment method and normalize it
-        $paymentMethodRaw = isset($columnMap['payment_method']) && !empty($row[$columnMap['payment_method']]) 
-            ? trim($row[$columnMap['payment_method']]) 
+        $paymentMethodRaw = isset($columnMap['payment_method']) && ! empty($row[$columnMap['payment_method']])
+            ? trim($row[$columnMap['payment_method']])
             : '';
         $paymentMethod = $this->normalizePaymentMethod($paymentMethodRaw);
 
@@ -661,17 +665,17 @@ class ImportController extends Controller
             'payment_date' => $paymentDate,
             'amount' => $amount,
             'payment_method' => $paymentMethod,
-            'reference' => isset($columnMap['reference']) && !empty($row[$columnMap['reference']]) 
-                ? trim($row[$columnMap['reference']]) 
+            'reference' => isset($columnMap['reference']) && ! empty($row[$columnMap['reference']])
+                ? trim($row[$columnMap['reference']])
                 : null,
-            'memo' => isset($columnMap['memo']) && !empty($row[$columnMap['memo']]) 
-                ? trim($row[$columnMap['memo']]) 
+            'memo' => isset($columnMap['memo']) && ! empty($row[$columnMap['memo']])
+                ? trim($row[$columnMap['memo']])
                 : null,
             'created_by' => $user ? $user->id : null,
         ];
 
         // Generate payment number if not provided
-        if (isset($columnMap['payment_number']) && !empty($row[$columnMap['payment_number']])) {
+        if (isset($columnMap['payment_number']) && ! empty($row[$columnMap['payment_number']])) {
             $data['payment_number'] = trim($row[$columnMap['payment_number']]);
         } else {
             $data['payment_number'] = \App\Models\BillPayment::generatePaymentNumber();
@@ -690,7 +694,7 @@ class ImportController extends Controller
         }
 
         $method = strtolower(trim($method));
-        
+
         // Map various payment method names to database enum values
         // Database allows: 'cash', 'bank', 'card', 'check', 'other'
         $methodMap = [
@@ -737,7 +741,7 @@ class ImportController extends Controller
     public function downloadTemplate(Request $request)
     {
         $request->validate([
-            'type' => 'required|in:chart-of-accounts,journal-entries,vendor-bills,payments'
+            'type' => 'required|in:chart-of-accounts,journal-entries,vendor-bills,payments',
         ]);
 
         $templates = [
@@ -748,12 +752,12 @@ class ImportController extends Controller
         ];
 
         $templateFile = $templates[$request->type];
-        $templatePath = storage_path('app/templates/' . $templateFile);
+        $templatePath = storage_path('app/templates/'.$templateFile);
 
-        if (!file_exists($templatePath)) {
+        if (! file_exists($templatePath)) {
             return response()->json([
                 'message' => 'Template not found',
-                'error' => 'The template file does not exist'
+                'error' => 'The template file does not exist',
             ], 404);
         }
 

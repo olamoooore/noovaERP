@@ -4,10 +4,10 @@ namespace Modules\IoT\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Modules\IoT\Services\AgentHttpClient;
+use Modules\IoT\Services\DeviceCommandRouter;
 use Modules\IoT\Services\HttpDeviceClient;
 use Modules\IoT\Services\MqttDeviceClient;
 use Modules\IoT\Services\WebhookDeviceClient;
-use Modules\IoT\Services\DeviceCommandRouter;
 
 class IoTServiceProvider extends ServiceProvider
 {
@@ -22,38 +22,38 @@ class IoTServiceProvider extends ServiceProvider
             if (strpos($class, 'Modules\\IoT\\') !== 0) {
                 return;
             }
-            
+
             // Convert namespace to file path
             $classPath = str_replace('Modules\\IoT\\', '', $class);
             $classPath = str_replace('\\', '/', $classPath);
-            $file = __DIR__ . '/../../src/' . $classPath . '.php';
-            
+            $file = __DIR__.'/../../src/'.$classPath.'.php';
+
             if (file_exists($file)) {
                 require_once $file;
             }
         });
-        
+
         // Register module config
         $this->mergeConfigFrom(
-            __DIR__ . '/../../config/iot.php',
+            __DIR__.'/../../config/iot.php',
             'iot'
         );
 
         // Register device clients as singletons
         $this->app->singleton(AgentHttpClient::class, function ($app) {
-            return new AgentHttpClient();
+            return new AgentHttpClient;
         });
 
         $this->app->singleton(HttpDeviceClient::class, function ($app) {
-            return new HttpDeviceClient();
+            return new HttpDeviceClient;
         });
 
         $this->app->singleton(MqttDeviceClient::class, function ($app) {
-            return new MqttDeviceClient();
+            return new MqttDeviceClient;
         });
 
         $this->app->singleton(WebhookDeviceClient::class, function ($app) {
-            return new WebhookDeviceClient();
+            return new WebhookDeviceClient;
         });
 
         // Register device command router

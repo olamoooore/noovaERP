@@ -5,9 +5,9 @@ namespace Modules\CRM\Models;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Lead extends Model
 {
@@ -40,6 +40,7 @@ class Lead extends Model
 
     // Simplified pipeline: Lead → Contacted → Interested → Proposal Sent → Won / Lost
     public const STATUSES = ['new', 'contacted', 'interested', 'proposal', 'won', 'lost'];
+
     public const SOURCES = ['website', 'referral', 'social', 'advertisement', 'cold_call', 'email', 'trade_show', 'other'];
 
     public function assignedTo(): BelongsTo

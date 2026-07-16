@@ -2,24 +2,26 @@
 
 namespace Modules\EventManagement\Services;
 
-use Modules\EventManagement\Models\Event;
-use Modules\EventManagement\Models\EventTicketType;
-use Modules\EventManagement\Models\Artist;
-use Modules\EventManagement\Models\Group;
-use Modules\EventManagement\Models\ArtistEvent;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
+use Modules\EventManagement\Models\Artist;
+use Modules\EventManagement\Models\ArtistEvent;
+use Modules\EventManagement\Models\Event;
+use Modules\EventManagement\Models\EventTicketType;
+use Modules\EventManagement\Models\Group;
 
 class EventService
 {
     protected AuditService $auditService;
+
     protected ArtistManagementService $artistManagementService;
+
     protected CapacityReservationService $capacityReservationService;
 
     public function __construct(
-        AuditService $auditService, 
+        AuditService $auditService,
         ArtistManagementService $artistManagementService,
         CapacityReservationService $capacityReservationService
     ) {
@@ -64,11 +66,11 @@ class EventService
                         'capacity' => $ticketTypeData['capacity'],
                         'available_capacity' => $ticketTypeData['capacity'],
                         'description' => $ticketTypeData['description'] ?? null,
-                        'sale_start_date' => isset($ticketTypeData['sale_start_date']) 
-                            ? Carbon::parse($ticketTypeData['sale_start_date']) 
+                        'sale_start_date' => isset($ticketTypeData['sale_start_date'])
+                            ? Carbon::parse($ticketTypeData['sale_start_date'])
                             : null,
-                        'sale_end_date' => isset($ticketTypeData['sale_end_date']) 
-                            ? Carbon::parse($ticketTypeData['sale_end_date']) 
+                        'sale_end_date' => isset($ticketTypeData['sale_end_date'])
+                            ? Carbon::parse($ticketTypeData['sale_end_date'])
                             : null,
                     ]);
                 }
@@ -98,14 +100,14 @@ class EventService
                 [
                     'event_data' => $eventData,
                     'artists_count' => count($eventData['artists'] ?? []),
-                    'groups_count' => count($eventData['groups'] ?? [])
+                    'groups_count' => count($eventData['groups'] ?? []),
                 ]
             );
 
             Log::info('Event created successfully', [
                 'event_id' => $event->id,
                 'title' => $event->title,
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
 
             return $event->load(['ticketTypes', 'artistEvents.artist', 'artistEvents.group', 'merchandiseProducts', 'bundleProducts']);
@@ -120,10 +122,10 @@ class EventService
     {
         return DB::transaction(function () use ($eventId) {
             $event = Event::findOrFail($eventId);
-            
+
             // Only allow publishing from draft status
             if ($event->status !== 'draft') {
-                throw new \InvalidArgumentException("Event can only be published from draft status");
+                throw new \InvalidArgumentException('Event can only be published from draft status');
             }
 
             $event->update(['status' => 'published']);
@@ -148,10 +150,10 @@ class EventService
     {
         return DB::transaction(function () use ($eventId, $capacity) {
             $event = Event::findOrFail($eventId);
-            
+
             // Calculate current bookings to ensure we don't set capacity below current bookings
             $currentBookings = $event->total_capacity - $event->available_capacity;
-            
+
             if ($capacity < $currentBookings) {
                 throw new \InvalidArgumentException("Cannot set capacity below current bookings ({$currentBookings})");
             }
@@ -179,7 +181,7 @@ class EventService
                 [
                     'previous_capacity' => $previousCapacity,
                     'new_capacity' => $capacity,
-                    'available_capacity' => $newAvailableCapacity
+                    'available_capacity' => $newAvailableCapacity,
                 ]
             );
 
@@ -198,27 +200,27 @@ class EventService
             ->with(['ticketTypes', 'artistEvents.artist', 'artistEvents.group', 'merchandiseProducts', 'bundleProducts']);
 
         // Apply artist filter
-        if (!empty($filters['artist_id'])) {
+        if (! empty($filters['artist_id'])) {
             $query->whereHas('artistEvents', function ($q) use ($filters) {
                 $q->where('artist_id', $filters['artist_id']);
             });
         }
 
         // Apply group filter
-        if (!empty($filters['group_id'])) {
+        if (! empty($filters['group_id'])) {
             $query->whereHas('artistEvents', function ($q) use ($filters) {
                 $q->where('group_id', $filters['group_id']);
             });
         }
 
         // Apply event type filter
-        if (!empty($filters['event_type'])) {
+        if (! empty($filters['event_type'])) {
             $query->where('event_type', $filters['event_type']);
         }
 
         // Apply venue filter
-        if (!empty($filters['venue'])) {
-            $query->where('venue', 'like', '%' . $filters['venue'] . '%');
+        if (! empty($filters['venue'])) {
+            $query->where('venue', 'like', '%'.$filters['venue'].'%');
         }
 
         return $query->orderBy('start_date', 'asc')->get();
@@ -232,15 +234,15 @@ class EventService
     public function checkAvailability(int $eventId, int $requestedTickets): bool
     {
         $event = Event::findOrFail($eventId);
-        
+
         // Check if event can accept bookings
-        if (!$event->canAcceptBookings()) {
+        if (! $event->canAcceptBookings()) {
             return false;
         }
 
         // Use CapacityReservationService for real-time capacity calculation
         $realTimeAvailableCapacity = $this->capacityReservationService->calculateRealTimeAvailableCapacity($eventId);
-        
+
         // Check if enough capacity is available
         return $realTimeAvailableCapacity >= $requestedTickets;
     }
@@ -252,14 +254,14 @@ class EventService
     public function getEventById(int $eventId): Event
     {
         return Event::with([
-            'ticketTypes', 
-            'artistEvents.artist', 
+            'ticketTypes',
+            'artistEvents.artist',
             'artistEvents.group',
             'merchandiseProducts',
             'bundleProducts',
             'artistEvents' => function ($query) {
                 $query->orderBy('performance_order', 'asc');
-            }
+            },
         ])->findOrFail($eventId);
     }
 
@@ -271,9 +273,9 @@ class EventService
     {
         return DB::transaction(function () use ($eventId, $eventData) {
             $event = Event::findOrFail($eventId);
-            
+
             $previousData = $event->toArray();
-            
+
             $event->update([
                 'title' => $eventData['title'] ?? $event->title,
                 'description' => $eventData['description'] ?? $event->description,
@@ -306,14 +308,14 @@ class EventService
                 $event->id,
                 [
                     'previous_data' => $previousData,
-                    'updated_data' => $eventData
+                    'updated_data' => $eventData,
                 ]
             );
 
             Log::info('Event updated successfully', [
                 'event_id' => $eventId,
                 'changes' => $event->getChanges(),
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
 
             return $event->load(['ticketTypes', 'artistEvents.artist', 'artistEvents.group', 'merchandiseProducts', 'bundleProducts']);
@@ -358,10 +360,10 @@ class EventService
     {
         return DB::transaction(function () use ($eventId) {
             $event = Event::findOrFail($eventId);
-            
+
             if ($event->status === 'published') {
                 $event->update(['status' => 'sold_out']);
-                
+
                 // Log the status change
                 $this->auditService->logActivity(
                     'event_sold_out',
@@ -397,14 +399,14 @@ class EventService
         }
 
         // Apply artist filter
-        if (!empty($filters['artist_id'])) {
+        if (! empty($filters['artist_id'])) {
             $query->whereHas('artistEvents', function ($q) use ($filters) {
                 $q->where('artist_id', $filters['artist_id']);
             });
         }
 
         // Apply group filter
-        if (!empty($filters['group_id'])) {
+        if (! empty($filters['group_id'])) {
             $query->whereHas('artistEvents', function ($q) use ($filters) {
                 $q->where('group_id', $filters['group_id']);
             });
@@ -420,10 +422,10 @@ class EventService
     {
         return DB::transaction(function () use ($eventId) {
             $event = Event::findOrFail($eventId);
-            
+
             // Check if event has bookings
             if ($event->bookings()->exists()) {
-                throw new \InvalidArgumentException("Cannot delete event with existing bookings");
+                throw new \InvalidArgumentException('Cannot delete event with existing bookings');
             }
 
             // Log the event deletion
@@ -482,7 +484,7 @@ class EventService
             $currentArtistEvents->whereNotIn('artist_id', $providedArtistIds)
                 ->each(function ($artistEvent) {
                     $artistEvent->update(['status' => 'cancelled']);
-                    
+
                     $this->auditService->logActivity(
                         'artist_removed_from_event',
                         ArtistEvent::class,
@@ -502,7 +504,7 @@ class EventService
                     $existingAssociation->update([
                         'role' => $artistData['role'] ?? $existingAssociation->role,
                         'performance_order' => $artistData['performance_order'] ?? $existingAssociation->performance_order,
-                        'status' => 'confirmed'
+                        'status' => 'confirmed',
                     ]);
                 } else {
                     // Create new association
@@ -530,7 +532,7 @@ class EventService
             $currentGroupEvents->whereNotIn('group_id', $providedGroupIds)
                 ->each(function ($groupEvent) {
                     $groupEvent->update(['status' => 'cancelled']);
-                    
+
                     $this->auditService->logActivity(
                         'group_removed_from_event',
                         ArtistEvent::class,
@@ -550,7 +552,7 @@ class EventService
                     $existingAssociation->update([
                         'role' => $groupData['role'] ?? $existingAssociation->role,
                         'performance_order' => $groupData['performance_order'] ?? $existingAssociation->performance_order,
-                        'status' => 'confirmed'
+                        'status' => 'confirmed',
                     ]);
                 } else {
                     // Create new association
@@ -568,22 +570,22 @@ class EventService
     {
         $query = Event::whereHas('artistEvents', function ($q) use ($artistId) {
             $q->where('artist_id', $artistId)
-              ->whereIn('status', ['confirmed', 'tentative']);
+                ->whereIn('status', ['confirmed', 'tentative']);
         })->with(['ticketTypes', 'artistEvents' => function ($q) use ($artistId) {
             $q->where('artist_id', $artistId);
         }]);
 
         // Apply date filters
-        if (!empty($filters['from_date'])) {
+        if (! empty($filters['from_date'])) {
             $query->where('start_date', '>=', Carbon::parse($filters['from_date']));
         }
 
-        if (!empty($filters['to_date'])) {
+        if (! empty($filters['to_date'])) {
             $query->where('start_date', '<=', Carbon::parse($filters['to_date']));
         }
 
         // Apply status filter
-        if (!empty($filters['status'])) {
+        if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
 
@@ -598,22 +600,22 @@ class EventService
     {
         $query = Event::whereHas('artistEvents', function ($q) use ($groupId) {
             $q->where('group_id', $groupId)
-              ->whereIn('status', ['confirmed', 'tentative']);
+                ->whereIn('status', ['confirmed', 'tentative']);
         })->with(['ticketTypes', 'artistEvents' => function ($q) use ($groupId) {
             $q->where('group_id', $groupId);
         }]);
 
         // Apply date filters
-        if (!empty($filters['from_date'])) {
+        if (! empty($filters['from_date'])) {
             $query->where('start_date', '>=', Carbon::parse($filters['from_date']));
         }
 
-        if (!empty($filters['to_date'])) {
+        if (! empty($filters['to_date'])) {
             $query->where('start_date', '<=', Carbon::parse($filters['to_date']));
         }
 
         // Apply status filter
-        if (!empty($filters['status'])) {
+        if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
 
@@ -629,22 +631,22 @@ class EventService
         $query = Event::where('status', 'published')
             ->where(function ($q) use ($searchTerm) {
                 $q->whereHas('artistEvents.artist', function ($artistQuery) use ($searchTerm) {
-                    $artistQuery->where('name', 'like', '%' . $searchTerm . '%')
-                               ->orWhere('stage_name', 'like', '%' . $searchTerm . '%');
+                    $artistQuery->where('name', 'like', '%'.$searchTerm.'%')
+                        ->orWhere('stage_name', 'like', '%'.$searchTerm.'%');
                 })->orWhereHas('artistEvents.group', function ($groupQuery) use ($searchTerm) {
-                    $groupQuery->where('name', 'like', '%' . $searchTerm . '%')
-                              ->orWhere('korean_name', 'like', '%' . $searchTerm . '%')
-                              ->orWhere('english_name', 'like', '%' . $searchTerm . '%');
+                    $groupQuery->where('name', 'like', '%'.$searchTerm.'%')
+                        ->orWhere('korean_name', 'like', '%'.$searchTerm.'%')
+                        ->orWhere('english_name', 'like', '%'.$searchTerm.'%');
                 });
             })
             ->with(['ticketTypes', 'artistEvents.artist', 'artistEvents.group']);
 
         // Apply date filters
-        if (!empty($filters['from_date'])) {
+        if (! empty($filters['from_date'])) {
             $query->where('start_date', '>=', Carbon::parse($filters['from_date']));
         }
 
-        if (!empty($filters['to_date'])) {
+        if (! empty($filters['to_date'])) {
             $query->where('start_date', '<=', Carbon::parse($filters['to_date']));
         }
 

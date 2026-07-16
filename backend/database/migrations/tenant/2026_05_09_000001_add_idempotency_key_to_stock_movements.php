@@ -18,7 +18,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (!Schema::hasTable('stock_movements') || Schema::hasColumn('stock_movements', 'idempotency_key')) {
+        if (! Schema::hasTable('stock_movements') || Schema::hasColumn('stock_movements', 'idempotency_key')) {
             return;
         }
 
@@ -30,7 +30,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (!Schema::hasTable('stock_movements') || !Schema::hasColumn('stock_movements', 'idempotency_key')) {
+        if (! Schema::hasTable('stock_movements') || ! Schema::hasColumn('stock_movements', 'idempotency_key')) {
             return;
         }
 

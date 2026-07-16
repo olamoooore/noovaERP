@@ -2,21 +2,20 @@
 
 namespace Modules\EventManagement\Tests\PropertyBased;
 
-use Tests\TestCase;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\EventManagement\Models\Event;
 use Modules\EventManagement\Models\EventType;
 use Modules\EventManagement\Services\SaleWindowService;
-use Carbon\Carbon;
-use Illuminate\Validation\ValidationException;
+use Tests\TestCase;
 
 /**
  * Property Test 13: Sale Window Validation
- * 
+ *
  * Feature: erp-event-management-phase4
- * 
+ *
  * Validates Requirements: 7.3
- * 
+ *
  * This property-based test ensures that sale window validation correctly
  * prevents creation of events with invalid sale windows (end date before
  * or equal to start date).
@@ -30,21 +29,21 @@ class SaleWindowValidationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
-        $this->saleWindowService = new SaleWindowService();
-        
+
+        $this->saleWindowService = new SaleWindowService;
+
         // Seed default event types
         $this->seedEventTypes();
     }
 
     /**
      * Property 13: Sale Window Validation
-     * 
+     *
      * For any event creation attempt where the sale end date is before or equal
      * to the sale start date, the creation should fail with a validation error.
-     * 
+     *
      * Validates: Requirements 7.3
-     * 
+     *
      * @test
      */
     public function property_invalid_sale_window_prevents_event_creation(): void
@@ -57,7 +56,7 @@ class SaleWindowValidationTest extends TestCase
             try {
                 // Generate random sale window dates where end <= start
                 $invalidSaleWindow = $this->generateInvalidSaleWindow();
-                
+
                 // Generate event data with invalid sale window
                 $eventType = $this->getRandomEventType();
                 $eventData = $this->generateEventData(
@@ -65,15 +64,15 @@ class SaleWindowValidationTest extends TestCase
                     $invalidSaleWindow['start'],
                     $invalidSaleWindow['end']
                 );
-                
+
                 // Validate sale window using service
                 $validation = $this->saleWindowService->validateSaleWindow(
                     $invalidSaleWindow['start'],
                     $invalidSaleWindow['end']
                 );
-                
+
                 // Assert validation fails
-                if (!$validation['valid'] && !empty($validation['errors'])) {
+                if (! $validation['valid'] && ! empty($validation['errors'])) {
                     $passedIterations++;
                 } else {
                     $failures[] = [
@@ -84,11 +83,11 @@ class SaleWindowValidationTest extends TestCase
                         'reason' => 'Validation should have failed but passed',
                     ];
                 }
-                
+
                 // Also test that database constraint prevents creation
                 try {
                     Event::create($eventData);
-                    
+
                     // If we reach here, the database allowed invalid data
                     $failures[] = [
                         'iteration' => $i + 1,
@@ -96,7 +95,7 @@ class SaleWindowValidationTest extends TestCase
                         'sale_end' => $invalidSaleWindow['end']->toDateTimeString(),
                         'reason' => 'Database allowed creation with invalid sale window',
                     ];
-                    
+
                     // Decrement passed iterations since validation passed but DB didn't enforce
                     if ($passedIterations > 0) {
                         $passedIterations--;
@@ -105,7 +104,7 @@ class SaleWindowValidationTest extends TestCase
                     // Expected: database should reject invalid sale window
                     // This is good - the constraint is working
                 }
-                
+
             } catch (\Exception $e) {
                 $failures[] = [
                     'iteration' => $i + 1,
@@ -116,12 +115,12 @@ class SaleWindowValidationTest extends TestCase
         }
 
         $this->assertEmpty($failures,
-            "Sale window validation failures in " . count($failures) . " out of {$iterations} iterations:\n" .
+            'Sale window validation failures in '.count($failures)." out of {$iterations} iterations:\n".
             json_encode($failures, JSON_PRETTY_PRINT)
         );
-        
+
         $this->assertEquals($iterations, $passedIterations,
-            "All iterations should correctly reject invalid sale windows"
+            'All iterations should correctly reject invalid sale windows'
         );
     }
 
@@ -151,6 +150,7 @@ class SaleWindowValidationTest extends TestCase
     private function getRandomEventType(): EventType
     {
         $eventTypes = EventType::where('is_active', true)->get();
+
         return $eventTypes->random();
     }
 
@@ -161,12 +161,12 @@ class SaleWindowValidationTest extends TestCase
     {
         // Generate a base date
         $baseDate = Carbon::now()->addDays(rand(1, 30));
-        
+
         // Randomly choose between:
         // 1. End date before start date
         // 2. End date equal to start date
         $scenario = rand(1, 2);
-        
+
         if ($scenario === 1) {
             // End date before start date
             $saleStart = (clone $baseDate)->addDays(rand(1, 10));
@@ -176,7 +176,7 @@ class SaleWindowValidationTest extends TestCase
             $saleStart = clone $baseDate;
             $saleEnd = clone $baseDate;
         }
-        
+
         return [
             'start' => $saleStart,
             'end' => $saleEnd,
@@ -191,12 +191,12 @@ class SaleWindowValidationTest extends TestCase
         // Generate event date after sale end date (or start if end is before start)
         $latestDate = $saleEndDate->greaterThan($saleStartDate) ? $saleEndDate : $saleStartDate;
         $eventDate = (clone $latestDate)->addDays(rand(1, 30));
-        
+
         return [
-            'title' => 'Test Event ' . uniqid(),
-            'description' => 'Test event description ' . rand(1000, 9999),
+            'title' => 'Test Event '.uniqid(),
+            'description' => 'Test event description '.rand(1000, 9999),
             'event_date' => $eventDate,
-            'venue' => 'Test Venue ' . rand(1, 100),
+            'venue' => 'Test Venue '.rand(1, 100),
             'total_capacity' => rand(50, 500),
             'available_capacity' => rand(50, 500),
             'status' => 'published',

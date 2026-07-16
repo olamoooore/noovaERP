@@ -18,45 +18,45 @@ class AdminAuditLogger
     /**
      * Record a privileged admin action.
      *
-     * @param string       $action   Dot-notation identifier, e.g. "plan.created"
-     * @param Model|null   $target   The primary entity affected
-     * @param array<mixed> $before   Snapshot before the action (empty for creates)
-     * @param array<mixed> $after    Snapshot after the action (empty for deletes)
-     * @param string|null  $reason   Optional operator-supplied reason
-     * @param string       $status   "success" or "failure"
+     * @param  string  $action  Dot-notation identifier, e.g. "plan.created"
+     * @param  Model|null  $target  The primary entity affected
+     * @param  array<mixed>  $before  Snapshot before the action (empty for creates)
+     * @param  array<mixed>  $after  Snapshot after the action (empty for deletes)
+     * @param  string|null  $reason  Optional operator-supplied reason
+     * @param  string  $status  "success" or "failure"
      */
     public function log(
-        string  $action,
-        ?Model  $target,
-        array   $before,
-        array   $after,
+        string $action,
+        ?Model $target,
+        array $before,
+        array $after,
         ?string $reason = null,
-        string  $status = 'success',
+        string $status = 'success',
     ): void {
-        $actor      = Auth::user();
+        $actor = Auth::user();
         $targetType = $target ? class_basename($target) : null;
-        $targetId   = $target?->getKey() !== null ? (string) $target->getKey() : null;
+        $targetId = $target?->getKey() !== null ? (string) $target->getKey() : null;
 
         AdminActionLog::create([
-            'admin_user_id'     => Auth::id(),
-            'action'            => $action,
-            'target_type'       => $targetType,
-            'target_id'         => $targetId,
-            'before_snapshot'   => $before ?: null,
-            'after_snapshot'    => $after  ?: null,
-            'reason'            => $reason,
-            'ip_address'        => Request::ip(),
-            'status'            => $status,
-            'severity'          => $this->diffService->severity($action, $status),
+            'admin_user_id' => Auth::id(),
+            'action' => $action,
+            'target_type' => $targetType,
+            'target_id' => $targetId,
+            'before_snapshot' => $before ?: null,
+            'after_snapshot' => $after ?: null,
+            'reason' => $reason,
+            'ip_address' => Request::ip(),
+            'status' => $status,
+            'severity' => $this->diffService->severity($action, $status),
             'human_description' => $this->diffService->humanize(
-                action:     $action,
-                actorName:  $actor?->name,
+                action: $action,
+                actorName: $actor?->name,
                 targetType: $targetType,
-                targetId:   $targetId,
-                before:     $before,
-                after:      $after,
+                targetId: $targetId,
+                before: $before,
+                after: $after,
             ),
-            'created_at'        => now(),
+            'created_at' => now(),
         ]);
     }
 }

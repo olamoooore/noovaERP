@@ -7,9 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 class DataClassification extends Model
 {
     protected $table = 'platform_data_classifications';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
+
     protected $guarded = [];
 
     protected $casts = [

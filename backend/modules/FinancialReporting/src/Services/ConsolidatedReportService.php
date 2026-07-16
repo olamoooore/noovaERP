@@ -2,12 +2,12 @@
 
 namespace Modules\FinancialReporting\Services;
 
-use Modules\FinancialReporting\DTOs\ReportFilter;
+use Illuminate\Support\Facades\DB;
 use Modules\FinancialReporting\DTOs\ReportData;
-use Modules\FinancialReporting\Services\Reports\ProfitLossService;
+use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\Services\Reports\BalanceSheetService;
 use Modules\FinancialReporting\Services\Reports\CashFlowService;
-use Illuminate\Support\Facades\DB;
+use Modules\FinancialReporting\Services\Reports\ProfitLossService;
 
 /**
  * Generates consolidated financial reports across all entities in a group.
@@ -193,7 +193,7 @@ class ConsolidatedReportService
             ->get()
             ->toArray();
 
-        $total = collect($items)->sum(fn($i) => $i->total_debit);
+        $total = collect($items)->sum(fn ($i) => $i->total_debit);
 
         return ['total' => $total, 'items' => $items];
     }

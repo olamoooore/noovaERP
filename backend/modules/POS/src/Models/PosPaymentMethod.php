@@ -43,15 +43,15 @@ class PosPaymentMethod extends Model
     public function calculateSurcharge(float $amount): float
     {
         $surcharge = 0;
-        
+
         if ($this->surcharge_percent > 0) {
             $surcharge += $amount * ($this->surcharge_percent / 100);
         }
-        
+
         if ($this->surcharge_fixed > 0) {
             $surcharge += $this->surcharge_fixed;
         }
-        
+
         return round($surcharge, 2);
     }
 }

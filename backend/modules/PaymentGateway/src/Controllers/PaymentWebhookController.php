@@ -17,8 +17,7 @@ class PaymentWebhookController extends Controller
 {
     public function __construct(
         private readonly WebOrderNotificationService $webOrderNotificationService,
-    ) {
-    }
+    ) {}
 
     /**
      * ResolveTenantFromWebhook must initialize tenant context before any
@@ -52,8 +51,9 @@ class PaymentWebhookController extends Controller
             ->where('is_active', true)
             ->first();
 
-        if (!$gateway) {
+        if (! $gateway) {
             Log::error('Stripe webhook received but no active Stripe gateway found');
+
             return response()->json(['error' => 'Gateway not configured'], 400);
         }
 
@@ -61,8 +61,9 @@ class PaymentWebhookController extends Controller
             $service = PaymentGatewayFactory::create($gateway);
 
             // Verify webhook signature
-            if (!$service->verifyWebhook($request)) {
+            if (! $service->verifyWebhook($request)) {
                 Log::error('Stripe webhook signature verification failed');
+
                 return response()->json(['error' => 'Invalid signature'], 400);
             }
 
@@ -87,6 +88,7 @@ class PaymentWebhookController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json(['error' => 'Webhook processing failed'], 500);
         }
     }
@@ -106,8 +108,9 @@ class PaymentWebhookController extends Controller
             ->where('is_active', true)
             ->first();
 
-        if (!$gateway) {
+        if (! $gateway) {
             Log::error('HitPay webhook received but no active HitPay gateway found');
+
             return response()->json(['error' => 'Gateway not configured'], 400);
         }
 
@@ -115,8 +118,9 @@ class PaymentWebhookController extends Controller
             $service = PaymentGatewayFactory::create($gateway);
 
             // Verify webhook signature
-            if (!$service->verifyWebhook($request)) {
+            if (! $service->verifyWebhook($request)) {
                 Log::error('HitPay webhook signature verification failed');
+
                 return response()->json(['error' => 'Invalid signature'], 400);
             }
 
@@ -141,6 +145,7 @@ class PaymentWebhookController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json(['error' => 'Webhook processing failed'], 500);
         }
     }
@@ -152,8 +157,9 @@ class PaymentWebhookController extends Controller
     {
         $transaction = PaymentTransaction::where('transaction_id', $webhookData['transaction_id'])->first();
 
-        if (!$transaction) {
+        if (! $transaction) {
             Log::warning('Payment transaction not found', ['transaction_id' => $webhookData['transaction_id']]);
+
             return;
         }
 
@@ -167,6 +173,7 @@ class PaymentWebhookController extends Controller
                     'transaction_id' => $webhookData['transaction_id'],
                     'webhook_id' => $webhookId,
                 ]);
+
                 return;
             }
 
@@ -180,6 +187,7 @@ class PaymentWebhookController extends Controller
                     'transaction_id' => $webhookData['transaction_id'],
                     'webhook_id' => $webhookId,
                 ]);
+
                 return;
             }
         }
@@ -189,6 +197,7 @@ class PaymentWebhookController extends Controller
                 'transaction_id' => $webhookData['transaction_id'],
                 'processed_at' => $transaction->processed_at,
             ]);
+
             return;
         }
 
@@ -262,8 +271,9 @@ class PaymentWebhookController extends Controller
     {
         $transaction = PaymentTransaction::where('transaction_id', $webhookData['transaction_id'])->first();
 
-        if (!$transaction) {
+        if (! $transaction) {
             Log::warning('Payment transaction not found for failure', ['transaction_id' => $webhookData['transaction_id']]);
+
             return;
         }
 
@@ -294,42 +304,45 @@ class PaymentWebhookController extends Controller
                     'transaction_id' => $transaction->transaction_id,
                     'processed_at' => $transaction->processed_at,
                 ]);
+
                 return;
             }
 
             // Check if this is a web order payment (no invoice yet)
             $metadata = $transaction->metadata ?? [];
             $isWebOrder = ($metadata['type'] ?? null) === 'web_order';
-            
+
             // Web-order completion now routes through the canonical completion
             // service just like the direct checkout and repair paths.
-            if ($isWebOrder && !$transaction->invoice_id) {
+            if ($isWebOrder && ! $transaction->invoice_id) {
                 app(PaymentTransactionCompletionService::class)->complete(
                     $transaction,
                     $transaction->payment_method ?? $transaction->gateway?->gateway_name
                 );
+
                 return;
             }
-            
+
             // Standard invoice-based payment processing now routes through the
             // canonical completion service to avoid a second invoice mutation owner.
             $invoice = $transaction->invoice;
-            
-            if (!$invoice) {
+
+            if (! $invoice) {
                 Log::error('Payment transaction has no associated invoice', [
                     'transaction_id' => $transaction->transaction_id,
                     'invoice_id' => $transaction->invoice_id,
                 ]);
+
                 return;
             }
-            
+
             app(PaymentTransactionCompletionService::class)->complete(
                 $transaction,
                 $transaction->payment_method ?? $transaction->gateway?->gateway_name
             );
         });
     }
-    
+
     /**
      * Send payment receipt email
      */
@@ -338,10 +351,11 @@ class PaymentWebhookController extends Controller
         try {
             $customer = $transaction->customer ?? $transaction->invoice->customer;
 
-            if (!$customer || !$customer->email) {
+            if (! $customer || ! $customer->email) {
                 Log::warning('Cannot send payment receipt: no customer email', [
                     'transaction_id' => $transaction->transaction_id,
                 ]);
+
                 return;
             }
 
@@ -374,8 +388,9 @@ class PaymentWebhookController extends Controller
             ->where('is_active', true)
             ->first();
 
-        if (!$gateway) {
+        if (! $gateway) {
             Log::error('PayPal webhook received but no active PayPal gateway found');
+
             return response()->json(['error' => 'Gateway not configured'], 400);
         }
 
@@ -383,8 +398,9 @@ class PaymentWebhookController extends Controller
             $service = PaymentGatewayFactory::create($gateway);
 
             // Verify webhook signature
-            if (!$service->verifyWebhook($request)) {
+            if (! $service->verifyWebhook($request)) {
                 Log::error('PayPal webhook signature verification failed');
+
                 return response()->json(['error' => 'Invalid signature'], 400);
             }
 
@@ -409,6 +425,7 @@ class PaymentWebhookController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json(['error' => 'Webhook processing failed'], 500);
         }
     }

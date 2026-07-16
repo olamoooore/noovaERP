@@ -4,9 +4,9 @@ namespace App\Accounting\Plugin;
 
 use App\Accounting\Contracts\CountryValidationContract;
 use App\Accounting\Contracts\InvoiceSchemaMapperContract;
+use App\Accounting\Contracts\StatutoryReportExporterContract;
 use App\Accounting\Contracts\SubmissionProviderContract;
 use App\Accounting\Contracts\SubmissionStatusSyncContract;
-use App\Accounting\Contracts\StatutoryReportExporterContract;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -17,30 +17,25 @@ class CountryPluginRegistry
 {
     /**
      * Registered plugins by country code
-     * 
-     * @var array
      */
     protected array $plugins = [];
 
     /**
      * Plugin implementations
-     * 
-     * @var array
      */
     protected array $implementations = [];
 
     /**
      * Register a country plugin
-     * 
-     * @param string $countryCode ISO 3166-1 alpha-2 (e.g. SG, MY)
-     * @param array $implementations {
-     *     validator: CountryValidationContract class,
-     *     mapper: InvoiceSchemaMapperContract class,
-     *     provider: SubmissionProviderContract class,
-     *     sync: SubmissionStatusSyncContract class,
-     *     exporter: StatutoryReportExporterContract class
-     * }
-     * @return void
+     *
+     * @param  string  $countryCode  ISO 3166-1 alpha-2 (e.g. SG, MY)
+     * @param  array  $implementations  {
+     *                                  validator: CountryValidationContract class,
+     *                                  mapper: InvoiceSchemaMapperContract class,
+     *                                  provider: SubmissionProviderContract class,
+     *                                  sync: SubmissionStatusSyncContract class,
+     *                                  exporter: StatutoryReportExporterContract class
+     *                                  }
      */
     public function register(string $countryCode, array $implementations): void
     {
@@ -52,22 +47,22 @@ class CountryPluginRegistry
 
     /**
      * Resolve plugin instance for a country
-     * 
-     * @param string $countryCode
-     * @param string $interface One of: validator, mapper, provider, sync, exporter
-     * @return object|null
+     *
+     * @param  string  $interface  One of: validator, mapper, provider, sync, exporter
+     *
      * @throws \InvalidArgumentException
      */
     public function resolve(string $countryCode, string $interface): ?object
     {
         $countryCode = strtoupper($countryCode);
 
-        if (!isset($this->plugins[$countryCode])) {
+        if (! isset($this->plugins[$countryCode])) {
             Log::warning("Plugin not found for country: {$countryCode}");
+
             return null;
         }
 
-        if (!isset($this->plugins[$countryCode][$interface])) {
+        if (! isset($this->plugins[$countryCode][$interface])) {
             throw new \InvalidArgumentException("Interface {$interface} not registered for {$countryCode}");
         }
 
@@ -75,7 +70,7 @@ class CountryPluginRegistry
 
         // Cached instances
         $cacheKey = "{$countryCode}.{$interface}";
-        if (!isset($this->implementations[$cacheKey])) {
+        if (! isset($this->implementations[$cacheKey])) {
             if (is_object($implementation)) {
                 $this->implementations[$cacheKey] = $implementation;
             } else {
@@ -88,9 +83,6 @@ class CountryPluginRegistry
 
     /**
      * Get all validator, mapper, provider, sync, and exporters for a country
-     * 
-     * @param string $countryCode
-     * @return array
      */
     public function resolveAll(string $countryCode): array
     {
@@ -105,9 +97,6 @@ class CountryPluginRegistry
 
     /**
      * Check if plugin exists for country
-     * 
-     * @param string $countryCode
-     * @return bool
      */
     public function has(string $countryCode): bool
     {
@@ -116,7 +105,7 @@ class CountryPluginRegistry
 
     /**
      * Get registered countries
-     * 
+     *
      * @return string[]
      */
     public function getRegisteredCountries(): array

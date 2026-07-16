@@ -13,12 +13,12 @@ class EnsureAuditorAccess
     {
         $user = $request->user();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
         // Skip for non-auditor users (admins, owners, etc. can pass through)
-        if (!$user->hasRole('Auditor')) {
+        if (! $user->hasRole('Auditor')) {
             return $next($request);
         }
 
@@ -28,7 +28,7 @@ class EnsureAuditorAccess
             ->where('status', 'active')
             ->first();
 
-        if (!$auditor) {
+        if (! $auditor) {
             return response()->json(['message' => 'Auditor access not found or inactive.'], 403);
         }
 
@@ -43,6 +43,7 @@ class EnsureAuditorAccess
             if ($auditor->status !== 'expired') {
                 $auditor->update(['status' => 'expired']);
             }
+
             return response()->json(['message' => 'Auditor access has expired.'], 403);
         }
 

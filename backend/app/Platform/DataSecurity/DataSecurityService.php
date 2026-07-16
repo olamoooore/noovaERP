@@ -3,12 +3,12 @@
 namespace App\Platform\DataSecurity;
 
 use App\Platform\DataSecurity\Contracts\DataSecurityServiceContract;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class DataSecurityService implements DataSecurityServiceContract
 {
     private const CLASSIFICATION_LEVELS = ['public', 'internal', 'confidential', 'restricted', 'secret'];
+
     private const EXPORT_PERMISSIONS = [
         'public' => ['public', 'internal', 'confidential', 'restricted', 'secret'],
         'internal' => ['internal', 'confidential', 'restricted', 'secret'],
@@ -19,7 +19,7 @@ class DataSecurityService implements DataSecurityServiceContract
 
     public function classify(string $entityType, int $entityId, string $classification, int $userId, ?string $notes = null): object
     {
-        if (!in_array($classification, self::CLASSIFICATION_LEVELS)) {
+        if (! in_array($classification, self::CLASSIFICATION_LEVELS)) {
             throw new \InvalidArgumentException("Invalid classification: {$classification}");
         }
 
@@ -59,7 +59,7 @@ class DataSecurityService implements DataSecurityServiceContract
             ->where('entity_id', $entityId)
             ->first();
 
-        if (!$record) {
+        if (! $record) {
             return null;
         }
 
@@ -68,7 +68,7 @@ class DataSecurityService implements DataSecurityServiceContract
 
     public function canExport(int $userId, string $classification): bool
     {
-        if (!in_array($classification, self::CLASSIFICATION_LEVELS)) {
+        if (! in_array($classification, self::CLASSIFICATION_LEVELS)) {
             return false;
         }
 

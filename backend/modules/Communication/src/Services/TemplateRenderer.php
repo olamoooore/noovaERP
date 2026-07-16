@@ -16,17 +16,16 @@ class TemplateRenderer
     /**
      * Render a template by key with given variables.
      *
-     * @param string $templateKey  e.g. "invoice.sent"
-     * @param array $variables     e.g. ['customer' => ['name' => 'John'], 'invoice' => ['number' => 'INV-001']]
-     * @param string $language     Language code, defaults to 'en'
-     * @param string|null $tenantId
+     * @param  string  $templateKey  e.g. "invoice.sent"
+     * @param  array  $variables  e.g. ['customer' => ['name' => 'John'], 'invoice' => ['number' => 'INV-001']]
+     * @param  string  $language  Language code, defaults to 'en'
      * @return array{subject: string|null, body_html: string|null, body_plain: string|null}|null
      */
     public function render(string $templateKey, array $variables = [], string $language = 'en', ?string $tenantId = null): ?array
     {
         $template = $this->getTemplate($templateKey, $language, $tenantId);
 
-        if (!$template) {
+        if (! $template) {
             return null;
         }
 
@@ -63,7 +62,7 @@ class TemplateRenderer
         if ($tenantId) {
             $query->where(function ($q) use ($tenantId) {
                 $q->where('tenant_id', $tenantId)
-                  ->orWhereNull('tenant_id'); // Fall back to system template
+                    ->orWhereNull('tenant_id'); // Fall back to system template
             });
             $query->orderByRaw('tenant_id IS NULL ASC'); // Tenant-specific first
         }

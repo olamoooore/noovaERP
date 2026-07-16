@@ -6,20 +6,20 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Modules\EventManagement\Traits\HasTenantScope;
 use Modules\EventManagement\Traits\HasAuditTrail;
+use Modules\EventManagement\Traits\HasTenantScope;
 
 /**
  * ArtistEvent Model
- * 
+ *
  * Represents the association between artists/groups and events,
  * including performance details, roles, and confirmation status.
- * 
+ *
  * Requirements: 12.2, 12.3, 12.4
  */
 class ArtistEvent extends Model
 {
-    use HasFactory, SoftDeletes, HasTenantScope, HasAuditTrail;
+    use HasAuditTrail, HasFactory, HasTenantScope, SoftDeletes;
 
     protected $fillable = [
         'tenant_id',
@@ -141,7 +141,7 @@ class ArtistEvent extends Model
         if ($this->artist) {
             return $this->artist->display_name;
         }
-        
+
         if ($this->group) {
             return $this->group->display_name;
         }
@@ -192,7 +192,7 @@ class ArtistEvent extends Model
     /**
      * Confirm the performance
      */
-    public function confirm(string $confirmedBy = null): void
+    public function confirm(?string $confirmedBy = null): void
     {
         $this->status = 'confirmed';
         $this->confirmed_at = now();
@@ -203,17 +203,17 @@ class ArtistEvent extends Model
     /**
      * Cancel the performance
      */
-    public function cancel(string $reason = null): void
+    public function cancel(?string $reason = null): void
     {
         $this->status = 'cancelled';
-        
+
         if ($reason) {
             $metadata = $this->metadata ?? [];
             $metadata['cancellation_reason'] = $reason;
             $metadata['cancelled_at'] = now()->toISOString();
             $this->metadata = $metadata;
         }
-        
+
         $this->save();
     }
 
@@ -223,21 +223,21 @@ class ArtistEvent extends Model
     public function markCompleted(): void
     {
         $this->status = 'completed';
-        
+
         $metadata = $this->metadata ?? [];
         $metadata['completed_at'] = now()->toISOString();
         $this->metadata = $metadata;
-        
+
         $this->save();
     }
 
     /**
      * Add song to setlist
      */
-    public function addSongToSetlist(string $song, int $order = null): void
+    public function addSongToSetlist(string $song, ?int $order = null): void
     {
         $setlist = $this->setlist ?? [];
-        
+
         if ($order !== null) {
             // Insert at specific position
             array_splice($setlist, $order - 1, 0, $song);
@@ -245,7 +245,7 @@ class ArtistEvent extends Model
             // Add to end
             $setlist[] = $song;
         }
-        
+
         $this->setlist = $setlist;
         $this->save();
     }
@@ -256,7 +256,7 @@ class ArtistEvent extends Model
     public function removeSongFromSetlist(string $song): void
     {
         $setlist = $this->setlist ?? [];
-        $this->setlist = array_values(array_filter($setlist, fn($s) => $s !== $song));
+        $this->setlist = array_values(array_filter($setlist, fn ($s) => $s !== $song));
         $this->save();
     }
 
@@ -275,6 +275,7 @@ class ArtistEvent extends Model
     public function getEstimatedSetlistDuration(): int
     {
         $songCount = count($this->setlist ?? []);
+
         return $songCount * 3.5; // minutes
     }
 
@@ -284,15 +285,15 @@ class ArtistEvent extends Model
     public function addTechnicalRequirement(string $category, string $requirement): void
     {
         $requirements = $this->technical_requirements ?? [];
-        
-        if (!isset($requirements[$category])) {
+
+        if (! isset($requirements[$category])) {
             $requirements[$category] = [];
         }
-        
-        if (!in_array($requirement, $requirements[$category])) {
+
+        if (! in_array($requirement, $requirements[$category])) {
             $requirements[$category][] = $requirement;
         }
-        
+
         $this->technical_requirements = $requirements;
         $this->save();
     }
@@ -303,17 +304,17 @@ class ArtistEvent extends Model
     public function removeTechnicalRequirement(string $category, string $requirement): void
     {
         $requirements = $this->technical_requirements ?? [];
-        
+
         if (isset($requirements[$category])) {
             $requirements[$category] = array_values(
-                array_filter($requirements[$category], fn($r) => $r !== $requirement)
+                array_filter($requirements[$category], fn ($r) => $r !== $requirement)
             );
-            
+
             if (empty($requirements[$category])) {
                 unset($requirements[$category]);
             }
         }
-        
+
         $this->technical_requirements = $requirements;
         $this->save();
     }
@@ -321,14 +322,14 @@ class ArtistEvent extends Model
     /**
      * Get technical requirements by category
      */
-    public function getTechnicalRequirements(string $category = null): array
+    public function getTechnicalRequirements(?string $category = null): array
     {
         $requirements = $this->technical_requirements ?? [];
-        
+
         if ($category) {
             return $requirements[$category] ?? [];
         }
-        
+
         return $requirements;
     }
 

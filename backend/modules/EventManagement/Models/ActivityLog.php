@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class ActivityLog extends Model
 {
     protected $table = 'activity_logs';
-    
+
     protected $fillable = [
         'tenant_id',
         'actor_type',
@@ -28,7 +28,7 @@ class ActivityLog extends Model
 
     // Disable updated_at since we only track creation time for audit logs
     public $timestamps = false;
-    
+
     protected $dates = ['created_at'];
 
     /**
@@ -45,7 +45,7 @@ class ActivityLog extends Model
     public function scopeForSubject($query, string $subjectType, int $subjectId)
     {
         return $query->where('subject_type', $subjectType)
-                    ->where('subject_id', $subjectId);
+            ->where('subject_id', $subjectId);
     }
 
     /**
@@ -62,11 +62,11 @@ class ActivityLog extends Model
     public function scopeForActor($query, string $actorType, ?string $actorId = null)
     {
         $query = $query->where('actor_type', $actorType);
-        
+
         if ($actorId !== null) {
             $query->where('actor_id', $actorId);
         }
-        
+
         return $query;
     }
 }

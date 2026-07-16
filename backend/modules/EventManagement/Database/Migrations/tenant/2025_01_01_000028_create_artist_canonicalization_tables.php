@@ -6,20 +6,21 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Migration: Create Artist Canonicalization Tables - Task 6.1
- * 
+ *
  * Creates comprehensive artist canonicalization database schema for managing
  * canonical artist names, aliases, translations, and merge audit trails.
- * 
+ *
  * Requirements: 22.1, 22.4
  */
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * Run the migrations.
      */
     public function up(): void
     {
         // Artist canonical table for canonical name management
-        if (!Schema::hasTable('artist_canonical')) {
+        if (! Schema::hasTable('artist_canonical')) {
             Schema::create('artist_canonical', function (Blueprint $table) {
                 $table->id();
                 $table->string('canonical_name', 255)->unique();
@@ -48,7 +49,7 @@ return new class extends Migration {
         }
 
         // Artist aliases table for name variations and translations
-        if (!Schema::hasTable('artist_aliases')) {
+        if (! Schema::hasTable('artist_aliases')) {
             Schema::create('artist_aliases', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('canonical_id');
@@ -61,7 +62,7 @@ return new class extends Migration {
                     'nickname',
                     'legal_name',
                     'localized',
-                    'abbreviated'
+                    'abbreviated',
                 ]);
                 $table->string('language_code', 5)->nullable(); // ISO 639-1 with optional region
                 $table->string('script_code', 4)->nullable(); // ISO 15924
@@ -96,7 +97,7 @@ return new class extends Migration {
         }
 
         // Artist merge log table for merge audit trails
-        if (!Schema::hasTable('artist_merge_log')) {
+        if (! Schema::hasTable('artist_merge_log')) {
             Schema::create('artist_merge_log', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('source_artist_id');
@@ -127,7 +128,7 @@ return new class extends Migration {
         }
 
         // Artist search index table for optimized search
-        if (!Schema::hasTable('artist_search_index')) {
+        if (! Schema::hasTable('artist_search_index')) {
             Schema::create('artist_search_index', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('canonical_id');
@@ -156,7 +157,7 @@ return new class extends Migration {
         }
 
         // Artist relationship table for group memberships and collaborations
-        if (!Schema::hasTable('artist_relationships')) {
+        if (! Schema::hasTable('artist_relationships')) {
             Schema::create('artist_relationships', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('primary_artist_id');
@@ -170,7 +171,7 @@ return new class extends Migration {
                     'producer',
                     'songwriter',
                     'manager',
-                    'label_artist'
+                    'label_artist',
                 ]);
                 $table->string('role_description', 255)->nullable();
                 $table->date('relationship_start')->nullable();
@@ -201,7 +202,7 @@ return new class extends Migration {
         }
 
         // Artist canonicalization queue for batch processing
-        if (!Schema::hasTable('artist_canonicalization_queue')) {
+        if (! Schema::hasTable('artist_canonicalization_queue')) {
             Schema::create('artist_canonicalization_queue', function (Blueprint $table) {
                 $table->id();
                 $table->string('operation_type', 50); // merge, alias_add, search_index_update

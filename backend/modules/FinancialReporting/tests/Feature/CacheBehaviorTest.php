@@ -2,21 +2,22 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TenantTestCase;
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Cache;
-use App\Models\User;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
-use Modules\FinancialReporting\Services\Cache\ReportCacheService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
-use Modules\FinancialReporting\DTOs\ReportData;
+use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
+use Modules\FinancialReporting\DTOs\ReportData;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Cache\ReportCacheService;
+use Tests\TenantTestCase;
 
 class CacheBehaviorTest extends TenantTestCase
 {
     protected User $user;
+
     protected ReportCacheService $cacheService;
 
     protected function setUp(): void
@@ -60,7 +61,7 @@ class CacheBehaviorTest extends TenantTestCase
         $initialCacheCount = $this->cacheService->getStatistics()['total_entries'];
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/profit-loss?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/profit-loss?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
@@ -82,7 +83,7 @@ class CacheBehaviorTest extends TenantTestCase
         ];
 
         $response1 = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/profit-loss?' . http_build_query($params));
+            ->getJson('/api/v1/reports/financial/profit-loss?'.http_build_query($params));
 
         $this->assertContains($response1->status(), [200, 500]);
 
@@ -91,7 +92,7 @@ class CacheBehaviorTest extends TenantTestCase
         }
 
         $response2 = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/profit-loss?' . http_build_query($params));
+            ->getJson('/api/v1/reports/financial/profit-loss?'.http_build_query($params));
 
         $this->assertContains($response2->status(), [200, 500]);
     }
@@ -119,7 +120,7 @@ class CacheBehaviorTest extends TenantTestCase
     public function it_invalidates_cache_when_new_transactions_are_posted()
     {
         $response1 = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/profit-loss?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/profit-loss?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
@@ -133,7 +134,7 @@ class CacheBehaviorTest extends TenantTestCase
         // Create new transaction
         $revenueAccount = ChartOfAccount::where('code', '4000')->first();
         $entry = JournalEntry::create([
-            'entry_number' => 'JE-TEST-' . uniqid(),
+            'entry_number' => 'JE-TEST-'.uniqid(),
             'entry_date' => Carbon::parse('2024-01-15'),
             'description' => 'New Sale',
             'status' => 'posted',
@@ -151,7 +152,7 @@ class CacheBehaviorTest extends TenantTestCase
         $this->cacheService->invalidate('profit-loss');
 
         $response2 = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/profit-loss?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/profit-loss?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
@@ -163,7 +164,7 @@ class CacheBehaviorTest extends TenantTestCase
     public function it_bypasses_cache_when_no_cache_parameter_is_set()
     {
         $response1 = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/profit-loss?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/profit-loss?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
@@ -171,7 +172,7 @@ class CacheBehaviorTest extends TenantTestCase
         $this->assertContains($response1->status(), [200, 500]);
 
         $response2 = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/profit-loss?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/profit-loss?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
                 'no_cache' => '1',
@@ -314,6 +315,7 @@ class CacheBehaviorTest extends TenantTestCase
             $filter,
             function () use (&$callbackExecuted, $reportData) {
                 $callbackExecuted = true;
+
                 return $reportData;
             }
         );
@@ -334,7 +336,7 @@ class CacheBehaviorTest extends TenantTestCase
         $responses = [];
         for ($i = 0; $i < 5; $i++) {
             $responses[] = $this->actingAs($this->user)
-                ->getJson('/api/v1/reports/financial/profit-loss?' . http_build_query($params));
+                ->getJson('/api/v1/reports/financial/profit-loss?'.http_build_query($params));
         }
 
         // All should return a valid status (200 or 500 for service issues)

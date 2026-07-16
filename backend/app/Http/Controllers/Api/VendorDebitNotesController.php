@@ -41,9 +41,9 @@ class VendorDebitNotesController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('debit_note_number', 'ILIKE', "%{$search}%")
-                  ->orWhereHas('vendor', function ($vq) use ($search) {
-                      $vq->where('name', 'ILIKE', "%{$search}%");
-                  });
+                    ->orWhereHas('vendor', function ($vq) use ($search) {
+                        $vq->where('name', 'ILIKE', "%{$search}%");
+                    });
             });
         }
 
@@ -55,6 +55,7 @@ class VendorDebitNotesController extends Controller
     public function show($debitNote)
     {
         $debitNote = VendorDebitNote::findOrFail($debitNote);
+
         return response()->json(
             $debitNote->load([
                 'vendor',
@@ -63,7 +64,7 @@ class VendorDebitNotesController extends Controller
                 'lines.account',
                 'journalEntry.lines.account',
                 'createdBy',
-                'postedBy'
+                'postedBy',
             ])
         );
     }
@@ -106,7 +107,7 @@ class VendorDebitNotesController extends Controller
         $debitNote = VendorDebitNote::findOrFail($debitNote);
         if ($debitNote->status !== 'draft') {
             return response()->json([
-                'message' => 'Only draft debit notes can be edited'
+                'message' => 'Only draft debit notes can be edited',
             ], 403);
         }
 
@@ -128,7 +129,7 @@ class VendorDebitNotesController extends Controller
         if ($debitNote->status !== 'draft') {
             return response()->json([
                 'message' => 'Only draft debit notes can be deleted. Use reversal for posted debit notes.',
-                'suggestion' => 'Create a reversal journal entry to correct this debit note.'
+                'suggestion' => 'Create a reversal journal entry to correct this debit note.',
             ], 403);
         }
 
@@ -142,7 +143,7 @@ class VendorDebitNotesController extends Controller
         $debitNote = VendorDebitNote::findOrFail($debitNote);
         if ($debitNote->status !== 'draft') {
             return response()->json([
-                'message' => 'Only draft debit notes can be posted'
+                'message' => 'Only draft debit notes can be posted',
             ], 403);
         }
 

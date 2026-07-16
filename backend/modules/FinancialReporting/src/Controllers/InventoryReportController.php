@@ -5,13 +5,13 @@ namespace Modules\FinancialReporting\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Modules\FinancialReporting\Services\Inventory\StockValuationService;
-use Modules\FinancialReporting\Services\Inventory\StockMovementService;
-use Modules\FinancialReporting\Services\Inventory\ReorderService;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Cache\ReportCacheService;
 use Modules\FinancialReporting\Services\Inventory\InventoryAgingService;
 use Modules\FinancialReporting\Services\Inventory\InventoryTurnoverService;
-use Modules\FinancialReporting\Services\Cache\ReportCacheService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Inventory\ReorderService;
+use Modules\FinancialReporting\Services\Inventory\StockMovementService;
+use Modules\FinancialReporting\Services\Inventory\StockValuationService;
 
 class InventoryReportController extends Controller
 {
@@ -22,8 +22,7 @@ class InventoryReportController extends Controller
         protected InventoryAgingService $inventoryAgingService,
         protected InventoryTurnoverService $inventoryTurnoverService,
         protected ReportCacheService $cacheService
-    ) {
-    }
+    ) {}
 
     /**
      * Generate Stock Valuation report
@@ -41,7 +40,7 @@ class InventoryReportController extends Controller
             // Check if low stock report is requested
             if ($validated['low_stock'] ?? false) {
                 $reportData = $this->stockValuationService->getLowStockProducts();
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => $reportData,
@@ -57,7 +56,7 @@ class InventoryReportController extends Controller
                     $asOfDate,
                     $filter->categoryId
                 );
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => $reportData,
@@ -68,7 +67,7 @@ class InventoryReportController extends Controller
             $reportData = $this->cacheService->remember(
                 reportType: 'stock-valuation',
                 filter: $filter,
-                callback: fn() => $this->stockValuationService->generate($filter),
+                callback: fn () => $this->stockValuationService->generate($filter),
                 userId: $request->user()?->id
             );
 
@@ -99,7 +98,7 @@ class InventoryReportController extends Controller
 
         } catch (\InvalidArgumentException $e) {
             return response()->json([
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 422);
         } catch (\Exception $e) {
             \Log::error('Stock Valuation report generation failed', [
@@ -108,7 +107,7 @@ class InventoryReportController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate report. Please try again.'
+                'error' => 'Failed to generate report. Please try again.',
             ], 500);
         }
     }
@@ -134,7 +133,7 @@ class InventoryReportController extends Controller
             // Check if summary by type is requested
             if ($validated['summary_by_type'] ?? false) {
                 $reportData = $this->stockMovementService->getMovementSummaryByType($filter);
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => $reportData,
@@ -146,7 +145,7 @@ class InventoryReportController extends Controller
                 $startDate = $filter->startDate ?? now()->subDays(30);
                 $endDate = $filter->endDate ?? now();
                 $reportData = $this->stockMovementService->getMostActiveProducts($startDate, $endDate);
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => $reportData,
@@ -169,7 +168,7 @@ class InventoryReportController extends Controller
 
         } catch (\InvalidArgumentException $e) {
             return response()->json([
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 422);
         } catch (\Exception $e) {
             \Log::error('Stock Movement report generation failed', [
@@ -178,7 +177,7 @@ class InventoryReportController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate report. Please try again.'
+                'error' => 'Failed to generate report. Please try again.',
             ], 500);
         }
     }
@@ -200,7 +199,7 @@ class InventoryReportController extends Controller
             // Check if critical items only is requested
             if ($validated['critical_only'] ?? false) {
                 $reportData = $this->reorderService->getCriticalItems($filter);
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => $reportData->toArray(),
@@ -210,7 +209,7 @@ class InventoryReportController extends Controller
             // Check if grouped view is requested
             if ($validated['grouped'] ?? false) {
                 $reportData = $this->reorderService->getGroupedByCategory($filter);
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => $reportData,
@@ -221,7 +220,7 @@ class InventoryReportController extends Controller
             $reportData = $this->cacheService->remember(
                 reportType: 'reorder',
                 filter: $filter,
-                callback: fn() => $this->reorderService->generate($filter),
+                callback: fn () => $this->reorderService->generate($filter),
                 userId: $request->user()?->id
             );
 
@@ -232,7 +231,7 @@ class InventoryReportController extends Controller
 
         } catch (\InvalidArgumentException $e) {
             return response()->json([
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 422);
         } catch (\Exception $e) {
             \Log::error('Reorder report generation failed', [
@@ -241,7 +240,7 @@ class InventoryReportController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate report. Please try again.'
+                'error' => 'Failed to generate report. Please try again.',
             ], 500);
         }
     }
@@ -265,7 +264,7 @@ class InventoryReportController extends Controller
             // Check if slow-moving items only is requested
             if ($validated['slow_moving_only'] ?? false) {
                 $reportData = $this->inventoryAgingService->getSlowMovingItems($filter);
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => $reportData->toArray(),
@@ -278,7 +277,7 @@ class InventoryReportController extends Controller
                     $validated['age_bucket'],
                     $filter
                 );
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => $reportData->toArray(),
@@ -291,7 +290,7 @@ class InventoryReportController extends Controller
                     $validated['older_than_days'],
                     $filter
                 );
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => $reportData,
@@ -302,7 +301,7 @@ class InventoryReportController extends Controller
             $reportData = $this->cacheService->remember(
                 reportType: 'inventory-aging',
                 filter: $filter,
-                callback: fn() => $this->inventoryAgingService->generate($filter),
+                callback: fn () => $this->inventoryAgingService->generate($filter),
                 userId: $request->user()?->id
             );
 
@@ -336,7 +335,7 @@ class InventoryReportController extends Controller
 
         } catch (\InvalidArgumentException $e) {
             return response()->json([
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 422);
         } catch (\Exception $e) {
             \Log::error('Inventory Aging report generation failed', [
@@ -345,7 +344,7 @@ class InventoryReportController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate report. Please try again.'
+                'error' => 'Failed to generate report. Please try again.',
             ], 500);
         }
     }
@@ -373,7 +372,7 @@ class InventoryReportController extends Controller
             // Check if by category view is requested
             if ($validated['by_category'] ?? false) {
                 $reportData = $this->inventoryTurnoverService->getByCategory($startDate, $endDate);
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => $reportData,
@@ -383,7 +382,7 @@ class InventoryReportController extends Controller
             // Check if fast movers only is requested
             if ($validated['fast_movers_only'] ?? false) {
                 $reportData = $this->inventoryTurnoverService->getFastMovers($startDate, $endDate, $categoryId);
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => $reportData,
@@ -393,7 +392,7 @@ class InventoryReportController extends Controller
             // Check if slow movers only is requested
             if ($validated['slow_movers_only'] ?? false) {
                 $reportData = $this->inventoryTurnoverService->getSlowMovers($startDate, $endDate, $categoryId);
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => $reportData,
@@ -408,7 +407,7 @@ class InventoryReportController extends Controller
                     $endDate,
                     $categoryId
                 );
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => $reportData,
@@ -441,7 +440,7 @@ class InventoryReportController extends Controller
 
         } catch (\InvalidArgumentException $e) {
             return response()->json([
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 422);
         } catch (\Exception $e) {
             \Log::error('Inventory Turnover report generation failed', [
@@ -450,9 +449,8 @@ class InventoryReportController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate report. Please try again.'
+                'error' => 'Failed to generate report. Please try again.',
             ], 500);
         }
     }
 }
-

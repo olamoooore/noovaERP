@@ -154,9 +154,9 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:file-text-bold-duotone',
       },
       {
-        title: 'Deliveries',
+        title: 'Delivery Orders',
         href: '/delivery-orders',
-        icon: 'solar:package-bold-duotone',
+        icon: 'solar:delivery-bold-duotone',
       },
       {
         title: 'Customers',

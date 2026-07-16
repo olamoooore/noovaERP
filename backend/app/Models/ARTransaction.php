@@ -25,12 +25,14 @@ class ARTransaction extends Model
      * Views have no auto-incrementing surrogate key.
      */
     protected $primaryKey = 'transaction_id';
+
     public $incrementing = false;
 
     /**
      * The view is read-only — no inserts/updates.
      */
     public $timestamps = false;
+
     protected $guarded = ['*'];
 
     protected $casts = [

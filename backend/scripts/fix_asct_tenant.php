@@ -6,16 +6,16 @@
  * through the TenantCreated provisioning pipeline.
  */
 
-require __DIR__ . '/../vendor/autoload.php';
-$app = require_once __DIR__ . '/../bootstrap/app.php';
+require __DIR__.'/../vendor/autoload.php';
+$app = require_once __DIR__.'/../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 use App\Models\Tenant;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 
 $tenant = Tenant::where('email', 'admin@asct.com')->first();
-if (!$tenant) {
+if (! $tenant) {
     echo "ERROR: ASCT tenant not found\n";
     exit(1);
 }
@@ -24,7 +24,7 @@ echo "Tenant: {$tenant->id} | {$tenant->name}\n";
 
 // Check if schema already exists
 $schemaName = $tenant->id;
-$exists = DB::select("SELECT schema_name FROM information_schema.schemata WHERE schema_name = ?", [$schemaName]);
+$exists = DB::select('SELECT schema_name FROM information_schema.schemata WHERE schema_name = ?', [$schemaName]);
 
 if (empty($exists)) {
     echo "Creating schema: {$schemaName}\n";
@@ -47,7 +47,7 @@ tenancy()->initialize($tenant);
 
 // Check if admin user already exists in tenant schema
 $existingUser = \App\Models\User::where('email', 'admin@asct.com')->first();
-if (!$existingUser) {
+if (! $existingUser) {
     $user = \App\Models\User::create([
         'name' => 'ASCT Admin',
         'email' => 'admin@asct.com',
@@ -88,7 +88,7 @@ tenancy()->end();
 // Verify public schema user + user_company_access
 DB::statement('SET search_path TO public');
 $publicUser = \App\Models\User::where('email', 'admin@asct.com')->first();
-if (!$publicUser) {
+if (! $publicUser) {
     $publicUser = \App\Models\User::create([
         'name' => 'ASCT Admin',
         'email' => 'admin@asct.com',
@@ -102,7 +102,7 @@ $hasAccess = DB::table('user_company_access')
     ->where('tenant_id', $tenant->id)
     ->exists();
 
-if (!$hasAccess) {
+if (! $hasAccess) {
     DB::table('user_company_access')->insert([
         'user_id' => $publicUser->id,
         'tenant_id' => $tenant->id,

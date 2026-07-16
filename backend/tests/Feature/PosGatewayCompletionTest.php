@@ -100,7 +100,7 @@ class PosGatewayCompletionTest extends TestCase
     {
         $source = file_get_contents(base_path('modules/PaymentGateway/src/Controllers/PaymentController.php'));
 
-        $this->assertStringNotContainsString("?? 1;", $source,
+        $this->assertStringNotContainsString('?? 1;', $source,
             'PaymentController must not use hardcoded user ID 1 as fallback for received_by.');
     }
 }

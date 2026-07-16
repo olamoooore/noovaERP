@@ -10,6 +10,7 @@ use Exception;
 class OcrException extends Exception
 {
     protected string $errorCode;
+
     protected array $context;
 
     public function __construct(string $message, string $errorCode = 'OCR_ERROR', array $context = [], int $code = 0, ?Exception $previous = null)

@@ -23,21 +23,24 @@ class CatalogPriceRule extends Model
     ];
 
     protected $casts = [
-        'condition'      => 'array',
+        'condition' => 'array',
         'modifier_value' => 'decimal:4',
-        'priority'       => 'integer',
-        'is_exclusive'   => 'boolean',
-        'is_active'      => 'boolean',
+        'priority' => 'integer',
+        'is_exclusive' => 'boolean',
+        'is_active' => 'boolean',
         'effective_from' => 'date',
-        'effective_to'   => 'date',
+        'effective_to' => 'date',
     ];
 
     // ── Constants ────────────────────────────────────────────────────────────
 
     public const TYPE_PERCENTAGE_DISCOUNT = 'percentage_discount';
-    public const TYPE_FIXED_DISCOUNT      = 'fixed_discount';
-    public const TYPE_YEARLY_DISCOUNT     = 'yearly_discount';
-    public const TYPE_VOLUME_TIER         = 'volume_tier';
+
+    public const TYPE_FIXED_DISCOUNT = 'fixed_discount';
+
+    public const TYPE_YEARLY_DISCOUNT = 'yearly_discount';
+
+    public const TYPE_VOLUME_TIER = 'volume_tier';
 
     public const RULE_TYPES = [
         self::TYPE_PERCENTAGE_DISCOUNT,
@@ -66,7 +69,7 @@ class CatalogPriceRule extends Model
             ->where('effective_from', '<=', now()->toDateString())
             ->where(function ($q) {
                 $q->whereNull('effective_to')
-                  ->orWhere('effective_to', '>=', now()->toDateString());
+                    ->orWhere('effective_to', '>=', now()->toDateString());
             });
     }
 

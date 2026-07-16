@@ -4,10 +4,10 @@ namespace Modules\HRM\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
-use Modules\HRM\Models\Contract;
 use Modules\HRM\Http\Requests\StoreContractRequest;
 use Modules\HRM\Http\Requests\UpdateContractRequest;
 use Modules\HRM\Http\Resources\ContractResource;
+use Modules\HRM\Models\Contract;
 
 class ContractController extends Controller
 {
@@ -43,17 +43,17 @@ class ContractController extends Controller
 
         if (isset($data['status']) && $data['status'] !== $contract->status) {
             $allowed = [
-                'draft'       => ['onboarding', 'active'],
-                'onboarding'  => ['active', 'terminated'],
-                'active'      => ['offboarding'],
+                'draft' => ['onboarding', 'active'],
+                'onboarding' => ['active', 'terminated'],
+                'active' => ['offboarding'],
                 'offboarding' => ['terminated'],
-                'terminated'  => [],
+                'terminated' => [],
             ];
 
             $from = $contract->status;
-            $to   = $data['status'];
+            $to = $data['status'];
 
-            if (!in_array($to, $allowed[$from] ?? [], true)) {
+            if (! in_array($to, $allowed[$from] ?? [], true)) {
                 return response()->json([
                     'message' => "Invalid status transition: cannot move from '{$from}' to '{$to}'.",
                     'allowed' => $allowed[$from] ?? [],

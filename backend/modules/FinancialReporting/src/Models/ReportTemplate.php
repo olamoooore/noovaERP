@@ -2,11 +2,11 @@
 
 namespace Modules\FinancialReporting\Models;
 
+use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use App\Models\User;
 
 class ReportTemplate extends Model
 {
@@ -50,12 +50,13 @@ class ReportTemplate extends Model
     public function getConfigurationAttribute(): array
     {
         $config = $this->chart_config ?? [];
-        if (!empty($this->column_config)) {
+        if (! empty($this->column_config)) {
             $config['columns'] = $this->column_config;
         }
-        if (!empty($this->default_filters)) {
+        if (! empty($this->default_filters)) {
             $config['filters'] = $this->default_filters;
         }
+
         return $config;
     }
 
@@ -64,7 +65,7 @@ class ReportTemplate extends Model
      */
     public function setConfigurationAttribute($value): void
     {
-        if (!is_array($value)) {
+        if (! is_array($value)) {
             return;
         }
 
@@ -135,12 +136,12 @@ class ReportTemplate extends Model
      */
     public function canBeDeleted(): bool
     {
-        return !$this->is_system;
+        return ! $this->is_system;
     }
 
     public function canBeModified(): bool
     {
-        return !$this->is_system;
+        return ! $this->is_system;
     }
 
     public function incrementUsage(): void
@@ -150,13 +151,13 @@ class ReportTemplate extends Model
 
     public function toggleFavorite(): void
     {
-        $this->update(['is_favorite' => !$this->is_favorite]);
+        $this->update(['is_favorite' => ! $this->is_favorite]);
     }
 
     public function duplicate(int $userId, ?string $name = null): self
     {
         $template = $this->replicate();
-        $template->name = $name ?? $this->name . ' (Copy)';
+        $template->name = $name ?? $this->name.' (Copy)';
         $template->is_system = false;
         $template->is_public = false;
         $template->is_favorite = false;

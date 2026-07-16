@@ -8,9 +8,9 @@ use Modules\EventManagement\Traits\HasTenantScope;
 
 /**
  * EventRecommendation Model
- * 
+ *
  * Manages personalized event recommendations for customers.
- * 
+ *
  * @property int $id
  * @property string $tenant_id
  * @property string $customer_id

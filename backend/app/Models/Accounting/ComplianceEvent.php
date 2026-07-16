@@ -47,13 +47,12 @@ class ComplianceEvent extends Model
     /**
      * Log a compliance event.
      *
-     * @param  int         $submissionId
-     * @param  string      $eventType       submit | retry | retry_failed | cancel | status_sync |
-     *                                      accepted | rejected | rejection_request_declined |
-     *                                      rejection_declined_pending_expiry | …
-     * @param  array       $data            Arbitrary event payload stored in event_data.
-     * @param  string|null $previousStatus  Status the submission held BEFORE this event.
-     * @param  string|null $actorType       'user' | 'scheduler' | 'system'
+     * @param  string  $eventType  submit | retry | retry_failed | cancel | status_sync |
+     *                             accepted | rejected | rejection_request_declined |
+     *                             rejection_declined_pending_expiry | …
+     * @param  array  $data  Arbitrary event payload stored in event_data.
+     * @param  string|null  $previousStatus  Status the submission held BEFORE this event.
+     * @param  string|null  $actorType  'user' | 'scheduler' | 'system'
      */
     public static function log(
         int $submissionId,
@@ -65,14 +64,14 @@ class ComplianceEvent extends Model
         $actorType ??= \Auth::id() ? 'user' : 'scheduler';
 
         return self::create([
-            'tenant_id'       => tenancy()->tenant?->id,
-            'submission_id'   => $submissionId,
-            'event_type'      => $eventType,
+            'tenant_id' => tenancy()->tenant?->id,
+            'submission_id' => $submissionId,
+            'event_type' => $eventType,
             'previous_status' => $previousStatus,
-            'actor_type'      => $actorType,
-            'event_data'      => $data,
-            'created_by'      => \Auth::id(),
-            'created_at'      => now(),
+            'actor_type' => $actorType,
+            'event_data' => $data,
+            'created_by' => \Auth::id(),
+            'created_at' => now(),
         ]);
     }
 }

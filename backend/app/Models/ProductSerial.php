@@ -35,9 +35,13 @@ class ProductSerial extends Model
     ];
 
     public const STATUS_IN_STOCK = 'in_stock';
+
     public const STATUS_SOLD = 'sold';
+
     public const STATUS_RETURNED = 'returned';
+
     public const STATUS_WARRANTY_REPAIR = 'warranty_repair';
+
     public const STATUS_SCRAPPED = 'scrapped';
 
     public function product(): BelongsTo
@@ -70,9 +74,10 @@ class ProductSerial extends Model
      */
     public function isUnderWarranty(): bool
     {
-        if (!$this->warranty_expiry) {
+        if (! $this->warranty_expiry) {
             return false;
         }
+
         return $this->warranty_expiry->isFuture();
     }
 
@@ -81,12 +86,13 @@ class ProductSerial extends Model
      */
     public function getWarrantyDaysRemainingAttribute(): ?int
     {
-        if (!$this->warranty_expiry) {
+        if (! $this->warranty_expiry) {
             return null;
         }
         if ($this->warranty_expiry->isPast()) {
             return 0;
         }
+
         return now()->diffInDays($this->warranty_expiry);
     }
 
@@ -98,12 +104,12 @@ class ProductSerial extends Model
         $this->status = self::STATUS_SOLD;
         $this->customer_id = $customerId;
         $this->purchase_date = $purchaseDate ?? now();
-        
+
         // Set warranty expiry if product has warranty
         if ($this->product->warranty_months) {
             $this->warranty_expiry = $this->purchase_date->addMonths($this->product->warranty_months);
         }
-        
+
         $this->save();
     }
 

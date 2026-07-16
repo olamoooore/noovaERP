@@ -44,7 +44,7 @@ class PosHeldOrder extends Model
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($held) {
             if (empty($held->held_at)) {
                 $held->held_at = now();

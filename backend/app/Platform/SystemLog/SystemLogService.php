@@ -3,7 +3,6 @@
 namespace App\Platform\SystemLog;
 
 use App\Platform\SystemLog\Contracts\SystemLogServiceContract;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class SystemLogService implements SystemLogServiceContract

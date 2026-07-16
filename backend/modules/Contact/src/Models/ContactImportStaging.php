@@ -10,8 +10,11 @@ class ContactImportStaging extends Model
     use HasFactory;
 
     protected $table = 'contact_import_staging';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [

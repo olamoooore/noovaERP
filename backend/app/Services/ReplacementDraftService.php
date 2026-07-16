@@ -3,13 +3,13 @@
 namespace App\Services;
 
 use App\Accounting\Contracts\PostingEngineInterface;
-use App\Models\Invoice;
 use App\Models\Bill;
-use App\Models\JournalEntry;
-use App\Models\InvoiceLine;
 use App\Models\BillLine;
-use Illuminate\Support\Str;
+use App\Models\Invoice;
+use App\Models\InvoiceLine;
+use App\Models\JournalEntry;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 class ReplacementDraftService
 {
@@ -33,7 +33,7 @@ class ReplacementDraftService
         $nextVersion = ($original->version_number ?? 1) + 1;
 
         $replacement = Invoice::create([
-            'invoice_number' => $original->invoice_number . '-R' . str_pad($nextVersion, 2, '0', STR_PAD_LEFT),
+            'invoice_number' => $original->invoice_number.'-R'.str_pad($nextVersion, 2, '0', STR_PAD_LEFT),
             'customer_id' => $original->customer_id,
             'invoice_date' => $original->invoice_date,
             'due_date' => $original->due_date,
@@ -108,7 +108,7 @@ class ReplacementDraftService
         $nextVersion = ($original->version_number ?? 1) + 1;
 
         $replacement = Bill::create([
-            'bill_number' => $original->bill_number . '-R' . str_pad($nextVersion, 2, '0', STR_PAD_LEFT),
+            'bill_number' => $original->bill_number.'-R'.str_pad($nextVersion, 2, '0', STR_PAD_LEFT),
             'vendor_id' => $original->vendor_id,
             'purchase_order_id' => $original->purchase_order_id,
             'goods_receipt_id' => $original->goods_receipt_id,
@@ -176,8 +176,8 @@ class ReplacementDraftService
     {
         $result = $this->postingEngine->createReplacementDraft($original, $request);
 
-        if (!$result->success || !$result->journalEntry) {
-            throw new \RuntimeException('Failed to create journal replacement draft: ' . ($result->error ?? 'Unknown error'));
+        if (! $result->success || ! $result->journalEntry) {
+            throw new \RuntimeException('Failed to create journal replacement draft: '.($result->error ?? 'Unknown error'));
         }
 
         $this->linkService->linkReplacement($original, $result->journalEntry, $request);

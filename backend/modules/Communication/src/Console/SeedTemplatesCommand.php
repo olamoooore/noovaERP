@@ -13,11 +13,13 @@ use Modules\Communication\Database\Seeders\SystemTemplateSeeder;
 class SeedTemplatesCommand extends Command
 {
     protected $signature = 'communication:seed-templates';
+
     protected $description = 'Seed default system communication templates';
 
     public function handle(): int
     {
         $this->call('db:seed', ['--class' => SystemTemplateSeeder::class]);
+
         return self::SUCCESS;
     }
 }

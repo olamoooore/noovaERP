@@ -2,19 +2,19 @@
 
 namespace Tests\Feature;
 
+use App\Models\Product;
+use App\Models\User;
+use App\Models\Warehouse;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosOrderItem;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Modules\POS\Services\PosPaymentCompletionService;
 use Tests\TenantTestCase;
-use App\Models\User;
-use App\Models\Product;
-use App\Models\Warehouse;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class PosWarehouseEnforcementTest extends TenantTestCase
 {
@@ -25,7 +25,7 @@ class PosWarehouseEnforcementTest extends TenantTestCase
         parent::setUp();
         $this->user = User::factory()->create();
 
-        if (Schema::hasTable('pos_orders') && !Schema::hasColumn('pos_orders', 'deleted_at')) {
+        if (Schema::hasTable('pos_orders') && ! Schema::hasColumn('pos_orders', 'deleted_at')) {
             Schema::table('pos_orders', function (Blueprint $table) {
                 $table->softDeletes();
             });
@@ -36,7 +36,7 @@ class PosWarehouseEnforcementTest extends TenantTestCase
 
     private function ensureOpenFiscalPeriodForToday(): void
     {
-        if (!Schema::hasTable('fiscal_periods')) {
+        if (! Schema::hasTable('fiscal_periods')) {
             return;
         }
 
@@ -106,7 +106,7 @@ class PosWarehouseEnforcementTest extends TenantTestCase
     {
         $order = PosOrder::create([
             'external_id' => (string) Str::uuid(),
-            'order_number' => 'POS-TEST-' . uniqid(),
+            'order_number' => 'POS-TEST-'.uniqid(),
             'status' => 'draft',
             'terminal_id' => $terminal->id,
             'session_id' => $session->id,

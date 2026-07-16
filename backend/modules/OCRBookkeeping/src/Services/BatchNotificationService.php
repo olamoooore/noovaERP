@@ -8,23 +8,22 @@ use Illuminate\Support\Facades\Notification;
 
 /**
  * Batch Notification Service
- * 
+ *
  * Tracks batch operations and sends single notification when complete
  */
 class BatchNotificationService
 {
     /**
      * Register a batch operation
-     * 
-     * @param string $batchId Unique batch identifier
-     * @param int $totalItems Total number of items in batch
-     * @param int $userId User to notify
-     * @return void
+     *
+     * @param  string  $batchId  Unique batch identifier
+     * @param  int  $totalItems  Total number of items in batch
+     * @param  int  $userId  User to notify
      */
     public function registerBatch(string $batchId, int $totalItems, int $userId): void
     {
         $cacheKey = "batch:{$batchId}";
-        
+
         TenantCache::put($cacheKey, [
             'total' => $totalItems,
             'completed' => 0,
@@ -32,8 +31,8 @@ class BatchNotificationService
             'user_id' => $userId,
             'started_at' => now()->toIso8601String(),
         ], now()->addHours(24));
-        
-        Log::info("Batch registered", [
+
+        Log::info('Batch registered', [
             'batch_id' => $batchId,
             'total_items' => $totalItems,
             'user_id' => $userId,
@@ -42,18 +41,17 @@ class BatchNotificationService
 
     /**
      * Mark an item as completed
-     * 
-     * @param string $batchId
-     * @param bool $success Whether the item succeeded
-     * @return void
+     *
+     * @param  bool  $success  Whether the item succeeded
      */
     public function markItemComplete(string $batchId, bool $success = true): void
     {
         $cacheKey = "batch:{$batchId}";
         $batch = TenantCache::get($cacheKey);
-        
-        if (!$batch) {
-            Log::warning("Batch not found", ['batch_id' => $batchId]);
+
+        if (! $batch) {
+            Log::warning('Batch not found', ['batch_id' => $batchId]);
+
             return;
         }
 
@@ -64,10 +62,10 @@ class BatchNotificationService
         }
 
         $totalProcessed = $batch['completed'] + $batch['failed'];
-        
+
         // Update cache
         TenantCache::put($cacheKey, $batch, now()->addHours(24));
-        
+
         // Check if batch is complete
         if ($totalProcessed >= $batch['total']) {
             $this->sendBatchCompleteNotification($batchId, $batch);
@@ -77,25 +75,22 @@ class BatchNotificationService
 
     /**
      * Send batch complete notification
-     * 
-     * @param string $batchId
-     * @param array $batch
-     * @return void
      */
     private function sendBatchCompleteNotification(string $batchId, array $batch): void
     {
         $user = \App\Models\User::find($batch['user_id']);
-        
-        if (!$user) {
-            Log::warning("User not found for batch notification", [
+
+        if (! $user) {
+            Log::warning('User not found for batch notification', [
                 'batch_id' => $batchId,
                 'user_id' => $batch['user_id'],
             ]);
+
             return;
         }
 
         $message = sprintf(
-            "Batch processing complete: %d succeeded, %d failed out of %d total",
+            'Batch processing complete: %d succeeded, %d failed out of %d total',
             $batch['completed'],
             $batch['failed'],
             $batch['total']
@@ -103,7 +98,7 @@ class BatchNotificationService
 
         // TODO: Send actual notification (email, SMS, in-app, etc.)
         // For now, just log it
-        Log::info("Batch complete notification", [
+        Log::info('Batch complete notification', [
             'batch_id' => $batchId,
             'user_id' => $user->id,
             'message' => $message,
@@ -118,16 +113,13 @@ class BatchNotificationService
 
     /**
      * Get batch status
-     * 
-     * @param string $batchId
-     * @return array|null
      */
     public function getBatchStatus(string $batchId): ?array
     {
         $cacheKey = "batch:{$batchId}";
         $batch = TenantCache::get($cacheKey);
-        
-        if (!$batch) {
+
+        if (! $batch) {
             return null;
         }
 

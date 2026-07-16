@@ -2,25 +2,25 @@
 
 namespace Modules\EventManagement\Services;
 
-use Modules\EventManagement\Models\Ticket;
-use Modules\EventManagement\Models\Booking;
-use Modules\EventManagement\Models\BookingAttendee;
-use Modules\EventManagement\Services\BookingFactsService;
-use Modules\EventManagement\Services\OutboxService;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Carbon\Carbon;
+use Modules\EventManagement\Models\Booking;
+use Modules\EventManagement\Models\Ticket;
 
 class TicketService
 {
     protected TenantSchemaManager $tenantSchemaManager;
+
     protected AuditService $auditService;
+
     protected BookingFactsService $bookingFactsService;
+
     protected OutboxService $outboxService;
 
     public function __construct(
-        TenantSchemaManager $tenantSchemaManager, 
+        TenantSchemaManager $tenantSchemaManager,
         AuditService $auditService,
         BookingFactsService $bookingFactsService,
         OutboxService $outboxService
@@ -39,21 +39,21 @@ class TicketService
     {
         return DB::transaction(function () use ($bookingId) {
             $booking = Booking::with(['attendees', 'event'])->findOrFail($bookingId);
-            
+
             // Verify booking is in correct state for ticket generation
             if ($booking->state !== 'booked') {
                 throw new \InvalidArgumentException("Tickets can only be generated for bookings in 'booked' state");
             }
-            
+
             // Check if tickets already exist for this booking
             $existingTickets = Ticket::where('booking_id', $bookingId)->get();
             if ($existingTickets->isNotEmpty()) {
-                throw new \InvalidArgumentException("Tickets already exist for this booking");
+                throw new \InvalidArgumentException('Tickets already exist for this booking');
             }
-            
-            $tickets = new Collection();
+
+            $tickets = new Collection;
             $issuanceStartTime = now();
-            
+
             // Generate a ticket for each attendee
             foreach ($booking->attendees as $attendee) {
                 $ticketCode = $this->generateUniqueCode();
@@ -65,9 +65,9 @@ class TicketService
                     'attendee_name' => $attendee->attendee_name,
                     'event_title' => $booking->event->title,
                     'event_date' => $booking->event->event_date->toISOString(),
-                    'venue' => $booking->event->venue
+                    'venue' => $booking->event->venue,
                 ]);
-                
+
                 $ticket = Ticket::create([
                     'ticket_code' => $ticketCode,
                     'booking_id' => $bookingId,
@@ -76,9 +76,9 @@ class TicketService
                     'status' => 'active',
                     'issued_at' => Carbon::now(),
                 ]);
-                
+
                 $tickets->push($ticket);
-                
+
                 // Log ticket generation
                 $this->auditService->logActivity(
                     'ticket_generated',
@@ -87,15 +87,15 @@ class TicketService
                     [
                         'ticket_code' => $ticketCode,
                         'booking_reference' => $booking->booking_reference,
-                        'attendee_name' => $attendee->attendee_name
+                        'attendee_name' => $attendee->attendee_name,
                     ]
                 );
             }
-            
+
             // Capture ticket issuance facts
             $issuanceEndTime = now();
             $issuanceDelayMinutes = $issuanceStartTime->diffInMinutes($booking->created_at);
-            
+
             $this->bookingFactsService->createAnalyticsFact('ticket_issued', $booking, [
                 'tickets_issued' => $tickets->count(),
                 'ticket_codes' => $tickets->pluck('ticket_code')->toArray(),
@@ -103,7 +103,7 @@ class TicketService
                 'issuance_duration_ms' => $issuanceStartTime->diffInMilliseconds($issuanceEndTime),
                 'booking_to_issuance_hours' => $booking->created_at->diffInHours($issuanceStartTime),
             ]);
-            
+
             // Create outbox event for ticket issuance side effects
             $this->outboxService->createEvent(
                 'booking',
@@ -117,7 +117,7 @@ class TicketService
                     'issuance_delay_minutes' => $issuanceDelayMinutes,
                 ]
             );
-            
+
             return $tickets;
         });
     }
@@ -130,7 +130,7 @@ class TicketService
     {
         do {
             // Generate a ticket code with format: TK + 8 random alphanumeric characters
-            $code = 'TK' . strtoupper(Str::random(8));
+            $code = 'TK'.strtoupper(Str::random(8));
         } while (Ticket::where('ticket_code', $code)->exists());
 
         return $code;
@@ -139,7 +139,7 @@ class TicketService
     /**
      * Create QR payload for ticket
      * Requirements: 3.3 - Create QR/barcode payloads for each ticket
-     * 
+     *
      * Note: This method creates the payload data. For actual QR code generation,
      * integrate with SimpleSoftwareIO/simple-qrcode package:
      * composer require simplesoftwareio/simple-qrcode
@@ -160,9 +160,9 @@ class TicketService
             'venue' => $ticketData['venue'],
             'issued_at' => Carbon::now()->toISOString(),
             // Add checksum for verification
-            'checksum' => $this->generateChecksum($ticketData)
+            'checksum' => $this->generateChecksum($ticketData),
         ];
-        
+
         // Return JSON encoded payload
         // In production, this would be used with QR code library:
         // QrCode::format('png')->size(300)->generate(json_encode($payload))
@@ -177,22 +177,22 @@ class TicketService
     {
         return DB::transaction(function () use ($ticketId) {
             $oldTicket = Ticket::with(['booking', 'attendee'])->findOrFail($ticketId);
-            
+
             // Verify ticket can be reissued
             if ($oldTicket->status === 'revoked') {
-                throw new \InvalidArgumentException("Cannot reissue an already revoked ticket");
+                throw new \InvalidArgumentException('Cannot reissue an already revoked ticket');
             }
-            
+
             if ($oldTicket->status === 'used') {
-                throw new \InvalidArgumentException("Cannot reissue a used ticket");
+                throw new \InvalidArgumentException('Cannot reissue a used ticket');
             }
-            
+
             // Revoke the old ticket
             $oldTicket->update([
                 'status' => 'revoked',
-                'revoked_at' => Carbon::now()
+                'revoked_at' => Carbon::now(),
             ]);
-            
+
             // Generate new ticket
             $newTicketCode = $this->generateUniqueCode();
             $qrPayload = $this->createQRPayload([
@@ -203,9 +203,9 @@ class TicketService
                 'attendee_name' => $oldTicket->attendee->attendee_name,
                 'event_title' => $oldTicket->booking->event->title,
                 'event_date' => $oldTicket->booking->event->event_date->toISOString(),
-                'venue' => $oldTicket->booking->event->venue
+                'venue' => $oldTicket->booking->event->venue,
             ]);
-            
+
             $newTicket = Ticket::create([
                 'ticket_code' => $newTicketCode,
                 'booking_id' => $oldTicket->booking_id,
@@ -214,7 +214,7 @@ class TicketService
                 'status' => 'active',
                 'issued_at' => Carbon::now(),
             ]);
-            
+
             // Log ticket reissuance
             $this->auditService->logActivity(
                 'ticket_reissued',
@@ -224,10 +224,10 @@ class TicketService
                     'old_ticket_code' => $oldTicket->ticket_code,
                     'new_ticket_code' => $newTicketCode,
                     'booking_reference' => $oldTicket->booking->booking_reference,
-                    'reason' => 'admin_reissue'
+                    'reason' => 'admin_reissue',
                 ]
             );
-            
+
             return $newTicket;
         });
     }
@@ -240,22 +240,22 @@ class TicketService
     {
         return DB::transaction(function () use ($ticketId) {
             $ticket = Ticket::with(['booking', 'attendee'])->findOrFail($ticketId);
-            
+
             // Verify ticket can be revoked
             if ($ticket->status === 'revoked') {
-                throw new \InvalidArgumentException("Ticket is already revoked");
+                throw new \InvalidArgumentException('Ticket is already revoked');
             }
-            
+
             if ($ticket->status === 'used') {
-                throw new \InvalidArgumentException("Cannot revoke a used ticket");
+                throw new \InvalidArgumentException('Cannot revoke a used ticket');
             }
-            
+
             // Revoke the ticket
             $ticket->update([
                 'status' => 'revoked',
-                'revoked_at' => Carbon::now()
+                'revoked_at' => Carbon::now(),
             ]);
-            
+
             // Log ticket revocation
             $this->auditService->logActivity(
                 'ticket_revoked',
@@ -264,10 +264,10 @@ class TicketService
                 [
                     'ticket_code' => $ticket->ticket_code,
                     'booking_reference' => $ticket->booking->booking_reference,
-                    'attendee_name' => $ticket->attendee->attendee_name
+                    'attendee_name' => $ticket->attendee->attendee_name,
                 ]
             );
-            
+
             return $ticket;
         });
     }
@@ -279,18 +279,18 @@ class TicketService
     {
         return DB::transaction(function () use ($ticketId) {
             $ticket = Ticket::with(['booking', 'attendee'])->findOrFail($ticketId);
-            
+
             // Verify ticket can be used
             if ($ticket->status !== 'active') {
-                throw new \InvalidArgumentException("Only active tickets can be marked as used");
+                throw new \InvalidArgumentException('Only active tickets can be marked as used');
             }
-            
+
             // Mark as used
             $ticket->update([
                 'status' => 'used',
-                'used_at' => Carbon::now()
+                'used_at' => Carbon::now(),
             ]);
-            
+
             // Log ticket usage
             $this->auditService->logActivity(
                 'ticket_used',
@@ -299,10 +299,10 @@ class TicketService
                 [
                     'ticket_code' => $ticket->ticket_code,
                     'booking_reference' => $ticket->booking->booking_reference,
-                    'attendee_name' => $ticket->attendee->attendee_name
+                    'attendee_name' => $ticket->attendee->attendee_name,
                 ]
             );
-            
+
             return $ticket;
         });
     }
@@ -335,14 +335,14 @@ class TicketService
     {
         try {
             $ticket = $this->getTicketByCode($ticketCode);
-            
+
             return [
                 'valid' => $ticket->status === 'active',
                 'status' => $ticket->status,
                 'ticket' => $ticket,
                 'event' => $ticket->booking->event,
                 'attendee' => $ticket->attendee,
-                'message' => $this->getTicketStatusMessage($ticket->status)
+                'message' => $this->getTicketStatusMessage($ticket->status),
             ];
         } catch (\Exception $e) {
             return [
@@ -351,7 +351,7 @@ class TicketService
                 'ticket' => null,
                 'event' => null,
                 'attendee' => null,
-                'message' => 'Ticket not found'
+                'message' => 'Ticket not found',
             ];
         }
     }
@@ -366,9 +366,9 @@ class TicketService
             $ticketData['ticket_code'],
             $ticketData['booking_reference'],
             $ticketData['event_id'],
-            $ticketData['attendee_id']
+            $ticketData['attendee_id'],
         ];
-        
+
         return hash('sha256', implode('|', $checksumData));
     }
 

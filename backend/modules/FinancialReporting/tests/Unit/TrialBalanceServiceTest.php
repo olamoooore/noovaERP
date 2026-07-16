@@ -2,19 +2,19 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Modules\FinancialReporting\Services\Reports\TrialBalanceService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
 use App\Models\User;
 use Carbon\Carbon;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Reports\TrialBalanceService;
+use Tests\TenantTestCase;
 
 class TrialBalanceServiceTest extends TenantTestCase
 {
-
     protected TrialBalanceService $service;
+
     protected User $testUser;
 
     protected function setUp(): void
@@ -41,7 +41,7 @@ class TrialBalanceServiceTest extends TenantTestCase
     private function createJournalEntry(array $attrs = []): JournalEntry
     {
         return JournalEntry::create(array_merge([
-            'entry_number' => 'JE-TEST-' . uniqid(),
+            'entry_number' => 'JE-TEST-'.uniqid(),
             'entry_date' => Carbon::parse('2024-01-15'),
             'description' => 'Test Entry',
             'status' => 'posted',
@@ -72,7 +72,7 @@ class TrialBalanceServiceTest extends TenantTestCase
     {
         $cashAccount = ChartOfAccount::where('code', '1000')->first();
         $equityAccount = ChartOfAccount::where('code', '3000')->first();
-        
+
         $entry = $this->createJournalEntry([
             'description' => 'Test Entry',
         ]);

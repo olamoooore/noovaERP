@@ -15,14 +15,14 @@ class AuditDiffService
     /**
      * Compute a structured field-level diff between two snapshots.
      *
-     * @param  array<mixed>|null $before
-     * @param  array<mixed>|null $after
+     * @param  array<mixed>|null  $before
+     * @param  array<mixed>|null  $after
      * @return array<array{field: string, before: mixed, after: mixed}>
      */
     public function diff(?array $before, ?array $after): array
     {
-        $before  = $before ?? [];
-        $after   = $after  ?? [];
+        $before = $before ?? [];
+        $after = $after ?? [];
         $allKeys = array_unique(array_merge(array_keys($before), array_keys($after)));
 
         $changes = [];
@@ -31,56 +31,57 @@ class AuditDiffService
                 continue;
             }
             $bv = $before[$key] ?? null;
-            $av = $after[$key]  ?? null;
+            $av = $after[$key] ?? null;
 
             // JSON-encode for deep comparison of nested arrays/objects
             if (json_encode($bv) !== json_encode($av)) {
                 $changes[] = [
-                    'field'  => $key,
+                    'field' => $key,
                     'before' => $bv,
-                    'after'  => $av,
+                    'after' => $av,
                 ];
             }
         }
+
         return $changes;
     }
 
     /**
      * Build a human-readable sentence for an audit event.
      *
-     * @param array<mixed> $before
-     * @param array<mixed> $after
+     * @param  array<mixed>  $before
+     * @param  array<mixed>  $after
      */
     public function humanize(
-        string  $action,
+        string $action,
         ?string $actorName,
         ?string $targetType,
         ?string $targetId,
-        array   $before,
-        array   $after,
+        array $before,
+        array $after,
     ): string {
         $actor = $actorName ?? 'System';
 
         return match ($action) {
-            'plan.created'               => "{$actor} created plan \"{$this->pick($after, 'name', $targetId)}\"",
-            'plan.updated'               => "{$actor} updated plan \"{$this->pick($after, 'name', $this->pick($before, 'name', $targetId))}\"",
-            'plan.version.created'       => "{$actor} added a version to plan family #{$targetId}",
-            'plan.prices.updated'        => "{$actor} updated pricing for plan version #{$targetId}",
-            'plan.module.attached'       => "{$actor} attached a module to plan version #{$targetId}",
-            'plan.module.detached'       => "{$actor} detached a module from plan version #{$targetId}",
-            'module.synced'              => "{$actor} synced module catalog ({$this->pick($after, 'synced', '?')} modules)",
-            'module.updated'             => "{$actor} updated module \"{$this->pick($after, 'module_key', $targetId)}\"",
-            'tenant.suspended'           => "{$actor} suspended tenant #{$targetId}",
-            'tenant.reinstated'          => "{$actor} reinstated tenant #{$targetId}",
-            'tenant.health.pinged'       => "{$actor} ran health check on tenant #{$targetId}",
-            'subscription.created'       => "{$actor} created subscription for tenant #{$this->pick($after, 'tenant_id', $targetId)}",
-            'subscription.canceled'      => "{$actor} canceled subscription #{$targetId}",
-            'subscription.reactivated'   => "{$actor} reactivated subscription #{$targetId}",
+            'plan.created' => "{$actor} created plan \"{$this->pick($after, 'name', $targetId)}\"",
+            'plan.updated' => "{$actor} updated plan \"{$this->pick($after, 'name', $this->pick($before, 'name', $targetId))}\"",
+            'plan.version.created' => "{$actor} added a version to plan family #{$targetId}",
+            'plan.prices.updated' => "{$actor} updated pricing for plan version #{$targetId}",
+            'plan.module.attached' => "{$actor} attached a module to plan version #{$targetId}",
+            'plan.module.detached' => "{$actor} detached a module from plan version #{$targetId}",
+            'module.synced' => "{$actor} synced module catalog ({$this->pick($after, 'synced', '?')} modules)",
+            'module.updated' => "{$actor} updated module \"{$this->pick($after, 'module_key', $targetId)}\"",
+            'tenant.suspended' => "{$actor} suspended tenant #{$targetId}",
+            'tenant.reinstated' => "{$actor} reinstated tenant #{$targetId}",
+            'tenant.health.pinged' => "{$actor} ran health check on tenant #{$targetId}",
+            'subscription.created' => "{$actor} created subscription for tenant #{$this->pick($after, 'tenant_id', $targetId)}",
+            'subscription.canceled' => "{$actor} canceled subscription #{$targetId}",
+            'subscription.reactivated' => "{$actor} reactivated subscription #{$targetId}",
             'subscription.plan_migrated' => $this->migrationMessage($actor, $before, $after, $targetId),
-            'invoice.generated'          => "{$actor} generated {$this->pick($after, 'billing_interval', '')} invoice #{$targetId}",
-            'invoice.paid'               => "{$actor} marked invoice #{$targetId} as paid",
-            'invoice.voided'             => "{$actor} voided invoice #{$targetId}",
-            default                      => "{$actor} performed {$action}" . ($targetId ? " on {$targetType} #{$targetId}" : ''),
+            'invoice.generated' => "{$actor} generated {$this->pick($after, 'billing_interval', '')} invoice #{$targetId}",
+            'invoice.paid' => "{$actor} marked invoice #{$targetId} as paid",
+            'invoice.voided' => "{$actor} voided invoice #{$targetId}",
+            default => "{$actor} performed {$action}".($targetId ? " on {$targetType} #{$targetId}" : ''),
         };
     }
 
@@ -110,17 +111,18 @@ class AuditDiffService
     }
 
     private function migrationMessage(
-        string  $actor,
-        array   $before,
-        array   $after,
+        string $actor,
+        array $before,
+        array $after,
         ?string $targetId,
     ): string {
         $fromVersion = $before['plan_version_id'] ?? null;
-        $toVersion   = $after['plan_version_id']  ?? null;
+        $toVersion = $after['plan_version_id'] ?? null;
 
         if ($fromVersion !== null && $toVersion !== null) {
             return "{$actor} migrated subscription #{$targetId} from plan v#{$fromVersion} to v#{$toVersion}";
         }
+
         return "{$actor} changed plan for subscription #{$targetId}";
     }
 }

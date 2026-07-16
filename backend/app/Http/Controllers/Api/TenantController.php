@@ -26,7 +26,7 @@ class TenantController extends Controller
 {
     public function signup(Request $request)
     {
-        $domain = strtolower($request->input('subdomain', '')) . '.' . config('app.domain', 'localhost');
+        $domain = strtolower($request->input('subdomain', '')).'.'.config('app.domain', 'localhost');
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',

@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (Schema::hasTable('products') && !Schema::hasColumn('products', 'attributes')) {
+        if (Schema::hasTable('products') && ! Schema::hasColumn('products', 'attributes')) {
             Schema::table('products', function (Blueprint $table) {
                 $table->json('attributes')->nullable()->after('gallery');
             });

@@ -2,9 +2,8 @@
 
 namespace Modules\EventManagement\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Validation\Rule;
+use Illuminate\Database\Eloquent\Model;
 
 class EventSettings extends Model
 {
@@ -53,6 +52,7 @@ class EventSettings extends Model
     {
         $rules = self::getValidationRules();
         $rules['tenant_id'] = ['sometimes', 'string', 'max:255'];
+
         return $rules;
     }
 
@@ -155,6 +155,7 @@ class EventSettings extends Model
     public function applyTimezone(\DateTime $date): \DateTime
     {
         $timezone = new \DateTimeZone($this->timezone);
+
         return $date->setTimezone($timezone);
     }
 
@@ -163,7 +164,7 @@ class EventSettings extends Model
      */
     public function isRefundAllowed(): bool
     {
-        return !empty($this->refund_policy);
+        return ! empty($this->refund_policy);
     }
 
     /**
@@ -171,6 +172,6 @@ class EventSettings extends Model
      */
     public function isCancellationAllowed(): bool
     {
-        return !empty($this->cancellation_policy);
+        return ! empty($this->cancellation_policy);
     }
 }

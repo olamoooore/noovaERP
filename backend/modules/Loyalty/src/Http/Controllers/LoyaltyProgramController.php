@@ -18,7 +18,7 @@ class LoyaltyProgramController extends Controller
             ->where('is_active', true)
             ->first();
 
-        if (!$program) {
+        if (! $program) {
             return response()->json([
                 'message' => 'No active loyalty program found',
             ], 404);
@@ -45,6 +45,7 @@ class LoyaltyProgramController extends Controller
     public function show(int $programId)
     {
         $program = LoyaltyProgram::with('tiers')->findOrFail($programId);
+
         return response()->json($program);
     }
 
@@ -134,9 +135,9 @@ class LoyaltyProgramController extends Controller
         ]);
 
         $validated['loyalty_program_id'] = $programId;
-        
+
         // Set default sort_order if not provided
-        if (!isset($validated['sort_order'])) {
+        if (! isset($validated['sort_order'])) {
             $maxOrder = LoyaltyTier::where('loyalty_program_id', $programId)->max('sort_order') ?? 0;
             $validated['sort_order'] = $maxOrder + 1;
         }
@@ -176,13 +177,13 @@ class LoyaltyProgramController extends Controller
     public function destroyTier(int $tierId)
     {
         $tier = LoyaltyTier::findOrFail($tierId);
-        
+
         // Check if any customers are assigned to this tier
         $customersCount = \Modules\Loyalty\Models\CustomerLoyalty::where('loyalty_tier_id', $tierId)->count();
-        
+
         if ($customersCount > 0) {
             return response()->json([
-                'message' => 'Cannot delete tier. ' . $customersCount . ' customers are assigned to this tier.',
+                'message' => 'Cannot delete tier. '.$customersCount.' customers are assigned to this tier.',
             ], 422);
         }
 

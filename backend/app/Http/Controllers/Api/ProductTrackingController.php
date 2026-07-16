@@ -7,8 +7,8 @@ use App\Models\Product;
 use App\Models\ProductBatch;
 use App\Models\ProductSerial;
 use App\Models\Warehouse;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Services\InventoryService;
 
@@ -42,8 +42,8 @@ class ProductTrackingController extends Controller
         if ($request->has('expiring_within_days')) {
             $expiryDate = now()->addDays($request->expiring_within_days);
             $query->whereNotNull('expiry_date')
-                  ->where('expiry_date', '<=', $expiryDate)
-                  ->where('expiry_date', '>', now());
+                ->where('expiry_date', '<=', $expiryDate)
+                ->where('expiry_date', '>', now());
         }
 
         if ($request->has('expired')) {
@@ -52,7 +52,7 @@ class ProductTrackingController extends Controller
             } else {
                 $query->where(function ($q) {
                     $q->whereNull('expiry_date')
-                      ->orWhere('expiry_date', '>=', now());
+                        ->orWhere('expiry_date', '>=', now());
                 });
             }
         }
@@ -77,7 +77,7 @@ class ProductTrackingController extends Controller
         $product = Product::findOrFail($product);
         if ($product->tracking_method !== Product::TRACKING_BATCH) {
             return response()->json([
-                'message' => 'This product is not configured for batch tracking'
+                'message' => 'This product is not configured for batch tracking',
             ], 422);
         }
 
@@ -98,37 +98,37 @@ class ProductTrackingController extends Controller
         // Check for duplicate batch number
         if ($product->batches()->where('batch_number', $validated['batch_number'])->exists()) {
             return response()->json([
-                'message' => 'A batch with this number already exists for this product'
+                'message' => 'A batch with this number already exists for this product',
             ], 422);
         }
 
         $warehouseId = $validated['warehouse_id'] ?? Warehouse::getDefault()?->id;
-        if (!$warehouseId) {
+        if (! $warehouseId) {
             return response()->json(['message' => 'No warehouse specified and no default warehouse configured.'], 422);
         }
 
         $batch = $product->batches()->create(array_merge($validated, [
-            'warehouse_id'      => $warehouseId,
-            'status'            => 'available',
+            'warehouse_id' => $warehouseId,
+            'status' => 'available',
             'quantity_reserved' => 0,
         ]));
 
         // Update stock via InventoryService — canonical path, stock_levels stays authoritative
         app(InventoryService::class)->adjustStock(
-            productId:     $product->id,
-            warehouseId:   $warehouseId,
-            quantity:      $validated['quantity'],
-            type:          'purchase',
-            reference:     "Batch received: {$validated['batch_number']}",
+            productId: $product->id,
+            warehouseId: $warehouseId,
+            quantity: $validated['quantity'],
+            type: 'purchase',
+            reference: "Batch received: {$validated['batch_number']}",
             referenceType: 'ProductBatch',
-            referenceId:   $batch->id,
-            batchNumber:   $validated['batch_number'],
-            expiryDate:    isset($validated['expiry_date']) ? new \DateTime($validated['expiry_date']) : null,
+            referenceId: $batch->id,
+            batchNumber: $validated['batch_number'],
+            expiryDate: isset($validated['expiry_date']) ? new \DateTime($validated['expiry_date']) : null,
         );
 
         return response()->json([
             'message' => 'Batch created successfully',
-            'batch' => $batch
+            'batch' => $batch,
         ], 201);
     }
 
@@ -158,7 +158,7 @@ class ProductTrackingController extends Controller
 
         return response()->json([
             'message' => 'Batch updated successfully',
-            'batch' => $batch
+            'batch' => $batch,
         ]);
     }
 
@@ -179,16 +179,16 @@ class ProductTrackingController extends Controller
         ]);
 
         $newQuantity = $batch->quantity + $validated['adjustment'];
-        
+
         if ($newQuantity < $batch->quantity_reserved) {
             return response()->json([
-                'message' => "Cannot reduce quantity below reserved amount ({$batch->quantity_reserved})"
+                'message' => "Cannot reduce quantity below reserved amount ({$batch->quantity_reserved})",
             ], 422);
         }
 
         if ($newQuantity < 0) {
             return response()->json([
-                'message' => 'Quantity cannot be negative'
+                'message' => 'Quantity cannot be negative',
             ], 422);
         }
 
@@ -197,26 +197,26 @@ class ProductTrackingController extends Controller
             $batch->update(['quantity' => $newQuantity]);
 
             // Adjust stock via InventoryService — canonical path
-            $adjustment  = $validated['adjustment'];
+            $adjustment = $validated['adjustment'];
             $warehouseId = $batch->warehouse_id ?? Warehouse::getDefault()?->id;
 
             if ($warehouseId && $adjustment !== 0) {
                 app(InventoryService::class)->adjustStock(
-                    productId:     $product->id,
-                    warehouseId:   $warehouseId,
-                    quantity:      abs($adjustment),
-                    type:          $adjustment > 0 ? 'in' : 'out',
-                    reference:     "Batch adjustment: {$validated['reason']}",
+                    productId: $product->id,
+                    warehouseId: $warehouseId,
+                    quantity: abs($adjustment),
+                    type: $adjustment > 0 ? 'in' : 'out',
+                    reference: "Batch adjustment: {$validated['reason']}",
                     referenceType: 'ProductBatch',
-                    referenceId:   $batch->id,
-                    batchNumber:   $batch->batch_number,
+                    referenceId: $batch->id,
+                    batchNumber: $batch->batch_number,
                 );
             }
         });
 
         return response()->json([
             'message' => 'Batch quantity adjusted successfully',
-            'batch' => $batch->fresh()
+            'batch' => $batch->fresh(),
         ]);
     }
 
@@ -236,15 +236,15 @@ class ProductTrackingController extends Controller
             'reference' => 'nullable|string|max:100',
         ]);
 
-        if (!$batch->reserve($validated['quantity'])) {
+        if (! $batch->reserve($validated['quantity'])) {
             return response()->json([
-                'message' => 'Insufficient available quantity in batch'
+                'message' => 'Insufficient available quantity in batch',
             ], 422);
         }
 
         return response()->json([
             'message' => 'Quantity reserved successfully',
-            'batch' => $batch->fresh()
+            'batch' => $batch->fresh(),
         ]);
     }
 
@@ -263,15 +263,15 @@ class ProductTrackingController extends Controller
             'quantity' => 'required|integer|min:1',
         ]);
 
-        if (!$batch->release($validated['quantity'])) {
+        if (! $batch->release($validated['quantity'])) {
             return response()->json([
-                'message' => 'Cannot release more than reserved quantity'
+                'message' => 'Cannot release more than reserved quantity',
             ], 422);
         }
 
         return response()->json([
             'message' => 'Quantity released successfully',
-            'batch' => $batch->fresh()
+            'batch' => $batch->fresh(),
         ]);
     }
 
@@ -335,8 +335,8 @@ class ProductTrackingController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('serial_number', 'like', "%{$search}%")
-                  ->orWhere('mac_address', 'like', "%{$search}%")
-                  ->orWhere('imei', 'like', "%{$search}%");
+                    ->orWhere('mac_address', 'like', "%{$search}%")
+                    ->orWhere('imei', 'like', "%{$search}%");
             });
         }
 
@@ -360,7 +360,7 @@ class ProductTrackingController extends Controller
         $product = Product::findOrFail($product);
         if ($product->tracking_method !== Product::TRACKING_SERIAL) {
             return response()->json([
-                'message' => 'This product is not configured for serial number tracking'
+                'message' => 'This product is not configured for serial number tracking',
             ], 422);
         }
 
@@ -381,34 +381,34 @@ class ProductTrackingController extends Controller
         // Check for duplicate serial number (globally unique)
         if (ProductSerial::where('serial_number', $validated['serial_number'])->exists()) {
             return response()->json([
-                'message' => 'This serial number already exists in the system'
+                'message' => 'This serial number already exists in the system',
             ], 422);
         }
 
         $warehouseId = $validated['warehouse_id'] ?? Warehouse::getDefault()?->id;
-        if (!$warehouseId) {
+        if (! $warehouseId) {
             return response()->json(['message' => 'No warehouse specified and no default warehouse configured.'], 422);
         }
 
         $serial = $product->serials()->create(array_merge($validated, [
             'warehouse_id' => $warehouseId,
-            'status'       => 'available',
+            'status' => 'available',
         ]));
 
         // Update stock via InventoryService — canonical path (1 unit per serial number)
         app(InventoryService::class)->adjustStock(
-            productId:     $product->id,
-            warehouseId:   $warehouseId,
-            quantity:      1,
-            type:          'purchase',
-            reference:     "Serial number received: {$validated['serial_number']}",
+            productId: $product->id,
+            warehouseId: $warehouseId,
+            quantity: 1,
+            type: 'purchase',
+            reference: "Serial number received: {$validated['serial_number']}",
             referenceType: 'ProductSerial',
-            referenceId:   $serial->id,
+            referenceId: $serial->id,
         );
 
         return response()->json([
             'message' => 'Serial number created successfully',
-            'serial' => $serial
+            'serial' => $serial,
         ], 201);
     }
 
@@ -420,7 +420,7 @@ class ProductTrackingController extends Controller
         $product = Product::findOrFail($product);
         if ($product->tracking_method !== Product::TRACKING_SERIAL) {
             return response()->json([
-                'message' => 'This product is not configured for serial number tracking'
+                'message' => 'This product is not configured for serial number tracking',
             ], 422);
         }
 
@@ -438,15 +438,15 @@ class ProductTrackingController extends Controller
             ->pluck('serial_number')
             ->toArray();
 
-        if (!empty($existingSerials)) {
+        if (! empty($existingSerials)) {
             return response()->json([
                 'message' => 'Some serial numbers already exist',
-                'duplicates' => $existingSerials
+                'duplicates' => $existingSerials,
             ], 422);
         }
 
         $warehouseId = $validated['warehouse_id'] ?? Warehouse::getDefault()?->id;
-        if (!$warehouseId) {
+        if (! $warehouseId) {
             return response()->json(['message' => 'No warehouse specified and no default warehouse configured.'], 422);
         }
 
@@ -455,11 +455,11 @@ class ProductTrackingController extends Controller
             foreach ($validated['serial_numbers'] as $serialNumber) {
                 $serial = $product->serials()->create([
                     'serial_number' => $serialNumber,
-                    'warehouse_id'  => $warehouseId,
-                    'batch_id'      => $validated['batch_id'] ?? null,
-                    'supplier_id'   => $validated['supplier_id'] ?? null,
-                    'cost'          => $validated['cost'] ?? null,
-                    'status'        => 'available',
+                    'warehouse_id' => $warehouseId,
+                    'batch_id' => $validated['batch_id'] ?? null,
+                    'supplier_id' => $validated['supplier_id'] ?? null,
+                    'cost' => $validated['cost'] ?? null,
+                    'status' => 'available',
                 ]);
                 $created[] = $serial;
             }
@@ -467,19 +467,19 @@ class ProductTrackingController extends Controller
             // Update stock via InventoryService — all serials go to the same warehouse as a single movement
             if (count($created) > 0) {
                 app(InventoryService::class)->adjustStock(
-                    productId:     $product->id,
-                    warehouseId:   $warehouseId,
-                    quantity:      count($created),
-                    type:          'purchase',
-                    reference:     'Bulk serial numbers received',
+                    productId: $product->id,
+                    warehouseId: $warehouseId,
+                    quantity: count($created),
+                    type: 'purchase',
+                    reference: 'Bulk serial numbers received',
                     referenceType: 'ProductSerial',
-                    referenceId:   null,
+                    referenceId: null,
                 );
             }
         });
 
         return response()->json([
-            'message' => count($created) . ' serial numbers created successfully',
+            'message' => count($created).' serial numbers created successfully',
             'count' => count($created),
         ], 201);
     }
@@ -511,7 +511,7 @@ class ProductTrackingController extends Controller
 
         return response()->json([
             'message' => 'Serial number updated successfully',
-            'serial' => $serial
+            'serial' => $serial,
         ]);
     }
 
@@ -528,7 +528,7 @@ class ProductTrackingController extends Controller
 
         if ($serial->status !== 'available' && $serial->status !== 'reserved') {
             return response()->json([
-                'message' => 'Serial number is not available for sale'
+                'message' => 'Serial number is not available for sale',
             ], 422);
         }
 
@@ -546,7 +546,7 @@ class ProductTrackingController extends Controller
 
         return response()->json([
             'message' => 'Serial marked as sold successfully',
-            'serial' => $serial->fresh()
+            'serial' => $serial->fresh(),
         ]);
     }
 
@@ -563,7 +563,7 @@ class ProductTrackingController extends Controller
 
         if ($serial->status !== 'sold') {
             return response()->json([
-                'message' => 'Only sold items can be returned'
+                'message' => 'Only sold items can be returned',
             ], 422);
         }
 
@@ -573,14 +573,14 @@ class ProductTrackingController extends Controller
         ]);
 
         $serial->markReturned($validated['return_to_stock'] ?? true);
-        
-        if (!empty($validated['reason'])) {
-            $serial->update(['notes' => $serial->notes . "\nReturn reason: " . $validated['reason']]);
+
+        if (! empty($validated['reason'])) {
+            $serial->update(['notes' => $serial->notes."\nReturn reason: ".$validated['reason']]);
         }
 
         return response()->json([
             'message' => 'Serial marked as returned successfully',
-            'serial' => $serial->fresh()
+            'serial' => $serial->fresh(),
         ]);
     }
 
@@ -597,9 +597,9 @@ class ProductTrackingController extends Controller
             ->where('serial_number', $validated['serial_number'])
             ->first();
 
-        if (!$serial) {
+        if (! $serial) {
             return response()->json([
-                'message' => 'Serial number not found'
+                'message' => 'Serial number not found',
             ], 404);
         }
 
@@ -612,6 +612,7 @@ class ProductTrackingController extends Controller
     public function warrantyStatus($serial): JsonResponse
     {
         $serial = ProductSerial::findOrFail($serial);
+
         return response()->json([
             'serial_number' => $serial->serial_number,
             'product' => $serial->product ? [
@@ -623,7 +624,7 @@ class ProductTrackingController extends Controller
                 'start_date' => $serial->warranty_start_date,
                 'end_date' => $serial->warranty_end_date,
                 'is_under_warranty' => $serial->isUnderWarranty(),
-                'days_remaining' => $serial->warranty_end_date 
+                'days_remaining' => $serial->warranty_end_date
                     ? max(0, now()->diffInDays($serial->warranty_end_date, false))
                     : null,
             ],

@@ -4,10 +4,10 @@ namespace Modules\EventManagement\Tests\Unit;
 
 use App\Models\Tenant;
 use App\SuperAdmin\Application\FeatureGateService;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Database\Schema\Blueprint;
 use Mockery;
 use Modules\EventManagement\Http\Middleware\FeatureFlagMiddleware;
 use Tests\TestCase;
@@ -22,6 +22,7 @@ use Tests\TestCase;
 class FeatureFlagMiddlewareTest extends TestCase
 {
     protected FeatureFlagMiddleware $middleware;
+
     protected $featureGate;
 
     protected function setUp(): void
@@ -31,7 +32,7 @@ class FeatureFlagMiddlewareTest extends TestCase
         $this->ensureFeaturesTableExists();
 
         $this->featureGate = Mockery::mock(FeatureGateService::class);
-        $this->middleware  = new FeatureFlagMiddleware($this->featureGate);
+        $this->middleware = new FeatureFlagMiddleware($this->featureGate);
     }
 
     protected function tearDown(): void
@@ -45,11 +46,11 @@ class FeatureFlagMiddlewareTest extends TestCase
     private function entitledResult(string $key, bool $entitled): array
     {
         return [
-            'key'         => $key,
+            'key' => $key,
             'is_entitled' => $entitled,
-            'source'      => $entitled ? 'tier_included' : null,
-            'name'        => ucfirst($key),
-            'cached_at'   => now()->toIso8601String(),
+            'source' => $entitled ? 'tier_included' : null,
+            'name' => ucfirst($key),
+            'cached_at' => now()->toIso8601String(),
         ];
     }
 
@@ -80,7 +81,7 @@ class FeatureFlagMiddlewareTest extends TestCase
 
     private function ensureFeaturesTableExists(): void
     {
-        if (!Schema::hasTable('features')) {
+        if (! Schema::hasTable('features')) {
             Schema::create('features', function (Blueprint $table) {
                 $table->id();
                 $table->string('key')->unique();
@@ -112,6 +113,7 @@ class FeatureFlagMiddlewareTest extends TestCase
         $nextCalled = false;
         $next = function ($req) use (&$nextCalled) {
             $nextCalled = true;
+
             return new Response('OK', 200);
         };
 
@@ -135,7 +137,7 @@ class FeatureFlagMiddlewareTest extends TestCase
 
         $request = Request::create('/api/v1/event-management/events', 'GET');
 
-        $next = fn($req) => new Response('Should not reach here', 200);
+        $next = fn ($req) => new Response('Should not reach here', 200);
 
         $response = $this->middleware->handle($request, $next);
 
@@ -157,7 +159,7 @@ class FeatureFlagMiddlewareTest extends TestCase
             ->andReturn($this->entitledResult('event_management', true));
 
         $request = Request::create('/api/v1/event-management/events', 'GET');
-        $this->middleware->handle($request, fn($r) => new Response('ok'));
+        $this->middleware->handle($request, fn ($r) => new Response('ok'));
 
         $this->assertTrue(true); // Mockery verifies on tearDown
     }
@@ -179,6 +181,7 @@ class FeatureFlagMiddlewareTest extends TestCase
         $nextCalled = false;
         $this->middleware->handle($request, function ($req) use (&$nextCalled) {
             $nextCalled = true;
+
             return new Response('OK');
         }, 'custom_feature');
 
@@ -196,7 +199,7 @@ class FeatureFlagMiddlewareTest extends TestCase
         try {
             $response = $this->middleware->handle(
                 $request,
-                fn($r) => new Response('through', 200)
+                fn ($r) => new Response('through', 200)
             );
             $this->assertContains($response->getStatusCode(), [200, 403]);
         } catch (\Throwable $e) {

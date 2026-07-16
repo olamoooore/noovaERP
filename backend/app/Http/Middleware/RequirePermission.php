@@ -25,7 +25,7 @@ class RequirePermission
      */
     public static function using(string $permission): string
     {
-        return self::class . ':' . $permission;
+        return self::class.':'.$permission;
     }
 
     public function handle(Request $request, Closure $next, string $permission): Response

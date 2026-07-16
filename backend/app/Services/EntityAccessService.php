@@ -32,7 +32,7 @@ class EntityAccessService
             ->where('legal_entity_id', $legalEntityId)
             ->first();
 
-        if (!$access) {
+        if (! $access) {
             return false;
         }
 

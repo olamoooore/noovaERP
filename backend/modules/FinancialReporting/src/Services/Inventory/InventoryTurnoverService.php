@@ -9,7 +9,7 @@ class InventoryTurnoverService
 {
     /**
      * Generate inventory turnover report
-     * 
+     *
      * Calculates:
      * - Inventory Turnover Ratio = COGS / Average Inventory
      * - Days in Inventory = 365 / Turnover Ratio
@@ -18,7 +18,7 @@ class InventoryTurnoverService
     public function generate(Carbon $startDate, Carbon $endDate, ?int $categoryId = null): array
     {
         $products = $this->getProductsWithTurnover($startDate, $endDate, $categoryId);
-        
+
         return [
             'title' => 'Inventory Turnover Report',
             'period' => [
@@ -39,7 +39,7 @@ class InventoryTurnoverService
     {
         $days = $startDate->diffInDays($endDate);
         $stockLevelsExists = $this->tableExists('stock_levels');
-        
+
         // Base query for products
         $query = DB::table('products as p')
             ->select([
@@ -60,40 +60,40 @@ class InventoryTurnoverService
         } else {
             $query->addSelect('p.stock_quantity');
         }
-        
+
         // Add category if table exists
         if ($this->tableExists('categories')) {
             $query->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
                 ->addSelect('c.name as category_name');
-            
+
             if ($categoryId) {
                 $query->where('p.category_id', $categoryId);
             }
         }
-        
+
         $products = $query->get();
-        
+
         $result = [];
-        
+
         foreach ($products as $product) {
             // Calculate COGS (Cost of Goods Sold)
             $cogs = $this->calculateCOGS($product->id, $startDate, $endDate);
-            
+
             // Calculate average inventory
             $avgInventory = $this->calculateAverageInventory($product->id, $startDate, $endDate);
-            
+
             // Calculate turnover ratio
             $turnoverRatio = $avgInventory > 0 ? $cogs / $avgInventory : 0;
-            
+
             // Calculate days in inventory
             $daysInInventory = $turnoverRatio > 0 ? 365 / $turnoverRatio : 0;
-            
+
             // Calculate sales quantity
             $salesQuantity = $this->getSalesQuantity($product->id, $startDate, $endDate);
-            
+
             // Classify as fast/slow mover
             $classification = $this->classifyMover($turnoverRatio);
-            
+
             $result[] = [
                 'id' => $product->id,
                 'sku' => $product->sku,
@@ -112,10 +112,10 @@ class InventoryTurnoverService
                 'is_slow_mover' => $classification === 'Slow',
             ];
         }
-        
+
         // Sort by turnover ratio descending
-        usort($result, fn($a, $b) => $b['turnover_ratio'] <=> $a['turnover_ratio']);
-        
+        usort($result, fn ($a, $b) => $b['turnover_ratio'] <=> $a['turnover_ratio']);
+
         return $result;
     }
 
@@ -124,10 +124,10 @@ class InventoryTurnoverService
      */
     protected function calculateCOGS(int $productId, Carbon $startDate, Carbon $endDate): float
     {
-        if (!$this->tableExists('invoice_items')) {
+        if (! $this->tableExists('invoice_items')) {
             return 0;
         }
-        
+
         $result = DB::table('invoice_items as ii')
             ->join('invoices as i', 'i.id', '=', 'ii.invoice_id')
             ->join('products as p', 'p.id', '=', 'ii.product_id')
@@ -135,10 +135,10 @@ class InventoryTurnoverService
             ->whereBetween('i.invoice_date', [$startDate, $endDate])
             ->whereIn('i.status', ['paid', 'partial'])
             ->select([
-                DB::raw('SUM(ii.quantity * p.cost) as total_cogs')
+                DB::raw('SUM(ii.quantity * p.cost) as total_cogs'),
             ])
             ->first();
-        
+
         return (float) ($result->total_cogs ?? 0);
     }
 
@@ -147,7 +147,7 @@ class InventoryTurnoverService
      */
     protected function calculateAverageInventory(int $productId, Carbon $startDate, Carbon $endDate): float
     {
-        if (!$this->tableExists('stock_movements')) {
+        if (! $this->tableExists('stock_movements')) {
             // Fallback: use current stock_levels aggregate if available
             if ($this->tableExists('stock_levels')) {
                 $totalQuantity = (float) DB::table('stock_levels')
@@ -155,6 +155,7 @@ class InventoryTurnoverService
                     ->sum('quantity');
 
                 $cost = (float) (DB::table('products')->where('id', $productId)->value('cost') ?? 0);
+
                 return $totalQuantity * $cost;
             }
 
@@ -162,10 +163,10 @@ class InventoryTurnoverService
             $product = DB::table('products')
                 ->where('id', $productId)
                 ->first(['stock_quantity', 'cost']);
-            
+
             return $product ? ($product->stock_quantity * $product->cost) : 0;
         }
-        
+
         // Get opening and closing balances
         $openingMovement = DB::table('stock_movements')
             ->where('product_id', $productId)
@@ -173,27 +174,27 @@ class InventoryTurnoverService
             ->orderBy('created_at', 'desc')
             ->orderBy('id', 'desc')
             ->first();
-        
+
         $closingMovement = DB::table('stock_movements')
             ->where('product_id', $productId)
             ->where('created_at', '<=', $endDate)
             ->orderBy('created_at', 'desc')
             ->orderBy('id', 'desc')
             ->first();
-        
+
         $openingBalance = $openingMovement ? $openingMovement->balance_after : 0;
         $closingBalance = $closingMovement ? $closingMovement->balance_after : 0;
-        
+
         // Get product cost
         $product = DB::table('products')
             ->where('id', $productId)
             ->first(['cost']);
-        
+
         $cost = $product ? $product->cost : 0;
-        
+
         // Calculate average inventory value: (Opening + Closing) / 2 * Cost
         $averageQuantity = ($openingBalance + $closingBalance) / 2;
-        
+
         return $averageQuantity * $cost;
     }
 
@@ -209,7 +210,7 @@ class InventoryTurnoverService
             ->orderBy('created_at', 'desc')
             ->orderBy('id', 'desc')
             ->first();
-        
+
         return $lastMovement ? $lastMovement->balance_after : 0;
     }
 
@@ -223,7 +224,7 @@ class InventoryTurnoverService
         $product = DB::table('products')
             ->where('id', $productId)
             ->first(['cost']);
-        
+
         return (float) ($product->cost ?? 0);
     }
 
@@ -232,17 +233,17 @@ class InventoryTurnoverService
      */
     protected function getSalesQuantity(int $productId, Carbon $startDate, Carbon $endDate): int
     {
-        if (!$this->tableExists('invoice_items')) {
+        if (! $this->tableExists('invoice_items')) {
             return 0;
         }
-        
+
         $result = DB::table('invoice_items as ii')
             ->join('invoices as i', 'i.id', '=', 'ii.invoice_id')
             ->where('ii.product_id', $productId)
             ->whereBetween('i.invoice_date', [$startDate, $endDate])
             ->whereIn('i.status', ['paid', 'partial'])
             ->sum('ii.quantity');
-        
+
         return (int) $result;
     }
 
@@ -280,7 +281,7 @@ class InventoryTurnoverService
                 'total_inventory_value' => 0,
             ];
         }
-        
+
         $totalTurnover = 0;
         $totalDays = 0;
         $fastMovers = 0;
@@ -289,13 +290,13 @@ class InventoryTurnoverService
         $noMovement = 0;
         $totalCOGS = 0;
         $totalInventoryValue = 0;
-        
+
         foreach ($products as $product) {
             $totalTurnover += $product['turnover_ratio'];
             $totalDays += $product['days_in_inventory'];
             $totalCOGS += $product['cogs'];
             $totalInventoryValue += $product['average_inventory_value'];
-            
+
             switch ($product['classification']) {
                 case 'Fast':
                     $fastMovers++;
@@ -311,9 +312,9 @@ class InventoryTurnoverService
                     break;
             }
         }
-        
+
         $count = count($products);
-        
+
         return [
             'total_products' => $count,
             'average_turnover_ratio' => round($totalTurnover / $count, 2),
@@ -355,10 +356,10 @@ class InventoryTurnoverService
     public function getFastMovers(Carbon $startDate, Carbon $endDate, ?int $categoryId = null): array
     {
         $report = $this->generate($startDate, $endDate, $categoryId);
-        
-        $report['data'] = array_filter($report['data'], fn($item) => $item['is_fast_mover']);
+
+        $report['data'] = array_filter($report['data'], fn ($item) => $item['is_fast_mover']);
         $report['title'] = 'Fast Moving Products';
-        
+
         return $report;
     }
 
@@ -368,10 +369,10 @@ class InventoryTurnoverService
     public function getSlowMovers(Carbon $startDate, Carbon $endDate, ?int $categoryId = null): array
     {
         $report = $this->generate($startDate, $endDate, $categoryId);
-        
-        $report['data'] = array_filter($report['data'], fn($item) => $item['is_slow_mover']);
+
+        $report['data'] = array_filter($report['data'], fn ($item) => $item['is_slow_mover']);
         $report['title'] = 'Slow Moving Products';
-        
+
         return $report;
     }
 
@@ -381,10 +382,10 @@ class InventoryTurnoverService
     public function getByClassification(string $classification, Carbon $startDate, Carbon $endDate, ?int $categoryId = null): array
     {
         $report = $this->generate($startDate, $endDate, $categoryId);
-        
-        $report['data'] = array_filter($report['data'], fn($item) => $item['classification'] === $classification);
+
+        $report['data'] = array_filter($report['data'], fn ($item) => $item['classification'] === $classification);
         $report['title'] = "{$classification} Moving Products";
-        
+
         return $report;
     }
 
@@ -393,22 +394,22 @@ class InventoryTurnoverService
      */
     public function getByCategory(Carbon $startDate, Carbon $endDate): array
     {
-        if (!$this->tableExists('categories')) {
+        if (! $this->tableExists('categories')) {
             return [
                 'title' => 'Turnover by Category',
                 'data' => [],
                 'message' => 'Categories table not available',
             ];
         }
-        
+
         $report = $this->generate($startDate, $endDate);
-        
+
         // Group by category
         $byCategory = [];
         foreach ($report['data'] as $product) {
             $category = $product['category'] ?? 'Uncategorized';
-            
-            if (!isset($byCategory[$category])) {
+
+            if (! isset($byCategory[$category])) {
                 $byCategory[$category] = [
                     'category' => $category,
                     'product_count' => 0,
@@ -419,12 +420,12 @@ class InventoryTurnoverService
                     'slow_movers' => 0,
                 ];
             }
-            
+
             $byCategory[$category]['product_count']++;
             $byCategory[$category]['total_cogs'] += $product['cogs'];
             $byCategory[$category]['total_inventory_value'] += $product['average_inventory_value'];
             $byCategory[$category]['average_turnover_ratio'] += $product['turnover_ratio'];
-            
+
             if ($product['is_fast_mover']) {
                 $byCategory[$category]['fast_movers']++;
             }
@@ -432,14 +433,14 @@ class InventoryTurnoverService
                 $byCategory[$category]['slow_movers']++;
             }
         }
-        
+
         // Calculate averages
         foreach ($byCategory as &$category) {
             $category['average_turnover_ratio'] = round($category['average_turnover_ratio'] / $category['product_count'], 2);
             $category['total_cogs'] = round($category['total_cogs'], 2);
             $category['total_inventory_value'] = round($category['total_inventory_value'], 2);
         }
-        
+
         return [
             'title' => 'Inventory Turnover by Category',
             'period' => $report['period'],

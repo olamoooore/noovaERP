@@ -4,7 +4,7 @@ namespace Modules\AI\SubModules;
 
 /**
  * Orders Module
- * 
+ *
  * Handles order-related queries:
  * - Order status tracking
  * - Order details
@@ -13,7 +13,7 @@ namespace Modules\AI\SubModules;
 class OrdersModule extends BaseModule
 {
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getName(): string
     {
@@ -21,7 +21,7 @@ class OrdersModule extends BaseModule
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getDisplayName(): string
     {
@@ -29,7 +29,7 @@ class OrdersModule extends BaseModule
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getIcon(): string
     {
@@ -37,7 +37,7 @@ class OrdersModule extends BaseModule
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getDescription(): string
     {
@@ -45,7 +45,7 @@ class OrdersModule extends BaseModule
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getFunctions(): array
     {
@@ -56,11 +56,11 @@ class OrdersModule extends BaseModule
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getSystemPrompt(): string
     {
-        return <<<PROMPT
+        return <<<'PROMPT'
 You are an order tracking assistant for NoovaERP.
 
 IMPORTANT: The customer is ALREADY LOGGED IN. You have their customer_id automatically.

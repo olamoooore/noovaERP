@@ -26,11 +26,11 @@ class GoodsReceiptLine extends Model
     ];
 
     protected $casts = [
-        'quantity_ordered'  => 'decimal:4',
+        'quantity_ordered' => 'decimal:4',
         'quantity_received' => 'decimal:4',
-        'quantity_accepted'  => 'decimal:4',
-        'quantity_rejected'  => 'decimal:4',
-        'quantity_putaway'   => 'decimal:4',
+        'quantity_accepted' => 'decimal:4',
+        'quantity_rejected' => 'decimal:4',
+        'quantity_putaway' => 'decimal:4',
     ];
 
     // ── Relationships ────────────────────────────────────────────────────────

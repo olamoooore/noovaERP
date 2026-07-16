@@ -24,8 +24,8 @@ class WorkOrderPart extends Model
     ];
 
     protected $casts = [
-        'quantity'       => 'decimal:3',
-        'unit_price'     => 'decimal:2',
+        'quantity' => 'decimal:3',
+        'unit_price' => 'decimal:2',
         'stock_deducted' => 'boolean',
     ];
 

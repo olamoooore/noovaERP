@@ -17,10 +17,10 @@ return new class extends Migration
             $table->foreignId('iot_device_id')->constrained()->onDelete('cascade');
             $table->string('binding_type');                 // default_printer, default_terminal, default_scanner
             $table->timestamps();
-            
+
             // Unique constraint: one device per binding type per station
             $table->unique(['station_id', 'binding_type']);
-            
+
             // Indexes
             $table->index('station_id');
         });

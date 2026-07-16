@@ -2,32 +2,36 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TenantTestCase;
-use Modules\OCRBookkeeping\Models\OcrAccountMapping;
-use Modules\OCRBookkeeping\Services\AccountMappingService;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
 use App\Models\User;
+use Modules\OCRBookkeeping\Models\OcrAccountMapping;
+use Modules\OCRBookkeeping\Services\AccountMappingService;
+use Tests\TenantTestCase;
 
 class AccountMappingTest extends TenantTestCase
 {
     protected User $user;
+
     protected AccountMappingService $service;
+
     protected Customer $vendor;
+
     protected ChartOfAccount $expenseAccount;
+
     protected ChartOfAccount $cogsAccount;
 
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->user = User::factory()->create();
         $this->vendor = Customer::factory()->create(['name' => 'Test Vendor']);
-        
+
         $this->expenseAccount = ChartOfAccount::where('code', '5200')->firstOrFail();
-        
+
         $this->cogsAccount = ChartOfAccount::where('code', '5100')->firstOrFail();
-        
+
         $this->service = app(AccountMappingService::class);
     }
 
@@ -199,7 +203,7 @@ class AccountMappingTest extends TenantTestCase
         $this->assertContains('office', $keywords);
         $this->assertContains('supplies', $keywords);
         $this->assertContains('stationery', $keywords);
-        
+
         // Should not contain common stop words
         $this->assertNotContains('and', $keywords);
     }
@@ -241,7 +245,7 @@ class AccountMappingTest extends TenantTestCase
         );
 
         $this->assertNotNull($suggestion);
-        
+
         // First mapping has more keyword matches and higher usage — should win
         $this->assertEquals($this->expenseAccount->id, $suggestion);
     }

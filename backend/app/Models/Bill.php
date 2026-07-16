@@ -4,9 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Inventory\Models\PurchaseOrder;
 
 class Bill extends Model
@@ -93,19 +93,19 @@ class Bill extends Model
         parent::boot();
 
         static::creating(function ($bill) {
-            if (!$bill->bill_number) {
+            if (! $bill->bill_number) {
                 $bill->bill_number = static::generateBillNumber();
             }
-            if (!$bill->lifecycle_status) {
+            if (! $bill->lifecycle_status) {
                 $bill->lifecycle_status = 'draft';
             }
-            if (!$bill->settlement_status) {
+            if (! $bill->settlement_status) {
                 $bill->settlement_status = 'unpaid';
             }
-            if (!$bill->reconciliation_status) {
+            if (! $bill->reconciliation_status) {
                 $bill->reconciliation_status = 'unreconciled';
             }
-            if (!$bill->version_number) {
+            if (! $bill->version_number) {
                 $bill->version_number = 1;
             }
             if ($bill->is_active_version === null) {
@@ -117,9 +117,9 @@ class Bill extends Model
         static::deleting(function ($bill) {
             if ($bill->journal_entry_id !== null) {
                 throw new \RuntimeException(
-                    "Cannot delete posted bill #{$bill->bill_number}. " .
-                    "Posted bills must be reversed or credited, not deleted. " .
-                    "Create a vendor credit note to cancel this bill."
+                    "Cannot delete posted bill #{$bill->bill_number}. ".
+                    'Posted bills must be reversed or credited, not deleted. '.
+                    'Create a vendor credit note to cancel this bill.'
                 );
             }
 
@@ -127,8 +127,8 @@ class Bill extends Model
             if ($bill->payments()->exists()) {
                 $paymentCount = $bill->payments()->count();
                 throw new \RuntimeException(
-                    "Cannot delete bill #{$bill->bill_number} because {$paymentCount} payment(s) exist. " .
-                    "Posted bills must be reversed or credited, not deleted."
+                    "Cannot delete bill #{$bill->bill_number} because {$paymentCount} payment(s) exist. ".
+                    'Posted bills must be reversed or credited, not deleted.'
                 );
             }
         });
@@ -194,7 +194,8 @@ class Bill extends Model
     {
         $latest = static::withTrashed()->orderBy('id', 'desc')->first();
         $number = $latest ? (int) substr($latest->bill_number, -4) + 1 : 1;
-        return 'BILL-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        return 'BILL-'.date('Y').'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 
     public function calculateTotals(): void

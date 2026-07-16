@@ -2,7 +2,6 @@
 
 namespace Modules\FinancialClose\Services;
 
-use Illuminate\Support\Facades\Log;
 use Modules\FinancialClose\Models\CloseCycle;
 use Modules\FinancialClose\Models\CloseTask;
 use Modules\FinancialClose\Models\CompletionSnapshot;
@@ -18,7 +17,7 @@ class FinancialCloseCompletionService
             ->where('id', $cycleId)
             ->first();
 
-        if (!$cycle) {
+        if (! $cycle) {
             return null;
         }
 

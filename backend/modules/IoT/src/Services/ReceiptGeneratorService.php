@@ -4,34 +4,42 @@ namespace Modules\IoT\Services;
 
 /**
  * Service for generating ESC/POS commands for receipt printers.
- * 
+ *
  * ESC/POS is the standard command language for thermal receipt printers.
  */
 class ReceiptGeneratorService
 {
     // ESC/POS Control Characters
     private const ESC = "\x1B";
+
     private const GS = "\x1D";
-    
+
     // Initialize printer
     private const INIT = "\x1B\x40";
-    
+
     // Text alignment
     private const ALIGN_LEFT = "\x1B\x61\x00";
+
     private const ALIGN_CENTER = "\x1B\x61\x01";
+
     private const ALIGN_RIGHT = "\x1B\x61\x02";
-    
+
     // Text styles
     private const TEXT_NORMAL = "\x1B\x21\x00";
+
     private const TEXT_BOLD = "\x1B\x21\x08";
+
     private const TEXT_LARGE = "\x1B\x21\x30";
+
     private const TEXT_DOUBLE_HEIGHT = "\x1B\x21\x10";
+
     private const TEXT_DOUBLE_WIDTH = "\x1B\x21\x20";
-    
+
     // Paper cut
     private const CUT_FULL = "\x1D\x56\x00";
+
     private const CUT_PARTIAL = "\x1D\x56\x01";
-    
+
     // Line feed
     private const LF = "\n";
 
@@ -53,79 +61,79 @@ class ReceiptGeneratorService
         $date = $data['date'] ?? date('Y-m-d H:i:s');
 
         $commands = self::INIT;
-        
+
         // Header - Store name (centered, bold, large)
         $commands .= self::ALIGN_CENTER;
         $commands .= self::TEXT_LARGE;
-        $commands .= $storeName . self::LF;
+        $commands .= $storeName.self::LF;
         $commands .= self::TEXT_NORMAL;
         $commands .= self::LF;
-        
+
         // Receipt info (centered)
         if ($receiptNumber) {
-            $commands .= "Receipt #: {$receiptNumber}" . self::LF;
+            $commands .= "Receipt #: {$receiptNumber}".self::LF;
         }
-        $commands .= $date . self::LF;
+        $commands .= $date.self::LF;
         if ($cashier) {
-            $commands .= "Cashier: {$cashier}" . self::LF;
+            $commands .= "Cashier: {$cashier}".self::LF;
         }
         $commands .= self::LF;
-        
+
         // Separator
         $commands .= self::ALIGN_LEFT;
-        $commands .= str_repeat('-', 42) . self::LF;
-        
+        $commands .= str_repeat('-', 42).self::LF;
+
         // Items
         foreach ($items as $item) {
             $name = $item['name'] ?? '';
             $quantity = $item['quantity'] ?? 1;
             $price = $item['price'] ?? 0;
             $lineTotal = $quantity * $price;
-            
+
             // Item name
-            $commands .= $this->truncateText($name, 42) . self::LF;
-            
+            $commands .= $this->truncateText($name, 42).self::LF;
+
             // Quantity x Price = Total
-            $qtyPrice = sprintf("%d x $%.2f", $quantity, $price);
-            $totalStr = sprintf("$%.2f", $lineTotal);
-            $commands .= $this->formatLine($qtyPrice, $totalStr, 42) . self::LF;
+            $qtyPrice = sprintf('%d x $%.2f', $quantity, $price);
+            $totalStr = sprintf('$%.2f', $lineTotal);
+            $commands .= $this->formatLine($qtyPrice, $totalStr, 42).self::LF;
         }
-        
+
         // Separator
-        $commands .= str_repeat('-', 42) . self::LF;
-        
+        $commands .= str_repeat('-', 42).self::LF;
+
         // Totals (right-aligned values)
-        $commands .= $this->formatLine("Subtotal:", sprintf("$%.2f", $subtotal), 42) . self::LF;
-        
+        $commands .= $this->formatLine('Subtotal:', sprintf('$%.2f', $subtotal), 42).self::LF;
+
         if ($tax > 0) {
-            $commands .= $this->formatLine("Tax:", sprintf("$%.2f", $tax), 42) . self::LF;
+            $commands .= $this->formatLine('Tax:', sprintf('$%.2f', $tax), 42).self::LF;
         }
-        
+
         $commands .= self::TEXT_BOLD;
-        $commands .= $this->formatLine("TOTAL:", sprintf("$%.2f", $total), 42) . self::LF;
+        $commands .= $this->formatLine('TOTAL:', sprintf('$%.2f', $total), 42).self::LF;
         $commands .= self::TEXT_NORMAL;
-        
+
         $commands .= self::LF;
-        
+
         // Payment info
-        $commands .= $this->formatLine("Payment ({$paymentMethod}):", sprintf("$%.2f", $paymentAmount), 42) . self::LF;
-        
+        $commands .= $this->formatLine("Payment ({$paymentMethod}):", sprintf('$%.2f', $paymentAmount), 42).self::LF;
+
         if ($change > 0) {
-            $commands .= $this->formatLine("Change:", sprintf("$%.2f", $change), 42) . self::LF;
+            $commands .= $this->formatLine('Change:', sprintf('$%.2f', $change), 42).self::LF;
         }
-        
+
         $commands .= self::LF;
-        
+
         // Footer (centered)
         $commands .= self::ALIGN_CENTER;
-        $commands .= "Thank you for your business!" . self::LF;
-        $commands .= "Please come again" . self::LF;
+        $commands .= 'Thank you for your business!'.self::LF;
+        $commands .= 'Please come again'.self::LF;
         $commands .= self::LF;
         $commands .= self::LF;
-        
+
         // Cut paper
         $commands .= self::CUT_FULL;
-        
+
         return $commands;
     }
 
@@ -135,43 +143,43 @@ class ReceiptGeneratorService
     public function generateTestReceipt(): string
     {
         $commands = self::INIT;
-        
+
         // Header (centered, bold, large)
         $commands .= self::ALIGN_CENTER;
         $commands .= self::TEXT_LARGE;
-        $commands .= "NoovaERP" . self::LF;
+        $commands .= 'NoovaERP'.self::LF;
         $commands .= self::TEXT_NORMAL;
         $commands .= self::LF;
-        
+
         // Title (centered, bold)
         $commands .= self::TEXT_BOLD;
-        $commands .= "Receipt Printer Test" . self::LF;
+        $commands .= 'Receipt Printer Test'.self::LF;
         $commands .= self::TEXT_NORMAL;
         $commands .= self::LF;
-        
+
         // Date/time (centered)
-        $commands .= date('Y-m-d H:i:s') . self::LF;
+        $commands .= date('Y-m-d H:i:s').self::LF;
         $commands .= self::LF;
-        
+
         // Test patterns (left-aligned)
         $commands .= self::ALIGN_LEFT;
-        $commands .= str_repeat('-', 42) . self::LF;
-        $commands .= "Normal text" . self::LF;
-        $commands .= self::TEXT_BOLD . "Bold text" . self::TEXT_NORMAL . self::LF;
-        $commands .= self::TEXT_DOUBLE_HEIGHT . "Double height" . self::TEXT_NORMAL . self::LF;
-        $commands .= self::TEXT_DOUBLE_WIDTH . "Double width" . self::TEXT_NORMAL . self::LF;
-        $commands .= str_repeat('-', 42) . self::LF;
+        $commands .= str_repeat('-', 42).self::LF;
+        $commands .= 'Normal text'.self::LF;
+        $commands .= self::TEXT_BOLD.'Bold text'.self::TEXT_NORMAL.self::LF;
+        $commands .= self::TEXT_DOUBLE_HEIGHT.'Double height'.self::TEXT_NORMAL.self::LF;
+        $commands .= self::TEXT_DOUBLE_WIDTH.'Double width'.self::TEXT_NORMAL.self::LF;
+        $commands .= str_repeat('-', 42).self::LF;
         $commands .= self::LF;
-        
+
         // Footer (centered)
         $commands .= self::ALIGN_CENTER;
-        $commands .= "Test completed successfully!" . self::LF;
+        $commands .= 'Test completed successfully!'.self::LF;
         $commands .= self::LF;
         $commands .= self::LF;
-        
+
         // Cut paper
         $commands .= self::CUT_FULL;
-        
+
         return $commands;
     }
 
@@ -183,7 +191,8 @@ class ReceiptGeneratorService
     {
         $left = $this->truncateText($left, $width - strlen($right) - 1);
         $padding = $width - strlen($left) - strlen($right);
-        return $left . str_repeat(' ', max(1, $padding)) . $right;
+
+        return $left.str_repeat(' ', max(1, $padding)).$right;
     }
 
     /**
@@ -194,7 +203,8 @@ class ReceiptGeneratorService
         if (strlen($text) <= $maxLength) {
             return $text;
         }
-        return substr($text, 0, $maxLength - 3) . '...';
+
+        return substr($text, 0, $maxLength - 3).'...';
     }
 
     /**

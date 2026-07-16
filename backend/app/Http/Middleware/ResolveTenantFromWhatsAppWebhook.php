@@ -20,7 +20,7 @@ class ResolveTenantFromWhatsAppWebhook
     {
         $apiKeyValue = $request->header('x-api-key');
 
-        if (!$apiKeyValue) {
+        if (! $apiKeyValue) {
             return response()->json(['error' => 'Missing API key'], 401);
         }
 
@@ -40,7 +40,7 @@ class ResolveTenantFromWhatsAppWebhook
 
         $tenant = $this->lookupTenantByApiKeyHash($keyHash);
 
-        if (!$tenant) {
+        if (! $tenant) {
             Log::warning('WhatsApp webhook tenant not found', ['key_hash' => $keyHash]);
 
             return response()->json(['error' => 'Unauthorized'], 401);
@@ -58,7 +58,7 @@ class ResolveTenantFromWhatsAppWebhook
                 ->where('key_hash', $keyHash)
                 ->first(['tenant_id']);
 
-            if (!$result || !$result->tenant_id) {
+            if (! $result || ! $result->tenant_id) {
                 return null;
             }
 

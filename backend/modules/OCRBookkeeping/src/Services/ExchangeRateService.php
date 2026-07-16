@@ -2,14 +2,14 @@
 
 namespace Modules\OCRBookkeeping\Services;
 
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Exchange Rate Service
- * 
+ *
  * Fetches and caches exchange rates for multi-currency support
  */
 class ExchangeRateService
@@ -38,17 +38,18 @@ class ExchangeRateService
 
     /**
      * Get exchange rate for a specific date and currency
-     * 
-     * @param string $fromCurrency Source currency code
-     * @param string $toCurrency Target currency code (defaults to base currency)
-     * @param Carbon|string|null $date Date for historical rate (null = today)
+     *
+     * @param  string  $fromCurrency  Source currency code
+     * @param  string  $toCurrency  Target currency code (defaults to base currency)
+     * @param  Carbon|string|null  $date  Date for historical rate (null = today)
      * @return float Exchange rate
+     *
      * @throws \Exception
      */
     public function getRate(string $fromCurrency, ?string $toCurrency = null, $date = null): float
     {
         $toCurrency = $toCurrency ?? $this->baseCurrency;
-        
+
         // If same currency, rate is 1
         if ($fromCurrency === $toCurrency) {
             return 1.0;
@@ -60,7 +61,7 @@ class ExchangeRateService
 
         // Check cache
         $cacheKey = "exchange_rate:{$fromCurrency}:{$toCurrency}:{$dateKey}";
-        
+
         if (Cache::has($cacheKey)) {
             return (float) Cache::get($cacheKey);
         }
@@ -68,31 +69,27 @@ class ExchangeRateService
         // Fetch from API
         try {
             $rate = $this->fetchRateFromApi($fromCurrency, $toCurrency, $date);
-            
+
             // Cache the rate
             Cache::put($cacheKey, $rate, now()->addMinutes($this->cacheDuration));
-            
+
             return $rate;
-            
+
         } catch (\Exception $e) {
-            Log::error("Failed to fetch exchange rate", [
+            Log::error('Failed to fetch exchange rate', [
                 'from' => $fromCurrency,
                 'to' => $toCurrency,
                 'date' => $dateKey,
                 'error' => $e->getMessage(),
             ]);
-            
+
             throw new \Exception("Exchange rate not available for {$fromCurrency} to {$toCurrency} on {$dateKey}. Please enter manually.");
         }
     }
 
     /**
      * Fetch exchange rate from external API
-     * 
-     * @param string $fromCurrency
-     * @param string $toCurrency
-     * @param Carbon $date
-     * @return float
+     *
      * @throws \Exception
      */
     private function fetchRateFromApi(string $fromCurrency, string $toCurrency, Carbon $date): float
@@ -102,16 +99,16 @@ class ExchangeRateService
         // - https://exchangeratesapi.io/
         // - https://openexchangerates.org/
         // - https://fixer.io/
-        
+
         $response = Http::timeout(10)->get("{$this->apiUrl}{$fromCurrency}");
 
-        if (!$response->successful()) {
-            throw new \Exception("Exchange rate API request failed");
+        if (! $response->successful()) {
+            throw new \Exception('Exchange rate API request failed');
         }
 
         $data = $response->json();
-        
-        if (!isset($data['rates'][$toCurrency])) {
+
+        if (! isset($data['rates'][$toCurrency])) {
             throw new \Exception("Exchange rate not found for {$toCurrency}");
         }
 
@@ -120,38 +117,35 @@ class ExchangeRateService
 
     /**
      * Convert amount from one currency to another
-     * 
-     * @param float $amount Amount to convert
-     * @param string $fromCurrency Source currency
-     * @param string|null $toCurrency Target currency (defaults to base)
-     * @param Carbon|string|null $date Date for exchange rate
+     *
+     * @param  float  $amount  Amount to convert
+     * @param  string  $fromCurrency  Source currency
+     * @param  string|null  $toCurrency  Target currency (defaults to base)
+     * @param  Carbon|string|null  $date  Date for exchange rate
      * @return float Converted amount
      */
     public function convert(float $amount, string $fromCurrency, ?string $toCurrency = null, $date = null): float
     {
         $rate = $this->getRate($fromCurrency, $toCurrency, $date);
+
         return round($amount * $rate, 2);
     }
 
     /**
      * Store manual exchange rate
-     * 
-     * @param string $fromCurrency
-     * @param string $toCurrency
-     * @param float $rate
-     * @param Carbon|string $date
-     * @return void
+     *
+     * @param  Carbon|string  $date
      */
     public function storeManualRate(string $fromCurrency, string $toCurrency, float $rate, $date): void
     {
         $date = Carbon::parse($date);
         $dateKey = $date->format('Y-m-d');
         $cacheKey = "exchange_rate:{$fromCurrency}:{$toCurrency}:{$dateKey}";
-        
+
         // Store in cache
         Cache::put($cacheKey, $rate, now()->addYears(1)); // Long cache for manual rates
-        
-        Log::info("Manual exchange rate stored", [
+
+        Log::info('Manual exchange rate stored', [
             'from' => $fromCurrency,
             'to' => $toCurrency,
             'rate' => $rate,
@@ -161,8 +155,6 @@ class ExchangeRateService
 
     /**
      * Get base currency
-     * 
-     * @return string
      */
     public function getBaseCurrency(): string
     {
@@ -171,9 +163,6 @@ class ExchangeRateService
 
     /**
      * Check if currency conversion is needed
-     * 
-     * @param string $currency
-     * @return bool
      */
     public function needsConversion(string $currency): bool
     {

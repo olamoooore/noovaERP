@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Log;
 class AIContextBuilder
 {
     private AIRawAccessGuard $rawAccessGuard;
+
     private AIReasoningRecordService $reasoningRecord;
 
     public function __construct(
@@ -29,11 +30,11 @@ class AIContextBuilder
     /**
      * Build safe context for AI from a given module/entity.
      *
-     * @param string $module The module (e.g., 'accounting', 'crm', 'inventory')
-     * @param string $entityType The entity type (e.g., 'contact', 'product', 'invoice')
-     * @param int|null $entityId Optional specific entity ID
-     * @param string $userId The user requesting context
-     * @param array $options Additional options (fields, filters, etc.)
+     * @param  string  $module  The module (e.g., 'accounting', 'crm', 'inventory')
+     * @param  string  $entityType  The entity type (e.g., 'contact', 'product', 'invoice')
+     * @param  int|null  $entityId  Optional specific entity ID
+     * @param  string  $userId  The user requesting context
+     * @param  array  $options  Additional options (fields, filters, etc.)
      * @return array{success: bool, context: array|null, reason: string|null}
      */
     public function buildContext(
@@ -45,7 +46,7 @@ class AIContextBuilder
     ): array {
         // 1. Determine the table for this entity
         $tableName = $this->resolveTableName($entityType);
-        if (!$tableName) {
+        if (! $tableName) {
             return [
                 'success' => false,
                 'context' => null,
@@ -58,7 +59,7 @@ class AIContextBuilder
             'module' => $module,
             'action' => 'buildContext',
         ]);
-        if (!$accessCheck['allowed']) {
+        if (! $accessCheck['allowed']) {
             return [
                 'success' => false,
                 'context' => null,
@@ -114,11 +115,6 @@ class AIContextBuilder
     /**
      * Build context for multiple entities.
      *
-     * @param string $module
-     * @param string $entityType
-     * @param array $entityIds
-     * @param string $userId
-     * @param array $options
      * @return array{success: bool, contexts: array, summary: string}
      */
     public function buildBatchContext(
@@ -140,9 +136,9 @@ class AIContextBuilder
             }
         }
 
-        $summary = "Fetched " . count($contexts) . " {$entityType} records for module {$module}.";
-        if (!empty($failed)) {
-            $summary .= " " . count($failed) . " records failed access check.";
+        $summary = 'Fetched '.count($contexts)." {$entityType} records for module {$module}.";
+        if (! empty($failed)) {
+            $summary .= ' '.count($failed).' records failed access check.';
         }
 
         return [
@@ -156,16 +152,13 @@ class AIContextBuilder
     /**
      * Get safe summary for a specific entity (no raw data).
      *
-     * @param string $entityType
-     * @param int $entityId
-     * @param string $userId
      * @return array{success: bool, summary: array|null, reason: string|null}
      */
     public function getEntitySummary(string $entityType, int $entityId, string $userId): array
     {
         $result = $this->buildContext('summary', $entityType, $entityId, $userId);
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             return $result;
         }
 
@@ -226,11 +219,11 @@ class AIContextBuilder
         try {
             // Check if the AI-safe view exists
             $viewExists = DB::select(
-                "SELECT 1 FROM information_schema.views WHERE table_name = ?",
+                'SELECT 1 FROM information_schema.views WHERE table_name = ?',
                 [$viewName]
             );
 
-            if (!empty($viewExists)) {
+            if (! empty($viewExists)) {
                 // Query the safe view instead of raw table
                 $query = DB::table($viewName)
                     ->where('tenant_id', tenant()->id);
@@ -239,7 +232,7 @@ class AIContextBuilder
                     $query->where('id', $entityId);
                 }
 
-                if (!empty($options['limit'])) {
+                if (! empty($options['limit'])) {
                     $query->limit($options['limit']);
                 }
 
@@ -254,6 +247,7 @@ class AIContextBuilder
                 'entity_type' => $entityType,
                 'error' => $e->getMessage(),
             ]);
+
             return null;
         }
     }
@@ -276,7 +270,7 @@ class AIContextBuilder
         }
 
         $tableName = $this->resolveTableName($entityType);
-        if (!$tableName) {
+        if (! $tableName) {
             return null;
         }
 
@@ -289,7 +283,7 @@ class AIContextBuilder
                 $query->where('id', $entityId);
             }
 
-            if (!empty($options['limit'])) {
+            if (! empty($options['limit'])) {
                 $query->limit($options['limit']);
             }
 
@@ -325,9 +319,9 @@ class AIContextBuilder
      */
     private function filterContext(array $context): array
     {
-        if (is_array($context) && !empty($context) && isset($context[0])) {
+        if (is_array($context) && ! empty($context) && isset($context[0])) {
             // Array of records
-            return array_map(fn($record) => $this->rawAccessGuard->filterRestrictedFields((array) $record), $context);
+            return array_map(fn ($record) => $this->rawAccessGuard->filterRestrictedFields((array) $record), $context);
         }
 
         // Single record
@@ -339,11 +333,11 @@ class AIContextBuilder
      */
     private function getFilteredFieldNames(array $original, array $filtered): array
     {
-        $originalKeys = is_array($original) && !empty($original) && isset($original[0])
+        $originalKeys = is_array($original) && ! empty($original) && isset($original[0])
             ? array_keys((array) $original[0])
             : array_keys($original);
 
-        $filteredKeys = is_array($filtered) && !empty($filtered) && isset($filtered[0])
+        $filteredKeys = is_array($filtered) && ! empty($filtered) && isset($filtered[0])
             ? array_keys((array) $filtered[0])
             : array_keys($filtered);
 

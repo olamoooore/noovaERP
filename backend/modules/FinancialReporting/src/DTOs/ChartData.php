@@ -9,8 +9,7 @@ class ChartData
         public array $labels,
         public array $datasets,
         public array $options = [],
-    ) {
-    }
+    ) {}
 
     /**
      * Create line chart data
@@ -37,7 +36,7 @@ class ChartData
             [
                 'label' => 'Distribution',
                 'data' => $data,
-            ]
+            ],
         ], $options);
     }
 

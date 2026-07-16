@@ -74,14 +74,14 @@ class RefundTransaction extends Model
         $last = static::where('refund_number', 'like', "REF{$date}%")
             ->orderBy('refund_number', 'desc')
             ->first();
-        
+
         if ($last && preg_match('/(\d+)$/', $last->refund_number, $matches)) {
             $number = intval($matches[1]) + 1;
         } else {
             $number = 1;
         }
-        
-        return 'REF' . $date . str_pad($number, 6, '0', STR_PAD_LEFT);
+
+        return 'REF'.$date.str_pad($number, 6, '0', STR_PAD_LEFT);
     }
 
     /**
@@ -119,7 +119,7 @@ class RefundTransaction extends Model
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($refund) {
             if (empty($refund->refund_number)) {
                 $refund->refund_number = static::generateRefundNumber();

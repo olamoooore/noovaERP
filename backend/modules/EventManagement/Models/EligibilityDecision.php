@@ -16,12 +16,12 @@ class EligibilityDecision extends Model
         'decision_reason',
         'rule_version_applied',
         'decision_data',
-        'decided_at'
+        'decided_at',
     ];
 
     protected $casts = [
         'decision_data' => 'array',
-        'decided_at' => 'datetime'
+        'decided_at' => 'datetime',
     ];
 
     /**

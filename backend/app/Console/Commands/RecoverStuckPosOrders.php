@@ -5,9 +5,9 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\POS\Models\PosOfflineQueue;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosPayment;
-use Modules\POS\Models\PosOfflineQueue;
 
 class RecoverStuckPosOrders extends Command
 {
@@ -36,6 +36,7 @@ class RecoverStuckPosOrders extends Command
         }
 
         $this->info('Recovery scan complete.');
+
         return 0;
     }
 
@@ -52,12 +53,13 @@ class RecoverStuckPosOrders extends Command
             ->where('created_at', '<', $cutoff)
             ->whereHas('payments', function ($q) {
                 $q->whereIn('method', ['cash', 'card', 'store_credit', 'split'])
-                  ->whereNull('refund_for_payment_id');
+                    ->whereNull('refund_for_payment_id');
             })
             ->get();
 
         if ($stuckOrders->isEmpty()) {
             $this->info('No stuck draft orders with payments found.');
+
             return;
         }
 
@@ -72,7 +74,7 @@ class RecoverStuckPosOrders extends Command
 
             $this->line("  Order #{$order->id}: has payment #{$payment->id} ({$payment->method}, {$payment->amount}) but status=draft");
 
-            if (!$dryRun) {
+            if (! $dryRun) {
                 DB::transaction(function () use ($order, $payment) {
                     $order->update(['status' => 'paid']);
 
@@ -102,6 +104,7 @@ class RecoverStuckPosOrders extends Command
 
         if ($orphaned->isEmpty()) {
             $this->info('No orphaned payments (missing GL) found.');
+
             return;
         }
 
@@ -110,7 +113,7 @@ class RecoverStuckPosOrders extends Command
         foreach ($orphaned as $payment) {
             $this->line("  Payment #{$payment->id}: order #{$payment->pos_order_id}, method={$payment->method}, amount={$payment->amount}");
 
-            if (!$dryRun) {
+            if (! $dryRun) {
                 Log::error('pos.recovery: orphaned payment detected - manual GL reconciliation required', [
                     'payment_id' => $payment->id,
                     'order_id' => $payment->pos_order_id,
@@ -120,7 +123,7 @@ class RecoverStuckPosOrders extends Command
             }
         }
 
-        if (!$dryRun) {
+        if (! $dryRun) {
             $this->warn("Orphaned payments logged for manual GL reconciliation. Run 'pos:generate-missing-invoices' to attempt backfill.");
         }
     }
@@ -139,6 +142,7 @@ class RecoverStuckPosOrders extends Command
 
         if ($stuckItems->isEmpty()) {
             $this->info('No stuck syncing queue items found.');
+
             return;
         }
 
@@ -147,7 +151,7 @@ class RecoverStuckPosOrders extends Command
         foreach ($stuckItems as $item) {
             $this->line("  Queue item #{$item->id}: operation={$item->operation_type}, stuck since {$item->updated_at}");
 
-            if (!$dryRun) {
+            if (! $dryRun) {
                 DB::table('pos_offline_queue')
                     ->where('id', $item->id)
                     ->where('status', 'syncing')

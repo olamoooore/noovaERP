@@ -24,7 +24,7 @@ class AttendanceEvent extends Model
 
     protected $casts = [
         'captured_at' => 'datetime',
-        'meta'        => 'array',
+        'meta' => 'array',
     ];
 
     public function employee(): BelongsTo

@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('ocr_documents') || !Schema::hasTable('vendors')) {
+        if (! Schema::hasTable('ocr_documents') || ! Schema::hasTable('vendors')) {
             return;
         }
 
@@ -25,7 +25,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (!Schema::hasTable('ocr_documents') || !Schema::hasTable('customers')) {
+        if (! Schema::hasTable('ocr_documents') || ! Schema::hasTable('customers')) {
             return;
         }
 

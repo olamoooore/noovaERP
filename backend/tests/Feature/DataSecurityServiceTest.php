@@ -8,13 +8,13 @@ use App\Models\User;
 use App\Platform\DataSecurity\DataClassification;
 use App\Platform\DataSecurity\DataSecurityService;
 use App\Platform\DataSecurity\FieldMaskingService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TenantTestCase;
 
 class DataSecurityServiceTest extends TenantTestCase
 {
     protected string $tenantUuid;
+
     protected DataSecurityService $service;
 
     protected function setUp(): void
@@ -23,7 +23,7 @@ class DataSecurityServiceTest extends TenantTestCase
 
         $this->tenantUuid = Str::uuid()->toString();
         $this->bindTenantContext($this->tenantUuid);
-        $this->service = new DataSecurityService();
+        $this->service = new DataSecurityService;
     }
 
     public function test_classify_creates_classification(): void

@@ -2,8 +2,8 @@
 
 namespace Database\Factories;
 
-use Illuminate\Database\Eloquent\Factories\Factory;
 use App\Models\Product;
+use Illuminate\Database\Eloquent\Factories\Factory;
 
 class ProductFactory extends Factory
 {
@@ -16,7 +16,7 @@ class ProductFactory extends Factory
         return [
             'sku' => fake()->unique()->bothify('PROD-####'),
             'name' => $name,
-            'slug' => \Illuminate\Support\Str::slug($name) . '-' . fake()->unique()->numberBetween(1, 99999),
+            'slug' => \Illuminate\Support\Str::slug($name).'-'.fake()->unique()->numberBetween(1, 99999),
             'description' => fake()->sentence(),
             'cost' => fake()->randomFloat(2, 10, 1000),
             'price' => fake()->randomFloat(2, 20, 2000),

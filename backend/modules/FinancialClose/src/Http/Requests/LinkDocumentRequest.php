@@ -15,8 +15,8 @@ class LinkDocumentRequest extends FormRequest
     {
         return [
             'document_type' => ['required', 'string', 'in:bill,invoice,payment,journal_entry,credit_note,debit_note'],
-            'document_id'   => ['required', 'integer'],
-            'title'         => ['nullable', 'string', 'max:500'],
+            'document_id' => ['required', 'integer'],
+            'title' => ['nullable', 'string', 'max:500'],
         ];
     }
 }

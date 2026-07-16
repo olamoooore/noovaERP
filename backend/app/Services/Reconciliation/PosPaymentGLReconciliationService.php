@@ -2,7 +2,6 @@
 
 namespace App\Services\Reconciliation;
 
-use App\Models\JournalEntry;
 use App\Models\JournalEntryLink;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -11,10 +10,10 @@ use Modules\POS\Models\PosPayment;
 
 /**
  * TASK REC-002: POS Payment to GL Reconciliation Service
- * 
+ *
  * Detects missing or duplicate GL entries for POS payments, refunds, voids,
  * and paid orders without invoices.
- * 
+ *
  * This service ensures financial integrity by identifying:
  * - POS payments without corresponding GL entries
  * - Refund payments without GL reversal entries
@@ -25,9 +24,9 @@ class PosPaymentGLReconciliationService
 {
     /**
      * Reconcile POS payments with GL entries
-     * 
-     * @param string|null $startDate Start date for reconciliation (YYYY-MM-DD)
-     * @param string|null $endDate End date for reconciliation (YYYY-MM-DD)
+     *
+     * @param  string|null  $startDate  Start date for reconciliation (YYYY-MM-DD)
+     * @param  string|null  $endDate  End date for reconciliation (YYYY-MM-DD)
      * @return array Reconciliation results with exceptions
      */
     public function reconcile(?string $startDate = null, ?string $endDate = null): array
@@ -48,7 +47,7 @@ class PosPaymentGLReconciliationService
                 $query->where('created_at', '>=', $startDate);
             }
             if ($endDate) {
-                $query->where('created_at', '<=', $endDate . ' 23:59:59');
+                $query->where('created_at', '<=', $endDate.' 23:59:59');
             }
         };
 
@@ -72,7 +71,7 @@ class PosPaymentGLReconciliationService
                     ->where('source_document_id', $payment->order->id)
                     ->exists();
 
-                if (!$hasGL) {
+                if (! $hasGL) {
                     $exceptions[] = [
                         'type' => 'missing_gl',
                         'severity' => 'high',
@@ -119,7 +118,7 @@ class PosPaymentGLReconciliationService
                 ->where('source_document_id', $order->id)
                 ->exists();
 
-            if (!$hasGL) {
+            if (! $hasGL) {
                 $exceptions[] = [
                     'type' => 'missing_gl',
                     'severity' => 'critical',
@@ -145,7 +144,7 @@ class PosPaymentGLReconciliationService
 
         foreach ($duplicates as $duplicate) {
             $order = PosOrder::find($duplicate->source_document_id);
-            
+
             $exceptions[] = [
                 'type' => 'duplicate_gl',
                 'severity' => 'high',
@@ -165,8 +164,8 @@ class PosPaymentGLReconciliationService
 
         foreach ($orphanedLinks as $link) {
             $orderExists = PosOrder::where('id', $link->source_document_id)->exists();
-            
-            if (!$orderExists) {
+
+            if (! $orderExists) {
                 $exceptions[] = [
                     'type' => 'orphaned_gl',
                     'severity' => 'medium',
@@ -179,7 +178,7 @@ class PosPaymentGLReconciliationService
             }
         }
 
-        $stats['clean_records'] = $stats['total_payments'] + $stats['total_orders'] 
+        $stats['clean_records'] = $stats['total_payments'] + $stats['total_orders']
                                  - $stats['missing_gl'] - $stats['duplicate_gl'];
 
         Log::info('POS payment/GL reconciliation completed', [
@@ -208,10 +207,10 @@ class PosPaymentGLReconciliationService
             return "✅ Reconciliation clean: {$stats['clean_records']} records verified with no exceptions.";
         }
 
-        $summary = "⚠️ Reconciliation found {$stats['missing_gl']} missing GL entries, " .
-                   "{$stats['duplicate_gl']} duplicate GL entries, " .
-                   "and {$stats['orphaned_gl']} orphaned GL entries. " .
-                   "Total exceptions: " . count($exceptions);
+        $summary = "⚠️ Reconciliation found {$stats['missing_gl']} missing GL entries, ".
+                   "{$stats['duplicate_gl']} duplicate GL entries, ".
+                   "and {$stats['orphaned_gl']} orphaned GL entries. ".
+                   'Total exceptions: '.count($exceptions);
 
         return $summary;
     }
@@ -222,7 +221,7 @@ class PosPaymentGLReconciliationService
     public function getExceptionsByType(string $type, ?string $startDate = null, ?string $endDate = null): array
     {
         $result = $this->reconcile($startDate, $endDate);
-        
+
         return array_filter($result['exceptions'], function ($exception) use ($type) {
             return $exception['type'] === $type;
         });
@@ -234,7 +233,7 @@ class PosPaymentGLReconciliationService
     public function getCriticalExceptions(?string $startDate = null, ?string $endDate = null): array
     {
         $result = $this->reconcile($startDate, $endDate);
-        
+
         return array_filter($result['exceptions'], function ($exception) {
             return $exception['severity'] === 'critical';
         });

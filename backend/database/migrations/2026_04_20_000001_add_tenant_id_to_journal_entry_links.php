@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('journal_entry_links')) {
+        if (! Schema::hasTable('journal_entry_links')) {
             return; // Tenant-only table; run via tenants:migrate
         }
 
@@ -35,7 +35,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (!Schema::hasTable('journal_entry_links')) {
+        if (! Schema::hasTable('journal_entry_links')) {
             return;
         }
 

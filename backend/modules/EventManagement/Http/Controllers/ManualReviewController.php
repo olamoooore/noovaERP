@@ -2,12 +2,12 @@
 
 namespace Modules\EventManagement\Http\Controllers;
 
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Modules\EventManagement\Http\Middleware\RBACMiddleware;
 use Modules\EventManagement\Models\ManualReviewQueue;
 use Modules\EventManagement\Services\AntiAbuseService;
-use Modules\EventManagement\Http\Middleware\RBACMiddleware;
 
 class ManualReviewController extends Controller
 {
@@ -18,7 +18,7 @@ class ManualReviewController extends Controller
         $this->antiAbuseService = $antiAbuseService;
 
         // All manual review endpoints require admin access
-        $this->middleware([RBACMiddleware::class . ':admin']);
+        $this->middleware([RBACMiddleware::class.':admin']);
     }
 
     /**

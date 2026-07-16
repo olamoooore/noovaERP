@@ -26,7 +26,7 @@ class AccountingDocumentPolicyService
     public function validateInvoice(AccountingOriginInvoiceData $data): void
     {
         // Customer must exist
-        if (!Customer::where('id', $data->customerId)->exists()) {
+        if (! Customer::where('id', $data->customerId)->exists()) {
             throw new \InvalidArgumentException("Customer ID {$data->customerId} does not exist.");
         }
 
@@ -54,12 +54,12 @@ class AccountingDocumentPolicyService
     public function validateBill(AccountingOriginBillData $data): void
     {
         // Vendor must exist
-        if (!Vendor::where('id', $data->vendorId)->exists()) {
+        if (! Vendor::where('id', $data->vendorId)->exists()) {
             throw new \InvalidArgumentException("Vendor ID {$data->vendorId} does not exist.");
         }
 
         // Valid bill type
-        if (!in_array($data->billType, ['expense', 'procurement'], true)) {
+        if (! in_array($data->billType, ['expense', 'procurement'], true)) {
             throw new \InvalidArgumentException("Invalid bill_type: {$data->billType}. Must be 'expense' or 'procurement'.");
         }
 
@@ -98,9 +98,9 @@ class AccountingDocumentPolicyService
     private function validateLine(AccountingDocumentLineData $line, int $index, string $docType): void
     {
         $validTypes = ['product', 'service', 'expense', 'tax', 'discount'];
-        if (!in_array($line->lineType, $validTypes, true)) {
+        if (! in_array($line->lineType, $validTypes, true)) {
             throw new \InvalidArgumentException(
-                "Line {$index}: invalid line_type '{$line->lineType}'. Must be one of: " . implode(', ', $validTypes)
+                "Line {$index}: invalid line_type '{$line->lineType}'. Must be one of: ".implode(', ', $validTypes)
             );
         }
 
@@ -123,7 +123,7 @@ class AccountingDocumentPolicyService
 
         // GL account override must reference a valid account
         if ($line->glAccountId !== null) {
-            if (!ChartOfAccount::where('id', $line->glAccountId)->exists()) {
+            if (! ChartOfAccount::where('id', $line->glAccountId)->exists()) {
                 throw new \InvalidArgumentException(
                     "Line {$index}: GL account ID {$line->glAccountId} does not exist."
                 );
@@ -142,7 +142,7 @@ class AccountingDocumentPolicyService
     /**
      * Compute total across lines (subtotal before discount).
      *
-     * @param AccountingDocumentLineData[] $lines
+     * @param  AccountingDocumentLineData[]  $lines
      */
     private function computeLineTotal(array $lines): float
     {
@@ -152,6 +152,7 @@ class AccountingDocumentPolicyService
             $lineTax = $lineSubtotal * ($line->taxRate / 100);
             $total += $lineSubtotal + $lineTax - $line->discountAmount;
         }
+
         return $total;
     }
 }

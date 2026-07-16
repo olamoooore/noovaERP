@@ -8,9 +8,13 @@ use Illuminate\Support\Str;
 class NotificationPreference extends Model
 {
     protected $table = 'platform_notification_preferences';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
+
     protected $guarded = [];
 
     protected $casts = [

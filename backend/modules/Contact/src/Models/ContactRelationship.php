@@ -10,8 +10,11 @@ class ContactRelationship extends Model
     use HasFactory;
 
     protected $table = 'contact_relationships';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [

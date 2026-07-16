@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
+use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class CustomerCreditNotesSeeder extends Seeder
 {
@@ -18,9 +18,10 @@ class CustomerCreditNotesSeeder extends Seeder
         // Get existing invoices and customers
         $invoices = DB::table('invoices')->limit(3)->get();
         $users = DB::table('users')->limit(1)->get();
-        
+
         if ($invoices->isEmpty() || $users->isEmpty()) {
             $this->command->warn('No invoices or users found. Skipping customer credit notes seeder.');
+
             return;
         }
 
@@ -40,7 +41,7 @@ class CustomerCreditNotesSeeder extends Seeder
 
             // Create credit note
             $creditNoteId = DB::table('customer_credit_notes')->insertGetId([
-                'credit_note_number' => 'CN-2026-' . str_pad($index + 1, 4, '0', STR_PAD_LEFT),
+                'credit_note_number' => 'CN-2026-'.str_pad($index + 1, 4, '0', STR_PAD_LEFT),
                 'customer_id' => $invoice->customer_id,
                 'invoice_id' => $invoice->id,
                 'credit_note_date' => Carbon::now()->subDays(rand(1, 30))->format('Y-m-d'),
@@ -65,7 +66,9 @@ class CustomerCreditNotesSeeder extends Seeder
             $taxAmount = 0;
 
             foreach ($invoiceLines as $lineIndex => $invoiceLine) {
-                if ($lineIndex >= 2) break; // Only credit first 2 lines
+                if ($lineIndex >= 2) {
+                    break;
+                } // Only credit first 2 lines
 
                 $quantity = $invoiceLine->quantity * 0.5; // 50% of quantity
                 $unitPrice = $invoiceLine->unit_price;
@@ -76,7 +79,7 @@ class CustomerCreditNotesSeeder extends Seeder
                     'credit_note_id' => $creditNoteId,
                     'invoice_line_id' => $invoiceLine->id,
                     'product_id' => $invoiceLine->product_id,
-                    'description' => $invoiceLine->description . ' (Partial Return)',
+                    'description' => $invoiceLine->description.' (Partial Return)',
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
                     'tax_rate' => $invoiceLine->tax_rate ?? 0,
@@ -102,15 +105,15 @@ class CustomerCreditNotesSeeder extends Seeder
 
             $creditNotes[] = [
                 'id' => $creditNoteId,
-                'number' => 'CN-2026-' . str_pad($index + 1, 4, '0', STR_PAD_LEFT),
+                'number' => 'CN-2026-'.str_pad($index + 1, 4, '0', STR_PAD_LEFT),
                 'status' => $index < 2 ? 'posted' : 'draft',
                 'total' => $totalAmount,
             ];
         }
 
-        $this->command->info('Created ' . count($creditNotes) . ' customer credit notes:');
+        $this->command->info('Created '.count($creditNotes).' customer credit notes:');
         foreach ($creditNotes as $cn) {
-            $this->command->info("  - {$cn['number']} ({$cn['status']}): $" . number_format($cn['total'], 2));
+            $this->command->info("  - {$cn['number']} ({$cn['status']}): $".number_format($cn['total'], 2));
         }
     }
 

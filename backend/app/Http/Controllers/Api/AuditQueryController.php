@@ -3,11 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditorActivityLog;
 use App\Models\AuditQuery;
 use App\Models\AuditQueryResponse;
-use App\Models\AuditorActivityLog;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class AuditQueryController extends Controller
 {
@@ -33,7 +32,7 @@ class AuditQueryController extends Controller
             $search = $request->get('search');
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+                    ->orWhere('description', 'like', "%{$search}%");
             });
         }
 
@@ -46,7 +45,7 @@ class AuditQueryController extends Controller
     public function index(Request $request)
     {
         $auditor = $request->attributes->get('auditor');
-        if (!$auditor) {
+        if (! $auditor) {
             return response()->json(['message' => 'Auditor access required'], 403);
         }
 
@@ -69,7 +68,7 @@ class AuditQueryController extends Controller
             $search = $request->get('search');
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+                    ->orWhere('description', 'like', "%{$search}%");
             });
         }
 
@@ -83,7 +82,7 @@ class AuditQueryController extends Controller
     {
         $auditor = $request->attributes->get('auditor');
         $isAuditor = $auditor !== null;
-        $isAdmin = !$isAuditor && $request->user() !== null;
+        $isAdmin = ! $isAuditor && $request->user() !== null;
 
         $validated = $request->validate([
             'source_type' => 'required|in:report_line,transaction,document,account',
@@ -98,11 +97,11 @@ class AuditQueryController extends Controller
         ]);
 
         $auditorId = $auditor?->id ?? $validated['auditor_id'] ?? null;
-        if (!$auditorId) {
+        if (! $auditorId) {
             return response()->json(['message' => 'auditor_id is required'], 422);
         }
 
-        if ($isAuditor && !$auditor->scopes()->where('can_raise_queries', true)->exists()) {
+        if ($isAuditor && ! $auditor->scopes()->where('can_raise_queries', true)->exists()) {
             return response()->json(['message' => 'No permission to raise queries'], 403);
         }
 
@@ -201,7 +200,7 @@ class AuditQueryController extends Controller
     {
         $user = $request->user();
         $auditor = $request->attributes->get('auditor');
-        if (!$auditor) {
+        if (! $auditor) {
             return response()->json(['message' => 'Auditor access required'], 403);
         }
 

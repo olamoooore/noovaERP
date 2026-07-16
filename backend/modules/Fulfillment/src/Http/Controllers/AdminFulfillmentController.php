@@ -3,11 +3,11 @@
 namespace Modules\Fulfillment\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Modules\Fulfillment\Services\FulfillmentService;
-use Modules\Fulfillment\Services\CarrierConfigService;
-use Modules\Fulfillment\Models\FulfillmentProvider;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Modules\Fulfillment\Models\FulfillmentProvider;
+use Modules\Fulfillment\Services\CarrierConfigService;
+use Modules\Fulfillment\Services\FulfillmentService;
 
 class AdminFulfillmentController extends Controller
 {
@@ -156,7 +156,7 @@ class AdminFulfillmentController extends Controller
     {
         $provider = FulfillmentProvider::findOrFail($id);
 
-        $provider->update(['is_active' => !$provider->is_active]);
+        $provider->update(['is_active' => ! $provider->is_active]);
 
         return response()->json([
             'data' => $provider,

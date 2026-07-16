@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -63,23 +62,23 @@ class ProductVariant extends Model
         if ($defaultWarehouse) {
             try {
                 app(\Modules\Inventory\Services\InventoryService::class)->adjustStock(
-                    productId:     $this->product_id,
-                    warehouseId:   $defaultWarehouse->id,
-                    quantity:      abs($quantity),
-                    type:          $type,
-                    reference:     $reference,
+                    productId: $this->product_id,
+                    warehouseId: $defaultWarehouse->id,
+                    quantity: abs($quantity),
+                    type: $type,
+                    reference: $reference,
                     referenceType: 'ProductVariant',
-                    referenceId:   $this->id,
+                    referenceId: $this->id,
                 );
 
                 return;
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::error('ProductVariant::adjustStock delegation failed', [
-                    'variant_id'  => $this->id,
-                    'product_id'  => $this->product_id,
-                    'type'        => $type,
-                    'quantity'    => $quantity,
-                    'error'       => $e->getMessage(),
+                    'variant_id' => $this->id,
+                    'product_id' => $this->product_id,
+                    'type' => $type,
+                    'quantity' => $quantity,
+                    'error' => $e->getMessage(),
                 ]);
                 throw $e;
             }
@@ -88,7 +87,7 @@ class ProductVariant extends Model
         // Hard fail: no warehouse means no trackable stock mutation.
         throw new \RuntimeException(
             "Cannot adjust stock for variant {$this->id} (product {$this->product_id}): no warehouse available. "
-            . "All stock mutations must go through InventoryService with an explicit warehouse."
+            .'All stock mutations must go through InventoryService with an explicit warehouse.'
         );
     }
 }

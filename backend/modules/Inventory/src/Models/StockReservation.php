@@ -43,10 +43,10 @@ class StockReservation extends Model
     ];
 
     protected $casts = [
-        'quantity'           => 'integer',
+        'quantity' => 'integer',
         'quantity_fulfilled' => 'integer',
-        'expires_at'         => 'datetime',
-        'released_at'        => 'datetime',
+        'expires_at' => 'datetime',
+        'released_at' => 'datetime',
     ];
 
     // ── Relationships ─────────────────────────────────────────────────────────
@@ -81,8 +81,8 @@ class StockReservation extends Model
     public function scopeExpired($query)
     {
         return $query->where('status', 'open')
-                     ->whereNotNull('expires_at')
-                     ->where('expires_at', '<', now());
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<', now());
     }
 
     // ── State helpers ─────────────────────────────────────────────────────────

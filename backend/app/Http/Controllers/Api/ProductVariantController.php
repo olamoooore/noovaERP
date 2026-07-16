@@ -12,6 +12,7 @@ class ProductVariantController extends Controller
     public function index($product)
     {
         $product = Product::findOrFail($product);
+
         return response()->json($product->variants()->orderBy('name')->get());
     }
 
@@ -45,8 +46,8 @@ class ProductVariantController extends Controller
         $productVariant = ProductVariant::findOrFail($productVariant);
         $validated = $request->validate([
             'name' => 'string|max:255',
-            'sku' => 'string|unique:product_variants,sku,' . $productVariant->id,
-            'barcode' => 'nullable|string|unique:product_variants,barcode,' . $productVariant->id,
+            'sku' => 'string|unique:product_variants,sku,'.$productVariant->id,
+            'barcode' => 'nullable|string|unique:product_variants,barcode,'.$productVariant->id,
             'cost' => 'numeric|min:0',
             'price' => 'numeric|min:0',
             'tax_rate' => 'nullable|numeric|min:0|max:100',

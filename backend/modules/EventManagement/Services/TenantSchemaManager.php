@@ -2,17 +2,18 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Artisan;
 use Exception;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 
 class TenantSchemaManager
 {
     protected ?string $currentTenantId = null;
+
     protected ?string $originalConnection = null;
 
     /**
@@ -21,7 +22,7 @@ class TenantSchemaManager
     public function setTenantContext(string $tenantId): void
     {
         $this->validateTenantId($tenantId);
-        
+
         if ($this->currentTenantId === $tenantId) {
             return; // Already in correct context
         }
@@ -34,15 +35,15 @@ class TenantSchemaManager
         try {
             $this->currentTenantId = $tenantId;
             $this->switchToTenantDatabase($tenantId);
-            
-            Log::debug("Switched to tenant context", [
+
+            Log::debug('Switched to tenant context', [
                 'tenant_id' => $tenantId,
-                'connection' => $this->getTenantConnectionName($tenantId)
+                'connection' => $this->getTenantConnectionName($tenantId),
             ]);
         } catch (Exception $e) {
-            Log::error("Failed to set tenant context", [
+            Log::error('Failed to set tenant context', [
                 'tenant_id' => $tenantId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
             throw $e;
         }
@@ -64,22 +65,22 @@ class TenantSchemaManager
         if ($this->originalConnection) {
             try {
                 Config::set('database.default', $this->originalConnection);
-                
+
                 if ($this->currentTenantId) {
                     DB::purge($this->getTenantConnectionName($this->currentTenantId));
                 }
-                
-                Log::debug("Reset to original database connection", [
+
+                Log::debug('Reset to original database connection', [
                     'original_connection' => $this->originalConnection,
-                    'previous_tenant' => $this->currentTenantId
+                    'previous_tenant' => $this->currentTenantId,
                 ]);
             } catch (Exception $e) {
-                Log::error("Failed to reset to original connection", [
-                    'error' => $e->getMessage()
+                Log::error('Failed to reset to original connection', [
+                    'error' => $e->getMessage(),
                 ]);
             }
         }
-        
+
         $this->currentTenantId = null;
         $this->originalConnection = null;
     }
@@ -90,37 +91,38 @@ class TenantSchemaManager
     public function createTenantSchema(string $tenantId): void
     {
         $this->validateTenantId($tenantId);
-        
+
         $schemaName = $this->getTenantSchemaName($tenantId);
-        
+
         try {
             // Check if schema already exists
             if ($this->tenantSchemaExists($tenantId)) {
-                Log::info("Tenant schema already exists", [
+                Log::info('Tenant schema already exists', [
                     'tenant_id' => $tenantId,
-                    'schema_name' => $schemaName
+                    'schema_name' => $schemaName,
                 ]);
+
                 return;
             }
-            
+
             // Create schema if it doesn't exist
             DB::statement("CREATE SCHEMA IF NOT EXISTS `{$schemaName}`");
-            
+
             // Set up tenant-specific database connection
             $this->configureTenantConnection($tenantId);
-            
+
             // Run migrations for the new tenant
             $this->runTenantMigrations($tenantId);
-            
-            Log::info("Tenant schema created successfully", [
-                'tenant_id' => $tenantId,
-                'schema_name' => $schemaName
-            ]);
-        } catch (Exception $e) {
-            Log::error("Failed to create tenant schema", [
+
+            Log::info('Tenant schema created successfully', [
                 'tenant_id' => $tenantId,
                 'schema_name' => $schemaName,
-                'error' => $e->getMessage()
+            ]);
+        } catch (Exception $e) {
+            Log::error('Failed to create tenant schema', [
+                'tenant_id' => $tenantId,
+                'schema_name' => $schemaName,
+                'error' => $e->getMessage(),
             ]);
             throw $e;
         }
@@ -132,32 +134,33 @@ class TenantSchemaManager
     public function dropTenantSchema(string $tenantId): void
     {
         $this->validateTenantId($tenantId);
-        
+
         $schemaName = $this->getTenantSchemaName($tenantId);
-        
+
         try {
-            if (!$this->tenantSchemaExists($tenantId)) {
-                Log::warning("Attempted to drop non-existent tenant schema", [
+            if (! $this->tenantSchemaExists($tenantId)) {
+                Log::warning('Attempted to drop non-existent tenant schema', [
                     'tenant_id' => $tenantId,
-                    'schema_name' => $schemaName
+                    'schema_name' => $schemaName,
                 ]);
+
                 return;
             }
-            
+
             DB::statement("DROP SCHEMA IF EXISTS `{$schemaName}`");
-            
+
             // Remove tenant connection configuration
             Config::forget("database.connections.tenant_{$tenantId}");
-            
-            Log::warning("Tenant schema dropped", [
-                'tenant_id' => $tenantId,
-                'schema_name' => $schemaName
-            ]);
-        } catch (Exception $e) {
-            Log::error("Failed to drop tenant schema", [
+
+            Log::warning('Tenant schema dropped', [
                 'tenant_id' => $tenantId,
                 'schema_name' => $schemaName,
-                'error' => $e->getMessage()
+            ]);
+        } catch (Exception $e) {
+            Log::error('Failed to drop tenant schema', [
+                'tenant_id' => $tenantId,
+                'schema_name' => $schemaName,
+                'error' => $e->getMessage(),
             ]);
             throw $e;
         }
@@ -169,18 +172,20 @@ class TenantSchemaManager
     public function tenantSchemaExists(string $tenantId): bool
     {
         $this->validateTenantId($tenantId);
-        
+
         $schemaName = $this->getTenantSchemaName($tenantId);
-        
+
         try {
-            $result = DB::select("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?", [$schemaName]);
+            $result = DB::select('SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?', [$schemaName]);
+
             return count($result) > 0;
         } catch (Exception $e) {
-            Log::error("Failed to check if tenant schema exists", [
+            Log::error('Failed to check if tenant schema exists', [
                 'tenant_id' => $tenantId,
                 'schema_name' => $schemaName,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -192,15 +197,16 @@ class TenantSchemaManager
     {
         try {
             $results = DB::select("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME LIKE 'tenant_%'");
-            
+
             return array_map(function ($result) {
                 // Extract tenant ID from schema name (remove 'tenant_' prefix)
                 return substr($result->SCHEMA_NAME, 7);
             }, $results);
         } catch (Exception $e) {
-            Log::error("Failed to get all tenant schemas", [
-                'error' => $e->getMessage()
+            Log::error('Failed to get all tenant schemas', [
+                'error' => $e->getMessage(),
             ]);
+
             return [];
         }
     }
@@ -211,24 +217,25 @@ class TenantSchemaManager
     public function testTenantConnection(string $tenantId): bool
     {
         $this->validateTenantId($tenantId);
-        
+
         try {
             $connectionName = $this->getTenantConnectionName($tenantId);
-            
+
             // Configure connection if not already configured
-            if (!Config::has("database.connections.{$connectionName}")) {
+            if (! Config::has("database.connections.{$connectionName}")) {
                 $this->configureTenantConnection($tenantId);
             }
-            
+
             // Test the connection
             DB::connection($connectionName)->getPdo();
-            
+
             return true;
         } catch (Exception $e) {
-            Log::error("Tenant connection test failed", [
+            Log::error('Tenant connection test failed', [
                 'tenant_id' => $tenantId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -239,23 +246,23 @@ class TenantSchemaManager
     protected function switchToTenantDatabase(string $tenantId): void
     {
         $connectionName = $this->getTenantConnectionName($tenantId);
-        
+
         try {
             // Configure tenant connection if not already configured
-            if (!Config::has("database.connections.{$connectionName}")) {
+            if (! Config::has("database.connections.{$connectionName}")) {
                 $this->configureTenantConnection($tenantId);
             }
-            
+
             // Switch default connection
             Config::set('database.default', $connectionName);
-            
+
             // Clear any cached connections
             DB::purge($connectionName);
         } catch (Exception $e) {
-            Log::error("Failed to switch to tenant database", [
+            Log::error('Failed to switch to tenant database', [
                 'tenant_id' => $tenantId,
                 'connection_name' => $connectionName,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
             throw $e;
         }
@@ -268,33 +275,33 @@ class TenantSchemaManager
     {
         $connectionName = $this->getTenantConnectionName($tenantId);
         $schemaName = $this->getTenantSchemaName($tenantId);
-        
+
         try {
             // Get base connection config
             $baseConfig = Config::get('database.connections.mysql', []);
-            
+
             if (empty($baseConfig)) {
-                throw new Exception("Base MySQL connection configuration not found");
+                throw new Exception('Base MySQL connection configuration not found');
             }
-            
+
             // Override database name with tenant schema
             $tenantConfig = array_merge($baseConfig, [
                 'database' => $schemaName,
             ]);
-            
+
             Config::set("database.connections.{$connectionName}", $tenantConfig);
-            
-            Log::debug("Tenant connection configured", [
-                'tenant_id' => $tenantId,
-                'connection_name' => $connectionName,
-                'schema_name' => $schemaName
-            ]);
-        } catch (Exception $e) {
-            Log::error("Failed to configure tenant connection", [
+
+            Log::debug('Tenant connection configured', [
                 'tenant_id' => $tenantId,
                 'connection_name' => $connectionName,
                 'schema_name' => $schemaName,
-                'error' => $e->getMessage()
+            ]);
+        } catch (Exception $e) {
+            Log::error('Failed to configure tenant connection', [
+                'tenant_id' => $tenantId,
+                'connection_name' => $connectionName,
+                'schema_name' => $schemaName,
+                'error' => $e->getMessage(),
             ]);
             throw $e;
         }
@@ -307,24 +314,24 @@ class TenantSchemaManager
     {
         try {
             $this->setTenantContext($tenantId);
-            
+
             // In a real implementation, you would run Artisan commands here
             // For now, we'll just ensure the connection is properly set up
             $connectionName = $this->getTenantConnectionName($tenantId);
-            
+
             // Test the connection to ensure it's working
             DB::connection($connectionName)->getPdo();
-            
-            Log::info("Tenant migrations completed", [
+
+            Log::info('Tenant migrations completed', [
                 'tenant_id' => $tenantId,
-                'connection' => $connectionName
+                'connection' => $connectionName,
             ]);
-            
+
             // Example: Artisan::call('migrate', ['--database' => $connectionName]);
         } catch (Exception $e) {
-            Log::error("Failed to run tenant migrations", [
+            Log::error('Failed to run tenant migrations', [
                 'tenant_id' => $tenantId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
             throw $e;
         }
@@ -354,13 +361,13 @@ class TenantSchemaManager
         if (empty(trim($tenantId))) {
             throw new InvalidArgumentException('Tenant ID cannot be empty');
         }
-        
+
         if (strlen($tenantId) > 255) {
             throw new InvalidArgumentException('Tenant ID cannot exceed 255 characters');
         }
-        
+
         // Ensure tenant ID is safe for database schema names
-        if (!preg_match('/^[a-zA-Z0-9_]+$/', $tenantId)) {
+        if (! preg_match('/^[a-zA-Z0-9_]+$/', $tenantId)) {
             throw new InvalidArgumentException('Tenant ID must contain only alphanumeric characters and underscores');
         }
     }

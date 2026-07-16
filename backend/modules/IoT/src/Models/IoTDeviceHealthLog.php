@@ -69,14 +69,14 @@ class IoTDeviceHealthLog extends Model
      */
     public function getFormattedResponseTimeAttribute(): string
     {
-        if (!$this->response_time_ms) {
+        if (! $this->response_time_ms) {
             return 'N/A';
         }
 
         if ($this->response_time_ms < 1000) {
-            return $this->response_time_ms . 'ms';
+            return $this->response_time_ms.'ms';
         }
 
-        return round($this->response_time_ms / 1000, 2) . 's';
+        return round($this->response_time_ms / 1000, 2).'s';
     }
 }

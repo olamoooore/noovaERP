@@ -3,9 +3,9 @@
 namespace Modules\FinancialClose\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\FinancialClose\Models\AuditLog;
 use Modules\FinancialClose\Models\CloseTask;
 use Modules\FinancialClose\Models\TaskDependency;
-use Modules\FinancialClose\Models\AuditLog;
 
 class FinancialCloseDependencyService
 {
@@ -28,15 +28,17 @@ class FinancialCloseDependencyService
     {
         if ($taskId === $dependsOnTaskId) {
             Log::warning('FinancialClose: self-dependency not allowed', ['task_id' => $taskId]);
+
             return null;
         }
 
         // Circular detection: if $dependsOnTaskId already (transitively) depends on $taskId, adding this edge would create a cycle
         if ($this->wouldCreateCycle($tenantId, $taskId, $dependsOnTaskId)) {
             Log::warning('FinancialClose: circular dependency detected, rejected', [
-                'task_id'            => $taskId,
+                'task_id' => $taskId,
                 'depends_on_task_id' => $dependsOnTaskId,
             ]);
+
             return null;
         }
 
@@ -50,8 +52,8 @@ class FinancialCloseDependencyService
         }
 
         return TaskDependency::create([
-            'tenant_id'       => $tenantId,
-            'task_id'         => $taskId,
+            'tenant_id' => $tenantId,
+            'task_id' => $taskId,
             'depends_on_task_id' => $dependsOnTaskId,
             'dependency_type' => $type,
         ]);
@@ -65,9 +67,9 @@ class FinancialCloseDependencyService
     protected function wouldCreateCycle(string $tenantId, string $taskId, string $dependsOnTaskId): bool
     {
         $visited = [];
-        $queue   = [$dependsOnTaskId];
+        $queue = [$dependsOnTaskId];
 
-        while (!empty($queue)) {
+        while (! empty($queue)) {
             $current = array_shift($queue);
 
             if ($current === $taskId) {
@@ -85,7 +87,7 @@ class FinancialCloseDependencyService
                 ->toArray();
 
             foreach ($upstreamIds as $id) {
-                if (!isset($visited[$id])) {
+                if (! isset($visited[$id])) {
                     $queue[] = $id;
                 }
             }
@@ -110,12 +112,13 @@ class FinancialCloseDependencyService
                 ->where('id', $dependency->depends_on_task_id)
                 ->first();
 
-            if (!$dependsOnTask || $dependsOnTask->status !== 'completed') {
+            if (! $dependsOnTask || $dependsOnTask->status !== 'completed') {
                 Log::warning('FinancialClose: hard dependency unresolved, completion denied', [
-                    'task_id'            => $taskId,
+                    'task_id' => $taskId,
                     'depends_on_task_id' => $dependency->depends_on_task_id,
-                    'depends_on_status'  => $dependsOnTask?->status,
+                    'depends_on_status' => $dependsOnTask?->status,
                 ]);
+
                 return false;
             }
         }
@@ -136,9 +139,9 @@ class FinancialCloseDependencyService
             ->get()
             ->filter(fn ($dep) => $dep->dependsOnTask?->status !== 'completed')
             ->map(fn ($dep) => [
-                'depends_on_task_id'    => $dep->depends_on_task_id,
+                'depends_on_task_id' => $dep->depends_on_task_id,
                 'depends_on_task_title' => $dep->dependsOnTask?->title,
-                'depends_on_status'     => $dep->dependsOnTask?->status,
+                'depends_on_status' => $dep->dependsOnTask?->status,
             ])
             ->values()
             ->toArray();
@@ -163,7 +166,7 @@ class FinancialCloseDependencyService
                 ->where('status', 'blocked')
                 ->first();
 
-            if (!$downstreamTask) {
+            if (! $downstreamTask) {
                 continue;
             }
 
@@ -172,12 +175,12 @@ class FinancialCloseDependencyService
                 $downstreamTask->update(['status' => 'created']);
 
                 AuditLog::create([
-                    'tenant_id'   => $tenantId,
-                    'actor_id'    => 'system',
-                    'action'      => 'task_unblocked_by_dependency_completion',
+                    'tenant_id' => $tenantId,
+                    'actor_id' => 'system',
+                    'action' => 'task_unblocked_by_dependency_completion',
                     'entity_type' => 'close_task',
-                    'entity_id'   => $downstreamTask->id,
-                    'after'       => ['unblocked_by' => $completedTaskId],
+                    'entity_id' => $downstreamTask->id,
+                    'after' => ['unblocked_by' => $completedTaskId],
                 ]);
 
                 $unblocked++;
@@ -186,7 +189,7 @@ class FinancialCloseDependencyService
 
         Log::info('FinancialClose: downstream tasks unblocked after task completion', [
             'completed_task_id' => $completedTaskId,
-            'unblocked_count'   => $unblocked,
+            'unblocked_count' => $unblocked,
         ]);
 
         return $unblocked;

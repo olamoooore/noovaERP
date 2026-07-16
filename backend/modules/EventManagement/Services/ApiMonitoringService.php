@@ -2,33 +2,35 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Redis;
 use Carbon\Carbon;
 use Exception;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
 
 /**
  * ApiMonitoringService - Task 12.4
- * 
+ *
  * Service for API usage pattern analysis, performance monitoring and optimization
  * recommendations, API consumer onboarding and documentation, and API rate limiting
  * and quota management.
- * 
+ *
  * Requirements: 28.5
  */
 class ApiMonitoringService
 {
     private const CACHE_PREFIX = 'api_monitoring:';
+
     private const RATE_LIMIT_PREFIX = 'rate_limit:';
+
     private const ANALYTICS_CACHE_TTL = 300; // 5 minutes
+
     private const RATE_LIMIT_WINDOW = 60; // 1 minute in seconds
 
     /**
      * Analyze API usage patterns
-     * 
-     * @param array $options Analysis options
+     *
+     * @param  array  $options  Analysis options
      * @return array Usage pattern analysis
      */
     public function analyzeUsagePatterns(array $options = []): array
@@ -61,41 +63,41 @@ class ApiMonitoringService
                 'success' => true,
                 'analysis_period' => [
                     'start_date' => $startDate,
-                    'end_date' => $endDate
+                    'end_date' => $endDate,
                 ],
                 'filters' => [
                     'tenant_id' => $tenantId,
-                    'consumer_type' => $consumerType
+                    'consumer_type' => $consumerType,
                 ],
                 'patterns' => [
                     'volume' => $volumePatterns,
                     'temporal' => $temporalPatterns,
                     'endpoints' => $endpointPatterns,
                     'consumers' => $consumerPatterns,
-                    'errors' => $errorPatterns
+                    'errors' => $errorPatterns,
                 ],
                 'insights' => $insights,
-                'analyzed_at' => now()
+                'analyzed_at' => now(),
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to analyze API usage patterns', [
                 'options' => $options,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to analyze usage patterns',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Monitor API performance and generate optimization recommendations
-     * 
-     * @param array $options Monitoring options
+     *
+     * @param  array  $options  Monitoring options
      * @return array Performance monitoring result
      */
     public function monitorPerformance(array $options = []): array
@@ -127,7 +129,7 @@ class ApiMonitoringService
                 'performance_trends' => $performanceTrends,
                 'bottlenecks' => $bottlenecks,
                 'sla_compliance' => $slaCompliance,
-                'monitored_at' => now()
+                'monitored_at' => now(),
             ];
 
             if ($includeRecommendations) {
@@ -144,21 +146,21 @@ class ApiMonitoringService
         } catch (Exception $e) {
             Log::error('Failed to monitor API performance', [
                 'options' => $options,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to monitor performance',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Onboard new API consumer
-     * 
-     * @param array $consumerData Consumer information
+     *
+     * @param  array  $consumerData  Consumer information
      * @return array Onboarding result
      */
     public function onboardConsumer(array $consumerData): array
@@ -169,7 +171,7 @@ class ApiMonitoringService
             // Validate consumer data
             $this->validateConsumerData($consumerData);
 
-            $consumerId = $consumerData['consumer_id'] ?? 'consumer_' . uniqid();
+            $consumerId = $consumerData['consumer_id'] ?? 'consumer_'.uniqid();
 
             // Register consumer
             $consumerDbId = DB::table('api_consumers')->insertGetId([
@@ -185,7 +187,7 @@ class ApiMonitoringService
                 'registered_at' => now(),
                 'created_by_staff_id' => $consumerData['created_by'] ?? null,
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ]);
 
             // Set up default rate limits
@@ -203,7 +205,7 @@ class ApiMonitoringService
                 'consumer_id' => $consumerId,
                 'consumer_name' => $consumerData['consumer_name'],
                 'consumer_type' => $consumerData['consumer_type'],
-                'tenant_id' => $consumerData['tenant_id'] ?? null
+                'tenant_id' => $consumerData['tenant_id'] ?? null,
             ]);
 
             return [
@@ -212,31 +214,31 @@ class ApiMonitoringService
                 'consumer_db_id' => $consumerDbId,
                 'documentation' => $documentation,
                 'welcome_package' => $welcomePackage,
-                'message' => 'Consumer onboarded successfully'
+                'message' => 'Consumer onboarded successfully',
             ];
 
         } catch (Exception $e) {
             DB::rollBack();
             Log::error('Failed to onboard API consumer', [
                 'consumer_data' => $consumerData,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to onboard consumer',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Enforce API rate limiting
-     * 
-     * @param string $consumerId Consumer identifier
-     * @param string $endpoint API endpoint
-     * @param string $method HTTP method
-     * @param array $context Request context
+     *
+     * @param  string  $consumerId  Consumer identifier
+     * @param  string  $endpoint  API endpoint
+     * @param  string  $method  HTTP method
+     * @param  array  $context  Request context
      * @return array Rate limiting result
      */
     public function enforceRateLimit(string $consumerId, string $endpoint, string $method, array $context = []): array
@@ -250,7 +252,7 @@ class ApiMonitoringService
             if (empty($rateLimits)) {
                 return [
                     'allowed' => true,
-                    'reason' => 'No rate limits configured'
+                    'reason' => 'No rate limits configured',
                 ];
             }
 
@@ -272,7 +274,7 @@ class ApiMonitoringService
                             'allowed' => false,
                             'reason' => 'Rate limit exceeded',
                             'violation' => $violation,
-                            'retry_after' => $this->calculateRetryAfter($limit)
+                            'retry_after' => $this->calculateRetryAfter($limit),
                         ];
                     }
                 }
@@ -283,15 +285,16 @@ class ApiMonitoringService
 
             $result = [
                 'allowed' => true,
-                'violations' => $violations
+                'violations' => $violations,
             ];
 
             // Add throttling information if applicable
-            if (!empty($violations)) {
+            if (! empty($violations)) {
                 $throttleViolation = collect($violations)->first(function ($v) use ($rateLimits) {
                     $limit = collect($rateLimits)->first(function ($l) use ($v) {
                         return $l->id === $v['limit_id'];
                     });
+
                     return $limit && $limit->enforcement_action === 'throttle';
                 });
 
@@ -308,22 +311,22 @@ class ApiMonitoringService
                 'consumer_id' => $consumerId,
                 'endpoint' => $endpoint,
                 'method' => $method,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'allowed' => true,
                 'reason' => 'Rate limiting error - allowing request',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Manage API quotas
-     * 
-     * @param string $consumerId Consumer identifier
-     * @param array $quotaData Quota configuration
+     *
+     * @param  string  $consumerId  Consumer identifier
+     * @param  array  $quotaData  Quota configuration
      * @return array Quota management result
      */
     public function manageQuotas(string $consumerId, array $quotaData): array
@@ -336,7 +339,7 @@ class ApiMonitoringService
                 'yearly_requests' => $quotaData['yearly_requests'] ?? null,
                 'data_transfer_gb' => $quotaData['data_transfer_gb'] ?? null,
                 'concurrent_connections' => $quotaData['concurrent_connections'] ?? null,
-                'custom_quotas' => $quotaData['custom_quotas'] ?? []
+                'custom_quotas' => $quotaData['custom_quotas'] ?? [],
             ];
 
             // Update or create rate limit entry with quota configuration
@@ -351,7 +354,7 @@ class ApiMonitoringService
                     ->where('id', $existingLimit->id)
                     ->update([
                         'quota_config' => json_encode($quotaConfig),
-                        'updated_at' => now()
+                        'updated_at' => now(),
                     ]);
 
                 $limitId = $existingLimit->id;
@@ -365,7 +368,7 @@ class ApiMonitoringService
                     'is_active' => true,
                     'effective_from' => now(),
                     'created_at' => now(),
-                    'updated_at' => now()
+                    'updated_at' => now(),
                 ]);
             }
 
@@ -377,7 +380,7 @@ class ApiMonitoringService
             Log::info('API quotas managed', [
                 'consumer_id' => $consumerId,
                 'limit_id' => $limitId,
-                'quota_config' => $quotaConfig
+                'quota_config' => $quotaConfig,
             ]);
 
             return [
@@ -385,7 +388,7 @@ class ApiMonitoringService
                 'consumer_id' => $consumerId,
                 'limit_id' => $limitId,
                 'quota_config' => $quotaConfig,
-                'message' => 'Quotas managed successfully'
+                'message' => 'Quotas managed successfully',
             ];
 
         } catch (Exception $e) {
@@ -393,22 +396,22 @@ class ApiMonitoringService
             Log::error('Failed to manage API quotas', [
                 'consumer_id' => $consumerId,
                 'quota_data' => $quotaData,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to manage quotas',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Get API consumer analytics
-     * 
-     * @param string $consumerId Consumer identifier
-     * @param array $options Analytics options
+     *
+     * @param  string  $consumerId  Consumer identifier
+     * @param  array  $options  Analytics options
      * @return array Consumer analytics
      */
     public function getConsumerAnalytics(string $consumerId, array $options = []): array
@@ -437,30 +440,31 @@ class ApiMonitoringService
                 'consumer_id' => $consumerId,
                 'period' => [
                     'start_date' => $startDate,
-                    'end_date' => $endDate
+                    'end_date' => $endDate,
                 ],
                 'usage_statistics' => $usageStats,
                 'performance_metrics' => $performanceMetrics,
                 'rate_limit_violations' => $rateLimitViolations,
                 'quota_utilization' => $quotaUtilization,
                 'usage_trends' => $usageTrends,
-                'generated_at' => now()
+                'generated_at' => now(),
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to get consumer analytics', [
                 'consumer_id' => $consumerId,
                 'options' => $options,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to get consumer analytics',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
+
     /**
      * Calculate start time for time window
      */
@@ -485,10 +489,12 @@ class ApiMonitoringService
         $query = DB::table('api_usage_analytics')
             ->whereBetween('usage_date', [$startDate, $endDate]);
 
-        if ($tenantId)
+        if ($tenantId) {
             $query->where('tenant_id', $tenantId);
-        if ($consumerType)
+        }
+        if ($consumerType) {
             $query->where('consumer_type', $consumerType);
+        }
 
         $volumeData = $query->selectRaw('
                 usage_date,
@@ -509,9 +515,9 @@ class ApiMonitoringService
             'avg_daily_requests' => round($avgDailyRequests, 2),
             'peak_day' => $peakDay ? [
                 'date' => $peakDay->usage_date,
-                'requests' => $peakDay->daily_requests
+                'requests' => $peakDay->daily_requests,
             ] : null,
-            'daily_volume' => $volumeData->toArray()
+            'daily_volume' => $volumeData->toArray(),
         ];
     }
 
@@ -525,10 +531,12 @@ class ApiMonitoringService
         $query = DB::table('api_usage_analytics')
             ->whereBetween('usage_date', [$startDate, $endDate]);
 
-        if ($tenantId)
+        if ($tenantId) {
             $query->where('tenant_id', $tenantId);
-        if ($consumerType)
+        }
+        if ($consumerType) {
             $query->where('consumer_type', $consumerType);
+        }
 
         // Weekly patterns (day of week)
         $weeklyPattern = $query->selectRaw('
@@ -544,7 +552,7 @@ class ApiMonitoringService
         return [
             'weekly_pattern' => $weeklyPattern,
             'peak_day_of_week' => array_search(max($weeklyPattern), $weeklyPattern),
-            'lowest_day_of_week' => array_search(min($weeklyPattern), $weeklyPattern)
+            'lowest_day_of_week' => array_search(min($weeklyPattern), $weeklyPattern),
         ];
     }
 
@@ -556,10 +564,12 @@ class ApiMonitoringService
         $query = DB::table('api_usage_analytics')
             ->whereBetween('usage_date', [$startDate, $endDate]);
 
-        if ($tenantId)
+        if ($tenantId) {
             $query->where('tenant_id', $tenantId);
-        if ($consumerType)
+        }
+        if ($consumerType) {
             $query->where('consumer_type', $consumerType);
+        }
 
         $endpointStats = $query->selectRaw('
                 endpoint,
@@ -575,7 +585,7 @@ class ApiMonitoringService
 
         return [
             'top_endpoints' => $endpointStats->toArray(),
-            'total_unique_endpoints' => $endpointStats->count()
+            'total_unique_endpoints' => $endpointStats->count(),
         ];
     }
 
@@ -587,10 +597,12 @@ class ApiMonitoringService
         $query = DB::table('api_usage_analytics')
             ->whereBetween('usage_date', [$startDate, $endDate]);
 
-        if ($tenantId)
+        if ($tenantId) {
             $query->where('tenant_id', $tenantId);
-        if ($consumerType)
+        }
+        if ($consumerType) {
             $query->where('consumer_type', $consumerType);
+        }
 
         $consumerStats = $query->selectRaw('
                 consumer_type,
@@ -614,7 +626,7 @@ class ApiMonitoringService
                 ')
                 ->groupBy('consumer_type')
                 ->get()
-                ->toArray()
+                ->toArray(),
         ];
     }
 
@@ -627,10 +639,12 @@ class ApiMonitoringService
             ->whereBetween('usage_date', [$startDate, $endDate])
             ->where('error_rate_percent', '>', 0);
 
-        if ($tenantId)
+        if ($tenantId) {
             $query->where('tenant_id', $tenantId);
-        if ($consumerType)
+        }
+        if ($consumerType) {
             $query->where('consumer_type', $consumerType);
+        }
 
         $errorStats = $query->selectRaw('
                 endpoint,
@@ -646,7 +660,7 @@ class ApiMonitoringService
 
         return [
             'endpoints_with_errors' => $errorStats->toArray(),
-            'overall_error_rate' => $query->avg('error_rate_percent') ?? 0
+            'overall_error_rate' => $query->avg('error_rate_percent') ?? 0,
         ];
     }
 
@@ -662,7 +676,7 @@ class ApiMonitoringService
             $insights[] = [
                 'type' => 'volume',
                 'message' => "Peak usage day was {$volumePatterns['peak_day']['date']} with {$volumePatterns['peak_day']['requests']} requests",
-                'priority' => 'info'
+                'priority' => 'info',
             ];
         }
 
@@ -671,17 +685,17 @@ class ApiMonitoringService
             $insights[] = [
                 'type' => 'error',
                 'message' => "High overall error rate detected: {$errorPatterns['overall_error_rate']}%",
-                'priority' => 'high'
+                'priority' => 'high',
             ];
         }
 
         // Endpoint insights
-        if (!empty($endpointPatterns['top_endpoints'])) {
+        if (! empty($endpointPatterns['top_endpoints'])) {
             $topEndpoint = $endpointPatterns['top_endpoints'][0];
             $insights[] = [
                 'type' => 'endpoint',
                 'message' => "Most used endpoint: {$topEndpoint['method']} {$topEndpoint['endpoint']} ({$topEndpoint['total_requests']} requests)",
-                'priority' => 'info'
+                'priority' => 'info',
             ];
         }
 
@@ -696,8 +710,9 @@ class ApiMonitoringService
         $query = DB::table('api_usage_analytics')
             ->where('usage_date', '>=', $startTime->toDateString());
 
-        if ($tenantId)
+        if ($tenantId) {
             $query->where('tenant_id', $tenantId);
+        }
 
         return $query->selectRaw('
                 SUM(request_count) as total_requests,
@@ -709,7 +724,7 @@ class ApiMonitoringService
                 'total_requests' => 0,
                 'avg_response_time' => 0,
                 'avg_error_rate' => 0,
-                'unique_endpoints' => 0
+                'unique_endpoints' => 0,
             ];
     }
 
@@ -721,8 +736,9 @@ class ApiMonitoringService
         $query = DB::table('api_usage_analytics')
             ->where('usage_date', '>=', $startTime->toDateString());
 
-        if ($tenantId)
+        if ($tenantId) {
             $query->where('tenant_id', $tenantId);
+        }
 
         return $query->selectRaw('
                 usage_date,
@@ -744,8 +760,9 @@ class ApiMonitoringService
         $query = DB::table('api_usage_analytics')
             ->where('usage_date', '>=', $startTime->toDateString());
 
-        if ($tenantId)
+        if ($tenantId) {
             $query->where('tenant_id', $tenantId);
+        }
 
         $slowEndpoints = $query->selectRaw('
                 endpoint,
@@ -760,7 +777,7 @@ class ApiMonitoringService
 
         return [
             'slow_endpoints' => $slowEndpoints->toArray(),
-            'bottleneck_count' => $slowEndpoints->count()
+            'bottleneck_count' => $slowEndpoints->count(),
         ];
     }
 
@@ -773,14 +790,15 @@ class ApiMonitoringService
         $slaThresholds = [
             'response_time_ms' => 500,
             'error_rate_percent' => 1.0,
-            'availability_percent' => 99.9
+            'availability_percent' => 99.9,
         ];
 
         $query = DB::table('api_usage_analytics')
             ->where('usage_date', '>=', $startTime->toDateString());
 
-        if ($tenantId)
+        if ($tenantId) {
             $query->where('tenant_id', $tenantId);
+        }
 
         $metrics = $query->selectRaw('
                 AVG(avg_response_time_ms) as avg_response_time,
@@ -795,14 +813,14 @@ class ApiMonitoringService
             'response_time' => [
                 'compliant' => $responseTimeCompliant,
                 'actual' => $metrics->avg_response_time ?? 0,
-                'threshold' => $slaThresholds['response_time_ms']
+                'threshold' => $slaThresholds['response_time_ms'],
             ],
             'error_rate' => [
                 'compliant' => $errorRateCompliant,
                 'actual' => $metrics->avg_error_rate ?? 0,
-                'threshold' => $slaThresholds['error_rate_percent']
+                'threshold' => $slaThresholds['error_rate_percent'],
             ],
-            'overall_compliant' => $responseTimeCompliant && $errorRateCompliant
+            'overall_compliant' => $responseTimeCompliant && $errorRateCompliant,
         ];
     }
 
@@ -814,7 +832,7 @@ class ApiMonitoringService
         $recommendations = [];
 
         // Response time recommendations
-        if (!$slaCompliance['response_time']['compliant']) {
+        if (! $slaCompliance['response_time']['compliant']) {
             $recommendations[] = [
                 'type' => 'performance',
                 'priority' => 'high',
@@ -823,13 +841,13 @@ class ApiMonitoringService
                 'actions' => [
                     'Implement caching for frequently accessed endpoints',
                     'Optimize database queries',
-                    'Consider API response compression'
-                ]
+                    'Consider API response compression',
+                ],
             ];
         }
 
         // Error rate recommendations
-        if (!$slaCompliance['error_rate']['compliant']) {
+        if (! $slaCompliance['error_rate']['compliant']) {
             $recommendations[] = [
                 'type' => 'reliability',
                 'priority' => 'high',
@@ -838,8 +856,8 @@ class ApiMonitoringService
                 'actions' => [
                     'Implement better input validation',
                     'Add circuit breaker patterns',
-                    'Improve error handling and logging'
-                ]
+                    'Improve error handling and logging',
+                ],
             ];
         }
 
@@ -853,8 +871,8 @@ class ApiMonitoringService
                 'actions' => [
                     'Profile and optimize slow endpoints',
                     'Implement endpoint-specific caching',
-                    'Consider asynchronous processing for heavy operations'
-                ]
+                    'Consider asynchronous processing for heavy operations',
+                ],
             ];
         }
 
@@ -869,13 +887,13 @@ class ApiMonitoringService
         $required = ['consumer_name', 'consumer_type'];
 
         foreach ($required as $field) {
-            if (!isset($consumerData[$field])) {
+            if (! isset($consumerData[$field])) {
                 throw new Exception("Required field {$field} is missing");
             }
         }
 
         $validTypes = ['internal', 'partner', 'public', 'mobile', 'web'];
-        if (!in_array($consumerData['consumer_type'], $validTypes)) {
+        if (! in_array($consumerData['consumer_type'], $validTypes)) {
             throw new Exception('Invalid consumer type');
         }
     }
@@ -889,22 +907,22 @@ class ApiMonitoringService
             'internal' => [
                 'requests_per_minute' => 1000,
                 'requests_per_hour' => 50000,
-                'requests_per_day' => 1000000
+                'requests_per_day' => 1000000,
             ],
             'partner' => [
                 'requests_per_minute' => 500,
                 'requests_per_hour' => 25000,
-                'requests_per_day' => 500000
+                'requests_per_day' => 500000,
             ],
             'public' => [
                 'requests_per_minute' => 100,
                 'requests_per_hour' => 5000,
-                'requests_per_day' => 100000
+                'requests_per_day' => 100000,
             ],
             default => [
                 'requests_per_minute' => 60,
                 'requests_per_hour' => 3000,
-                'requests_per_day' => 50000
+                'requests_per_day' => 50000,
             ]
         };
 
@@ -921,7 +939,7 @@ class ApiMonitoringService
             'enforcement_action' => 'throttle',
             'effective_from' => now(),
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
     }
 
@@ -936,7 +954,7 @@ class ApiMonitoringService
             'api_reference' => 'https://docs.example.com/api-reference',
             'authentication_guide' => 'https://docs.example.com/authentication',
             'rate_limits' => 'https://docs.example.com/rate-limits',
-            'support_contact' => 'api-support@example.com'
+            'support_contact' => 'api-support@example.com',
         ];
     }
 
@@ -947,17 +965,17 @@ class ApiMonitoringService
     {
         return [
             'welcome_message' => "Welcome to the ERP Event Management API, {$consumerData['consumer_name']}!",
-            'api_key' => 'key_' . uniqid(), // In real implementation, generate secure API key
+            'api_key' => 'key_'.uniqid(), // In real implementation, generate secure API key
             'documentation_links' => $documentation,
             'sample_requests' => [
                 'GET /api/v1/events' => 'List all events',
-                'POST /api/v1/bookings' => 'Create a new booking'
+                'POST /api/v1/bookings' => 'Create a new booking',
             ],
             'support_information' => [
                 'email' => 'api-support@example.com',
                 'documentation' => 'https://docs.example.com',
-                'status_page' => 'https://status.example.com'
-            ]
+                'status_page' => 'https://status.example.com',
+            ],
         ];
     }
 
@@ -972,7 +990,7 @@ class ApiMonitoringService
                 $query->where('consumer_id', $consumerId)
                     ->orWhere('consumer_type', $consumerType);
             })
-            ->where(function ($query) use ($endpoint, $method) {
+            ->where(function ($query) use ($endpoint) {
                 $query->where('endpoint_pattern', '*')
                     ->orWhere('endpoint_pattern', $endpoint);
             })
@@ -989,11 +1007,11 @@ class ApiMonitoringService
      */
     private function checkRateLimit(string $consumerId, string $endpoint, string $method, object $limit, Carbon $currentTime): ?array
     {
-        $redisKey = self::RATE_LIMIT_PREFIX . "{$consumerId}:{$endpoint}:{$method}";
+        $redisKey = self::RATE_LIMIT_PREFIX."{$consumerId}:{$endpoint}:{$method}";
 
         // Check per-minute limit
         if ($limit->requests_per_minute) {
-            $minuteKey = $redisKey . ':minute:' . $currentTime->format('Y-m-d-H-i');
+            $minuteKey = $redisKey.':minute:'.$currentTime->format('Y-m-d-H-i');
             $minuteCount = Redis::get($minuteKey) ?? 0;
 
             if ($minuteCount >= $limit->requests_per_minute) {
@@ -1002,14 +1020,14 @@ class ApiMonitoringService
                     'limit_type' => 'per_minute',
                     'limit_value' => $limit->requests_per_minute,
                     'current_usage' => $minuteCount,
-                    'window_end' => $currentTime->copy()->addMinute()->startOfMinute()
+                    'window_end' => $currentTime->copy()->addMinute()->startOfMinute(),
                 ];
             }
         }
 
         // Check per-hour limit
         if ($limit->requests_per_hour) {
-            $hourKey = $redisKey . ':hour:' . $currentTime->format('Y-m-d-H');
+            $hourKey = $redisKey.':hour:'.$currentTime->format('Y-m-d-H');
             $hourCount = Redis::get($hourKey) ?? 0;
 
             if ($hourCount >= $limit->requests_per_hour) {
@@ -1018,14 +1036,14 @@ class ApiMonitoringService
                     'limit_type' => 'per_hour',
                     'limit_value' => $limit->requests_per_hour,
                     'current_usage' => $hourCount,
-                    'window_end' => $currentTime->copy()->addHour()->startOfHour()
+                    'window_end' => $currentTime->copy()->addHour()->startOfHour(),
                 ];
             }
         }
 
         // Check per-day limit
         if ($limit->requests_per_day) {
-            $dayKey = $redisKey . ':day:' . $currentTime->format('Y-m-d');
+            $dayKey = $redisKey.':day:'.$currentTime->format('Y-m-d');
             $dayCount = Redis::get($dayKey) ?? 0;
 
             if ($dayCount >= $limit->requests_per_day) {
@@ -1034,7 +1052,7 @@ class ApiMonitoringService
                     'limit_type' => 'per_day',
                     'limit_value' => $limit->requests_per_day,
                     'current_usage' => $dayCount,
-                    'window_end' => $currentTime->copy()->addDay()->startOfDay()
+                    'window_end' => $currentTime->copy()->addDay()->startOfDay(),
                 ];
             }
         }
@@ -1062,7 +1080,7 @@ class ApiMonitoringService
             'occurred_at' => now(),
             'violation_context' => json_encode($context),
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
     }
 
@@ -1071,20 +1089,20 @@ class ApiMonitoringService
      */
     private function incrementUsageCounters(string $consumerId, string $endpoint, string $method, Carbon $currentTime): void
     {
-        $redisKey = self::RATE_LIMIT_PREFIX . "{$consumerId}:{$endpoint}:{$method}";
+        $redisKey = self::RATE_LIMIT_PREFIX."{$consumerId}:{$endpoint}:{$method}";
 
         // Increment minute counter
-        $minuteKey = $redisKey . ':minute:' . $currentTime->format('Y-m-d-H-i');
+        $minuteKey = $redisKey.':minute:'.$currentTime->format('Y-m-d-H-i');
         Redis::incr($minuteKey);
         Redis::expire($minuteKey, 120); // 2 minutes TTL
 
         // Increment hour counter
-        $hourKey = $redisKey . ':hour:' . $currentTime->format('Y-m-d-H');
+        $hourKey = $redisKey.':hour:'.$currentTime->format('Y-m-d-H');
         Redis::incr($hourKey);
         Redis::expire($hourKey, 7200); // 2 hours TTL
 
         // Increment day counter
-        $dayKey = $redisKey . ':day:' . $currentTime->format('Y-m-d');
+        $dayKey = $redisKey.':day:'.$currentTime->format('Y-m-d');
         Redis::incr($dayKey);
         Redis::expire($dayKey, 172800); // 2 days TTL
     }
@@ -1105,6 +1123,7 @@ class ApiMonitoringService
     {
         // Calculate delay based on how much the limit was exceeded
         $excessPercent = (($violation['current_usage'] - $violation['limit_value']) / $violation['limit_value']) * 100;
+
         return min(30, max(1, intval($excessPercent / 10))); // 1-30 seconds delay
     }
 
@@ -1118,14 +1137,14 @@ class ApiMonitoringService
 
         // Initialize monthly quota tracking
         if (isset($quotaConfig['monthly_requests'])) {
-            $monthlyKey = self::RATE_LIMIT_PREFIX . "quota:{$consumerId}:monthly:{$currentMonth}";
+            $monthlyKey = self::RATE_LIMIT_PREFIX."quota:{$consumerId}:monthly:{$currentMonth}";
             Redis::setnx($monthlyKey, 0);
             Redis::expire($monthlyKey, now()->endOfMonth()->diffInSeconds());
         }
 
         // Initialize yearly quota tracking
         if (isset($quotaConfig['yearly_requests'])) {
-            $yearlyKey = self::RATE_LIMIT_PREFIX . "quota:{$consumerId}:yearly:{$currentYear}";
+            $yearlyKey = self::RATE_LIMIT_PREFIX."quota:{$consumerId}:yearly:{$currentYear}";
             Redis::setnx($yearlyKey, 0);
             Redis::expire($yearlyKey, now()->endOfYear()->diffInSeconds());
         }
@@ -1151,7 +1170,7 @@ class ApiMonitoringService
                 'avg_response_time' => 0,
                 'avg_error_rate' => 0,
                 'unique_endpoints_used' => 0,
-                'active_days' => 0
+                'active_days' => 0,
             ];
     }
 
@@ -1202,8 +1221,8 @@ class ApiMonitoringService
         $currentMonth = now()->format('Y-m');
         $currentYear = now()->format('Y');
 
-        $monthlyKey = self::RATE_LIMIT_PREFIX . "quota:{$consumerId}:monthly:{$currentMonth}";
-        $yearlyKey = self::RATE_LIMIT_PREFIX . "quota:{$consumerId}:yearly:{$currentYear}";
+        $monthlyKey = self::RATE_LIMIT_PREFIX."quota:{$consumerId}:monthly:{$currentMonth}";
+        $yearlyKey = self::RATE_LIMIT_PREFIX."quota:{$consumerId}:yearly:{$currentYear}";
 
         $monthlyUsage = Redis::get($monthlyKey) ?? 0;
         $yearlyUsage = Redis::get($yearlyKey) ?? 0;
@@ -1212,7 +1231,7 @@ class ApiMonitoringService
             'monthly_usage' => $monthlyUsage,
             'yearly_usage' => $yearlyUsage,
             'current_month' => $currentMonth,
-            'current_year' => $currentYear
+            'current_year' => $currentYear,
         ];
     }
 

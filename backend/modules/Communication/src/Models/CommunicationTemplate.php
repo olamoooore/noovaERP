@@ -2,8 +2,8 @@
 
 namespace Modules\Communication\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * CommunicationTemplate — Reusable message templates.
@@ -115,12 +115,13 @@ class CommunicationTemplate extends Model
      */
     protected function replaceVariables(?string $template, array $variables): ?string
     {
-        if (!$template) {
+        if (! $template) {
             return null;
         }
 
         return preg_replace_callback('/\{\{\s*([\w.]+)\s*\}\}/', function ($matches) use ($variables) {
             $key = $matches[1];
+
             return data_get($variables, $key, $matches[0]);
         }, $template);
     }
@@ -130,7 +131,7 @@ class CommunicationTemplate extends Model
      */
     public function extractVariables(): array
     {
-        $combined = ($this->subject ?? '') . ($this->body_html ?? '') . ($this->body_plain ?? '');
+        $combined = ($this->subject ?? '').($this->body_html ?? '').($this->body_plain ?? '');
 
         preg_match_all('/\{\{\s*([\w.]+)\s*\}\}/', $combined, $matches);
 

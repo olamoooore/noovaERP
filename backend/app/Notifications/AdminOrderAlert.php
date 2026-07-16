@@ -14,8 +14,11 @@ class AdminOrderAlert extends Notification implements ShouldQueue
     use Queueable;
 
     public $orderId;
+
     public $order; // Runtime cache (not serialized)
+
     public $type; // 'Web' or 'POS'
+
     public $tenantSchema; // Tenant schema for queue context
 
     public function __construct($order, $type = 'Web')
@@ -26,10 +29,10 @@ class AdminOrderAlert extends Notification implements ShouldQueue
         // Capture the current tenant schema from the ACTUAL DB connection
         // (config may still say 'public' if search_path was set via raw SQL)
         try {
-            $result = DB::select("SHOW search_path");
+            $result = DB::select('SHOW search_path');
             $this->tenantSchema = $result[0]->search_path ?? 'public';
         } catch (\Exception $e) {
-            $this->tenantSchema = config('database.connections.' . DB::getDefaultConnection() . '.search_path') ?? 'public';
+            $this->tenantSchema = config('database.connections.'.DB::getDefaultConnection().'.search_path') ?? 'public';
         }
     }
 
@@ -45,15 +48,15 @@ class AdminOrderAlert extends Notification implements ShouldQueue
             $schemaName = trim(explode(',', $this->tenantSchema)[0]);
             // Ensure it's quoted for SET statement
             if (strpos($schemaName, '"') === false) {
-                $schemaName = '"' . $schemaName . '"';
+                $schemaName = '"'.$schemaName.'"';
             }
-            $fullPath = $schemaName . ', public';
+            $fullPath = $schemaName.', public';
 
             config(["database.connections.{$connectionName}.search_path" => $fullPath]);
             DB::purge($connectionName);
             DB::reconnect($connectionName);
             DB::statement("SET search_path TO {$fullPath}");
-            Log::info("AdminOrderAlert: Restored tenant search_path", ['search_path' => $fullPath]);
+            Log::info('AdminOrderAlert: Restored tenant search_path', ['search_path' => $fullPath]);
         }
 
         // Always reload tenant mail config (even if search_path was already correct)
@@ -86,10 +89,10 @@ class AdminOrderAlert extends Notification implements ShouldQueue
                         ],
                     ],
                 ]]);
-                if (!empty($mail['from_address'])) {
+                if (! empty($mail['from_address'])) {
                     config(['mail.from.address' => $mail['from_address']]);
                 }
-                if (!empty($mail['from_name'])) {
+                if (! empty($mail['from_name'])) {
                     config(['mail.from.name' => $mail['from_name']]);
                 }
                 // Purge the mailer so it picks up the new config, then disable SSL peer verification
@@ -138,7 +141,7 @@ class AdminOrderAlert extends Notification implements ShouldQueue
                 $this->order = \Modules\Ecommerce\Models\WebOrder::findOrFail($this->orderId);
             }
         } catch (\Exception $e) {
-            Log::error("AdminOrderAlert: Failed to find order {$this->orderId} type {$this->type}: " . $e->getMessage());
+            Log::error("AdminOrderAlert: Failed to find order {$this->orderId} type {$this->type}: ".$e->getMessage());
             throw $e;
         }
 
@@ -155,12 +158,12 @@ class AdminOrderAlert extends Notification implements ShouldQueue
         $order = $this->getOrder();
 
         return (new MailMessage)
-                    ->subject("New {$this->type} Order: #{$order->order_number}")
-                    ->greeting('Hello Admin,')
-                    ->line("A new {$this->type} order has been placed.")
-                    ->line("Order Number: {$order->order_number}")
-                    ->line("Amount: " . number_format($order->total, 2))
-                    ->line('Please check the dashboard for more details.');
+            ->subject("New {$this->type} Order: #{$order->order_number}")
+            ->greeting('Hello Admin,')
+            ->line("A new {$this->type} order has been placed.")
+            ->line("Order Number: {$order->order_number}")
+            ->line('Amount: '.number_format($order->total, 2))
+            ->line('Please check the dashboard for more details.');
     }
 
     public function toArray($notifiable)

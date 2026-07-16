@@ -2,8 +2,8 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -17,7 +17,7 @@ return new class extends Migration
             $table->enum('ticket_acquisition_mode', ['buy', 'bid'])->default('buy')->after('event_type_id');
             $table->dateTime('sale_start_date')->nullable()->after('ticket_acquisition_mode');
             $table->dateTime('sale_end_date')->nullable()->after('sale_start_date');
-            
+
             // Add index for event_type_id
             $table->index('event_type_id');
         });
@@ -34,7 +34,7 @@ return new class extends Migration
     {
         // Drop check constraint first
         DB::statement('ALTER TABLE events DROP CONSTRAINT IF EXISTS check_sale_window');
-        
+
         Schema::table('events', function (Blueprint $table) {
             $table->dropForeign(['event_type_id']);
             $table->dropColumn(['event_type_id', 'ticket_acquisition_mode', 'sale_start_date', 'sale_end_date']);

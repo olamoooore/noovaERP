@@ -6,10 +6,10 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Modules\FinancialClose\Console\Commands\RunAiAnalysisCommand;
-use Modules\FinancialClose\Events\FinancialCloseTaskCompleted;
 use Modules\FinancialClose\Events\FinancialCloseCycleOpened;
-use Modules\FinancialClose\Listeners\TriggerReadinessRefreshOnTaskCompletion;
+use Modules\FinancialClose\Events\FinancialCloseTaskCompleted;
 use Modules\FinancialClose\Listeners\TriggerCompletionSnapshotOnTaskCompletion;
+use Modules\FinancialClose\Listeners\TriggerReadinessRefreshOnTaskCompletion;
 use Modules\FinancialClose\Listeners\TriggerTaskGenerationOnCycleOpened;
 
 class FinancialCloseServiceProvider extends ServiceProvider
@@ -30,12 +30,12 @@ class FinancialCloseServiceProvider extends ServiceProvider
                 \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
                 \Illuminate\Routing\Middleware\SubstituteBindings::class,
             ])
-            ->group(__DIR__ . '/../../routes/api.php');
+            ->group(__DIR__.'/../../routes/api.php');
 
         // Event → Listener bindings
         Event::listen(FinancialCloseTaskCompleted::class, TriggerReadinessRefreshOnTaskCompletion::class);
         Event::listen(FinancialCloseTaskCompleted::class, TriggerCompletionSnapshotOnTaskCompletion::class);
-        Event::listen(FinancialCloseCycleOpened::class,   TriggerTaskGenerationOnCycleOpened::class);
+        Event::listen(FinancialCloseCycleOpened::class, TriggerTaskGenerationOnCycleOpened::class);
     }
 
     public function register(): void

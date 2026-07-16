@@ -3,12 +3,11 @@
 namespace Modules\Loyalty\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Modules\Loyalty\Models\CustomerLoyalty;
 use Modules\Loyalty\Models\LoyaltyTransaction;
 use Modules\Loyalty\Services\PointsCalculationService;
-use Modules\Ecommerce\Http\Middleware\WebCustomerAuth;
 
 class WebLoyaltyController extends Controller
 {
@@ -22,8 +21,8 @@ class WebLoyaltyController extends Controller
     public function balance(Request $request): JsonResponse
     {
         $customer = $request->attributes->get('web_customer');
-        
-        if (!$customer) {
+
+        if (! $customer) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
@@ -31,7 +30,7 @@ class WebLoyaltyController extends Controller
             ->where('customer_id', $customer->id)
             ->first();
 
-        if (!$loyalty) {
+        if (! $loyalty) {
             return response()->json([
                 'enrolled' => false,
                 'points' => 0,
@@ -41,7 +40,7 @@ class WebLoyaltyController extends Controller
         // Calculate progress to next tier
         $nextTier = null;
         $progress = null;
-        
+
         if ($loyalty->tier) {
             $nextTier = $loyalty->program->tiers()
                 ->where('sort_order', '>', $loyalty->tier->sort_order)
@@ -52,7 +51,7 @@ class WebLoyaltyController extends Controller
                 $currentThreshold = $loyalty->tier->points_threshold ?? 0;
                 $nextThreshold = $nextTier->points_threshold ?? 0;
                 $pointsRange = $nextThreshold - $currentThreshold;
-                
+
                 // Avoid division by zero
                 if ($pointsRange > 0) {
                     $progress = [
@@ -104,14 +103,14 @@ class WebLoyaltyController extends Controller
     public function history(Request $request): JsonResponse
     {
         $customer = $request->attributes->get('web_customer');
-        
-        if (!$customer) {
+
+        if (! $customer) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
         $loyalty = CustomerLoyalty::where('customer_id', $customer->id)->first();
 
-        if (!$loyalty) {
+        if (! $loyalty) {
             return response()->json(['transactions' => []]);
         }
 
@@ -120,7 +119,7 @@ class WebLoyaltyController extends Controller
             ->paginate($request->input('per_page', 20));
 
         return response()->json([
-            'transactions' => $transactions->map(fn($t) => [
+            'transactions' => $transactions->map(fn ($t) => [
                 'id' => $t->id,
                 'type' => $t->type,
                 'points' => $t->points,
@@ -144,8 +143,8 @@ class WebLoyaltyController extends Controller
     public function calculate(Request $request): JsonResponse
     {
         $customer = $request->attributes->get('web_customer');
-        
-        if (!$customer) {
+
+        if (! $customer) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
@@ -156,7 +155,7 @@ class WebLoyaltyController extends Controller
 
         $loyalty = CustomerLoyalty::where('customer_id', $customer->id)->first();
 
-        if (!$loyalty) {
+        if (! $loyalty) {
             return response()->json(['error' => 'Not enrolled in loyalty program'], 400);
         }
 
@@ -166,7 +165,7 @@ class WebLoyaltyController extends Controller
             $customer->id
         );
 
-        if (!$canRedeem['can_redeem']) {
+        if (! $canRedeem['can_redeem']) {
             return response()->json([
                 'can_redeem' => false,
                 'reason' => $canRedeem['reason'],
@@ -175,7 +174,7 @@ class WebLoyaltyController extends Controller
 
         // Calculate discount
         $discount = $this->calculationService->calculateDiscountFromPoints($validated['points']);
-        
+
         // Check max redemption
         $maxPoints = $this->calculationService->calculateMaxRedeemablePoints(
             $validated['order_amount'],

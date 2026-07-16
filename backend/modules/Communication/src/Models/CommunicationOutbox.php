@@ -34,18 +34,29 @@ class CommunicationOutbox extends Model
     protected $table = 'communication_outbox';
 
     const STATUS_PENDING = 'pending';
+
     const STATUS_PROCESSING = 'processing';
+
     const STATUS_SENT = 'sent';
+
     const STATUS_DELIVERED = 'delivered';
+
     const STATUS_FAILED = 'failed';
+
     const STATUS_BOUNCED = 'bounced';
+
     const STATUS_CANCELLED = 'cancelled';
 
     const CHANNEL_EMAIL = 'email';
+
     const CHANNEL_IN_APP = 'in_app';
+
     const CHANNEL_SMS = 'sms';
+
     const CHANNEL_WHATSAPP = 'whatsapp';
+
     const CHANNEL_PUSH = 'push';
+
     const CHANNEL_SLACK = 'slack';
 
     protected $fillable = [
@@ -111,20 +122,20 @@ class CommunicationOutbox extends Model
     public function scopeReadyToSend($query)
     {
         return $query->where('status', self::STATUS_PENDING)
-                     ->where(function ($q) {
-                         $q->whereNull('scheduled_at')
-                           ->orWhere('scheduled_at', '<=', now());
-                     });
+            ->where(function ($q) {
+                $q->whereNull('scheduled_at')
+                    ->orWhere('scheduled_at', '<=', now());
+            });
     }
 
     public function scopeRetryable($query)
     {
         return $query->where('status', self::STATUS_FAILED)
-                     ->whereColumn('retry_count', '<', 'max_retries')
-                     ->where(function ($q) {
-                         $q->whereNull('next_retry_at')
-                           ->orWhere('next_retry_at', '<=', now());
-                     });
+            ->whereColumn('retry_count', '<', 'max_retries')
+            ->where(function ($q) {
+                $q->whereNull('next_retry_at')
+                    ->orWhere('next_retry_at', '<=', now());
+            });
     }
 
     public function scopeForChannel($query, string $channel)
@@ -139,7 +150,7 @@ class CommunicationOutbox extends Model
         return $this->retry_count < $this->max_retries;
     }
 
-    public function markAsSent(string $externalId = null): void
+    public function markAsSent(?string $externalId = null): void
     {
         $this->update([
             'status' => self::STATUS_SENT,

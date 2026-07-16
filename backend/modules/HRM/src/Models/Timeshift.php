@@ -15,6 +15,7 @@ class Timeshift extends Model
     {
         return TimeshiftFactory::new();
     }
+
     protected $table = 'hrm_timeshifts';
 
     protected $fillable = [
@@ -24,7 +25,7 @@ class Timeshift extends Model
     ];
 
     protected $casts = [
-        'schedule'   => 'array',
+        'schedule' => 'array',
         'is_default' => 'boolean',
     ];
 

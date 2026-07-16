@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\GoodsReceiptsController;
 use Illuminate\Support\Facades\Route;
 use Modules\Inventory\Http\Controllers\BrandController;
 use Modules\Inventory\Http\Controllers\InventoryReportController;
@@ -8,7 +9,6 @@ use Modules\Inventory\Http\Controllers\PurchaseOrderController;
 use Modules\Inventory\Http\Controllers\StockController;
 use Modules\Inventory\Http\Controllers\SupplierController;
 use Modules\Inventory\Http\Controllers\WarehouseTransferController;
-use App\Http\Controllers\Api\GoodsReceiptsController;
 
 Route::middleware(['auth:sanctum', 'inventory.access'])->group(function () {
     // Brands
@@ -55,11 +55,11 @@ Route::middleware(['auth:sanctum', 'inventory.access'])->group(function () {
         Route::get('/adjustment-reasons', [StockController::class, 'adjustmentReasons']);
         Route::get('/low-stock', [StockController::class, 'lowStock']);
         Route::get('/out-of-stock', [StockController::class, 'outOfStock']);
-        Route::post('/in', [StockController::class, 'stockIn'])->middleware(\App\Http\Middleware\RequirePermission::class . ':inventory.write');
-        Route::post('/out', [StockController::class, 'stockOut'])->middleware(\App\Http\Middleware\RequirePermission::class . ':inventory.write');
-        Route::post('/adjust', [StockController::class, 'adjust'])->middleware(\App\Http\Middleware\RequirePermission::class . ':inventory.write');
+        Route::post('/in', [StockController::class, 'stockIn'])->middleware(\App\Http\Middleware\RequirePermission::class.':inventory.write');
+        Route::post('/out', [StockController::class, 'stockOut'])->middleware(\App\Http\Middleware\RequirePermission::class.':inventory.write');
+        Route::post('/adjust', [StockController::class, 'adjust'])->middleware(\App\Http\Middleware\RequirePermission::class.':inventory.write');
         Route::post('/check-availability', [StockController::class, 'checkAvailability']);
-        Route::put('/level/{productId}/{warehouseId}', [StockController::class, 'updateStockLevel'])->middleware(\App\Http\Middleware\RequirePermission::class . ':inventory.write');
+        Route::put('/level/{productId}/{warehouseId}', [StockController::class, 'updateStockLevel'])->middleware(\App\Http\Middleware\RequirePermission::class.':inventory.write');
     });
 
     // Inventory Reports
@@ -72,6 +72,6 @@ Route::middleware(['auth:sanctum', 'inventory.access'])->group(function () {
         Route::get('/reports/movements', [InventoryReportController::class, 'movementReport']);
         Route::get('/reports/ageing', [InventoryReportController::class, 'ageingReport']);
         Route::get('/settings', [InventorySettingsController::class, 'show']);
-        Route::put('/settings', [InventorySettingsController::class, 'update'])->middleware(\App\Http\Middleware\RequirePermission::class . ':inventory.settings');
+        Route::put('/settings', [InventorySettingsController::class, 'update'])->middleware(\App\Http\Middleware\RequirePermission::class.':inventory.settings');
     });
 });

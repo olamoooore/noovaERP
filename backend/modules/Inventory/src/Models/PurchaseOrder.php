@@ -77,7 +77,7 @@ class PurchaseOrder extends Model
     {
         $subtotal = $this->items->sum('line_total');
         $taxAmount = $this->items->sum('tax_amount');
-        
+
         $this->subtotal = $subtotal;
         $this->tax_amount = $taxAmount;
         $this->total = $subtotal + $taxAmount - $this->discount_amount + $this->shipping_cost;
@@ -88,6 +88,7 @@ class PurchaseOrder extends Model
         $prefix = 'PO';
         $date = now()->format('Ymd');
         $lastPo = static::whereDate('created_at', today())->count() + 1;
+
         return sprintf('%s-%s-%04d', $prefix, $date, $lastPo);
     }
 

@@ -3,21 +3,23 @@
 namespace Modules\EventManagement\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Modules\EventManagement\Http\Requests\CreateEventRequest;
-use Modules\EventManagement\Http\Requests\UpdateEventRequest;
-use Modules\EventManagement\Http\Requests\UpdateCapacityRequest;
-use Modules\EventManagement\Services\EventService;
-use Modules\EventManagement\Services\EventResponseTransformer;
-use Modules\EventManagement\Services\AccessControlService;
-use Modules\EventManagement\Exceptions\FeatureNotEnabledException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Modules\EventManagement\Exceptions\FeatureNotEnabledException;
+use Modules\EventManagement\Http\Requests\CreateEventRequest;
+use Modules\EventManagement\Http\Requests\UpdateCapacityRequest;
+use Modules\EventManagement\Http\Requests\UpdateEventRequest;
+use Modules\EventManagement\Services\AccessControlService;
+use Modules\EventManagement\Services\EventResponseTransformer;
+use Modules\EventManagement\Services\EventService;
 
 class EventController extends Controller
 {
     protected EventService $eventService;
+
     protected EventResponseTransformer $responseTransformer;
+
     protected AccessControlService $accessControlService;
 
     public function __construct(
@@ -40,13 +42,13 @@ class EventController extends Controller
         try {
             // Get all events (including drafts) for admin view
             $events = $this->eventService->getAllEvents($request->query());
-            
+
             // Transform events based on user role
             $transformedEvents = $this->responseTransformer->transformCollection($events);
-            
+
             return response()->json([
                 'data' => $transformedEvents,
-                'message' => 'Events retrieved successfully'
+                'message' => 'Events retrieved successfully',
             ]);
         } catch (\Exception $e) {
             return $this->handleException($e);
@@ -62,15 +64,15 @@ class EventController extends Controller
     {
         try {
             $events = $this->eventService->getPublicEvents();
-            
+
             // Always use customer response for public endpoints
             $transformedEvents = $events->map(function ($event) {
                 return $this->responseTransformer->toCustomerResponse($event);
             });
-            
+
             return response()->json([
                 'data' => $transformedEvents,
-                'message' => 'Public events retrieved successfully'
+                'message' => 'Public events retrieved successfully',
             ]);
         } catch (\Exception $e) {
             return $this->handleException($e);
@@ -86,13 +88,13 @@ class EventController extends Controller
     {
         try {
             $event = $this->eventService->createEvent($request->validated());
-            
+
             // Transform response based on user role
             $transformedEvent = $this->responseTransformer->transform($event);
-            
+
             return response()->json([
                 'data' => $transformedEvent,
-                'message' => 'Event created successfully'
+                'message' => 'Event created successfully',
             ], Response::HTTP_CREATED);
         } catch (\Exception $e) {
             return $this->handleException($e);
@@ -108,13 +110,13 @@ class EventController extends Controller
     {
         try {
             $event = $this->eventService->getEventById($id);
-            
+
             // Transform response based on user role
             $transformedEvent = $this->responseTransformer->transform($event);
-            
+
             return response()->json([
                 'data' => $transformedEvent,
-                'message' => 'Event retrieved successfully'
+                'message' => 'Event retrieved successfully',
             ]);
         } catch (\Exception $e) {
             return $this->handleException($e);
@@ -130,24 +132,24 @@ class EventController extends Controller
     {
         try {
             $event = $this->eventService->getEventById($id);
-            
+
             // Only show published events to public
-            if (!$event->isPublished()) {
+            if (! $event->isPublished()) {
                 return response()->json([
                     'error' => [
                         'code' => 'EVENT_NOT_FOUND',
                         'message' => 'Event not found or not available',
-                        'request_id' => request()->header('X-Request-ID', uniqid())
-                    ]
+                        'request_id' => request()->header('X-Request-ID', uniqid()),
+                    ],
                 ], Response::HTTP_NOT_FOUND);
             }
-            
+
             // Always use customer response for public endpoints
             $transformedEvent = $this->responseTransformer->toCustomerResponse($event);
-            
+
             return response()->json([
                 'data' => $transformedEvent,
-                'message' => 'Event retrieved successfully'
+                'message' => 'Event retrieved successfully',
             ]);
         } catch (\Exception $e) {
             return $this->handleException($e);
@@ -163,13 +165,13 @@ class EventController extends Controller
     {
         try {
             $event = $this->eventService->updateEvent($id, $request->validated());
-            
+
             // Transform response based on user role
             $transformedEvent = $this->responseTransformer->transform($event);
-            
+
             return response()->json([
                 'data' => $transformedEvent,
-                'message' => 'Event updated successfully'
+                'message' => 'Event updated successfully',
             ]);
         } catch (\Exception $e) {
             return $this->handleException($e);
@@ -184,13 +186,13 @@ class EventController extends Controller
     {
         try {
             $event = $this->eventService->publishEvent($id);
-            
+
             // Transform response based on user role
             $transformedEvent = $this->responseTransformer->transform($event);
-            
+
             return response()->json([
                 'data' => $transformedEvent,
-                'message' => 'Event published successfully'
+                'message' => 'Event published successfully',
             ]);
         } catch (\Exception $e) {
             return $this->handleException($e);
@@ -205,13 +207,13 @@ class EventController extends Controller
     {
         try {
             $event = $this->eventService->updateCapacity($id, $request->validated()['capacity']);
-            
+
             // Transform response based on user role
             $transformedEvent = $this->responseTransformer->transform($event);
-            
+
             return response()->json([
                 'data' => $transformedEvent,
-                'message' => 'Event capacity updated successfully'
+                'message' => 'Event capacity updated successfully',
             ]);
         } catch (\Exception $e) {
             return $this->handleException($e);
@@ -226,18 +228,18 @@ class EventController extends Controller
     {
         try {
             $request->validate([
-                'requested_tickets' => ['required', 'integer', 'min:1']
+                'requested_tickets' => ['required', 'integer', 'min:1'],
             ]);
 
             $available = $this->eventService->checkAvailability($id, $request->requested_tickets);
-            
+
             return response()->json([
                 'data' => [
                     'available' => $available,
                     'event_id' => $id,
-                    'requested_tickets' => $request->requested_tickets
+                    'requested_tickets' => $request->requested_tickets,
                 ],
-                'message' => 'Availability checked successfully'
+                'message' => 'Availability checked successfully',
             ]);
         } catch (\Exception $e) {
             return $this->handleException($e);
@@ -253,9 +255,9 @@ class EventController extends Controller
         try {
             // Note: In a real system, we might soft delete or archive instead
             $this->eventService->deleteEvent($id);
-            
+
             return response()->json([
-                'message' => 'Event deleted successfully'
+                'message' => 'Event deleted successfully',
             ]);
         } catch (\Exception $e) {
             return $this->handleException($e);
@@ -276,8 +278,8 @@ class EventController extends Controller
                 'error' => [
                     'code' => 'FEATURE_NOT_ENABLED',
                     'message' => $e->getMessage(),
-                    'request_id' => $requestId
-                ]
+                    'request_id' => $requestId,
+                ],
             ], Response::HTTP_FORBIDDEN);
         }
 
@@ -286,8 +288,8 @@ class EventController extends Controller
                 'error' => [
                     'code' => 'EVENT_NOT_FOUND',
                     'message' => 'Event not found',
-                    'request_id' => $requestId
-                ]
+                    'request_id' => $requestId,
+                ],
             ], Response::HTTP_NOT_FOUND);
         }
 
@@ -296,8 +298,8 @@ class EventController extends Controller
                 'error' => [
                     'code' => 'INVALID_ARGUMENT',
                     'message' => $e->getMessage(),
-                    'request_id' => $requestId
-                ]
+                    'request_id' => $requestId,
+                ],
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
@@ -307,8 +309,8 @@ class EventController extends Controller
                     'code' => 'VALIDATION_ERROR',
                     'message' => 'Event configuration is invalid',
                     'validation_errors' => $e->errors(),
-                    'request_id' => $requestId
-                ]
+                    'request_id' => $requestId,
+                ],
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
@@ -316,15 +318,15 @@ class EventController extends Controller
         \Log::error('Event API Error', [
             'exception' => $e->getMessage(),
             'trace' => $e->getTraceAsString(),
-            'request_id' => $requestId
+            'request_id' => $requestId,
         ]);
 
         return response()->json([
             'error' => [
                 'code' => 'INTERNAL_SERVER_ERROR',
                 'message' => 'An unexpected error occurred',
-                'request_id' => $requestId
-            ]
+                'request_id' => $requestId,
+            ],
         ], Response::HTTP_INTERNAL_SERVER_ERROR);
     }
 }

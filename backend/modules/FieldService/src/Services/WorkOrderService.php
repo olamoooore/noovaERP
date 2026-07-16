@@ -3,9 +3,9 @@
 namespace Modules\FieldService\Services;
 
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 use Modules\FieldService\Models\WorkOrder;
 use Modules\FieldService\Models\WorkOrderActivity;
-use Illuminate\Validation\ValidationException;
 
 class WorkOrderService
 {
@@ -21,23 +21,23 @@ class WorkOrderService
      */
     public function create(array $data): WorkOrder
     {
-        $data['reference']  = WorkOrder::generateReference();
+        $data['reference'] = WorkOrder::generateReference();
         $data['created_by'] = Auth::id();
-        $data['status']     = $data['status'] ?? 'draft';
+        $data['status'] = $data['status'] ?? 'draft';
 
         $wo = WorkOrder::create($data);
 
         $this->logActivity($wo, 'system', 'Work Order created.', ['status' => 'draft']);
 
         // Assign lead technician if provided
-        if (!empty($data['lead_technician_id'])) {
+        if (! empty($data['lead_technician_id'])) {
             $wo->technicians()->syncWithoutDetaching([
                 $data['lead_technician_id'] => ['role' => 'lead', 'assigned_at' => now()],
             ]);
         }
 
         // Assign additional technicians if provided
-        if (!empty($data['technician_ids']) && is_array($data['technician_ids'])) {
+        if (! empty($data['technician_ids']) && is_array($data['technician_ids'])) {
             foreach ($data['technician_ids'] as $tid) {
                 if ($tid !== $data['lead_technician_id']) {
                     $wo->technicians()->syncWithoutDetaching([
@@ -61,11 +61,11 @@ class WorkOrderService
         // Handle technician assignment updates
         if (array_key_exists('technician_ids', $data)) {
             $sync = [];
-            if (!empty($data['lead_technician_id'])) {
+            if (! empty($data['lead_technician_id'])) {
                 $sync[$data['lead_technician_id']] = ['role' => 'lead', 'assigned_at' => now()];
             }
             foreach (($data['technician_ids'] ?? []) as $tid) {
-                if (!isset($sync[$tid])) {
+                if (! isset($sync[$tid])) {
                     $sync[$tid] = ['role' => 'assistant', 'assigned_at' => now()];
                 }
             }
@@ -81,7 +81,7 @@ class WorkOrderService
      */
     public function transitionStatus(WorkOrder $wo, string $newStatus): WorkOrder
     {
-        if (!$wo->canTransitionTo($newStatus)) {
+        if (! $wo->canTransitionTo($newStatus)) {
             throw ValidationException::withMessages([
                 'status' => "Cannot transition from '{$wo->status}' to '{$newStatus}'.",
             ]);
@@ -95,23 +95,23 @@ class WorkOrderService
         }
 
         if ($newStatus === 'completed') {
-            $wo->actual_end    = $wo->actual_end ?? now();
-            $wo->completed_at  = now();
+            $wo->actual_end = $wo->actual_end ?? now();
+            $wo->completed_at = now();
         }
 
         $wo->save();
 
         $this->logActivity($wo, 'status_change', "Status changed from {$oldStatus} to {$newStatus}.", [
             'from' => $oldStatus,
-            'to'   => $newStatus,
+            'to' => $newStatus,
         ]);
 
         // WhatsApp notifications (non-blocking)
         match ($newStatus) {
-            'scheduled'   => $this->notifications->notifyScheduled($wo),
+            'scheduled' => $this->notifications->notifyScheduled($wo),
             'in_progress' => $this->notifications->notifyDispatched($wo),
-            'completed'   => $this->notifications->notifyCompleted($wo),
-            default       => null,
+            'completed' => $this->notifications->notifyCompleted($wo),
+            default => null,
         };
 
         return $wo;
@@ -154,11 +154,11 @@ class WorkOrderService
     {
         return WorkOrderActivity::create([
             'work_order_id' => $wo->id,
-            'user_id'       => Auth::id(),
-            'type'          => $type,
-            'body'          => $body,
-            'metadata'      => $metadata ?: null,
-            'created_at'    => now(),
+            'user_id' => Auth::id(),
+            'type' => $type,
+            'body' => $body,
+            'metadata' => $metadata ?: null,
+            'created_at' => now(),
         ]);
     }
 }

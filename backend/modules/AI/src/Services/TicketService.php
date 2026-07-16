@@ -7,27 +7,28 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Ticket Service
- * 
+ *
  * Handles ticket creation via Ticket Module API
  */
 class TicketService
 {
     protected string $ticketApiUrl;
+
     protected bool $useMock;
 
     public function __construct()
     {
         // Get Ticket Module API URL from config
         $this->ticketApiUrl = config('services.ticket.url', 'http://localhost/api/v1/tickets');
-        
+
         // Use mock if Ticket Module is not available yet
         $this->useMock = config('services.ticket.use_mock', true);
     }
 
     /**
      * Create a support ticket
-     * 
-     * @param array $data Ticket data
+     *
+     * @param  array  $data  Ticket data
      * @return array Result with ticket information
      */
     public function createTicket(array $data): array
@@ -45,7 +46,7 @@ class TicketService
 
             if ($response->successful()) {
                 $result = $response->json();
-                
+
                 Log::info('Ticket created successfully', [
                     'ticket_id' => $result['data']['ticket_id'] ?? null,
                     'ticket_number' => $result['data']['ticket_number'] ?? null,
@@ -69,7 +70,7 @@ class TicketService
 
             return [
                 'success' => false,
-                'error' => 'Failed to create ticket: ' . $response->body(),
+                'error' => 'Failed to create ticket: '.$response->body(),
             ];
 
         } catch (\Exception $e) {
@@ -80,20 +81,20 @@ class TicketService
 
             return [
                 'success' => false,
-                'error' => 'Ticket creation failed: ' . $e->getMessage(),
+                'error' => 'Ticket creation failed: '.$e->getMessage(),
             ];
         }
     }
 
     /**
      * Create mock ticket (for development)
-     * 
-     * @param array $data Ticket data
+     *
+     * @param  array  $data  Ticket data
      * @return array Mock ticket response
      */
     protected function createMockTicket(array $data): array
     {
-        $ticketNumber = 'TKT-' . date('Ymd') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+        $ticketNumber = 'TKT-'.date('Ymd').'-'.str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
 
         Log::info('Mock ticket created', [
             'ticket_number' => $ticketNumber,
@@ -113,15 +114,15 @@ class TicketService
 
     /**
      * Prepare ticket data from conversation
-     * 
-     * @param int $customerId Customer ID
-     * @param int $conversationId Conversation ID
-     * @param string $subject Ticket subject
-     * @param string $description Ticket description
-     * @param string $priority Priority level
-     * @param string $category Issue category
-     * @param array $conversationHistory Chat history
-     * @param array $metadata Additional metadata
+     *
+     * @param  int  $customerId  Customer ID
+     * @param  int  $conversationId  Conversation ID
+     * @param  string  $subject  Ticket subject
+     * @param  string  $description  Ticket description
+     * @param  string  $priority  Priority level
+     * @param  string  $category  Issue category
+     * @param  array  $conversationHistory  Chat history
+     * @param  array  $metadata  Additional metadata
      * @return array Formatted ticket data
      */
     public function prepareTicketData(

@@ -23,7 +23,7 @@ return new class extends Migration
             $table->enum('status', ['draft', 'published', 'sold_out', 'cancelled'])->default('draft');
             $table->text('terms_conditions')->nullable();
             $table->timestamps();
-            
+
             // Indexes for performance
             $table->index('event_date');
             $table->index('status');
@@ -39,7 +39,7 @@ return new class extends Migration
             $table->integer('available_capacity');
             $table->text('description')->nullable();
             $table->timestamps();
-            
+
             // Indexes for performance
             $table->index('event_id');
         });
@@ -59,7 +59,7 @@ return new class extends Migration
             $table->boolean('consent_pdpa')->default(false);
             $table->boolean('consent_marketing')->default(false);
             $table->timestamps();
-            
+
             // Indexes for performance
             $table->index('booking_reference');
             $table->index('state');
@@ -76,7 +76,7 @@ return new class extends Migration
             $table->string('attendee_phone', 20)->nullable();
             $table->text('encrypted_id_info')->nullable();
             $table->timestamps();
-            
+
             // Indexes for performance
             $table->index('booking_id');
         });
@@ -93,7 +93,7 @@ return new class extends Migration
             $table->timestamp('revoked_at')->nullable();
             $table->timestamp('used_at')->nullable();
             $table->timestamps();
-            
+
             // Indexes for performance
             $table->index('booking_id');
             $table->index('status');

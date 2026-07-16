@@ -2,12 +2,12 @@
 
 namespace Modules\FinancialReporting\Services\Reports;
 
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+use Modules\FinancialReporting\DTOs\ReportData;
+use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\Services\BaseReportService;
 use Modules\FinancialReporting\Services\ReportMappingReader;
-use Modules\FinancialReporting\DTOs\ReportFilter;
-use Modules\FinancialReporting\DTOs\ReportData;
-use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class CashFlowService extends BaseReportService
 {
@@ -18,13 +18,14 @@ class CashFlowService extends BaseReportService
         parent::__construct();
         $this->mappingReader = $mappingReader;
     }
+
     /**
      * Generate Cash Flow Statement
      */
     public function generate(ReportFilter $filter): ReportData
     {
         // Validate date range
-        if (!$filter->startDate || !$filter->endDate) {
+        if (! $filter->startDate || ! $filter->endDate) {
             throw new \InvalidArgumentException('Start date and end date are required for Cash Flow report');
         }
 
@@ -49,16 +50,16 @@ class CashFlowService extends BaseReportService
 
         // Operating Activities
         $operatingActivities = $this->getOperatingActivitiesIndirect($filter, $netIncome);
-        
+
         // Investing Activities
         $investingActivities = $this->getInvestingActivities($filter);
-        
+
         // Financing Activities
         $financingActivities = $this->getFinancingActivities($filter);
 
         // Calculate net cash flow
-        $netCashFlow = $operatingActivities['net_cash'] + 
-                       $investingActivities['net_cash'] + 
+        $netCashFlow = $operatingActivities['net_cash'] +
+                       $investingActivities['net_cash'] +
                        $financingActivities['net_cash'];
 
         // Get beginning and ending cash
@@ -106,16 +107,16 @@ class CashFlowService extends BaseReportService
     {
         // Operating Activities
         $operatingActivities = $this->getOperatingActivitiesDirect($filter);
-        
+
         // Investing Activities
         $investingActivities = $this->getInvestingActivities($filter);
-        
+
         // Financing Activities
         $financingActivities = $this->getFinancingActivities($filter);
 
         // Calculate net cash flow
-        $netCashFlow = $operatingActivities['net_cash'] + 
-                       $investingActivities['net_cash'] + 
+        $netCashFlow = $operatingActivities['net_cash'] +
+                       $investingActivities['net_cash'] +
                        $financingActivities['net_cash'];
 
         // Get beginning and ending cash
@@ -318,7 +319,7 @@ class CashFlowService extends BaseReportService
     {
         $revenue = $this->getAmountByType($filter, 'revenue');
         $expenses = $this->getAmountByType($filter, 'expense');
-        
+
         return $revenue - $expenses;
     }
 
@@ -411,7 +412,7 @@ class CashFlowService extends BaseReportService
     {
         $startBalance = $this->getAccountBalanceAtDate($filter->startDate->copy()->subDay(), $codeStart, $codeEnd);
         $endBalance = $this->getAccountBalanceAtDate($filter->endDate, $codeStart, $codeEnd);
-        
+
         return $endBalance - $startBalance;
     }
 
@@ -437,7 +438,7 @@ class CashFlowService extends BaseReportService
         // Revenue + decrease in AR (or - increase in AR)
         $revenue = $this->getAmountByType($filter, 'revenue');
         $arChange = $this->getAccountBalanceChangeByTag($filter, 'CF_AR');
-        
+
         return $revenue - $arChange;
     }
 
@@ -450,7 +451,7 @@ class CashFlowService extends BaseReportService
         $cogs = $this->getAmountByTag($filter, 'PL_COGS');
         $inventoryChange = $this->getAccountBalanceChangeByTag($filter, 'CF_INVENTORY');
         $apChange = $this->getAccountBalanceChangeByTag($filter, 'CF_AP');
-        
+
         return $cogs + $inventoryChange - $apChange;
     }
 
@@ -488,6 +489,7 @@ class CashFlowService extends BaseReportService
     {
         // Increase in long-term liabilities
         $change = $this->getAccountBalanceChangeByTag($filter, 'CF_LONG_TERM_LIABILITIES');
+
         return $change > 0 ? $change : 0;
     }
 
@@ -498,6 +500,7 @@ class CashFlowService extends BaseReportService
     {
         // Decrease in long-term liabilities
         $change = $this->getAccountBalanceChangeByTag($filter, 'CF_LONG_TERM_LIABILITIES');
+
         return $change < 0 ? abs($change) : 0;
     }
 
@@ -508,6 +511,7 @@ class CashFlowService extends BaseReportService
     {
         // Increase in capital accounts
         $change = $this->getAccountBalanceChangeByTag($filter, 'CF_CAPITAL');
+
         return $change > 0 ? $change : 0;
     }
 
@@ -548,6 +552,7 @@ class CashFlowService extends BaseReportService
 
     /**
      * Get amount by code range
+     *
      * @deprecated Use getAmountByTag() instead
      */
     protected function getAmountByCodeRange(ReportFilter $filter, string $codeStart, string $codeEnd): float

@@ -3,14 +3,14 @@
 namespace Modules\EventManagement\Http\Middleware;
 
 use Closure;
-use Illuminate\Http\Request;
 use Illuminate\Contracts\Routing\ResponseFactory;
+use Illuminate\Http\Request;
 use Modules\EventManagement\Services\AccessControlService;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Middleware to ensure user has staff role
- * 
+ *
  * Requirements: 6.4, 6.5, 12.2, 12.3
  * - Only staff can access inventory data
  * - Only staff can access configuration endpoints
@@ -20,6 +20,7 @@ use Symfony\Component\HttpFoundation\Response;
 class EnsureStaffMiddleware
 {
     protected AccessControlService $accessControlService;
+
     protected ResponseFactory $responseFactory;
 
     public function __construct(
@@ -40,24 +41,24 @@ class EnsureStaffMiddleware
         $user = $request->user();
 
         // Check if user is authenticated
-        if (!$user) {
+        if (! $user) {
             return $this->responseFactory->json([
                 'error' => [
                     'code' => 'UNAUTHORIZED',
                     'message' => 'Authentication required',
-                    'request_id' => $request->header('X-Request-ID', uniqid())
-                ]
+                    'request_id' => $request->header('X-Request-ID', uniqid()),
+                ],
             ], Response::HTTP_UNAUTHORIZED);
         }
 
         // Check if user is staff
-        if (!$this->accessControlService->isStaff($user)) {
+        if (! $this->accessControlService->isStaff($user)) {
             return $this->responseFactory->json([
                 'error' => [
                     'code' => 'FORBIDDEN',
                     'message' => 'Access denied. Staff privileges required.',
-                    'request_id' => $request->header('X-Request-ID', uniqid())
-                ]
+                    'request_id' => $request->header('X-Request-ID', uniqid()),
+                ],
             ], Response::HTTP_FORBIDDEN);
         }
 

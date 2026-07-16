@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Invoice;
 use App\Models\Customer;
+use App\Models\Invoice;
 use App\Models\Product;
 use Illuminate\Support\Facades\DB;
 
@@ -57,9 +57,9 @@ class DashboardController extends Controller
     private function getRevenueByMonth()
     {
         return Invoice::select(
-                DB::raw('DATE_TRUNC(\'month\', invoice_date) as month'),
-                DB::raw('SUM(total) as revenue')
-            )
+            DB::raw('DATE_TRUNC(\'month\', invoice_date) as month'),
+            DB::raw('SUM(total) as revenue')
+        )
             ->whereIn('status', ['sent', 'paid', 'overdue'])
             ->where('invoice_date', '>=', now()->subMonths(12))
             ->groupBy('month')

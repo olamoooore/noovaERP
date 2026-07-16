@@ -10,7 +10,7 @@ class CRMServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__ . '/../../config/crm.php', 'crm');
+        $this->mergeConfigFrom(__DIR__.'/../../config/crm.php', 'crm');
     }
 
     public function boot(): void

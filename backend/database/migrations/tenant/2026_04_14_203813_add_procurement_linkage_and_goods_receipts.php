@@ -29,7 +29,7 @@ return new class extends Migration
             $table->date('received_date');
             $table->string('carrier_reference')->nullable();
             $table->string('status')->default('draft'); // draft, confirmed, cancelled
-            $table-> text('notes')->nullable();
+            $table->text('notes')->nullable();
 
             $table->timestamps();
             $table->softDeletes();

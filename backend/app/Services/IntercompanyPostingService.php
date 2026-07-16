@@ -41,11 +41,11 @@ class IntercompanyPostingService
         return DB::transaction(function () use ($sourceRequest, $targetEntityId, $targetBookId, $targetLines, $description) {
             // 1. Post original entry in source entity
             $sourceResult = $this->postingEngine->post($sourceRequest);
-            if (!$sourceResult->success) {
+            if (! $sourceResult->success) {
                 throw new \RuntimeException("Source posting failed: {$sourceResult->error}");
             }
 
-            $amount = array_sum(array_map(fn($l) => $l->debit, $sourceRequest->lines));
+            $amount = array_sum(array_map(fn ($l) => $l->debit, $sourceRequest->lines));
 
             // 2. Create intercompany DUE-FROM in source entity (receivable from target)
             $dueFromRequest = new PostingRequest(
@@ -105,7 +105,7 @@ class IntercompanyPostingService
                 documentId: $sourceRequest->documentId,
                 postingDate: $sourceRequest->postingDate,
                 description: "IC Mirror: {$description}",
-                lines: array_map(fn($l) => new PostingRequestLine(
+                lines: array_map(fn ($l) => new PostingRequestLine(
                     accountMappingKey: $l['account_mapping_key'] ?? 'general_expense',
                     accountId: $l['account_id'] ?? null,
                     debit: (float) ($l['debit'] ?? 0),
@@ -120,10 +120,10 @@ class IntercompanyPostingService
             $targetResult = $this->postingEngine->post($targetRequest);
 
             return [
-                'source_entry'    => $sourceResult->journalEntry,
-                'due_from_entry'  => $dueFromResult->journalEntry,
-                'due_to_entry'    => $dueToResult->journalEntry,
-                'target_entry'    => $targetResult->journalEntry,
+                'source_entry' => $sourceResult->journalEntry,
+                'due_from_entry' => $dueFromResult->journalEntry,
+                'due_to_entry' => $dueToResult->journalEntry,
+                'target_entry' => $targetResult->journalEntry,
             ];
         });
     }

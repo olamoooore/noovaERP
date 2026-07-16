@@ -6,9 +6,9 @@ use App\Models\GoodsReceipt;
 use App\Models\GoodsReceiptLine;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Modules\Inventory\Models\PurchaseOrder;
 use Modules\Inventory\Services\InventoryService;
-use Illuminate\Support\Str;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class GoodsReceiptService
@@ -22,7 +22,7 @@ class GoodsReceiptService
         return DB::transaction(function () use ($data) {
             $purchaseOrder = PurchaseOrder::findOrFail($data['purchase_order_id']);
 
-            if (!$purchaseOrder->canReceive()) {
+            if (! $purchaseOrder->canReceive()) {
                 throw new \InvalidArgumentException("Purchase order '{$purchaseOrder->po_number}' cannot receive goods. Status: {$purchaseOrder->status}");
             }
 
@@ -138,6 +138,6 @@ class GoodsReceiptService
 
     private function generateGrnNumber(): string
     {
-        return 'GRN-' . now()->format('Ymd-His') . '-' . Str::upper(Str::random(6));
+        return 'GRN-'.now()->format('Ymd-His').'-'.Str::upper(Str::random(6));
     }
 }

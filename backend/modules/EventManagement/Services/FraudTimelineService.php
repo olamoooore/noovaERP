@@ -2,29 +2,30 @@
 
 namespace Modules\EventManagement\Services;
 
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
-use Carbon\Carbon;
-use Illuminate\Support\Str;
 
 /**
  * FraudTimelineService - Task 8.4
- * 
+ *
  * Implements comprehensive fraud event timeline, fraud pattern recognition and reporting,
  * fraud analytics dashboard for operations, and dispute resolution workflow integration.
- * 
+ *
  * Requirements: 24.3, 24.5
  */
 class FraudTimelineService
 {
     protected AuditService $auditService;
-    
+
     // Cache configuration
     private const CACHE_PREFIX = 'fraud_timeline:';
+
     private const ANALYTICS_CACHE_TTL = 1800; // 30 minutes
+
     private const PATTERN_CACHE_TTL = 3600; // 1 hour
-    
+
     // Event severity levels
     private const SEVERITY_LEVELS = [
         'info' => 1,
@@ -32,7 +33,7 @@ class FraudTimelineService
         'high' => 3,
         'critical' => 4,
     ];
-    
+
     // Fraud event types
     private const EVENT_TYPES = [
         'risk_assessment' => 'Risk Assessment',
@@ -56,10 +57,10 @@ class FraudTimelineService
 
     /**
      * Record fraud timeline event.
-     * 
-     * @param array $eventData Event data
+     *
+     * @param  array  $eventData  Event data
      * @return array Event recording result
-     * 
+     *
      * Requirements: 24.3
      */
     public function recordTimelineEvent(array $eventData): array
@@ -67,13 +68,13 @@ class FraudTimelineService
         try {
             // Validate event data
             $this->validateEventData($eventData);
-            
+
             // Generate correlation ID if not provided
             $correlationId = $eventData['correlation_id'] ?? $this->generateCorrelationId($eventData);
-            
+
             // Determine event severity
             $severity = $this->determineEventSeverity($eventData['event_type'], $eventData);
-            
+
             // Store timeline event
             $eventId = DB::table('fraud_timeline')->insertGetId([
                 'booking_id' => $eventData['booking_id'] ?? null,
@@ -94,18 +95,18 @@ class FraudTimelineService
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now(),
             ]);
-            
+
             // Update fraud patterns
             $this->updateFraudPatterns($eventData, $eventId);
-            
+
             // Trigger alerts if high severity
             if ($severity === 'critical' || $severity === 'high') {
                 $this->triggerFraudAlert($eventData, $eventId);
             }
-            
+
             // Clear relevant caches
             $this->clearTimelineCaches($eventData);
-            
+
             // Create audit log
             $this->auditService->log('fraud_timeline_event_recorded', [
                 'event_id' => $eventId,
@@ -115,27 +116,27 @@ class FraudTimelineService
                 'booking_id' => $eventData['booking_id'] ?? null,
                 'customer_id' => $eventData['customer_id'] ?? null,
             ]);
-            
+
             Log::info('Fraud timeline event recorded', [
                 'event_id' => $eventId,
                 'event_type' => $eventData['event_type'],
                 'severity' => $severity,
                 'correlation_id' => $correlationId,
             ]);
-            
+
             return [
                 'success' => true,
                 'event_id' => $eventId,
                 'correlation_id' => $correlationId,
                 'event_severity' => $severity,
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Failed to record fraud timeline event', [
                 'error' => $e->getMessage(),
                 'event_data' => $eventData,
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -145,34 +146,34 @@ class FraudTimelineService
 
     /**
      * Get fraud timeline for entity.
-     * 
-     * @param array $filters Timeline filters
+     *
+     * @param  array  $filters  Timeline filters
      * @return array Timeline events
-     * 
+     *
      * Requirements: 24.3
      */
     public function getTimeline(array $filters): array
     {
         try {
             $query = DB::table('fraud_timeline');
-            
+
             // Apply filters
             if (isset($filters['booking_id'])) {
                 $query->where('booking_id', $filters['booking_id']);
             }
-            
+
             if (isset($filters['customer_id'])) {
                 $query->where('customer_id', $filters['customer_id']);
             }
-            
+
             if (isset($filters['session_id'])) {
                 $query->where('session_id', $filters['session_id']);
             }
-            
+
             if (isset($filters['correlation_id'])) {
                 $query->where('correlation_id', $filters['correlation_id']);
             }
-            
+
             if (isset($filters['event_type'])) {
                 if (is_array($filters['event_type'])) {
                     $query->whereIn('event_type', $filters['event_type']);
@@ -180,7 +181,7 @@ class FraudTimelineService
                     $query->where('event_type', $filters['event_type']);
                 }
             }
-            
+
             if (isset($filters['event_severity'])) {
                 if (is_array($filters['event_severity'])) {
                     $query->whereIn('event_severity', $filters['event_severity']);
@@ -188,28 +189,28 @@ class FraudTimelineService
                     $query->where('event_severity', $filters['event_severity']);
                 }
             }
-            
+
             if (isset($filters['start_date'])) {
                 $query->where('event_timestamp', '>=', $filters['start_date']);
             }
-            
+
             if (isset($filters['end_date'])) {
                 $query->where('event_timestamp', '<=', $filters['end_date']);
             }
-            
+
             // Pagination
             $limit = min($filters['limit'] ?? 100, 500);
             $offset = $filters['offset'] ?? 0;
-            
+
             // Get events
             $events = $query->orderBy('event_timestamp', 'desc')
                 ->limit($limit)
                 ->offset($offset)
                 ->get();
-            
+
             // Get total count
             $totalCount = $query->count();
-            
+
             // Process events
             $processedEvents = $events->map(function ($event) {
                 return [
@@ -233,7 +234,7 @@ class FraudTimelineService
                     'created_at' => $event->created_at,
                 ];
             });
-            
+
             return [
                 'success' => true,
                 'events' => $processedEvents,
@@ -244,13 +245,13 @@ class FraudTimelineService
                     'has_more' => ($offset + $limit) < $totalCount,
                 ],
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Failed to get fraud timeline', [
                 'error' => $e->getMessage(),
                 'filters' => $filters,
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -260,10 +261,10 @@ class FraudTimelineService
 
     /**
      * Generate fraud analytics report.
-     * 
-     * @param array $parameters Report parameters
+     *
+     * @param  array  $parameters  Report parameters
      * @return array Analytics report
-     * 
+     *
      * Requirements: 24.5
      */
     public function generateAnalyticsReport(array $parameters): array
@@ -272,14 +273,14 @@ class FraudTimelineService
             $startDate = $parameters['start_date'] ?? Carbon::now()->subDays(30);
             $endDate = $parameters['end_date'] ?? Carbon::now();
             $tenantId = $parameters['tenant_id'] ?? null;
-            
-            $cacheKey = self::CACHE_PREFIX . "analytics:" . hash('sha256', json_encode($parameters));
+
+            $cacheKey = self::CACHE_PREFIX.'analytics:'.hash('sha256', json_encode($parameters));
             $cachedReport = Cache::get($cacheKey);
-            
+
             if ($cachedReport !== null) {
                 return $cachedReport;
             }
-            
+
             // Generate comprehensive analytics
             $report = [
                 'period' => [
@@ -297,22 +298,22 @@ class FraudTimelineService
                 'geographic_analysis' => $this->generateGeographicAnalysis($startDate, $endDate, $tenantId),
                 'recommendations' => $this->generateRecommendations($startDate, $endDate, $tenantId),
             ];
-            
+
             // Cache the report
             Cache::put($cacheKey, $report, self::ANALYTICS_CACHE_TTL);
-            
+
             return [
                 'success' => true,
                 'report' => $report,
                 'generated_at' => Carbon::now()->toISOString(),
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Failed to generate fraud analytics report', [
                 'error' => $e->getMessage(),
                 'parameters' => $parameters,
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -322,28 +323,28 @@ class FraudTimelineService
 
     /**
      * Detect fraud patterns.
-     * 
-     * @param array $context Detection context
+     *
+     * @param  array  $context  Detection context
      * @return array Pattern detection results
-     * 
+     *
      * Requirements: 24.5
      */
     public function detectFraudPatterns(array $context): array
     {
         try {
             $detectedPatterns = [];
-            
+
             // Get active fraud patterns
             $patterns = DB::table('fraud_patterns')
                 ->where('is_active', true)
                 ->get();
-            
+
             foreach ($patterns as $pattern) {
                 $patternRules = json_decode($pattern->pattern_rules, true);
                 $patternThresholds = json_decode($pattern->pattern_thresholds, true);
-                
+
                 $matchResult = $this->evaluatePattern($pattern, $patternRules, $patternThresholds, $context);
-                
+
                 if ($matchResult['matches']) {
                     $detectedPatterns[] = [
                         'pattern_id' => $pattern->id,
@@ -353,31 +354,31 @@ class FraudTimelineService
                         'match_details' => $matchResult['details'],
                         'risk_contribution' => $this->calculatePatternRiskContribution($pattern, $matchResult),
                     ];
-                    
+
                     // Update pattern detection count
                     DB::table('fraud_patterns')
                         ->where('id', $pattern->id)
                         ->increment('detection_count');
-                    
+
                     DB::table('fraud_patterns')
                         ->where('id', $pattern->id)
                         ->update(['last_detected_at' => Carbon::now()]);
                 }
             }
-            
+
             return [
                 'success' => true,
                 'detected_patterns' => $detectedPatterns,
                 'pattern_count' => count($detectedPatterns),
                 'total_risk_contribution' => array_sum(array_column($detectedPatterns, 'risk_contribution')),
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Failed to detect fraud patterns', [
                 'error' => $e->getMessage(),
                 'context' => $context,
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -387,10 +388,10 @@ class FraudTimelineService
 
     /**
      * Open fraud dispute.
-     * 
-     * @param array $disputeData Dispute data
+     *
+     * @param  array  $disputeData  Dispute data
      * @return array Dispute creation result
-     * 
+     *
      * Requirements: 24.3
      */
     public function openDispute(array $disputeData): array
@@ -408,13 +409,13 @@ class FraudTimelineService
                 ],
                 'actor_type' => 'customer',
                 'actor_id' => $disputeData['customer_id'] ?? null,
-                'event_description' => 'Customer opened fraud dispute: ' . $disputeData['reason'],
+                'event_description' => 'Customer opened fraud dispute: '.$disputeData['reason'],
             ]);
-            
-            if (!$eventResult['success']) {
+
+            if (! $eventResult['success']) {
                 return $eventResult;
             }
-            
+
             // Create dispute record
             $disputeId = DB::table('fraud_disputes')->insertGetId([
                 'timeline_event_id' => $eventResult['event_id'],
@@ -428,23 +429,23 @@ class FraudTimelineService
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now(),
             ]);
-            
+
             // Trigger dispute workflow
             $this->triggerDisputeWorkflow($disputeId, $disputeData);
-            
+
             return [
                 'success' => true,
                 'dispute_id' => $disputeId,
                 'timeline_event_id' => $eventResult['event_id'],
                 'status' => 'open',
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Failed to open fraud dispute', [
                 'error' => $e->getMessage(),
                 'dispute_data' => $disputeData,
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -454,11 +455,11 @@ class FraudTimelineService
 
     /**
      * Resolve fraud dispute.
-     * 
-     * @param int $disputeId Dispute ID
-     * @param array $resolutionData Resolution data
+     *
+     * @param  int  $disputeId  Dispute ID
+     * @param  array  $resolutionData  Resolution data
      * @return array Resolution result
-     * 
+     *
      * Requirements: 24.3
      */
     public function resolveDispute(int $disputeId, array $resolutionData): array
@@ -466,14 +467,14 @@ class FraudTimelineService
         try {
             // Get dispute
             $dispute = DB::table('fraud_disputes')->where('id', $disputeId)->first();
-            
-            if (!$dispute) {
+
+            if (! $dispute) {
                 return [
                     'success' => false,
                     'error' => 'Dispute not found',
                 ];
             }
-            
+
             // Update dispute status
             DB::table('fraud_disputes')
                 ->where('id', $disputeId)
@@ -485,7 +486,7 @@ class FraudTimelineService
                     'resolved_at' => Carbon::now(),
                     'updated_at' => Carbon::now(),
                 ]);
-            
+
             // Record resolution event
             $eventResult = $this->recordTimelineEvent([
                 'booking_id' => $dispute->booking_id,
@@ -498,30 +499,30 @@ class FraudTimelineService
                 ],
                 'actor_type' => 'staff',
                 'actor_id' => $resolutionData['resolved_by'] ?? null,
-                'event_description' => 'Dispute resolved: ' . $resolutionData['resolution'],
+                'event_description' => 'Dispute resolved: '.$resolutionData['resolution'],
             ]);
-            
+
             // Update fraud patterns if fraud was confirmed
             if ($resolutionData['resolution'] === 'fraud_confirmed') {
                 $this->updatePatternAccuracy($dispute, true);
             } elseif ($resolutionData['resolution'] === 'false_positive') {
                 $this->updatePatternAccuracy($dispute, false);
             }
-            
+
             return [
                 'success' => true,
                 'dispute_id' => $disputeId,
                 'resolution' => $resolutionData['resolution'],
                 'timeline_event_id' => $eventResult['event_id'] ?? null,
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Failed to resolve fraud dispute', [
                 'error' => $e->getMessage(),
                 'dispute_id' => $disputeId,
                 'resolution_data' => $resolutionData,
             ]);
-            
+
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
@@ -534,14 +535,14 @@ class FraudTimelineService
     private function validateEventData(array $eventData): void
     {
         $requiredFields = ['event_type'];
-        
+
         foreach ($requiredFields as $field) {
-            if (!isset($eventData[$field])) {
+            if (! isset($eventData[$field])) {
                 throw new \InvalidArgumentException("Missing required field: {$field}");
             }
         }
-        
-        if (!array_key_exists($eventData['event_type'], self::EVENT_TYPES)) {
+
+        if (! array_key_exists($eventData['event_type'], self::EVENT_TYPES)) {
             throw new \InvalidArgumentException("Invalid event type: {$eventData['event_type']}");
         }
     }
@@ -562,9 +563,9 @@ class FraudTimelineService
             'dispute_opened' => 'high',
             'dispute_resolved' => 'info',
         ];
-        
+
         $baseSeverity = $severityMap[$eventType] ?? 'info';
-        
+
         // Adjust severity based on risk context
         if (isset($eventData['risk_context']['risk_level'])) {
             $riskLevel = $eventData['risk_context']['risk_level'];
@@ -572,7 +573,7 @@ class FraudTimelineService
                 $baseSeverity = 'high';
             }
         }
-        
+
         return $baseSeverity;
     }
 
@@ -584,15 +585,15 @@ class FraudTimelineService
             $eventData['session_id'] ?? '',
             Carbon::now()->format('Y-m-d'),
         ];
-        
-        return 'fraud_' . hash('sha256', implode(':', $components));
+
+        return 'fraud_'.hash('sha256', implode(':', $components));
     }
 
     private function generateEventDescription(array $eventData): string
     {
         $eventType = $eventData['event_type'];
         $eventTypeName = self::EVENT_TYPES[$eventType] ?? $eventType;
-        
+
         $descriptions = [
             'risk_assessment' => 'Risk assessment completed',
             'verification_required' => 'Additional verification required',
@@ -607,7 +608,7 @@ class FraudTimelineService
             'dispute_opened' => 'Fraud dispute opened by customer',
             'dispute_resolved' => 'Fraud dispute resolved',
         ];
-        
+
         return $descriptions[$eventType] ?? $eventTypeName;
     }
 
@@ -635,10 +636,10 @@ class FraudTimelineService
     private function clearTimelineCaches(array $eventData): void
     {
         $cacheKeys = [
-            self::CACHE_PREFIX . "analytics:*",
-            self::CACHE_PREFIX . "patterns:*",
+            self::CACHE_PREFIX.'analytics:*',
+            self::CACHE_PREFIX.'patterns:*',
         ];
-        
+
         // In real implementation, would clear specific cache keys
         Log::info('Timeline caches cleared', [
             'event_type' => $eventData['event_type'],
@@ -651,11 +652,11 @@ class FraudTimelineService
     {
         $query = DB::table('fraud_timeline')
             ->whereBetween('event_timestamp', [$startDate, $endDate]);
-        
+
         if ($tenantId) {
             // Add tenant filtering logic here
         }
-        
+
         return [
             'total_events' => $query->count(),
             'high_severity_events' => $query->whereIn('event_severity', ['high', 'critical'])->count(),
@@ -671,11 +672,11 @@ class FraudTimelineService
             ->select('event_type', DB::raw('COUNT(*) as count'))
             ->whereBetween('event_timestamp', [$startDate, $endDate])
             ->groupBy('event_type');
-        
+
         if ($tenantId) {
             // Add tenant filtering logic here
         }
-        
+
         return $query->get()->mapWithKeys(function ($item) {
             return [$item->event_type => $item->count];
         })->toArray();
@@ -687,11 +688,11 @@ class FraudTimelineService
             ->select('event_severity', DB::raw('COUNT(*) as count'))
             ->whereBetween('event_timestamp', [$startDate, $endDate])
             ->groupBy('event_severity');
-        
+
         if ($tenantId) {
             // Add tenant filtering logic here
         }
-        
+
         return $query->get()->mapWithKeys(function ($item) {
             return [$item->event_severity => $item->count];
         })->toArray();

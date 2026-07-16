@@ -2,9 +2,8 @@
 
 namespace Modules\EventManagement\Jobs;
 
-use Modules\EventManagement\Services\EventAnalyticsService;
-use Modules\EventManagement\Services\AuditService;
-use Modules\EventManagement\Models\Event;
+use Carbon\Carbon;
+use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -12,17 +11,18 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
-use Exception;
+use Modules\EventManagement\Models\Event;
+use Modules\EventManagement\Services\AuditService;
+use Modules\EventManagement\Services\EventAnalyticsService;
 use Stancl\Tenancy\Facades\Tenancy;
 
 /**
  * AnalyticsAggregationJob
- * 
+ *
  * Handles daily and hourly aggregation of analytics data for events.
  * Processes sales metrics, customer data, and performance indicators
  * with proper error handling and monitoring.
- * 
+ *
  * Requirements: 11.1, 11.5
  */
 class AnalyticsAggregationJob implements ShouldQueue
@@ -30,8 +30,11 @@ class AnalyticsAggregationJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     private string $tenantId;
+
     private string $aggregationType; // 'hourly' or 'daily'
+
     private ?Carbon $targetDate;
+
     private ?int $targetHour;
 
     /**
@@ -185,7 +188,7 @@ class AnalyticsAggregationJob implements ShouldQueue
         $ticketsSold = $this->calculateTicketsSoldForBookings($confirmedBookings->pluck('id'));
         $revenueGenerated = $confirmedBookings->sum('total_amount');
         $uniqueCustomers = $confirmedBookings->unique('customer_id')->count();
-        
+
         // Identify new vs returning customers
         $newCustomers = $this->countNewCustomers(
             $confirmedBookings->pluck('customer_id'),
@@ -195,12 +198,12 @@ class AnalyticsAggregationJob implements ShouldQueue
 
         $totalBookings = $confirmedBookings->count();
         $cancelledBookingsCount = $cancelledBookings->count();
-        $cancellationRate = $totalBookings > 0 
-            ? ($cancelledBookingsCount / ($totalBookings + $cancelledBookingsCount)) * 100 
+        $cancellationRate = $totalBookings > 0
+            ? ($cancelledBookingsCount / ($totalBookings + $cancelledBookingsCount)) * 100
             : 0;
 
-        $averageTicketsPerBooking = $totalBookings > 0 
-            ? $ticketsSold / $totalBookings 
+        $averageTicketsPerBooking = $totalBookings > 0
+            ? $ticketsSold / $totalBookings
             : 0;
 
         // Determine if this is a peak hour
@@ -256,7 +259,7 @@ class AnalyticsAggregationJob implements ShouldQueue
         $ticketsSold = $this->calculateTicketsSoldForBookings($confirmedBookings->pluck('id'));
         $revenueGenerated = $confirmedBookings->sum('total_amount');
         $uniqueCustomers = $confirmedBookings->unique('customer_id')->count();
-        
+
         $newCustomers = $this->countNewCustomers(
             $confirmedBookings->pluck('customer_id'),
             $startTime
@@ -265,12 +268,12 @@ class AnalyticsAggregationJob implements ShouldQueue
 
         $totalBookings = $confirmedBookings->count();
         $cancelledBookingsCount = $cancelledBookings->count();
-        $cancellationRate = $totalBookings > 0 
-            ? ($cancelledBookingsCount / ($totalBookings + $cancelledBookingsCount)) * 100 
+        $cancellationRate = $totalBookings > 0
+            ? ($cancelledBookingsCount / ($totalBookings + $cancelledBookingsCount)) * 100
             : 0;
 
-        $averageTicketsPerBooking = $totalBookings > 0 
-            ? $ticketsSold / $totalBookings 
+        $averageTicketsPerBooking = $totalBookings > 0
+            ? $ticketsSold / $totalBookings
             : 0;
 
         $isWeekend = $startTime->isWeekend();

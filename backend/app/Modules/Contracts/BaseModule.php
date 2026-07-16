@@ -13,9 +13,13 @@ use Illuminate\Support\Facades\Log;
 abstract class BaseModule implements ModuleContract
 {
     protected string $key;
+
     protected string $name;
+
     protected string $type = 'addon';
+
     protected string $description = '';
+
     protected string $version = '1.0.0';
 
     public function getKey(): string
@@ -117,7 +121,7 @@ abstract class BaseModule implements ModuleContract
         // Check dependencies
         foreach ($this->getDependencies() as $depKey) {
             $depModule = app('modules')->get($depKey);
-            if (!$depModule) {
+            if (! $depModule) {
                 $reasons[] = "Required module '{$depKey}' is not installed";
             }
         }
@@ -127,8 +131,8 @@ abstract class BaseModule implements ModuleContract
         if ($activationRules['min_tier'] !== null) {
             $currentTier = $this->getCurrentTier();
             if ($currentTier === null) {
-                $reasons[] = "No subscription tier found";
-            } elseif (!$this->tierMeetsMinimum($currentTier, $activationRules['min_tier'])) {
+                $reasons[] = 'No subscription tier found';
+            } elseif (! $this->tierMeetsMinimum($currentTier, $activationRules['min_tier'])) {
                 $reasons[] = "Requires minimum tier '{$activationRules['min_tier']}', current tier is '{$currentTier}'";
             }
         }
@@ -163,6 +167,7 @@ abstract class BaseModule implements ModuleContract
     protected function tierMeetsMinimum(string $current, string $required): bool
     {
         $tiers = ['free' => 0, 'standard' => 1, 'premium' => 2, 'enterprise' => 3];
+
         return ($tiers[$current] ?? 0) >= ($tiers[$required] ?? 0);
     }
 }

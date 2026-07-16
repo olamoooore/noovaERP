@@ -23,7 +23,7 @@ class BillPaymentService
             $vendor = Vendor::findOrFail($data['vendor_id']);
             $bill = null;
 
-            if (!empty($data['bill_id'])) {
+            if (! empty($data['bill_id'])) {
                 $bill = Bill::whereKey($data['bill_id'])->lockForUpdate()->firstOrFail();
 
                 if ((int) $bill->vendor_id !== (int) $vendor->id) {
@@ -50,7 +50,7 @@ class BillPaymentService
 
             $result = $this->postPayment($payment, $vendor, $userId ?? $payment->created_by);
 
-            if (!$result->success) {
+            if (! $result->success) {
                 throw new \RuntimeException($result->error ?? 'Failed to post bill payment.');
             }
 

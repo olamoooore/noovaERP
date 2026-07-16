@@ -15,7 +15,7 @@ return new class extends Migration
         Schema::table('bookings', function (Blueprint $table) {
             $table->string('capacity_reservation_token', 255)->nullable()->after('requires_manual_review');
             $table->timestamp('capacity_reservation_expires_at')->nullable()->after('capacity_reservation_token');
-            
+
             // Index for reservation token lookups
             $table->index('capacity_reservation_token', 'idx_bookings_reservation_token');
         });
@@ -30,7 +30,7 @@ return new class extends Migration
             $table->dropIndex('idx_bookings_reservation_token');
             $table->dropColumn([
                 'capacity_reservation_token',
-                'capacity_reservation_expires_at'
+                'capacity_reservation_expires_at',
             ]);
         });
     }

@@ -2,15 +2,15 @@
 
 namespace App\Accounting\Services;
 
-use App\Models\Accounting\ComplianceDocument;
-use App\Models\Accounting\ComplianceSubmission;
-use App\Models\Accounting\ComplianceEvent;
-use App\Models\Accounting\CountryConfiguration;
 use App\Accounting\Plugin\CountryPluginRegistry;
+use App\Models\Accounting\ComplianceDocument;
+use App\Models\Accounting\ComplianceEvent;
+use App\Models\Accounting\ComplianceSubmission;
+use App\Models\Accounting\CountryConfiguration;
 use App\Models\Invoice;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Compliance Service - Main entry point for compliance operations
@@ -34,9 +34,8 @@ class ComplianceService
 
     /**
      * Map and submit an invoice for compliance
-     * 
-     * @param Invoice $invoice
-     * @param string $countryCode ISO country code
+     *
+     * @param  string  $countryCode  ISO country code
      * @return array ['success' => bool, 'submission_id' => int|null, 'message' => string]
      */
     public function submitInvoice(Invoice $invoice, string $countryCode): array
@@ -63,16 +62,13 @@ class ComplianceService
 
     /**
      * Retry a failed submission
-     * 
-     * @param int $submissionId
-     * @return array
      */
     public function retrySubmission(int $submissionId): array
     {
         $submission = ComplianceSubmission::where('tenant_id', $this->currentTenantId())
             ->findOrFail($submissionId);
 
-        if (!$submission->canRetry()) {
+        if (! $submission->canRetry()) {
             return ['success' => false, 'message' => 'Submission cannot be retried'];
         }
 
@@ -107,15 +103,15 @@ class ComplianceService
 
             if ($sourceDocument) {
                 $nonInvoiceTypes = ['credit_note', 'bill', 'vendor_debit_note'];
-                if (!in_array($docType, $nonInvoiceTypes, true)) {
+                if (! in_array($docType, $nonInvoiceTypes, true)) {
                     $validator = $this->pluginRegistry->resolve($countryCode, 'validator');
-                    if (!$validator) {
+                    if (! $validator) {
                         return ['success' => false, 'message' => "No plugin available for {$countryCode}"];
                     }
 
                     $validation = $validator->validateInvoice($sourceDocument);
-                    if (!$validation['valid']) {
-                        return ['success' => false, 'message' => 'Validation failed: ' . implode(', ', $validation['errors'])];
+                    if (! $validation['valid']) {
+                        return ['success' => false, 'message' => 'Validation failed: '.implode(', ', $validation['errors'])];
                     }
                 }
 
@@ -127,27 +123,27 @@ class ComplianceService
                 } elseif ($docType === 'vendor_debit_note') {
                     $payload = $mapper->mapVendorDebitNote($sourceDocument);
                 } elseif ($docType === 'journal_entry') {
-                    $config2    = $this->getCountryConfig($countryCode);
+                    $config2 = $this->getCountryConfig($countryCode);
                     $selfBilled = ($config2?->settings['self_billed_invoice_enabled'] ?? false) === true;
-                    $payload    = $mapper->mapJournalEntry($sourceDocument, $selfBilled);
+                    $payload = $mapper->mapJournalEntry($sourceDocument, $selfBilled);
                 } else {
                     $payload = $mapper->mapInvoice($sourceDocument);
                 }
                 $payload = $this->applyProviderPayloadDefaults($payload, $context, $countryCode);
 
-                if (!$mapper->validatePayload($payload)) {
+                if (! $mapper->validatePayload($payload)) {
                     return ['success' => false, 'message' => $this->describePayloadValidationFailure($payload)];
                 }
             }
 
             $preparedDocument = $this->prepareDocumentArtifacts($countryCode, $payload, $context);
 
-            if (!$preparedDocument['success']) {
+            if (! $preparedDocument['success']) {
                 return ['success' => false, 'message' => $preparedDocument['message']];
             }
 
             $retrySignatureMetadata = $preparedDocument['signature_metadata'] ?? [];
-            if (!is_array($retrySignatureMetadata)) {
+            if (! is_array($retrySignatureMetadata)) {
                 $retrySignatureMetadata = [];
             }
             $existingMeta = is_array($document->signature_metadata) ? $document->signature_metadata : [];
@@ -159,34 +155,34 @@ class ComplianceService
             $document->update([
                 'mapped_payload' => $payload,
                 'signed_payload' => $preparedDocument['signed_payload'],
-                'signature_metadata' => !empty($retrySignatureMetadata) ? $retrySignatureMetadata : null,
+                'signature_metadata' => ! empty($retrySignatureMetadata) ? $retrySignatureMetadata : null,
             ]);
 
             $retryPayloadHash = hash('sha256', (string) json_encode($preparedDocument['payload']));
-            $previousStatus   = $submission->submission_status;
-            $retryAttempt     = $submission->retry_count + 1;
+            $previousStatus = $submission->submission_status;
+            $retryAttempt = $submission->retry_count + 1;
 
             $result = $provider->retry($preparedDocument['payload'], $submission->provider_reference, $context);
 
             if ($result['success']) {
                 $submission->update([
-                    'retry_count'            => $retryAttempt,
-                    'submission_status'      => 'ack',
-                    'provider_response'      => $result,
-                    'payload_hash'           => $retryPayloadHash,
+                    'retry_count' => $retryAttempt,
+                    'submission_status' => 'ack',
+                    'provider_response' => $result,
+                    'payload_hash' => $retryPayloadHash,
                     'external_document_uuid' => $result['external_document_uuid'] ?? $submission->external_document_uuid,
-                    'external_long_id'       => $result['external_long_id'] ?? $submission->external_long_id,
-                    'validation_link'        => $result['validation_link'] ?? $submission->validation_link,
-                    'status_details'         => $result['status_details'] ?? $submission->status_details,
-                    'signature_metadata'     => $preparedDocument['signature_metadata'],
+                    'external_long_id' => $result['external_long_id'] ?? $submission->external_long_id,
+                    'validation_link' => $result['validation_link'] ?? $submission->validation_link,
+                    'status_details' => $result['status_details'] ?? $submission->status_details,
+                    'signature_metadata' => $preparedDocument['signature_metadata'],
                 ]);
 
                 ComplianceEvent::log($submission->id, 'retry', [
-                    'attempt'            => $retryAttempt,
-                    'payload_hash'       => $retryPayloadHash,
+                    'attempt' => $retryAttempt,
+                    'payload_hash' => $retryPayloadHash,
                     'provider_reference' => $result['provider_reference'] ?? $submission->provider_reference,
-                    'submitted_by'       => \Auth::id(),
-                    'submitted_at'       => now()->toIso8601String(),
+                    'submitted_by' => \Auth::id(),
+                    'submitted_at' => now()->toIso8601String(),
                 ], $previousStatus, 'user');
 
                 return ['success' => true, 'message' => 'Retry submitted'];
@@ -194,12 +190,12 @@ class ComplianceService
                 $submission->update(['retry_count' => $retryAttempt]);
 
                 ComplianceEvent::log($submission->id, 'retry_failed', [
-                    'attempt'       => $retryAttempt,
-                    'payload_hash'  => $retryPayloadHash,
-                    'error_code'    => $result['error_code'] ?? null,
+                    'attempt' => $retryAttempt,
+                    'payload_hash' => $retryPayloadHash,
+                    'error_code' => $result['error_code'] ?? null,
                     'error_message' => $result['message'] ?? 'Retry failed',
-                    'submitted_by'  => \Auth::id(),
-                    'submitted_at'  => now()->toIso8601String(),
+                    'submitted_by' => \Auth::id(),
+                    'submitted_at' => now()->toIso8601String(),
                 ], $previousStatus, 'user');
 
                 return ['success' => false, 'message' => $result['message'] ?? 'Retry failed'];
@@ -207,7 +203,8 @@ class ComplianceService
 
         } catch (\Exception $e) {
             Log::error('Retry submission failed', ['submission_id' => $submissionId, 'error' => $e->getMessage()]);
-            return ['success' => false, 'message' => 'Retry error: ' . $e->getMessage()];
+
+            return ['success' => false, 'message' => 'Retry error: '.$e->getMessage()];
         }
     }
 
@@ -224,7 +221,7 @@ class ComplianceService
             return ['success' => false, 'message' => 'Submission is already cancelled'];
         }
 
-        if (!$this->isWithinCancellationWindow($submission)) {
+        if (! $this->isWithinCancellationWindow($submission)) {
             return [
                 'success' => false,
                 'message' => sprintf(
@@ -238,7 +235,7 @@ class ComplianceService
 
         try {
             $provider = $this->pluginRegistry->resolve($countryCode, 'provider');
-            if (!$provider) {
+            if (! $provider) {
                 return ['success' => false, 'message' => "No provider available for {$countryCode}"];
             }
 
@@ -251,10 +248,10 @@ class ComplianceService
             // document is in the wrong state on their end.
             $cancellableStatuses = ['accepted', 'rejection_requested'];
             $hasLocalAcceptedState = in_array($submission->submission_status, $cancellableStatuses, true)
-                && !empty($submission->external_document_uuid);
+                && ! empty($submission->external_document_uuid);
 
-            if (!$hasLocalAcceptedState) {
-                if (!$submission->provider_reference) {
+            if (! $hasLocalAcceptedState) {
+                if (! $submission->provider_reference) {
                     return [
                         'success' => false,
                         'message' => 'Provider reference is missing; unable to verify live MyInvois status for cancellation.',
@@ -280,7 +277,7 @@ class ComplianceService
                 $submission->refresh();
             }
 
-            if (!in_array($submission->submission_status, $cancellableStatuses, true)) {
+            if (! in_array($submission->submission_status, $cancellableStatuses, true)) {
                 return [
                     'success' => false,
                     'message' => 'Only documents in accepted/valid status can be cancelled in MyInvois.',
@@ -292,41 +289,41 @@ class ComplianceService
             }
 
             $documentUuid = $submission->external_document_uuid;
-            if (!$documentUuid) {
+            if (! $documentUuid) {
                 return ['success' => false, 'message' => 'Document UUID is missing; unable to cancel this submission.'];
             }
 
             $result = $provider->cancel($documentUuid, $context);
-            if (!($result['success'] ?? false)) {
+            if (! ($result['success'] ?? false)) {
                 return ['success' => false, 'message' => $result['message'] ?? 'Cancellation failed'];
             }
 
             $previousStatus = $submission->submission_status;
-            $cancelledAt    = now();
-            $cancelledBy    = \Auth::id();
+            $cancelledAt = now();
+            $cancelledBy = \Auth::id();
 
             $submission->update([
-                'submission_status'   => 'cancelled',
-                'provider_response'   => $result,
-                'status_details'      => $result['details'] ?? $submission->status_details,
-                'error_message'       => null,
+                'submission_status' => 'cancelled',
+                'provider_response' => $result,
+                'status_details' => $result['details'] ?? $submission->status_details,
+                'error_message' => null,
                 'cancellation_reason' => $reason,
-                'cancelled_by'        => $cancelledBy,
-                'cancelled_at'        => $cancelledAt,
+                'cancelled_by' => $cancelledBy,
+                'cancelled_at' => $cancelledAt,
             ]);
 
             $submission->document?->update([
                 'compliance_status' => 'cancelled',
-                'compliance_notes'  => $reason ?: ($result['details']['reason'] ?? 'Cancelled in compliance workflow'),
+                'compliance_notes' => $reason ?: ($result['details']['reason'] ?? 'Cancelled in compliance workflow'),
             ]);
 
             ComplianceEvent::log($submission->id, 'cancel', [
                 'cancellation_reason' => $reason ?: ($result['details']['reason'] ?? null),
-                'cancelled_by'        => $cancelledBy,
-                'cancelled_at'        => $cancelledAt->toIso8601String(),
-                'document_uuid'       => $documentUuid,
-                'provider_status'     => $result['provider_status'] ?? 'cancelled',
-                'lhdn_response'       => $result['details'] ?? null,
+                'cancelled_by' => $cancelledBy,
+                'cancelled_at' => $cancelledAt->toIso8601String(),
+                'document_uuid' => $documentUuid,
+                'provider_status' => $result['provider_status'] ?? 'cancelled',
+                'lhdn_response' => $result['details'] ?? null,
             ], $previousStatus, 'user');
 
             return [
@@ -337,7 +334,8 @@ class ComplianceService
             ];
         } catch (\Exception $e) {
             Log::error('Cancel submission failed', ['submission_id' => $submissionId, 'error' => $e->getMessage()]);
-            return ['success' => false, 'message' => 'Cancellation error: ' . $e->getMessage()];
+
+            return ['success' => false, 'message' => 'Cancellation error: '.$e->getMessage()];
         }
     }
 
@@ -361,12 +359,13 @@ class ComplianceService
         }
 
         $decision = strtolower(trim($decision));
-        if (!in_array($decision, ['cancel', 'decline'], true)) {
+        if (! in_array($decision, ['cancel', 'decline'], true)) {
             return ['success' => false, 'message' => 'Invalid rejection response decision. Use "cancel" or "decline".'];
         }
 
         if ($decision === 'cancel') {
             $reason = $reason ?: 'Cancelled following buyer rejection request';
+
             return $this->cancelSubmission($submissionId, $reason);
         }
 
@@ -374,27 +373,27 @@ class ComplianceService
         // LHDN automatically clears the rejectRequestDateTime after 72 hours if no cancellation
         // is made. We hold an intermediate local status so the scheduler can poll and confirm
         // LHDN's state once the window has expired, rather than prematurely claiming 'accepted'.
-        $respondedAt   = now();
-        $respondedBy   = \Auth::id();
+        $respondedAt = now();
+        $respondedBy = \Auth::id();
         $previousStatus = $submission->submission_status;
 
         $submission->update([
-            'submission_status'              => 'rejection_declined_pending_expiry',
-            'buyer_rejection_reason'         => $submission->rejection_reason ?? null,
-            'buyer_rejection_responded_by'   => $respondedBy,
-            'buyer_rejection_responded_at'   => $respondedAt,
+            'submission_status' => 'rejection_declined_pending_expiry',
+            'buyer_rejection_reason' => $submission->rejection_reason ?? null,
+            'buyer_rejection_responded_by' => $respondedBy,
+            'buyer_rejection_responded_at' => $respondedAt,
         ]);
 
         $submission->document?->update([
-            'compliance_notes' => ($reason ? $reason . ' — ' : '') . 'Supplier declined buyer rejection; awaiting LHDN 72-hour window expiry to confirm final Valid status.',
+            'compliance_notes' => ($reason ? $reason.' — ' : '').'Supplier declined buyer rejection; awaiting LHDN 72-hour window expiry to confirm final Valid status.',
         ]);
 
         ComplianceEvent::log($submission->id, 'rejection_request_declined', [
-            'reason'              => $reason ?: 'Supplier declined buyer rejection request',
-            'responded_by'        => $respondedBy,
-            'responded_at'        => $respondedAt->toIso8601String(),
+            'reason' => $reason ?: 'Supplier declined buyer rejection request',
+            'responded_by' => $respondedBy,
+            'responded_at' => $respondedAt->toIso8601String(),
             'buyer_rejection_reason' => $submission->rejection_reason ?? null,
-            'note'                => 'No LHDN decline API exists. Intermediate status rejection_declined_pending_expiry held; will auto-resolve via 15-min scheduler once LHDN clears the 72-hour rejection window.',
+            'note' => 'No LHDN decline API exists. Intermediate status rejection_declined_pending_expiry held; will auto-resolve via 15-min scheduler once LHDN clears the 72-hour rejection window.',
         ], $previousStatus, 'user');
 
         return [
@@ -407,7 +406,7 @@ class ComplianceService
     private function isWithinCancellationWindow(ComplianceSubmission $submission): bool
     {
         $submittedAt = $submission->submitted_at ?? $submission->created_at;
-        if (!$submittedAt) {
+        if (! $submittedAt) {
             return false;
         }
 
@@ -416,20 +415,19 @@ class ComplianceService
 
     /**
      * Sync submission status from provider
-     * 
-     * @param int $submissionId
+     *
      * @return bool Status updated
      */
     public function syncSubmissionStatus(int $submissionId): bool
     {
         $result = $this->syncSubmissionStatusDetailed($submissionId);
+
         return ($result['success'] ?? false) && ($result['updated'] ?? false);
     }
 
     /**
      * Sync submission status and return detailed result for API responses.
      *
-     * @param int $submissionId
      * @return array{success:bool,updated:bool,message:string,data?:array}
      */
     public function syncSubmissionStatusDetailed(int $submissionId): array
@@ -437,7 +435,7 @@ class ComplianceService
         $submission = ComplianceSubmission::where('tenant_id', $this->currentTenantId())
             ->findOrFail($submissionId);
 
-        if (!$submission->provider_reference) {
+        if (! $submission->provider_reference) {
             return [
                 'success' => false,
                 'updated' => false,
@@ -449,7 +447,7 @@ class ComplianceService
 
         try {
             $sync = $this->pluginRegistry->resolve($countryCode, 'sync');
-            if (!$sync) {
+            if (! $sync) {
                 return [
                     'success' => false,
                     'updated' => false,
@@ -461,14 +459,14 @@ class ComplianceService
             $context = $config?->getProviderContext() ?? [];
 
             $previousStatus = $submission->submission_status;
-            $actorType      = \Auth::id() ? 'user' : 'scheduler';
+            $actorType = \Auth::id() ? 'user' : 'scheduler';
 
             $updated = (bool) $sync->syncStatus($submission, $context);
 
             $submission->update(['last_status_check' => now()]);
             $submission->refresh();
 
-            if (!$updated && in_array($submission->submission_status, ['pending', 'ack', 'unknown'], true)) {
+            if (! $updated && in_array($submission->submission_status, ['pending', 'ack', 'unknown'], true)) {
                 $provider = $this->pluginRegistry->resolve($countryCode, 'provider');
                 if ($provider && method_exists($provider, 'getStatus')) {
                     $probeResult = $provider->getStatus($submission->provider_reference, $context);
@@ -485,8 +483,8 @@ class ComplianceService
             if ($updated) {
                 ComplianceEvent::log($submission->id, 'status_sync', [
                     'previous_status' => $previousStatus,
-                    'new_status'      => $submission->submission_status,
-                    'synced_at'       => now()->toIso8601String(),
+                    'new_status' => $submission->submission_status,
+                    'synced_at' => now()->toIso8601String(),
                 ], $previousStatus, $actorType);
             }
 
@@ -505,6 +503,7 @@ class ComplianceService
 
         } catch (\Exception $e) {
             Log::error('Status sync failed', ['submission_id' => $submissionId, 'error' => $e->getMessage()]);
+
             return [
                 'success' => false,
                 'updated' => false,
@@ -515,8 +514,7 @@ class ComplianceService
 
     /**
      * Bulk sync pending submissions
-     * 
-     * @param string $countryCode
+     *
      * @return int Number synced
      */
     public function syncPendingSubmissions(string $countryCode): int
@@ -544,9 +542,6 @@ class ComplianceService
 
     /**
      * Get country configuration
-     * 
-     * @param string $countryCode
-     * @return CountryConfiguration|null
      */
     public function getCountryConfig(string $countryCode): ?CountryConfiguration
     {
@@ -557,10 +552,6 @@ class ComplianceService
 
     /**
      * Update country configuration
-     * 
-     * @param string $countryCode
-     * @param array $config
-     * @return CountryConfiguration
      */
     public function updateCountryConfig(string $countryCode, array $config): CountryConfiguration
     {
@@ -608,7 +599,7 @@ class ComplianceService
             }
         }
 
-        if (!$sourceDocument) {
+        if (! $sourceDocument) {
             return ['success' => false, 'message' => "Associated {$docType} not found"];
         }
 
@@ -620,14 +611,14 @@ class ComplianceService
             ?? $sourceDocument->entry_number
             ?? $sourceDocument->invoice_number
             ?? '';
-        $docDate   = $sourceDocument->credit_note_date
+        $docDate = $sourceDocument->credit_note_date
             ?? $sourceDocument->debit_note_date
             ?? $sourceDocument->bill_date
             ?? $sourceDocument->entry_date
             ?? $sourceDocument->invoice_date
             ?? $sourceDocument->issued_date
             ?? null;
-        $docTotal    = $sourceDocument->total
+        $docTotal = $sourceDocument->total
             ?? $sourceDocument->total_amount
             ?? (method_exists($sourceDocument, 'getTotalDebit') ? $sourceDocument->getTotalDebit() : null);
         $docCurrency = $sourceDocument->currency_code ?? 'MYR';
@@ -636,27 +627,29 @@ class ComplianceService
             DB::beginTransaction();
 
             $validator = $this->pluginRegistry->resolve($countryCode, 'validator');
-            if (!$validator) {
+            if (! $validator) {
                 DB::rollBack();
+
                 return ['success' => false, 'message' => "No plugin available for {$countryCode}"];
             }
 
             $nonInvoiceTypes = ['credit_note', 'bill', 'vendor_debit_note', 'journal_entry'];
-            if (!in_array($docType, $nonInvoiceTypes, true)) {
+            if (! in_array($docType, $nonInvoiceTypes, true)) {
                 $validation = $validator->validateInvoice($sourceDocument);
-                if (!$validation['valid']) {
+                if (! $validation['valid']) {
                     DB::rollBack();
-                    return ['success' => false, 'message' => 'Validation failed: ' . implode(', ', $validation['errors'])];
+
+                    return ['success' => false, 'message' => 'Validation failed: '.implode(', ', $validation['errors'])];
                 }
             }
 
             $mapper = $this->pluginRegistry->resolve($countryCode, 'mapper');
 
             Log::info('myinvois:mapDocumentPayload — begin', [
-                'document_id'     => $document->id,
-                'source_id'       => $sourceDocument->id,
+                'document_id' => $document->id,
+                'source_id' => $sourceDocument->id,
                 'document_number' => $docNumber,
-                'document_type'   => $docType,
+                'document_type' => $docType,
             ]);
 
             if ($docType === 'credit_note') {
@@ -678,9 +671,9 @@ class ComplianceService
             }
 
             Log::info('myinvois:mapDocumentPayload — done', [
-                'document_id'     => $document->id,
-                'source_id'       => $sourceDocument->id,
-                'payload_hash'    => hash('sha256', (string) json_encode($payload)),
+                'document_id' => $document->id,
+                'source_id' => $sourceDocument->id,
+                'payload_hash' => hash('sha256', (string) json_encode($payload)),
                 'line_item_count' => count($payload['line_items'] ?? []),
             ]);
 
@@ -691,27 +684,30 @@ class ComplianceService
                 $credentialError = $this->validateMyInvoiceCredentials($context);
                 if ($credentialError !== null) {
                     DB::rollBack();
+
                     return ['success' => false, 'message' => $credentialError];
                 }
             }
 
             $payload = $this->applyProviderPayloadDefaults($payload, $context, $countryCode);
 
-            if (!$mapper->validatePayload($payload)) {
+            if (! $mapper->validatePayload($payload)) {
                 DB::rollBack();
+
                 return ['success' => false, 'message' => $this->describePayloadValidationFailure($payload)];
             }
 
             $preparedDocument = $this->prepareDocumentArtifacts($countryCode, $payload, $context);
 
-            if (!$preparedDocument['success']) {
+            if (! $preparedDocument['success']) {
                 DB::rollBack();
+
                 return ['success' => false, 'message' => $preparedDocument['message']];
             }
 
             // Preserve a handwritten signature that was saved before submission.
             $submitSignatureMetadata = $preparedDocument['signature_metadata'] ?? [];
-            if (!is_array($submitSignatureMetadata)) {
+            if (! is_array($submitSignatureMetadata)) {
                 $submitSignatureMetadata = [];
             }
             $existingMeta = is_array($document->signature_metadata) ? $document->signature_metadata : [];
@@ -728,107 +724,108 @@ class ComplianceService
                 'currency_code' => $docCurrency ?? $document->currency_code ?? 'SGD',
                 'mapped_payload' => $payload,
                 'signed_payload' => $preparedDocument['signed_payload'],
-                'signature_metadata' => !empty($submitSignatureMetadata) ? $submitSignatureMetadata : null,
+                'signature_metadata' => ! empty($submitSignatureMetadata) ? $submitSignatureMetadata : null,
                 'compliance_status' => 'pending',
                 'compliance_notes' => null,
             ]);
 
             $provider = $this->pluginRegistry->resolve($countryCode, 'provider');
 
-            $payloadHash   = hash('sha256', (string) json_encode($preparedDocument['payload']));
-            $documentHash  = !empty($preparedDocument['payload']['_signed_document'])
+            $payloadHash = hash('sha256', (string) json_encode($preparedDocument['payload']));
+            $documentHash = ! empty($preparedDocument['payload']['_signed_document'])
                 ? hash('sha256', (string) json_encode($preparedDocument['payload']['_signed_document']))
                 : null;
 
             Log::info('myinvois:submitDocument — begin', [
-                'document_id'              => $document->id,
-                'source_id'                => $sourceDocument->id,
-                'has_handwritten_signature' => !empty($submitSignatureMetadata['handwritten_signature']),
-                'has_certificate_signature' => !empty($submitSignatureMetadata['enabled']) && ($submitSignatureMetadata['mode'] ?? '') !== 'disabled',
-                'payload_hash'             => $payloadHash,
+                'document_id' => $document->id,
+                'source_id' => $sourceDocument->id,
+                'has_handwritten_signature' => ! empty($submitSignatureMetadata['handwritten_signature']),
+                'has_certificate_signature' => ! empty($submitSignatureMetadata['enabled']) && ($submitSignatureMetadata['mode'] ?? '') !== 'disabled',
+                'payload_hash' => $payloadHash,
             ]);
 
             $submitResult = $provider->submit($preparedDocument['payload'], $context);
 
             Log::info('myinvois:submitDocument — response', [
-                'document_id'     => $document->id,
-                'source_id'       => $sourceDocument->id,
+                'document_id' => $document->id,
+                'source_id' => $sourceDocument->id,
                 'response_status' => $submitResult['success'] ? 'success' : 'failed',
                 'provider_reference' => $submitResult['provider_reference'] ?? null,
-                'error_message'   => $submitResult['message'] ?? null,
-                'response_body'   => array_diff_key($submitResult, array_flip(['success', 'provider_reference', 'message'])),
+                'error_message' => $submitResult['message'] ?? null,
+                'response_body' => array_diff_key($submitResult, array_flip(['success', 'provider_reference', 'message'])),
             ]);
 
             // ── Permanent record for failed attempts ──────────────────────────
             // Even when LHDN rejects, we create a submission row so there is a
             // permanent, queryable record of every attempt: who tried, when, what
             // hash was sent, and what LHDN returned.  Status = 'failed'.
-            if (!$submitResult['success']) {
+            if (! $submitResult['success']) {
                 $failedSubmission = ComplianceSubmission::create([
-                    'tenant_id'         => $this->currentTenantId(),
-                    'document_id'       => $document->id,
-                    'country_code'      => strtoupper($countryCode),
-                    'provider_name'     => $this->providerNameForCountry($countryCode),
+                    'tenant_id' => $this->currentTenantId(),
+                    'document_id' => $document->id,
+                    'country_code' => strtoupper($countryCode),
+                    'provider_name' => $this->providerNameForCountry($countryCode),
                     'submission_number' => $this->generateSubmissionNumber($countryCode),
-                    'payload_hash'      => $payloadHash,
-                    'document_hash'     => $documentHash,
+                    'payload_hash' => $payloadHash,
+                    'document_hash' => $documentHash,
                     'provider_reference' => null,
                     'submission_status' => 'failed',
                     'provider_response' => $submitResult,
-                    'error_code'        => $submitResult['error_code'] ?? null,
-                    'error_message'     => $submitResult['message'] ?? null,
+                    'error_code' => $submitResult['error_code'] ?? null,
+                    'error_message' => $submitResult['message'] ?? null,
                     'signature_metadata' => $preparedDocument['signature_metadata'],
-                    'idempotency_key'   => Str::uuid(),
-                    'submitted_by'      => \Auth::id(),
-                    'submitted_at'      => now(),
+                    'idempotency_key' => Str::uuid(),
+                    'submitted_by' => \Auth::id(),
+                    'submitted_at' => now(),
                 ]);
 
                 ComplianceEvent::log($failedSubmission->id, 'submit_failed', [
-                    'source_id'         => $sourceDocument->id,
-                    'document_number'   => $docNumber,
-                    'payload_hash'      => $payloadHash,
-                    'error_code'        => $submitResult['error_code'] ?? null,
-                    'error_message'     => $submitResult['message'] ?? null,
-                    'lhdn_details'      => $submitResult['details'] ?? null,
-                    'submitted_by'      => \Auth::id(),
-                    'submitted_at'      => now()->toIso8601String(),
+                    'source_id' => $sourceDocument->id,
+                    'document_number' => $docNumber,
+                    'payload_hash' => $payloadHash,
+                    'error_code' => $submitResult['error_code'] ?? null,
+                    'error_message' => $submitResult['message'] ?? null,
+                    'lhdn_details' => $submitResult['details'] ?? null,
+                    'submitted_by' => \Auth::id(),
+                    'submitted_at' => now()->toIso8601String(),
                 ], null, 'user');
 
                 $document->update(['compliance_status' => 'failed', 'compliance_notes' => $submitResult['message']]);
                 DB::commit();
+
                 return ['success' => false, 'document_id' => $document->id, 'submission_id' => $failedSubmission->id, 'message' => $submitResult['message']];
             }
 
             $submission = ComplianceSubmission::create([
-                'tenant_id'          => $this->currentTenantId(),
-                'document_id'        => $document->id,
-                'country_code'       => strtoupper($countryCode),
-                'provider_name'      => $this->providerNameForCountry($countryCode),
-                'submission_number'  => $this->generateSubmissionNumber($countryCode),
-                'payload_hash'       => $payloadHash,
-                'document_hash'      => $documentHash,
+                'tenant_id' => $this->currentTenantId(),
+                'document_id' => $document->id,
+                'country_code' => strtoupper($countryCode),
+                'provider_name' => $this->providerNameForCountry($countryCode),
+                'submission_number' => $this->generateSubmissionNumber($countryCode),
+                'payload_hash' => $payloadHash,
+                'document_hash' => $documentHash,
                 'provider_reference' => $submitResult['provider_reference'],
                 'external_document_uuid' => $submitResult['external_document_uuid'] ?? null,
-                'external_long_id'   => $submitResult['external_long_id'] ?? null,
-                'validation_link'    => $submitResult['validation_link'] ?? null,
-                'submission_status'  => 'ack',
-                'provider_response'  => $submitResult,
-                'status_details'     => $submitResult['status_details'] ?? null,
+                'external_long_id' => $submitResult['external_long_id'] ?? null,
+                'validation_link' => $submitResult['validation_link'] ?? null,
+                'submission_status' => 'ack',
+                'provider_response' => $submitResult,
+                'status_details' => $submitResult['status_details'] ?? null,
                 'signature_metadata' => $preparedDocument['signature_metadata'],
-                'idempotency_key'    => Str::uuid(),
-                'submitted_by'       => \Auth::id(),
-                'submitted_at'       => now(),
+                'idempotency_key' => Str::uuid(),
+                'submitted_by' => \Auth::id(),
+                'submitted_at' => now(),
             ]);
 
             ComplianceEvent::log($submission->id, 'submit', [
-                'source_id'          => $sourceDocument->id,
-                'document_number'    => $docNumber,
+                'source_id' => $sourceDocument->id,
+                'document_number' => $docNumber,
                 'provider_reference' => $submitResult['provider_reference'],
-                'payload_hash'       => $payloadHash,
-                'document_hash'      => $documentHash,
-                'signature_enabled'  => (bool) ($preparedDocument['signature_metadata']['enabled'] ?? false),
-                'submitted_by'       => \Auth::id(),
-                'submitted_at'       => now()->toIso8601String(),
+                'payload_hash' => $payloadHash,
+                'document_hash' => $documentHash,
+                'signature_enabled' => (bool) ($preparedDocument['signature_metadata']['enabled'] ?? false),
+                'submitted_by' => \Auth::id(),
+                'submitted_at' => now()->toIso8601String(),
             ], null, 'user');
 
             $document->update([
@@ -851,7 +848,8 @@ class ComplianceService
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Compliance document submission failed', ['error' => $e->getMessage(), 'document_id' => $document->id]);
-            return ['success' => false, 'message' => 'Submission error: ' . $e->getMessage()];
+
+            return ['success' => false, 'message' => 'Submission error: '.$e->getMessage()];
         }
     }
 
@@ -860,8 +858,7 @@ class ComplianceService
         string $countryCode,
         ?Invoice $invoice = null,
         array $signingData = []
-    ): array
-    {
+    ): array {
         $docType = $document->document_type ?? 'invoice';
 
         // Resolve source document for every supported type
@@ -887,12 +884,12 @@ class ComplianceService
             }
         }
 
-        if (!$invoice) {
+        if (! $invoice) {
             return ['success' => false, 'message' => "Associated {$docType} not found"];
         }
 
         $mapper = $this->pluginRegistry->resolve($countryCode, 'mapper');
-        if (!$mapper) {
+        if (! $mapper) {
             return ['success' => false, 'message' => "No mapper available for {$countryCode}"];
         }
 
@@ -913,7 +910,7 @@ class ComplianceService
         $payload = $this->applyProviderPayloadDefaults($payload, $context, $countryCode);
         $preparedDocument = $this->prepareDocumentArtifacts($countryCode, $payload, $context, $signingData);
 
-        if (!$preparedDocument['success']) {
+        if (! $preparedDocument['success']) {
             return ['success' => false, 'message' => $preparedDocument['message'] ?? 'Unable to generate signature artifacts.'];
         }
 
@@ -938,7 +935,8 @@ class ComplianceService
                 'document_id' => $document->id,
                 'error' => $e->getMessage(),
             ]);
-            return ['success' => false, 'message' => 'Signature was generated but could not be saved: ' . $e->getMessage()];
+
+            return ['success' => false, 'message' => 'Signature was generated but could not be saved: '.$e->getMessage()];
         }
 
         return [
@@ -952,7 +950,7 @@ class ComplianceService
     {
         $provider = $this->pluginRegistry->resolve($countryCode, 'provider');
 
-        if (!method_exists($provider, 'signDocument')) {
+        if (! method_exists($provider, 'signDocument')) {
             $signatureMetadata = null;
             $handwrittenDataUrl = $signingData['handwritten_signature_data_url'] ?? null;
             if (is_string($handwrittenDataUrl) && $handwrittenDataUrl !== '') {
@@ -968,6 +966,7 @@ class ComplianceService
                     ], static fn ($value) => $value !== null && $value !== ''),
                 ];
             }
+
             return [
                 'success' => true,
                 'payload' => $payload,
@@ -977,12 +976,12 @@ class ComplianceService
         }
 
         $signResult = $provider->signDocument($payload, $context);
-        if (!$signResult['success']) {
+        if (! $signResult['success']) {
             return $signResult;
         }
 
         $signatureMetadata = $signResult['signature_metadata'] ?? null;
-        if (!is_array($signatureMetadata)) {
+        if (! is_array($signatureMetadata)) {
             $signatureMetadata = [];
         }
 
@@ -1005,12 +1004,12 @@ class ComplianceService
         }
 
         $submissionPayload = $payload;
-        if (!empty($signResult['signed_document'])) {
+        if (! empty($signResult['signed_document'])) {
             $submissionPayload['_signed_document'] = ($signResult['used_for_submission'] ?? false)
                 ? $signResult['signed_document']
                 : null;
         }
-        if (!empty($signatureMetadata)) {
+        if (! empty($signatureMetadata)) {
             $submissionPayload['_signature_metadata'] = $signatureMetadata;
         }
 
@@ -1022,18 +1021,14 @@ class ComplianceService
             'success' => true,
             'payload' => $submissionPayload,
             'signed_payload' => $signResult['signed_document'] ?? null,
-            'signature_metadata' => !empty($signatureMetadata) ? $signatureMetadata : null,
+            'signature_metadata' => ! empty($signatureMetadata) ? $signatureMetadata : null,
         ];
     }
 
     /**
      * Export statutory report
-     * 
-     * @param string $countryCode
-     * @param string $reportType balance_sheet|income_statement|trial_balance
-     * @param \DateTime $asOfDate
-     * @param array $options
-     * @return array
+     *
+     * @param  string  $reportType  balance_sheet|income_statement|trial_balance
      */
     public function exportStatutoryReport(
         string $countryCode,
@@ -1043,12 +1038,12 @@ class ComplianceService
     ): array {
         $exporter = $this->pluginRegistry->resolve($countryCode, 'exporter');
 
-        if (!$exporter) {
+        if (! $exporter) {
             return ['success' => false, 'message' => "No exporter available for {$countryCode}"];
         }
 
         try {
-            $report = match($reportType) {
+            $report = match ($reportType) {
                 'balance_sheet' => $exporter->exportBalanceSheet($asOfDate, $options),
                 'income_statement' => $exporter->exportIncomeStatement(
                     isset($options['start_date'])
@@ -1064,19 +1059,19 @@ class ComplianceService
             };
 
             $validation = $exporter->validateReport($report);
-            if (!$validation['valid']) {
+            if (! $validation['valid']) {
                 $allowUnbalanced = (bool) ($options['allow_unbalanced'] ?? false);
 
-                if (!$allowUnbalanced) {
+                if (! $allowUnbalanced) {
                     return ['success' => false, 'errors' => $validation['errors']];
                 }
 
                 $nonBalanceErrors = array_values(array_filter(
                     $validation['errors'] ?? [],
-                    fn ($error) => !$this->isBalanceValidationError((string) $error)
+                    fn ($error) => ! $this->isBalanceValidationError((string) $error)
                 ));
 
-                if (!empty($nonBalanceErrors)) {
+                if (! empty($nonBalanceErrors)) {
                     return ['success' => false, 'errors' => $nonBalanceErrors];
                 }
 
@@ -1113,7 +1108,8 @@ class ComplianceService
 
         } catch (\Exception $e) {
             Log::error('Statutory report export failed', ['error' => $e->getMessage()]);
-            return ['success' => false, 'message' => 'Export error: ' . $e->getMessage()];
+
+            return ['success' => false, 'message' => 'Export error: '.$e->getMessage()];
         }
     }
 
@@ -1141,16 +1137,17 @@ class ComplianceService
      */
     private function generateSubmissionNumber(string $countryCode): ?string
     {
-        if (!\Schema::hasColumn('acct_compliance_submissions', 'submission_number')) {
+        if (! \Schema::hasColumn('acct_compliance_submissions', 'submission_number')) {
             return null;
         }
 
-        $prefix = strtoupper($countryCode) . '-' . now()->format('Ym');
-        $seq    = ComplianceSubmission::where('country_code', strtoupper($countryCode))
+        $prefix = strtoupper($countryCode).'-'.now()->format('Ym');
+        $seq = ComplianceSubmission::where('country_code', strtoupper($countryCode))
             ->whereNotNull('submission_number')
-            ->where('submission_number', 'like', $prefix . '-%')
+            ->where('submission_number', 'like', $prefix.'-%')
             ->count() + 1;
-        return $prefix . '-' . str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
+
+        return $prefix.'-'.str_pad((string) $seq, 6, '0', STR_PAD_LEFT);
     }
 
     /**
@@ -1171,10 +1168,10 @@ class ComplianceService
     private function validateMyInvoiceCredentials(array $context): ?string
     {
         $required = [
-            'myinvoice_client_id'     => 'LHDN API Client ID',
+            'myinvoice_client_id' => 'LHDN API Client ID',
             'myinvoice_client_secret' => 'LHDN API Client Secret',
-            'supplier_tin'            => 'Supplier TIN',
-            'supplier_name'           => 'Supplier Name',
+            'supplier_tin' => 'Supplier TIN',
+            'supplier_name' => 'Supplier Name',
         ];
 
         $missing = [];
@@ -1190,8 +1187,8 @@ class ComplianceService
         }
 
         return 'MyInvois credentials are not fully configured for this tenant. '
-            . 'Missing: ' . implode(', ', $missing) . '. '
-            . 'Configure them at Accounting → MyInvois Settings.';
+            .'Missing: '.implode(', ', $missing).'. '
+            .'Configure them at Accounting → MyInvois Settings.';
     }
 
     private function applyProviderPayloadDefaults(array $payload, array $context, string $countryCode): array
@@ -1268,18 +1265,18 @@ class ComplianceService
         // so the document uses the real company TIN rather than the EI00000000010 fallback.
         // This applies to both regular invoices (type 01) and self-billed (type 11).
         $selfBilledTypes = ['self_billed_invoice', 'self_billed_credit_note', 'self_billed_debit_note', 'self_billed_refund_note'];
-        $buyerSameAsSupplier = !empty($payload['_buyer_same_as_supplier'])
+        $buyerSameAsSupplier = ! empty($payload['_buyer_same_as_supplier'])
             || in_array($payload['document_type'] ?? '', $selfBilledTypes, true);
 
         if ($buyerSameAsSupplier) {
             $buyer = is_array($payload['buyer'] ?? null) ? $payload['buyer'] : [];
-            $buyer['tin']                  = $supplier['tin']                ?? null;
-            $buyer['name']                 = ($buyer['name'] === 'Unknown Party' || empty($buyer['name']))
+            $buyer['tin'] = $supplier['tin'] ?? null;
+            $buyer['name'] = ($buyer['name'] === 'Unknown Party' || empty($buyer['name']))
                                              ? ($supplier['name'] ?? $buyer['name'])
                                              : $buyer['name'];
             $buyer['company_registration'] = $buyer['company_registration'] ?? $supplier['company_registration'] ?? null;
-            $buyer['identity_type']        = $buyer['identity_type']        ?? $supplier['identity_type']        ?? null;
-            $buyer['identity_number']      = $buyer['identity_number']      ?? $supplier['identity_number']      ?? null;
+            $buyer['identity_type'] = $buyer['identity_type'] ?? $supplier['identity_type'] ?? null;
+            $buyer['identity_number'] = $buyer['identity_number'] ?? $supplier['identity_number'] ?? null;
             // Copy supplier address so buyer doesn't have a blank postal address
             $buyerAddress = is_array($buyer['address'] ?? null) ? $buyer['address'] : [];
             $supplierAddress = is_array($supplier['address'] ?? null) ? $supplier['address'] : [];
@@ -1306,7 +1303,7 @@ class ComplianceService
     {
         $required = ['document_type', 'invoice_id', 'invoice_number', 'invoice_date', 'currency_code', 'supplier', 'buyer', 'line_items', 'totals'];
         foreach ($required as $field) {
-            if (!isset($payload[$field])) {
+            if (! isset($payload[$field])) {
                 return "Payload validation failed: required field '{$field}' is missing";
             }
         }
@@ -1318,15 +1315,17 @@ class ComplianceService
         $supplier = $payload['supplier'] ?? [];
         if (empty($supplier['tin'])) {
             $supplierName = $supplier['name'] ?? 'unknown';
+
             return "Payload validation failed: supplier '{$supplierName}' has no TIN — add the vendor's Tax Identification Number in vendor settings";
         }
 
         if (empty($supplier['company_registration']) && (empty($supplier['identity_type']) || empty($supplier['identity_number']))) {
             $supplierName = $supplier['name'] ?? 'unknown';
+
             return "Payload validation failed: supplier '{$supplierName}' has no Company Registration Number (BRN) and no identity document — add the vendor's registration number in vendor settings";
         }
 
-        if (!isset($payload['totals']['gross_amount']) || !is_numeric($payload['totals']['gross_amount'])) {
+        if (! isset($payload['totals']['gross_amount']) || ! is_numeric($payload['totals']['gross_amount'])) {
             return 'Payload validation failed: totals.gross_amount is missing or not numeric';
         }
 

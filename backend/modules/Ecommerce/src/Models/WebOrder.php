@@ -8,9 +8,9 @@ use App\Models\StockMovement;
 use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Inventory\Models\StockReservation;
 
 class WebOrder extends Model
@@ -90,29 +90,38 @@ class WebOrder extends Model
 
     // ── Status constants ──────────────────────────────────────────────────────
 
-    public const STATUS_PENDING    = 'pending';
-    public const STATUS_CONFIRMED  = 'confirmed';
-    public const STATUS_PROCESSING = 'processing';
-    public const STATUS_SHIPPED    = 'shipped';
-    public const STATUS_DELIVERED  = 'delivered';
-    public const STATUS_CANCELLED  = 'cancelled';
-    public const STATUS_REFUNDED   = 'refunded';
+    public const STATUS_PENDING = 'pending';
 
-    public const PAYMENT_STATUS_PENDING  = 'pending';
-    public const PAYMENT_STATUS_PAID     = 'paid';
-    public const PAYMENT_STATUS_FAILED   = 'failed';
+    public const STATUS_CONFIRMED = 'confirmed';
+
+    public const STATUS_PROCESSING = 'processing';
+
+    public const STATUS_SHIPPED = 'shipped';
+
+    public const STATUS_DELIVERED = 'delivered';
+
+    public const STATUS_CANCELLED = 'cancelled';
+
+    public const STATUS_REFUNDED = 'refunded';
+
+    public const PAYMENT_STATUS_PENDING = 'pending';
+
+    public const PAYMENT_STATUS_PAID = 'paid';
+
+    public const PAYMENT_STATUS_FAILED = 'failed';
+
     public const PAYMENT_STATUS_REFUNDED = 'refunded';
 
     // ── Valid status transitions (state machine) ──────────────────────────────
 
     private const VALID_TRANSITIONS = [
-        self::STATUS_PENDING    => [self::STATUS_CONFIRMED, self::STATUS_CANCELLED],
-        self::STATUS_CONFIRMED  => [self::STATUS_PROCESSING, self::STATUS_CANCELLED],
+        self::STATUS_PENDING => [self::STATUS_CONFIRMED, self::STATUS_CANCELLED],
+        self::STATUS_CONFIRMED => [self::STATUS_PROCESSING, self::STATUS_CANCELLED],
         self::STATUS_PROCESSING => [self::STATUS_SHIPPED, self::STATUS_CANCELLED],
-        self::STATUS_SHIPPED    => [self::STATUS_DELIVERED],
-        self::STATUS_DELIVERED  => [self::STATUS_REFUNDED],
-        self::STATUS_CANCELLED  => [],
-        self::STATUS_REFUNDED   => [],
+        self::STATUS_SHIPPED => [self::STATUS_DELIVERED],
+        self::STATUS_DELIVERED => [self::STATUS_REFUNDED],
+        self::STATUS_CANCELLED => [],
+        self::STATUS_REFUNDED => [],
     ];
 
     // ── State machine methods ─────────────────────────────────────────────────
@@ -124,19 +133,19 @@ class WebOrder extends Model
 
     public function transitionTo(string $newStatus): self
     {
-        if (!$this->canTransitionTo($newStatus)) {
+        if (! $this->canTransitionTo($newStatus)) {
             throw new \InvalidArgumentException(
                 "Invalid transition from '{$this->status}' to '{$newStatus}'. "
-                . 'Allowed: ' . implode(', ', self::VALID_TRANSITIONS[$this->status] ?? ['none'])
+                .'Allowed: '.implode(', ', self::VALID_TRANSITIONS[$this->status] ?? ['none'])
             );
         }
 
         $this->status = $newStatus;
 
         $timestampField = match ($newStatus) {
-            self::STATUS_CONFIRMED  => 'confirmed_at',
-            self::STATUS_SHIPPED    => 'shipped_at',
-            self::STATUS_DELIVERED  => 'delivered_at',
+            self::STATUS_CONFIRMED => 'confirmed_at',
+            self::STATUS_SHIPPED => 'shipped_at',
+            self::STATUS_DELIVERED => 'delivered_at',
             default => null,
         };
 
@@ -228,8 +237,8 @@ class WebOrder extends Model
     // Generate unique order number
     public static function generateOrderNumber(): string
     {
-        $prefix = 'WEB-' . now()->format('Y') . '-';
-        $lastOrder = static::where('order_number', 'like', $prefix . '%')
+        $prefix = 'WEB-'.now()->format('Y').'-';
+        $lastOrder = static::where('order_number', 'like', $prefix.'%')
             ->orderBy('order_number', 'desc')
             ->first();
 
@@ -239,7 +248,7 @@ class WebOrder extends Model
             $number = (int) end($parts) + 1;
         }
 
-        return $prefix . str_pad($number, 6, '0', STR_PAD_LEFT);
+        return $prefix.str_pad($number, 6, '0', STR_PAD_LEFT);
     }
 
     // Convert WebOrder to Invoice via canonical SalesOrderService
@@ -249,14 +258,14 @@ class WebOrder extends Model
         $salesOrderService = app(\Modules\Sales\Services\SalesOrderService::class);
 
         $resolvedWarehouseId = $this->resolveInventoryWarehouseId();
-        if (!$this->fulfillment_warehouse_id && $resolvedWarehouseId) {
+        if (! $this->fulfillment_warehouse_id && $resolvedWarehouseId) {
             $this->forceFill(['fulfillment_warehouse_id' => $resolvedWarehouseId])->saveQuietly();
         }
 
         // Create SalesOrder (idempotent via SalesChannelReference)
         $salesOrder = $salesOrderService->createFromWebOrder($this);
 
-        if (!$salesOrder->warehouse_id && $resolvedWarehouseId) {
+        if (! $salesOrder->warehouse_id && $resolvedWarehouseId) {
             $salesOrder->forceFill(['warehouse_id' => $resolvedWarehouseId])->saveQuietly();
             $salesOrder->refresh();
         }
@@ -269,9 +278,10 @@ class WebOrder extends Model
             if ($link) {
                 $invoice = Invoice::findOrFail($link->invoice_id);
                 // Ensure web order is linked
-                if (!$this->invoice_id) {
+                if (! $this->invoice_id) {
                     $this->update(['invoice_id' => $invoice->id]);
                 }
+
                 return $invoice;
             }
         }
@@ -305,13 +315,13 @@ class WebOrder extends Model
         }
 
         $invoice = $salesOrderService->createInvoice($salesOrder, [
-            'subtotal'        => $this->subtotal,
-            'tax_amount'      => $this->tax_amount,
+            'subtotal' => $this->subtotal,
+            'tax_amount' => $this->tax_amount,
             'discount_amount' => $this->discount_amount + $this->loyalty_discount,
-            'shipping_cost'   => $this->shipping_cost,
+            'shipping_cost' => $this->shipping_cost,
             'shipping_method' => $shippingMethodLabel ?: null,
-            'total'           => $this->total,
-            'web_order_id'    => $this->id,
+            'total' => $this->total,
+            'web_order_id' => $this->id,
         ]);
 
         app(\App\Services\InvoiceService::class)->recordChannelPayment($invoice->fresh(), [
@@ -332,7 +342,7 @@ class WebOrder extends Model
                 ->where('reference_id', $this->id)
                 ->where('type', 'redeem')
                 ->first();
-            
+
             if ($loyaltyTransaction) {
                 \Modules\Loyalty\Models\LoyaltyRedemption::where('loyalty_transaction_id', $loyaltyTransaction->id)
                     ->update(['invoice_id' => $invoice->id]);

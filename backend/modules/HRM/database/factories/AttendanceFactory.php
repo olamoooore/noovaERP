@@ -14,10 +14,10 @@ class AttendanceFactory extends Factory
     {
         return [
             'employee_id' => Employee::factory(),
-            'date'        => $this->faker->dateTimeThisMonth()->format('Y-m-d'),
-            'check_in'    => '09:00',
-            'check_out'   => '18:00',
-            'notes'       => null,
+            'date' => $this->faker->dateTimeThisMonth()->format('Y-m-d'),
+            'check_in' => '09:00',
+            'check_out' => '18:00',
+            'notes' => null,
         ];
     }
 }

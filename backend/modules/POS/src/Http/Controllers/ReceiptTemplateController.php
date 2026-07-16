@@ -3,8 +3,8 @@
 namespace Modules\POS\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Modules\POS\Models\ReceiptTemplate;
 use Illuminate\Http\Request;
+use Modules\POS\Models\ReceiptTemplate;
 
 class ReceiptTemplateController extends Controller
 {
@@ -21,14 +21,14 @@ class ReceiptTemplateController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name'        => 'required|string|max:255',
+            'name' => 'required|string|max:255',
             'description' => 'nullable|string|max:500',
-            'config'      => 'required|array',
-            'is_active'   => 'boolean',
+            'config' => 'required|array',
+            'is_active' => 'boolean',
         ]);
 
         // If setting as active, deactivate all others first
-        if (!empty($validated['is_active'])) {
+        if (! empty($validated['is_active'])) {
             ReceiptTemplate::query()->update(['is_active' => false]);
         }
 
@@ -36,7 +36,7 @@ class ReceiptTemplateController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $template,
+            'data' => $template,
             'message' => 'Template saved successfully',
         ], 201);
     }
@@ -45,20 +45,20 @@ class ReceiptTemplateController extends Controller
     {
         return response()->json([
             'success' => true,
-            'data'    => $receiptTemplate,
+            'data' => $receiptTemplate,
         ]);
     }
 
     public function update(Request $request, ReceiptTemplate $receiptTemplate)
     {
         $validated = $request->validate([
-            'name'        => 'sometimes|string|max:255',
+            'name' => 'sometimes|string|max:255',
             'description' => 'nullable|string|max:500',
-            'config'      => 'sometimes|array',
-            'is_active'   => 'boolean',
+            'config' => 'sometimes|array',
+            'is_active' => 'boolean',
         ]);
 
-        if (!empty($validated['is_active'])) {
+        if (! empty($validated['is_active'])) {
             ReceiptTemplate::query()->where('id', '!=', $receiptTemplate->id)
                 ->update(['is_active' => false]);
         }
@@ -67,7 +67,7 @@ class ReceiptTemplateController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $receiptTemplate->fresh(),
+            'data' => $receiptTemplate->fresh(),
             'message' => 'Template updated successfully',
         ]);
     }
@@ -89,7 +89,7 @@ class ReceiptTemplateController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $receiptTemplate->fresh(),
+            'data' => $receiptTemplate->fresh(),
             'message' => 'Template activated successfully',
         ]);
     }
@@ -100,7 +100,7 @@ class ReceiptTemplateController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $template,
+            'data' => $template,
         ]);
     }
 }

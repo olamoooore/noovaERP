@@ -2,8 +2,8 @@
 
 namespace Modules\Loyalty\Services;
 
-use Modules\Loyalty\Models\LoyaltyProgram;
 use Modules\Loyalty\Models\CustomerLoyalty;
+use Modules\Loyalty\Models\LoyaltyProgram;
 
 class PointsCalculationService
 {
@@ -12,11 +12,11 @@ class PointsCalculationService
      */
     public function calculatePointsFromAmount(float $amount, ?int $programId = null): int
     {
-        $program = $programId 
+        $program = $programId
             ? LoyaltyProgram::findOrFail($programId)
             : LoyaltyProgram::where('is_active', true)->first();
 
-        if (!$program) {
+        if (! $program) {
             return 0;
         }
 
@@ -34,7 +34,7 @@ class PointsCalculationService
 
         $customerLoyalty = CustomerLoyalty::where('customer_id', $customerId)->first();
 
-        if (!$customerLoyalty || !$customerLoyalty->tier) {
+        if (! $customerLoyalty || ! $customerLoyalty->tier) {
             return $basePoints;
         }
 
@@ -49,11 +49,11 @@ class PointsCalculationService
      */
     public function calculateDiscountFromPoints(int $points, ?int $programId = null): float
     {
-        $program = $programId 
+        $program = $programId
             ? LoyaltyProgram::findOrFail($programId)
             : LoyaltyProgram::where('is_active', true)->first();
 
-        if (!$program) {
+        if (! $program) {
             return 0.0;
         }
 
@@ -67,11 +67,11 @@ class PointsCalculationService
      */
     public function calculateMaxRedeemablePoints(float $invoiceAmount, int $availablePoints, ?int $programId = null): int
     {
-        $program = $programId 
+        $program = $programId
             ? LoyaltyProgram::findOrFail($programId)
             : LoyaltyProgram::where('is_active', true)->first();
 
-        if (!$program) {
+        if (! $program) {
             return 0;
         }
 
@@ -90,31 +90,31 @@ class PointsCalculationService
      */
     public function canRedeemPoints(int $points, int $customerId, ?int $programId = null): array
     {
-        $program = $programId 
+        $program = $programId
             ? LoyaltyProgram::findOrFail($programId)
             : LoyaltyProgram::where('is_active', true)->first();
 
-        if (!$program) {
+        if (! $program) {
             return ['can_redeem' => false, 'reason' => 'No active loyalty program'];
         }
 
         if ($points < $program->min_redemption_points) {
             return [
-                'can_redeem' => false, 
-                'reason' => "Minimum {$program->min_redemption_points} points required"
+                'can_redeem' => false,
+                'reason' => "Minimum {$program->min_redemption_points} points required",
             ];
         }
 
         $customerLoyalty = CustomerLoyalty::where('customer_id', $customerId)->first();
 
-        if (!$customerLoyalty) {
+        if (! $customerLoyalty) {
             return ['can_redeem' => false, 'reason' => 'Customer not enrolled in loyalty program'];
         }
 
         if ($customerLoyalty->current_points < $points) {
             return [
-                'can_redeem' => false, 
-                'reason' => 'Insufficient points balance'
+                'can_redeem' => false,
+                'reason' => 'Insufficient points balance',
             ];
         }
 

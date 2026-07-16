@@ -12,9 +12,13 @@ use Illuminate\Support\Facades\Log;
 class ActivityLogService implements ActivityLoggerInterface
 {
     private ?string $causerType = null;
+
     private ?int $causerId = null;
+
     private ?Model $subject = null;
+
     private array $properties = [];
+
     private ?string $event = null;
 
     public function log(Model $subject, array $properties = [], ?string $event = null): void

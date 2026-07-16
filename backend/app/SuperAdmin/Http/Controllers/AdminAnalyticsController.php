@@ -28,11 +28,11 @@ class AdminAnalyticsController extends Controller
 
         return response()->json([
             'data' => [
-                'mrr'                => $this->analyticsService->getMrr(),
-                'revenue_last_30d'   => $this->analyticsService->getRevenueLast30Days(),
-                'arpu'               => $this->analyticsService->getArpu(),
-                'growth'             => $this->analyticsService->getGrowth(),
-                'churn'              => $this->analyticsService->getChurnThisMonth(),
+                'mrr' => $this->analyticsService->getMrr(),
+                'revenue_last_30d' => $this->analyticsService->getRevenueLast30Days(),
+                'arpu' => $this->analyticsService->getArpu(),
+                'growth' => $this->analyticsService->getGrowth(),
+                'churn' => $this->analyticsService->getChurnThisMonth(),
                 'subscription_stats' => $this->analyticsService->getSubscriptionStats(),
             ],
         ]);

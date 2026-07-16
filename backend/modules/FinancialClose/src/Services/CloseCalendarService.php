@@ -3,9 +3,9 @@
 namespace Modules\FinancialClose\Services;
 
 use Illuminate\Support\Facades\Log;
-use Modules\FinancialClose\Models\CalendarTemplate;
 use Modules\FinancialClose\Models\CalendarMilestone;
 use Modules\FinancialClose\Models\CalendarOverride;
+use Modules\FinancialClose\Models\CalendarTemplate;
 
 class CloseCalendarService
 {
@@ -51,11 +51,12 @@ class CloseCalendarService
     {
         $template = $this->getTemplate($tenantId, $templateId);
 
-        if (!$template || $template->status !== 'draft') {
+        if (! $template || $template->status !== 'draft') {
             Log::warning('FinancialClose: cannot activate calendar template', [
                 'template_id' => $templateId,
                 'status' => $template?->status,
             ]);
+
             return false;
         }
 
@@ -83,7 +84,7 @@ class CloseCalendarService
     {
         $template = $this->getTemplate($tenantId, $templateId);
 
-        if (!$template) {
+        if (! $template) {
             return null;
         }
 
@@ -104,7 +105,7 @@ class CloseCalendarService
     {
         $template = $this->getTemplate($tenantId, $templateId);
 
-        if (!$template) {
+        if (! $template) {
             return null;
         }
 

@@ -9,8 +9,8 @@ use App\Accounting\DTOs\ReversalRequest;
 use App\Accounting\PostingEngine;
 use App\Models\Journal;
 use Illuminate\Support\Facades\Log;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\HRM\Models\PayrollRun;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PayrollJournalService
 {
@@ -30,8 +30,6 @@ class PayrollJournalService
      * When actual payment is made, a separate entry would:
      *   DR  Payroll Payable
      *   CR  Cash / Bank
-     *
-     * @return PostingResult
      */
     public function postPayrollRun(PayrollRun $run): PostingResult
     {
@@ -78,11 +76,11 @@ class PayrollJournalService
             journalId: $journal?->id,
             userId: TenantUserHelper::resolveTenantUserId(),
             metadata: [
-                'total_gross'      => $run->total_gross,
+                'total_gross' => $run->total_gross,
                 'total_deductions' => $run->total_deductions,
-                'total_net'        => $run->total_net,
-                'currency'         => $run->currency,
-                'employee_count'   => $run->payrolls()->count(),
+                'total_net' => $run->total_net,
+                'currency' => $run->currency,
+                'employee_count' => $run->payrolls()->count(),
             ],
         );
 
@@ -92,16 +90,16 @@ class PayrollJournalService
             $run->update(['journal_entry_id' => $result->journalEntryId]);
 
             Log::info('PayrollJournalService: Posted payroll run to ledger', [
-                'payroll_run_id'   => $run->id,
-                'reference'        => $run->reference,
+                'payroll_run_id' => $run->id,
+                'reference' => $run->reference,
                 'journal_entry_id' => $result->journalEntryId,
-                'total_gross'      => $totalGross,
+                'total_gross' => $totalGross,
             ]);
         } else {
             Log::error('PayrollJournalService: Failed to post payroll run', [
                 'payroll_run_id' => $run->id,
-                'reference'      => $run->reference,
-                'error'          => $result->error,
+                'reference' => $run->reference,
+                'error' => $result->error,
             ]);
         }
 
@@ -113,7 +111,7 @@ class PayrollJournalService
      */
     public function reversePayrollRun(PayrollRun $run, string $reason): PostingResult
     {
-        if (!$run->journal_entry_id) {
+        if (! $run->journal_entry_id) {
             return PostingResult::failure("Payroll run {$run->reference} has no journal entry to reverse.");
         }
 
@@ -128,9 +126,9 @@ class PayrollJournalService
             $run->update(['journal_entry_id' => null]);
 
             Log::info('PayrollJournalService: Reversed payroll journal entry', [
-                'payroll_run_id'          => $run->id,
-                'reference'               => $run->reference,
-                'reversal_entry_id'       => $result->journalEntryId,
+                'payroll_run_id' => $run->id,
+                'reference' => $run->reference,
+                'reversal_entry_id' => $result->journalEntryId,
             ]);
         }
 

@@ -110,6 +110,7 @@ class FixTenantEntitlementsCommand extends Command
 
         if ($tenants->isEmpty()) {
             $this->warn('No tenants need fixing.');
+
             return self::SUCCESS;
         }
 
@@ -119,13 +120,14 @@ class FixTenantEntitlementsCommand extends Command
             $this->warn('DRY RUN MODE - No changes will be made');
             $this->table(
                 ['Tenant ID', 'Name', 'Email', 'Has Subscription'],
-                $tenants->map(fn($t) => [
+                $tenants->map(fn ($t) => [
                     $t->id,
                     $t->name,
                     $t->email,
                     $t->has_subscription ? 'Yes' : 'No',
                 ])->toArray()
             );
+
             return self::SUCCESS;
         }
 
@@ -140,7 +142,7 @@ class FixTenantEntitlementsCommand extends Command
         foreach ($tenants as $tenant) {
             try {
                 // Create trial subscription if missing
-                if (!$tenant->has_subscription) {
+                if (! $tenant->has_subscription) {
                     Subscription::create([
                         'tenant_id' => $tenant->id,
                         'plan_version_id' => $trialVersion->id,

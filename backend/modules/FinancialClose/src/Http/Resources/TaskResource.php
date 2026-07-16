@@ -13,30 +13,30 @@ class TaskResource extends JsonResource
         $metadata = is_array($this->metadata) ? $this->metadata : [];
 
         return [
-            'id'               => $this->id,
-            'cycle_id'         => $this->cycle_id,
-            'title'            => $this->title,
-            'status'           => $this->status,
-            'priority'         => $this->priority,
-            'assigned_to'      => $this->assigned_to,
-            'due_date'         => $this->due_date,
-            'soft_due_date'    => $this->soft_due_date ?? null,
-            'completed_at'     => $this->completed_at ?? null,
-            'is_critical'      => (bool) $this->is_critical,
-            'metadata'         => $this->metadata,
-            'description'      => $metadata['description'] ?? null,
-            'owner_label'       => $metadata['owner_label'] ?? null,
-            'workstream'       => $metadata['workstream'] ?? null,
-            'deliverable'      => $metadata['deliverable'] ?? null,
-            'business_impact'  => $metadata['business_impact'] ?? null,
-            'next_step'        => $metadata['next_step'] ?? null,
-            'blocker_reason'   => $metadata['blocker_reason'] ?? null,
+            'id' => $this->id,
+            'cycle_id' => $this->cycle_id,
+            'title' => $this->title,
+            'status' => $this->status,
+            'priority' => $this->priority,
+            'assigned_to' => $this->assigned_to,
+            'due_date' => $this->due_date,
+            'soft_due_date' => $this->soft_due_date ?? null,
+            'completed_at' => $this->completed_at ?? null,
+            'is_critical' => (bool) $this->is_critical,
+            'metadata' => $this->metadata,
+            'description' => $metadata['description'] ?? null,
+            'owner_label' => $metadata['owner_label'] ?? null,
+            'workstream' => $metadata['workstream'] ?? null,
+            'deliverable' => $metadata['deliverable'] ?? null,
+            'business_impact' => $metadata['business_impact'] ?? null,
+            'next_step' => $metadata['next_step'] ?? null,
+            'blocker_reason' => $metadata['blocker_reason'] ?? null,
             'related_accounts' => array_values($metadata['related_accounts'] ?? []),
-            'evidence_items'   => array_values($metadata['evidence_items'] ?? []),
-            'checklist_items'  => array_values($metadata['checklist_items'] ?? []),
+            'evidence_items' => array_values($metadata['evidence_items'] ?? []),
+            'checklist_items' => array_values($metadata['checklist_items'] ?? []),
             'checklist_completed' => array_values($metadata['checklist_completed'] ?? []),
-            'document_links'   => array_values($metadata['document_links'] ?? []),
-            'dependencies'     => $this->whenLoaded('dependencies', function () {
+            'document_links' => array_values($metadata['document_links'] ?? []),
+            'dependencies' => $this->whenLoaded('dependencies', function () {
                 return $this->dependencies->map(function ($dependency): array {
                     return [
                         'id' => $dependency->id,
@@ -47,7 +47,7 @@ class TaskResource extends JsonResource
                     ];
                 })->values();
             }, []),
-            'escalations'      => $this->whenLoaded('escalations', function () {
+            'escalations' => $this->whenLoaded('escalations', function () {
                 return $this->escalations->map(fn ($escalation) => [
                     'id' => $escalation->id,
                     'escalation_level' => $escalation->escalation_level,
@@ -58,8 +58,8 @@ class TaskResource extends JsonResource
                     'created_at' => $escalation->created_at,
                 ])->values();
             }, []),
-            'detail_title'     => $metadata['detail_title'] ?? Str::headline($this->title),
-            'created_at'       => $this->created_at,
+            'detail_title' => $metadata['detail_title'] ?? Str::headline($this->title),
+            'created_at' => $this->created_at,
         ];
     }
 }

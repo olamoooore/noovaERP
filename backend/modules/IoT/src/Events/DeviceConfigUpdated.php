@@ -31,7 +31,7 @@ class DeviceConfigUpdated implements ShouldBroadcast
      */
     public function broadcastAs(): string
     {
-        return 'device.config.' . $this->action;
+        return 'device.config.'.$this->action;
     }
 
     /**
@@ -40,7 +40,7 @@ class DeviceConfigUpdated implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'type' => 'device_config_' . $this->action,
+            'type' => 'device_config_'.$this->action,
             'device_id' => $this->config->id,
             'config' => [
                 'id' => $this->config->id,

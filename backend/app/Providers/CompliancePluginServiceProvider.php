@@ -2,26 +2,24 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Facades\Event;
+use App\Accounting\Events\InvoicePosted;
 use App\Accounting\Plugin\CountryPluginRegistry;
 use App\Accounting\Services\ComplianceService;
-use App\Accounting\Events\InvoicePosted;
 use App\Models\Accounting\CountryConfiguration;
-
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\ServiceProvider;
 // Singapore plugins
-use Modules\AccountingCountry\Singapore\Services\SFRSValidationService;
-use Modules\AccountingCountry\Singapore\Services\SFRSInvoiceMapper;
-use Modules\AccountingCountry\Singapore\Services\PeppolSubmissionProvider;
-use Modules\AccountingCountry\Singapore\Services\PeppolStatusSync;
-use Modules\AccountingCountry\Singapore\Services\XBRLReportExporter;
-
-// Malaysia plugins
+use Modules\AccountingCountry\Malaysia\Services\MFRSReportExporter;
 use Modules\AccountingCountry\Malaysia\Services\MFRSValidationService;
 use Modules\AccountingCountry\Malaysia\Services\MyInvoiceMapper;
-use Modules\AccountingCountry\Malaysia\Services\MyInvoiceSubmissionProvider;
 use Modules\AccountingCountry\Malaysia\Services\MyInvoiceStatusSync;
-use Modules\AccountingCountry\Malaysia\Services\MFRSReportExporter;
+use Modules\AccountingCountry\Malaysia\Services\MyInvoiceSubmissionProvider;
+// Malaysia plugins
+use Modules\AccountingCountry\Singapore\Services\PeppolStatusSync;
+use Modules\AccountingCountry\Singapore\Services\PeppolSubmissionProvider;
+use Modules\AccountingCountry\Singapore\Services\SFRSInvoiceMapper;
+use Modules\AccountingCountry\Singapore\Services\SFRSValidationService;
+use Modules\AccountingCountry\Singapore\Services\XBRLReportExporter;
 
 class CompliancePluginServiceProvider extends ServiceProvider
 {
@@ -37,19 +35,19 @@ class CompliancePluginServiceProvider extends ServiceProvider
 
         // Plugin Registry singleton
         $this->app->singleton(CountryPluginRegistry::class, function ($app) {
-            $registry = new CountryPluginRegistry();
-            
+            $registry = new CountryPluginRegistry;
+
             // Register Singapore plugins
             $this->registerSingaporePlugins($registry);
-            
+
             // Register Malaysia plugins
             $this->registerMalaysiaPlugins($registry);
-            
+
             return $registry;
         });
 
         // Bind compliance service for dependency injection
-        $this->app->bind('compliance', fn($app) => $app->make(ComplianceService::class));
+        $this->app->bind('compliance', fn ($app) => $app->make(ComplianceService::class));
     }
 
     /**
@@ -99,7 +97,7 @@ class CompliancePluginServiceProvider extends ServiceProvider
     {
         Event::listen(InvoicePosted::class, function (InvoicePosted $event) {
             $tenantId = tenancy()->tenant?->id;
-            if (!$tenantId) {
+            if (! $tenantId) {
                 return;
             }
 
@@ -116,7 +114,7 @@ class CompliancePluginServiceProvider extends ServiceProvider
                 }
 
                 $autoSubmit = $config->settings['auto_submit'] ?? false;
-                if (!$autoSubmit) {
+                if (! $autoSubmit) {
                     continue;
                 }
 

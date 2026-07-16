@@ -38,17 +38,16 @@ class InventoryPostingEngine
     /**
      * Post a stock movement for a given business document.
      *
-     * @param int         $productId         Product being moved
-     * @param int         $warehouseId       Warehouse where stock is held
-     * @param int         $quantity          Absolute quantity; direction is given by $type
-     * @param string      $type              Movement type: in|out|sale|purchase|return|adjustment|transfer_in|transfer_out
-     * @param string|null $reference         Human-readable reference (e.g. invoice number)
-     * @param string|null $referenceType     Source document type (e.g. 'Invoice', 'PosOrder')
-     * @param int|null    $referenceId       Source document ID
-     * @param string|null $idempotencyKey    Caller-supplied stable deduplication key (AR-002)
-     * @param string|null $notes             Optional notes
-     *
-     * @return StockMovement  The created (or idempotently returned) stock movement record
+     * @param  int  $productId  Product being moved
+     * @param  int  $warehouseId  Warehouse where stock is held
+     * @param  int  $quantity  Absolute quantity; direction is given by $type
+     * @param  string  $type  Movement type: in|out|sale|purchase|return|adjustment|transfer_in|transfer_out
+     * @param  string|null  $reference  Human-readable reference (e.g. invoice number)
+     * @param  string|null  $referenceType  Source document type (e.g. 'Invoice', 'PosOrder')
+     * @param  int|null  $referenceId  Source document ID
+     * @param  string|null  $idempotencyKey  Caller-supplied stable deduplication key (AR-002)
+     * @param  string|null  $notes  Optional notes
+     * @return StockMovement The created (or idempotently returned) stock movement record
      */
     public function post(
         int $productId,
@@ -62,26 +61,26 @@ class InventoryPostingEngine
         ?string $notes = null,
     ): StockMovement {
         Log::info('InventoryPostingEngine: posting stock movement', [
-            'product_id'      => $productId,
-            'warehouse_id'    => $warehouseId,
-            'quantity'        => $quantity,
-            'type'            => $type,
-            'reference_type'  => $referenceType,
-            'reference_id'    => $referenceId,
+            'product_id' => $productId,
+            'warehouse_id' => $warehouseId,
+            'quantity' => $quantity,
+            'type' => $type,
+            'reference_type' => $referenceType,
+            'reference_id' => $referenceId,
             'idempotency_key' => $idempotencyKey,
         ]);
 
         // ── Delegate to InventoryService — the single authorised stock mutation path ──
         $movement = $this->inventoryService->adjustStock(
-            productId:       $productId,
-            warehouseId:     $warehouseId,
-            quantity:        $quantity,
-            type:            $type,
-            reference:       $reference,
-            referenceType:   $referenceType,
-            referenceId:     $referenceId,
-            notes:           $notes,
-            idempotencyKey:  $idempotencyKey,
+            productId: $productId,
+            warehouseId: $warehouseId,
+            quantity: $quantity,
+            type: $type,
+            reference: $reference,
+            referenceType: $referenceType,
+            referenceId: $referenceId,
+            notes: $notes,
+            idempotencyKey: $idempotencyKey,
         );
 
         // ── Accounting dispatch ────────────────────────────────────────────────

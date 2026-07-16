@@ -51,7 +51,7 @@ class HrmModuleDiscoveryBugConditionTest extends TestCase
         parent::setUp();
 
         // Create features table if it doesn't exist
-        if (!Schema::hasTable('features')) {
+        if (! Schema::hasTable('features')) {
             Schema::create('features', function (Blueprint $table) {
                 $table->id();
                 $table->string('key')->unique();
@@ -64,7 +64,7 @@ class HrmModuleDiscoveryBugConditionTest extends TestCase
         }
 
         // Create tenant_features table if it doesn't exist
-        if (!Schema::hasTable('tenant_features')) {
+        if (! Schema::hasTable('tenant_features')) {
             Schema::create('tenant_features', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('feature_id')->constrained()->onDelete('cascade');
@@ -100,8 +100,8 @@ class HrmModuleDiscoveryBugConditionTest extends TestCase
 
         $this->assertNotNull(
             $hrmModule,
-            'COUNTEREXAMPLE: ModuleManager::all() does not include HRM module. ' .
-            'This indicates the module is not being discovered from backend/modules/HRM/. ' .
+            'COUNTEREXAMPLE: ModuleManager::all() does not include HRM module. '.
+            'This indicates the module is not being discovered from backend/modules/HRM/. '.
             'Possible causes: incorrect base path resolution, missing module.json, or JSON parsing failure.'
         );
 
@@ -113,8 +113,8 @@ class HrmModuleDiscoveryBugConditionTest extends TestCase
 
         $this->assertNotNull(
             $hrmFeature,
-            'COUNTEREXAMPLE: Feature table does not contain HRM entry after running ModuleFeatureSeeder. ' .
-            'This indicates the seeder is not creating the feature record. ' .
+            'COUNTEREXAMPLE: Feature table does not contain HRM entry after running ModuleFeatureSeeder. '.
+            'This indicates the seeder is not creating the feature record. '.
             'Possible causes: ModuleManager not discovering HRM, or seeder not iterating over all modules.'
         );
 
@@ -165,7 +165,7 @@ class HrmModuleDiscoveryBugConditionTest extends TestCase
 
         $this->assertNotNull(
             $entitlement,
-            'COUNTEREXAMPLE: tenant_entitlements table does not contain HRM entitlement for test tenant. ' .
+            'COUNTEREXAMPLE: tenant_entitlements table does not contain HRM entitlement for test tenant. '.
             'This indicates the entitlement system is not properly configured for HRM.'
         );
 
@@ -179,9 +179,9 @@ class HrmModuleDiscoveryBugConditionTest extends TestCase
 
         $this->assertNotNull(
             $hrmInEntitlements,
-            'COUNTEREXAMPLE: FeatureGateService::all() does not include HRM feature. ' .
-            'This indicates the entitlement service is not returning HRM despite it being in tenant_entitlements. ' .
-            'Possible causes: FeatureGateService not finding HRM in tenant_entitlements, ' .
+            'COUNTEREXAMPLE: FeatureGateService::all() does not include HRM feature. '.
+            'This indicates the entitlement service is not returning HRM despite it being in tenant_entitlements. '.
+            'Possible causes: FeatureGateService not finding HRM in tenant_entitlements, '.
             'or catalog item not properly linked to feature.'
         );
 
@@ -189,7 +189,7 @@ class HrmModuleDiscoveryBugConditionTest extends TestCase
             $this->assertEquals('hrm', $hrmInEntitlements['key']);
             $this->assertTrue(
                 $hrmInEntitlements['enabled'],
-                'COUNTEREXAMPLE: HRM feature is in entitlements but enabled=false. ' .
+                'COUNTEREXAMPLE: HRM feature is in entitlements but enabled=false. '.
                 'This indicates the entitlement is not being correctly resolved.'
             );
         }

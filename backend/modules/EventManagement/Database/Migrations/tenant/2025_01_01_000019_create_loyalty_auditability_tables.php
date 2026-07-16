@@ -6,14 +6,14 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Migration: Create Loyalty Auditability Tables - Task 7.1
- * 
+ *
  * Creates comprehensive loyalty auditability database schema including:
  * - eligibility_decisions table for access decision logging
  * - loyalty_ledger table for points transaction integrity
  * - loyalty_rule_versions table for rule versioning support
  * - eligibility_appeals table for decision appeal workflows
  * - loyalty_reconciliation_log table for balance reconciliation
- * 
+ *
  * Requirements: 23.1, 23.2, 23.3
  */
 class CreateLoyaltyAuditabilityTables extends Migration
@@ -39,12 +39,12 @@ class CreateLoyaltyAuditabilityTables extends Migration
             $table->text('change_reason')->nullable();
             $table->json('change_log')->nullable(); // What changed from previous version
             $table->timestamps();
-            
+
             // Indexes for performance
             $table->index(['rule_name', 'version']);
             $table->index(['rule_category', 'is_active']);
             $table->index(['effective_from', 'effective_until']);
-            
+
             // Unique constraint for active rules
             $table->unique(['rule_name', 'is_active'], 'unique_active_rule');
         });
@@ -56,8 +56,8 @@ class CreateLoyaltyAuditabilityTables extends Migration
             $table->unsignedBigInteger('event_id')->nullable()->index();
             $table->unsignedBigInteger('booking_id')->nullable()->index();
             $table->enum('decision_type', [
-                'tier_access', 'early_access', 'discount_eligibility', 
-                'points_redemption', 'special_offer', 'upgrade_eligibility'
+                'tier_access', 'early_access', 'discount_eligibility',
+                'points_redemption', 'special_offer', 'upgrade_eligibility',
             ])->index();
             $table->enum('decision_result', ['allowed', 'blocked', 'conditional', 'pending'])->index();
             $table->text('decision_reason'); // Human-readable explanation
@@ -73,14 +73,14 @@ class CreateLoyaltyAuditabilityTables extends Migration
             $table->timestamp('decided_at')->index();
             $table->string('decided_by_system', 100)->default('loyalty_engine');
             $table->timestamps();
-            
+
             // Composite indexes for common queries
             $table->index(['customer_id', 'decision_type', 'decided_at']);
             $table->index(['event_id', 'decision_type', 'decision_result']);
             $table->index(['booking_id', 'decision_type']);
             $table->index(['rule_version_applied', 'decided_at']);
             $table->index(['decision_result', 'is_appealed']);
-            
+
             // Foreign key constraints
             $table->foreign('customer_id')->references('id')->on('customers')->onDelete('cascade');
             $table->foreign('event_id')->references('id')->on('events')->onDelete('set null');
@@ -92,8 +92,8 @@ class CreateLoyaltyAuditabilityTables extends Migration
             $table->id();
             $table->unsignedBigInteger('customer_id')->index();
             $table->enum('transaction_type', [
-                'earn', 'redeem', 'expire', 'adjustment', 'bonus', 
-                'penalty', 'transfer_in', 'transfer_out', 'refund'
+                'earn', 'redeem', 'expire', 'adjustment', 'bonus',
+                'penalty', 'transfer_in', 'transfer_out', 'refund',
             ])->index();
             $table->integer('points_delta'); // Can be positive or negative
             $table->integer('points_balance_before');
@@ -113,14 +113,14 @@ class CreateLoyaltyAuditabilityTables extends Migration
             $table->boolean('is_reversed')->default(false)->index();
             $table->unsignedBigInteger('reversal_transaction_id')->nullable();
             $table->timestamps();
-            
+
             // Composite indexes for performance
             $table->index(['customer_id', 'transaction_timestamp']);
             $table->index(['customer_id', 'transaction_type', 'effective_date']);
             $table->index(['reference_type', 'reference_id']);
             $table->index(['transaction_type', 'is_reversed']);
             $table->index(['effective_date', 'expiry_date']);
-            
+
             // Foreign key constraints
             $table->foreign('customer_id')->references('id')->on('customers')->onDelete('cascade');
             $table->foreign('reversal_transaction_id')->references('id')->on('loyalty_ledger')->onDelete('set null');
@@ -132,8 +132,8 @@ class CreateLoyaltyAuditabilityTables extends Migration
             $table->unsignedBigInteger('eligibility_decision_id')->index();
             $table->unsignedBigInteger('customer_id')->index();
             $table->enum('appeal_status', [
-                'submitted', 'under_review', 'approved', 'rejected', 
-                'escalated', 'withdrawn', 'expired'
+                'submitted', 'under_review', 'approved', 'rejected',
+                'escalated', 'withdrawn', 'expired',
             ])->index();
             $table->text('appeal_reason'); // Customer's reason for appeal
             $table->json('supporting_evidence')->nullable(); // Documents, screenshots, etc.
@@ -148,19 +148,19 @@ class CreateLoyaltyAuditabilityTables extends Migration
             $table->timestamp('resolved_at')->nullable()->index();
             $table->integer('review_duration_minutes')->nullable(); // For SLA tracking
             $table->enum('resolution_type', [
-                'decision_overturned', 'partial_grant', 'no_change', 
-                'rule_clarification', 'system_error_fixed'
+                'decision_overturned', 'partial_grant', 'no_change',
+                'rule_clarification', 'system_error_fixed',
             ])->nullable();
             $table->boolean('customer_notified')->default(false);
             $table->timestamp('customer_notified_at')->nullable();
             $table->timestamps();
-            
+
             // Indexes for performance
             $table->index(['appeal_status', 'submitted_at']);
             $table->index(['customer_id', 'appeal_status']);
             $table->index(['reviewed_by_staff_id', 'reviewed_at']);
             $table->index(['resolution_type', 'resolved_at']);
-            
+
             // Foreign key constraints
             $table->foreign('eligibility_decision_id')->references('id')->on('eligibility_decisions')->onDelete('cascade');
             $table->foreign('customer_id')->references('id')->on('customers')->onDelete('cascade');
@@ -170,8 +170,8 @@ class CreateLoyaltyAuditabilityTables extends Migration
         Schema::create('loyalty_reconciliation_log', function (Blueprint $table) {
             $table->id();
             $table->enum('reconciliation_type', [
-                'daily_balance', 'monthly_summary', 'annual_audit', 
-                'customer_dispute', 'system_migration', 'manual_audit'
+                'daily_balance', 'monthly_summary', 'annual_audit',
+                'customer_dispute', 'system_migration', 'manual_audit',
             ])->index();
             $table->unsignedBigInteger('customer_id')->nullable()->index();
             $table->date('reconciliation_date')->index();
@@ -179,8 +179,8 @@ class CreateLoyaltyAuditabilityTables extends Migration
             $table->integer('actual_balance');
             $table->integer('variance')->index(); // Difference between expected and actual
             $table->enum('variance_status', [
-                'no_variance', 'minor_variance', 'significant_variance', 
-                'critical_variance', 'resolved', 'under_investigation'
+                'no_variance', 'minor_variance', 'significant_variance',
+                'critical_variance', 'resolved', 'under_investigation',
             ])->index();
             $table->text('variance_explanation')->nullable();
             $table->json('reconciliation_details'); // Detailed breakdown
@@ -193,13 +193,13 @@ class CreateLoyaltyAuditabilityTables extends Migration
             $table->boolean('requires_manual_review')->default(false)->index();
             $table->boolean('is_resolved')->default(false)->index();
             $table->timestamps();
-            
+
             // Composite indexes
             $table->index(['reconciliation_type', 'reconciliation_date']);
             $table->index(['customer_id', 'reconciliation_date']);
             $table->index(['variance_status', 'requires_manual_review']);
             $table->index(['is_resolved', 'reconciliation_completed_at']);
-            
+
             // Foreign key constraints
             $table->foreign('customer_id')->references('id')->on('customers')->onDelete('cascade');
         });
@@ -215,7 +215,7 @@ class CreateLoyaltyAuditabilityTables extends Migration
             $table->date('earned_date')->index();
             $table->date('expiry_date')->index();
             $table->enum('expiry_status', [
-                'active', 'partially_used', 'fully_used', 'expired', 'extended'
+                'active', 'partially_used', 'fully_used', 'expired', 'extended',
             ])->index();
             $table->date('original_expiry_date')->nullable(); // If extended
             $table->text('expiry_reason')->nullable();
@@ -223,13 +223,13 @@ class CreateLoyaltyAuditabilityTables extends Migration
             $table->timestamp('expiry_notification_sent_at')->nullable();
             $table->json('usage_history')->nullable(); // Track how points were used
             $table->timestamps();
-            
+
             // Composite indexes
             $table->index(['customer_id', 'expiry_date']);
             $table->index(['expiry_date', 'expiry_status']);
             $table->index(['earning_transaction_id', 'expiry_status']);
             $table->index(['points_remaining', 'expiry_date']);
-            
+
             // Foreign key constraints
             $table->foreign('customer_id')->references('id')->on('customers')->onDelete('cascade');
             $table->foreign('earning_transaction_id')->references('id')->on('loyalty_ledger')->onDelete('cascade');

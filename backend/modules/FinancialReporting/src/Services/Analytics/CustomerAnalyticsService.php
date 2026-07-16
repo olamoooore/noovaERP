@@ -13,7 +13,7 @@ class CustomerAnalyticsService
      */
     public function getCustomerLifetimeValue(ReportFilter $filter): array
     {
-        if (!$this->tableExists('invoices') || !$this->tableExists('customers')) {
+        if (! $this->tableExists('invoices') || ! $this->tableExists('customers')) {
             return [
                 'title' => 'Customer Lifetime Value',
                 'data' => [],
@@ -25,7 +25,7 @@ class CustomerAnalyticsService
         $endDate = $filter->endDate ?? Carbon::now();
 
         $customers = DB::table('customers as c')
-            ->leftJoin('invoices as i', function($join) use ($startDate, $endDate) {
+            ->leftJoin('invoices as i', function ($join) use ($startDate, $endDate) {
                 $join->on('i.customer_id', '=', 'c.id')
                     ->whereBetween('i.invoice_date', [$startDate, $endDate])
                     ->whereIn('i.status', ['paid', 'partial']);
@@ -45,12 +45,12 @@ class CustomerAnalyticsService
             ->having(DB::raw('COUNT(DISTINCT i.id)'), '>', 0)
             ->get();
 
-        $data = $customers->map(function($customer) use ($startDate, $endDate) {
-            $daysSinceFirstPurchase = $customer->first_purchase_date 
+        $data = $customers->map(function ($customer) use ($endDate) {
+            $daysSinceFirstPurchase = $customer->first_purchase_date
                 ? Carbon::parse($customer->first_purchase_date)->diffInDays($endDate)
                 : 0;
-            
-            $purchaseFrequency = $daysSinceFirstPurchase > 0 
+
+            $purchaseFrequency = $daysSinceFirstPurchase > 0
                 ? $customer->total_orders / ($daysSinceFirstPurchase / 30) // orders per month
                 : 0;
 
@@ -70,7 +70,7 @@ class CustomerAnalyticsService
                 'customer_lifetime_value' => round($clv, 2),
                 'first_purchase_date' => $customer->first_purchase_date,
                 'last_purchase_date' => $customer->last_purchase_date,
-                'days_since_last_purchase' => $customer->last_purchase_date 
+                'days_since_last_purchase' => $customer->last_purchase_date
                     ? Carbon::parse($customer->last_purchase_date)->diffInDays($endDate)
                     : null,
             ];
@@ -101,7 +101,7 @@ class CustomerAnalyticsService
      */
     public function getPurchasePatterns(ReportFilter $filter): array
     {
-        if (!$this->tableExists('invoices')) {
+        if (! $this->tableExists('invoices')) {
             return [
                 'title' => 'Purchase Patterns',
                 'data' => [],
@@ -125,7 +125,7 @@ class CustomerAnalyticsService
             ->groupBy('day_of_week')
             ->orderBy('day_of_week')
             ->get()
-            ->map(fn($item) => [
+            ->map(fn ($item) => [
                 'day' => $this->getDayName((int) $item->day_of_week),
                 'order_count' => (int) $item->order_count,
                 'revenue' => round($item->total_revenue, 2),
@@ -144,7 +144,7 @@ class CustomerAnalyticsService
             ->groupBy('hour')
             ->orderBy('hour')
             ->get()
-            ->map(fn($item) => [
+            ->map(fn ($item) => [
                 'hour' => (int) $item->hour,
                 'order_count' => (int) $item->order_count,
                 'revenue' => round($item->total_revenue, 2),
@@ -162,7 +162,7 @@ class CustomerAnalyticsService
             ->groupBy('month')
             ->orderBy('month')
             ->get()
-            ->map(fn($item) => [
+            ->map(fn ($item) => [
                 'month' => $item->month,
                 'order_count' => (int) $item->order_count,
                 'revenue' => round($item->total_revenue, 2),
@@ -186,7 +186,7 @@ class CustomerAnalyticsService
      */
     public function getCustomerRetention(ReportFilter $filter): array
     {
-        if (!$this->tableExists('invoices') || !$this->tableExists('customers')) {
+        if (! $this->tableExists('invoices') || ! $this->tableExists('customers')) {
             return [
                 'title' => 'Customer Retention',
                 'data' => [],
@@ -216,7 +216,7 @@ class CustomerAnalyticsService
         $newCustomers = $customersInPeriod->diff($customersBefore);
         $churnedCustomers = $customersBefore->diff($customersInPeriod);
 
-        $retentionRate = $customersBefore->count() > 0 
+        $retentionRate = $customersBefore->count() > 0
             ? ($retainedCustomers->count() / $customersBefore->count()) * 100
             : 0;
 
@@ -253,7 +253,7 @@ class CustomerAnalyticsService
                 'retention_rate' => round($retentionRate, 2),
                 'churn_rate' => round($churnRate, 2),
             ],
-            'cohorts' => $cohorts->map(fn($item) => [
+            'cohorts' => $cohorts->map(fn ($item) => [
                 'cohort_month' => $item->cohort_month,
                 'customer_count' => (int) $item->customer_count,
                 'total_revenue' => round($item->total_revenue, 2),
@@ -267,7 +267,7 @@ class CustomerAnalyticsService
      */
     public function getRFMSegmentation(ReportFilter $filter): array
     {
-        if (!$this->tableExists('invoices') || !$this->tableExists('customers')) {
+        if (! $this->tableExists('invoices') || ! $this->tableExists('customers')) {
             return [
                 'title' => 'RFM Segmentation',
                 'data' => [],
@@ -295,27 +295,27 @@ class CustomerAnalyticsService
             ->get();
 
         // Calculate recency in days
-        $data = $customers->map(function($customer) use ($endDate) {
+        $data = $customers->map(function ($customer) use ($endDate) {
             $recency = Carbon::parse($customer->last_purchase_date)->diffInDays($endDate);
-            
+
             // Score recency (lower is better)
-            $recencyScore = $recency <= 30 ? 5 : 
-                           ($recency <= 60 ? 4 : 
-                           ($recency <= 90 ? 3 : 
+            $recencyScore = $recency <= 30 ? 5 :
+                           ($recency <= 60 ? 4 :
+                           ($recency <= 90 ? 3 :
                            ($recency <= 180 ? 2 : 1)));
-            
+
             // Score frequency (higher is better)
             $frequencyScore = $customer->frequency >= 10 ? 5 :
                              ($customer->frequency >= 5 ? 4 :
                              ($customer->frequency >= 3 ? 3 :
                              ($customer->frequency >= 2 ? 2 : 1)));
-            
+
             // Score monetary (higher is better)
             $monetaryScore = $customer->monetary >= 10000 ? 5 :
                             ($customer->monetary >= 5000 ? 4 :
                             ($customer->monetary >= 1000 ? 3 :
                             ($customer->monetary >= 500 ? 2 : 1)));
-            
+
             $rfmScore = $recencyScore + $frequencyScore + $monetaryScore;
             $segment = $this->getRFMSegment($recencyScore, $frequencyScore, $monetaryScore);
 
@@ -335,7 +335,7 @@ class CustomerAnalyticsService
         })->sortByDesc('rfm_score')->values()->toArray();
 
         // Segment summary
-        $segments = collect($data)->groupBy('segment')->map(function($group, $segment) {
+        $segments = collect($data)->groupBy('segment')->map(function ($group, $segment) {
             return [
                 'segment' => $segment,
                 'customer_count' => $group->count(),
@@ -369,37 +369,37 @@ class CustomerAnalyticsService
         if ($r >= 4 && $f >= 4 && $m >= 4) {
             return 'Champions';
         }
-        
+
         // Loyal Customers: High F, M
         if ($f >= 4 && $m >= 4) {
             return 'Loyal Customers';
         }
-        
+
         // Potential Loyalists: High R, low F
         if ($r >= 4 && $f <= 2) {
             return 'Potential Loyalists';
         }
-        
+
         // At Risk: Low R, high F, M
         if ($r <= 2 && $f >= 3 && $m >= 3) {
             return 'At Risk';
         }
-        
+
         // Can't Lose Them: Very low R, high F, M
         if ($r == 1 && $f >= 4 && $m >= 4) {
             return "Can't Lose Them";
         }
-        
+
         // Hibernating: Low R, F, M
         if ($r <= 2 && $f <= 2 && $m <= 2) {
             return 'Hibernating';
         }
-        
+
         // New Customers: High R, low F, M
         if ($r >= 4 && $f == 1) {
             return 'New Customers';
         }
-        
+
         return 'Promising';
     }
 
@@ -408,7 +408,7 @@ class CustomerAnalyticsService
      */
     protected function getDayName(int $dow): string
     {
-        return match($dow) {
+        return match ($dow) {
             0 => 'Sunday',
             1 => 'Monday',
             2 => 'Tuesday',

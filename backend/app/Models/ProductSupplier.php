@@ -70,11 +70,11 @@ class ProductSupplier extends Model
         if ($quantity < $this->moq) {
             return false;
         }
-        
+
         if ($this->order_multiple > 1 && $quantity % $this->order_multiple !== 0) {
             return false;
         }
-        
+
         return true;
     }
 
@@ -84,11 +84,11 @@ class ProductSupplier extends Model
     public function getSuggestedOrderQuantity(int $needed): int
     {
         $quantity = max($needed, $this->moq);
-        
+
         if ($this->order_multiple > 1) {
             $quantity = ceil($quantity / $this->order_multiple) * $this->order_multiple;
         }
-        
+
         return (int) $quantity;
     }
 }

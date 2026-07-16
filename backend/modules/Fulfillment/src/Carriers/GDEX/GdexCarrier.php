@@ -110,14 +110,14 @@ class GdexCarrier extends AbstractCarrier
             );
         }
 
-        usort($rates, fn($a, $b) => $a->price <=> $b->price);
+        usort($rates, fn ($a, $b) => $a->price <=> $b->price);
 
         return $rates;
     }
 
     public function createShipment(ShipmentRequest $request): ShipmentResponse
     {
-        $trackingNumber = 'GDEX' . str_pad(rand(0, 99999999), 8, '0', STR_PAD_LEFT);
+        $trackingNumber = 'GDEX'.str_pad(rand(0, 99999999), 8, '0', STR_PAD_LEFT);
         $trackingUrl = "https://www.gdexpress.com/shipment/tracking/{$trackingNumber}";
 
         $serviceType = $request->serviceType ?? 'STANDARD';
@@ -187,7 +187,7 @@ class GdexCarrier extends AbstractCarrier
             statusDescription: 'Package is out for delivery',
             estimatedDelivery: 'Today',
             actualDelivery: null,
-            events: array_map(fn($e) => [
+            events: array_map(fn ($e) => [
                 'status' => $e['status'],
                 'description' => $e['description'],
                 'location' => $e['location'],
@@ -203,6 +203,6 @@ class GdexCarrier extends AbstractCarrier
 
     public function validateCredentials(array $config): bool
     {
-        return !empty($config['api_key'] ?? $config['account_id'] ?? $config['customer_code']);
+        return ! empty($config['api_key'] ?? $config['account_id'] ?? $config['customer_code']);
     }
 }

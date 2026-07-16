@@ -24,7 +24,7 @@ return new class extends Migration
 
     private function createCustomerTables(): void
     {
-        if (!Schema::hasTable('customer_categories')) {
+        if (! Schema::hasTable('customer_categories')) {
             Schema::create('customer_categories', function (Blueprint $table) {
                 $table->id();
                 $table->string('name');
@@ -35,7 +35,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('customer_category')) {
+        if (! Schema::hasTable('customer_category')) {
             Schema::create('customer_category', function (Blueprint $table) {
                 $table->foreignId('customer_id')->constrained()->onDelete('cascade');
                 $table->foreignId('customer_category_id')->constrained()->onDelete('cascade');
@@ -43,7 +43,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('customer_contacts')) {
+        if (! Schema::hasTable('customer_contacts')) {
             Schema::create('customer_contacts', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('customer_id')->constrained()->onDelete('cascade');
@@ -58,7 +58,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('customer_addresses')) {
+        if (! Schema::hasTable('customer_addresses')) {
             Schema::create('customer_addresses', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('customer_id')->constrained()->onDelete('cascade');
@@ -75,7 +75,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('customer_price_lists')) {
+        if (! Schema::hasTable('customer_price_lists')) {
             Schema::create('customer_price_lists', function (Blueprint $table) {
                 $table->id();
                 $table->string('name');
@@ -89,7 +89,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('customer_price_list_items')) {
+        if (! Schema::hasTable('customer_price_list_items')) {
             Schema::create('customer_price_list_items', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('price_list_id')->constrained('customer_price_lists')->onDelete('cascade');
@@ -100,7 +100,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('customer_loyalty_programs')) {
+        if (! Schema::hasTable('customer_loyalty_programs')) {
             Schema::create('customer_loyalty_programs', function (Blueprint $table) {
                 $table->id();
                 $table->string('name');
@@ -114,7 +114,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('customer_loyalty_balances')) {
+        if (! Schema::hasTable('customer_loyalty_balances')) {
             Schema::create('customer_loyalty_balances', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('customer_id')->constrained()->onDelete('cascade');
@@ -128,7 +128,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('customer_loyalty_transactions')) {
+        if (! Schema::hasTable('customer_loyalty_transactions')) {
             Schema::create('customer_loyalty_transactions', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('customer_id')->constrained()->onDelete('cascade');
@@ -168,7 +168,7 @@ return new class extends Migration
         ];
 
         foreach ($columns as $column => $definition) {
-            if (!Schema::hasColumn('customers', $column)) {
+            if (! Schema::hasColumn('customers', $column)) {
                 Schema::table('customers', $definition);
             }
         }
@@ -176,7 +176,7 @@ return new class extends Migration
 
     private function createPosTables(): void
     {
-        if (!Schema::hasTable('pos_terminals')) {
+        if (! Schema::hasTable('pos_terminals')) {
             Schema::create('pos_terminals', function (Blueprint $table) {
                 $table->id();
                 $table->string('name');
@@ -190,7 +190,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('pos_sessions')) {
+        if (! Schema::hasTable('pos_sessions')) {
             Schema::create('pos_sessions', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('terminal_id')->constrained('pos_terminals')->onDelete('cascade');
@@ -211,7 +211,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('pos_cash_movements')) {
+        if (! Schema::hasTable('pos_cash_movements')) {
             Schema::create('pos_cash_movements', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('session_id')->constrained('pos_sessions')->onDelete('cascade');
@@ -224,7 +224,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('pos_held_orders')) {
+        if (! Schema::hasTable('pos_held_orders')) {
             Schema::create('pos_held_orders', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('session_id')->constrained('pos_sessions')->onDelete('cascade');
@@ -240,7 +240,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('pos_payment_methods')) {
+        if (! Schema::hasTable('pos_payment_methods')) {
             Schema::create('pos_payment_methods', function (Blueprint $table) {
                 $table->id();
                 $table->string('name');
@@ -260,7 +260,7 @@ return new class extends Migration
 
     private function enhancePosOrdersTable(): void
     {
-        if (!Schema::hasTable('pos_orders')) {
+        if (! Schema::hasTable('pos_orders')) {
             return;
         }
 
@@ -278,7 +278,7 @@ return new class extends Migration
         ];
 
         foreach ($columns as $column => $definition) {
-            if (!Schema::hasColumn('pos_orders', $column)) {
+            if (! Schema::hasColumn('pos_orders', $column)) {
                 Schema::table('pos_orders', $definition);
             }
         }
@@ -286,23 +286,23 @@ return new class extends Migration
 
     private function enhancePosPaymentsTable(): void
     {
-        if (!Schema::hasTable('pos_payments')) {
+        if (! Schema::hasTable('pos_payments')) {
             return;
         }
 
-        if (!Schema::hasColumn('pos_payments', 'payment_method_id')) {
+        if (! Schema::hasColumn('pos_payments', 'payment_method_id')) {
             Schema::table('pos_payments', function (Blueprint $table) {
                 $table->foreignId('payment_method_id')->nullable()->after('method')->constrained('pos_payment_methods')->nullOnDelete();
             });
         }
 
-        if (!Schema::hasColumn('pos_payments', 'reference')) {
+        if (! Schema::hasColumn('pos_payments', 'reference')) {
             Schema::table('pos_payments', function (Blueprint $table) {
                 $table->string('reference')->nullable();
             });
         }
 
-        if (!Schema::hasColumn('pos_payments', 'surcharge')) {
+        if (! Schema::hasColumn('pos_payments', 'surcharge')) {
             Schema::table('pos_payments', function (Blueprint $table) {
                 $table->decimal('surcharge', 10, 2)->default(0);
             });

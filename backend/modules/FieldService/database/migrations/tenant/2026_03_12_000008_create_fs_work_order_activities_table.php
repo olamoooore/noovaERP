@@ -13,7 +13,7 @@ return new class extends Migration
             $table->unsignedBigInteger('work_order_id');
             $table->unsignedBigInteger('user_id')->nullable();
             $table->enum('type', [
-                'note', 'status_change', 'assignment', 'file', 'email', 'whatsapp', 'system'
+                'note', 'status_change', 'assignment', 'file', 'email', 'whatsapp', 'system',
             ])->default('note');
             $table->text('body')->nullable();
             $table->json('metadata')->nullable();

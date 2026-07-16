@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\SuperAdmin\Domain;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use App\Models\User;
 
 class AdminInvitation extends Model
 {
@@ -25,9 +25,9 @@ class AdminInvitation extends Model
     ];
 
     protected $casts = [
-        'expires_at'  => 'datetime',
+        'expires_at' => 'datetime',
         'accepted_at' => 'datetime',
-        'created_at'  => 'datetime',
+        'created_at' => 'datetime',
     ];
 
     public function invitedBy(): BelongsTo
@@ -47,6 +47,6 @@ class AdminInvitation extends Model
 
     public function isPending(): bool
     {
-        return !$this->isAccepted() && !$this->isExpired();
+        return ! $this->isAccepted() && ! $this->isExpired();
     }
 }

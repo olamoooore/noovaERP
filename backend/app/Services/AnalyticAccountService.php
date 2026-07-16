@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\AnalyticAccount;
 use App\Models\JournalEntryLine;
-use App\Models\ChartOfAccount;
 
 /**
  * Analytic Account Service
@@ -116,7 +115,7 @@ class AnalyticAccountService
 
         foreach ($accounts as $account) {
             $pl = $this->getProfitLoss($account, $dimension, $startDate, $endDate);
-            
+
             $results[] = [
                 'account_id' => $account->id,
                 'account_code' => $account->code,
@@ -229,6 +228,7 @@ class AnalyticAccountService
     public function validateActive(int $accountId): bool
     {
         $account = AnalyticAccount::find($accountId);
+
         return $account && $account->is_active;
     }
 

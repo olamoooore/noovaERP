@@ -27,7 +27,9 @@ use Modules\FinancialClose\Models\AiFinding;
 class FinancialCloseAiAnalysisService
 {
     private const VARIANCE_THRESHOLD = 0.30;   // 30%
+
     private const LARGE_BALANCE_THRESHOLD = 1000;
+
     private const INACTIVE_DAYS = 90;
 
     public function __construct(
@@ -44,10 +46,8 @@ class FinancialCloseAiAnalysisService
      * Run AI analysis for a tenant/entity/period and generate findings.
      * When $refresh is true, clears stale open findings first so resolved issues disappear.
      *
-     * @param string $tenantId
-     * @param string $entityId
-     * @param string $periodId  Format YYYY-MM
-     * @param bool $refresh     If true, delete open findings before re-analyzing
+     * @param  string  $periodId  Format YYYY-MM
+     * @param  bool  $refresh  If true, delete open findings before re-analyzing
      * @return array Summary of findings created
      */
     public function analyze(string $tenantId, string $entityId, string $periodId, bool $refresh = false): array
@@ -56,7 +56,7 @@ class FinancialCloseAiAnalysisService
             'tenant_id' => $tenantId,
             'entity_id' => $entityId,
             'period_id' => $periodId,
-            'refresh'   => $refresh,
+            'refresh' => $refresh,
         ]);
 
         // On refresh: clear all open findings for this entity so resolved issues disappear
@@ -160,7 +160,7 @@ class FinancialCloseAiAnalysisService
 
         Log::info('FinancialClose AI: Analysis complete', [
             'findings_created' => $findingsCreated,
-            'reviews_created'  => $reviewsCreated,
+            'reviews_created' => $reviewsCreated,
         ]);
 
         return [
@@ -196,18 +196,18 @@ class FinancialCloseAiAnalysisService
             ->where('account_code', $account->code)
             ->first();
 
-        if (!$review) {
+        if (! $review) {
             $review = AccountReview::create([
-                'tenant_id'   => $tenantId,
-                'entity_id'   => $entityId,
-                'book_id'     => 'book-001',
-                'account_code'=> $account->code,
-                'account_name'=> $account->name,
-                'status'      => 'not_started',
+                'tenant_id' => $tenantId,
+                'entity_id' => $entityId,
+                'book_id' => 'book-001',
+                'account_code' => $account->code,
+                'account_name' => $account->name,
+                'status' => 'not_started',
                 'risk_status' => 'normal',
                 'assigned_to' => null,
-                'due_date'    => now()->addDays(5),
-                'metadata'    => null,
+                'due_date' => now()->addDays(5),
+                'metadata' => null,
             ]);
         }
 
@@ -222,7 +222,7 @@ class FinancialCloseAiAnalysisService
         $result = JournalEntryLine::where('account_id', $accountId)
             ->whereHas('journalEntry', function ($q) use ($month) {
                 $q->where('status', 'posted')
-                  ->whereBetween('entry_date', [$month->copy()->startOfMonth(), $month->copy()->endOfMonth()]);
+                    ->whereBetween('entry_date', [$month->copy()->startOfMonth(), $month->copy()->endOfMonth()]);
             })
             ->selectRaw('COALESCE(SUM(debit), 0) as total_debit, COALESCE(SUM(credit), 0) as total_credit')
             ->first();
@@ -231,7 +231,7 @@ class FinancialCloseAiAnalysisService
         $credit = (float) ($result->total_credit ?? 0);
 
         $account = ChartOfAccount::find($accountId);
-        if (!$account) {
+        if (! $account) {
             return 0;
         }
 
@@ -247,7 +247,7 @@ class FinancialCloseAiAnalysisService
         return JournalEntryLine::where('account_id', $accountId)
             ->whereHas('journalEntry', function ($q) use ($month) {
                 $q->where('status', 'posted')
-                  ->whereBetween('entry_date', [$month->copy()->startOfMonth(), $month->copy()->endOfMonth()]);
+                    ->whereBetween('entry_date', [$month->copy()->startOfMonth(), $month->copy()->endOfMonth()]);
             })
             ->exists();
     }
@@ -286,19 +286,19 @@ class FinancialCloseAiAnalysisService
             $entityId,
             $account->code,
             [
-                'finding_type'    => 'anomaly',
-                'description'     => "Account {$account->code} ({$account->name}) {$direction} {$variancePct}% vs prior month. Current: " . number_format($currentBalance, 2) . ', Prior: ' . number_format($priorBalance, 2) . '.',
-                'confidence'      => min(0.95, 0.70 + ($variancePct / 100)),
-                'risk_status'     => $variancePct > 50 ? 'high' : 'medium',
-                'likely_cause'    => 'Period-over-period variance exceeds normal threshold. Review underlying journal entries for one-time items or misclassifications.',
-                'recommendation'  => 'Verify supporting documentation for large entries and confirm classification accuracy.',
-                'detail_items'    => [
+                'finding_type' => 'anomaly',
+                'description' => "Account {$account->code} ({$account->name}) {$direction} {$variancePct}% vs prior month. Current: ".number_format($currentBalance, 2).', Prior: '.number_format($priorBalance, 2).'.',
+                'confidence' => min(0.95, 0.70 + ($variancePct / 100)),
+                'risk_status' => $variancePct > 50 ? 'high' : 'medium',
+                'likely_cause' => 'Period-over-period variance exceeds normal threshold. Review underlying journal entries for one-time items or misclassifications.',
+                'recommendation' => 'Verify supporting documentation for large entries and confirm classification accuracy.',
+                'detail_items' => [
                     ['label' => 'Current Balance', 'value' => number_format($currentBalance, 2)],
                     ['label' => 'Prior Balance',   'value' => number_format($priorBalance, 2)],
-                    ['label' => 'Variance %',      'value' => $variancePct . '%'],
+                    ['label' => 'Variance %',      'value' => $variancePct.'%'],
                     ['label' => 'Account Type',    'value' => $account->type],
                 ],
-                'source_refs'     => $sourceRefs,
+                'source_refs' => $sourceRefs,
             ]
         );
     }
@@ -314,11 +314,11 @@ class FinancialCloseAiAnalysisService
         $confidence = 0.92;
 
         if ($account->type === 'asset') {
-            $description = "Asset account {$account->code} ({$account->name}) shows a negative balance of " . number_format(abs($balance), 2) . '. Asset accounts should normally carry a debit balance.';
+            $description = "Asset account {$account->code} ({$account->name}) shows a negative balance of ".number_format(abs($balance), 2).'. Asset accounts should normally carry a debit balance.';
             $cause = 'Possible over-credit, misclassification, or unrecorded reversal.';
             $recommendation = 'Investigate recent credits and confirm no journal entry was posted in reverse.';
         } else {
-            $description = "Account {$account->code} ({$account->name}) shows an unexpected negative balance of " . number_format(abs($balance), 2) . '. This account type normally carries a credit balance.';
+            $description = "Account {$account->code} ({$account->name}) shows an unexpected negative balance of ".number_format(abs($balance), 2).'. This account type normally carries a credit balance.';
             $cause = 'Possible over-debit, misclassification, or unrecorded accrual reversal.';
             $recommendation = 'Review recent debits and verify no entries were posted to the wrong side.';
         }
@@ -331,17 +331,17 @@ class FinancialCloseAiAnalysisService
             $entityId,
             $account->code,
             [
-                'finding_type'    => 'anomaly',
-                'description'     => $description,
-                'confidence'      => $confidence,
-                'risk_status'     => $risk,
-                'likely_cause'    => $cause,
-                'recommendation'  => $recommendation,
-                'detail_items'    => [
+                'finding_type' => 'anomaly',
+                'description' => $description,
+                'confidence' => $confidence,
+                'risk_status' => $risk,
+                'likely_cause' => $cause,
+                'recommendation' => $recommendation,
+                'detail_items' => [
                     ['label' => 'Current Balance', 'value' => number_format($balance, 2)],
                     ['label' => 'Account Type',    'value' => $account->type],
                 ],
-                'source_refs'     => $sourceRefs,
+                'source_refs' => $sourceRefs,
             ]
         );
     }
@@ -361,17 +361,17 @@ class FinancialCloseAiAnalysisService
             $entityId,
             $account->code,
             [
-                'finding_type'    => 'anomaly',
-                'description'     => "Account {$account->code} ({$account->name}) had no activity since {$lastActivityDate->format('M d, Y')} and now shows current-period activity.",
-                'confidence'      => 0.85,
-                'risk_status'     => 'medium',
-                'likely_cause'    => 'Dormant account reactivated. Could be a one-time correction, reclassification, or fraud indicator.',
-                'recommendation'  => 'Review the current-period entries and confirm business justification.',
-                'detail_items'    => [
+                'finding_type' => 'anomaly',
+                'description' => "Account {$account->code} ({$account->name}) had no activity since {$lastActivityDate->format('M d, Y')} and now shows current-period activity.",
+                'confidence' => 0.85,
+                'risk_status' => 'medium',
+                'likely_cause' => 'Dormant account reactivated. Could be a one-time correction, reclassification, or fraud indicator.',
+                'recommendation' => 'Review the current-period entries and confirm business justification.',
+                'detail_items' => [
                     ['label' => 'Last Activity',   'value' => $lastActivityDate->format('Y-m-d')],
                     ['label' => 'Account Type',    'value' => $account->type],
                 ],
-                'source_refs'     => $sourceRefs,
+                'source_refs' => $sourceRefs,
             ]
         );
     }
@@ -388,13 +388,13 @@ class FinancialCloseAiAnalysisService
         $lines = JournalEntryLine::where('account_id', $account->id)
             ->whereHas('journalEntry', function ($q) use ($month) {
                 $q->where('status', 'posted')
-                  ->whereBetween('entry_date', [$month->copy()->startOfMonth(), $month->copy()->endOfMonth()]);
+                    ->whereBetween('entry_date', [$month->copy()->startOfMonth(), $month->copy()->endOfMonth()]);
             })
             ->where(function ($q) {
                 $q->whereNull('description')
-                  ->orWhere('description', '')
-                  ->orWhereNull('reference')
-                  ->orWhere('reference', '');
+                    ->orWhere('description', '')
+                    ->orWhereNull('reference')
+                    ->orWhere('reference', '');
             })
             ->whereRaw('(debit + credit) > ?', [$threshold])
             ->get();
@@ -407,14 +407,14 @@ class FinancialCloseAiAnalysisService
         $count = $lines->count();
 
         $sourceRefs = $lines->take(10)->map(fn ($l) => [
-            'type'  => 'journal_entry',
-            'id'    => (string) $l->journal_entry_id,
-            'label' => 'Journal Entry #' . $l->journal_entry_id,
+            'type' => 'journal_entry',
+            'id' => (string) $l->journal_entry_id,
+            'label' => 'Journal Entry #'.$l->journal_entry_id,
             'route' => '/accounting/core/journal-entries',
-            'meta'  => [
-                'line_id'    => (string) $l->id,
-                'amount'     => number_format((float) $l->debit + (float) $l->credit, 2),
-                'reference'  => $l->reference,
+            'meta' => [
+                'line_id' => (string) $l->id,
+                'amount' => number_format((float) $l->debit + (float) $l->credit, 2),
+                'reference' => $l->reference,
             ],
         ])->values()->all();
 
@@ -424,17 +424,17 @@ class FinancialCloseAiAnalysisService
             $entityId,
             $account->code,
             [
-                'finding_type'    => 'missing_support',
-                'description'     => "{$count} large journal line(s) in account {$account->code} ({$account->name}) totaling " . number_format($totalAmount, 2) . ' lack description or reference documentation.',
-                'confidence'      => 0.88,
-                'risk_status'     => 'medium',
-                'likely_cause'    => 'Data entry oversight or batch import without documentation.',
-                'recommendation'  => 'Add descriptions and references to these journal lines before sign-off.',
-                'detail_items'    => [
+                'finding_type' => 'missing_support',
+                'description' => "{$count} large journal line(s) in account {$account->code} ({$account->name}) totaling ".number_format($totalAmount, 2).' lack description or reference documentation.',
+                'confidence' => 0.88,
+                'risk_status' => 'medium',
+                'likely_cause' => 'Data entry oversight or batch import without documentation.',
+                'recommendation' => 'Add descriptions and references to these journal lines before sign-off.',
+                'detail_items' => [
                     ['label' => 'Lines Affected', 'value' => (string) $count],
                     ['label' => 'Total Amount',   'value' => number_format($totalAmount, 2)],
                 ],
-                'source_refs'     => $sourceRefs,
+                'source_refs' => $sourceRefs,
             ]
         );
     }
@@ -449,20 +449,20 @@ class FinancialCloseAiAnalysisService
         $lines = JournalEntryLine::where('account_id', $accountId)
             ->whereHas('journalEntry', function ($q) use ($month) {
                 $q->where('status', 'posted')
-                  ->whereBetween('entry_date', [$month->copy()->startOfMonth(), $month->copy()->endOfMonth()]);
+                    ->whereBetween('entry_date', [$month->copy()->startOfMonth(), $month->copy()->endOfMonth()]);
             })
             ->orderBy('id', 'desc')
             ->limit(15)
             ->get(['id', 'journal_entry_id', 'debit', 'credit', 'description', 'reference']);
 
         return $lines->map(fn ($l) => [
-            'type'  => 'journal_entry',
-            'id'    => (string) $l->journal_entry_id,
-            'label' => 'Journal Entry #' . $l->journal_entry_id,
+            'type' => 'journal_entry',
+            'id' => (string) $l->journal_entry_id,
+            'label' => 'Journal Entry #'.$l->journal_entry_id,
             'route' => '/accounting/core/journal-entries',
-            'meta'  => [
-                'line_id'   => (string) $l->id,
-                'amount'    => number_format((float) $l->debit + (float) $l->credit, 2),
+            'meta' => [
+                'line_id' => (string) $l->id,
+                'amount' => number_format((float) $l->debit + (float) $l->credit, 2),
                 'reference' => $l->reference,
             ],
         ])->values()->all();
@@ -521,13 +521,13 @@ class FinancialCloseAiAnalysisService
             ->get(['id', 'entry_date', 'reference', 'description']);
 
         $sourceRefs = $draftEntries->map(fn ($je) => [
-            'type'  => 'journal_entry',
-            'id'    => (string) $je->id,
-            'label' => 'Journal Entry #' . $je->id,
+            'type' => 'journal_entry',
+            'id' => (string) $je->id,
+            'label' => 'Journal Entry #'.$je->id,
             'route' => '/accounting/core/journal-entries',
-            'meta'  => [
-                'date'       => $je->entry_date,
-                'reference'  => $je->reference,
+            'meta' => [
+                'date' => $je->entry_date,
+                'reference' => $je->reference,
             ],
         ])->values()->all();
 
@@ -537,17 +537,17 @@ class FinancialCloseAiAnalysisService
             $entityId,
             null,
             [
-                'finding_type'    => 'unposted_entries',
-                'description'     => "{$count} draft journal entries found totaling " . number_format((float) $totalAmount, 2) . '. These entries have not been posted to the GL.',
-                'confidence'      => 0.95,
-                'risk_status'     => 'high',
-                'likely_cause'    => 'Journal entries created but not reviewed/approved for posting.',
-                'recommendation'  => 'Review and post draft journal entries before closing the period.',
-                'detail_items'    => [
+                'finding_type' => 'unposted_entries',
+                'description' => "{$count} draft journal entries found totaling ".number_format((float) $totalAmount, 2).'. These entries have not been posted to the GL.',
+                'confidence' => 0.95,
+                'risk_status' => 'high',
+                'likely_cause' => 'Journal entries created but not reviewed/approved for posting.',
+                'recommendation' => 'Review and post draft journal entries before closing the period.',
+                'detail_items' => [
                     ['label' => 'Draft Entries', 'value' => (string) $count],
                     ['label' => 'Total Amount',  'value' => number_format((float) $totalAmount, 2)],
                 ],
-                'source_refs'     => $sourceRefs,
+                'source_refs' => $sourceRefs,
             ]
         );
     }
@@ -575,14 +575,14 @@ class FinancialCloseAiAnalysisService
             ->get(['id', 'invoice_number', 'due_date', 'balance', 'status']);
 
         $sourceRefs = $overdueInvoices->map(fn ($inv) => [
-            'type'  => 'invoice',
-            'id'    => (string) $inv->id,
-            'label' => ($inv->invoice_number ?? 'Invoice #' . $inv->id),
-            'route' => '/invoices/' . $inv->id,
-            'meta'  => [
+            'type' => 'invoice',
+            'id' => (string) $inv->id,
+            'label' => ($inv->invoice_number ?? 'Invoice #'.$inv->id),
+            'route' => '/invoices/'.$inv->id,
+            'meta' => [
                 'due_date' => $inv->due_date,
-                'balance'  => number_format((float) $inv->balance, 2),
-                'status'   => $inv->status,
+                'balance' => number_format((float) $inv->balance, 2),
+                'status' => $inv->status,
             ],
         ])->values()->all();
 
@@ -592,17 +592,17 @@ class FinancialCloseAiAnalysisService
             $entityId,
             null,
             [
-                'finding_type'    => 'overdue_invoices',
-                'description'     => "{$count} customer invoices are overdue totaling " . number_format((float) $totalAmount, 2) . '. These invoices are past their due date.',
-                'confidence'      => 0.98,
-                'risk_status'     => 'high',
-                'likely_cause'    => 'Customers have not paid invoices by the due date.',
-                'recommendation'  => 'Follow up with customers on overdue invoices and consider bad debt provisions.',
-                'detail_items'    => [
+                'finding_type' => 'overdue_invoices',
+                'description' => "{$count} customer invoices are overdue totaling ".number_format((float) $totalAmount, 2).'. These invoices are past their due date.',
+                'confidence' => 0.98,
+                'risk_status' => 'high',
+                'likely_cause' => 'Customers have not paid invoices by the due date.',
+                'recommendation' => 'Follow up with customers on overdue invoices and consider bad debt provisions.',
+                'detail_items' => [
                     ['label' => 'Overdue Invoices', 'value' => (string) $count],
                     ['label' => 'Total Outstanding', 'value' => number_format((float) $totalAmount, 2)],
                 ],
-                'source_refs'     => $sourceRefs,
+                'source_refs' => $sourceRefs,
             ]
         );
     }
@@ -645,14 +645,14 @@ class FinancialCloseAiAnalysisService
             ->get(['id', 'journal_entry_id', 'account_id', 'debit', 'credit', 'description']);
 
         $sourceRefs = $unreconciledLines->map(fn ($line) => [
-            'type'  => 'bank_transaction',
-            'id'    => (string) $line->id,
-            'label' => 'Bank Line #' . $line->id,
+            'type' => 'bank_transaction',
+            'id' => (string) $line->id,
+            'label' => 'Bank Line #'.$line->id,
             'route' => '/accounting/core/reconciliation',
-            'meta'  => [
+            'meta' => [
                 'journal_entry_id' => (string) $line->journal_entry_id,
-                'amount'           => number_format((float) $line->debit + (float) $line->credit, 2),
-                'description'      => $line->description,
+                'amount' => number_format((float) $line->debit + (float) $line->credit, 2),
+                'description' => $line->description,
             ],
         ])->values()->all();
 
@@ -662,17 +662,17 @@ class FinancialCloseAiAnalysisService
             $entityId,
             null,
             [
-                'finding_type'    => 'unreconciled_transactions',
-                'description'     => "{$count} unreconciled bank transactions found. Net unreconciled amount: " . number_format($netAmount, 2) . '.',
-                'confidence'      => 0.95,
-                'risk_status'     => 'medium',
-                'likely_cause'    => 'Bank transactions have not been matched to bank statement lines.',
-                'recommendation'  => 'Complete bank reconciliation for all active bank accounts before closing the period.',
-                'detail_items'    => [
+                'finding_type' => 'unreconciled_transactions',
+                'description' => "{$count} unreconciled bank transactions found. Net unreconciled amount: ".number_format($netAmount, 2).'.',
+                'confidence' => 0.95,
+                'risk_status' => 'medium',
+                'likely_cause' => 'Bank transactions have not been matched to bank statement lines.',
+                'recommendation' => 'Complete bank reconciliation for all active bank accounts before closing the period.',
+                'detail_items' => [
                     ['label' => 'Unreconciled Lines', 'value' => (string) $count],
                     ['label' => 'Net Amount',         'value' => number_format($netAmount, 2)],
                 ],
-                'source_refs'     => $sourceRefs,
+                'source_refs' => $sourceRefs,
             ]
         );
     }

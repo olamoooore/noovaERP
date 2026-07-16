@@ -27,13 +27,13 @@ class CatalogItemTypesSeeder extends Seeder
             CatalogItemType::updateOrCreate(
                 ['key' => $type['key']],
                 [
-                    'name'        => $type['name'],
+                    'name' => $type['name'],
                     'description' => $type['description'],
-                    'sort_order'  => $type['sort_order'],
+                    'sort_order' => $type['sort_order'],
                 ],
             );
         }
 
-        $this->command->info('Seeded ' . count(self::TYPES) . ' catalog item types.');
+        $this->command->info('Seeded '.count(self::TYPES).' catalog item types.');
     }
 }

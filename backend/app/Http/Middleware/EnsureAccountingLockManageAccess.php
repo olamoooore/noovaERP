@@ -29,11 +29,11 @@ class EnsureAccountingLockManageAccess
         /** @var User|null $user */
         $user = $request->user();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
-        if (!$this->accessService->canManageLocks($user)) {
+        if (! $this->accessService->canManageLocks($user)) {
             return response()->json([
                 'message' => 'You do not have permission to manage accounting lock dates.',
                 'required_permission' => 'accounting.lock',

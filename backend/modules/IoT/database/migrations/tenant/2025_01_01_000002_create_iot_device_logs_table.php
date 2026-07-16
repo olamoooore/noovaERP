@@ -20,7 +20,7 @@ return new class extends Migration
             $table->json('response_data')->nullable();
             $table->text('error_message')->nullable();
             $table->timestamp('created_at');
-            
+
             // Indexes
             $table->index(['iot_device_id', 'created_at']);
             $table->index('status');

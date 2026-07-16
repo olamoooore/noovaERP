@@ -33,7 +33,7 @@ class PaymentAnalyticsController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return response()->json([
                 'error' => 'Failed to load analytics',
                 'message' => $e->getMessage(),
@@ -138,10 +138,10 @@ class PaymentAnalyticsController extends Controller
 
         // Calculate success rate in PHP to avoid database-specific casting
         return $results->map(function ($item) {
-            $successRate = $item->transactions > 0 
-                ? round(($item->successful / $item->transactions) * 100, 2) 
+            $successRate = $item->transactions > 0
+                ? round(($item->successful / $item->transactions) * 100, 2)
                 : 0;
-            
+
             return [
                 'payment_gateway_id' => $item->payment_gateway_id,
                 'transactions' => $item->transactions,

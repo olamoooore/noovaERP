@@ -2,21 +2,22 @@
 
 namespace Modules\EventManagement\Jobs;
 
-use Modules\EventManagement\Models\EventSettings;
-use Modules\EventManagement\Services\AuditService;
-use Modules\EventManagement\Services\TenantSchemaManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Modules\EventManagement\Models\EventSettings;
+use Modules\EventManagement\Services\AuditService;
+use Modules\EventManagement\Services\TenantSchemaManager;
 
 class CleanupAuditLogsJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     protected string $tenantId;
+
     protected ?int $retentionDays;
 
     /**
@@ -83,7 +84,7 @@ class CleanupAuditLogsJob implements ShouldQueue
     protected function getTenantRetentionPolicy(): int
     {
         $settings = EventSettings::where('tenant_id', $this->tenantId)->first();
-        
+
         // Default to 7 years (2555 days) if no specific policy is set
         return $settings ? $settings->data_retention_days : 2555;
     }

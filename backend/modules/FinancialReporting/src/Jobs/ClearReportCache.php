@@ -2,6 +2,7 @@
 
 namespace Modules\FinancialReporting\Jobs;
 
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -10,7 +11,6 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Modules\FinancialReporting\Models\ReportCache;
-use Carbon\Carbon;
 use Stancl\Tenancy\Facades\Tenancy;
 
 /**
@@ -22,13 +22,14 @@ class ClearReportCache implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     protected bool $clearAll;
+
     protected ?string $tenantId;
 
     /**
      * Create a new job instance.
      *
-     * @param bool $clearAll Clear all cache entries, not just expired ones
-     * @param string|null $tenantId Specific tenant to clear (null = current context)
+     * @param  bool  $clearAll  Clear all cache entries, not just expired ones
+     * @param  string|null  $tenantId  Specific tenant to clear (null = current context)
      */
     public function __construct(bool $clearAll = false, ?string $tenantId = null)
     {
@@ -49,10 +50,10 @@ class ClearReportCache implements ShouldQueue
 
             $tenantId = $this->currentTenantId();
 
-            if (!$tenantId) {
+            if (! $tenantId) {
                 throw new \RuntimeException('Report cache cleanup requires explicit tenant scope.');
             }
-            
+
             Log::info('Starting report cache cleanup', [
                 'clear_all' => $this->clearAll,
                 'tenant_id' => $tenantId,
@@ -86,6 +87,7 @@ class ClearReportCache implements ShouldQueue
         if (function_exists('tenant') && tenant()) {
             return (string) tenant('id');
         }
+
         return null;
     }
 
@@ -95,13 +97,13 @@ class ClearReportCache implements ShouldQueue
     protected function clearAllCache(?string $tenantId): void
     {
         $query = ReportCache::query();
-        
+
         if ($tenantId) {
             $query->where('tenant_id', $tenantId);
         }
-        
+
         $count = $query->count();
-        
+
         ReportCache::where('tenant_id', $tenantId)->delete();
 
         // Clear Redis cache with report tags (only works with tag-supporting drivers)
@@ -111,7 +113,7 @@ class ClearReportCache implements ShouldQueue
                 'dashboards',
                 'sales_analytics',
                 'inventory_reports',
-                'tenant:' . $tenantId,
+                'tenant:'.$tenantId,
             ])->flush();
         } catch (\BadMethodCallException $e) {
             // Cache driver does not support tagging — skip
@@ -131,11 +133,11 @@ class ClearReportCache implements ShouldQueue
         $now = Carbon::now();
 
         $query = ReportCache::where('expires_at', '<', $now);
-        
+
         if ($tenantId) {
             $query->where('tenant_id', $tenantId);
         }
-        
+
         $expiredCount = $query->count();
         $query->delete();
 
@@ -153,18 +155,18 @@ class ClearReportCache implements ShouldQueue
      */
     public static function clearByReportType(string $reportType, ?string $tenantId = null): void
     {
-        if (!$tenantId) {
+        if (! $tenantId) {
             throw new \RuntimeException('clearByReportType requires explicit tenant scope.');
         }
 
         $query = ReportCache::where('report_type', $reportType);
         $query->where('tenant_id', $tenantId);
-        
+
         $query->delete();
-        
+
         // Clear Redis cache for this report type (only works with tag-supporting drivers)
         try {
-            Cache::tags(['reports', 'tenant:' . $tenantId])->flush();
+            Cache::tags(['reports', 'tenant:'.$tenantId])->flush();
         } catch (\BadMethodCallException $e) {
             // Cache driver does not support tagging — skip
         }
@@ -180,13 +182,13 @@ class ClearReportCache implements ShouldQueue
      */
     public static function clearByDateRange(Carbon $startDate, Carbon $endDate, ?string $tenantId = null): void
     {
-        if (!$tenantId) {
+        if (! $tenantId) {
             throw new \RuntimeException('clearByDateRange requires explicit tenant scope.');
         }
 
         $query = ReportCache::whereBetween('created_at', [$startDate, $endDate]);
         $query->where('tenant_id', $tenantId);
-        
+
         $query->delete();
 
         Log::info('Cleared cache for date range', [

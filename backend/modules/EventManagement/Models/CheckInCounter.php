@@ -3,15 +3,15 @@
 namespace Modules\EventManagement\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * CheckInCounter Model
- * 
+ *
  * Represents check-in points and queue management for event operations.
- * 
+ *
  * @property int $id
  * @property string $tenant_id
  * @property int $event_id
@@ -183,7 +183,7 @@ class CheckInCounter extends Model
      */
     public function isBusy(): bool
     {
-        return $this->status === 'busy' || 
+        return $this->status === 'busy' ||
                ($this->max_queue_length && $this->current_queue_length >= $this->max_queue_length * 0.8);
     }
 
@@ -201,6 +201,7 @@ class CheckInCounter extends Model
     public function supportsTicketType(string $ticketType): bool
     {
         $supportedTypes = $this->supported_ticket_types ?? [];
+
         return empty($supportedTypes) || in_array($ticketType, $supportedTypes);
     }
 
@@ -254,7 +255,7 @@ class CheckInCounter extends Model
         // Calculate hourly processing rate
         $hourStart = now()->startOfHour();
         $hourlyProcessed = $this->total_processed; // This would need more sophisticated tracking in real implementation
-        
+
         $this->checkins_per_hour = $hourlyProcessed;
 
         // Update average processing time (simplified calculation)
@@ -280,6 +281,7 @@ class CheckInCounter extends Model
         }
 
         $processingTime = $this->average_processing_time ?? 2.0; // Default 2 minutes per person
+
         return (int) ceil($this->current_queue_length * $processingTime);
     }
 
@@ -381,6 +383,6 @@ class CheckInCounter extends Model
     public function scopeBusy($query)
     {
         return $query->where('status', 'busy')
-                    ->orWhere('current_queue_length', '>', 10);
+            ->orWhere('current_queue_length', '>', 10);
     }
 }

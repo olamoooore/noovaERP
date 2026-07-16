@@ -2,8 +2,8 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -24,7 +24,7 @@ return new class extends Migration
                 'current_liability', 'long_term_liability',
                 'equity',
                 'operating_revenue', 'other_revenue',
-                'cost_of_goods_sold', 'operating_expense', 'other_expense'
+                'cost_of_goods_sold', 'operating_expense', 'other_expense',
             ]);
             $table->foreignId('parent_id')->nullable()->constrained('chart_of_accounts')->onDelete('restrict');
             $table->text('description')->nullable();

@@ -19,10 +19,10 @@ class AIApprovalControlService
     /**
      * Request approval for an AI action
      *
-     * @param string $action The AI action requiring approval
-     * @param User $requestor The user requesting the action
-     * @param array $context Action context (module, entity, data, etc.)
-     * @param string|null $reason Explanation for the action
+     * @param  string  $action  The AI action requiring approval
+     * @param  User  $requestor  The user requesting the action
+     * @param  array  $context  Action context (module, entity, data, etc.)
+     * @param  string|null  $reason  Explanation for the action
      * @return array{approval_id: int, status: string, message: string}
      */
     public function requestApproval(
@@ -60,9 +60,9 @@ class AIApprovalControlService
     /**
      * Approve an AI action
      *
-     * @param int $approvalId The approval request ID
-     * @param User $approver The user approving the action
-     * @param string|null $comment Approver's comment
+     * @param  int  $approvalId  The approval request ID
+     * @param  User  $approver  The user approving the action
+     * @param  string|null  $comment  Approver's comment
      * @return array{success: bool, message: string}
      */
     public function approve(int $approvalId, User $approver, ?string $comment = null): array
@@ -72,7 +72,7 @@ class AIApprovalControlService
             ->where('status', 'pending')
             ->first();
 
-        if (!$approval) {
+        if (! $approval) {
             return [
                 'success' => false,
                 'message' => 'Approval request not found or already processed.',
@@ -93,7 +93,7 @@ class AIApprovalControlService
         }
 
         // Check approver has permission
-        if (!$this->userCanApprove($approver)) {
+        if (! $this->userCanApprove($approver)) {
             return [
                 'success' => false,
                 'message' => 'User does not have permission to approve AI actions.',
@@ -125,9 +125,9 @@ class AIApprovalControlService
     /**
      * Reject an AI action
      *
-     * @param int $approvalId The approval request ID
-     * @param User $approver The user rejecting the action
-     * @param string $reason Reason for rejection
+     * @param  int  $approvalId  The approval request ID
+     * @param  User  $approver  The user rejecting the action
+     * @param  string  $reason  Reason for rejection
      * @return array{success: bool, message: string}
      */
     public function reject(int $approvalId, User $approver, string $reason): array
@@ -137,7 +137,7 @@ class AIApprovalControlService
             ->where('status', 'pending')
             ->first();
 
-        if (!$approval) {
+        if (! $approval) {
             return [
                 'success' => false,
                 'message' => 'Approval request not found or already processed.',
@@ -170,7 +170,7 @@ class AIApprovalControlService
     /**
      * Check if an approval exists and is approved
      *
-     * @param int $approvalId The approval request ID
+     * @param  int  $approvalId  The approval request ID
      * @return array{exists: bool, approved: bool, status: string|null}
      */
     public function checkApprovalStatus(int $approvalId): array
@@ -179,7 +179,7 @@ class AIApprovalControlService
             ->where('id', $approvalId)
             ->first();
 
-        if (!$approval) {
+        if (! $approval) {
             return [
                 'exists' => false,
                 'approved' => false,
@@ -196,9 +196,6 @@ class AIApprovalControlService
 
     /**
      * Get pending approvals for a tenant
-     *
-     * @param string|null $tenantId
-     * @return array
      */
     public function getPendingApprovals(?string $tenantId = null): array
     {

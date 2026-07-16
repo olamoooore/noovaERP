@@ -4,7 +4,7 @@ namespace Modules\IoT\Services;
 
 /**
  * Service for parsing and validating palm vein biometric data.
- * 
+ *
  * Handles:
  * - Palm vein template parsing
  * - Quality score validation
@@ -20,7 +20,7 @@ class PalmVeinParserService
     {
         // Try to decode as JSON first (structured data from agent)
         $decoded = json_decode($rawData, true);
-        
+
         if ($decoded && is_array($decoded)) {
             return $this->parseStructuredData($decoded);
         }
@@ -106,12 +106,13 @@ class PalmVeinParserService
         }
 
         // Check if it looks like base64 (alphanumeric + / + = + -)
-        if (!preg_match('/^[A-Za-z0-9+\/\-_]*={0,2}$/', $data)) {
+        if (! preg_match('/^[A-Za-z0-9+\/\-_]*={0,2}$/', $data)) {
             return false;
         }
 
         // Try to decode
         $decoded = base64_decode($data, true);
+
         return $decoded !== false;
     }
 

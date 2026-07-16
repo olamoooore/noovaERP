@@ -1,8 +1,6 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
@@ -14,14 +12,14 @@ return new class extends Migration
     {
         // PostgreSQL requires dropping and recreating the enum type
         // First, add a temporary column
-        DB::statement("ALTER TABLE chart_of_accounts ADD COLUMN subtype_new VARCHAR(50)");
-        
+        DB::statement('ALTER TABLE chart_of_accounts ADD COLUMN subtype_new VARCHAR(50)');
+
         // Copy existing values
-        DB::statement("UPDATE chart_of_accounts SET subtype_new = subtype");
-        
+        DB::statement('UPDATE chart_of_accounts SET subtype_new = subtype');
+
         // Drop the old column
-        DB::statement("ALTER TABLE chart_of_accounts DROP COLUMN subtype");
-        
+        DB::statement('ALTER TABLE chart_of_accounts DROP COLUMN subtype');
+
         // Recreate with expanded enum
         DB::statement("
             ALTER TABLE chart_of_accounts 
@@ -37,12 +35,12 @@ return new class extends Migration
                 'expense_direct_cost', 'expense', 'expense_depreciation'
             ))
         ");
-        
+
         // Copy back the values
-        DB::statement("UPDATE chart_of_accounts SET subtype = subtype_new");
-        
+        DB::statement('UPDATE chart_of_accounts SET subtype = subtype_new');
+
         // Drop temporary column
-        DB::statement("ALTER TABLE chart_of_accounts DROP COLUMN subtype_new");
+        DB::statement('ALTER TABLE chart_of_accounts DROP COLUMN subtype_new');
     }
 
     /**
@@ -51,8 +49,8 @@ return new class extends Migration
     public function down(): void
     {
         // Revert to original enum values
-        DB::statement("ALTER TABLE chart_of_accounts ADD COLUMN subtype_new VARCHAR(50)");
-        
+        DB::statement('ALTER TABLE chart_of_accounts ADD COLUMN subtype_new VARCHAR(50)');
+
         // Map expanded types back to original types
         DB::statement("
             UPDATE chart_of_accounts 
@@ -71,9 +69,9 @@ return new class extends Migration
                 ELSE 'current_asset'
             END
         ");
-        
-        DB::statement("ALTER TABLE chart_of_accounts DROP COLUMN subtype");
-        
+
+        DB::statement('ALTER TABLE chart_of_accounts DROP COLUMN subtype');
+
         DB::statement("
             ALTER TABLE chart_of_accounts 
             ADD COLUMN subtype VARCHAR(50) CHECK (subtype IN (
@@ -84,8 +82,8 @@ return new class extends Migration
                 'cost_of_goods_sold', 'operating_expense', 'other_expense'
             ))
         ");
-        
-        DB::statement("UPDATE chart_of_accounts SET subtype = subtype_new");
-        DB::statement("ALTER TABLE chart_of_accounts DROP COLUMN subtype_new");
+
+        DB::statement('UPDATE chart_of_accounts SET subtype = subtype_new');
+        DB::statement('ALTER TABLE chart_of_accounts DROP COLUMN subtype_new');
     }
 };

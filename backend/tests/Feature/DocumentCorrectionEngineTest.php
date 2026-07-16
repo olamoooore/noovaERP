@@ -2,13 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\FiscalPeriod;
 use App\Models\Invoice;
-use App\Models\Bill;
 use App\Models\JournalEntry;
 use App\Models\Payment;
-use App\Models\Customer;
-use App\Models\FiscalPeriod;
-use App\Models\Vendor;
 use App\Models\User;
 use App\Services\CorrectionRequest;
 use Illuminate\Support\Facades\Gate;

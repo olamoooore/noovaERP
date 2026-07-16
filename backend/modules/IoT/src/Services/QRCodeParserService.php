@@ -4,7 +4,7 @@ namespace Modules\IoT\Services;
 
 /**
  * Service for parsing QR code data into structured formats.
- * 
+ *
  * Supports:
  * - JSON data
  * - URLs
@@ -71,6 +71,7 @@ class QRCodeParserService
         }
 
         json_decode($data);
+
         return json_last_error() === JSON_ERROR_NONE;
     }
 
@@ -86,7 +87,8 @@ class QRCodeParserService
 
         // Check if it looks like a mangled URL from HID scanner
         $upper = strtoupper($data);
-        return str_starts_with($upper, 'HTTP') || 
+
+        return str_starts_with($upper, 'HTTP') ||
                str_starts_with($upper, 'WWW') ||
                str_starts_with($upper, 'HTTPS');
     }
@@ -104,22 +106,24 @@ class QRCodeParserService
 
         $upper = strtoupper($data);
         $lower = strtolower($data);
-        
+
         // Pattern: HTTPS or HTTP followed by content (missing ://)
-        if (str_starts_with($upper, 'HTTPS') && !str_starts_with($upper, 'HTTPS://')) {
+        if (str_starts_with($upper, 'HTTPS') && ! str_starts_with($upper, 'HTTPS://')) {
             // Extract the part after HTTPS
             $rest = substr($lower, 5);
-            return 'https://' . $rest;
+
+            return 'https://'.$rest;
         }
-        
-        if (str_starts_with($upper, 'HTTP') && !str_starts_with($upper, 'HTTP://')) {
+
+        if (str_starts_with($upper, 'HTTP') && ! str_starts_with($upper, 'HTTP://')) {
             $rest = substr($lower, 4);
-            return 'http://' . $rest;
+
+            return 'http://'.$rest;
         }
 
         // WWW prefix without http
         if (str_starts_with($upper, 'WWW')) {
-            return 'https://' . $lower;
+            return 'https://'.$lower;
         }
 
         return $data;
@@ -141,17 +145,17 @@ class QRCodeParserService
     {
         $normalizedUrl = $this->normalizeUrl($url);
         $isNormalized = $normalizedUrl !== $url;
-        
+
         // Try to parse the normalized URL
         $parsed = parse_url($normalizedUrl);
-        
+
         $result = [
             'url' => $normalizedUrl,
             'scheme' => $parsed['scheme'] ?? null,
             'host' => $parsed['host'] ?? null,
             'path' => $parsed['path'] ?? null,
         ];
-        
+
         // Include original if it was normalized
         if ($isNormalized) {
             $result['original'] = $url;
@@ -160,12 +164,12 @@ class QRCodeParserService
         }
 
         // Parse query string if present
-        if (!empty($parsed['query'])) {
+        if (! empty($parsed['query'])) {
             parse_str($parsed['query'], $queryParams);
             $result['query'] = $queryParams;
         }
 
-        return array_filter($result, fn($v) => $v !== null);
+        return array_filter($result, fn ($v) => $v !== null);
     }
 
     /**
@@ -183,14 +187,14 @@ class QRCodeParserService
             if (isset($parts[$i + 1])) {
                 $key = strtolower($parts[$i]);
                 $value = $parts[$i + 1];
-                
+
                 // Convert numeric values
                 if (is_numeric($value)) {
-                    $value = strpos($value, '.') !== false 
-                        ? (float) $value 
+                    $value = strpos($value, '.') !== false
+                        ? (float) $value
                         : (int) $value;
                 }
-                
+
                 $result[$key] = $value;
             }
         }
@@ -224,6 +228,7 @@ class QRCodeParserService
             if ($this->isUrl($data)) {
                 return 'QR';
             }
+
             return 'CODE128';
         }
 

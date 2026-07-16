@@ -2,20 +2,19 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Modules\FinancialReporting\Services\Export\PdfExportService;
 use Illuminate\Support\Facades\Storage;
+use Modules\FinancialReporting\Services\Export\PdfExportService;
+use Tests\TenantTestCase;
 
 class PdfExportServiceTest extends TenantTestCase
 {
-
     protected PdfExportService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->bindTenantContext();
-        $this->service = new PdfExportService();
+        $this->service = new PdfExportService;
         Storage::fake('local');
     }
 

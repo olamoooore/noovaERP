@@ -4,8 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Payment extends Model
 {
@@ -51,10 +51,10 @@ class Payment extends Model
         parent::boot();
 
         static::creating(function ($payment) {
-            if (!$payment->payment_number) {
+            if (! $payment->payment_number) {
                 $payment->payment_number = static::generatePaymentNumber();
             }
-            if (!$payment->payment_status) {
+            if (! $payment->payment_status) {
                 $payment->payment_status = 'recorded';
             }
         });
@@ -63,9 +63,9 @@ class Payment extends Model
         static::deleting(function ($payment) {
             if ($payment->journal_entry_id !== null) {
                 throw new \RuntimeException(
-                    "Cannot delete posted payment #{$payment->payment_number}. " .
-                    "Posted payments must be reversed, not deleted. " .
-                    "Use the refund endpoint to reverse this payment."
+                    "Cannot delete posted payment #{$payment->payment_number}. ".
+                    'Posted payments must be reversed, not deleted. '.
+                    'Use the refund endpoint to reverse this payment.'
                 );
             }
         });
@@ -110,6 +110,7 @@ class Payment extends Model
     {
         $latest = static::orderBy('id', 'desc')->first();
         $number = $latest ? (int) substr($latest->payment_number, -4) + 1 : 1;
-        return 'PAY-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        return 'PAY-'.date('Y').'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 }

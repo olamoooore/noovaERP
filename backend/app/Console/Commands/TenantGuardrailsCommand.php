@@ -57,7 +57,7 @@ class TenantGuardrailsCommand extends Command
         $this->info('Tenant Core Data Integrity Check');
         $tenantIds = DB::table('public.tenants')->pluck('id');
         foreach ($tenantIds as $tenantId) {
-            DB::statement("SET search_path TO '" . $tenantId . "', public");
+            DB::statement("SET search_path TO '".$tenantId."', public");
             $productCount = DB::table('products')->count();
             $warehouseCount = DB::table('warehouses')->count();
             $company = DB::table('company_settings')->first();
@@ -66,15 +66,15 @@ class TenantGuardrailsCommand extends Command
             $this->line("Tenant {$tenantId}: Products={$productCount}, Warehouses={$warehouseCount}, Company={$companyName} <{$companyEmail}>");
             // Flag anomalies
             if ($productCount === 0) {
-                $this->warn("  [!] No products found");
+                $this->warn('  [!] No products found');
                 $issues++;
             }
             if ($warehouseCount === 0) {
-                $this->warn("  [!] No warehouses found");
+                $this->warn('  [!] No warehouses found');
                 $issues++;
             }
             if ($companyName === '[none]') {
-                $this->warn("  [!] Company name missing");
+                $this->warn('  [!] Company name missing');
                 $issues++;
             }
         }
@@ -85,8 +85,9 @@ class TenantGuardrailsCommand extends Command
         $this->line("Issues detected: {$issues}");
         $this->line("Fixes applied: {$fixed}");
 
-        if ($issues > 0 && !$applyFixes) {
+        if ($issues > 0 && ! $applyFixes) {
             $this->warn('Guardrails found issues. Re-run with --fix to auto-remediate.');
+
             return self::FAILURE;
         }
 
@@ -119,7 +120,7 @@ class TenantGuardrailsCommand extends Command
             $issues++;
             $this->warn("user_id={$row->user_id} has default_rows={$defaultRows}");
 
-            if (!$applyFixes) {
+            if (! $applyFixes) {
                 continue;
             }
 
@@ -131,7 +132,7 @@ class TenantGuardrailsCommand extends Command
                 ->get();
 
             $keep = $userAccess->first();
-            if (!$keep) {
+            if (! $keep) {
                 continue;
             }
 
@@ -204,7 +205,7 @@ class TenantGuardrailsCommand extends Command
 
             $this->warn("user_id={$row->user_id} email={$row->email} is linked to {$row->tenant_rows} tenants: {$tenantSummary}");
 
-            if (!$applyFixes) {
+            if (! $applyFixes) {
                 continue;
             }
 
@@ -258,7 +259,7 @@ class TenantGuardrailsCommand extends Command
             }
 
             $tenantOverride = $overrides[(string) $tenantId] ?? null;
-            if (!$tenantOverride) {
+            if (! $tenantOverride) {
                 continue;
             }
 
@@ -266,9 +267,10 @@ class TenantGuardrailsCommand extends Command
             $excludeKeys = collect($tenantOverride['exclude'] ?? [])->map(fn ($k) => (string) $k);
 
             foreach ($includeKeys as $key) {
-                if (!$activeCatalogByKey->has($key)) {
+                if (! $activeCatalogByKey->has($key)) {
                     $issues++;
                     $this->warn("tenant_id={$tenantId} include key missing in catalog: {$key}");
+
                     continue;
                 }
 
@@ -279,8 +281,8 @@ class TenantGuardrailsCommand extends Command
                     ->where('catalog_item_id', $catalogItemId)
                     ->first();
 
-                $needsUpdate = !$existing || !$existing->is_entitled || $existing->source !== 'override_include';
-                if (!$needsUpdate) {
+                $needsUpdate = ! $existing || ! $existing->is_entitled || $existing->source !== 'override_include';
+                if (! $needsUpdate) {
                     continue;
                 }
 
@@ -322,9 +324,10 @@ class TenantGuardrailsCommand extends Command
             }
 
             foreach ($excludeKeys as $key) {
-                if (!$activeCatalogByKey->has($key)) {
+                if (! $activeCatalogByKey->has($key)) {
                     $issues++;
                     $this->warn("tenant_id={$tenantId} exclude key missing in catalog: {$key}");
+
                     continue;
                 }
 
@@ -335,8 +338,8 @@ class TenantGuardrailsCommand extends Command
                     ->where('catalog_item_id', $catalogItemId)
                     ->first();
 
-                $needsUpdate = !$existing || $existing->is_entitled || $existing->source !== 'override_exclude';
-                if (!$needsUpdate) {
+                $needsUpdate = ! $existing || $existing->is_entitled || $existing->source !== 'override_exclude';
+                if (! $needsUpdate) {
                     continue;
                 }
 
@@ -411,7 +414,7 @@ class TenantGuardrailsCommand extends Command
                 ->where('gateway_name', $name)
                 ->first();
 
-            if (!$existing) {
+            if (! $existing) {
                 $issues++;
                 $this->warn("gateway missing: {$name}");
 
@@ -445,7 +448,7 @@ class TenantGuardrailsCommand extends Command
                 || ((bool) $existing->is_test_mode !== $expectedTestMode)
                 || ((string) ($existing->gateway_type ?? '') !== $expectedType);
 
-            if (!$drift) {
+            if (! $drift) {
                 continue;
             }
 

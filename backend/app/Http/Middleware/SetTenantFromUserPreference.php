@@ -25,8 +25,8 @@ class SetTenantFromUserPreference
     public function handle(Request $request, Closure $next)
     {
         $user = $request->user();
-        
-        if (!$user) {
+
+        if (! $user) {
             return $next($request);
         }
 
@@ -35,24 +35,25 @@ class SetTenantFromUserPreference
         if ($user->is_super_admin ?? false) {
             // Super-admins must explicitly select a tenant via X-Tenant-ID header
             $tenantId = $request->header('X-Tenant-ID');
-            if (!$tenantId) {
+            if (! $tenantId) {
                 return response()->json([
                     'message' => 'Super-admin must specify X-Tenant-ID header to select a tenant context.',
                 ], 400);
             }
 
-            if (!$this->isValidUuid($tenantId)) {
+            if (! $this->isValidUuid($tenantId)) {
                 Log::warning('SetTenantFromUserPreference: Invalid tenant ID format', [
                     'user_id' => $user->id,
                     'tenant_id' => $tenantId,
                 ]);
+
                 return response()->json([
                     'message' => 'Invalid tenant ID format.',
                 ], 400);
             }
 
             $tenant = \App\Models\Tenant::find($tenantId);
-            if (!$tenant) {
+            if (! $tenant) {
                 return response()->json([
                     'message' => 'Specified tenant not found.',
                 ], 404);
@@ -69,7 +70,7 @@ class SetTenantFromUserPreference
             $requestedTenantId = $request->header('X-Tenant-ID');
 
             if ($requestedTenantId) {
-                if (!$this->isValidUuid($requestedTenantId)) {
+                if (! $this->isValidUuid($requestedTenantId)) {
                     Log::warning('SetTenantFromUserPreference: Invalid tenant ID format in header, falling back to default', [
                         'user_id' => $user->id,
                         'tenant_id' => $requestedTenantId,
@@ -93,7 +94,7 @@ class SetTenantFromUserPreference
                     $requestedAccess = null;
                 }
 
-                if (!$requestedAccess) {
+                if (! $requestedAccess) {
                     Log::warning('SetTenantFromUserPreference: User requested unauthorized tenant', [
                         'user_id' => $user->id,
                         'tenant_id' => $requestedTenantId,
@@ -131,7 +132,7 @@ class SetTenantFromUserPreference
                 }
             }
 
-            if (!$resolvedTenant) {
+            if (! $resolvedTenant) {
                 // Get user's default company from public schema
                 try {
                     $defaultCompany = DB::table('public.user_company_access')
@@ -146,10 +147,11 @@ class SetTenantFromUserPreference
                     $defaultCompany = null;
                 }
 
-                if (!$defaultCompany) {
+                if (! $defaultCompany) {
                     Log::warning('SetTenantFromUserPreference: No tenant mapping for user', [
                         'user_id' => $user->id,
                     ]);
+
                     return response()->json([
                         'message' => 'No tenant configured for this user.',
                     ], 403);
@@ -165,12 +167,13 @@ class SetTenantFromUserPreference
                     ]);
                     $tenant = null;
                 }
-                
-                if (!$tenant) {
+
+                if (! $tenant) {
                     Log::error('SetTenantFromUserPreference: Tenant not found', [
                         'user_id' => $user->id,
                         'tenant_id' => $defaultCompany->tenant_id,
                     ]);
+
                     return response()->json([
                         'message' => 'Tenant not found.',
                     ], 403);
@@ -180,7 +183,7 @@ class SetTenantFromUserPreference
                     'user_id' => $user->id,
                     'tenant_id' => $tenant->id,
                 ]);
-                
+
                 $this->tenancy->initialize($tenant);
                 $resolvedTenant = $tenant;
             }

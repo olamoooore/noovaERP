@@ -2,11 +2,11 @@
 
 namespace Modules\Inventory\Models;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Models\Product;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Supplier extends Model
 {
@@ -70,7 +70,7 @@ class Supplier extends Model
             ->withPivot([
                 'supplier_sku', 'supplier_barcode', 'cost', 'last_cost',
                 'lead_time_days', 'moq', 'order_multiple', 'priority',
-                'is_preferred', 'last_purchase_date', 'notes', 'is_active'
+                'is_preferred', 'last_purchase_date', 'notes', 'is_active',
             ])
             ->withTimestamps();
     }
@@ -91,17 +91,17 @@ class Supplier extends Model
         $base = $base ?: 'SUP';
 
         $highestSequence = static::withTrashed()
-            ->where('code', 'like', $base . '%')
+            ->where('code', 'like', $base.'%')
             ->pluck('code')
             ->reduce(function (int $highest, ?string $code) use ($base): int {
-                if (!is_string($code) || !preg_match('/^' . preg_quote($base, '/') . '(\d+)$/', $code, $matches)) {
+                if (! is_string($code) || ! preg_match('/^'.preg_quote($base, '/').'(\d+)$/', $code, $matches)) {
                     return $highest;
                 }
 
                 return max($highest, (int) $matches[1]);
             }, 0);
 
-        return $base . str_pad($highestSequence + 1, 4, '0', STR_PAD_LEFT);
+        return $base.str_pad($highestSequence + 1, 4, '0', STR_PAD_LEFT);
     }
 
     /**

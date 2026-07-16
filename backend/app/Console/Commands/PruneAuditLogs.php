@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Models\AuditLog;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -31,6 +30,7 @@ class PruneAuditLogs extends Command
 
         if ($count === 0) {
             $this->info('No audit logs to prune.');
+
             return 0;
         }
 
@@ -38,6 +38,7 @@ class PruneAuditLogs extends Command
 
         if ($dryRun) {
             $this->warn("[DRY RUN] Would delete {$count} audit log(s). No changes made.");
+
             return 0;
         }
 

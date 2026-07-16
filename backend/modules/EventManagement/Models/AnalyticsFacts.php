@@ -7,10 +7,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * AnalyticsFacts Model
- * 
+ *
  * Stores immutable event-driven analytics facts for accurate reporting.
  * Each fact represents a specific event in the booking lifecycle.
- * 
+ *
  * @property int $id
  * @property string $fact_type
  * @property int $booking_id
@@ -23,9 +23,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class AnalyticsFacts extends Model
 {
     protected $table = 'analytics_facts';
-    
+
     public $timestamps = false; // Only fact_timestamp, no created_at/updated_at
-    
+
     protected $fillable = [
         'fact_type',
         'booking_id',
@@ -33,22 +33,28 @@ class AnalyticsFacts extends Model
         'fact_data',
         'calculated_metrics',
         'fact_timestamp',
-        'idempotency_key'
+        'idempotency_key',
     ];
 
     protected $casts = [
         'fact_data' => 'array',
         'calculated_metrics' => 'array',
-        'fact_timestamp' => 'datetime'
+        'fact_timestamp' => 'datetime',
     ];
 
     // Fact type constants
     public const FACT_TYPE_BOOKING_CREATED = 'booking_created';
+
     public const FACT_TYPE_PAYMENT_CONFIRMED = 'payment_confirmed';
+
     public const FACT_TYPE_TICKET_ISSUED = 'ticket_issued';
+
     public const FACT_TYPE_CHECK_IN = 'check_in';
+
     public const FACT_TYPE_CANCELLATION = 'cancellation';
+
     public const FACT_TYPE_REFUND = 'refund';
+
     public const FACT_TYPE_TRANSFER = 'transfer';
 
     /**
@@ -98,7 +104,7 @@ class AnalyticsFacts extends Model
     {
         return in_array($this->fact_type, [
             self::FACT_TYPE_PAYMENT_CONFIRMED,
-            self::FACT_TYPE_TICKET_ISSUED
+            self::FACT_TYPE_TICKET_ISSUED,
         ]);
     }
 
@@ -110,7 +116,7 @@ class AnalyticsFacts extends Model
         return in_array($this->fact_type, [
             self::FACT_TYPE_BOOKING_CREATED,
             self::FACT_TYPE_CANCELLATION,
-            self::FACT_TYPE_REFUND
+            self::FACT_TYPE_REFUND,
         ]);
     }
 
@@ -153,7 +159,7 @@ class AnalyticsFacts extends Model
     {
         return $query->whereIn('fact_type', [
             self::FACT_TYPE_PAYMENT_CONFIRMED,
-            self::FACT_TYPE_TICKET_ISSUED
+            self::FACT_TYPE_TICKET_ISSUED,
         ]);
     }
 

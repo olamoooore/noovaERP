@@ -22,41 +22,41 @@ class ApprovalController extends Controller
     {
         $validated = $request->validate([
             'request_type' => 'required_without:type|string|in:void,refund,return,discount,price_override',
-            'type'         => 'required_without:request_type|string|in:void,refund,return,discount,price_override',
+            'type' => 'required_without:request_type|string|in:void,refund,return,discount,price_override',
             'subject_type' => 'required_without:source_type|string',
-            'source_type'  => 'required_without:subject_type|string',
-            'subject_id'   => 'required_without:source_id|integer',
-            'source_id'    => 'required_without:subject_id|integer',
-            'amount'       => 'required|numeric|min:0',
-            'reason'       => 'required|string|min:10|max:500',
-            'notes'        => 'nullable|string|max:500',
-            'metadata'     => 'nullable|array',
+            'source_type' => 'required_without:subject_type|string',
+            'subject_id' => 'required_without:source_id|integer',
+            'source_id' => 'required_without:subject_id|integer',
+            'amount' => 'required|numeric|min:0',
+            'reason' => 'required|string|min:10|max:500',
+            'notes' => 'nullable|string|max:500',
+            'metadata' => 'nullable|array',
         ]);
 
         // Normalise frontend aliases to backend field names
         $requestType = $validated['request_type'] ?? $validated['type'];
         $subjectType = $validated['subject_type'] ?? $validated['source_type'];
-        $subjectId   = (int) ($validated['subject_id'] ?? $validated['source_id']);
+        $subjectId = (int) ($validated['subject_id'] ?? $validated['source_id']);
 
         try {
             $approvalRequest = $this->approvalService->createApprovalRequest(
                 requestType: $requestType,
                 subjectType: $subjectType,
-                subjectId:   $subjectId,
-                amount:      (float) $validated['amount'],
-                reason:      $validated['reason'],
-                notes:       $validated['notes'] ?? null,
-                metadata:    $validated['metadata'] ?? null,
+                subjectId: $subjectId,
+                amount: (float) $validated['amount'],
+                reason: $validated['reason'],
+                notes: $validated['notes'] ?? null,
+                metadata: $validated['metadata'] ?? null,
             );
 
             return response()->json([
                 'message' => 'Approval request created',
-                'data'    => $approvalRequest->load(['requestedBy']),
+                'data' => $approvalRequest->load(['requestedBy']),
             ], 201);
         } catch (\Exception $e) {
             Log::error('Approval request creation failed', [
                 'user_id' => auth()->id(),
-                'error'   => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json(['error' => $e->getMessage()], 422);
@@ -70,7 +70,7 @@ class ApprovalController extends Controller
     {
         $requestType = $request->input('type');
         $requests = $this->approvalService->getPendingRequests($requestType);
-        
+
         return response()->json([
             'data' => $requests,
             'count' => $requests->count(),
@@ -84,7 +84,7 @@ class ApprovalController extends Controller
     {
         $request = ApprovalRequest::with(['requestedBy', 'reviewedBy', 'subject'])
             ->findOrFail($id);
-        
+
         return response()->json(['data' => $request]);
     }
 
@@ -160,13 +160,13 @@ class ApprovalController extends Controller
     public function myRequests(Request $request)
     {
         $status = $request->input('status', 'pending');
-        
+
         $requests = ApprovalRequest::where('requested_by', auth()->id())
             ->where('status', $status)
             ->with(['reviewedBy', 'subject'])
             ->orderBy('requested_at', 'desc')
             ->paginate(20);
-        
+
         return response()->json($requests);
     }
 
@@ -176,7 +176,7 @@ class ApprovalController extends Controller
     public function expireOld()
     {
         $count = $this->approvalService->expireOldRequests();
-        
+
         return response()->json([
             'message' => "Expired {$count} old approval requests",
             'count' => $count,

@@ -3,12 +3,11 @@
 namespace Modules\FinancialClose\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\FinancialClose\Models\CloseCycle;
+use Modules\FinancialClose\Models\ConsolidationTask;
 use Modules\FinancialClose\Models\GroupCloseCycle;
 use Modules\FinancialClose\Models\GroupCycleDependency;
-use Modules\FinancialClose\Models\ConsolidationTask;
 use Modules\FinancialClose\Models\IntercompanyCloseDependency;
-use Modules\FinancialClose\Models\CloseCycle;
-use Modules\FinancialClose\Models\AuditLog;
 
 class GroupCloseOrchestrationService
 {
@@ -28,6 +27,7 @@ class GroupCloseOrchestrationService
                 'group_id' => $groupId,
                 'period_id' => $periodId,
             ]);
+
             return null;
         }
 
@@ -78,12 +78,13 @@ class GroupCloseOrchestrationService
                 ->where('id', $dependency->depends_on_cycle_id)
                 ->first();
 
-            if (!$childCycle || $childCycle->status !== 'closed') {
+            if (! $childCycle || $childCycle->status !== 'closed') {
                 Log::warning('FinancialClose: group close blocked by unresolved child cycle', [
                     'group_cycle_id' => $groupCycleId,
                     'depends_on_cycle_id' => $dependency->depends_on_cycle_id,
                     'child_status' => $childCycle?->status,
                 ]);
+
                 return false;
             }
         }

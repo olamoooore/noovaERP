@@ -28,11 +28,11 @@ class AdminPlanController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'key'         => 'required|string|max:80|unique:plan_families,key|alpha_dash',
-            'name'        => 'required|string|max:120',
+            'key' => 'required|string|max:80|unique:plan_families,key|alpha_dash',
+            'name' => 'required|string|max:120',
             'description' => 'nullable|string|max:500',
-            'is_active'   => 'boolean',
-            'sort_order'  => 'integer|min:0',
+            'is_active' => 'boolean',
+            'sort_order' => 'integer|min:0',
         ]);
 
         $family = $this->planService->createFamily($data);
@@ -50,10 +50,10 @@ class AdminPlanController extends Controller
     public function update(Request $request, PlanFamily $family): JsonResponse
     {
         $data = $request->validate([
-            'name'        => 'sometimes|string|max:120',
+            'name' => 'sometimes|string|max:120',
             'description' => 'nullable|string|max:500',
-            'is_active'   => 'boolean',
-            'sort_order'  => 'integer|min:0',
+            'is_active' => 'boolean',
+            'sort_order' => 'integer|min:0',
         ]);
 
         $family = $this->planService->updateFamily($family, $data);
@@ -85,9 +85,9 @@ class AdminPlanController extends Controller
     public function createVersion(Request $request, PlanFamily $family): JsonResponse
     {
         $data = $request->validate([
-            'version_label'      => 'required|string|max:40',
-            'description'        => 'nullable|string|max:500',
-            'is_active'          => 'boolean',
+            'version_label' => 'required|string|max:40',
+            'description' => 'nullable|string|max:500',
+            'is_active' => 'boolean',
             'is_publicly_listed' => 'boolean',
         ]);
 
@@ -99,9 +99,9 @@ class AdminPlanController extends Controller
     public function updateVersion(Request $request, PlanFamily $family, PlanVersion $version): JsonResponse
     {
         $data = $request->validate([
-            'version_label'      => 'sometimes|string|max:40',
-            'description'        => 'nullable|string|max:500',
-            'is_active'          => 'boolean',
+            'version_label' => 'sometimes|string|max:40',
+            'description' => 'nullable|string|max:500',
+            'is_active' => 'boolean',
             'is_publicly_listed' => 'boolean',
         ]);
 
@@ -115,10 +115,10 @@ class AdminPlanController extends Controller
     public function setPrices(Request $request, PlanFamily $family, PlanVersion $version): JsonResponse
     {
         $request->validate([
-            'prices'                          => 'required|array|min:1',
-            'prices.*.billing_interval'       => 'required|in:monthly,yearly',
-            'prices.*.unit_amount'            => 'required|integer|min:0',
-            'prices.*.currency'               => 'sometimes|string|size:3',
+            'prices' => 'required|array|min:1',
+            'prices.*.billing_interval' => 'required|in:monthly,yearly',
+            'prices.*.unit_amount' => 'required|integer|min:0',
+            'prices.*.currency' => 'sometimes|string|size:3',
         ]);
 
         $this->planService->setPrices($version, $request->input('prices'));
@@ -129,10 +129,10 @@ class AdminPlanController extends Controller
     // --- Module attachments ---
 
     public function attachModule(
-        Request             $request,
-        PlanFamily          $family,
-        PlanVersion         $version,
-        ModuleCatalogEntry  $module,
+        Request $request,
+        PlanFamily $family,
+        PlanVersion $version,
+        ModuleCatalogEntry $module,
     ): JsonResponse {
         $this->planService->attachModule($version, $module);
 
@@ -140,8 +140,8 @@ class AdminPlanController extends Controller
     }
 
     public function detachModule(
-        PlanFamily         $family,
-        PlanVersion        $version,
+        PlanFamily $family,
+        PlanVersion $version,
         ModuleCatalogEntry $module,
     ): JsonResponse {
         $this->planService->detachModule($version, $module);

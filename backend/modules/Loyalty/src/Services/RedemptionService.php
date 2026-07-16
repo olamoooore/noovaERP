@@ -4,9 +4,9 @@ namespace Modules\Loyalty\Services;
 
 use Illuminate\Support\Facades\DB;
 use Modules\Loyalty\Models\CustomerLoyalty;
-use Modules\Loyalty\Models\LoyaltyTransaction;
 use Modules\Loyalty\Models\LoyaltyRedemption;
 use Modules\Loyalty\Models\LoyaltyReward;
+use Modules\Loyalty\Models\LoyaltyTransaction;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class RedemptionService
@@ -43,6 +43,7 @@ class RedemptionService
 
                 if ($existing) {
                     $existingRedemption = LoyaltyRedemption::where('loyalty_transaction_id', $existing->id)->first();
+
                     return [
                         'success' => true,
                         'points_redeemed' => abs($existing->points),
@@ -63,6 +64,7 @@ class RedemptionService
 
                 if ($existing) {
                     $existingRedemption = LoyaltyRedemption::where('loyalty_transaction_id', $existing->id)->first();
+
                     return [
                         'success' => true,
                         'points_redeemed' => abs($existing->points),
@@ -82,7 +84,7 @@ class RedemptionService
                 $customerLoyalty->loyalty_program_id
             );
 
-            if (!$validation['can_redeem']) {
+            if (! $validation['can_redeem']) {
                 throw new \Exception($validation['reason']);
             }
 
@@ -154,7 +156,7 @@ class RedemptionService
     ): array {
         return DB::transaction(function () use ($customerId, $rewardId) {
             $reward = LoyaltyReward::where('is_active', true)->findOrFail($rewardId);
-            $isProductBacked = !empty($reward->product_id);
+            $isProductBacked = ! empty($reward->product_id);
 
             $customerLoyalty = CustomerLoyalty::where('customer_id', $customerId)
                 ->lockForUpdate()
@@ -169,12 +171,12 @@ class RedemptionService
                 $customerLoyalty->loyalty_program_id
             );
 
-            if (!$validation['can_redeem']) {
+            if (! $validation['can_redeem']) {
                 throw new \Exception($validation['reason']);
             }
 
             // Check quota-only availability for non-product rewards.
-            if (!$isProductBacked
+            if (! $isProductBacked
                 && $reward->reward_quota_quantity !== null
                 && $reward->reward_quota_quantity <= 0
             ) {
@@ -240,7 +242,7 @@ class RedemptionService
             }
 
             // Non-product rewards: reward_quota_quantity is quota.
-            if (!$isProductBacked && $reward->reward_quota_quantity !== null) {
+            if (! $isProductBacked && $reward->reward_quota_quantity !== null) {
                 $reward->decrement('reward_quota_quantity');
             }
 
@@ -292,7 +294,7 @@ class RedemptionService
                 'balance_after' => $newBalance,
                 'reference_type' => 'redemption_cancel',
                 'reference_id' => $redemption->id,
-                'description' => "Refund from cancelled redemption",
+                'description' => 'Refund from cancelled redemption',
                 'created_by' => TenantUserHelper::resolveTenantUserId(),
                 'created_at' => now(),
             ]);
@@ -302,7 +304,7 @@ class RedemptionService
 
             // Restore quota/stock based on reward type.
             if ($redemption->reward) {
-                $isProductBacked = !empty($redemption->reward->product_id);
+                $isProductBacked = ! empty($redemption->reward->product_id);
 
                 if ($isProductBacked) {
                     $warehouseId = (int) ($redemption->reward->warehouse_id ?? 0);
@@ -325,7 +327,7 @@ class RedemptionService
                 }
 
                 // Non-product rewards: restore quota counter.
-                if (!$isProductBacked && $redemption->reward->reward_quota_quantity !== null) {
+                if (! $isProductBacked && $redemption->reward->reward_quota_quantity !== null) {
                     $redemption->reward->increment('reward_quota_quantity');
                 }
             }

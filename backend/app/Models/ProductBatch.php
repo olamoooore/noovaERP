@@ -40,8 +40,11 @@ class ProductBatch extends Model
     ];
 
     public const STATUS_AVAILABLE = 'available';
+
     public const STATUS_QUARANTINE = 'quarantine';
+
     public const STATUS_EXPIRED = 'expired';
+
     public const STATUS_RECALLED = 'recalled';
 
     public function product(): BelongsTo
@@ -82,9 +85,10 @@ class ProductBatch extends Model
      */
     public function isExpired(): bool
     {
-        if (!$this->expiry_date) {
+        if (! $this->expiry_date) {
             return false;
         }
+
         return $this->expiry_date->isPast();
     }
 
@@ -93,9 +97,10 @@ class ProductBatch extends Model
      */
     public function isExpiringSoon(int $days = 30): bool
     {
-        if (!$this->expiry_date) {
+        if (! $this->expiry_date) {
             return false;
         }
+
         return $this->expiry_date->lte(now()->addDays($days));
     }
 
@@ -104,9 +109,10 @@ class ProductBatch extends Model
      */
     public function getDaysUntilExpiryAttribute(): ?int
     {
-        if (!$this->expiry_date) {
+        if (! $this->expiry_date) {
             return null;
         }
+
         return now()->diffInDays($this->expiry_date, false);
     }
 
@@ -117,6 +123,7 @@ class ProductBatch extends Model
     {
         $date = now()->format('Ymd');
         $random = strtoupper(substr(uniqid(), -4));
+
         return "LOT-{$productId}-{$date}-{$random}";
     }
 
@@ -128,9 +135,10 @@ class ProductBatch extends Model
         if ($quantity > $this->available_quantity) {
             return false;
         }
-        
+
         $this->reserved_quantity += $quantity;
         $this->save();
+
         return true;
     }
 
@@ -142,6 +150,7 @@ class ProductBatch extends Model
         $toRelease = min($quantity, $this->reserved_quantity);
         $this->reserved_quantity -= $toRelease;
         $this->save();
+
         return true;
     }
 }

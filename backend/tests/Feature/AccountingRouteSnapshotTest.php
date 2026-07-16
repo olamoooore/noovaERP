@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
 use Illuminate\Support\Facades\Route;
+use Tests\TestCase;
 
 class AccountingRouteSnapshotTest extends TestCase
 {
@@ -13,11 +13,12 @@ class AccountingRouteSnapshotTest extends TestCase
 
         $debugRoutes = $routes->filter(function ($route) {
             $uri = $route->uri();
+
             return str_contains($uri, 'dashboard-test')
                 || (str_contains($uri, 'accounting') && $route->getActionName() === 'Closure');
         });
 
-        $this->assertCount(0, $debugRoutes, 'Debug/test closure routes found in accounting API: ' . $debugRoutes->pluck('uri')->join(', '));
+        $this->assertCount(0, $debugRoutes, 'Debug/test closure routes found in accounting API: '.$debugRoutes->pluck('uri')->join(', '));
     }
 
     public function test_no_accounting_routes_point_to_missing_controller_methods(): void
@@ -27,27 +28,27 @@ class AccountingRouteSnapshotTest extends TestCase
 
         foreach ($routes as $route) {
             $uri = $route->uri();
-            if (!str_contains($uri, 'accounting') && !str_contains($uri, 'payments') && !str_contains($uri, 'invoices') && !str_contains($uri, 'reports/financial')) {
+            if (! str_contains($uri, 'accounting') && ! str_contains($uri, 'payments') && ! str_contains($uri, 'invoices') && ! str_contains($uri, 'reports/financial')) {
                 continue;
             }
 
             $action = $route->getActionName();
-            if ($action === 'Closure' || !str_contains($action, '@')) {
+            if ($action === 'Closure' || ! str_contains($action, '@')) {
                 continue;
             }
 
             [$controller, $method] = explode('@', $action);
 
-            if (!class_exists($controller)) {
+            if (! class_exists($controller)) {
                 continue;
             }
 
-            if (!method_exists($controller, $method)) {
+            if (! method_exists($controller, $method)) {
                 $missing[] = "{$route->methods()[0]} {$route->uri()} → {$action}";
             }
         }
 
-        $this->assertEmpty($missing, "Accounting routes point to missing controller methods:\n" . implode("\n", $missing));
+        $this->assertEmpty($missing, "Accounting routes point to missing controller methods:\n".implode("\n", $missing));
     }
 
     public function test_financial_report_routes_include_entity_middleware(): void
@@ -81,6 +82,7 @@ class AccountingRouteSnapshotTest extends TestCase
 
         $importRoutes = $routes->filter(function ($route) {
             $uri = $route->uri();
+
             return (str_ends_with($uri, '/import') || str_contains($uri, '/import/'))
                 && str_contains($uri, 'api/v1/import');
         });
@@ -104,12 +106,13 @@ class AccountingRouteSnapshotTest extends TestCase
         $paymentUpdateRoutes = $routes->filter(function ($route) {
             $uri = $route->uri();
             $methods = $route->methods();
+
             return str_contains($uri, 'payments')
-                && !str_contains($uri, 'bill-payments')
+                && ! str_contains($uri, 'bill-payments')
                 && (in_array('PUT', $methods) || in_array('PATCH', $methods));
         });
 
-        $this->assertCount(0, $paymentUpdateRoutes, 'Unexpected PUT/PATCH payment routes found: ' . $paymentUpdateRoutes->pluck('uri')->join(', '));
+        $this->assertCount(0, $paymentUpdateRoutes, 'Unexpected PUT/PATCH payment routes found: '.$paymentUpdateRoutes->pluck('uri')->join(', '));
     }
 
     public function test_no_logo_routes_exist(): void

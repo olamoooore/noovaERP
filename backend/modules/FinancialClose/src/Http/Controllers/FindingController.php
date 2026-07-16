@@ -5,12 +5,12 @@ namespace Modules\FinancialClose\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Modules\FinancialClose\Services\FinancialCloseAiFindingService;
-use Modules\FinancialClose\Services\FinancialCloseAiAnalysisService;
 use Modules\FinancialClose\Http\Requests\CreateFindingRequest;
 use Modules\FinancialClose\Http\Requests\EditFindingRequest;
 use Modules\FinancialClose\Http\Resources\FindingResource;
 use Modules\FinancialClose\Models\AiFinding;
+use Modules\FinancialClose\Services\FinancialCloseAiAnalysisService;
+use Modules\FinancialClose\Services\FinancialCloseAiFindingService;
 
 class FindingController extends Controller
 {
@@ -66,7 +66,7 @@ class FindingController extends Controller
             $request->validated(),
         );
 
-        if (!$finding) {
+        if (! $finding) {
             return response()->json(['message' => 'Finding could not be created.'], 422);
         }
 
@@ -77,11 +77,11 @@ class FindingController extends Controller
     public function accept(Request $request, string $findingId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         $result = $this->findingService->acceptFinding($tenantId, $findingId, $userId);
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             return response()->json(['message' => $result['reason']], 422);
         }
 
@@ -92,7 +92,7 @@ class FindingController extends Controller
     public function edit(EditFindingRequest $request, string $findingId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         $result = $this->findingService->editFinding(
             $tenantId,
@@ -101,7 +101,7 @@ class FindingController extends Controller
             $request->input('edited_output'),
         );
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             return response()->json(['message' => $result['reason']], 422);
         }
 
@@ -112,11 +112,11 @@ class FindingController extends Controller
     public function dismiss(Request $request, string $findingId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         $result = $this->findingService->dismissFinding($tenantId, $findingId, $userId);
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             return response()->json(['message' => $result['reason']], 422);
         }
 
@@ -127,11 +127,11 @@ class FindingController extends Controller
     public function escalate(Request $request, string $findingId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         $result = $this->findingService->escalateFinding($tenantId, $findingId, $userId);
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             return response()->json(['message' => $result['reason']], 422);
         }
 
@@ -148,7 +148,7 @@ class FindingController extends Controller
         $result = $this->aiAnalysisService->analyze($tenantId, $entityId, $periodId, true);
 
         return response()->json([
-            'message'          => 'Findings refreshed.',
+            'message' => 'Findings refreshed.',
             'findings_created' => $result['findings_created'] ?? 0,
             'accounts_analyzed' => $result['accounts_analyzed'] ?? 0,
         ]);

@@ -32,17 +32,20 @@ class TenantEntitlement extends Model
     ];
 
     protected $casts = [
-        'is_entitled'  => 'boolean',
-        'resolved_at'  => 'datetime',
+        'is_entitled' => 'boolean',
+        'resolved_at' => 'datetime',
     ];
 
     // -------------------------------------------------------------------------
     // Constants
     // -------------------------------------------------------------------------
 
-    public const SOURCE_TIER_INCLUDED    = 'tier_included';
+    public const SOURCE_TIER_INCLUDED = 'tier_included';
+
     public const SOURCE_ADD_ON_PURCHASED = 'add_on_purchased';
+
     public const SOURCE_OVERRIDE_INCLUDE = 'override_include';
+
     public const SOURCE_OVERRIDE_EXCLUDE = 'override_exclude';
 
     // -------------------------------------------------------------------------

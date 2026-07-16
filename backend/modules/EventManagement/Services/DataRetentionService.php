@@ -2,13 +2,14 @@
 
 namespace Modules\EventManagement\Services;
 
+use Illuminate\Support\Facades\Log;
 use Modules\EventManagement\Jobs\CleanupAuditLogsJob;
 use Modules\EventManagement\Models\EventSettings;
-use Illuminate\Support\Facades\Log;
 
 class DataRetentionService
 {
     protected AuditService $auditService;
+
     protected TenantSchemaManager $tenantSchemaManager;
 
     public function __construct(AuditService $auditService, TenantSchemaManager $tenantSchemaManager)
@@ -23,7 +24,7 @@ class DataRetentionService
     public function scheduleCleanupForTenant(string $tenantId, ?int $retentionDays = null): void
     {
         CleanupAuditLogsJob::dispatch($tenantId, $retentionDays);
-        
+
         Log::info("Scheduled audit logs cleanup for tenant {$tenantId}", [
             'tenant_id' => $tenantId,
             'retention_days' => $retentionDays,
@@ -42,7 +43,7 @@ class DataRetentionService
             $this->scheduleCleanupForTenant($settings->tenant_id, $settings->data_retention_days);
         }
 
-        Log::info("Scheduled audit logs cleanup for all tenants", [
+        Log::info('Scheduled audit logs cleanup for all tenants', [
             'tenant_count' => $tenantSettings->count(),
         ]);
     }
@@ -135,9 +136,9 @@ class DataRetentionService
         try {
             // Set tenant context
             $this->tenantSchemaManager->setTenantContext($tenantId);
-            
+
             return $this->getTenantRetentionPolicy($tenantId);
-            
+
         } finally {
             // Reset tenant context
             $this->tenantSchemaManager->resetToOriginalConnection();
@@ -150,7 +151,7 @@ class DataRetentionService
     protected function getTenantRetentionPolicy(string $tenantId): int
     {
         $settings = EventSettings::where('tenant_id', $tenantId)->first();
-        
+
         // Default to 7 years (2555 days) if no specific policy is set
         return $settings ? $settings->data_retention_days : 2555;
     }

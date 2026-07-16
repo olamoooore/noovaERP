@@ -24,7 +24,7 @@ class AR001MutationOwnershipTest extends TestCase
 
     public function test_product_stock_quantity_is_not_in_fillable(): void
     {
-        $model = new \App\Models\Product();
+        $model = new \App\Models\Product;
         $this->assertNotContains('stock_quantity', $model->getFillable(),
             'products.stock_quantity must be excluded from fillable — mutations must go through InventoryService.');
     }
@@ -45,27 +45,27 @@ class AR001MutationOwnershipTest extends TestCase
         $routes = file_get_contents(base_path('modules/Inventory/routes/api.php'));
         // Route should not map /stock/in to a POST handler
         $this->assertStringNotContainsString("'stock/in'", $routes,
-            "Direct /stock/in route must not exist.");
+            'Direct /stock/in route must not exist.');
         $this->assertStringNotContainsString('"stock/in"', $routes,
-            "Direct /stock/in route must not exist.");
+            'Direct /stock/in route must not exist.');
     }
 
     public function test_direct_stock_out_route_is_removed(): void
     {
         $routes = file_get_contents(base_path('modules/Inventory/routes/api.php'));
         $this->assertStringNotContainsString("'stock/out'", $routes,
-            "Direct /stock/out route must not exist.");
+            'Direct /stock/out route must not exist.');
         $this->assertStringNotContainsString('"stock/out"', $routes,
-            "Direct /stock/out route must not exist.");
+            'Direct /stock/out route must not exist.');
     }
 
     public function test_direct_stock_adjust_route_is_removed(): void
     {
         $routes = file_get_contents(base_path('modules/Inventory/routes/api.php'));
         $this->assertStringNotContainsString("'stock/adjust'", $routes,
-            "Direct /stock/adjust route must not exist.");
+            'Direct /stock/adjust route must not exist.');
         $this->assertStringNotContainsString('"stock/adjust"', $routes,
-            "Direct /stock/adjust route must not exist.");
+            'Direct /stock/adjust route must not exist.');
     }
 
     public function test_stock_controller_mutation_methods_return_disabled_message(): void

@@ -3,10 +3,10 @@
 namespace Modules\WhatsApp\Controllers;
 
 use App\Http\Controllers\Controller;
-use Modules\WhatsApp\Models\WhatsAppApiKey;
-use Modules\WhatsApp\Services\WhatsAppService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Modules\WhatsApp\Models\WhatsAppApiKey;
+use Modules\WhatsApp\Services\WhatsAppService;
 
 class WhatsAppWebhookController extends Controller
 {
@@ -22,7 +22,7 @@ class WhatsAppWebhookController extends Controller
      */
     protected function authenticateApiKey(Request $request): ?WhatsAppApiKey
     {
-        if (!function_exists('tenant') || !tenant()) {
+        if (! function_exists('tenant') || ! tenant()) {
             Log::warning('WhatsApp webhook rejected: tenant context not resolved');
 
             return null;
@@ -30,7 +30,7 @@ class WhatsAppWebhookController extends Controller
 
         $apiKeyValue = $request->header('x-api-key');
 
-        if (!$apiKeyValue) {
+        if (! $apiKeyValue) {
             return null;
         }
 
@@ -55,7 +55,7 @@ class WhatsAppWebhookController extends Controller
     public function orderCreated(Request $request)
     {
         $apiKey = $this->authenticateApiKey($request);
-        if (!$apiKey) {
+        if (! $apiKey) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
@@ -107,7 +107,7 @@ class WhatsAppWebhookController extends Controller
     public function paymentConfirmed(Request $request)
     {
         $apiKey = $this->authenticateApiKey($request);
-        if (!$apiKey) {
+        if (! $apiKey) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
@@ -156,7 +156,7 @@ class WhatsAppWebhookController extends Controller
     public function orderShipped(Request $request)
     {
         $apiKey = $this->authenticateApiKey($request);
-        if (!$apiKey) {
+        if (! $apiKey) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
@@ -204,7 +204,7 @@ class WhatsAppWebhookController extends Controller
     public function orderDelivered(Request $request)
     {
         $apiKey = $this->authenticateApiKey($request);
-        if (!$apiKey) {
+        if (! $apiKey) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
@@ -250,7 +250,7 @@ class WhatsAppWebhookController extends Controller
     public function orderCancelled(Request $request)
     {
         $apiKey = $this->authenticateApiKey($request);
-        if (!$apiKey) {
+        if (! $apiKey) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
@@ -298,7 +298,7 @@ class WhatsAppWebhookController extends Controller
     public function sendCustomMessage(Request $request)
     {
         $apiKey = $this->authenticateApiKey($request);
-        if (!$apiKey) {
+        if (! $apiKey) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 

@@ -23,7 +23,8 @@ class CatalogPrice extends Model
     // ── Constants ────────────────────────────────────────────────────────────
 
     public const INTERVAL_MONTHLY = 'monthly';
-    public const INTERVAL_YEARLY  = 'yearly';
+
+    public const INTERVAL_YEARLY = 'yearly';
 
     public const INTERVALS = [self::INTERVAL_MONTHLY, self::INTERVAL_YEARLY];
 
@@ -53,6 +54,6 @@ class CatalogPrice extends Model
      */
     public function formattedAmount(): string
     {
-        return '$' . number_format($this->unit_amount / 100, 2);
+        return '$'.number_format($this->unit_amount / 100, 2);
     }
 }

@@ -16,9 +16,9 @@ class LockDateValidationService
 {
     /**
      * Validate a transaction date against lock dates
-     * 
-     * @param string $transactionType - Type of transaction (sales, purchases, journal_entries, etc.)
-     * @param string|Carbon $transactionDate - Date to validate
+     *
+     * @param  string  $transactionType  - Type of transaction (sales, purchases, journal_entries, etc.)
+     * @param  string|Carbon  $transactionDate  - Date to validate
      * @return array - ['is_locked' => bool, 'lock_date' => date|null, 'message' => string]
      */
     public function validateTransactionDate(string $transactionType, $transactionDate): array
@@ -32,7 +32,7 @@ class LockDateValidationService
             ->first();
 
         // If no specific lock, check for 'all' type lock
-        if (!$lockDate) {
+        if (! $lockDate) {
             $lockDate = LockDate::where('lock_type', 'all')
                 ->where('is_active', true)
                 ->orderBy('lock_date', 'desc')
@@ -40,13 +40,13 @@ class LockDateValidationService
         }
 
         // Fallback: check company_settings.lock_date (set via Accounting > Settings > Fiscal Year)
-        if (!$lockDate) {
+        if (! $lockDate) {
             $companyLockDate = DB::table('company_settings')
                 ->whereNotNull('lock_date')
                 ->value('lock_date');
 
             if ($companyLockDate) {
-                $lockDate = new \stdClass();
+                $lockDate = new \stdClass;
                 $lockDate->lock_date = Carbon::parse($companyLockDate);
                 $lockDate->lock_type = 'all';
                 $lockDate->reason = 'Company-wide lock date';
@@ -54,7 +54,7 @@ class LockDateValidationService
         }
 
         // No lock date set
-        if (!$lockDate) {
+        if (! $lockDate) {
             return [
                 'is_locked' => false,
                 'lock_date' => null,
@@ -82,22 +82,18 @@ class LockDateValidationService
 
     /**
      * Check if a date is locked for a specific transaction type
-     * 
-     * @param string $transactionType
-     * @param string|Carbon $transactionDate
-     * @return bool
+     *
+     * @param  string|Carbon  $transactionDate
      */
     public function isDateLocked(string $transactionType, $transactionDate): bool
     {
         $result = $this->validateTransactionDate($transactionType, $transactionDate);
+
         return $result['is_locked'];
     }
 
     /**
      * Get the lock date for a specific transaction type
-     * 
-     * @param string $transactionType
-     * @return LockDate|null
      */
     public function getLockDate(string $transactionType): ?LockDate
     {
@@ -106,7 +102,7 @@ class LockDateValidationService
             ->orderBy('lock_date', 'desc')
             ->first();
 
-        if (!$lockDate) {
+        if (! $lockDate) {
             $lockDate = LockDate::where('lock_type', 'all')
                 ->where('is_active', true)
                 ->orderBy('lock_date', 'desc')
@@ -118,14 +114,8 @@ class LockDateValidationService
 
     /**
      * Log an override when a user posts to a locked period
-     * 
-     * @param int $userId
-     * @param string $transactionType
-     * @param int $transactionId
-     * @param string|Carbon $transactionDate
-     * @param string $reason
-     * @param int|null $approvedBy
-     * @return LockDateOverride
+     *
+     * @param  string|Carbon  $transactionDate
      */
     public function logOverride(
         int $userId,
@@ -147,14 +137,11 @@ class LockDateValidationService
 
     /**
      * Check if user has permission to override lock dates
-     * 
-     * @param int $userId
-     * @return bool
      */
     public function canOverrideLockDate(int $userId): bool
     {
         $user = \App\Models\User::find($userId);
-        if (!$user) {
+        if (! $user) {
             return false;
         }
 
@@ -178,15 +165,15 @@ class LockDateValidationService
 
     /**
      * Validate and throw exception if date is locked
-     * 
-     * @param string $transactionType
-     * @param string|Carbon $transactionDate
+     *
+     * @param  string|Carbon  $transactionDate
+     *
      * @throws \Exception
      */
     public function validateOrFail(string $transactionType, $transactionDate): void
     {
         $result = $this->validateTransactionDate($transactionType, $transactionDate);
-        
+
         if ($result['is_locked']) {
             throw new \Exception($result['message']);
         }
@@ -194,8 +181,6 @@ class LockDateValidationService
 
     /**
      * Get all active lock dates
-     * 
-     * @return array
      */
     public function getActiveLockDates(): array
     {

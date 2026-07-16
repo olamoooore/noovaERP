@@ -81,7 +81,7 @@ class CustomerTier extends Model
     {
         return $query->where(function ($q) {
             $q->whereNull('tier_expires_at')
-              ->orWhere('tier_expires_at', '>', now());
+                ->orWhere('tier_expires_at', '>', now());
         });
     }
 

@@ -2,15 +2,17 @@
 
 namespace Modules\FinancialReporting\Services\Cache;
 
-use Modules\FinancialReporting\Models\ReportCache;
-use Modules\FinancialReporting\DTOs\ReportFilter;
-use Modules\FinancialReporting\DTOs\ReportData;
 use Illuminate\Support\Facades\Log;
+use Modules\FinancialReporting\DTOs\ReportData;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Models\ReportCache;
 
 class ReportCacheService
 {
     protected bool $enabled;
+
     protected int $defaultTtl;
+
     protected array $tags;
 
     public function __construct()
@@ -30,33 +32,33 @@ class ReportCacheService
         ?int $ttl = null,
         ?int $userId = null
     ): ReportData {
-        if (!$this->enabled) {
+        if (! $this->enabled) {
             return $callback();
         }
 
         $cacheKey = $this->generateCacheKey($reportType, $filter);
-        
+
         // Try to get from cache — scoped to current tenant
         $tenantId = $this->currentTenantId();
         $cached = ReportCache::getCached($cacheKey, $tenantId);
-        
+
         if ($cached && $cached->isValid()) {
-            Log::info("Report cache hit", [
+            Log::info('Report cache hit', [
                 'report_type' => $reportType,
                 'cache_key' => $cacheKey,
             ]);
-            
+
             return $this->unserializeReportData($cached->getData());
         }
 
         // Cache miss - execute callback
-        Log::info("Report cache miss", [
+        Log::info('Report cache miss', [
             'report_type' => $reportType,
             'cache_key' => $cacheKey,
         ]);
 
         $reportData = $callback();
-        
+
         // Store in cache
         $this->store(
             $reportType,
@@ -80,7 +82,7 @@ class ReportCacheService
         ?int $userId = null
     ): ReportCache {
         $cacheKey = $this->generateCacheKey($reportType, $filter);
-        
+
         $metadata = [
             'generated_at' => now()->toIso8601String(),
             'ttl' => $ttl,
@@ -130,7 +132,7 @@ class ReportCacheService
             $filter->interval,
         ];
 
-        $keyString = implode(':', array_filter($parts, fn($v) => $v !== null));
+        $keyString = implode(':', array_filter($parts, fn ($v) => $v !== null));
 
         return md5($keyString);
     }
@@ -140,8 +142,8 @@ class ReportCacheService
      */
     public function invalidate(string $reportType): int
     {
-        Log::info("Invalidating cache for report type", ['report_type' => $reportType]);
-        
+        Log::info('Invalidating cache for report type', ['report_type' => $reportType]);
+
         return ReportCache::where('tenant_id', $this->currentTenantId())
             ->where('report_type', $reportType)
             ->delete();
@@ -152,8 +154,8 @@ class ReportCacheService
      */
     public function invalidateAll(): int
     {
-        Log::info("Invalidating all report caches");
-        
+        Log::info('Invalidating all report caches');
+
         return ReportCache::where('tenant_id', $this->currentTenantId())->delete();
     }
 
@@ -165,9 +167,9 @@ class ReportCacheService
         $count = ReportCache::expired()
             ->where('tenant_id', $this->currentTenantId())
             ->delete();
-        
-        Log::info("Cleared expired cache entries", ['count' => $count]);
-        
+
+        Log::info('Cleared expired cache entries', ['count' => $count]);
+
         return $count;
     }
 
@@ -181,7 +183,7 @@ class ReportCacheService
         $total = ReportCache::where('tenant_id', $tenantId)->count();
         $valid = ReportCache::valid()->where('tenant_id', $tenantId)->count();
         $expired = ReportCache::expired()->where('tenant_id', $tenantId)->count();
-        
+
         $byType = ReportCache::query()
             ->where('tenant_id', $tenantId)
             ->selectRaw('report_type, COUNT(*) as count, SUM(hit_count) as total_hits')
@@ -223,7 +225,7 @@ class ReportCacheService
                 $ttl = $config['ttl'] ?? $this->defaultTtl;
 
                 $cacheKey = $this->generateCacheKey($reportType, $filter);
-                
+
                 // Check if already cached
                 $cached = ReportCache::getCached($cacheKey, $this->currentTenantId());
                 if ($cached && $cached->isValid()) {
@@ -231,6 +233,7 @@ class ReportCacheService
                         'status' => 'already_cached',
                         'cache_key' => $cacheKey,
                     ];
+
                     continue;
                 }
 
@@ -243,7 +246,7 @@ class ReportCacheService
                     'cache_key' => $cacheKey,
                 ];
 
-                Log::info("Cache warmed for report", [
+                Log::info('Cache warmed for report', [
                     'report_type' => $reportType,
                     'cache_key' => $cacheKey,
                 ]);
@@ -254,7 +257,7 @@ class ReportCacheService
                     'error' => $e->getMessage(),
                 ];
 
-                Log::error("Failed to warm cache for report", [
+                Log::error('Failed to warm cache for report', [
                     'report_type' => $config['report_type'],
                     'error' => $e->getMessage(),
                 ]);
@@ -342,7 +345,7 @@ class ReportCacheService
         $summary = [];
 
         if ($filter->startDate && $filter->endDate) {
-            $summary['date_range'] = $filter->startDate->format('Y-m-d') . ' to ' . $filter->endDate->format('Y-m-d');
+            $summary['date_range'] = $filter->startDate->format('Y-m-d').' to '.$filter->endDate->format('Y-m-d');
         }
 
         if ($filter->asOfDate) {

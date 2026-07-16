@@ -3,8 +3,8 @@
 namespace Modules\POS\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Modules\POS\Models\PosPaymentMethod;
 
 class PosPaymentMethodController extends Controller
@@ -53,7 +53,7 @@ class PosPaymentMethodController extends Controller
         $paymentMethod = PosPaymentMethod::findOrFail($paymentMethod);
         $request->validate([
             'name' => 'string|max:100',
-            'code' => 'string|max:50|unique:pos_payment_methods,code,' . $paymentMethod->id,
+            'code' => 'string|max:50|unique:pos_payment_methods,code,'.$paymentMethod->id,
             'type' => 'in:cash,card,mobile,voucher,credit,other',
             'icon' => 'nullable|string',
             'opens_cash_drawer' => 'boolean',

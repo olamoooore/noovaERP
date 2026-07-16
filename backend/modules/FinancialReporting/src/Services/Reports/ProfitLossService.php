@@ -2,12 +2,11 @@
 
 namespace Modules\FinancialReporting\Services\Reports;
 
+use Illuminate\Support\Facades\DB;
+use Modules\FinancialReporting\DTOs\ReportData;
+use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\Services\BaseReportService;
 use Modules\FinancialReporting\Services\ReportMappingReader;
-use Modules\FinancialReporting\DTOs\ReportFilter;
-use Modules\FinancialReporting\DTOs\ReportData;
-use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class ProfitLossService extends BaseReportService
 {
@@ -18,13 +17,14 @@ class ProfitLossService extends BaseReportService
         parent::__construct();
         $this->mappingReader = $mappingReader;
     }
+
     /**
      * Generate Profit & Loss report
      */
     public function generate(ReportFilter $filter): ReportData
     {
         // Validate date range
-        if (!$filter->startDate || !$filter->endDate) {
+        if (! $filter->startDate || ! $filter->endDate) {
             throw new \InvalidArgumentException('Start date and end date are required for P&L report');
         }
 
@@ -299,7 +299,7 @@ class ProfitLossService extends BaseReportService
 
         return $query->orderBy('coa.code')
             ->get()
-            ->map(fn($row) => [
+            ->map(fn ($row) => [
                 'account_id' => $row->id,
                 'code' => $row->code,
                 'name' => $row->name,

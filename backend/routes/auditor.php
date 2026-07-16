@@ -1,10 +1,10 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\AuditorController;
-use App\Http\Controllers\Api\AuditQueryController;
 use App\Http\Controllers\Api\AuditExportController;
 use App\Http\Controllers\Api\AuditorActivityLogController;
+use App\Http\Controllers\Api\AuditorController;
+use App\Http\Controllers\Api\AuditQueryController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -68,7 +68,7 @@ Route::middleware([
     \App\Http\Middleware\EnsureTenantSearchPath::class,
     \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
     \Illuminate\Routing\Middleware\SubstituteBindings::class,
-    \App\Http\Middleware\RequirePermission::class . ':users.write',
+    \App\Http\Middleware\RequirePermission::class.':users.write',
 ])->prefix('api/v1/auditor/admin')->group(function () {
     Route::get('/queries', [AuditQueryController::class, 'adminIndex']);
     Route::post('/queries', [AuditQueryController::class, 'store']);
@@ -85,7 +85,7 @@ Route::middleware([
     \App\Http\Middleware\EnsureTenantSearchPath::class,
     \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
     \Illuminate\Routing\Middleware\SubstituteBindings::class,
-    \App\Http\Middleware\RequirePermission::class . ':users.write',
+    \App\Http\Middleware\RequirePermission::class.':users.write',
 ])->prefix('api/v1/auditor/admin')->group(function () {
     Route::get('/exports', [AuditExportController::class, 'adminIndex']);
     Route::post('/exports', [AuditExportController::class, 'store']);
@@ -99,7 +99,7 @@ Route::middleware([
     \App\Http\Middleware\EnsureTenantSearchPath::class,
     \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
     \Illuminate\Routing\Middleware\SubstituteBindings::class,
-    \App\Http\Middleware\RequirePermission::class . ':users.write',
+    \App\Http\Middleware\RequirePermission::class.':users.write',
 ])->prefix('api/v1/auditor')->group(function () {
     Route::get('/', [AuditorController::class, 'index']);
     Route::post('/', [AuditorController::class, 'store']);

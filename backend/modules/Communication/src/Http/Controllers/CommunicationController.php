@@ -6,8 +6,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\Communication\Models\CommunicationMessage;
-use Modules\Communication\Models\CommunicationSubscriber;
-use Modules\Communication\Models\CommunicationOutbox;
 use Modules\Communication\Services\CommunicationEngine;
 
 class CommunicationController extends Controller
@@ -260,7 +258,7 @@ class CommunicationController extends Controller
             'data' => [
                 'message_id' => $message->id,
                 'status' => $message->status,
-                'outbox_items' => $message->outboxItems->map(fn($item) => [
+                'outbox_items' => $message->outboxItems->map(fn ($item) => [
                     'id' => $item->id,
                     'channel' => $item->channel,
                     'status' => $item->status,

@@ -3,12 +3,12 @@
 namespace Modules\POS\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Modules\POS\Models\PosTerminal;
-use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosCashMovement;
+use Modules\POS\Models\PosSession;
+use Modules\POS\Models\PosTerminal;
 
 class PosSessionController extends Controller
 {
@@ -87,7 +87,7 @@ class PosSessionController extends Controller
             ->with(['terminal.warehouse', 'user'])
             ->first();
 
-        if (!$session) {
+        if (! $session) {
             return response()->json(['session' => null]);
         }
 
@@ -105,7 +105,7 @@ class PosSessionController extends Controller
     public function show($sessionId): JsonResponse
     {
         $session = PosSession::with(['terminal', 'user', 'orders', 'cashMovements'])->findOrFail($sessionId);
-        
+
         return response()->json([
             'session' => [
                 ...$session->toArray(),
@@ -120,7 +120,7 @@ class PosSessionController extends Controller
     public function closeSession(Request $request, $sessionId): JsonResponse
     {
         \Log::info('Close session called', ['session_id' => $sessionId, 'user_id' => Auth::id()]);
-        
+
         $request->validate([
             'closing_balance' => 'nullable|numeric|min:0',
             'payment_counts' => 'nullable|array',
@@ -131,9 +131,10 @@ class PosSessionController extends Controller
         ]);
 
         $session = PosSession::find($sessionId);
-        
-        if (!$session) {
+
+        if (! $session) {
             \Log::error('Session not found', ['session_id' => $sessionId]);
+
             return response()->json(['error' => 'Session not found'], 404);
         }
 
@@ -143,20 +144,22 @@ class PosSessionController extends Controller
         if ($authUser) {
             $isAdmin = method_exists($authUser, 'hasRole') ? $authUser->hasRole('admin') : false;
         }
-        
-        if ($session->user_id !== Auth::id() && !$isAdmin) {
+
+        if ($session->user_id !== Auth::id() && ! $isAdmin) {
             \Log::warning('Unauthorized session close attempt', ['session_id' => $sessionId, 'user_id' => Auth::id()]);
+
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
         if ($session->status !== 'open') {
             \Log::warning('Session is not open', ['session_id' => $sessionId, 'status' => $session->status]);
+
             return response()->json(['error' => 'Session is not open'], 400);
         }
 
         try {
             // Use new per-payment-method closing if payment_counts provided
-            if (!empty($request->payment_counts)) {
+            if (! empty($request->payment_counts)) {
                 $session->closeWithPaymentBreakdown($request->payment_counts, $request->notes);
             } else {
                 // Fallback to legacy single closing_balance
@@ -169,7 +172,8 @@ class PosSessionController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            return response()->json(['error' => 'Failed to close session: ' . $e->getMessage()], 500);
+
+            return response()->json(['error' => 'Failed to close session: '.$e->getMessage()], 500);
         }
         \Log::info('Session closed successfully', ['session_id' => $sessionId]);
 
@@ -189,7 +193,7 @@ class PosSessionController extends Controller
     {
         $session = PosSession::find($sessionId);
 
-        if (!$session) {
+        if (! $session) {
             return response()->json(['error' => 'Session not found'], 404);
         }
 
@@ -258,7 +262,7 @@ class PosSessionController extends Controller
 
         $session = PosSession::findOrFail($sessionId);
 
-        if ((int) $session->user_id !== (int) Auth::id() && !Auth::user()?->hasRole('admin')) {
+        if ((int) $session->user_id !== (int) Auth::id() && ! Auth::user()?->hasRole('admin')) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 

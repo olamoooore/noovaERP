@@ -2,26 +2,27 @@
 
 namespace Tests\Unit\Accounting\Compliance;
 
-use PHPUnit\Framework\TestCase;
-use App\Accounting\Services\ComplianceService;
 use App\Accounting\Plugin\CountryPluginRegistry;
+use App\Accounting\Services\ComplianceService;
 use Modules\AccountingCountry\Singapore\Services\SFRSValidationService;
+use PHPUnit\Framework\TestCase;
 
 /**
  * Example Test Suite for Compliance Plugin System
- * 
+ *
  * In production, replace with actual test data and mocked dependencies
  */
 class CompliancePluginExampleTest extends TestCase
 {
     protected ComplianceService $complianceService;
+
     protected CountryPluginRegistry $registry;
 
     protected function setUp(): void
     {
         parent::setUp();
-        
-        $this->registry = new CountryPluginRegistry();
+
+        $this->registry = new CountryPluginRegistry;
         $this->complianceService = new ComplianceService($this->registry);
     }
 
@@ -30,8 +31,8 @@ class CompliancePluginExampleTest extends TestCase
      */
     public function test_singapore_uen_validation_succeeds_with_valid_format()
     {
-        $validator = new SFRSValidationService();
-        
+        $validator = new SFRSValidationService;
+
         $invoice = (object) [
             'invoice_date' => now(),
             'invoice_number' => 'INV001',
@@ -49,13 +50,13 @@ class CompliancePluginExampleTest extends TestCase
                     'description' => 'Product A',
                     'quantity' => 1,
                     'unit_price' => 1000,
-                ]
+                ],
             ]),
             'issued_date' => now()->subDay(),
         ];
 
         $result = $validator->validateInvoice($invoice);
-        
+
         $this->assertTrue($result['valid']);
         $this->assertEmpty($result['errors']);
     }
@@ -65,8 +66,8 @@ class CompliancePluginExampleTest extends TestCase
      */
     public function test_singapore_validation_fails_with_invalid_gst_rate()
     {
-        $validator = new SFRSValidationService();
-        
+        $validator = new SFRSValidationService;
+
         $invoice = (object) [
             'invoice_date' => now(),
             'invoice_number' => 'INV002',
@@ -85,13 +86,13 @@ class CompliancePluginExampleTest extends TestCase
                     'description' => 'Product B',
                     'quantity' => 2,
                     'unit_price' => 500,
-                ]
+                ],
             ]),
             'issued_date' => now()->subDay(),
         ];
 
         $result = $validator->validateInvoice($invoice);
-        
+
         $this->assertFalse($result['valid']);
         $this->assertNotEmpty($result['errors']);
         $this->assertStringContainsString('tax rate', implode(' ', $result['errors']));
@@ -102,8 +103,8 @@ class CompliancePluginExampleTest extends TestCase
      */
     public function test_singapore_validation_fails_without_supplier_uen()
     {
-        $validator = new SFRSValidationService();
-        
+        $validator = new SFRSValidationService;
+
         $invoice = (object) [
             'invoice_date' => now(),
             'invoice_number' => 'INV003',
@@ -121,13 +122,13 @@ class CompliancePluginExampleTest extends TestCase
                     'description' => 'Service',
                     'quantity' => 1,
                     'unit_price' => 100,
-                ]
+                ],
             ]),
             'issued_date' => now()->subDay(),
         ];
 
         $result = $validator->validateInvoice($invoice);
-        
+
         $this->assertFalse($result['valid']);
         $this->assertStringContainsString('UEN', implode(' ', $result['errors']));
     }
@@ -137,8 +138,8 @@ class CompliancePluginExampleTest extends TestCase
      */
     public function test_singapore_validation_fails_with_future_invoice_date()
     {
-        $validator = new SFRSValidationService();
-        
+        $validator = new SFRSValidationService;
+
         $invoice = (object) [
             'invoice_date' => now()->addDay(), // Future date
             'invoice_number' => 'INV004',
@@ -157,12 +158,12 @@ class CompliancePluginExampleTest extends TestCase
                     'description' => 'Future Product',
                     'quantity' => 1,
                     'unit_price' => 1000,
-                ]
+                ],
             ]),
         ];
 
         $result = $validator->validateInvoice($invoice);
-        
+
         $this->assertFalse($result['valid']);
         $this->assertStringContainsString('future', implode(' ', $result['errors']));
     }
@@ -172,7 +173,7 @@ class CompliancePluginExampleTest extends TestCase
      */
     public function test_plugin_registry_registers_singapore_plugins()
     {
-        $validator = new SFRSValidationService();
+        $validator = new SFRSValidationService;
         $this->registry->register('SG', [
             'validator' => $validator,
         ]);
@@ -187,10 +188,10 @@ class CompliancePluginExampleTest extends TestCase
      */
     public function test_plugin_registry_lists_registered_countries()
     {
-        $this->registry->register('SG', ['validator' => new SFRSValidationService()]);
-        
+        $this->registry->register('SG', ['validator' => new SFRSValidationService]);
+
         $countries = $this->registry->getRegisteredCountries();
-        
+
         $this->assertContains('SG', $countries);
     }
 
@@ -203,7 +204,7 @@ class CompliancePluginExampleTest extends TestCase
         $taxable = 1000;
         $taxRate = 8;
         $expectedTax = 80;
-        
+
         $this->assertEquals($expectedTax, $taxable * ($taxRate / 100));
     }
 
@@ -215,7 +216,7 @@ class CompliancePluginExampleTest extends TestCase
         // Valid SST rates in Malaysia: 0% or 6%
         $validRates = [0, 6];
         $invalidRate = 8;
-        
+
         $this->assertTrue(in_array(0, $validRates));
         $this->assertTrue(in_array(6, $validRates));
         $this->assertFalse(in_array($invalidRate, $validRates));

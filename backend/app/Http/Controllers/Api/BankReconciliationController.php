@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\BankReconciliationService;
-use App\Services\AccountingAccessService;
 use App\Models\BankAccount;
 use App\Models\BankReconciliation;
-use Illuminate\Http\Request;
+use App\Services\AccountingAccessService;
+use App\Services\BankReconciliationService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 /**
@@ -24,8 +24,6 @@ class BankReconciliationController extends Controller
 
     /**
      * Get list of bank accounts available for reconciliation
-     * 
-     * @return JsonResponse
      */
     public function getBankAccounts(): JsonResponse
     {
@@ -49,9 +47,9 @@ class BankReconciliationController extends Controller
                     'bank_name' => $account->bank_name,
                     'gl_account_id' => $account->gl_account_id,
                     'gl_account_name' => $account->glAccount?->name,
-                    'last_reconciliation_date' => $lastReconciliation ? 
+                    'last_reconciliation_date' => $lastReconciliation ?
                         $lastReconciliation->statement_date->format('Y-m-d') : null,
-                    'last_reconciliation_balance' => $lastReconciliation ? 
+                    'last_reconciliation_balance' => $lastReconciliation ?
                         round((float) $lastReconciliation->statement_balance, 2) : null,
                     'current_balance' => round($account->getCurrentBalance(), 2),
                 ];
@@ -71,10 +69,8 @@ class BankReconciliationController extends Controller
 
     /**
      * Get unreconciled transactions for a bank account
-     * 
-     * @param Request $request
-     * @param int $accountId
-     * @return JsonResponse
+     *
+     * @param  int  $accountId
      */
     public function getTransactions(Request $request, int $bankAccountId): JsonResponse
     {
@@ -114,14 +110,11 @@ class BankReconciliationController extends Controller
 
     /**
      * Complete bank reconciliation
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function complete(Request $request): JsonResponse
     {
         $user = Auth::user();
-        if (!$user || !$this->accessService->canCompleteReconciliation($user)) {
+        if (! $user || ! $this->accessService->canCompleteReconciliation($user)) {
             return response()->json([
                 'message' => 'You do not have permission to complete reconciliation.',
                 'required_permission' => 'reconciliation.complete',
@@ -179,6 +172,7 @@ class BankReconciliationController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
                 'message' => 'Failed to complete reconciliation',
                 'error' => $e->getMessage(),
@@ -188,14 +182,11 @@ class BankReconciliationController extends Controller
 
     /**
      * Add adjusting entry during reconciliation
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function addTransaction(Request $request): JsonResponse
     {
         $user = Auth::user();
-        if (!$user || !$this->accessService->canCompleteReconciliation($user)) {
+        if (! $user || ! $this->accessService->canCompleteReconciliation($user)) {
             return response()->json([
                 'message' => 'You do not have permission to add reconciliation transactions.',
                 'required_permission' => 'reconciliation.complete',
@@ -252,9 +243,8 @@ class BankReconciliationController extends Controller
 
     /**
      * Get reconciliation history for a bank account
-     * 
-     * @param int $accountId
-     * @return JsonResponse
+     *
+     * @param  int  $accountId
      */
     public function history(int $bankAccountId): JsonResponse
     {
@@ -294,9 +284,9 @@ class BankReconciliationController extends Controller
                     'closing_balance' => round((float) $reconciliation->closing_balance, 2),
                     'difference' => round((float) $reconciliation->difference, 2),
                     'bank_account_name' => $reconciliation->bankAccount?->account_name,
-                    'reconciled_at' => $reconciliation->reconciled_at ? 
+                    'reconciled_at' => $reconciliation->reconciled_at ?
                         $reconciliation->reconciled_at->format('Y-m-d H:i:s') : null,
-                    'reconciled_by' => $reconciliation->reconciledBy ? 
+                    'reconciled_by' => $reconciliation->reconciledBy ?
                         $reconciliation->reconciledBy->name : null,
                 ];
             }
@@ -311,6 +301,7 @@ class BankReconciliationController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
                 'message' => 'Failed to retrieve reconciliation history',
                 'error' => $e->getMessage(),

@@ -4,8 +4,8 @@ namespace Modules\FinancialClose\Services;
 
 use Illuminate\Support\Facades\Log;
 use Modules\FinancialClose\Models\ChecklistTemplate;
-use Modules\FinancialClose\Models\CloseTask;
 use Modules\FinancialClose\Models\CloseCycle;
+use Modules\FinancialClose\Models\CloseTask;
 
 class FinancialCloseChecklistService
 {
@@ -16,7 +16,7 @@ class FinancialCloseChecklistService
     {
         $query = ChecklistTemplate::where('tenant_id', $tenantId);
 
-        if (!empty($filters['status'])) {
+        if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
 
@@ -57,16 +57,17 @@ class FinancialCloseChecklistService
             ->where('id', $cycleId)
             ->first();
 
-        if (!$cycle) {
+        if (! $cycle) {
             return false;
         }
 
         $template = $this->getTemplate($tenantId, $templateId);
 
-        if (!$template || $template->status !== 'active') {
+        if (! $template || $template->status !== 'active') {
             Log::warning('FinancialClose: template not active, cannot expand', [
                 'template_id' => $templateId,
             ]);
+
             return false;
         }
 

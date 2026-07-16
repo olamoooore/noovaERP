@@ -2,16 +2,15 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Illuminate\Support\Facades\Queue;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Modules\FinancialReporting\Jobs\GenerateScheduledReport;
 use Modules\FinancialReporting\Models\ReportSchedule;
-use Carbon\Carbon;
+use Tests\TenantTestCase;
 
 class GenerateScheduledReportJobTest extends TenantTestCase
 {
-
     /**
      * Helper to invoke a protected method on the job via Reflection.
      */

@@ -13,13 +13,13 @@ class AuthenticateWithTokenQuery
     {
         if ($request->has('token')) {
             $token = PersonalAccessToken::findToken($request->query('token'));
-            
+
             if ($token && $token->tokenable) {
                 Auth::login($token->tokenable);
             }
         }
 
-        if (!Auth::check()) {
+        if (! Auth::check()) {
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 

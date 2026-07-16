@@ -18,10 +18,10 @@ class ConfigController extends Controller
     public function storeType(Request $request)
     {
         $validated = $request->validate([
-            'name'        => 'required|string|max:100',
+            'name' => 'required|string|max:100',
             'description' => 'nullable|string',
-            'color'       => 'nullable|string|max:7',
-            'icon'        => 'nullable|string|max:100',
+            'color' => 'nullable|string|max:7',
+            'icon' => 'nullable|string|max:100',
         ]);
 
         $type = WorkOrderType::create($validated);
@@ -33,11 +33,11 @@ class ConfigController extends Controller
     {
         $type = WorkOrderType::findOrFail($type);
         $validated = $request->validate([
-            'name'        => 'sometimes|required|string|max:100',
+            'name' => 'sometimes|required|string|max:100',
             'description' => 'nullable|string',
-            'color'       => 'nullable|string|max:7',
-            'icon'        => 'nullable|string|max:100',
-            'is_active'   => 'nullable|boolean',
+            'color' => 'nullable|string|max:7',
+            'icon' => 'nullable|string|max:100',
+            'is_active' => 'nullable|boolean',
         ]);
 
         $type->update($validated);
@@ -49,6 +49,7 @@ class ConfigController extends Controller
     {
         $type = WorkOrderType::findOrFail($type);
         $type->update(['is_active' => false]);
+
         return response()->json(['message' => 'Work order type deactivated.']);
     }
 }

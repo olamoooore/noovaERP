@@ -2,8 +2,8 @@
 
 namespace Modules\EventManagement\Http\Requests;
 
-use Modules\EventManagement\Models\BookingAttendee;
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\EventManagement\Models\BookingAttendee;
 
 class UpdateAttendeeRequest extends FormRequest
 {
@@ -21,10 +21,10 @@ class UpdateAttendeeRequest extends FormRequest
     public function rules(): array
     {
         $rules = BookingAttendee::getValidationRules();
-        
+
         // Remove booking_id and ticket_type_id from update rules
         unset($rules['booking_id'], $rules['ticket_type_id']);
-        
+
         return $rules;
     }
 

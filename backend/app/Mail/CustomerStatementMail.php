@@ -15,9 +15,7 @@ class CustomerStatementMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public function __construct(public CustomerStatement $statement)
-    {
-    }
+    public function __construct(public CustomerStatement $statement) {}
 
     public function envelope(): Envelope
     {
@@ -39,13 +37,13 @@ class CustomerStatementMail extends Mailable
 
     public function attachments(): array
     {
-        if (!$this->statement->pdf_path || !Storage::disk('public')->exists($this->statement->pdf_path)) {
+        if (! $this->statement->pdf_path || ! Storage::disk('public')->exists($this->statement->pdf_path)) {
             return [];
         }
 
         return [
             Attachment::fromStorageDisk('public', $this->statement->pdf_path)
-                ->as('customer-statement-' . $this->statement->id . '.pdf')
+                ->as('customer-statement-'.$this->statement->id.'.pdf')
                 ->withMime('application/pdf'),
         ];
     }

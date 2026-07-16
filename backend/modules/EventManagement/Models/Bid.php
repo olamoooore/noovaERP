@@ -13,7 +13,9 @@ class Bid extends Model
 
     // Status constants
     const STATUS_PENDING = 'pending';
+
     const STATUS_ACCEPTED = 'accepted';
+
     const STATUS_REJECTED = 'rejected';
 
     protected $fillable = [

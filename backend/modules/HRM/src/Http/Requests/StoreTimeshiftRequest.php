@@ -14,13 +14,13 @@ class StoreTimeshiftRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name'               => ['required', 'string', 'max:255'],
-            'is_default'         => ['sometimes', 'boolean'],
-            'schedule'           => ['required', 'array', 'min:1'],
-            'schedule.*.day'     => ['required', 'in:monday,tuesday,wednesday,thursday,friday,saturday,sunday'],
+            'name' => ['required', 'string', 'max:255'],
+            'is_default' => ['sometimes', 'boolean'],
+            'schedule' => ['required', 'array', 'min:1'],
+            'schedule.*.day' => ['required', 'in:monday,tuesday,wednesday,thursday,friday,saturday,sunday'],
             'schedule.*.enabled' => ['required', 'boolean'],
-            'schedule.*.start'   => ['nullable', 'date_format:H:i'],
-            'schedule.*.end'     => ['nullable', 'date_format:H:i', 'after:schedule.*.start'],
+            'schedule.*.start' => ['nullable', 'date_format:H:i'],
+            'schedule.*.end' => ['nullable', 'date_format:H:i', 'after:schedule.*.start'],
         ];
     }
 }

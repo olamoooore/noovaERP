@@ -2,29 +2,34 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use App\Models\User;
-use App\Models\Product;
 use App\Models\Customer;
-use Modules\POS\Models\PosOrder;
-use Modules\POS\Models\PosSession;
-use Modules\POS\Models\PosTerminal;
-use Modules\POS\Models\PosPayment;
 use App\Models\JournalEntry;
+use App\Models\Product;
 use App\Models\StockMovement;
+use App\Models\User;
 use App\Services\Reconciliation\PosPaymentGLReconciliationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Modules\POS\Models\PosOrder;
+use Modules\POS\Models\PosPayment;
+use Modules\POS\Models\PosSession;
+use Modules\POS\Models\PosTerminal;
+use Tests\TestCase;
 
 class PosReconciliationTest extends TestCase
 {
     use RefreshDatabase;
 
     protected User $user;
+
     protected Product $product;
+
     protected Customer $customer;
+
     protected PosTerminal $terminal;
+
     protected PosSession $session;
+
     protected PosPaymentGLReconciliationService $reconciliationService;
 
     protected function setUp(): void
@@ -62,7 +67,7 @@ class PosReconciliationTest extends TestCase
 
         // Verify no exceptions for this order
         $orderExceptions = collect($exceptions)->filter(function ($exception) use ($order) {
-            return $exception['reference_id'] === $order->id 
+            return $exception['reference_id'] === $order->id
                 && $exception['reference_type'] === 'pos_order';
         });
 
@@ -82,7 +87,7 @@ class PosReconciliationTest extends TestCase
             'pos_order_id' => $order->id,
             'method' => 'refund',
             'amount' => -110.00,
-            'reference' => 'REFUND-' . uniqid(),
+            'reference' => 'REFUND-'.uniqid(),
             'journal_entry_id' => null, // Missing GL entry
         ]);
 
@@ -91,7 +96,7 @@ class PosReconciliationTest extends TestCase
 
         // Verify exception exists for refund payment
         $refundExceptions = collect($exceptions)->filter(function ($exception) use ($refundPayment) {
-            return $exception['reference_id'] === $refundPayment->id 
+            return $exception['reference_id'] === $refundPayment->id
                 && $exception['reference_type'] === 'pos_payment'
                 && $exception['exception_type'] === 'missing_gl_entry';
         });
@@ -118,7 +123,7 @@ class PosReconciliationTest extends TestCase
 
         // Verify exception exists for missing invoice
         $invoiceExceptions = collect($exceptions)->filter(function ($exception) use ($order) {
-            return $exception['reference_id'] === $order->id 
+            return $exception['reference_id'] === $order->id
                 && $exception['reference_type'] === 'pos_order'
                 && $exception['exception_type'] === 'missing_invoice';
         });
@@ -133,13 +138,13 @@ class PosReconciliationTest extends TestCase
     {
         // Create order with missing GL (to generate exception)
         $order = $this->createAndPayOrder();
-        
+
         // Create payment without GL
         $payment = PosPayment::create([
             'pos_order_id' => $order->id,
             'method' => 'refund',
             'amount' => -110.00,
-            'reference' => 'REFUND-' . uniqid(),
+            'reference' => 'REFUND-'.uniqid(),
             'journal_entry_id' => null,
         ]);
 
@@ -175,7 +180,7 @@ class PosReconciliationTest extends TestCase
 
         // Verify no payment/invoice mismatch exceptions
         $mismatchExceptions = collect($exceptions)->filter(function ($exception) use ($order) {
-            return $exception['reference_id'] === $order->id 
+            return $exception['reference_id'] === $order->id
                 && $exception['exception_type'] === 'payment_invoice_mismatch';
         });
 
@@ -203,7 +208,7 @@ class PosReconciliationTest extends TestCase
 
         // Verify no GL/payment mismatch exceptions
         $mismatchExceptions = collect($exceptions)->filter(function ($exception) use ($payment) {
-            return $exception['reference_id'] === $payment->id 
+            return $exception['reference_id'] === $payment->id
                 && $exception['exception_type'] === 'gl_payment_mismatch';
         });
 
@@ -231,7 +236,7 @@ class PosReconciliationTest extends TestCase
 
         // Verify no tax/invoice mismatch exceptions
         $mismatchExceptions = collect($exceptions)->filter(function ($exception) use ($order) {
-            return $exception['reference_id'] === $order->id 
+            return $exception['reference_id'] === $order->id
                 && $exception['exception_type'] === 'tax_invoice_mismatch';
         });
 
@@ -258,7 +263,7 @@ class PosReconciliationTest extends TestCase
 
         // Verify no stock/order mismatch exceptions
         $mismatchExceptions = collect($exceptions)->filter(function ($exception) use ($order) {
-            return $exception['reference_id'] === $order->id 
+            return $exception['reference_id'] === $order->id
                 && $exception['exception_type'] === 'stock_order_mismatch';
         });
 
@@ -292,7 +297,7 @@ class PosReconciliationTest extends TestCase
 
         // Verify no refund/GL mismatch exceptions
         $mismatchExceptions = collect($exceptions)->filter(function ($exception) use ($refundPayment) {
-            return $exception['reference_id'] === $refundPayment->id 
+            return $exception['reference_id'] === $refundPayment->id
                 && $exception['exception_type'] === 'missing_gl_entry';
         });
 

@@ -5,24 +5,26 @@ namespace Modules\EventManagement\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Modules\EventManagement\Services\ApiContractService;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 /**
  * ApiContractValidationMiddleware - Task 12.1
- * 
+ *
  * Middleware for API contract validation, request/response schema validation,
  * contract versioning and compatibility checking, and contract violation
  * monitoring and alerting.
- * 
+ *
  * Requirements: 28.1, 28.2
  */
 class ApiContractValidationMiddleware
 {
     private ApiContractService $contractService;
+
     private const CACHE_PREFIX = 'api_contract:';
+
     private const CACHE_TTL = 300; // 5 minutes
 
     public function __construct(ApiContractService $contractService)
@@ -33,8 +35,6 @@ class ApiContractValidationMiddleware
     /**
      * Handle an incoming request
      *
-     * @param Request $request
-     * @param Closure $next
      * @return mixed
      */
     public function handle(Request $request, Closure $next)
@@ -53,20 +53,20 @@ class ApiContractValidationMiddleware
             // Get contract for this endpoint
             $contract = $this->getEndpointContract($endpoint, $method, $apiVersion);
 
-            if (!$contract) {
+            if (! $contract) {
                 // Log missing contract but don't block request
                 $this->logContractViolation($request, 'missing_contract', [
                     'endpoint' => $endpoint,
                     'method' => $method,
-                    'version' => $apiVersion
+                    'version' => $apiVersion,
                 ]);
-                
+
                 return $next($request);
             }
 
             // Validate request against contract
             $requestValidation = $this->validateRequest($request, $contract);
-            if (!$requestValidation['valid']) {
+            if (! $requestValidation['valid']) {
                 return $this->handleContractViolation($request, 'request_validation_failed', $requestValidation['errors']);
             }
 
@@ -75,7 +75,7 @@ class ApiContractValidationMiddleware
 
             // Validate response against contract
             $responseValidation = $this->validateResponse($response, $contract);
-            if (!$responseValidation['valid']) {
+            if (! $responseValidation['valid']) {
                 $this->logContractViolation($request, 'response_validation_failed', $responseValidation['errors']);
                 // Don't block response, but log for monitoring
             }
@@ -90,7 +90,7 @@ class ApiContractValidationMiddleware
                 'request_id' => $request->header('X-Request-ID'),
                 'endpoint' => $request->getPathInfo(),
                 'method' => $request->getMethod(),
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             // Don't block request on validation errors, just log
@@ -107,11 +107,11 @@ class ApiContractValidationMiddleware
             '/health',
             '/metrics',
             '/status',
-            '/_internal'
+            '/_internal',
         ];
 
         $path = $request->getPathInfo();
-        
+
         foreach ($skipPaths as $skipPath) {
             if (str_starts_with($path, $skipPath)) {
                 return true;
@@ -148,14 +148,14 @@ class ApiContractValidationMiddleware
     private function normalizeEndpoint(Request $request): string
     {
         $path = $request->getPathInfo();
-        
+
         // Remove API version prefix
         $path = preg_replace('/\/api\/v\d+(?:\.\d+)?/', '', $path);
-        
+
         // Replace path parameters with placeholders
         $path = preg_replace('/\/\d+/', '/{id}', $path);
         $path = preg_replace('/\/[a-f0-9-]{36}/', '/{uuid}', $path);
-        
+
         return $path;
     }
 
@@ -164,8 +164,8 @@ class ApiContractValidationMiddleware
      */
     private function getEndpointContract(string $endpoint, string $method, string $version): ?array
     {
-        $cacheKey = self::CACHE_PREFIX . "contract:{$version}:{$method}:{$endpoint}";
-        
+        $cacheKey = self::CACHE_PREFIX."contract:{$version}:{$method}:{$endpoint}";
+
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($endpoint, $method, $version) {
             return $this->contractService->getContract($endpoint, $method, $version);
         });
@@ -181,7 +181,7 @@ class ApiContractValidationMiddleware
         // Validate required headers
         if (isset($contract['request']['headers'])) {
             foreach ($contract['request']['headers'] as $header => $spec) {
-                if ($spec['required'] && !$request->hasHeader($header)) {
+                if ($spec['required'] && ! $request->hasHeader($header)) {
                     $errors[] = "Missing required header: {$header}";
                 }
             }
@@ -191,12 +191,12 @@ class ApiContractValidationMiddleware
         if (isset($contract['request']['query_parameters'])) {
             $queryParams = $request->query();
             foreach ($contract['request']['query_parameters'] as $param => $spec) {
-                if ($spec['required'] && !isset($queryParams[$param])) {
+                if ($spec['required'] && ! isset($queryParams[$param])) {
                     $errors[] = "Missing required query parameter: {$param}";
                 }
-                
+
                 if (isset($queryParams[$param]) && isset($spec['type'])) {
-                    if (!$this->validateParameterType($queryParams[$param], $spec['type'])) {
+                    if (! $this->validateParameterType($queryParams[$param], $spec['type'])) {
                         $errors[] = "Invalid type for query parameter {$param}: expected {$spec['type']}";
                     }
                 }
@@ -209,15 +209,15 @@ class ApiContractValidationMiddleware
                 $request->getContent(),
                 $contract['request']['body_schema']
             );
-            
-            if (!$bodyValidation['valid']) {
+
+            if (! $bodyValidation['valid']) {
                 $errors = array_merge($errors, $bodyValidation['errors']);
             }
         }
 
         return [
             'valid' => empty($errors),
-            'errors' => $errors
+            'errors' => $errors,
         ];
     }
 
@@ -232,7 +232,7 @@ class ApiContractValidationMiddleware
         // Check if status code is allowed
         if (isset($contract['responses'])) {
             $allowedCodes = array_keys($contract['responses']);
-            if (!in_array($statusCode, $allowedCodes) && !in_array('default', $allowedCodes)) {
+            if (! in_array($statusCode, $allowedCodes) && ! in_array('default', $allowedCodes)) {
                 $errors[] = "Unexpected status code: {$statusCode}";
             }
         }
@@ -241,7 +241,7 @@ class ApiContractValidationMiddleware
         $responseSpec = $contract['responses'][$statusCode] ?? $contract['responses']['default'] ?? null;
         if ($responseSpec && isset($responseSpec['headers'])) {
             foreach ($responseSpec['headers'] as $header => $spec) {
-                if ($spec['required'] && !$response->headers->has($header)) {
+                if ($spec['required'] && ! $response->headers->has($header)) {
                     $errors[] = "Missing required response header: {$header}";
                 }
             }
@@ -253,15 +253,15 @@ class ApiContractValidationMiddleware
                 $response->getContent(),
                 $responseSpec['body_schema']
             );
-            
-            if (!$bodyValidation['valid']) {
+
+            if (! $bodyValidation['valid']) {
                 $errors = array_merge($errors, $bodyValidation['errors']);
             }
         }
 
         return [
             'valid' => empty($errors),
-            'errors' => $errors
+            'errors' => $errors,
         ];
     }
 
@@ -270,9 +270,9 @@ class ApiContractValidationMiddleware
      */
     private function validateParameterType($value, string $expectedType): bool
     {
-        return match($expectedType) {
+        return match ($expectedType) {
             'string' => is_string($value),
-            'integer' => is_numeric($value) && (int)$value == $value,
+            'integer' => is_numeric($value) && (int) $value == $value,
             'number' => is_numeric($value),
             'boolean' => in_array(strtolower($value), ['true', 'false', '1', '0']),
             'array' => is_array($value),
@@ -290,7 +290,7 @@ class ApiContractValidationMiddleware
             if (json_last_error() !== JSON_ERROR_NONE) {
                 return [
                     'valid' => false,
-                    'errors' => ['Invalid JSON format']
+                    'errors' => ['Invalid JSON format'],
                 ];
             }
 
@@ -299,13 +299,13 @@ class ApiContractValidationMiddleware
 
             return [
                 'valid' => empty($errors),
-                'errors' => $errors
+                'errors' => $errors,
             ];
 
         } catch (\Exception $e) {
             return [
                 'valid' => false,
-                'errors' => ['Schema validation error: ' . $e->getMessage()]
+                'errors' => ['Schema validation error: '.$e->getMessage()],
             ];
         }
     }
@@ -320,7 +320,7 @@ class ApiContractValidationMiddleware
         // Check required fields
         if (isset($schema['required']) && is_array($data)) {
             foreach ($schema['required'] as $field) {
-                if (!array_key_exists($field, $data)) {
+                if (! array_key_exists($field, $data)) {
                     $errors[] = "Missing required field: {$path}.{$field}";
                 }
             }
@@ -348,7 +348,7 @@ class ApiContractValidationMiddleware
         $errors = [];
 
         if (isset($schema['type'])) {
-            $valid = match($schema['type']) {
+            $valid = match ($schema['type']) {
                 'string' => is_string($value),
                 'integer' => is_int($value),
                 'number' => is_numeric($value),
@@ -358,7 +358,7 @@ class ApiContractValidationMiddleware
                 default => true
             };
 
-            if (!$valid) {
+            if (! $valid) {
                 $errors[] = "Invalid type for field {$path}: expected {$schema['type']}";
             }
         }
@@ -385,7 +385,7 @@ class ApiContractValidationMiddleware
             'error' => 'API Contract Violation',
             'type' => $violationType,
             'details' => $errors,
-            'request_id' => $request->header('X-Request-ID')
+            'request_id' => $request->header('X-Request-ID'),
         ], 400);
     }
 
@@ -402,7 +402,7 @@ class ApiContractValidationMiddleware
             'user_agent' => $request->userAgent(),
             'ip_address' => $request->ip(),
             'details' => $details,
-            'timestamp' => now()
+            'timestamp' => now(),
         ]);
 
         // Store violation for monitoring

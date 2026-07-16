@@ -2,16 +2,14 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Queue;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Collection;
 use Exception;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 
 /**
  * Disaster Recovery and Failover Testing Service
- * 
+ *
  * Performs comprehensive disaster recovery and failover testing
  * for Phase 3 components including outbox pattern behavior,
  * offline operations, data recovery, and tenant isolation.
@@ -19,6 +17,7 @@ use Exception;
 class DisasterRecoveryTestingService
 {
     private array $recoveryTestResults = [];
+
     private array $failoverScenarios = [];
 
     public function __construct(
@@ -45,7 +44,7 @@ class DisasterRecoveryTestingService
             'cache_system_failures' => $this->testCacheSystemFailures(),
             'network_partition_handling' => $this->testNetworkPartitionHandling(),
             'backup_restore_integrity' => $this->testBackupRestoreIntegrity(),
-            'cascading_failure_prevention' => $this->testCascadingFailurePrevention()
+            'cascading_failure_prevention' => $this->testCascadingFailurePrevention(),
         ];
 
         foreach ($testSuites as $testName => $testResult) {
@@ -69,7 +68,7 @@ class DisasterRecoveryTestingService
                 'queue_system_failure',
                 'network_timeout',
                 'memory_exhaustion',
-                'process_termination'
+                'process_termination',
             ];
 
             foreach ($failureScenarios as $scenario) {
@@ -77,19 +76,19 @@ class DisasterRecoveryTestingService
                 $testResults[$scenario] = $scenarioResult;
             }
 
-            $allPassed = collect($testResults)->every(fn($result) => $result['passed']);
+            $allPassed = collect($testResults)->every(fn ($result) => $result['passed']);
 
             return [
                 'status' => $allPassed ? 'PASSED' : 'FAILED',
                 'test_results' => $testResults,
-                'requirement' => 'Outbox pattern resilience during failures'
+                'requirement' => 'Outbox pattern resilience during failures',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Outbox pattern resilience during failures'
+                'requirement' => 'Outbox pattern resilience during failures',
             ];
         }
     }
@@ -108,26 +107,26 @@ class DisasterRecoveryTestingService
                 'conflicting_operations' => $this->testConflictingOfflineOperations(),
                 'partial_sync_failure' => $this->testPartialSyncFailure(),
                 'data_corruption_recovery' => $this->testDataCorruptionRecovery(),
-                'concurrent_sync_conflicts' => $this->testConcurrentSyncConflicts()
+                'concurrent_sync_conflicts' => $this->testConcurrentSyncConflicts(),
             ];
 
             foreach ($offlineScenarios as $scenario => $result) {
                 $testResults[$scenario] = $result;
             }
 
-            $allPassed = collect($testResults)->every(fn($result) => $result['passed']);
+            $allPassed = collect($testResults)->every(fn ($result) => $result['passed']);
 
             return [
                 'status' => $allPassed ? 'PASSED' : 'FAILED',
                 'test_results' => $testResults,
-                'requirement' => 'Offline operations and synchronization resilience'
+                'requirement' => 'Offline operations and synchronization resilience',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Offline operations and synchronization resilience'
+                'requirement' => 'Offline operations and synchronization resilience',
             ];
         }
     }
@@ -146,26 +145,26 @@ class DisasterRecoveryTestingService
                 'capacity_reservation_recovery' => $this->testCapacityReservationRecovery(),
                 'pii_vault_recovery' => $this->testPIIVaultRecovery(),
                 'analytics_data_recovery' => $this->testAnalyticsDataRecovery(),
-                'audit_trail_recovery' => $this->testAuditTrailRecovery()
+                'audit_trail_recovery' => $this->testAuditTrailRecovery(),
             ];
 
             foreach ($recoveryScenarios as $scenario => $result) {
                 $testResults[$scenario] = $result;
             }
 
-            $allPassed = collect($testResults)->every(fn($result) => $result['passed']);
+            $allPassed = collect($testResults)->every(fn ($result) => $result['passed']);
 
             return [
                 'status' => $allPassed ? 'PASSED' : 'FAILED',
                 'test_results' => $testResults,
-                'requirement' => 'Data recovery and consistency after failures'
+                'requirement' => 'Data recovery and consistency after failures',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Data recovery and consistency after failures'
+                'requirement' => 'Data recovery and consistency after failures',
             ];
         }
     }
@@ -183,22 +182,22 @@ class DisasterRecoveryTestingService
                 'failure_cascade_prevention' => $this->testFailureCascadePrevention(),
                 'resource_exhaustion_isolation' => $this->testResourceExhaustionIsolation(),
                 'database_lock_isolation' => $this->testDatabaseLockIsolation(),
-                'memory_leak_isolation' => $this->testMemoryLeakIsolation()
+                'memory_leak_isolation' => $this->testMemoryLeakIsolation(),
             ];
 
-            $allPassed = collect($stressScenarios)->every(fn($result) => $result['passed']);
+            $allPassed = collect($stressScenarios)->every(fn ($result) => $result['passed']);
 
             return [
                 'status' => $allPassed ? 'PASSED' : 'FAILED',
                 'test_results' => $stressScenarios,
-                'requirement' => 'Tenant isolation during system stress'
+                'requirement' => 'Tenant isolation during system stress',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Tenant isolation during system stress'
+                'requirement' => 'Tenant isolation during system stress',
             ];
         }
     }
@@ -216,22 +215,22 @@ class DisasterRecoveryTestingService
                 'read_replica_failure' => $this->testReadReplicaFailure(),
                 'connection_pool_exhaustion' => $this->testConnectionPoolExhaustion(),
                 'transaction_rollback_recovery' => $this->testTransactionRollbackRecovery(),
-                'deadlock_recovery' => $this->testDeadlockRecovery()
+                'deadlock_recovery' => $this->testDeadlockRecovery(),
             ];
 
-            $allPassed = collect($failoverTests)->every(fn($result) => $result['passed']);
+            $allPassed = collect($failoverTests)->every(fn ($result) => $result['passed']);
 
             return [
                 'status' => $allPassed ? 'PASSED' : 'FAILED',
                 'test_results' => $failoverTests,
-                'requirement' => 'Database failover and recovery'
+                'requirement' => 'Database failover and recovery',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Database failover and recovery'
+                'requirement' => 'Database failover and recovery',
             ];
         }
     }
@@ -249,22 +248,22 @@ class DisasterRecoveryTestingService
                 'message_broker_failure' => $this->testMessageBrokerFailure(),
                 'job_retry_mechanism' => $this->testJobRetryMechanism(),
                 'dead_letter_queue_handling' => $this->testDeadLetterQueueHandling(),
-                'queue_overflow_handling' => $this->testQueueOverflowHandling()
+                'queue_overflow_handling' => $this->testQueueOverflowHandling(),
             ];
 
-            $allPassed = collect($queueTests)->every(fn($result) => $result['passed']);
+            $allPassed = collect($queueTests)->every(fn ($result) => $result['passed']);
 
             return [
                 'status' => $allPassed ? 'PASSED' : 'FAILED',
                 'test_results' => $queueTests,
-                'requirement' => 'Queue system failure resilience'
+                'requirement' => 'Queue system failure resilience',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Queue system failure resilience'
+                'requirement' => 'Queue system failure resilience',
             ];
         }
     }
@@ -282,22 +281,22 @@ class DisasterRecoveryTestingService
                 'cache_eviction_handling' => $this->testCacheEvictionHandling(),
                 'cache_corruption_recovery' => $this->testCacheCorruptionRecovery(),
                 'cache_warming_after_failure' => $this->testCacheWarmingAfterFailure(),
-                'distributed_cache_consistency' => $this->testDistributedCacheConsistency()
+                'distributed_cache_consistency' => $this->testDistributedCacheConsistency(),
             ];
 
-            $allPassed = collect($cacheTests)->every(fn($result) => $result['passed']);
+            $allPassed = collect($cacheTests)->every(fn ($result) => $result['passed']);
 
             return [
                 'status' => $allPassed ? 'PASSED' : 'FAILED',
                 'test_results' => $cacheTests,
-                'requirement' => 'Cache system failure resilience'
+                'requirement' => 'Cache system failure resilience',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Cache system failure resilience'
+                'requirement' => 'Cache system failure resilience',
             ];
         }
     }
@@ -315,22 +314,22 @@ class DisasterRecoveryTestingService
                 'partition_tolerance' => $this->testPartitionTolerance(),
                 'network_healing_recovery' => $this->testNetworkHealingRecovery(),
                 'data_consistency_during_partition' => $this->testDataConsistencyDuringPartition(),
-                'service_degradation_handling' => $this->testServiceDegradationHandling()
+                'service_degradation_handling' => $this->testServiceDegradationHandling(),
             ];
 
-            $allPassed = collect($partitionTests)->every(fn($result) => $result['passed']);
+            $allPassed = collect($partitionTests)->every(fn ($result) => $result['passed']);
 
             return [
                 'status' => $allPassed ? 'PASSED' : 'FAILED',
                 'test_results' => $partitionTests,
-                'requirement' => 'Network partition handling'
+                'requirement' => 'Network partition handling',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Network partition handling'
+                'requirement' => 'Network partition handling',
             ];
         }
     }
@@ -348,22 +347,22 @@ class DisasterRecoveryTestingService
                 'incremental_backup_integrity' => $this->testIncrementalBackupIntegrity(),
                 'point_in_time_recovery' => $this->testPointInTimeRecovery(),
                 'cross_tenant_backup_isolation' => $this->testCrossTenantBackupIsolation(),
-                'backup_encryption_integrity' => $this->testBackupEncryptionIntegrity()
+                'backup_encryption_integrity' => $this->testBackupEncryptionIntegrity(),
             ];
 
-            $allPassed = collect($backupTests)->every(fn($result) => $result['passed']);
+            $allPassed = collect($backupTests)->every(fn ($result) => $result['passed']);
 
             return [
                 'status' => $allPassed ? 'PASSED' : 'FAILED',
                 'test_results' => $backupTests,
-                'requirement' => 'Backup and restore integrity'
+                'requirement' => 'Backup and restore integrity',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Backup and restore integrity'
+                'requirement' => 'Backup and restore integrity',
             ];
         }
     }
@@ -381,22 +380,22 @@ class DisasterRecoveryTestingService
                 'bulkhead_isolation' => $this->testBulkheadIsolation(),
                 'timeout_handling' => $this->testTimeoutHandling(),
                 'graceful_degradation' => $this->testGracefulDegradation(),
-                'failure_detection_speed' => $this->testFailureDetectionSpeed()
+                'failure_detection_speed' => $this->testFailureDetectionSpeed(),
             ];
 
-            $allPassed = collect($cascadeTests)->every(fn($result) => $result['passed']);
+            $allPassed = collect($cascadeTests)->every(fn ($result) => $result['passed']);
 
             return [
                 'status' => $allPassed ? 'PASSED' : 'FAILED',
                 'test_results' => $cascadeTests,
-                'requirement' => 'Cascading failure prevention'
+                'requirement' => 'Cascading failure prevention',
             ];
 
         } catch (Exception $e) {
             return [
                 'status' => 'ERROR',
                 'error' => $e->getMessage(),
-                'requirement' => 'Cascading failure prevention'
+                'requirement' => 'Cascading failure prevention',
             ];
         }
     }
@@ -429,7 +428,7 @@ class DisasterRecoveryTestingService
             'passed' => true,
             'details' => 'Outbox pattern handles database connection loss gracefully',
             'recovery_time' => 5.2,
-            'data_loss' => false
+            'data_loss' => false,
         ];
     }
 
@@ -440,7 +439,7 @@ class DisasterRecoveryTestingService
             'passed' => true,
             'details' => 'Outbox pattern handles queue system failure gracefully',
             'recovery_time' => 3.8,
-            'data_loss' => false
+            'data_loss' => false,
         ];
     }
 
@@ -450,7 +449,7 @@ class DisasterRecoveryTestingService
             'passed' => true,
             'details' => 'Network timeout handled with proper retry logic',
             'retry_count' => 3,
-            'final_success' => true
+            'final_success' => true,
         ];
     }
 
@@ -460,7 +459,7 @@ class DisasterRecoveryTestingService
             'passed' => true,
             'details' => 'Memory exhaustion handled with graceful degradation',
             'memory_recovery' => true,
-            'service_availability' => 95.5
+            'service_availability' => 95.5,
         ];
     }
 
@@ -470,7 +469,7 @@ class DisasterRecoveryTestingService
             'passed' => true,
             'details' => 'Process termination handled with proper cleanup',
             'restart_time' => 2.1,
-            'state_recovery' => true
+            'state_recovery' => true,
         ];
     }
 
@@ -480,7 +479,7 @@ class DisasterRecoveryTestingService
             'passed' => true,
             'details' => '8+ hour offline period handled successfully',
             'offline_duration' => 8.5,
-            'sync_success_rate' => 99.8
+            'sync_success_rate' => 99.8,
         ];
     }
 
@@ -490,7 +489,7 @@ class DisasterRecoveryTestingService
             'passed' => true,
             'details' => 'Conflicting offline operations resolved correctly',
             'conflicts_detected' => 15,
-            'conflicts_resolved' => 15
+            'conflicts_resolved' => 15,
         ];
     }
 
@@ -500,7 +499,7 @@ class DisasterRecoveryTestingService
             'passed' => true,
             'details' => 'Partial sync failure handled with retry mechanism',
             'failed_items' => 5,
-            'retry_success_rate' => 100
+            'retry_success_rate' => 100,
         ];
     }
 
@@ -510,7 +509,7 @@ class DisasterRecoveryTestingService
             'passed' => true,
             'details' => 'Data corruption detected and recovered',
             'corruption_detected' => true,
-            'recovery_successful' => true
+            'recovery_successful' => true,
         ];
     }
 
@@ -520,7 +519,7 @@ class DisasterRecoveryTestingService
             'passed' => true,
             'details' => 'Concurrent sync conflicts resolved',
             'concurrent_syncs' => 10,
-            'conflict_resolution_rate' => 100
+            'conflict_resolution_rate' => 100,
         ];
     }
 
@@ -743,10 +742,10 @@ class DisasterRecoveryTestingService
                 'errors' => $errorTests,
                 'resilience_rate' => $totalTests > 0 ? ($passedTests / $totalTests) * 100 : 0,
                 'execution_time' => now(),
-                'overall_status' => ($failedTests === 0 && $errorTests === 0) ? 'RESILIENT' : 'VULNERABLE'
+                'overall_status' => ($failedTests === 0 && $errorTests === 0) ? 'RESILIENT' : 'VULNERABLE',
             ],
             'recovery_test_results' => $this->recoveryTestResults,
-            'resilience_recommendations' => $this->generateResilienceRecommendations()
+            'resilience_recommendations' => $this->generateResilienceRecommendations(),
         ];
     }
 
@@ -762,7 +761,7 @@ class DisasterRecoveryTestingService
             $recommendations[] = [
                 'type' => 'CRITICAL',
                 'message' => 'Disaster recovery issues must be resolved for production readiness',
-                'failed_tests' => $failedTests->keys()->toArray()
+                'failed_tests' => $failedTests->keys()->toArray(),
             ];
         }
 

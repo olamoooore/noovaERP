@@ -4,8 +4,8 @@ namespace Modules\Communication\Services\Channels;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Modules\Communication\Models\CommunicationOutbox;
 use Modules\Communication\Models\CommunicationMessage;
+use Modules\Communication\Models\CommunicationOutbox;
 
 /**
  * InAppChannel — Delivers notifications to the in-app notification center.
@@ -39,7 +39,7 @@ class InAppChannel implements ChannelInterface
                 $notifiableId = $outbox->recipient_customer_id;
             }
 
-            if (!$notifiableType || !$notifiableId) {
+            if (! $notifiableType || ! $notifiableId) {
                 return ['success' => false, 'error' => 'No notifiable user/customer'];
             }
 

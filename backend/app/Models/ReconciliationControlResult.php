@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * ReconciliationControlResult
- * 
+ *
  * Stores results of automated reconciliation controls (AR to GL, AP to GL, etc.)
  */
 class ReconciliationControlResult extends Model
@@ -41,7 +41,9 @@ class ReconciliationControlResult extends Model
      * Status constants
      */
     const STATUS_PASSED = 'passed';
+
     const STATUS_FAILED = 'failed';
+
     const STATUS_WARNING = 'warning';
 
     /**

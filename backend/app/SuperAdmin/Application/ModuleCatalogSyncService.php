@@ -11,8 +11,8 @@ use Illuminate\Support\Facades\DB;
 class ModuleCatalogSyncService
 {
     public function __construct(
-        private readonly ModuleManager     $moduleManager,
-        private readonly AdminAuditLogger  $auditLogger,
+        private readonly ModuleManager $moduleManager,
+        private readonly AdminAuditLogger $auditLogger,
     ) {}
 
     /**
@@ -27,15 +27,15 @@ class ModuleCatalogSyncService
     public function sync(): array
     {
         $modules = $this->moduleManager->all();
-        $keys    = [];
+        $keys = [];
 
         DB::transaction(function () use ($modules, &$keys): void {
             foreach ($modules as $module) {
                 ModuleCatalogEntry::upsert(
                     [[
                         'module_key' => $module->key,
-                        'name'       => $module->name,
-                        'type'       => $module->isCore() ? 'core' : 'addon',
+                        'name' => $module->name,
+                        'type' => $module->isCore() ? 'core' : 'addon',
                         'updated_at' => now(),
                     ]],
                     uniqueBy: ['module_key'],

@@ -42,20 +42,20 @@ class CustomerPriceList extends Model
      */
     public function isValid(): bool
     {
-        if (!$this->is_active) {
+        if (! $this->is_active) {
             return false;
         }
-        
+
         $today = now()->toDateString();
-        
+
         if ($this->valid_from && $today < $this->valid_from) {
             return false;
         }
-        
+
         if ($this->valid_until && $today > $this->valid_until) {
             return false;
         }
-        
+
         return true;
     }
 }

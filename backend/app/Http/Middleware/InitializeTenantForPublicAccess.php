@@ -50,11 +50,11 @@ class InitializeTenantForPublicAccess
         if ($this->isDedicatedStorefrontRoute($request)) {
             $tenant = $this->resolveStorefrontTenant();
 
-            if (!$tenant) {
+            if (! $tenant) {
                 $tenant = $this->resolveTenantFromHost($request->getHost());
             }
 
-            if (!$tenant && app()->environment('local')) {
+            if (! $tenant && app()->environment('local')) {
                 $tenant = \App\Models\Tenant::query()->orderBy('created_at')->first();
 
                 if ($tenant) {
@@ -66,7 +66,7 @@ class InitializeTenantForPublicAccess
                 }
             }
 
-            if (!$tenant) {
+            if (! $tenant) {
                 Log::warning('InitializeTenantForPublicAccess: storefront tenant not resolved — check STOREFRONT_TENANT_ID / STOREFRONT_TENANT_EMAIL in config', [
                     'path' => $request->path(),
                     'host' => $request->getHost(),
@@ -79,8 +79,8 @@ class InitializeTenantForPublicAccess
 
             Log::info('InitializeTenantForPublicAccess: storefront tenant resolved', [
                 'tenant_id' => $tenant->id,
-                'path'      => $request->path(),
-                'host'      => $request->getHost(),
+                'path' => $request->path(),
+                'host' => $request->getHost(),
             ]);
 
             $this->tenancy->initialize($tenant);
@@ -92,6 +92,7 @@ class InitializeTenantForPublicAccess
         $tenant = $this->resolveTenantFromHost($request->getHost());
         if ($tenant) {
             $this->tenancy->initialize($tenant);
+
             return $next($request);
         }
 
@@ -163,7 +164,7 @@ class InitializeTenantForPublicAccess
 
     private function resolveTenantFromHost(?string $host): ?\App\Models\Tenant
     {
-        if (!$host) {
+        if (! $host) {
             return null;
         }
 
@@ -186,8 +187,8 @@ class InitializeTenantForPublicAccess
             $centralDomains = config('tenancy.central_domains', ['localhost']);
             foreach ($centralDomains as $centralDomain) {
                 $centralDomain = trim($centralDomain);
-                if ($host !== $centralDomain && str_ends_with($host, '.' . $centralDomain)) {
-                    $subdomain = str_replace('.' . $centralDomain, '', $host);
+                if ($host !== $centralDomain && str_ends_with($host, '.'.$centralDomain)) {
+                    $subdomain = str_replace('.'.$centralDomain, '', $host);
 
                     // Only exact match — no partial/LIKE matching
                     $tenant = \App\Models\Tenant::find($subdomain);

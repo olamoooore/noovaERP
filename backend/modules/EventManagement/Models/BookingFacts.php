@@ -7,10 +7,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * BookingFacts Model
- * 
+ *
  * Stores immutable snapshots of all relevant data at booking time.
  * This prevents analytics drift when master data changes after booking completion.
- * 
+ *
  * @property int $id
  * @property int $booking_id
  * @property array $event_snapshot
@@ -24,9 +24,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class BookingFacts extends Model
 {
     protected $table = 'booking_facts';
-    
+
     public $timestamps = false; // Only created_at, no updated_at for immutability
-    
+
     protected $fillable = [
         'booking_id',
         'event_snapshot',
@@ -34,7 +34,7 @@ class BookingFacts extends Model
         'artist_snapshot',
         'pricing_snapshot',
         'tier_snapshot',
-        'metadata'
+        'metadata',
     ];
 
     protected $casts = [
@@ -44,7 +44,7 @@ class BookingFacts extends Model
         'pricing_snapshot' => 'array',
         'tier_snapshot' => 'array',
         'metadata' => 'array',
-        'created_at' => 'datetime'
+        'created_at' => 'datetime',
     ];
 
     /**
@@ -124,7 +124,7 @@ class BookingFacts extends Model
      */
     public function hadTierBenefits(): bool
     {
-        return !empty($this->tier_snapshot);
+        return ! empty($this->tier_snapshot);
     }
 
     /**

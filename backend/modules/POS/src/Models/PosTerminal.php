@@ -2,7 +2,6 @@
 
 namespace Modules\POS\Models;
 
-use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -64,23 +63,23 @@ class PosTerminal extends Model
      */
     public static function generateCode(string $prefix = 'POS'): string
     {
-        $last = static::where('code', 'like', $prefix . '%')
+        $last = static::where('code', 'like', $prefix.'%')
             ->orderBy('code', 'desc')
             ->first();
-        
+
         if ($last && preg_match('/(\d+)$/', $last->code, $matches)) {
             $number = intval($matches[1]) + 1;
         } else {
             $number = 1;
         }
-        
-        return $prefix . str_pad($number, 3, '0', STR_PAD_LEFT);
+
+        return $prefix.str_pad($number, 3, '0', STR_PAD_LEFT);
     }
 
     protected static function boot()
     {
         parent::boot();
-        
+
         static::saving(function (self $terminal) {
             static::applyDefaultWarehouseId($terminal);
         });

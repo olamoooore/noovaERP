@@ -2,16 +2,17 @@
 
 namespace Modules\EventManagement\Services;
 
-use Modules\EventManagement\Models\EventSettings;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Log;
-use InvalidArgumentException;
 use Exception;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
+use InvalidArgumentException;
+use Modules\EventManagement\Models\EventSettings;
 
 class TenantConfigurationService
 {
     protected string $cachePrefix = 'tenant_config:';
+
     protected int $cacheTtl = 3600; // 1 hour
 
     /**
@@ -20,16 +21,16 @@ class TenantConfigurationService
     public function getTenantConfiguration(string $tenantId): EventSettings
     {
         $this->validateTenantId($tenantId);
-        
-        $cacheKey = $this->cachePrefix . $tenantId;
-        
+
+        $cacheKey = $this->cachePrefix.$tenantId;
+
         return Cache::remember($cacheKey, $this->cacheTtl, function () use ($tenantId) {
             try {
                 return EventSettings::getOrCreateForTenant($tenantId);
             } catch (Exception $e) {
-                Log::error("Failed to get tenant configuration", [
+                Log::error('Failed to get tenant configuration', [
                     'tenant_id' => $tenantId,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ]);
                 throw $e;
             }
@@ -43,24 +44,24 @@ class TenantConfigurationService
     {
         $this->validateTenantId($tenantId);
         $this->validateSettings($settings);
-        
+
         try {
             $eventSettings = EventSettings::getOrCreateForTenant($tenantId);
             $eventSettings->update($settings);
-            
+
             $this->clearConfigurationCache($tenantId);
-            
-            Log::info("Tenant configuration updated", [
+
+            Log::info('Tenant configuration updated', [
                 'tenant_id' => $tenantId,
-                'updated_fields' => array_keys($settings)
+                'updated_fields' => array_keys($settings),
             ]);
-            
+
             return $eventSettings;
         } catch (Exception $e) {
-            Log::error("Failed to update tenant configuration", [
+            Log::error('Failed to update tenant configuration', [
                 'tenant_id' => $tenantId,
                 'settings' => $settings,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
             throw $e;
         }
@@ -136,6 +137,7 @@ class TenantConfigurationService
     public function setCurrency(string $tenantId, string $currency): EventSettings
     {
         $this->validateCurrency($currency);
+
         return $this->updateTenantConfiguration($tenantId, ['currency' => $currency]);
     }
 
@@ -145,6 +147,7 @@ class TenantConfigurationService
     public function setTimezone(string $tenantId, string $timezone): EventSettings
     {
         $this->validateTimezone($timezone);
+
         return $this->updateTenantConfiguration($tenantId, ['timezone' => $timezone]);
     }
 
@@ -172,7 +175,7 @@ class TenantConfigurationService
         if ($capacity <= 0) {
             throw new InvalidArgumentException('Capacity must be greater than 0');
         }
-        
+
         return $this->updateTenantConfiguration($tenantId, ['max_capacity_per_event' => $capacity]);
     }
 
@@ -192,7 +195,7 @@ class TenantConfigurationService
         if ($days <= 0) {
             throw new InvalidArgumentException('Data retention days must be greater than 0');
         }
-        
+
         return $this->updateTenantConfiguration($tenantId, ['data_retention_days' => $days]);
     }
 
@@ -202,7 +205,7 @@ class TenantConfigurationService
     public function resetToDefaults(string $tenantId): EventSettings
     {
         $this->validateTenantId($tenantId);
-        
+
         $defaults = [
             'currency' => config('event_management.defaults.currency', 'USD'),
             'timezone' => config('event_management.defaults.timezone', 'UTC'),
@@ -212,7 +215,7 @@ class TenantConfigurationService
             'cancellation_policy' => null,
             'refund_policy' => null,
         ];
-        
+
         return $this->updateTenantConfiguration($tenantId, $defaults);
     }
 
@@ -226,8 +229,8 @@ class TenantConfigurationService
                 ->keyBy('tenant_id')
                 ->toArray();
         } catch (Exception $e) {
-            Log::error("Failed to get all tenant configurations", [
-                'error' => $e->getMessage()
+            Log::error('Failed to get all tenant configurations', [
+                'error' => $e->getMessage(),
             ]);
             throw $e;
         }
@@ -239,24 +242,24 @@ class TenantConfigurationService
     public function deleteTenantConfiguration(string $tenantId): bool
     {
         $this->validateTenantId($tenantId);
-        
+
         try {
             $eventSettings = EventSettings::forTenant($tenantId);
-            
-            if (!$eventSettings) {
+
+            if (! $eventSettings) {
                 return false;
             }
-            
+
             $deleted = $eventSettings->delete();
             $this->clearConfigurationCache($tenantId);
-            
-            Log::info("Tenant configuration deleted", ['tenant_id' => $tenantId]);
-            
+
+            Log::info('Tenant configuration deleted', ['tenant_id' => $tenantId]);
+
             return $deleted;
         } catch (Exception $e) {
-            Log::error("Failed to delete tenant configuration", [
+            Log::error('Failed to delete tenant configuration', [
                 'tenant_id' => $tenantId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
             throw $e;
         }
@@ -278,7 +281,7 @@ class TenantConfigurationService
         ]);
 
         if ($validator->fails()) {
-            throw new InvalidArgumentException('Invalid settings: ' . $validator->errors()->first());
+            throw new InvalidArgumentException('Invalid settings: '.$validator->errors()->first());
         }
 
         // Additional validation for specific fields
@@ -297,8 +300,8 @@ class TenantConfigurationService
     protected function validateCurrency(string $currency): void
     {
         $validCurrencies = ['USD', 'EUR', 'GBP', 'JPY', 'KRW', 'SGD', 'MYR', 'THB', 'PHP', 'IDR'];
-        
-        if (!in_array(strtoupper($currency), $validCurrencies)) {
+
+        if (! in_array(strtoupper($currency), $validCurrencies)) {
             throw new InvalidArgumentException("Invalid currency code: {$currency}");
         }
     }
@@ -308,7 +311,7 @@ class TenantConfigurationService
      */
     protected function validateTimezone(string $timezone): void
     {
-        if (!in_array($timezone, timezone_identifiers_list())) {
+        if (! in_array($timezone, timezone_identifiers_list())) {
             throw new InvalidArgumentException("Invalid timezone: {$timezone}");
         }
     }
@@ -318,7 +321,7 @@ class TenantConfigurationService
      */
     protected function clearConfigurationCache(string $tenantId): void
     {
-        $cacheKey = $this->cachePrefix . $tenantId;
+        $cacheKey = $this->cachePrefix.$tenantId;
         Cache::forget($cacheKey);
     }
 
@@ -330,7 +333,7 @@ class TenantConfigurationService
         if (empty(trim($tenantId))) {
             throw new InvalidArgumentException('Tenant ID cannot be empty');
         }
-        
+
         if (strlen($tenantId) > 255) {
             throw new InvalidArgumentException('Tenant ID cannot exceed 255 characters');
         }

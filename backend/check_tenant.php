@@ -1,8 +1,8 @@
 <?php
 
-require __DIR__ . '/vendor/autoload.php';
+require __DIR__.'/vendor/autoload.php';
 
-$app = require_once __DIR__ . '/bootstrap/app.php';
+$app = require_once __DIR__.'/bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 echo "=== Checking Tenants ===\n";
@@ -24,9 +24,9 @@ $user = \App\Models\User::first();
 if ($user) {
     echo "User: {$user->name}\n";
     echo "Email: {$user->email}\n";
-    echo "Tenant ID: " . ($user->tenant_id ?? 'NULL') . "\n";
-    
-    if (!$user->tenant_id && $tenants->isNotEmpty()) {
+    echo 'Tenant ID: '.($user->tenant_id ?? 'NULL')."\n";
+
+    if (! $user->tenant_id && $tenants->isNotEmpty()) {
         echo "\n⚠️  User has no tenant_id! Assigning first tenant...\n";
         $firstTenant = $tenants->first();
         $user->tenant_id = $firstTenant->id;

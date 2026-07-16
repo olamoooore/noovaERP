@@ -3,8 +3,8 @@
 namespace Modules\Communication\Services\Channels;
 
 use Illuminate\Support\Facades\Log;
-use Modules\Communication\Models\CommunicationOutbox;
 use Modules\Communication\Models\CommunicationMessage;
+use Modules\Communication\Models\CommunicationOutbox;
 
 /**
  * PushChannel — Sends push notifications via FCM or OneSignal.
@@ -23,13 +23,13 @@ class PushChannel implements ChannelInterface
 
     public function send(CommunicationOutbox $outbox, CommunicationMessage $message): array
     {
-        if (!$this->isEnabled()) {
+        if (! $this->isEnabled()) {
             return ['success' => false, 'error' => 'Push channel is not enabled'];
         }
 
         try {
             $token = $outbox->recipient_device_token;
-            if (!$token) {
+            if (! $token) {
                 return ['success' => false, 'error' => 'No device token'];
             }
 
@@ -67,14 +67,16 @@ class PushChannel implements ChannelInterface
     protected function sendViaFcm(string $token, CommunicationMessage $message): array
     {
         // TODO: Implement Firebase Cloud Messaging
-        Log::info('Communication: Push via FCM (stub)', ['token' => substr($token, 0, 20) . '...']);
-        return ['success' => true, 'external_id' => 'fcm_' . uniqid()];
+        Log::info('Communication: Push via FCM (stub)', ['token' => substr($token, 0, 20).'...']);
+
+        return ['success' => true, 'external_id' => 'fcm_'.uniqid()];
     }
 
     protected function sendViaOneSignal(string $token, CommunicationMessage $message): array
     {
         // TODO: Implement OneSignal
-        Log::info('Communication: Push via OneSignal (stub)', ['token' => substr($token, 0, 20) . '...']);
-        return ['success' => true, 'external_id' => 'onesignal_' . uniqid()];
+        Log::info('Communication: Push via OneSignal (stub)', ['token' => substr($token, 0, 20).'...']);
+
+        return ['success' => true, 'external_id' => 'onesignal_'.uniqid()];
     }
 }

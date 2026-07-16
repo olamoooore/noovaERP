@@ -17,9 +17,9 @@ class PaginationService
     /**
      * Paginate a query with standard parameters.
      *
-     * @param Builder $query The Eloquent query builder
-     * @param Request $request The HTTP request
-     * @param array $config Configuration options
+     * @param  Builder  $query  The Eloquent query builder
+     * @param  Request  $request  The HTTP request
+     * @param  array  $config  Configuration options
      * @return array{data: array, meta: array}
      */
     public function paginate(Builder $query, Request $request, array $config = []): array
@@ -31,7 +31,7 @@ class PaginationService
         $sortDir = $request->get('sort_dir', $config['default_sort_dir'] ?? 'desc');
 
         // Apply search
-        if ($search && !empty($config['search_columns'])) {
+        if ($search && ! empty($config['search_columns'])) {
             $query->where(function ($q) use ($search, $config) {
                 foreach ($config['search_columns'] as $column) {
                     $q->orWhere($column, 'ILIKE', "%{$search}%");
@@ -40,7 +40,7 @@ class PaginationService
         }
 
         // Apply additional filters from request
-        if (!empty($config['filters'])) {
+        if (! empty($config['filters'])) {
             foreach ($config['filters'] as $filterKey => $filterConfig) {
                 $value = $request->get($filterKey);
                 if ($value !== null && $value !== '') {
@@ -90,6 +90,7 @@ class PaginationService
     {
         $per_page = (int) $request->get('per_page', $config['default_per_page'] ?? 20);
         $max = $config['max_per_page'] ?? 100;
+
         return max(1, min($per_page, $max));
     }
 
@@ -116,6 +117,7 @@ class PaginationService
     {
         try {
             $table = $query->getModel()->getTable();
+
             return Schema::hasColumn($table, $column);
         } catch (\Exception $e) {
             return false;

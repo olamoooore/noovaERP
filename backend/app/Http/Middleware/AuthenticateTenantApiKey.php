@@ -46,7 +46,7 @@ class AuthenticateTenantApiKey
 
         // Attach tenant context to the request for the controller
         $request->attributes->set('tenant_id', $apiKey->tenant_id);
-        $request->attributes->set('api_key',   $apiKey);
+        $request->attributes->set('api_key', $apiKey);
 
         return $next($request);
     }

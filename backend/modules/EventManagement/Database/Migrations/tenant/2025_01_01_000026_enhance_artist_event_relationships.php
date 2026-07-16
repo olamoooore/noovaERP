@@ -6,10 +6,10 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Migration: Enhance Artist-Event Relationships - Task 6.3
- * 
+ *
  * Modifies artist_events table to support many-to-many relationships with roles,
  * performance order, collaboration types, and historical association preservation.
- * 
+ *
  * Requirements: 22.2, 22.5
  */
 class EnhanceArtistEventRelationships extends Migration
@@ -20,7 +20,7 @@ class EnhanceArtistEventRelationships extends Migration
     public function up(): void
     {
         // Check if artist_events table exists, if not create it
-        if (!Schema::hasTable('artist_events')) {
+        if (! Schema::hasTable('artist_events')) {
             Schema::create('artist_events', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('artist_id');
@@ -37,7 +37,7 @@ class EnhanceArtistEventRelationships extends Migration
         // Phase 1: Add all columns
         Schema::table('artist_events', function (Blueprint $table) {
             // Performance role and details
-            if (!Schema::hasColumn('artist_events', 'performance_role')) {
+            if (! Schema::hasColumn('artist_events', 'performance_role')) {
                 $table->enum('performance_role', [
                     'headliner',
                     'co_headliner',
@@ -52,29 +52,29 @@ class EnhanceArtistEventRelationships extends Migration
                     'mc_host',
                     'backing_vocalist',
                     'conductor',
-                    'composer'
+                    'composer',
                 ])->default('headliner')->after('event_id');
             }
 
-            if (!Schema::hasColumn('artist_events', 'performance_order')) {
+            if (! Schema::hasColumn('artist_events', 'performance_order')) {
                 $table->integer('performance_order')->default(1)->after('performance_role');
             }
 
-            if (!Schema::hasColumn('artist_events', 'set_duration_minutes')) {
+            if (! Schema::hasColumn('artist_events', 'set_duration_minutes')) {
                 $table->integer('set_duration_minutes')->nullable()->after('performance_order');
             }
-            if (!Schema::hasColumn('artist_events', 'scheduled_start_time')) {
+            if (! Schema::hasColumn('artist_events', 'scheduled_start_time')) {
                 $table->time('scheduled_start_time')->nullable()->after('set_duration_minutes');
             }
-            if (!Schema::hasColumn('artist_events', 'actual_start_time')) {
+            if (! Schema::hasColumn('artist_events', 'actual_start_time')) {
                 $table->time('actual_start_time')->nullable()->after('scheduled_start_time');
             }
-            if (!Schema::hasColumn('artist_events', 'actual_end_time')) {
+            if (! Schema::hasColumn('artist_events', 'actual_end_time')) {
                 $table->time('actual_end_time')->nullable()->after('actual_start_time');
             }
 
             // Collaboration and relationship details
-            if (!Schema::hasColumn('artist_events', 'collaboration_type')) {
+            if (! Schema::hasColumn('artist_events', 'collaboration_type')) {
                 $table->enum('collaboration_type', [
                     'solo_performance',
                     'band_performance',
@@ -87,87 +87,87 @@ class EnhanceArtistEventRelationships extends Migration
                     'acoustic_set',
                     'electronic_set',
                     'live_recording',
-                    'virtual_performance'
+                    'virtual_performance',
                 ])->default('solo_performance')->after('actual_end_time');
             }
 
-            if (!Schema::hasColumn('artist_events', 'performance_metadata')) {
+            if (! Schema::hasColumn('artist_events', 'performance_metadata')) {
                 $table->json('performance_metadata')->nullable()->after('collaboration_type');
             }
-            if (!Schema::hasColumn('artist_events', 'performance_notes')) {
+            if (! Schema::hasColumn('artist_events', 'performance_notes')) {
                 $table->text('performance_notes')->nullable()->after('performance_metadata');
             }
 
             // Historical preservation
-            if (!Schema::hasColumn('artist_events', 'is_historical')) {
+            if (! Schema::hasColumn('artist_events', 'is_historical')) {
                 $table->boolean('is_historical')->default(false)->after('performance_notes');
             }
-            if (!Schema::hasColumn('artist_events', 'historical_date')) {
+            if (! Schema::hasColumn('artist_events', 'historical_date')) {
                 $table->date('historical_date')->nullable()->after('is_historical');
             }
-            if (!Schema::hasColumn('artist_events', 'historical_source')) {
+            if (! Schema::hasColumn('artist_events', 'historical_source')) {
                 $table->string('historical_source', 255)->nullable()->after('historical_date');
             }
-            if (!Schema::hasColumn('artist_events', 'historical_confidence')) {
+            if (! Schema::hasColumn('artist_events', 'historical_confidence')) {
                 $table->decimal('historical_confidence', 3, 2)->default(1.00)->after('historical_source');
             }
 
             // Status and visibility
-            if (!Schema::hasColumn('artist_events', 'association_status')) {
+            if (! Schema::hasColumn('artist_events', 'association_status')) {
                 $table->enum('association_status', [
                     'confirmed',
                     'tentative',
                     'cancelled',
                     'replaced',
                     'historical',
-                    'disputed'
+                    'disputed',
                 ])->default('confirmed')->after('historical_confidence');
             }
 
-            if (!Schema::hasColumn('artist_events', 'is_public')) {
+            if (! Schema::hasColumn('artist_events', 'is_public')) {
                 $table->boolean('is_public')->default(true)->after('association_status');
             }
-            if (!Schema::hasColumn('artist_events', 'is_featured')) {
+            if (! Schema::hasColumn('artist_events', 'is_featured')) {
                 $table->boolean('is_featured')->default(false)->after('is_public');
             }
 
             // Billing and contract information
-            if (!Schema::hasColumn('artist_events', 'performance_fee')) {
+            if (! Schema::hasColumn('artist_events', 'performance_fee')) {
                 $table->decimal('performance_fee', 10, 2)->nullable()->after('is_featured');
             }
-            if (!Schema::hasColumn('artist_events', 'fee_currency')) {
+            if (! Schema::hasColumn('artist_events', 'fee_currency')) {
                 $table->enum('fee_currency', ['USD', 'EUR', 'GBP', 'CAD', 'AUD'])->default('USD')->after('performance_fee');
             }
-            if (!Schema::hasColumn('artist_events', 'payment_status')) {
+            if (! Schema::hasColumn('artist_events', 'payment_status')) {
                 $table->enum('payment_status', [
                     'not_applicable',
                     'pending',
                     'partial',
                     'paid',
                     'overdue',
-                    'disputed'
+                    'disputed',
                 ])->default('not_applicable')->after('fee_currency');
             }
 
             // Technical requirements
-            if (!Schema::hasColumn('artist_events', 'technical_requirements')) {
+            if (! Schema::hasColumn('artist_events', 'technical_requirements')) {
                 $table->json('technical_requirements')->nullable()->after('payment_status');
             }
-            if (!Schema::hasColumn('artist_events', 'rider_requirements')) {
+            if (! Schema::hasColumn('artist_events', 'rider_requirements')) {
                 $table->json('rider_requirements')->nullable()->after('technical_requirements');
             }
 
             // Audit and tracking
-            if (!Schema::hasColumn('artist_events', 'created_by')) {
+            if (! Schema::hasColumn('artist_events', 'created_by')) {
                 $table->string('created_by', 100)->nullable()->after('rider_requirements');
             }
-            if (!Schema::hasColumn('artist_events', 'updated_by')) {
+            if (! Schema::hasColumn('artist_events', 'updated_by')) {
                 $table->string('updated_by', 100)->nullable()->after('created_by');
             }
-            if (!Schema::hasColumn('artist_events', 'confirmed_at')) {
+            if (! Schema::hasColumn('artist_events', 'confirmed_at')) {
                 $table->timestamp('confirmed_at')->nullable()->after('updated_by');
             }
-            if (!Schema::hasColumn('artist_events', 'confirmed_by_user_id')) {
+            if (! Schema::hasColumn('artist_events', 'confirmed_by_user_id')) {
                 $table->unsignedBigInteger('confirmed_by_user_id')->nullable()->after('confirmed_at');
             }
         });
@@ -175,7 +175,7 @@ class EnhanceArtistEventRelationships extends Migration
         // Phase 2: Add indexes (wrapped in try-catch to ignore duplicates)
         try {
             Schema::table('artist_events', function (Blueprint $table) {
-                // Add indexes one by one? No, blueprint handles batch. 
+                // Add indexes one by one? No, blueprint handles batch.
                 // We add them all, if one fails due to duplicate, the whole batch fails.
                 // But we don't know which one exists.
                 // So we can wrap the whole block in try-catch. If it fails, we assume indexes exist.
@@ -204,7 +204,7 @@ class EnhanceArtistEventRelationships extends Migration
         }
 
         // Create artist performance history tracking table
-        if (!Schema::hasTable('artist_performance_history')) {
+        if (! Schema::hasTable('artist_performance_history')) {
             Schema::create('artist_performance_history', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('canonical_artist_id');
@@ -225,7 +225,7 @@ class EnhanceArtistEventRelationships extends Migration
                     'radio_appearance',
                     'podcast_appearance',
                     'virtual_event',
-                    'livestream'
+                    'livestream',
                 ]);
                 $table->integer('estimated_attendance')->nullable();
                 $table->decimal('ticket_price_min', 8, 2)->nullable();
@@ -237,7 +237,7 @@ class EnhanceArtistEventRelationships extends Migration
                     'average',
                     'poor',
                     'cancelled',
-                    'unknown'
+                    'unknown',
                 ])->default('unknown');
                 $table->text('performance_review')->nullable();
                 $table->json('setlist')->nullable();
@@ -267,7 +267,7 @@ class EnhanceArtistEventRelationships extends Migration
         }
 
         // Create artist collaboration tracking table
-        if (!Schema::hasTable('artist_collaborations')) {
+        if (! Schema::hasTable('artist_collaborations')) {
             Schema::create('artist_collaborations', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('primary_artist_id');
@@ -280,7 +280,7 @@ class EnhanceArtistEventRelationships extends Migration
                     'album_based',
                     'project_based',
                     'permanent_group',
-                    'temporary_group'
+                    'temporary_group',
                 ]);
                 $table->string('collaboration_name', 255)->nullable(); // Name of the collaboration/project
                 $table->text('collaboration_description')->nullable();
@@ -312,7 +312,7 @@ class EnhanceArtistEventRelationships extends Migration
         }
 
         // Create artist event roles table for complex role assignments
-        if (!Schema::hasTable('artist_event_roles')) {
+        if (! Schema::hasTable('artist_event_roles')) {
             Schema::create('artist_event_roles', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('artist_event_id');
@@ -332,7 +332,7 @@ class EnhanceArtistEventRelationships extends Migration
                     'videographer',
                     'interviewer',
                     'presenter',
-                    'announcer'
+                    'announcer',
                 ]);
                 $table->string('role_description', 255)->nullable();
                 $table->boolean('is_primary_role')->default(false);
@@ -393,7 +393,7 @@ class EnhanceArtistEventRelationships extends Migration
                 'created_by',
                 'updated_by',
                 'confirmed_at',
-                'confirmed_by_user_id'
+                'confirmed_by_user_id',
             ]);
         });
     }

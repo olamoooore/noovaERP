@@ -4,13 +4,13 @@ namespace Modules\AI\SubModules;
 
 /**
  * General Module
- * 
+ *
  * Handles general queries and helps users navigate to specific modules
  */
 class GeneralModule extends BaseModule
 {
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getName(): string
     {
@@ -18,7 +18,7 @@ class GeneralModule extends BaseModule
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getDisplayName(): string
     {
@@ -26,7 +26,7 @@ class GeneralModule extends BaseModule
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getIcon(): string
     {
@@ -34,7 +34,7 @@ class GeneralModule extends BaseModule
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getDescription(): string
     {
@@ -42,7 +42,7 @@ class GeneralModule extends BaseModule
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getFunctions(): array
     {
@@ -50,11 +50,11 @@ class GeneralModule extends BaseModule
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getSystemPrompt(): string
     {
-        return <<<PROMPT
+        return <<<'PROMPT'
 You are a helpful assistant for NoovaERP.
 
 When user first starts a conversation, greet them warmly and present topic options.

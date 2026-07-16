@@ -2,15 +2,15 @@
 
 namespace Modules\EventManagement\Services;
 
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Modules\EventManagement\Models\OutboxEvent;
 use Modules\EventManagement\Models\OutboxEventConsumer;
 use Modules\EventManagement\Models\OutboxProcessingLog;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 /**
  * OutboxService
- * 
+ *
  * Implements transactional outbox pattern for exactly-once side effects processing.
  * Ensures that side effects are processed exactly once even in case of failures.
  */
@@ -21,31 +21,31 @@ class OutboxService
         OutboxEvent::EVENT_BOOKING_CREATED => [
             OutboxEventConsumer::CONSUMER_NOTIFICATION,
             OutboxEventConsumer::CONSUMER_ANALYTICS,
-            OutboxEventConsumer::CONSUMER_FRAUD_DETECTION
+            OutboxEventConsumer::CONSUMER_FRAUD_DETECTION,
         ],
         OutboxEvent::EVENT_PAYMENT_CONFIRMED => [
             OutboxEventConsumer::CONSUMER_NOTIFICATION,
             OutboxEventConsumer::CONSUMER_ANALYTICS,
             OutboxEventConsumer::CONSUMER_ACCOUNTING,
-            OutboxEventConsumer::CONSUMER_LOYALTY
+            OutboxEventConsumer::CONSUMER_LOYALTY,
         ],
         OutboxEvent::EVENT_TICKET_ISSUED => [
             OutboxEventConsumer::CONSUMER_NOTIFICATION,
-            OutboxEventConsumer::CONSUMER_ANALYTICS
+            OutboxEventConsumer::CONSUMER_ANALYTICS,
         ],
         OutboxEvent::EVENT_BOOKING_CANCELLED => [
             OutboxEventConsumer::CONSUMER_NOTIFICATION,
             OutboxEventConsumer::CONSUMER_ANALYTICS,
-            OutboxEventConsumer::CONSUMER_ACCOUNTING
+            OutboxEventConsumer::CONSUMER_ACCOUNTING,
         ],
         OutboxEvent::EVENT_FRAUD_DETECTED => [
             OutboxEventConsumer::CONSUMER_NOTIFICATION,
-            OutboxEventConsumer::CONSUMER_FRAUD_DETECTION
+            OutboxEventConsumer::CONSUMER_FRAUD_DETECTION,
         ],
         OutboxEvent::EVENT_TIER_UPGRADED => [
             OutboxEventConsumer::CONSUMER_NOTIFICATION,
-            OutboxEventConsumer::CONSUMER_LOYALTY
-        ]
+            OutboxEventConsumer::CONSUMER_LOYALTY,
+        ],
     ];
 
     /**
@@ -62,7 +62,7 @@ class OutboxService
         ?array $customConsumers = null
     ): OutboxEvent {
         return DB::transaction(function () use (
-            $aggregateType, $aggregateId, $eventType, $eventData, 
+            $aggregateType, $aggregateId, $eventType, $eventData,
             $idempotencyKey, $metadata, $customConsumers
         ) {
             // Generate idempotency key if not provided
@@ -75,8 +75,9 @@ class OutboxService
             if ($existingEvent) {
                 Log::info('Outbox event already exists, returning existing event', [
                     'idempotency_key' => $idempotencyKey,
-                    'event_id' => $existingEvent->id
+                    'event_id' => $existingEvent->id,
                 ]);
+
                 return $existingEvent;
             }
 
@@ -87,7 +88,7 @@ class OutboxService
                 'event_type' => $eventType,
                 'event_data' => $eventData,
                 'idempotency_key' => $idempotencyKey,
-                'metadata' => $metadata ?? []
+                'metadata' => $metadata ?? [],
             ]);
 
             // Create consumer records
@@ -106,7 +107,7 @@ class OutboxService
                     'aggregate_type' => $aggregateType,
                     'aggregate_id' => $aggregateId,
                     'event_type' => $eventType,
-                    'consumers' => $consumers
+                    'consumers' => $consumers,
                 ]
             );
 
@@ -115,7 +116,7 @@ class OutboxService
                 'aggregate_type' => $aggregateType,
                 'aggregate_id' => $aggregateId,
                 'event_type' => $eventType,
-                'consumers' => $consumers
+                'consumers' => $consumers,
             ]);
 
             return $outboxEvent;
@@ -144,19 +145,19 @@ class OutboxService
                 } else {
                     $failedEvents[] = [
                         'event_id' => $event->id,
-                        'error' => $result['error']
+                        'error' => $result['error'],
                     ];
                 }
             } catch (\Exception $e) {
                 $failedEvents[] = [
                     'event_id' => $event->id,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ];
-                
+
                 Log::error('Failed to process outbox event', [
                     'event_id' => $event->id,
                     'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
+                    'trace' => $e->getTraceAsString(),
                 ]);
             }
         }
@@ -165,7 +166,7 @@ class OutboxService
             'processed_count' => count($processedEvents),
             'failed_count' => count($failedEvents),
             'processed_events' => $processedEvents,
-            'failed_events' => $failedEvents
+            'failed_events' => $failedEvents,
         ];
     }
 
@@ -177,7 +178,7 @@ class OutboxService
         return DB::transaction(function () use ($event) {
             // Mark event as processing
             $event->markAsProcessing();
-            
+
             $this->logProcessingAction(
                 $event->id,
                 null,
@@ -197,8 +198,8 @@ class OutboxService
                 foreach ($pendingConsumers as $consumer) {
                     $result = $this->processConsumer($consumer);
                     $consumerResults[$consumer->consumer_name] = $result;
-                    
-                    if (!$result['success']) {
+
+                    if (! $result['success']) {
                         $allConsumersSucceeded = false;
                     }
                 }
@@ -206,7 +207,7 @@ class OutboxService
                 // Update event status based on consumer results
                 if ($allConsumersSucceeded) {
                     $event->markAsCompleted();
-                    
+
                     $this->logProcessingAction(
                         $event->id,
                         null,
@@ -217,12 +218,12 @@ class OutboxService
 
                     return [
                         'success' => true,
-                        'consumer_results' => $consumerResults
+                        'consumer_results' => $consumerResults,
                     ];
                 } else {
                     $errorMessage = 'One or more consumers failed processing';
                     $event->markAsFailed($errorMessage);
-                    
+
                     $this->logProcessingAction(
                         $event->id,
                         null,
@@ -234,18 +235,18 @@ class OutboxService
                     return [
                         'success' => false,
                         'error' => $errorMessage,
-                        'consumer_results' => $consumerResults
+                        'consumer_results' => $consumerResults,
                     ];
                 }
 
             } catch (\Exception $e) {
                 $event->markAsFailed($e->getMessage());
-                
+
                 $this->logProcessingAction(
                     $event->id,
                     null,
                     'processing_failed',
-                    'Event processing failed with exception: ' . $e->getMessage(),
+                    'Event processing failed with exception: '.$e->getMessage(),
                     ['exception' => $e->getTraceAsString()]
                 );
 
@@ -261,7 +262,7 @@ class OutboxService
     {
         try {
             $consumer->markAsProcessing();
-            
+
             $this->logProcessingAction(
                 $consumer->outbox_event_id,
                 $consumer->consumer_name,
@@ -274,7 +275,7 @@ class OutboxService
 
             if ($result['success']) {
                 $consumer->markAsCompleted($result['metadata'] ?? null);
-                
+
                 $this->logProcessingAction(
                     $consumer->outbox_event_id,
                     $consumer->consumer_name,
@@ -284,12 +285,12 @@ class OutboxService
                 );
             } else {
                 $consumer->markAsFailed($result['error']);
-                
+
                 $this->logProcessingAction(
                     $consumer->outbox_event_id,
                     $consumer->consumer_name,
                     'processing_failed',
-                    'Consumer processing failed: ' . $result['error']
+                    'Consumer processing failed: '.$result['error']
                 );
             }
 
@@ -297,18 +298,18 @@ class OutboxService
 
         } catch (\Exception $e) {
             $consumer->markAsFailed($e->getMessage());
-            
+
             $this->logProcessingAction(
                 $consumer->outbox_event_id,
                 $consumer->consumer_name,
                 'processing_failed',
-                'Consumer processing failed with exception: ' . $e->getMessage(),
+                'Consumer processing failed with exception: '.$e->getMessage(),
                 ['exception' => $e->getTraceAsString()]
             );
 
             return [
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
@@ -319,27 +320,27 @@ class OutboxService
     private function delegateToConsumer(OutboxEventConsumer $consumer): array
     {
         $event = $consumer->outboxEvent;
-        
+
         switch ($consumer->consumer_name) {
             case OutboxEventConsumer::CONSUMER_NOTIFICATION:
                 return $this->processNotificationConsumer($event);
-                
+
             case OutboxEventConsumer::CONSUMER_ANALYTICS:
                 return $this->processAnalyticsConsumer($event);
-                
+
             case OutboxEventConsumer::CONSUMER_ACCOUNTING:
                 return $this->processAccountingConsumer($event);
-                
+
             case OutboxEventConsumer::CONSUMER_LOYALTY:
                 return $this->processLoyaltyConsumer($event);
-                
+
             case OutboxEventConsumer::CONSUMER_FRAUD_DETECTION:
                 return $this->processFraudDetectionConsumer($event);
-                
+
             default:
                 return [
                     'success' => false,
-                    'error' => 'Unknown consumer: ' . $consumer->consumer_name
+                    'error' => 'Unknown consumer: '.$consumer->consumer_name,
                 ];
         }
     }
@@ -353,15 +354,15 @@ class OutboxService
         // For now, simulate processing
         Log::info('Processing notification consumer', [
             'event_id' => $event->id,
-            'event_type' => $event->event_type
+            'event_type' => $event->event_type,
         ]);
 
         return [
             'success' => true,
             'metadata' => [
                 'processed_at' => now()->toISOString(),
-                'notification_type' => $this->getNotificationTypeForEvent($event->event_type)
-            ]
+                'notification_type' => $this->getNotificationTypeForEvent($event->event_type),
+            ],
         ];
     }
 
@@ -373,15 +374,15 @@ class OutboxService
         // This would integrate with EventAnalyticsService
         Log::info('Processing analytics consumer', [
             'event_id' => $event->id,
-            'event_type' => $event->event_type
+            'event_type' => $event->event_type,
         ]);
 
         return [
             'success' => true,
             'metadata' => [
                 'processed_at' => now()->toISOString(),
-                'analytics_updated' => true
-            ]
+                'analytics_updated' => true,
+            ],
         ];
     }
 
@@ -393,15 +394,15 @@ class OutboxService
         // This would integrate with accounting system
         Log::info('Processing accounting consumer', [
             'event_id' => $event->id,
-            'event_type' => $event->event_type
+            'event_type' => $event->event_type,
         ]);
 
         return [
             'success' => true,
             'metadata' => [
                 'processed_at' => now()->toISOString(),
-                'accounting_entry_created' => true
-            ]
+                'accounting_entry_created' => true,
+            ],
         ];
     }
 
@@ -413,15 +414,15 @@ class OutboxService
         // This would integrate with LoyaltyService
         Log::info('Processing loyalty consumer', [
             'event_id' => $event->id,
-            'event_type' => $event->event_type
+            'event_type' => $event->event_type,
         ]);
 
         return [
             'success' => true,
             'metadata' => [
                 'processed_at' => now()->toISOString(),
-                'loyalty_points_awarded' => $event->getEventDataValue('loyalty_points') ?? 0
-            ]
+                'loyalty_points_awarded' => $event->getEventDataValue('loyalty_points') ?? 0,
+            ],
         ];
     }
 
@@ -433,15 +434,15 @@ class OutboxService
         // This would integrate with FraudDetectionService
         Log::info('Processing fraud detection consumer', [
             'event_id' => $event->id,
-            'event_type' => $event->event_type
+            'event_type' => $event->event_type,
         ]);
 
         return [
             'success' => true,
             'metadata' => [
                 'processed_at' => now()->toISOString(),
-                'fraud_analysis_completed' => true
-            ]
+                'fraud_analysis_completed' => true,
+            ],
         ];
     }
 
@@ -451,7 +452,8 @@ class OutboxService
     private function generateIdempotencyKey(string $aggregateType, string $aggregateId, string $eventType, array $eventData): string
     {
         $dataHash = hash('sha256', json_encode($eventData));
-        return hash('sha256', $aggregateType . ':' . $aggregateId . ':' . $eventType . ':' . $dataHash);
+
+        return hash('sha256', $aggregateType.':'.$aggregateId.':'.$eventType.':'.$dataHash);
     }
 
     /**
@@ -493,7 +495,7 @@ class OutboxService
             'consumer_name' => $consumerName,
             'action' => $action,
             'message' => $message,
-            'context' => $context
+            'context' => $context,
         ]);
     }
 
@@ -519,7 +521,7 @@ class OutboxService
                 ->map(function ($consumers) {
                     return $consumers->pluck('count', 'status')->toArray();
                 })
-                ->toArray()
+                ->toArray(),
         ];
     }
 }

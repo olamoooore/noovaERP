@@ -3,18 +3,18 @@
 namespace Modules\EventManagement\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Modules\EventManagement\Services\OperationalCheckInService;
-use Modules\EventManagement\Exceptions\EventManagementException;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Modules\EventManagement\Exceptions\EventManagementException;
+use Modules\EventManagement\Services\OperationalCheckInService;
 
 /**
  * OperationalCheckInController
- * 
+ *
  * Handles operational check-in API endpoints for staff use including
  * single check-in, bulk check-in, queue management, and capacity monitoring.
- * 
+ *
  * Requirements: 15.1, 15.3
  */
 class OperationalCheckInController extends Controller
@@ -28,9 +28,6 @@ class OperationalCheckInController extends Controller
 
     /**
      * Check in a single ticket
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function checkInTicket(Request $request): JsonResponse
     {
@@ -58,35 +55,32 @@ class OperationalCheckInController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $result,
-                'message' => 'Ticket checked in successfully'
+                'message' => 'Ticket checked in successfully',
             ]);
 
         } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
 
         } catch (EventManagementException $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 400);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred during check-in'
+                'message' => 'An error occurred during check-in',
             ], 500);
         }
     }
 
     /**
      * Bulk check-in multiple tickets
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function bulkCheckIn(Request $request): JsonResponse
     {
@@ -115,29 +109,26 @@ class OperationalCheckInController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $result,
-                'message' => "Bulk check-in completed: {$result['successful']} successful, {$result['failed']} failed"
+                'message' => "Bulk check-in completed: {$result['successful']} successful, {$result['failed']} failed",
             ]);
 
         } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred during bulk check-in'
+                'message' => 'An error occurred during bulk check-in',
             ], 500);
         }
     }
 
     /**
      * Check in by booking reference (group check-in)
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function checkInByBooking(Request $request): JsonResponse
     {
@@ -165,35 +156,32 @@ class OperationalCheckInController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $result,
-                'message' => "Group check-in completed for booking {$validated['booking_reference']}"
+                'message' => "Group check-in completed for booking {$validated['booking_reference']}",
             ]);
 
         } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
 
         } catch (EventManagementException $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 400);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred during group check-in'
+                'message' => 'An error occurred during group check-in',
             ], 500);
         }
     }
 
     /**
      * Get check-in statistics for an event
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getCheckInStatistics(int $eventId): JsonResponse
     {
@@ -203,22 +191,19 @@ class OperationalCheckInController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $statistics,
-                'message' => 'Check-in statistics retrieved successfully'
+                'message' => 'Check-in statistics retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred while retrieving statistics'
+                'message' => 'An error occurred while retrieving statistics',
             ], 500);
         }
     }
 
     /**
      * Get queue management data for crowd control
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getQueueManagement(int $eventId): JsonResponse
     {
@@ -228,22 +213,19 @@ class OperationalCheckInController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $queueData,
-                'message' => 'Queue management data retrieved successfully'
+                'message' => 'Queue management data retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred while retrieving queue data'
+                'message' => 'An error occurred while retrieving queue data',
             ], 500);
         }
     }
 
     /**
      * Monitor zone capacity in real-time
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function monitorZoneCapacity(int $eventId): JsonResponse
     {
@@ -253,22 +235,19 @@ class OperationalCheckInController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $capacityData,
-                'message' => 'Zone capacity data retrieved successfully'
+                'message' => 'Zone capacity data retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred while monitoring zone capacity'
+                'message' => 'An error occurred while monitoring zone capacity',
             ], 500);
         }
     }
 
     /**
      * Emergency check-in override for staff
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function emergencyOverride(Request $request): JsonResponse
     {
@@ -296,35 +275,32 @@ class OperationalCheckInController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $result,
-                'message' => 'Emergency override completed successfully'
+                'message' => 'Emergency override completed successfully',
             ]);
 
         } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
 
         } catch (EventManagementException $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ], 403);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred during emergency override'
+                'message' => 'An error occurred during emergency override',
             ], 500);
         }
     }
 
     /**
      * Get operational check-in dashboard data
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getOperationalDashboard(int $eventId): JsonResponse
     {
@@ -345,13 +321,13 @@ class OperationalCheckInController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $dashboard,
-                'message' => 'Operational dashboard data retrieved successfully'
+                'message' => 'Operational dashboard data retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred while retrieving dashboard data'
+                'message' => 'An error occurred while retrieving dashboard data',
             ], 500);
         }
     }

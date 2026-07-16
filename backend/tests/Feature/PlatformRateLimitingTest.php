@@ -30,8 +30,9 @@ class PlatformRateLimitingTest extends TestCase
     private function handle(string $path = '/api/v1/modules'): int
     {
         $request = Request::create($path, 'GET');
-        return (new PlatformRateLimitMiddleware())
-            ->handle($request, fn() => response('ok'))
+
+        return (new PlatformRateLimitMiddleware)
+            ->handle($request, fn () => response('ok'))
             ->getStatusCode();
     }
 
@@ -50,8 +51,8 @@ class PlatformRateLimitingTest extends TestCase
 
         // The 121st request is rate-limited.
         $request = Request::create('/api/v1/modules', 'GET');
-        $response = (new PlatformRateLimitMiddleware())
-            ->handle($request, fn() => response('ok'));
+        $response = (new PlatformRateLimitMiddleware)
+            ->handle($request, fn () => response('ok'));
 
         $this->assertEquals(429, $response->getStatusCode());
 
@@ -66,8 +67,8 @@ class PlatformRateLimitingTest extends TestCase
             $this->handle();
         }
 
-        $response = (new PlatformRateLimitMiddleware())
-            ->handle(Request::create('/api/v1/modules', 'GET'), fn() => response('ok'));
+        $response = (new PlatformRateLimitMiddleware)
+            ->handle(Request::create('/api/v1/modules', 'GET'), fn () => response('ok'));
 
         $body = json_decode($response->getContent(), true);
         $this->assertArrayHasKey('error', $body);

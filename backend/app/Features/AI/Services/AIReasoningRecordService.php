@@ -21,7 +21,7 @@ class AIReasoningRecordService
     /**
      * Record an AI reasoning trace
      *
-     * @param array $data The reasoning record data
+     * @param  array  $data  The reasoning record data
      * @return int The record ID
      */
     public function recordReasoning(array $data): int
@@ -30,6 +30,7 @@ class AIReasoningRecordService
             if ($value === null) {
                 return null;
             }
+
             return is_array($value) ? json_encode($value) : (string) $value;
         };
 
@@ -67,10 +68,6 @@ class AIReasoningRecordService
 
     /**
      * Update a reasoning record with output
-     *
-     * @param int $recordId
-     * @param array $data
-     * @return bool
      */
     public function updateRecord(int $recordId, array $data): bool
     {
@@ -83,7 +80,7 @@ class AIReasoningRecordService
             'cost' => $data['cost'] ?? null,
             'error' => $data['error'] ?? null,
             'updated_at' => now(),
-        ], fn($v) => $v !== null);
+        ], fn ($v) => $v !== null);
 
         return DB::table('ai_reasoning_records')
             ->where('id', $recordId)
@@ -92,10 +89,6 @@ class AIReasoningRecordService
 
     /**
      * Get reasoning records for a user
-     *
-     * @param int $userId
-     * @param int $limit
-     * @return array
      */
     public function getUserRecords(int $userId, int $limit = 50): array
     {
@@ -109,10 +102,6 @@ class AIReasoningRecordService
 
     /**
      * Get reasoning records for a tenant
-     *
-     * @param string $tenantId
-     * @param int $limit
-     * @return array
      */
     public function getTenantRecords(string $tenantId, int $limit = 100): array
     {
@@ -127,9 +116,7 @@ class AIReasoningRecordService
     /**
      * Get reasoning statistics for a tenant
      *
-     * @param string $tenantId
-     * @param string $period 'day', 'week', 'month'
-     * @return array
+     * @param  string  $period  'day', 'week', 'month'
      */
     public function getStats(string $tenantId, string $period = 'day'): array
     {
@@ -158,10 +145,7 @@ class AIReasoningRecordService
     /**
      * Check if an action was previously taken for an entity
      *
-     * @param string $entityType
-     * @param int|string $entityId
-     * @param string $action
-     * @return bool
+     * @param  int|string  $entityId
      */
     public function actionPreviouslyTaken(string $entityType, $entityId, string $action): bool
     {

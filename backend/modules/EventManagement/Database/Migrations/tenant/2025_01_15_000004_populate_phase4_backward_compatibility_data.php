@@ -7,7 +7,7 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
-     * 
+     *
      * This migration ensures backward compatibility by populating Phase 4 fields
      * for existing events with sensible defaults.
      */
@@ -18,7 +18,7 @@ return new class extends Migration
             ->where('slug', 'concert')
             ->value('id');
 
-        if (!$concertTypeId) {
+        if (! $concertTypeId) {
             // If Concert type doesn't exist, create it
             $concertTypeId = DB::table('event_types')->insertGetId([
                 'name' => 'Concert',
@@ -40,13 +40,13 @@ return new class extends Migration
 
         // Update sale window dates for events that don't have them
         // Use created_at as sale_start_date and event_date as sale_end_date
-        DB::statement("
+        DB::statement('
             UPDATE events 
             SET 
                 sale_start_date = COALESCE(sale_start_date, created_at),
                 sale_end_date = COALESCE(sale_end_date, event_date)
             WHERE sale_start_date IS NULL OR sale_end_date IS NULL
-        ");
+        ');
 
         // Make event_type_id NOT NULL after populating data
         DB::statement('ALTER TABLE events ALTER COLUMN event_type_id SET NOT NULL');

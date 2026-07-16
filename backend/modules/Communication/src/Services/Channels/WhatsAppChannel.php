@@ -3,8 +3,8 @@
 namespace Modules\Communication\Services\Channels;
 
 use Illuminate\Support\Facades\Log;
-use Modules\Communication\Models\CommunicationOutbox;
 use Modules\Communication\Models\CommunicationMessage;
+use Modules\Communication\Models\CommunicationOutbox;
 
 /**
  * WhatsAppChannel — Sends messages via WhatsApp Business API.
@@ -25,13 +25,13 @@ class WhatsAppChannel implements ChannelInterface
 
     public function send(CommunicationOutbox $outbox, CommunicationMessage $message): array
     {
-        if (!$this->isEnabled()) {
+        if (! $this->isEnabled()) {
             return ['success' => false, 'error' => 'WhatsApp channel is not enabled'];
         }
 
         try {
             $phone = $outbox->recipient_phone;
-            if (!$phone) {
+            if (! $phone) {
                 return ['success' => false, 'error' => 'No recipient phone number'];
             }
 
@@ -72,13 +72,15 @@ class WhatsAppChannel implements ChannelInterface
         // TODO: Implement Meta Cloud API integration
         // POST https://graph.facebook.com/v17.0/{phone_number_id}/messages
         Log::info('Communication: WhatsApp via Meta (stub)', compact('phone'));
-        return ['success' => true, 'external_id' => 'wa_meta_' . uniqid()];
+
+        return ['success' => true, 'external_id' => 'wa_meta_'.uniqid()];
     }
 
     protected function sendViaTwilio(string $phone, string $body, CommunicationMessage $message): array
     {
         // TODO: Implement Twilio WhatsApp integration
         Log::info('Communication: WhatsApp via Twilio (stub)', compact('phone'));
-        return ['success' => true, 'external_id' => 'wa_twilio_' . uniqid()];
+
+        return ['success' => true, 'external_id' => 'wa_twilio_'.uniqid()];
     }
 }

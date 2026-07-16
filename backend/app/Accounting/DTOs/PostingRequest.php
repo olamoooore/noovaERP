@@ -2,12 +2,10 @@
 
 namespace App\Accounting\DTOs;
 
-use Carbon\Carbon;
-
 class PostingRequest
 {
     /**
-     * @param PostingRequestLine[] $lines
+     * @param  PostingRequestLine[]  $lines
      */
     public function __construct(
         public readonly string $documentType,

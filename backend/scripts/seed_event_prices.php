@@ -1,4 +1,5 @@
 <?php
+
 // Run: php artisan tinker --execute="require 'scripts/seed_event_prices.php';"
 
 DB::statement('SET search_path TO "e255e52c-a4a6-4158-954a-af04408e9386", public');
@@ -8,13 +9,13 @@ try {
     DB::statement('ALTER TABLE events ADD COLUMN IF NOT EXISTS price DECIMAL(10,2) DEFAULT 0');
     echo "price column added\n";
 } catch (Exception $e) {
-    echo "price: " . $e->getMessage() . "\n";
+    echo 'price: '.$e->getMessage()."\n";
 }
 try {
     DB::statement('ALTER TABLE events ADD COLUMN IF NOT EXISTS image_url VARCHAR(500) NULL');
     echo "image_url column added\n";
 } catch (Exception $e) {
-    echo "image_url: " . $e->getMessage() . "\n";
+    echo 'image_url: '.$e->getMessage()."\n";
 }
 
 // Seed prices and images
@@ -38,5 +39,5 @@ DB::table('events')->where('id', 4)->update([
 echo "Prices and images seeded!\n";
 $events = DB::select('SELECT id, title, price FROM events');
 foreach ($events as $e) {
-    echo $e->id . ': ' . $e->title . ' - $' . $e->price . "\n";
+    echo $e->id.': '.$e->title.' - $'.$e->price."\n";
 }

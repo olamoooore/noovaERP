@@ -34,20 +34,29 @@ class FraudAlert extends Model
 
     // Severity constants
     public const SEVERITY_LOW = 'low';
+
     public const SEVERITY_MEDIUM = 'medium';
+
     public const SEVERITY_HIGH = 'high';
+
     public const SEVERITY_CRITICAL = 'critical';
 
     // Status constants
     public const STATUS_OPEN = 'open';
+
     public const STATUS_INVESTIGATING = 'investigating';
+
     public const STATUS_RESOLVED = 'resolved';
+
     public const STATUS_FALSE_POSITIVE = 'false_positive';
 
     // Entity type constants
     public const ENTITY_CUSTOMER = 'customer';
+
     public const ENTITY_IP_ADDRESS = 'ip_address';
+
     public const ENTITY_BOOKING = 'booking';
+
     public const ENTITY_SESSION = 'session';
 
     /**
@@ -120,7 +129,7 @@ class FraudAlert extends Model
     public function scopeForEntity($query, string $entityType, string $entityId)
     {
         return $query->where('entity_type', $entityType)
-                    ->where('entity_id', $entityId);
+            ->where('entity_id', $entityId);
     }
 
     /**
@@ -189,7 +198,7 @@ class FraudAlert extends Model
             'details' => $details,
             'timestamp' => now()->toISOString(),
         ];
-        
+
         $this->update(['actions_taken' => $actions]);
     }
 

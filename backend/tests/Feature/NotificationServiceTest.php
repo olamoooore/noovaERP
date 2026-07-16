@@ -5,14 +5,15 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\User;
-use App\Platform\Notifications\NotificationService;
-use App\Platform\Notifications\NotificationPreference;
 use App\Platform\Notifications\NotificationLog;
+use App\Platform\Notifications\NotificationPreference;
+use App\Platform\Notifications\NotificationService;
 use Tests\TenantTestCase;
 
 class NotificationServiceTest extends TenantTestCase
 {
     protected NotificationService $service;
+
     protected User $user;
 
     protected function setUp(): void

@@ -6,20 +6,20 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\EventManagement\Exceptions\ArtistManagementException;
 use Modules\EventManagement\Models\Artist;
-use Modules\EventManagement\Models\Group;
-use Modules\EventManagement\Models\GroupMember;
 use Modules\EventManagement\Models\ArtistEvent;
 use Modules\EventManagement\Models\Event;
-use Modules\EventManagement\Exceptions\ArtistManagementException;
+use Modules\EventManagement\Models\Group;
+use Modules\EventManagement\Models\GroupMember;
 
 /**
  * Artist Management Service
- * 
+ *
  * Handles CRUD operations for artists, groups, and their relationships.
  * Provides search, filtering, and performance history tracking capabilities
  * for K-POP artist management in multi-tenant environment.
- * 
+ *
  * Requirements: 12.1, 12.2, 12.4
  */
 class ArtistManagementService
@@ -75,7 +75,7 @@ class ArtistManagementService
             Log::info('Artist created successfully', [
                 'artist_id' => $artist->id,
                 'name' => $artist->name,
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
 
             return $artist;
@@ -85,9 +85,9 @@ class ArtistManagementService
             Log::error('Failed to create artist', [
                 'error' => $e->getMessage(),
                 'data' => $artistData,
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
-            throw new ArtistManagementException('Failed to create artist: ' . $e->getMessage());
+            throw new ArtistManagementException('Failed to create artist: '.$e->getMessage());
         }
     }
 
@@ -116,7 +116,7 @@ class ArtistManagementService
                 [
                     'original' => $originalData,
                     'updated' => $artist->toArray(),
-                    'changes' => $artist->getChanges()
+                    'changes' => $artist->getChanges(),
                 ]
             );
 
@@ -125,7 +125,7 @@ class ArtistManagementService
             Log::info('Artist updated successfully', [
                 'artist_id' => $artist->id,
                 'changes' => $artist->getChanges(),
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
 
             return $artist->fresh();
@@ -135,9 +135,9 @@ class ArtistManagementService
             Log::error('Failed to update artist', [
                 'artist_id' => $artistId,
                 'error' => $e->getMessage(),
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
-            throw new ArtistManagementException('Failed to update artist: ' . $e->getMessage());
+            throw new ArtistManagementException('Failed to update artist: '.$e->getMessage());
         }
     }
 
@@ -158,7 +158,7 @@ class ArtistManagementService
 
             // Check if artist has confirmed future events
             if ($artist->artistEvents()->where('status', 'confirmed')
-                ->whereHas('event', fn($q) => $q->where('start_date', '>', now()))->exists()) {
+                ->whereHas('event', fn ($q) => $q->where('start_date', '>', now()))->exists()) {
                 throw new ArtistManagementException('Cannot delete artist with confirmed future events');
             }
 
@@ -176,7 +176,7 @@ class ArtistManagementService
 
             Log::info('Artist deleted successfully', [
                 'artist_id' => $artistId,
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
 
             return true;
@@ -186,9 +186,9 @@ class ArtistManagementService
             Log::error('Failed to delete artist', [
                 'artist_id' => $artistId,
                 'error' => $e->getMessage(),
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
-            throw new ArtistManagementException('Failed to delete artist: ' . $e->getMessage());
+            throw new ArtistManagementException('Failed to delete artist: '.$e->getMessage());
         }
     }
 
@@ -241,7 +241,7 @@ class ArtistManagementService
             Log::info('Group created successfully', [
                 'group_id' => $group->id,
                 'name' => $group->name,
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
 
             return $group;
@@ -251,9 +251,9 @@ class ArtistManagementService
             Log::error('Failed to create group', [
                 'error' => $e->getMessage(),
                 'data' => $groupData,
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
-            throw new ArtistManagementException('Failed to create group: ' . $e->getMessage());
+            throw new ArtistManagementException('Failed to create group: '.$e->getMessage());
         }
     }
 
@@ -282,7 +282,7 @@ class ArtistManagementService
                 [
                     'original' => $originalData,
                     'updated' => $group->toArray(),
-                    'changes' => $group->getChanges()
+                    'changes' => $group->getChanges(),
                 ]
             );
 
@@ -291,7 +291,7 @@ class ArtistManagementService
             Log::info('Group updated successfully', [
                 'group_id' => $group->id,
                 'changes' => $group->getChanges(),
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
 
             return $group->fresh();
@@ -301,9 +301,9 @@ class ArtistManagementService
             Log::error('Failed to update group', [
                 'group_id' => $groupId,
                 'error' => $e->getMessage(),
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
-            throw new ArtistManagementException('Failed to update group: ' . $e->getMessage());
+            throw new ArtistManagementException('Failed to update group: '.$e->getMessage());
         }
     }
 
@@ -324,7 +324,7 @@ class ArtistManagementService
 
             // Check if group has confirmed future events
             if ($group->artistEvents()->where('status', 'confirmed')
-                ->whereHas('event', fn($q) => $q->where('start_date', '>', now()))->exists()) {
+                ->whereHas('event', fn ($q) => $q->where('start_date', '>', now()))->exists()) {
                 throw new ArtistManagementException('Cannot delete group with confirmed future events');
             }
 
@@ -342,7 +342,7 @@ class ArtistManagementService
 
             Log::info('Group deleted successfully', [
                 'group_id' => $groupId,
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
 
             return true;
@@ -352,9 +352,9 @@ class ArtistManagementService
             Log::error('Failed to delete group', [
                 'group_id' => $groupId,
                 'error' => $e->getMessage(),
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
-            throw new ArtistManagementException('Failed to delete group: ' . $e->getMessage());
+            throw new ArtistManagementException('Failed to delete group: '.$e->getMessage());
         }
     }
 
@@ -389,7 +389,7 @@ class ArtistManagementService
                     'group_name' => $group->name,
                     'artist_name' => $artist->name,
                     'positions' => $memberData['positions'] ?? [],
-                    'is_leader' => $memberData['is_leader'] ?? false
+                    'is_leader' => $memberData['is_leader'] ?? false,
                 ]
             );
 
@@ -399,7 +399,7 @@ class ArtistManagementService
                 'group_id' => $groupId,
                 'artist_id' => $artistId,
                 'member_id' => $groupMember->id,
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
 
             return $groupMember;
@@ -410,16 +410,16 @@ class ArtistManagementService
                 'group_id' => $groupId,
                 'artist_id' => $artistId,
                 'error' => $e->getMessage(),
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
-            throw new ArtistManagementException('Failed to add group member: ' . $e->getMessage());
+            throw new ArtistManagementException('Failed to add group member: '.$e->getMessage());
         }
     }
 
     /**
      * Remove member from group
      */
-    public function removeGroupMember(int $groupId, int $artistId, string $reason = null): bool
+    public function removeGroupMember(int $groupId, int $artistId, ?string $reason = null): bool
     {
         try {
             DB::beginTransaction();
@@ -432,7 +432,7 @@ class ArtistManagementService
                 ->where('status', 'active')
                 ->first();
 
-            if (!$groupMember) {
+            if (! $groupMember) {
                 throw new ArtistManagementException('Artist is not an active member of this group');
             }
 
@@ -446,7 +446,7 @@ class ArtistManagementService
                 [
                     'group_name' => $group->name,
                     'artist_name' => $artist->name,
-                    'reason' => $reason
+                    'reason' => $reason,
                 ]
             );
 
@@ -456,7 +456,7 @@ class ArtistManagementService
                 'group_id' => $groupId,
                 'artist_id' => $artistId,
                 'reason' => $reason,
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
 
             return true;
@@ -467,9 +467,9 @@ class ArtistManagementService
                 'group_id' => $groupId,
                 'artist_id' => $artistId,
                 'error' => $e->getMessage(),
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
-            throw new ArtistManagementException('Failed to remove group member: ' . $e->getMessage());
+            throw new ArtistManagementException('Failed to remove group member: '.$e->getMessage());
         }
     }
 
@@ -517,7 +517,7 @@ class ArtistManagementService
                 [
                     'artist_name' => $artist->name,
                     'event_title' => $event->title,
-                    'role' => $role
+                    'role' => $role,
                 ]
             );
 
@@ -527,7 +527,7 @@ class ArtistManagementService
                 'artist_id' => $artistId,
                 'event_id' => $eventId,
                 'role' => $role,
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
 
             return $artistEvent;
@@ -538,9 +538,9 @@ class ArtistManagementService
                 'artist_id' => $artistId,
                 'event_id' => $eventId,
                 'error' => $e->getMessage(),
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
-            throw new ArtistManagementException('Failed to link artist to event: ' . $e->getMessage());
+            throw new ArtistManagementException('Failed to link artist to event: '.$e->getMessage());
         }
     }
 
@@ -588,7 +588,7 @@ class ArtistManagementService
                 [
                     'group_name' => $group->name,
                     'event_title' => $event->title,
-                    'role' => $role
+                    'role' => $role,
                 ]
             );
 
@@ -598,7 +598,7 @@ class ArtistManagementService
                 'group_id' => $groupId,
                 'event_id' => $eventId,
                 'role' => $role,
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
 
             return $artistEvent;
@@ -609,9 +609,9 @@ class ArtistManagementService
                 'group_id' => $groupId,
                 'event_id' => $eventId,
                 'error' => $e->getMessage(),
-                'tenant_id' => tenant('id')
+                'tenant_id' => tenant('id'),
             ]);
-            throw new ArtistManagementException('Failed to link group to event: ' . $e->getMessage());
+            throw new ArtistManagementException('Failed to link group to event: '.$e->getMessage());
         }
     }
 
@@ -623,37 +623,37 @@ class ArtistManagementService
         $query = Artist::query();
 
         // Apply search term
-        if (!empty($filters['search'])) {
+        if (! empty($filters['search'])) {
             $query->search($filters['search']);
         }
 
         // Apply status filter
-        if (!empty($filters['status'])) {
+        if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
 
         // Apply agency filter
-        if (!empty($filters['agency'])) {
+        if (! empty($filters['agency'])) {
             $query->byAgency($filters['agency']);
         }
 
         // Apply debut year filter
-        if (!empty($filters['debut_year'])) {
+        if (! empty($filters['debut_year'])) {
             $query->byDebutYear($filters['debut_year']);
         }
 
         // Apply solo filter
-        if (!empty($filters['solo']) && $filters['solo'] === true) {
+        if (! empty($filters['solo']) && $filters['solo'] === true) {
             $query->solo();
         }
 
         // Apply position filter
-        if (!empty($filters['position'])) {
+        if (! empty($filters['position'])) {
             $query->whereJsonContains('positions', $filters['position']);
         }
 
         // Apply gender filter
-        if (!empty($filters['gender'])) {
+        if (! empty($filters['gender'])) {
             $query->where('gender', $filters['gender']);
         }
 
@@ -673,32 +673,32 @@ class ArtistManagementService
         $query = Group::query();
 
         // Apply search term
-        if (!empty($filters['search'])) {
+        if (! empty($filters['search'])) {
             $query->search($filters['search']);
         }
 
         // Apply status filter
-        if (!empty($filters['status'])) {
+        if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
 
         // Apply agency filter
-        if (!empty($filters['agency'])) {
+        if (! empty($filters['agency'])) {
             $query->byAgency($filters['agency']);
         }
 
         // Apply debut year filter
-        if (!empty($filters['debut_year'])) {
+        if (! empty($filters['debut_year'])) {
             $query->byDebutYear($filters['debut_year']);
         }
 
         // Apply member count filter
-        if (!empty($filters['min_members']) || !empty($filters['max_members'])) {
+        if (! empty($filters['min_members']) || ! empty($filters['max_members'])) {
             $query->byMemberCount($filters['min_members'] ?? null, $filters['max_members'] ?? null);
         }
 
         // Apply genre filter
-        if (!empty($filters['genre'])) {
+        if (! empty($filters['genre'])) {
             $query->whereJsonContains('genres', $filters['genre']);
         }
 
@@ -716,6 +716,7 @@ class ArtistManagementService
     public function getArtistPerformanceHistory(int $artistId): Collection
     {
         $artist = Artist::findOrFail($artistId);
+
         return $artist->getPerformanceHistory();
     }
 
@@ -725,6 +726,7 @@ class ArtistManagementService
     public function getGroupPerformanceHistory(int $groupId): Collection
     {
         $group = Group::findOrFail($groupId);
+
         return $group->getPerformanceHistory();
     }
 
@@ -734,6 +736,7 @@ class ArtistManagementService
     public function getArtistPerformanceStats(int $artistId): array
     {
         $artist = Artist::findOrFail($artistId);
+
         return $artist->getPerformanceStats();
     }
 
@@ -743,13 +746,14 @@ class ArtistManagementService
     public function getGroupPerformanceStats(int $groupId): array
     {
         $group = Group::findOrFail($groupId);
+
         return $group->getPerformanceStats();
     }
 
     /**
      * Validate artist data
      */
-    private function validateArtistData(array $data, int $excludeId = null): void
+    private function validateArtistData(array $data, ?int $excludeId = null): void
     {
         if (empty($data['name'])) {
             throw new ArtistManagementException('Artist name is required');
@@ -759,7 +763,7 @@ class ArtistManagementService
         $query = Artist::where('tenant_id', tenant('id'))
             ->where('name', $data['name']);
 
-        if (!empty($data['stage_name'])) {
+        if (! empty($data['stage_name'])) {
             $query->orWhere('stage_name', $data['stage_name']);
         }
 
@@ -775,7 +779,7 @@ class ArtistManagementService
     /**
      * Validate group data
      */
-    private function validateGroupData(array $data, int $excludeId = null): void
+    private function validateGroupData(array $data, ?int $excludeId = null): void
     {
         if (empty($data['name'])) {
             throw new ArtistManagementException('Group name is required');

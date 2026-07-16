@@ -3,18 +3,18 @@
 namespace Modules\EventManagement\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Modules\EventManagement\Services\PurchaseService;
-use Modules\EventManagement\Exceptions\InvalidAcquisitionModeException;
-use Modules\EventManagement\Exceptions\SaleNotStartedException;
-use Modules\EventManagement\Exceptions\SaleClosedException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
+use Modules\EventManagement\Exceptions\InvalidAcquisitionModeException;
+use Modules\EventManagement\Exceptions\SaleClosedException;
+use Modules\EventManagement\Exceptions\SaleNotStartedException;
+use Modules\EventManagement\Services\PurchaseService;
 
 /**
  * Purchase Controller
- * 
+ *
  * Handles ticket purchase operations with acquisition mode and sale window validation.
  * Requirements: 3.4, 4.4, 8.1, 8.2, 8.3, 8.7
  */
@@ -29,14 +29,11 @@ class PurchaseController extends Controller
 
     /**
      * Purchase tickets for an event
-     * 
+     *
      * Requirements: 3.4 - Direct purchase functionality
      * Requirements: 4.4 - Prevent purchase for bidding events
      * Requirements: 8.1, 8.2, 8.3 - Sale window enforcement
      * Requirements: 8.7 - Descriptive error messages
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function purchaseTickets(Request $request): JsonResponse
     {
@@ -65,7 +62,7 @@ class PurchaseController extends Controller
 
             return response()->json([
                 'data' => $booking,
-                'message' => 'Tickets purchased successfully'
+                'message' => 'Tickets purchased successfully',
             ], Response::HTTP_CREATED);
 
         } catch (InvalidAcquisitionModeException $e) {
@@ -84,9 +81,6 @@ class PurchaseController extends Controller
     /**
      * Handle acquisition mode errors
      * Requirements: 4.4, 8.7 - Descriptive error messages
-     * 
-     * @param InvalidAcquisitionModeException $e
-     * @return JsonResponse
      */
     protected function handleAcquisitionModeError(InvalidAcquisitionModeException $e): JsonResponse
     {
@@ -106,17 +100,13 @@ class PurchaseController extends Controller
                     'attempted_action' => 'purchase',
                 ],
                 'request_id' => $requestId,
-            ]
+            ],
         ], Response::HTTP_BAD_REQUEST);
     }
 
     /**
      * Handle sale window errors
      * Requirements: 8.1, 8.2, 8.7 - Descriptive error messages for sale window violations
-     * 
-     * @param \Exception $e
-     * @param string $status
-     * @return JsonResponse
      */
     protected function handleSaleWindowError(\Exception $e, string $status): JsonResponse
     {
@@ -139,16 +129,13 @@ class PurchaseController extends Controller
                     'sale_status' => $status,
                 ],
                 'request_id' => $requestId,
-            ]
+            ],
         ], $statusCode);
     }
 
     /**
      * Handle validation errors
      * Requirements: 8.7 - Descriptive error messages
-     * 
-     * @param \Illuminate\Validation\ValidationException $e
-     * @return JsonResponse
      */
     protected function handleValidationError(\Illuminate\Validation\ValidationException $e): JsonResponse
     {
@@ -160,16 +147,13 @@ class PurchaseController extends Controller
                 'message' => 'The provided data is invalid',
                 'validation_errors' => $e->errors(),
                 'request_id' => $requestId,
-            ]
+            ],
         ], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 
     /**
      * Handle generic errors
      * Requirements: 8.7 - Descriptive error messages
-     * 
-     * @param \Exception $e
-     * @return JsonResponse
      */
     protected function handleGenericError(\Exception $e): JsonResponse
     {
@@ -188,7 +172,7 @@ class PurchaseController extends Controller
                     'code' => 'RESOURCE_NOT_FOUND',
                     'message' => 'The requested resource was not found',
                     'request_id' => $requestId,
-                ]
+                ],
             ], Response::HTTP_NOT_FOUND);
         }
 
@@ -198,7 +182,7 @@ class PurchaseController extends Controller
                     'code' => 'INVALID_ARGUMENT',
                     'message' => $e->getMessage(),
                     'request_id' => $requestId,
-                ]
+                ],
             ], Response::HTTP_BAD_REQUEST);
         }
 
@@ -207,7 +191,7 @@ class PurchaseController extends Controller
                 'code' => 'INTERNAL_SERVER_ERROR',
                 'message' => 'An unexpected error occurred while processing your purchase',
                 'request_id' => $requestId,
-            ]
+            ],
         ], Response::HTTP_INTERNAL_SERVER_ERROR);
     }
 }

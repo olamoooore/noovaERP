@@ -8,11 +8,11 @@ use App\SuperAdmin\Application\FeatureGateService;
 use App\SuperAdmin\Domain\CatalogItem;
 use App\SuperAdmin\Domain\CatalogItemType;
 use App\SuperAdmin\Domain\TenantEntitlement;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Str;
 use Stancl\Tenancy\Tenancy;
 use Tests\TestCase;
@@ -28,6 +28,7 @@ use Tests\TestCase;
 class ControlPlaneProjectionTest extends TestCase
 {
     private FeatureGateService $featureGate;
+
     private string $tenantId;
 
     protected function setUp(): void
@@ -35,10 +36,10 @@ class ControlPlaneProjectionTest extends TestCase
         parent::setUp();
 
         $this->featureGate = app(FeatureGateService::class);
-        $this->tenantId    = (string) Str::uuid();
+        $this->tenantId = (string) Str::uuid();
 
         // Ensure we operate on the central (public) schema
-        DB::statement("SET search_path TO public");
+        DB::statement('SET search_path TO public');
 
         $this->ensureLegacyFeatureTablesExist();
         $this->ensureCatalogTypeExists();
@@ -48,7 +49,7 @@ class ControlPlaneProjectionTest extends TestCase
     protected function tearDown(): void
     {
         // Clean up entitlements created for this test tenant
-        DB::statement("SET search_path TO public");
+        DB::statement('SET search_path TO public');
         TenantEntitlement::where('tenant_id', $this->tenantId)->delete();
         $this->featureGate->invalidate($this->tenantId);
 
@@ -210,7 +211,7 @@ class ControlPlaneProjectionTest extends TestCase
      */
     public function test_feature_is_enabled_for_tenant_throws_logic_exception(): void
     {
-        $feature = new \App\Models\Feature();
+        $feature = new \App\Models\Feature;
 
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessageMatches('/isEnabledForTenant\(\) is retired/');
@@ -231,7 +232,7 @@ class ControlPlaneProjectionTest extends TestCase
     {
         $controllerDir = base_path('modules/EventManagement/Http/Controllers');
 
-        if (!is_dir($controllerDir)) {
+        if (! is_dir($controllerDir)) {
             $this->markTestSkipped('EventManagement controller directory not found');
         }
 
@@ -270,7 +271,7 @@ class ControlPlaneProjectionTest extends TestCase
      */
     private function writeEntitlement(string $tenantId, string $featureKey, bool $entitled): void
     {
-        DB::statement("SET search_path TO public");
+        DB::statement('SET search_path TO public');
         $this->featureGate->invalidate($tenantId);
 
         // Find or create a catalog item for the key
@@ -287,9 +288,9 @@ class ControlPlaneProjectionTest extends TestCase
         TenantEntitlement::updateOrCreate(
             ['tenant_id' => $tenantId, 'catalog_item_id' => $item->id],
             [
-                'is_entitled'   => $entitled,
-                'source'        => $entitled ? TenantEntitlement::SOURCE_TIER_INCLUDED : TenantEntitlement::SOURCE_OVERRIDE_EXCLUDE,
-                'resolved_at'   => now(),
+                'is_entitled' => $entitled,
+                'source' => $entitled ? TenantEntitlement::SOURCE_TIER_INCLUDED : TenantEntitlement::SOURCE_OVERRIDE_EXCLUDE,
+                'resolved_at' => now(),
             ]
         );
 
@@ -317,7 +318,8 @@ class ControlPlaneProjectionTest extends TestCase
         $tenancy = app(Tenancy::class);
 
         $this->app->bind(EnsureEntitlementAccess::class, function () use ($featureGate, $tenancy, $testTenantId) {
-            return new class($featureGate, $tenancy, $testTenantId) extends EnsureEntitlementAccess {
+            return new class($featureGate, $tenancy, $testTenantId) extends EnsureEntitlementAccess
+            {
                 public function __construct(
                     FeatureGateService $featureGate,
                     Tenancy $tenancy,
@@ -349,7 +351,7 @@ class ControlPlaneProjectionTest extends TestCase
 
     private function ensureLegacyFeatureTablesExist(): void
     {
-        if (!Schema::hasTable('features')) {
+        if (! Schema::hasTable('features')) {
             Schema::create('features', function (Blueprint $table) {
                 $table->id();
                 $table->string('key')->unique();
@@ -361,7 +363,7 @@ class ControlPlaneProjectionTest extends TestCase
             });
         }
 
-        if (!Schema::hasTable('tenant_features')) {
+        if (! Schema::hasTable('tenant_features')) {
             Schema::create('tenant_features', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('feature_id');
@@ -375,7 +377,7 @@ class ControlPlaneProjectionTest extends TestCase
 
     private function forceNonCoreFeatures(array $keys): void
     {
-        if (!Schema::hasTable('features')) {
+        if (! Schema::hasTable('features')) {
             return;
         }
 

@@ -14,13 +14,13 @@ return new class extends Migration
         Schema::table('bookings', function (Blueprint $table) {
             // Add customer relationship for loyalty tracking
             $table->foreignId('customer_id')->nullable()->after('event_id')->constrained('customers')->onDelete('set null');
-            
+
             // Add original amount to track discounts
             $table->decimal('original_amount', 10, 2)->nullable()->after('total_amount');
-            
+
             // Add tier benefits tracking
             $table->json('tier_benefits_applied')->nullable()->after('consent_marketing');
-            
+
             // Add index for customer lookups
             $table->index(['customer_id', 'created_at']);
         });

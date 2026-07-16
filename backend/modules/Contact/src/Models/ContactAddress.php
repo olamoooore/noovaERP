@@ -11,8 +11,11 @@ class ContactAddress extends Model
     use HasFactory, SoftDeletes;
 
     protected $table = 'contact_addresses';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [

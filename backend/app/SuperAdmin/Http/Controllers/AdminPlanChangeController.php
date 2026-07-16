@@ -23,18 +23,18 @@ class AdminPlanChangeController extends Controller
     public function store(Request $request, string $tenantId): JsonResponse
     {
         $data = $request->validate([
-            'to_family_id'   => ['required', 'integer', 'exists:plan_families,id'],
+            'to_family_id' => ['required', 'integer', 'exists:plan_families,id'],
             'effective_date' => ['required', 'date', 'after_or_equal:today'],
-            'reason'         => ['nullable', 'string', 'max:500'],
+            'reason' => ['nullable', 'string', 'max:500'],
         ]);
 
         try {
             $change = $this->service->requestChange(
-                tenantId:      $tenantId,
-                toFamilyId:    (int) $data['to_family_id'],
+                tenantId: $tenantId,
+                toFamilyId: (int) $data['to_family_id'],
                 effectiveDate: $data['effective_date'],
-                reason:        $data['reason'] ?? null,
-                adminId:       Auth::id(),
+                reason: $data['reason'] ?? null,
+                adminId: Auth::id(),
             );
         } catch (InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -61,7 +61,7 @@ class AdminPlanChangeController extends Controller
     public function preview(Request $request, string $tenantId): JsonResponse
     {
         $data = $request->validate([
-            'to_family_id'   => ['required', 'integer', 'exists:plan_families,id'],
+            'to_family_id' => ['required', 'integer', 'exists:plan_families,id'],
             'effective_date' => ['required', 'date', 'after_or_equal:today'],
         ]);
 

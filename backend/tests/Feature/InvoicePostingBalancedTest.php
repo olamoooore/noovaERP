@@ -2,17 +2,14 @@
 
 namespace Tests\Feature;
 
-use Tests\TenantTestCase;
-use App\Models\User;
 use App\Models\Customer;
-use App\Models\Product;
 use App\Models\Invoice;
-use App\Models\JournalEntry;
 use App\Models\JournalEntryLink;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Artisan;
+use App\Models\Product;
 use App\Models\Tenant;
-use App\Models\JournalEntryLine;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 
 class InvoicePostingBalancedTest extends TenantTestCase
 {
@@ -56,7 +53,7 @@ class InvoicePostingBalancedTest extends TenantTestCase
         $invoiceId = $response->json('id');
 
         // Step 2: post to GL
-        $sendResponse = $this->actingAs($user)->postJson('/api/v1/accounting/invoices/' . $invoiceId . '/send');
+        $sendResponse = $this->actingAs($user)->postJson('/api/v1/accounting/invoices/'.$invoiceId.'/send');
         $sendResponse->assertOk();
 
         // Step 3: validate DB state
@@ -69,8 +66,12 @@ class InvoicePostingBalancedTest extends TenantTestCase
         $this->assertGreaterThanOrEqual(2, $je->lines->count(), 'At least two GL lines required');
 
         // Balance check: sum of debits equals sum of credits
-        $debits = $je->lines->sum(function($l){ return (float) $l->debit; });
-        $credits = $je->lines->sum(function($l){ return (float) $l->credit; });
+        $debits = $je->lines->sum(function ($l) {
+            return (float) $l->debit;
+        });
+        $credits = $je->lines->sum(function ($l) {
+            return (float) $l->credit;
+        });
         $this->assertTrue(abs($debits - $credits) < 0.01, "Unbalanced journal: debits=$debits vs credits=$credits");
 
         // JournalEntryLink post mapping exists

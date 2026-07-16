@@ -2,27 +2,32 @@
 
 namespace Modules\EventManagement\Services;
 
-use Modules\EventManagement\Models\Booking;
-use Modules\EventManagement\Models\BookingAttendee;
-use Modules\EventManagement\Models\Event;
-use Modules\EventManagement\Models\EventTicketType;
-use Modules\EventManagement\Models\Customer;
-use Modules\EventManagement\Services\BookingFactsService;
-use Modules\EventManagement\Services\CapacityReservationService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\EventManagement\Models\Booking;
+use Modules\EventManagement\Models\BookingAttendee;
+use Modules\EventManagement\Models\Customer;
+use Modules\EventManagement\Models\Event;
 
 class BookingService
 {
     protected TenantSchemaManager $tenantSchemaManager;
+
     protected AuditService $auditService;
+
     protected FanTierService $fanTierService;
+
     protected LoyaltyService $loyaltyService;
+
     protected FraudDetectionService $fraudDetectionService;
+
     protected AntiAbuseService $antiAbuseService;
+
     protected BookingFactsService $bookingFactsService;
+
     protected CapacityReservationService $capacityReservationService;
+
     protected OutboxService $outboxService;
 
     // Valid state transitions based on the state machine design
@@ -31,11 +36,11 @@ class BookingService
         'pending' => ['confirmed', 'cancelled'],
         'confirmed' => ['booked', 'cancelled'],
         'booked' => ['cancelled'],
-        'cancelled' => [] // Terminal state
+        'cancelled' => [], // Terminal state
     ];
 
     public function __construct(
-        TenantSchemaManager $tenantSchemaManager, 
+        TenantSchemaManager $tenantSchemaManager,
         AuditService $auditService,
         FanTierService $fanTierService,
         LoyaltyService $loyaltyService,
@@ -68,19 +73,19 @@ class BookingService
     {
         return DB::transaction(function () use ($bookingData) {
             $tenantId = $this->resolveTenantId($bookingData['tenant_id'] ?? null);
-            
+
             // Step 1: Fraud Detection and Anti-Abuse Checks
             $fraudAnalysis = $this->performFraudChecks($tenantId, $bookingData);
-            
+
             if ($fraudAnalysis['blocked']) {
                 throw new \InvalidArgumentException($fraudAnalysis['reason']);
             }
-            
+
             // Step 2: Get event and validate it can accept bookings
             $event = Event::findOrFail($bookingData['event_id']);
-            
-            if (!$event->canAcceptBookings()) {
-                throw new \InvalidArgumentException("Event cannot accept new bookings");
+
+            if (! $event->canAcceptBookings()) {
+                throw new \InvalidArgumentException('Event cannot accept new bookings');
             }
 
             // Step 3: Check tier-based booking eligibility if customer_id is provided
@@ -91,8 +96,8 @@ class BookingService
                     $bookingData['event_id'],
                     $bookingData['attendees'] ?? []
                 );
-                
-                if (!$tierCheck['eligible']) {
+
+                if (! $tierCheck['eligible']) {
                     throw new \InvalidArgumentException($tierCheck['reason']);
                 }
             }
@@ -124,7 +129,7 @@ class BookingService
             // Step 7: Apply tier-based discounts if applicable
             $finalAmount = $bookingData['total_amount'];
             $appliedDiscounts = [];
-            
+
             if (isset($bookingData['customer_id'])) {
                 $discountResult = $this->applyTierDiscounts(
                     $tenantId,
@@ -241,7 +246,7 @@ class BookingService
             $fromState = $booking->state;
 
             // Validate state transition
-            if (!$this->validateStateTransition($fromState, $toState)) {
+            if (! $this->validateStateTransition($fromState, $toState)) {
                 throw new \InvalidArgumentException("Invalid state transition from '{$fromState}' to '{$toState}'");
             }
 
@@ -259,7 +264,7 @@ class BookingService
                 [
                     'from_state' => $fromState,
                     'to_state' => $toState,
-                    'booking_reference' => $booking->booking_reference
+                    'booking_reference' => $booking->booking_reference,
                 ]
             );
 
@@ -287,7 +292,7 @@ class BookingService
             // Transition based on payment status
             if ($paymentData['status'] === 'confirmed' || $paymentData['status'] === 'success') {
                 $booking = $this->transitionState($booking->id, 'confirmed');
-                
+
                 // Capture payment confirmation facts
                 $this->bookingFactsService->createAnalyticsFact('payment_confirmed', $booking, [
                     'payment_reference' => $paymentData['payment_reference'],
@@ -297,7 +302,7 @@ class BookingService
                     'payment_timestamp' => $paymentData['timestamp'] ?? now()->toISOString(),
                     'payment_processing_time' => $paymentData['processing_time_ms'] ?? null,
                 ]);
-                
+
                 // Create outbox event for payment confirmation side effects
                 $this->outboxService->createEvent(
                     'booking',
@@ -312,7 +317,7 @@ class BookingService
                         'payment_currency' => $paymentData['currency'] ?? $booking->currency,
                     ]
                 );
-                
+
             } elseif ($paymentData['status'] === 'failed' || $paymentData['status'] === 'cancelled') {
                 $booking = $this->transitionState($booking->id, 'cancelled');
             }
@@ -325,7 +330,7 @@ class BookingService
                 [
                     'payment_reference' => $paymentData['payment_reference'],
                     'payment_status' => $paymentData['status'],
-                    'booking_reference' => $bookingReference
+                    'booking_reference' => $bookingReference,
                 ]
             );
 
@@ -345,7 +350,7 @@ class BookingService
 
             // Check if booking can be cancelled
             if ($booking->state === 'cancelled') {
-                throw new \InvalidArgumentException("Booking is already cancelled");
+                throw new \InvalidArgumentException('Booking is already cancelled');
             }
 
             // Get attendee count before transitioning state
@@ -360,7 +365,7 @@ class BookingService
                 'cancelled_tickets' => $attendeeCount,
                 'original_amount' => $booking->total_amount,
                 'refund_eligible' => $this->isRefundEligible($booking),
-                'days_before_event' => $booking->event->event_date ? 
+                'days_before_event' => $booking->event->event_date ?
                     now()->diffInDays($booking->event->event_date, false) : null,
                 'booking_age_hours' => $booking->created_at->diffInHours(now()),
             ]);
@@ -389,7 +394,7 @@ class BookingService
                     'reason' => $reason,
                     'booking_reference' => $booking->booking_reference,
                     'released_capacity' => $attendeeCount,
-                    'event_id' => $booking->event_id
+                    'event_id' => $booking->event_id,
                 ]
             );
 
@@ -403,7 +408,7 @@ class BookingService
      */
     public function validateStateTransition(string $fromState, string $toState): bool
     {
-        if (!isset(self::VALID_TRANSITIONS[$fromState])) {
+        if (! isset(self::VALID_TRANSITIONS[$fromState])) {
             return false;
         }
 
@@ -444,12 +449,12 @@ class BookingService
      */
     private function isRefundEligible(Booking $booking): bool
     {
-        if (!$booking->event->event_date) {
+        if (! $booking->event->event_date) {
             return false;
         }
-        
+
         $hoursBeforeEvent = now()->diffInHours($booking->event->event_date, false);
-        
+
         // Default refund policy: eligible if cancelled more than 24 hours before event
         return $hoursBeforeEvent > 24;
     }
@@ -460,7 +465,7 @@ class BookingService
     private function generateBookingReference(): string
     {
         do {
-            $reference = 'BK' . strtoupper(Str::random(8));
+            $reference = 'BK'.strtoupper(Str::random(8));
         } while (Booking::where('booking_reference', $reference)->exists());
 
         return $reference;
@@ -487,7 +492,7 @@ class BookingService
                             $booking->capacity_reservation_token,
                             $booking->id
                         );
-                        
+
                         // Log successful confirmation
                         $this->auditService->logActivity(
                             'capacity_reservation_confirmed',
@@ -499,11 +504,11 @@ class BookingService
                                 'available_capacity_after' => $confirmResult['available_capacity_after'],
                             ]
                         );
-                        
+
                     } catch (\Exception $e) {
                         // If reservation confirmation fails, the booking cannot be confirmed
                         throw new \InvalidArgumentException(
-                            "Cannot confirm booking: " . $e->getMessage()
+                            'Cannot confirm booking: '.$e->getMessage()
                         );
                     }
                 }
@@ -525,7 +530,7 @@ class BookingService
                             $booking->capacity_reservation_token,
                             "Booking cancelled: {$booking->booking_reference}"
                         );
-                        
+
                         // Log successful release
                         $this->auditService->logActivity(
                             'capacity_reservation_released',
@@ -538,13 +543,13 @@ class BookingService
                                 'reason' => $releaseResult['reason'],
                             ]
                         );
-                        
+
                     } catch (\Exception $e) {
                         // Log error but don't fail the cancellation
                         \Log::error('Failed to release capacity reservation during cancellation', [
                             'booking_id' => $booking->id,
                             'reservation_token' => $booking->capacity_reservation_token,
-                            'error' => $e->getMessage()
+                            'error' => $e->getMessage(),
                         ]);
                     }
                 }
@@ -557,22 +562,22 @@ class BookingService
      */
     private function validateCapacityReservation(Booking $booking): void
     {
-        if (!$booking->capacity_reservation_token) {
-            throw new \InvalidArgumentException("No capacity reservation found for booking");
+        if (! $booking->capacity_reservation_token) {
+            throw new \InvalidArgumentException('No capacity reservation found for booking');
         }
-        
+
         $reservation = $this->capacityReservationService->getReservation($booking->capacity_reservation_token);
-        
-        if (!$reservation) {
-            throw new \InvalidArgumentException("Capacity reservation not found");
+
+        if (! $reservation) {
+            throw new \InvalidArgumentException('Capacity reservation not found');
         }
-        
+
         if ($reservation['status'] !== 'active') {
-            throw new \InvalidArgumentException("Capacity reservation is not active: " . $reservation['status']);
+            throw new \InvalidArgumentException('Capacity reservation is not active: '.$reservation['status']);
         }
-        
+
         if ($reservation['is_expired']) {
-            throw new \InvalidArgumentException("Capacity reservation has expired");
+            throw new \InvalidArgumentException('Capacity reservation has expired');
         }
     }
 
@@ -585,13 +590,15 @@ class BookingService
     {
         try {
             $availableCapacity = $this->capacityReservationService->calculateRealTimeAvailableCapacity($event);
+
             return $availableCapacity >= $requestedTickets;
         } catch (\Exception $e) {
             \Log::error('Failed to check real-time capacity', [
                 'event_id' => $event->id,
                 'requested_tickets' => $requestedTickets,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -607,7 +614,7 @@ class BookingService
     {
         $event = Event::findOrFail($eventId);
         $tenantId = $this->resolveTenantId($tenantId);
-        
+
         $result = [
             'can_book' => false,
             'reason' => null,
@@ -619,8 +626,9 @@ class BookingService
             'identity_verification_required' => false,
         ];
 
-        if (!$event->canAcceptBookings()) {
+        if (! $event->canAcceptBookings()) {
             $result['reason'] = 'Event is not accepting bookings';
+
             return $result;
         }
 
@@ -628,40 +636,44 @@ class BookingService
         try {
             $availableCapacity = $this->capacityReservationService->calculateRealTimeAvailableCapacity($event);
             $result['available_capacity'] = $availableCapacity;
-            
+
             if ($availableCapacity <= 0) {
                 $result['reason'] = 'Event is sold out';
+
                 return $result;
             }
-            
+
             if ($availableCapacity < $requestedTickets) {
                 $result['reason'] = "Insufficient capacity. Available: {$availableCapacity}, Requested: {$requestedTickets}";
+
                 return $result;
             }
-            
+
         } catch (\Exception $e) {
             $result['reason'] = 'Unable to check capacity availability';
             \Log::error('Failed to check capacity for booking validation', [
                 'event_id' => $eventId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return $result;
         }
 
         // Fraud and anti-abuse checks
-        if (!empty($fraudContext)) {
+        if (! empty($fraudContext)) {
             $fraudCheck = $this->performFraudChecks($tenantId, array_merge($fraudContext, [
                 'event_id' => $eventId,
                 'attendees' => array_fill(0, $requestedTickets, ['ticket_type_id' => 1]), // Mock attendees for validation
             ]));
-            
+
             $result['fraud_check'] = $fraudCheck;
-            
+
             if ($fraudCheck['blocked']) {
                 $result['reason'] = $fraudCheck['reason'];
+
                 return $result;
             }
-            
+
             if ($fraudCheck['requires_identity_verification']) {
                 $result['identity_verification_required'] = true;
             }
@@ -671,14 +683,16 @@ class BookingService
         if ($customerId && $tenantId) {
             $tierCheck = $this->checkTierBookingEligibility($tenantId, $customerId, $eventId, []);
             $result['tier_info'] = $tierCheck;
-            
-            if (!$tierCheck['eligible']) {
+
+            if (! $tierCheck['eligible']) {
                 $result['reason'] = $tierCheck['reason'];
+
                 return $result;
             }
         }
 
         $result['can_book'] = true;
+
         return $result;
     }
 
@@ -690,13 +704,13 @@ class BookingService
     {
         // Check if customer has early access
         $earlyAccessInfo = $this->fanTierService->hasEarlyAccess($tenantId, $customerId, $eventId);
-        
+
         // If event is in early access period, check eligibility
         if ($this->isEventInEarlyAccessPeriod($tenantId, $eventId)) {
-            if (!$earlyAccessInfo['has_access']) {
+            if (! $earlyAccessInfo['has_access']) {
                 return [
                     'eligible' => false,
-                    'reason' => 'Event is currently in early access period. ' . $earlyAccessInfo['reason'],
+                    'reason' => 'Event is currently in early access period. '.$earlyAccessInfo['reason'],
                     'early_access_info' => $earlyAccessInfo,
                 ];
             }
@@ -705,7 +719,7 @@ class BookingService
             if (isset($earlyAccessInfo['window'])) {
                 $window = $earlyAccessInfo['window'];
                 foreach ($requestedTicketTypes as $ticketTypeData) {
-                    if (!$window->isTicketTypeEligible($ticketTypeData['ticket_type_id'])) {
+                    if (! $window->isTicketTypeEligible($ticketTypeData['ticket_type_id'])) {
                         return [
                             'eligible' => false,
                             'reason' => 'Some requested ticket types are not available during early access',
@@ -718,7 +732,7 @@ class BookingService
                 if ($window->max_tickets_per_customer) {
                     $existingTickets = $this->getCustomerTicketCount($tenantId, $customerId, $eventId);
                     $requestedCount = count($requestedTicketTypes);
-                    
+
                     if ($existingTickets + $requestedCount > $window->max_tickets_per_customer) {
                         return [
                             'eligible' => false,
@@ -752,7 +766,7 @@ class BookingService
                 if ($discountPercentage) {
                     $discountAmount = $originalAmount * ($discountPercentage / 100);
                     $finalAmount -= $discountAmount;
-                    
+
                     $appliedDiscounts[] = [
                         'benefit_id' => $benefit->id,
                         'benefit_name' => $benefit->benefit_name,
@@ -792,13 +806,13 @@ class BookingService
     {
         return DB::transaction(function () use ($bookingId) {
             $booking = Booking::findOrFail($bookingId);
-            
-            if (!$booking->customer_id) {
+
+            if (! $booking->customer_id) {
                 return ['points_awarded' => 0, 'message' => 'No customer associated with booking'];
             }
 
             // Resolve tenant ID from tenancy context (fail closed)
-            if (!tenancy()->initialized) {
+            if (! tenancy()->initialized) {
                 throw new \RuntimeException('Tenant context not initialized for loyalty processing');
             }
             $tenantId = (string) tenant()->id;
@@ -824,7 +838,7 @@ class BookingService
                 $tenantId,
                 $booking->customer_id
             );
-            
+
             if ($customerTier) {
                 $customerTier->updateStats(0, (float) $booking->total_amount);
             }
@@ -849,7 +863,7 @@ class BookingService
     private function isEventInEarlyAccessPeriod(string $tenantId, int $eventId): bool
     {
         $earlyAccessWindows = $this->fanTierService->getEarlyAccessWindows($tenantId, $eventId);
-        
+
         return $earlyAccessWindows->contains(function ($window) {
             return $window->isCurrentlyOpen();
         });
@@ -914,7 +928,7 @@ class BookingService
 
         // Step 3: Analyze booking attempt for fraud patterns
         $fraudAnalysis = $this->fraudDetectionService->analyzeBookingAttempt($fraudContext);
-        
+
         // Step 4: Check if identity verification is required
         $requiresVerification = false;
         if (isset($bookingData['customer_id'])) {
@@ -935,11 +949,11 @@ class BookingService
                 $blocked = true;
                 $reason = 'Booking blocked due to high fraud risk';
                 break;
-            
+
             case 'manual_review':
                 $requiresManualReview = true;
                 break;
-            
+
             case 'identity_verification':
                 if ($requiresVerification) {
                     $blocked = true;
@@ -949,7 +963,7 @@ class BookingService
         }
 
         // Step 6: Execute automated response actions if needed
-        if (!$blocked && !empty($fraudAnalysis['actions_required'])) {
+        if (! $blocked && ! empty($fraudAnalysis['actions_required'])) {
             $this->antiAbuseService->executeAutomatedResponse(
                 $tenantId,
                 $fraudAnalysis['actions_required'],
@@ -979,7 +993,7 @@ class BookingService
     {
         // Check customer velocity
         $customerVelocity = $this->fraudDetectionService->monitorCustomerVelocity($tenantId, $customerId, 60);
-        
+
         // Check if customer has exceeded reasonable booking limits
         $exceedsLimits = false;
         $reason = null;
@@ -1018,7 +1032,7 @@ class BookingService
             $riskScore
         );
 
-        if (!$requiresVerification) {
+        if (! $requiresVerification) {
             return [
                 'verification_required' => false,
                 'verification_level' => 'none',
@@ -1032,7 +1046,7 @@ class BookingService
             ->where('verification_status', 'verified')
             ->where(function ($query) {
                 $query->whereNull('expires_at')
-                      ->orWhere('expires_at', '>', now());
+                    ->orWhere('expires_at', '>', now());
             })
             ->orderBy('created_at', 'desc')
             ->first();
@@ -1040,12 +1054,12 @@ class BookingService
         $currentLevel = $verification ? $verification->verification_level : 'none';
         $requiredLevel = $riskScore >= 80 ? 'full' : 'basic';
 
-        $isVerified = $verification && 
-                     ($verification->verification_level === $requiredLevel || 
+        $isVerified = $verification &&
+                     ($verification->verification_level === $requiredLevel ||
                       ($requiredLevel === 'basic' && $verification->verification_level === 'full'));
 
         return [
-            'verification_required' => !$isVerified,
+            'verification_required' => ! $isVerified,
             'current_level' => $currentLevel,
             'required_level' => $requiredLevel,
             'verification_status' => $verification ? $verification->verification_status : 'none',

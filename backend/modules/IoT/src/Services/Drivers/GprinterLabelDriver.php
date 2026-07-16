@@ -2,13 +2,14 @@
 
 namespace Modules\IoT\Services\Drivers;
 
-use Modules\IoT\Models\IoTDevice;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Modules\IoT\Models\IoTDevice;
 
 class GprinterLabelDriver implements PrinterDriverInterface
 {
     protected IoTDevice $device;
+
     protected string $agentUrl;
 
     public function __construct(IoTDevice $device)
@@ -32,6 +33,7 @@ class GprinterLabelDriver implements PrinterDriverInterface
 
             if ($response->successful()) {
                 $data = $response->json();
+
                 return $data['connected'] ?? false;
             }
 
@@ -41,6 +43,7 @@ class GprinterLabelDriver implements PrinterDriverInterface
                 'device_id' => $this->device->id,
                 'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -61,9 +64,9 @@ class GprinterLabelDriver implements PrinterDriverInterface
 
             if ($response->successful()) {
                 $result = $response->json();
-                
-                $this->device->logAction('print_label', 'success', null, null, 
-                    'Printed ' . count($payload['labels']) . ' labels');
+
+                $this->device->logAction('print_label', 'success', null, null,
+                    'Printed '.count($payload['labels']).' labels');
 
                 return [
                     'success' => true,
@@ -138,25 +141,25 @@ class GprinterLabelDriver implements PrinterDriverInterface
     public function generateTSPLCommands(array $labelData): string
     {
         $cmd = '';
-        
+
         // Label setup (76mm x 50mm with 2mm gap)
         $cmd .= "SIZE 76 mm, 50 mm\r\n";
         $cmd .= "GAP 2 mm, 0 mm\r\n";
         $cmd .= "DIRECTION 1\r\n";
         $cmd .= "CLS\r\n";
-        
+
         // Product name (X=30, Y=30, Font=3, Scale=1x1)
         $cmd .= "TEXT 30,30,\"3\",0,1,1,\"{$labelData['productName']}\"\r\n";
-        
+
         // Price (X=30, Y=80, Font=3, Scale=2x2 for emphasis)
         $cmd .= "TEXT 30,80,\"3\",0,2,2,\"{$labelData['price']}\"\r\n";
-        
+
         // Barcode (X=30, Y=180, Code 128, Height=80, Human readable)
         $cmd .= "BARCODE 30,180,\"128\",80,1,0,2,2,\"{$labelData['sku']}\"\r\n";
-        
+
         // Print command
         $cmd .= "PRINT {$labelData['quantity']}\r\n";
-        
+
         return $cmd;
     }
 }

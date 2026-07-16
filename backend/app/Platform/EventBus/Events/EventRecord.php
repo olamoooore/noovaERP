@@ -16,9 +16,13 @@ class EventRecord extends Model
     use HasFactory;
 
     protected $table = 'domain_event_records';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
+
     protected $guarded = [];
 
     protected $casts = [

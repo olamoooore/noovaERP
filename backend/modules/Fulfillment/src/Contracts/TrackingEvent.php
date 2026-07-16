@@ -6,7 +6,7 @@ class TrackingEventResponse
 {
     public function __construct(
         public readonly string $status,
-        public readonly ?string $statusCode = null,
+        public readonly ?string $statusCode,
         public readonly string $description,
         public readonly ?string $location = null,
         public readonly ?string $timestamp = null,

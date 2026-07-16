@@ -4,7 +4,6 @@ namespace Modules\PaymentGateway\Services;
 
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\PaymentTransaction;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Unified Payment Service for creating payment intents.
@@ -15,19 +14,20 @@ class PaymentService
     /**
      * Create a payment intent using the first active payment gateway.
      *
-     * @param array $data [amount, currency, description, metadata, email]
+     * @param  array  $data  [amount, currency, description, metadata, email]
      * @return array [client_secret, publishable_key, transaction_id, gateway_name]
+     *
      * @throws \Exception if no active payment gateway found or payment creation fails
      */
     public function createIntent(array $data): array
     {
         // Use specific gateway if provided, otherwise find first active
-        if (!empty($data['gateway_id'])) {
+        if (! empty($data['gateway_id'])) {
             $gateway = PaymentGateway::where('is_active', true)
                 ->where('id', $data['gateway_id'])
                 ->first();
-            
-            if (!$gateway) {
+
+            if (! $gateway) {
                 throw new \Exception('Selected payment gateway is not available.');
             }
         } else {
@@ -38,7 +38,7 @@ class PaymentService
                 ->first();
         }
 
-        if (!$gateway) {
+        if (! $gateway) {
             throw new \Exception('No active payment gateway configured. Please configure a payment gateway in Settings.');
         }
 
@@ -55,7 +55,7 @@ class PaymentService
             'payment_methods' => $data['payment_methods'] ?? null,
         ]);
 
-        if (!($result['success'] ?? false)) {
+        if (! ($result['success'] ?? false)) {
             throw new \Exception($result['error'] ?? 'Payment creation failed');
         }
 
@@ -63,12 +63,12 @@ class PaymentService
         // For web orders and POS orders, customer is in tenant schema but payment_transactions
         // is in public schema, so we store customer_id in metadata only to avoid FK violation
         $customerId = null;
-        if (!empty($data['customer_id'])) {
+        if (! empty($data['customer_id'])) {
             // Only use customer_id if this is an invoice payment (customer exists in public schema)
             // For web orders (type=web_order) and POS orders, skip to avoid FK violation
             $metadata = $data['metadata'] ?? [];
             $type = $metadata['type'] ?? null;
-            if ($type !== 'web_order' && !isset($metadata['pos_order_id'])) {
+            if ($type !== 'web_order' && ! isset($metadata['pos_order_id'])) {
                 $customerId = $data['customer_id'];
             }
         }
@@ -101,12 +101,12 @@ class PaymentService
     {
         $transaction = PaymentTransaction::where('transaction_id', $transactionId)->first();
 
-        if (!$transaction) {
+        if (! $transaction) {
             throw new \Exception('Transaction not found');
         }
 
         $gateway = $transaction->gateway;
-        if (!$gateway) {
+        if (! $gateway) {
             throw new \Exception('Payment gateway not found');
         }
 
@@ -152,7 +152,7 @@ class PaymentService
         return PaymentGateway::where('is_active', true)
             ->whereIn('gateway_name', ['stripe', 'hitpay', 'paypal'])
             ->get()
-            ->map(fn($gw) => [
+            ->map(fn ($gw) => [
                 'id' => $gw->id,
                 'name' => $gw->gateway_name,
                 'display_name' => ucfirst($gw->gateway_name),

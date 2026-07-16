@@ -2,9 +2,8 @@
 
 namespace Modules\FinancialClose\Services;
 
-use Illuminate\Support\Facades\Log;
-use Modules\FinancialClose\Models\CloseReadinessSnapshot;
 use Modules\FinancialClose\Models\CloseCycle;
+use Modules\FinancialClose\Models\CloseReadinessSnapshot;
 use Modules\FinancialClose\Models\CloseTask;
 
 class FinancialCloseForecastService
@@ -19,7 +18,7 @@ class FinancialCloseForecastService
             ->where('id', $cycleId)
             ->first();
 
-        if (!$cycle) {
+        if (! $cycle) {
             return [
                 'forecast_available' => false,
             ];
@@ -84,7 +83,7 @@ class FinancialCloseForecastService
             ->orderBy('generated_at', 'desc')
             ->first();
 
-        if (!$latestSnapshot) {
+        if (! $latestSnapshot) {
             return [
                 'summary_available' => false,
             ];

@@ -2,10 +2,10 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Accounting\CountryConfiguration;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
-use App\Models\Accounting\CountryConfiguration;
 
 /**
  * Gate access to country-specific plugin routes.
@@ -25,19 +25,19 @@ class EnsureCountryPluginEnabled
     {
         $tenant = tenancy()->tenant;
 
-        if (!$tenant) {
+        if (! $tenant) {
             abort(403, 'Tenant context not available.');
         }
 
         // 1. Check tenant_country_code matches the requested plugin country
         $tenantCountry = strtoupper($tenant->tenant_country_code ?? '');
         if ($tenantCountry !== strtoupper($countryCode)) {
-            abort(403, "Country plugin '{$countryCode}' is not configured for this tenant. Tenant country: " . ($tenantCountry ?: 'not set') . ".");
+            abort(403, "Country plugin '{$countryCode}' is not configured for this tenant. Tenant country: ".($tenantCountry ?: 'not set').'.');
         }
 
         // 2. Check master feature flag on the tenant
-        if (!$tenant->country_plugin_enabled) {
-            abort(403, "Country compliance plugin is not enabled for this tenant.");
+        if (! $tenant->country_plugin_enabled) {
+            abort(403, 'Country compliance plugin is not enabled for this tenant.');
         }
 
         // 3. Check an active CountryConfiguration entry exists in the tenant DB
@@ -45,7 +45,7 @@ class EnsureCountryPluginEnabled
             ->where('is_enabled', true)
             ->exists();
 
-        if (!$configured) {
+        if (! $configured) {
             abort(403, "Country configuration for '{$countryCode}' is not enabled. Please configure it in Accounting > Compliance Settings.");
         }
 

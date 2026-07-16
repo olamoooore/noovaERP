@@ -2,8 +2,8 @@
 
 namespace Modules\PaymentGateway\Services;
 
-use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\OfflinePaymentMethod;
+use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 
 class PosPaymentService
@@ -11,8 +11,6 @@ class PosPaymentService
     /**
      * Get all available payment methods for POS
      * Includes cash, online gateways, and offline methods
-     *
-     * @return array
      */
     public function getAvailablePaymentMethods(): array
     {
@@ -34,14 +32,14 @@ class PosPaymentService
         $onlineGateways = PaymentGateway::where('is_active', true)
             ->where(function ($query) {
                 $query->where('gateway_type', 'online')
-                      ->orWhereIn('gateway_name', ['stripe', 'hitpay', 'paypal']);
+                    ->orWhereIn('gateway_name', ['stripe', 'hitpay', 'paypal']);
             })
             ->where('gateway_name', '!=', 'offline')
             ->get();
 
         foreach ($onlineGateways as $gateway) {
             $methods[] = [
-                'id' => 'gateway_' . $gateway->id,
+                'id' => 'gateway_'.$gateway->id,
                 'code' => $gateway->gateway_name,
                 'name' => $this->getGatewayDisplayName($gateway->gateway_name),
                 'type' => 'online',
@@ -63,7 +61,7 @@ class PosPaymentService
 
         foreach ($offlineMethods as $method) {
             $methods[] = [
-                'id' => 'offline_' . $method->id,
+                'id' => 'offline_'.$method->id,
                 'code' => $method->method_code,
                 'name' => $method->method_name,
                 'type' => 'offline',
@@ -84,15 +82,12 @@ class PosPaymentService
 
     /**
      * Process a payment from POS
-     *
-     * @param array $data
-     * @return array
      */
     public function processPayment(array $data): array
     {
         $paymentType = $data['payment_type'] ?? 'cash';
-        
-        return match($paymentType) {
+
+        return match ($paymentType) {
             'cash' => $this->processCashPayment($data),
             'online' => $this->processOnlinePayment($data),
             'offline' => $this->processOfflinePayment($data),
@@ -107,7 +102,7 @@ class PosPaymentService
     {
         return [
             'success' => true,
-            'transaction_id' => 'CASH-' . uniqid(),
+            'transaction_id' => 'CASH-'.uniqid(),
             'status' => 'completed',
             'amount' => $data['amount'],
             'payment_type' => 'cash',
@@ -159,7 +154,7 @@ class PosPaymentService
         // Create transaction record as pending (awaiting confirmation)
         $transaction = PaymentTransaction::create([
             'payment_gateway_id' => $offlineMethod->payment_gateway_id,
-            'transaction_id' => 'OFFLINE-' . uniqid(),
+            'transaction_id' => 'OFFLINE-'.uniqid(),
             'amount' => $data['amount'],
             'currency' => $data['currency'] ?? 'MYR',
             'status' => 'pending_confirmation',
@@ -189,7 +184,7 @@ class PosPaymentService
      */
     private function getGatewayDisplayName(string $gateway): string
     {
-        return match($gateway) {
+        return match ($gateway) {
             'stripe' => 'Credit Card (Stripe)',
             'paypal' => 'PayPal',
             'hitpay' => 'HitPay',
@@ -202,7 +197,7 @@ class PosPaymentService
      */
     private function getGatewayIcon(string $gateway): string
     {
-        return match($gateway) {
+        return match ($gateway) {
             'stripe' => 'solar:card-bold',
             'paypal' => 'simple-icons:paypal',
             'hitpay' => 'solar:wallet-bold',

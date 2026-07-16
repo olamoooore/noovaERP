@@ -4,7 +4,7 @@ namespace Modules\AI\SubModules;
 
 /**
  * Products Module
- * 
+ *
  * Handles product search and information queries
  */
 class ProductsModule extends BaseModule
@@ -16,7 +16,7 @@ class ProductsModule extends BaseModule
     {
         return 'products';
     }
-    
+
     /**
      * Get display name
      */
@@ -24,7 +24,7 @@ class ProductsModule extends BaseModule
     {
         return 'Products & Catalog';
     }
-    
+
     /**
      * Get module description
      */
@@ -32,7 +32,7 @@ class ProductsModule extends BaseModule
     {
         return 'Search products, check availability, and get product details';
     }
-    
+
     /**
      * Get module icon
      */
@@ -40,7 +40,7 @@ class ProductsModule extends BaseModule
     {
         return '🛍️';
     }
-    
+
     /**
      * Get available functions for this module
      */
@@ -53,13 +53,13 @@ class ProductsModule extends BaseModule
             'list_product_categories',
         ];
     }
-    
+
     /**
      * Get module-specific system prompt
      */
     public function getSystemPrompt(): string
     {
-        return <<<PROMPT
+        return <<<'PROMPT'
 **PRODUCTS MODULE ACTIVE**
 
 You are now in Products mode. Focus on:
@@ -84,7 +84,7 @@ When users ask about products:
 Keep responses focused on products and catalog information. Be helpful in guiding customers to find what they need.
 PROMPT;
     }
-    
+
     /**
      * Get module metadata
      */

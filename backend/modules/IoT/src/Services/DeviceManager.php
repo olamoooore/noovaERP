@@ -2,8 +2,8 @@
 
 namespace Modules\IoT\Services;
 
-use Modules\IoT\Models\IoTDevice;
 use Modules\IoT\Enums\DeviceType;
+use Modules\IoT\Models\IoTDevice;
 use Modules\IoT\Services\Drivers\PrinterDriverInterface;
 
 class DeviceManager
@@ -15,7 +15,7 @@ class DeviceManager
     {
         $driverClass = $this->resolveDriverClass($device);
 
-        if (!$driverClass || !class_exists($driverClass)) {
+        if (! $driverClass || ! class_exists($driverClass)) {
             throw new \Exception("Driver not found for device type: {$device->type->value}, vendor: {$device->vendor}");
         }
 
@@ -34,19 +34,19 @@ class DeviceManager
 
     /**
      * Get terminal driver for a device.
-     * 
+     *
      * @throws \Exception If device is not a terminal or driver doesn't implement TerminalDriverInterface
      */
     public function getTerminalDriver(IoTDevice $device): \Modules\IoT\Services\Drivers\TerminalDriverInterface
     {
         if ($device->type !== DeviceType::TERMINAL) {
-            throw new \Exception("Device is not a terminal");
+            throw new \Exception('Device is not a terminal');
         }
 
         $driver = $this->getDriver($device);
 
-        if (!$driver instanceof \Modules\IoT\Services\Drivers\TerminalDriverInterface) {
-            throw new \Exception("Driver does not implement TerminalDriverInterface");
+        if (! $driver instanceof \Modules\IoT\Services\Drivers\TerminalDriverInterface) {
+            throw new \Exception('Driver does not implement TerminalDriverInterface');
         }
 
         return $driver;
@@ -54,19 +54,19 @@ class DeviceManager
 
     /**
      * Get printer driver for a device.
-     * 
+     *
      * @throws \Exception If device is not a printer or driver doesn't implement PrinterDriverInterface
      */
     public function getPrinterDriver(IoTDevice $device): PrinterDriverInterface
     {
         if ($device->type !== DeviceType::PRINTER) {
-            throw new \Exception("Device is not a printer");
+            throw new \Exception('Device is not a printer');
         }
 
         $driver = $this->getDriver($device);
 
-        if (!$driver instanceof PrinterDriverInterface) {
-            throw new \Exception("Driver does not implement PrinterDriverInterface");
+        if (! $driver instanceof PrinterDriverInterface) {
+            throw new \Exception('Driver does not implement PrinterDriverInterface');
         }
 
         return $driver;
@@ -79,7 +79,7 @@ class DeviceManager
     {
         try {
             $driver = $this->getDriver($device);
-            
+
             // Check if driver implements TerminalDriverInterface
             if ($driver instanceof \Modules\IoT\Services\Drivers\TerminalDriverInterface) {
                 $connected = $driver->testConnection();

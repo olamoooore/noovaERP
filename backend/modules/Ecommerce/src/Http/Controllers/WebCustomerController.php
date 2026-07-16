@@ -4,8 +4,8 @@ namespace Modules\Ecommerce\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\CustomerAddress;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class WebCustomerController extends Controller
 {
@@ -16,7 +16,7 @@ class WebCustomerController extends Controller
     {
         $customer = $request->attributes->get('web_customer');
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json([
                 'error' => 'Unauthorized',
             ], 401);
@@ -28,7 +28,7 @@ class WebCustomerController extends Controller
                 'name' => $customer->name,
                 'email' => $customer->email,
                 'phone' => $customer->phone,
-                'addresses' => $customer->addresses->map(fn($addr) => $this->formatAddressResponse($addr)),
+                'addresses' => $customer->addresses->map(fn ($addr) => $this->formatAddressResponse($addr)),
             ],
         ]);
     }
@@ -40,7 +40,7 @@ class WebCustomerController extends Controller
     {
         $customer = $request->attributes->get('web_customer');
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json([
                 'error' => 'Unauthorized',
             ], 401);
@@ -52,7 +52,7 @@ class WebCustomerController extends Controller
             ->get();
 
         return response()->json([
-            'addresses' => $addresses->map(fn($addr) => $this->formatAddressResponse($addr)),
+            'addresses' => $addresses->map(fn ($addr) => $this->formatAddressResponse($addr)),
         ]);
     }
 
@@ -63,7 +63,7 @@ class WebCustomerController extends Controller
     {
         $customer = $request->attributes->get('web_customer');
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json([
                 'error' => 'Unauthorized',
             ], 401);
@@ -106,7 +106,7 @@ class WebCustomerController extends Controller
     {
         $customer = $request->attributes->get('web_customer');
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json([
                 'error' => 'Unauthorized',
             ], 401);
@@ -114,7 +114,7 @@ class WebCustomerController extends Controller
 
         $address = $customer->addresses()->find($id);
 
-        if (!$address) {
+        if (! $address) {
             return response()->json([
                 'error' => 'Address not found',
             ], 404);
@@ -157,7 +157,7 @@ class WebCustomerController extends Controller
     {
         $customer = $request->attributes->get('web_customer');
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json([
                 'error' => 'Unauthorized',
             ], 401);
@@ -165,7 +165,7 @@ class WebCustomerController extends Controller
 
         $address = $customer->addresses()->find($id);
 
-        if (!$address) {
+        if (! $address) {
             return response()->json([
                 'error' => 'Address not found',
             ], 404);
@@ -186,7 +186,7 @@ class WebCustomerController extends Controller
     {
         $customer = $request->attributes->get('web_customer');
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json([
                 'error' => 'Unauthorized',
             ], 401);
@@ -194,7 +194,7 @@ class WebCustomerController extends Controller
 
         $address = $customer->addresses()->find($id);
 
-        if (!$address) {
+        if (! $address) {
             return response()->json([
                 'error' => 'Address not found',
             ], 404);

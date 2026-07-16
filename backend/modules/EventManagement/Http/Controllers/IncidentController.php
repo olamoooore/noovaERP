@@ -2,20 +2,20 @@
 
 namespace Modules\EventManagement\Http\Controllers;
 
-use Modules\EventManagement\Services\AuditService;
-use Modules\EventManagement\Models\IncidentLog;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Modules\EventManagement\Models\IncidentLog;
+use Modules\EventManagement\Services\AuditService;
 
 /**
  * IncidentController
- * 
+ *
  * Handles incident tracking, escalation workflows, and administrative
  * override management for event operations.
- * 
+ *
  * Requirements: 15.4, 15.5
  */
 class IncidentController extends Controller
@@ -31,16 +31,12 @@ class IncidentController extends Controller
         $this->middleware('rate_limit:incident_management')->only([
             'createIncident',
             'updateIncident',
-            'resolveIncident'
+            'resolveIncident',
         ]);
     }
 
     /**
      * Get incidents for an event
-     * 
-     * @param int $eventId
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getEventIncidents(int $eventId, Request $request): JsonResponse
     {
@@ -82,23 +78,20 @@ class IncidentController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $incidents,
-                'message' => 'Event incidents retrieved successfully'
+                'message' => 'Event incidents retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve event incidents',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get incident by ID
-     * 
-     * @param int $incidentId
-     * @return JsonResponse
      */
     public function getIncident(int $incidentId): JsonResponse
     {
@@ -109,33 +102,30 @@ class IncidentController extends Controller
                 ->with(['event', 'operationalZone', 'checkInCounter'])
                 ->find($incidentId);
 
-            if (!$incident) {
+            if (! $incident) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Incident not found'
+                    'message' => 'Incident not found',
                 ], 404);
             }
 
             return response()->json([
                 'success' => true,
                 'data' => $incident,
-                'message' => 'Incident retrieved successfully'
+                'message' => 'Incident retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve incident',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Create a new incident
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function createIncident(Request $request): JsonResponse
     {
@@ -167,7 +157,7 @@ class IncidentController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -193,24 +183,20 @@ class IncidentController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $incident,
-                'message' => 'Incident created successfully'
+                'message' => 'Incident created successfully',
             ], 201);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create incident',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Update an incident
-     * 
-     * @param Request $request
-     * @param int $incidentId
-     * @return JsonResponse
      */
     public function updateIncident(Request $request, int $incidentId): JsonResponse
     {
@@ -219,10 +205,10 @@ class IncidentController extends Controller
 
             $incident = IncidentLog::forTenant($tenantId)->find($incidentId);
 
-            if (!$incident) {
+            if (! $incident) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Incident not found'
+                    'message' => 'Incident not found',
                 ], 404);
             }
 
@@ -249,7 +235,7 @@ class IncidentController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -270,24 +256,20 @@ class IncidentController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $incident->fresh(),
-                'message' => 'Incident updated successfully'
+                'message' => 'Incident updated successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update incident',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Acknowledge an incident
-     * 
-     * @param Request $request
-     * @param int $incidentId
-     * @return JsonResponse
      */
     public function acknowledgeIncident(Request $request, int $incidentId): JsonResponse
     {
@@ -296,17 +278,17 @@ class IncidentController extends Controller
 
             $incident = IncidentLog::forTenant($tenantId)->find($incidentId);
 
-            if (!$incident) {
+            if (! $incident) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Incident not found'
+                    'message' => 'Incident not found',
                 ], 404);
             }
 
             if ($incident->status !== 'open') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Incident has already been acknowledged'
+                    'message' => 'Incident has already been acknowledged',
                 ], 422);
             }
 
@@ -321,24 +303,20 @@ class IncidentController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $incident->fresh(),
-                'message' => 'Incident acknowledged successfully'
+                'message' => 'Incident acknowledged successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to acknowledge incident',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Assign incident to staff member
-     * 
-     * @param Request $request
-     * @param int $incidentId
-     * @return JsonResponse
      */
     public function assignIncident(Request $request, int $incidentId): JsonResponse
     {
@@ -351,7 +329,7 @@ class IncidentController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -359,10 +337,10 @@ class IncidentController extends Controller
 
             $incident = IncidentLog::forTenant($tenantId)->find($incidentId);
 
-            if (!$incident) {
+            if (! $incident) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Incident not found'
+                    'message' => 'Incident not found',
                 ], 404);
             }
 
@@ -381,23 +359,20 @@ class IncidentController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $incident->fresh(),
-                'message' => 'Incident assigned successfully'
+                'message' => 'Incident assigned successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to assign incident',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Mark incident as in progress
-     * 
-     * @param int $incidentId
-     * @return JsonResponse
      */
     public function markInProgress(int $incidentId): JsonResponse
     {
@@ -406,17 +381,17 @@ class IncidentController extends Controller
 
             $incident = IncidentLog::forTenant($tenantId)->find($incidentId);
 
-            if (!$incident) {
+            if (! $incident) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Incident not found'
+                    'message' => 'Incident not found',
                 ], 404);
             }
 
-            if (!in_array($incident->status, ['open', 'acknowledged'])) {
+            if (! in_array($incident->status, ['open', 'acknowledged'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Incident cannot be marked as in progress from current status'
+                    'message' => 'Incident cannot be marked as in progress from current status',
                 ], 422);
             }
 
@@ -431,24 +406,20 @@ class IncidentController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $incident->fresh(),
-                'message' => 'Incident marked as in progress'
+                'message' => 'Incident marked as in progress',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to mark incident as in progress',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Resolve an incident
-     * 
-     * @param Request $request
-     * @param int $incidentId
-     * @return JsonResponse
      */
     public function resolveIncident(Request $request, int $incidentId): JsonResponse
     {
@@ -464,7 +435,7 @@ class IncidentController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -472,17 +443,17 @@ class IncidentController extends Controller
 
             $incident = IncidentLog::forTenant($tenantId)->find($incidentId);
 
-            if (!$incident) {
+            if (! $incident) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Incident not found'
+                    'message' => 'Incident not found',
                 ], 404);
             }
 
             if ($incident->isResolved()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Incident is already resolved'
+                    'message' => 'Incident is already resolved',
                 ], 422);
             }
 
@@ -514,24 +485,20 @@ class IncidentController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $incident->fresh(),
-                'message' => 'Incident resolved successfully'
+                'message' => 'Incident resolved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to resolve incident',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Escalate an incident
-     * 
-     * @param Request $request
-     * @param int $incidentId
-     * @return JsonResponse
      */
     public function escalateIncident(Request $request, int $incidentId): JsonResponse
     {
@@ -544,7 +511,7 @@ class IncidentController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -552,17 +519,17 @@ class IncidentController extends Controller
 
             $incident = IncidentLog::forTenant($tenantId)->find($incidentId);
 
-            if (!$incident) {
+            if (! $incident) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Incident not found'
+                    'message' => 'Incident not found',
                 ], 404);
             }
 
             if ($incident->isEscalated()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Incident has already been escalated'
+                    'message' => 'Incident has already been escalated',
                 ], 422);
             }
 
@@ -581,23 +548,20 @@ class IncidentController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $incident->fresh(),
-                'message' => 'Incident escalated successfully'
+                'message' => 'Incident escalated successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to escalate incident',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Close an incident
-     * 
-     * @param int $incidentId
-     * @return JsonResponse
      */
     public function closeIncident(int $incidentId): JsonResponse
     {
@@ -606,17 +570,17 @@ class IncidentController extends Controller
 
             $incident = IncidentLog::forTenant($tenantId)->find($incidentId);
 
-            if (!$incident) {
+            if (! $incident) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Incident not found'
+                    'message' => 'Incident not found',
                 ], 404);
             }
 
             if ($incident->status !== 'resolved') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Incident must be resolved before it can be closed'
+                    'message' => 'Incident must be resolved before it can be closed',
                 ], 422);
             }
 
@@ -631,23 +595,20 @@ class IncidentController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $incident->fresh(),
-                'message' => 'Incident closed successfully'
+                'message' => 'Incident closed successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to close incident',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get incident statistics for an event
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getIncidentStatistics(int $eventId): JsonResponse
     {
@@ -689,14 +650,14 @@ class IncidentController extends Controller
                     'summary' => $stats,
                     'type_breakdown' => $typeBreakdown,
                 ],
-                'message' => 'Incident statistics retrieved successfully'
+                'message' => 'Incident statistics retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve incident statistics',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }

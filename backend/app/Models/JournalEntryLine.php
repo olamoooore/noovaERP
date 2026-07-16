@@ -104,7 +104,7 @@ class JournalEntryLine extends Model
      */
     public function convertToBaseCurrency(string $baseCurrency = 'USD'): float
     {
-        if (!$this->currency_code || $this->currency_code === $baseCurrency) {
+        if (! $this->currency_code || $this->currency_code === $baseCurrency) {
             return (float) ($this->debit ?: $this->credit);
         }
 
@@ -115,6 +115,7 @@ class JournalEntryLine extends Model
         // Fallback to exchange rate lookup
         try {
             $amount = (float) $this->original_amount;
+
             return ExchangeRate::convert($amount, $this->currency_code, $baseCurrency);
         } catch (\Exception $e) {
             return (float) ($this->debit ?: $this->credit);

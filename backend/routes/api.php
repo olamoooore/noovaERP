@@ -1,8 +1,8 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\TenantController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -46,18 +46,18 @@ Route::get('/health', function () {
     try {
         $queueSize = \Illuminate\Support\Facades\DB::table('jobs')->count();
         $failedJobs = \Illuminate\Support\Facades\DB::table('failed_jobs')->where('failed_at', '>', now()->subHour())->count();
-        
+
         if ($queueSize > 1000) {
             $warnings[] = "Queue backlog: {$queueSize} jobs";
         }
         if ($failedJobs > 10) {
             $warnings[] = "Failed jobs: {$failedJobs} in last hour";
         }
-        
+
         $checks['queue'] = [
             'status' => 'ok',
             'pending' => $queueSize,
-            'failed_1h' => $failedJobs
+            'failed_1h' => $failedJobs,
         ];
     } catch (\Exception $e) {
         $checks['queue'] = 'fail';
@@ -66,15 +66,15 @@ Route::get('/health', function () {
 
     // 4. Storage
     try {
-        $testFile = 'health_check_' . time() . '.txt';
+        $testFile = 'health_check_'.time().'.txt';
         \Illuminate\Support\Facades\Storage::put($testFile, 'health check');
         $content = \Illuminate\Support\Facades\Storage::get($testFile);
         \Illuminate\Support\Facades\Storage::delete($testFile);
-        
+
         if ($content !== 'health check') {
             throw new \Exception('Storage read/write mismatch');
         }
-        
+
         $checks['storage'] = 'ok';
     } catch (\Exception $e) {
         $checks['storage'] = 'fail';
@@ -86,14 +86,14 @@ Route::get('/health', function () {
         $diskFree = disk_free_space('/');
         $diskTotal = disk_total_space('/');
         $diskPercent = round(($diskFree / $diskTotal) * 100, 2);
-        
+
         if ($diskPercent < 10) {
             $warnings[] = "Low disk space: {$diskPercent}% free";
         }
-        
+
         $checks['disk'] = [
             'status' => 'ok',
-            'free_percent' => $diskPercent
+            'free_percent' => $diskPercent,
         ];
     } catch (\Exception $e) {
         $checks['disk'] = 'unknown';
@@ -111,7 +111,7 @@ Route::get('/health', function () {
 
         $checks['tenants'] = [
             'status' => 'ok',
-            'active_count' => $tenantCount
+            'active_count' => $tenantCount,
         ];
     } catch (\Exception $e) {
         $checks['tenants'] = 'fail';
@@ -119,7 +119,7 @@ Route::get('/health', function () {
     }
 
     $status = $healthy ? 'ok' : 'degraded';
-    if (!empty($warnings)) {
+    if (! empty($warnings)) {
         $status = 'warning';
     }
 
@@ -136,14 +136,14 @@ Route::get('/health', function () {
 Route::prefix('v1/auth')->middleware([\App\Http\Middleware\EnsurePublicSchemaForAuth::class])->group(function () {
     // Tenant signup & management
     Route::post('/signup', [TenantController::class, 'signup']);
-    
+
     // Central login (non-tenant)
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
     Route::get('/me', [AuthController::class, 'me'])->middleware('auth:sanctum');
-    
+
     // Health check
-    Route::get('/health', fn() => response()->json(['status' => 'ok']));
+    Route::get('/health', fn () => response()->json(['status' => 'ok']));
 });
 
 // Superadmin Control Plane routes
@@ -176,7 +176,7 @@ Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
     Route::get('/me', [AuthController::class, 'me'])->middleware('auth:sanctum');
-    Route::get('/health', fn() => response()->json(['status' => 'ok']));
+    Route::get('/health', fn () => response()->json(['status' => 'ok']));
 });
 
 /*

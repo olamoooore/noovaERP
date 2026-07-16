@@ -80,7 +80,7 @@ class SupplierController extends Controller
 
         $validated = $request->validate([
             'name' => 'string|max:255',
-            'code' => 'nullable|string|max:50|unique:suppliers,code,' . $supplier->id,
+            'code' => 'nullable|string|max:50|unique:suppliers,code,'.$supplier->id,
             'contact_name' => 'nullable|string|max:255',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:50',
@@ -110,7 +110,7 @@ class SupplierController extends Controller
 
         if ($supplier->purchaseOrders()->exists()) {
             return response()->json([
-                'message' => 'Cannot delete supplier with existing purchase orders'
+                'message' => 'Cannot delete supplier with existing purchase orders',
             ], 422);
         }
 
@@ -123,8 +123,8 @@ class SupplierController extends Controller
     {
         $supplier = Supplier::query()->find($supplierId);
 
-        if (!$supplier) {
-            throw (new ModelNotFoundException())->setModel(Supplier::class, [$supplierId]);
+        if (! $supplier) {
+            throw (new ModelNotFoundException)->setModel(Supplier::class, [$supplierId]);
         }
 
         return $supplier;

@@ -4,7 +4,6 @@ namespace App\Providers;
 
 use App\Database\PostgresConnection;
 use Illuminate\Database\Connection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
 
 class DatabaseQueryServiceProvider extends ServiceProvider

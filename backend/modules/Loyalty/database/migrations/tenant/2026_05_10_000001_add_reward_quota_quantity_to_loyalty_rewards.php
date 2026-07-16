@@ -12,7 +12,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (!Schema::hasColumn('loyalty_rewards', 'reward_quota_quantity')) {
+        if (! Schema::hasColumn('loyalty_rewards', 'reward_quota_quantity')) {
             Schema::table('loyalty_rewards', function (Blueprint $table) {
                 $table->integer('reward_quota_quantity')
                     ->nullable()

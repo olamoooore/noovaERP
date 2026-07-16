@@ -9,8 +9,6 @@ class PaymentGatewayFactory
     /**
      * Create gateway service instance based on gateway type
      *
-     * @param PaymentGateway $gateway
-     * @return PaymentGatewayInterface
      * @throws \Exception
      */
     public static function create(PaymentGateway $gateway): PaymentGatewayInterface
@@ -19,14 +17,12 @@ class PaymentGatewayFactory
             'stripe' => new StripeGateway($gateway),
             'hitpay' => new HitPayGateway($gateway),
             'paypal' => new PayPalGateway($gateway),
-            default => throw new \Exception('Unsupported payment gateway: ' . $gateway->gateway_name),
+            default => throw new \Exception('Unsupported payment gateway: '.$gateway->gateway_name),
         };
     }
 
     /**
      * Get available gateway types
-     *
-     * @return array
      */
     public static function getAvailableGateways(): array
     {

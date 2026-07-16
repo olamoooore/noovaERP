@@ -3,8 +3,8 @@
 namespace Modules\AccountingCountry\Singapore\Services;
 
 use App\Accounting\Contracts\SubmissionStatusSyncContract;
-use App\Models\Accounting\ComplianceSubmission;
 use App\Models\Accounting\ComplianceEvent;
+use App\Models\Accounting\ComplianceSubmission;
 use GuzzleHttp\Client;
 
 /**
@@ -14,11 +14,12 @@ use GuzzleHttp\Client;
 class PeppolStatusSync implements SubmissionStatusSyncContract
 {
     protected Client $client;
+
     protected string $endpoint;
 
     public function __construct()
     {
-        $this->client = new Client();
+        $this->client = new Client;
         $this->endpoint = config('compliance.singapore.peppol_test_endpoint');
     }
 
@@ -27,15 +28,15 @@ class PeppolStatusSync implements SubmissionStatusSyncContract
      */
     public function syncStatus(object $submission, array $credentials): bool
     {
-        if (!$submission instanceof ComplianceSubmission) {
+        if (! $submission instanceof ComplianceSubmission) {
             return false;
         }
 
         try {
-            $provider = new PeppolSubmissionProvider();
+            $provider = new PeppolSubmissionProvider;
             $result = $provider->getStatus($submission->provider_reference, $credentials);
 
-            if (!$result['success']) {
+            if (! $result['success']) {
                 return false;
             }
 
@@ -63,6 +64,7 @@ class PeppolStatusSync implements SubmissionStatusSyncContract
 
         } catch (\Exception $e) {
             \Log::error('Status sync failed', ['submission_id' => $submission->id, 'error' => $e->getMessage()]);
+
             return false;
         }
     }
@@ -72,7 +74,7 @@ class PeppolStatusSync implements SubmissionStatusSyncContract
      */
     public function handleAcceptance(object $submission, array $acceptanceDetails = []): void
     {
-        if (!$submission instanceof ComplianceSubmission) {
+        if (! $submission instanceof ComplianceSubmission) {
             return;
         }
 
@@ -90,7 +92,7 @@ class PeppolStatusSync implements SubmissionStatusSyncContract
      */
     public function handleRejection(object $submission, array $details): void
     {
-        if (!$submission instanceof ComplianceSubmission) {
+        if (! $submission instanceof ComplianceSubmission) {
             return;
         }
 

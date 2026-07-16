@@ -2,15 +2,15 @@
 
 namespace Modules\EventManagement\Tests\Unit;
 
-use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Modules\EventManagement\Models\Event;
 use Modules\EventManagement\Models\EventType;
-use Illuminate\Support\Facades\Artisan;
+use Tests\TestCase;
 
 /**
  * Event Controller Validation Test
- * 
+ *
  * Tests event creation validation for Phase 4 requirements.
  * Requirements: 11.1, 11.2, 11.3, 11.4
  */
@@ -21,10 +21,10 @@ class EventControllerValidationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         // Run migrations
         Artisan::call('migrate');
-        
+
         // Seed event types
         EventType::create([
             'name' => 'Concert',
@@ -57,7 +57,7 @@ class EventControllerValidationTest extends TestCase
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['event_type_id']);
         $response->assertJsonFragment([
-            'event_type_id' => ['Event type is required. Please select a valid event type.']
+            'event_type_id' => ['Event type is required. Please select a valid event type.'],
         ]);
     }
 
@@ -68,7 +68,7 @@ class EventControllerValidationTest extends TestCase
     public function test_event_creation_without_acquisition_mode_fails(): void
     {
         $eventType = EventType::first();
-        
+
         $eventData = [
             'title' => 'Test Event',
             'description' => 'Test Description',
@@ -86,7 +86,7 @@ class EventControllerValidationTest extends TestCase
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['ticket_acquisition_mode']);
         $response->assertJsonFragment([
-            'ticket_acquisition_mode' => ['Ticket acquisition mode is required. Please select either "buy" or "bid".']
+            'ticket_acquisition_mode' => ['Ticket acquisition mode is required. Please select either "buy" or "bid".'],
         ]);
     }
 
@@ -97,7 +97,7 @@ class EventControllerValidationTest extends TestCase
     public function test_event_creation_without_sale_window_fails(): void
     {
         $eventType = EventType::first();
-        
+
         // Test missing sale_start_date
         $eventData = [
             'title' => 'Test Event',
@@ -116,7 +116,7 @@ class EventControllerValidationTest extends TestCase
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['sale_start_date']);
         $response->assertJsonFragment([
-            'sale_start_date' => ['Sale start date is required. Please specify when ticket sales should begin.']
+            'sale_start_date' => ['Sale start date is required. Please specify when ticket sales should begin.'],
         ]);
 
         // Test missing sale_end_date
@@ -137,7 +137,7 @@ class EventControllerValidationTest extends TestCase
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['sale_end_date']);
         $response->assertJsonFragment([
-            'sale_end_date' => ['Sale end date is required. Please specify when ticket sales should end.']
+            'sale_end_date' => ['Sale end date is required. Please specify when ticket sales should end.'],
         ]);
     }
 
@@ -159,7 +159,7 @@ class EventControllerValidationTest extends TestCase
         $response = $this->postJson('/api/v1/event-management/events', $eventData);
 
         $response->assertStatus(422);
-        
+
         // Check that all validation errors are present and descriptive
         $response->assertJsonValidationErrors([
             'event_type_id',
@@ -170,7 +170,7 @@ class EventControllerValidationTest extends TestCase
 
         // Verify error messages are descriptive
         $errors = $response->json('errors');
-        
+
         $this->assertStringContainsString('Event type is required', $errors['event_type_id'][0]);
         $this->assertStringContainsString('Ticket acquisition mode is required', $errors['ticket_acquisition_mode'][0]);
         $this->assertStringContainsString('Sale start date is required', $errors['sale_start_date'][0]);
@@ -184,7 +184,7 @@ class EventControllerValidationTest extends TestCase
     public function test_invalid_acquisition_mode_value_fails(): void
     {
         $eventType = EventType::first();
-        
+
         $eventData = [
             'title' => 'Test Event',
             'description' => 'Test Description',
@@ -202,7 +202,7 @@ class EventControllerValidationTest extends TestCase
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['ticket_acquisition_mode']);
         $response->assertJsonFragment([
-            'ticket_acquisition_mode' => ['Ticket acquisition mode must be either "buy" or "bid".']
+            'ticket_acquisition_mode' => ['Ticket acquisition mode must be either "buy" or "bid".'],
         ]);
     }
 
@@ -213,7 +213,7 @@ class EventControllerValidationTest extends TestCase
     public function test_sale_end_date_before_start_date_fails(): void
     {
         $eventType = EventType::first();
-        
+
         $eventData = [
             'title' => 'Test Event',
             'description' => 'Test Description',
@@ -231,7 +231,7 @@ class EventControllerValidationTest extends TestCase
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['sale_end_date']);
         $response->assertJsonFragment([
-            'sale_end_date' => ['Sale end date must be after the sale start date.']
+            'sale_end_date' => ['Sale end date must be after the sale start date.'],
         ]);
     }
 
@@ -242,7 +242,7 @@ class EventControllerValidationTest extends TestCase
     public function test_successful_event_creation_with_all_required_fields(): void
     {
         $eventType = EventType::first();
-        
+
         $eventData = [
             'title' => 'Test Event',
             'description' => 'Test Description',

@@ -10,7 +10,7 @@ class MyInvoiceDigitalSignatureService
     public function sign(array $document, array $context = []): array
     {
         $signatureEnabled = (bool) ($context['signature_enabled'] ?? false);
-        if (!$signatureEnabled) {
+        if (! $signatureEnabled) {
             return [
                 'success' => true,
                 'signed_document' => $document,
@@ -56,11 +56,12 @@ class MyInvoiceDigitalSignatureService
         $signature = '';
         $signed = openssl_sign($canonical, $signature, $privateKey, OPENSSL_ALGO_SHA256);
 
-        if (!$signed) {
+        if (! $signed) {
             Log::error('myinvois:createDigitalSignature — OpenSSL signing failed', [
                 'payload_hash' => $payloadHash,
                 'error_message' => 'openssl_sign returned false',
             ]);
+
             return [
                 'success' => false,
                 'message' => 'OpenSSL failed to produce a signature for the MyInvois document.',
@@ -77,26 +78,26 @@ class MyInvoiceDigitalSignatureService
 
         // Warn operators before the signing certificate expires so they can renew
         // it before submissions start failing with certificate-related errors.
-        if (!empty($certificateInfo['valid_to'])) {
-            $expiresAt       = \Illuminate\Support\Carbon::parse((string) $certificateInfo['valid_to']);
+        if (! empty($certificateInfo['valid_to'])) {
+            $expiresAt = \Illuminate\Support\Carbon::parse((string) $certificateInfo['valid_to']);
             $daysUntilExpiry = (int) now()->diffInDays($expiresAt, false);
             if ($daysUntilExpiry < 0) {
                 Log::error('myinvois:sign — signing certificate has EXPIRED', [
-                    'expired_at'   => $certificateInfo['valid_to'],
+                    'expired_at' => $certificateInfo['valid_to'],
                     'days_overdue' => abs($daysUntilExpiry),
-                    'subject'      => $certificateInfo['subject'] ?? null,
+                    'subject' => $certificateInfo['subject'] ?? null,
                 ]);
             } elseif ($daysUntilExpiry <= 30) {
                 Log::warning('myinvois:sign — signing certificate expires soon', [
-                    'expires_at'      => $certificateInfo['valid_to'],
-                    'days_remaining'  => $daysUntilExpiry,
-                    'subject'         => $certificateInfo['subject'] ?? null,
+                    'expires_at' => $certificateInfo['valid_to'],
+                    'days_remaining' => $daysUntilExpiry,
+                    'subject' => $certificateInfo['subject'] ?? null,
                 ]);
             }
         }
         $signatureId = (string) ($context['signature_key_id'] ?? '');
         if ($signatureId === '') {
-            $signatureId = 'urn:uuid:' . (string) \Illuminate\Support\Str::uuid();
+            $signatureId = 'urn:uuid:'.(string) \Illuminate\Support\Str::uuid();
         }
 
         $signatoryName = (string) ($context['signature_name'] ?? '');
@@ -163,7 +164,7 @@ class MyInvoiceDigitalSignatureService
                                 ]],
                                 'Object' => [[
                                     'QualifyingProperties' => [[
-                                        'Target' => '#' . $signatureId,
+                                        'Target' => '#'.$signatureId,
                                         'SignedProperties' => [[
                                             'Id' => 'xades-signed-properties',
                                             'SignedSignatureProperties' => [[
@@ -214,7 +215,7 @@ class MyInvoiceDigitalSignatureService
             ]],
             'DigitalSignatureAttachment' => [[
                 'ExternalReference' => [[
-                    'URI' => [['_' => '#' . $signatureId]],
+                    'URI' => [['_' => '#'.$signatureId]],
                 ]],
             ]],
         ];
@@ -249,7 +250,7 @@ class MyInvoiceDigitalSignatureService
         }
 
         // Looks like a file path rather than PEM content
-        if (!str_contains($value, '-----BEGIN')) {
+        if (! str_contains($value, '-----BEGIN')) {
             // /storage/... → resolve relative to Laravel base path
             if (str_starts_with($value, '/storage/')) {
                 $resolved = base_path(ltrim($value, '/'));
@@ -264,13 +265,15 @@ class MyInvoiceDigitalSignatureService
                 $perms = fileperms($resolved);
                 if ($perms !== false && ($perms & 0004)) {
                     Log::warning('myinvois:signature — private key file is world-readable; restrict to 0600 or 0400', [
-                        'path'        => $resolved,
+                        'path' => $resolved,
                         'permissions' => decoct($perms & 0777),
                     ]);
                 }
+
                 return trim((string) file_get_contents($resolved));
             }
             Log::warning('myinvois:signature — key file not found or not readable', ['path' => $value, 'resolved' => $resolved]);
+
             return '';
         }
 

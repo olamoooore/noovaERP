@@ -10,8 +10,11 @@ class ContactDuplicateCandidate extends Model
     use HasFactory;
 
     protected $table = 'contact_duplicate_candidates';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [
@@ -41,8 +44,11 @@ class ContactMergeHistory extends Model
     use HasFactory;
 
     protected $table = 'contact_merge_history';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [

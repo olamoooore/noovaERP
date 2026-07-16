@@ -2,33 +2,33 @@
 
 namespace Modules\EventManagement\Services;
 
+use Exception;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
-use Carbon\Carbon;
-use Exception;
 
 /**
  * ApiGovernanceService - Task 12.2
- * 
+ *
  * Service for API governance tools including OpenAPI specification generation,
  * automated API documentation, usage analytics, deprecation tracking, and
  * API lifecycle management workflows.
- * 
+ *
  * Requirements: 28.3, 28.5
  */
 class ApiGovernanceService
 {
     private const CACHE_PREFIX = 'api_governance:';
+
     private const DOCUMENTATION_PATH = 'api_documentation';
+
     private const SPEC_CACHE_TTL = 3600; // 1 hour
 
     /**
      * Generate comprehensive OpenAPI specifications for all endpoints
-     * 
-     * @param array $options Generation options
+     *
+     * @param  array  $options  Generation options
      * @return array Generation result
      */
     public function generateOpenApiSpecifications(array $options = []): array
@@ -57,26 +57,26 @@ class ApiGovernanceService
                 'specifications' => $specifications,
                 'combined_specification' => $combinedSpec,
                 'generated_at' => now(),
-                'versions_processed' => count($versions)
+                'versions_processed' => count($versions),
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to generate OpenAPI specifications', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to generate specifications',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Generate automated API documentation
-     * 
-     * @param array $options Documentation options
+     *
+     * @param  array  $options  Documentation options
      * @return array Documentation generation result
      */
     public function generateApiDocumentation(array $options = []): array
@@ -88,7 +88,7 @@ class ApiGovernanceService
 
             // Get OpenAPI specification
             $specResult = $this->generateVersionSpecification($version);
-            if (!$specResult['success']) {
+            if (! $specResult['success']) {
                 return $specResult;
             }
 
@@ -115,28 +115,28 @@ class ApiGovernanceService
                 'format' => $format,
                 'version' => $version,
                 'usage_analytics' => $usageAnalytics,
-                'generated_at' => now()
+                'generated_at' => now(),
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to generate API documentation', [
                 'version' => $options['version'] ?? 'unknown',
                 'format' => $options['format'] ?? 'unknown',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to generate documentation',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Track API usage analytics and patterns
-     * 
-     * @param array $usageData Usage data to track
+     *
+     * @param  array  $usageData  Usage data to track
      * @return array Tracking result
      */
     public function trackApiUsage(array $usageData): array
@@ -177,7 +177,7 @@ class ApiGovernanceService
                             json_decode($existing->status_code_distribution, true) ?? [],
                             $usageData['status_code'] ?? 200
                         ),
-                        'updated_at' => now()
+                        'updated_at' => now(),
                     ]);
             } else {
                 // Create new record
@@ -195,11 +195,11 @@ class ApiGovernanceService
                     'error_count' => $usageData['success'] ? 0 : 1,
                     'error_rate_percent' => $usageData['success'] ? 0 : 100,
                     'status_code_distribution' => json_encode([
-                        (string) ($usageData['status_code'] ?? 200) => 1
+                        (string) ($usageData['status_code'] ?? 200) => 1,
                     ]),
                     'usage_date' => $today,
                     'created_at' => now(),
-                    'updated_at' => now()
+                    'updated_at' => now(),
                 ]);
             }
 
@@ -207,28 +207,28 @@ class ApiGovernanceService
 
             return [
                 'success' => true,
-                'message' => 'Usage analytics updated successfully'
+                'message' => 'Usage analytics updated successfully',
             ];
 
         } catch (Exception $e) {
             DB::rollBack();
             Log::error('Failed to track API usage', [
                 'usage_data' => $usageData,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to track usage',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Manage API deprecation lifecycle
-     * 
-     * @param array $deprecationData Deprecation configuration
+     *
+     * @param  array  $deprecationData  Deprecation configuration
      * @return array Deprecation management result
      */
     public function manageApiDeprecation(array $deprecationData): array
@@ -261,7 +261,7 @@ class ApiGovernanceService
                         'deprecation_reason' => $deprecationData['reason'] ?? $existing->deprecation_reason,
                         'migration_guide' => $deprecationData['migration_guide'] ?? $existing->migration_guide,
                         'breaking_change' => $deprecationData['breaking_change'] ?? $existing->breaking_change,
-                        'updated_at' => now()
+                        'updated_at' => now(),
                     ]);
 
                 $deprecationId = $existing->id;
@@ -282,7 +282,7 @@ class ApiGovernanceService
                     'breaking_change' => $deprecationData['breaking_change'] ?? false,
                     'created_by_staff_id' => $deprecationData['created_by'] ?? null,
                     'created_at' => now(),
-                    'updated_at' => now()
+                    'updated_at' => now(),
                 ]);
             }
 
@@ -293,7 +293,7 @@ class ApiGovernanceService
             DB::table('api_deprecations')
                 ->where('id', $deprecationId)
                 ->update([
-                    'affected_consumers' => json_encode($affectedConsumers)
+                    'affected_consumers' => json_encode($affectedConsumers),
                 ]);
 
             DB::commit();
@@ -307,35 +307,35 @@ class ApiGovernanceService
                 'method' => $method,
                 'version' => $version,
                 'status' => $deprecationData['status'],
-                'affected_consumers_count' => count($affectedConsumers)
+                'affected_consumers_count' => count($affectedConsumers),
             ]);
 
             return [
                 'success' => true,
                 'deprecation_id' => $deprecationId,
                 'affected_consumers' => $affectedConsumers,
-                'message' => 'API deprecation managed successfully'
+                'message' => 'API deprecation managed successfully',
             ];
 
         } catch (Exception $e) {
             DB::rollBack();
             Log::error('Failed to manage API deprecation', [
                 'deprecation_data' => $deprecationData,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to manage deprecation',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Get API usage analytics and insights
-     * 
-     * @param array $options Analytics options
+     *
+     * @param  array  $options  Analytics options
      * @return array Analytics result
      */
     public function getUsageAnalytics(array $options = []): array
@@ -404,25 +404,25 @@ class ApiGovernanceService
                 'success' => true,
                 'period' => [
                     'start_date' => $startDate,
-                    'end_date' => $endDate
+                    'end_date' => $endDate,
                 ],
                 'overall_statistics' => $overallStats,
                 'top_endpoints' => $topEndpoints,
                 'usage_trends' => $usageTrends,
                 'consumer_statistics' => $consumerStats,
-                'generated_at' => now()
+                'generated_at' => now(),
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to get usage analytics', [
                 'options' => $options,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to get analytics',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
@@ -444,7 +444,7 @@ class ApiGovernanceService
      */
     private function generateVersionSpecification(string $version, bool $includeDeprecated = false): array
     {
-        $cacheKey = self::CACHE_PREFIX . "spec:{$version}:" . ($includeDeprecated ? 'full' : 'active');
+        $cacheKey = self::CACHE_PREFIX."spec:{$version}:".($includeDeprecated ? 'full' : 'active');
 
         return Cache::remember($cacheKey, self::SPEC_CACHE_TTL, function () use ($version, $includeDeprecated) {
             try {
@@ -452,7 +452,7 @@ class ApiGovernanceService
                     ->where('version', $version)
                     ->where('is_active', true);
 
-                if (!$includeDeprecated) {
+                if (! $includeDeprecated) {
                     $query->whereNull('deprecated_at');
                 }
 
@@ -466,14 +466,14 @@ class ApiGovernanceService
                         'description' => 'Comprehensive API for ERP Event Management Module',
                         'contact' => [
                             'name' => 'API Support',
-                            'email' => 'api-support@example.com'
-                        ]
+                            'email' => 'api-support@example.com',
+                        ],
                     ],
                     'servers' => [
                         [
-                            'url' => config('app.url') . "/api/v{$version}",
-                            'description' => 'Production server'
-                        ]
+                            'url' => config('app.url')."/api/v{$version}",
+                            'description' => 'Production server',
+                        ],
                     ],
                     'paths' => [],
                     'components' => [
@@ -481,10 +481,10 @@ class ApiGovernanceService
                             'bearerAuth' => [
                                 'type' => 'http',
                                 'scheme' => 'bearer',
-                                'bearerFormat' => 'JWT'
-                            ]
-                        ]
-                    ]
+                                'bearerFormat' => 'JWT',
+                            ],
+                        ],
+                    ],
                 ];
 
                 foreach ($contracts as $contract) {
@@ -492,7 +492,7 @@ class ApiGovernanceService
                     $path = $contract->endpoint;
                     $method = strtolower($contract->method);
 
-                    if (!isset($spec['paths'][$path])) {
+                    if (! isset($spec['paths'][$path])) {
                         $spec['paths'][$path] = [];
                     }
 
@@ -501,17 +501,18 @@ class ApiGovernanceService
 
                 return [
                     'success' => true,
-                    'specification' => $spec
+                    'specification' => $spec,
                 ];
 
             } catch (Exception $e) {
                 return [
                     'success' => false,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ];
             }
         });
     }
+
     /**
      * Generate combined specification for all versions
      */
@@ -526,17 +527,17 @@ class ApiGovernanceService
             'info' => [
                 'title' => 'ERP Event Management API - All Versions',
                 'version' => 'combined',
-                'description' => 'Combined API specification for all versions'
+                'description' => 'Combined API specification for all versions',
             ],
             'servers' => [],
-            'paths' => []
+            'paths' => [],
         ];
 
         foreach ($specifications as $version => $spec) {
             // Add version-specific server
             $combined['servers'][] = [
-                'url' => config('app.url') . "/api/v{$version}",
-                'description' => "Version {$version} server"
+                'url' => config('app.url')."/api/v{$version}",
+                'description' => "Version {$version} server",
             ];
 
             // Merge paths with version prefix
@@ -555,7 +556,7 @@ class ApiGovernanceService
     private function storeSpecification(string $version, array $specification): void
     {
         $filename = "openapi_v{$version}.json";
-        $path = self::DOCUMENTATION_PATH . "/specifications/{$filename}";
+        $path = self::DOCUMENTATION_PATH."/specifications/{$filename}";
 
         Storage::put($path, json_encode($specification, JSON_PRETTY_PRINT));
     }
@@ -580,12 +581,12 @@ class ApiGovernanceService
             $html .= "<h3>{$path}</h3>\n";
 
             foreach ($methods as $method => $operation) {
-                $html .= "<h4>" . strtoupper($method) . "</h4>\n";
-                $html .= "<p>" . ($operation['summary'] ?? 'No summary available') . "</p>\n";
+                $html .= '<h4>'.strtoupper($method)."</h4>\n";
+                $html .= '<p>'.($operation['summary'] ?? 'No summary available')."</p>\n";
 
                 if ($includeExamples && isset($operation['examples'])) {
                     $html .= "<h5>Examples</h5>\n";
-                    $html .= "<pre>" . json_encode($operation['examples'], JSON_PRETTY_PRINT) . "</pre>\n";
+                    $html .= '<pre>'.json_encode($operation['examples'], JSON_PRETTY_PRINT)."</pre>\n";
                 }
             }
         }
@@ -610,12 +611,12 @@ class ApiGovernanceService
             $markdown .= "### {$path}\n\n";
 
             foreach ($methods as $method => $operation) {
-                $markdown .= "#### " . strtoupper($method) . "\n\n";
-                $markdown .= ($operation['summary'] ?? 'No summary available') . "\n\n";
+                $markdown .= '#### '.strtoupper($method)."\n\n";
+                $markdown .= ($operation['summary'] ?? 'No summary available')."\n\n";
 
                 if ($includeExamples && isset($operation['examples'])) {
                     $markdown .= "##### Examples\n\n";
-                    $markdown .= "```json\n" . json_encode($operation['examples'], JSON_PRETTY_PRINT) . "\n```\n\n";
+                    $markdown .= "```json\n".json_encode($operation['examples'], JSON_PRETTY_PRINT)."\n```\n\n";
                 }
             }
         }
@@ -636,7 +637,7 @@ class ApiGovernanceService
         };
 
         $filename = "api_docs_v{$version}.{$extension}";
-        $path = self::DOCUMENTATION_PATH . "/generated/{$filename}";
+        $path = self::DOCUMENTATION_PATH."/generated/{$filename}";
 
         $content = is_string($documentation) ? $documentation : json_encode($documentation, JSON_PRETTY_PRINT);
         Storage::put($path, $content);
@@ -746,7 +747,7 @@ class ApiGovernanceService
                 'endpoint' => $deprecationData['endpoint'],
                 'method' => $deprecationData['method'],
                 'version' => $deprecationData['version'],
-                'deprecation_status' => $deprecationData['status']
+                'deprecation_status' => $deprecationData['status'],
             ]);
         }
     }
@@ -761,7 +762,7 @@ class ApiGovernanceService
             'description' => $contractSpec['description'] ?? '',
             'parameters' => [],
             'responses' => [],
-            'security' => [['bearerAuth' => []]]
+            'security' => [['bearerAuth' => []]],
         ];
 
         // Convert query parameters
@@ -772,9 +773,9 @@ class ApiGovernanceService
                     'in' => 'query',
                     'required' => $spec['required'] ?? false,
                     'schema' => [
-                        'type' => $spec['type'] ?? 'string'
+                        'type' => $spec['type'] ?? 'string',
                     ],
-                    'description' => $spec['description'] ?? ''
+                    'description' => $spec['description'] ?? '',
                 ];
             }
         }
@@ -787,9 +788,9 @@ class ApiGovernanceService
                     'in' => 'path',
                     'required' => true,
                     'schema' => [
-                        'type' => $spec['type'] ?? 'string'
+                        'type' => $spec['type'] ?? 'string',
                     ],
-                    'description' => $spec['description'] ?? ''
+                    'description' => $spec['description'] ?? '',
                 ];
             }
         }
@@ -800,9 +801,9 @@ class ApiGovernanceService
                 'required' => true,
                 'content' => [
                     'application/json' => [
-                        'schema' => $contractSpec['request']['body_schema']
-                    ]
-                ]
+                        'schema' => $contractSpec['request']['body_schema'],
+                    ],
+                ],
             ];
         }
 
@@ -813,9 +814,9 @@ class ApiGovernanceService
                     'description' => $response['description'] ?? 'Response',
                     'content' => [
                         'application/json' => [
-                            'schema' => $response['body_schema'] ?? ['type' => 'object']
-                        ]
-                    ]
+                            'schema' => $response['body_schema'] ?? ['type' => 'object'],
+                        ],
+                    ],
                 ];
             }
         }

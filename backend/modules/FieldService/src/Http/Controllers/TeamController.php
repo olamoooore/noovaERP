@@ -23,16 +23,17 @@ class TeamController extends Controller
     {
         $team = $this->findTeamOrFail($team_id);
         $team->load(['leader', 'technicians.user']);
+
         return response()->json($team);
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name'        => 'required|string|max:100',
+            'name' => 'required|string|max:100',
             'description' => 'nullable|string',
-            'leader_id'   => 'nullable|exists:users,id',
-            'color'       => 'nullable|string|max:7',
+            'leader_id' => 'nullable|exists:users,id',
+            'color' => 'nullable|string|max:7',
         ]);
 
         $team = Team::create($validated);
@@ -45,11 +46,11 @@ class TeamController extends Controller
         $team = $this->findTeamOrFail($team_id);
 
         $validated = $request->validate([
-            'name'        => 'sometimes|required|string|max:100',
+            'name' => 'sometimes|required|string|max:100',
             'description' => 'nullable|string',
-            'leader_id'   => 'nullable|exists:users,id',
-            'color'       => 'nullable|string|max:7',
-            'is_active'   => 'nullable|boolean',
+            'leader_id' => 'nullable|exists:users,id',
+            'color' => 'nullable|string|max:7',
+            'is_active' => 'nullable|boolean',
         ]);
 
         $team->update($validated);
@@ -61,6 +62,7 @@ class TeamController extends Controller
     {
         $team = $this->findTeamOrFail($team_id);
         $team->update(['is_active' => false]);
+
         return response()->json(['message' => 'Team deactivated.']);
     }
 
@@ -68,8 +70,8 @@ class TeamController extends Controller
     {
         $team = Team::query()->find($teamId);
 
-        if (!$team) {
-            throw (new ModelNotFoundException())->setModel(Team::class, [$teamId]);
+        if (! $team) {
+            throw (new ModelNotFoundException)->setModel(Team::class, [$teamId]);
         }
 
         return $team;

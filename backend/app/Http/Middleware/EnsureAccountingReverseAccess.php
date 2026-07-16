@@ -29,11 +29,11 @@ class EnsureAccountingReverseAccess
         /** @var User|null $user */
         $user = $request->user();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
-        if (!$this->accessService->canReverse($user)) {
+        if (! $this->accessService->canReverse($user)) {
             return response()->json([
                 'message' => 'You do not have permission to reverse journal entries.',
                 'required_permission' => 'accounting.reverse',

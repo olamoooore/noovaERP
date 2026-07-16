@@ -40,7 +40,7 @@ class AdminUserService
      */
     public function invite(string $email, string $role): array
     {
-        if (!in_array($role, self::ROLES, true)) {
+        if (! in_array($role, self::ROLES, true)) {
             throw ValidationException::withMessages([
                 'role' => 'Invalid role.',
             ]);
@@ -59,17 +59,17 @@ class AdminUserService
             ->delete();
 
         // Generate a cryptographically secure raw token (stays in the URL)
-        $rawToken    = Str::random(64);
+        $rawToken = Str::random(64);
         // Store only the hash — prevents DB-dump exploitation
         $hashedToken = hash('sha256', $rawToken);
 
         $invitation = AdminInvitation::create([
-            'email'                    => $email,
-            'role'                     => $role,
-            'token'                    => $hashedToken,  // hashed value stored
+            'email' => $email,
+            'role' => $role,
+            'token' => $hashedToken,  // hashed value stored
             'invited_by_admin_user_id' => Auth::id(),
-            'expires_at'               => now()->addDays(self::INVITATION_EXPIRY_DAYS),
-            'created_at'               => now(),
+            'expires_at' => now()->addDays(self::INVITATION_EXPIRY_DAYS),
+            'created_at' => now(),
         ]);
 
         $this->auditLogger->log(
@@ -81,7 +81,7 @@ class AdminUserService
         );
 
         $acceptUrl = config('app.superadmin_url', 'http://localhost:5174')
-            . '/accept-invite?token=' . $rawToken;  // raw token in URL
+            .'/accept-invite?token='.$rawToken;  // raw token in URL
 
         return [
             'invitation' => $invitation,
@@ -102,7 +102,7 @@ class AdminUserService
             ->whereNull('accepted_at')
             ->first();
 
-        if (!$invitation) {
+        if (! $invitation) {
             throw ValidationException::withMessages([
                 'token' => 'Invalid or already used invitation token.',
             ]);
@@ -116,10 +116,10 @@ class AdminUserService
 
         return DB::transaction(function () use ($invitation, $password) {
             $user = User::create([
-                'name'     => explode('@', $invitation->email)[0],
-                'email'    => $invitation->email,
+                'name' => explode('@', $invitation->email)[0],
+                'email' => $invitation->email,
                 'password' => Hash::make($password),
-                'role'     => $invitation->role,
+                'role' => $invitation->role,
             ]);
 
             // Mark accepted — prevents replay (idempotency at token level)
@@ -160,7 +160,7 @@ class AdminUserService
      */
     public function updateRole(User $admin, string $newRole): User
     {
-        if (!in_array($newRole, self::ROLES, true)) {
+        if (! in_array($newRole, self::ROLES, true)) {
             throw ValidationException::withMessages([
                 'role' => 'Invalid role.',
             ]);
@@ -210,13 +210,13 @@ class AdminUserService
         }
 
         // Idempotency: already deactivated
-        if (!$admin->is_active) {
+        if (! $admin->is_active) {
             return;
         }
 
         $before = ['role' => $admin->role, 'email' => $admin->email, 'is_active' => true];
         $admin->update([
-            'is_active'      => false,
+            'is_active' => false,
             'deactivated_at' => now(),
         ]);
 
@@ -240,7 +240,7 @@ class AdminUserService
 
         $before = ['is_active' => false];
         $admin->update([
-            'is_active'      => true,
+            'is_active' => true,
             'deactivated_at' => null,
         ]);
 

@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Models\AuditLog;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Storage;
 
 class ExportAuditLogs extends Command
 {
@@ -36,7 +35,7 @@ class ExportAuditLogs extends Command
         }
 
         if ($to) {
-            $query->where('created_at', '<=', $to . ' 23:59:59');
+            $query->where('created_at', '<=', $to.' 23:59:59');
         }
 
         if ($operation) {
@@ -51,12 +50,13 @@ class ExportAuditLogs extends Command
 
         if ($logs->isEmpty()) {
             $this->warn('No audit logs found matching the criteria.');
+
             return 0;
         }
 
         $this->info("Found {$logs->count()} audit log entries.");
 
-        $filename = $output ?? 'audit_logs_' . now()->format('Y-m-d_His') . '.' . $format;
+        $filename = $output ?? 'audit_logs_'.now()->format('Y-m-d_His').'.'.$format;
 
         if ($format === 'csv') {
             $this->exportCsv($logs, $filename);

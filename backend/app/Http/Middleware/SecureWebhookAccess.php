@@ -68,25 +68,28 @@ class SecureWebhookAccess
                 'ip' => $clientIp,
                 'attempts' => $attempts,
             ]);
+
             return response()->json(['error' => 'Rate limit exceeded'], 429);
         }
 
         // 2. IP allowlisting (optional, only if configured for gateway)
-        if ($this->shouldCheckIp($gateway) && !$this->isAllowedIp($clientIp, $gateway)) {
+        if ($this->shouldCheckIp($gateway) && ! $this->isAllowedIp($clientIp, $gateway)) {
             Log::warning('Webhook from unauthorized IP', [
                 'gateway' => $gateway,
                 'ip' => $clientIp,
             ]);
+
             return response()->json(['error' => 'Unauthorized IP address'], 403);
         }
 
         // 3. Extract and validate webhook payload structure
         $webhookId = $this->extractWebhookId($request, $gateway);
-        if (!$webhookId) {
+        if (! $webhookId) {
             Log::error('Webhook missing identifier', [
                 'gateway' => $gateway,
                 'headers' => $request->headers->all(),
             ]);
+
             return response()->json(['error' => 'Missing webhook identifier'], 400);
         }
 
@@ -97,6 +100,7 @@ class SecureWebhookAccess
                 'gateway' => $gateway,
                 'webhook_id' => $webhookId,
             ]);
+
             // Return success to prevent gateway retries, but don't process
             return response()->json(['status' => 'already processed']);
         }
@@ -150,7 +154,7 @@ class SecureWebhookAccess
     private function shouldCheckIp(string $gateway): bool
     {
         // Only check IP if specific ranges are configured
-        return !empty(self::GATEWAY_IP_RANGES[$gateway]);
+        return ! empty(self::GATEWAY_IP_RANGES[$gateway]);
     }
 
     /**

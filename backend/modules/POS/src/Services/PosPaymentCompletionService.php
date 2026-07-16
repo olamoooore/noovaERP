@@ -27,7 +27,7 @@ class PosPaymentCompletionService
     ): PosOrder {
         return DB::transaction(function () use ($posOrder, $amount, $paymentMethod, $reference, $receivedBy, $notes) {
             $posOrder = PosOrder::whereKey($posOrder->id)->lockForUpdate()->firstOrFail();
-            
+
             $posOrder->loadMissing('items.variant', 'items.product', 'terminal.warehouse');
 
             $requiresWarehouse = $this->hasStockTrackedItems($posOrder);
@@ -39,6 +39,7 @@ class PosPaymentCompletionService
                 Log::info('Skipping already-paid order in completion', [
                     'order_id' => $posOrder->id,
                 ]);
+
                 return $posOrder;
             }
 
@@ -51,7 +52,7 @@ class PosPaymentCompletionService
                         // For cash/null-reference payments, match by order_id + method
                         // This ensures one cash payment per order (idempotent on order level)
                         $q->whereNull('reference')
-                          ->where('method', $paymentMethod);
+                            ->where('method', $paymentMethod);
                     } else {
                         // For reference-based payments, match by reference (existing behavior)
                         $q->where('reference', $reference);
@@ -59,7 +60,7 @@ class PosPaymentCompletionService
                 })
                 ->first();
 
-            if (!$existingPayment) {
+            if (! $existingPayment) {
                 PosPayment::create([
                     'pos_order_id' => $posOrder->id,
                     'method' => $paymentMethod,
@@ -77,36 +78,36 @@ class PosPaymentCompletionService
             );
 
             foreach ($posOrder->items as $item) {
-                    $productId = $item->variant ? $item->variant->product_id : $item->product_id;
-                    $trackInventory = $item->variant
-                        ? (bool) $item->variant->track_inventory
-                        : (bool) ($item->product?->track_inventory ?? false);
+                $productId = $item->variant ? $item->variant->product_id : $item->product_id;
+                $trackInventory = $item->variant
+                    ? (bool) $item->variant->track_inventory
+                    : (bool) ($item->product?->track_inventory ?? false);
 
-                    if (!$productId || !$trackInventory) {
-                        continue;
-                    }
-
-                    $alreadyDeducted = (int) StockMovement::where('reference_type', 'PosOrder')
-                        ->where('reference_id', $posOrder->id)
-                        ->where('type', 'sale')
-                        ->where('product_id', $productId)
-                        ->sum('quantity');
-                    $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
-
-                    if ($remainingToDeduct <= 0) {
-                        continue;
-                    }
-
-                    $this->inventoryService->adjustStock(
-                        productId: $productId,
-                        warehouseId: $warehouseId,
-                        quantity: $remainingToDeduct,
-                        type: 'sale',
-                        reference: $posOrder->order_number,
-                        referenceType: 'PosOrder',
-                        referenceId: $posOrder->id,
-                    );
+                if (! $productId || ! $trackInventory) {
+                    continue;
                 }
+
+                $alreadyDeducted = (int) StockMovement::where('reference_type', 'PosOrder')
+                    ->where('reference_id', $posOrder->id)
+                    ->where('type', 'sale')
+                    ->where('product_id', $productId)
+                    ->sum('quantity');
+                $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
+
+                if ($remainingToDeduct <= 0) {
+                    continue;
+                }
+
+                $this->inventoryService->adjustStock(
+                    productId: $productId,
+                    warehouseId: $warehouseId,
+                    quantity: $remainingToDeduct,
+                    type: 'sale',
+                    reference: $posOrder->order_number,
+                    referenceType: 'PosOrder',
+                    referenceId: $posOrder->id,
+                );
+            }
             $posOrder->update([
                 'status' => 'paid',
                 'paid_at' => now(),
@@ -139,9 +140,9 @@ class PosPaymentCompletionService
                 : null;
 
             // GL posting — only if not already posted
-            if (!$posOrder->journal_entry_id) {
+            if (! $posOrder->journal_entry_id) {
                 $entry = $this->posPostingService->postPaidOrder($posOrder, $posOrder->total, $paymentMethod);
-                if (!$entry) {
+                if (! $entry) {
                     throw new \RuntimeException("GL posting returned null for order {$posOrder->order_number}");
                 }
                 $posOrder->update(['journal_entry_id' => $entry->id]);
@@ -153,14 +154,14 @@ class PosPaymentCompletionService
                 ->where('reference', $reference)
                 ->first();
 
-            if (!$existingPayment) {
+            if (! $existingPayment) {
                 PosPayment::create([
                     'pos_order_id' => $posOrder->id,
-                    'method'       => $paymentMethod,
-                    'amount'       => (float) $posOrder->total,
-                    'reference'    => $reference,
-                    'notes'        => $notes,
-                    'received_by'  => TenantUserHelper::requireTenantUserId($receivedBy ?? $posOrder->created_by),
+                    'method' => $paymentMethod,
+                    'amount' => (float) $posOrder->total,
+                    'reference' => $reference,
+                    'notes' => $notes,
+                    'received_by' => TenantUserHelper::requireTenantUserId($receivedBy ?? $posOrder->created_by),
                 ]);
             }
 
@@ -171,7 +172,7 @@ class PosPaymentCompletionService
                     ? (bool) $item->variant->track_inventory
                     : (bool) ($item->product?->track_inventory ?? false);
 
-                if (!$productId || !$trackInventory) {
+                if (! $productId || ! $trackInventory) {
                     continue;
                 }
 
@@ -221,7 +222,7 @@ class PosPaymentCompletionService
     {
         $warehouseId = $posOrder->terminal?->warehouse_id;
 
-        if (!$warehouseId) {
+        if (! $warehouseId) {
             Log::error('POS completion failed: terminal warehouse_id is required for stock-tracked order', [
                 'pos_order_id' => $posOrder->id,
                 'terminal_id' => $posOrder->terminal_id,

@@ -5,13 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\Contact\src\Models\CoreContact;
 use Modules\Contact\src\Models\ContactRole;
-use Modules\Contact\src\Models\ContactIdentifier;
-use Modules\Contact\src\Models\ContactAddress;
-use Modules\Contact\src\Models\ContactMethod;
-use Modules\Contact\src\Models\ContactRelationship;
+use Modules\Contact\src\Models\CoreContact;
 use Spatie\Permission\Models\Role;
 use Tests\TenantTestCase;
 
@@ -38,6 +33,7 @@ class ContactMasterTest extends TenantTestCase
     {
         $user = User::factory()->create();
         $user->assignRole('admin');
+
         return $user;
     }
 
@@ -668,7 +664,7 @@ class ContactMasterTest extends TenantTestCase
 
         \Illuminate\Support\Facades\Event::assertDispatched(
             \Modules\Contact\src\Events\ContactCreated::class,
-            fn($e) => $e->tenantId === $this->tenantUuid
+            fn ($e) => $e->tenantId === $this->tenantUuid
         );
     }
 
@@ -690,7 +686,7 @@ class ContactMasterTest extends TenantTestCase
 
         \Illuminate\Support\Facades\Event::assertDispatched(
             \Modules\Contact\src\Events\ContactUpdated::class,
-            fn($e) => $e->contactId === $id && $e->oldValue['display_name'] === 'Before'
+            fn ($e) => $e->contactId === $id && $e->oldValue['display_name'] === 'Before'
         );
     }
 
@@ -710,7 +706,7 @@ class ContactMasterTest extends TenantTestCase
 
         \Illuminate\Support\Facades\Event::assertDispatched(
             \Modules\Contact\src\Events\ContactDeleted::class,
-            fn($e) => $e->contactId === $id
+            fn ($e) => $e->contactId === $id
         );
     }
 
@@ -732,7 +728,7 @@ class ContactMasterTest extends TenantTestCase
 
         \Illuminate\Support\Facades\Event::assertDispatched(
             \Modules\Contact\src\Events\ContactRoleChanged::class,
-            fn($e) => $e->contactId === $contactId && $e->role === 'customer' && $e->action === 'added'
+            fn ($e) => $e->contactId === $contactId && $e->role === 'customer' && $e->action === 'added'
         );
     }
 
@@ -759,7 +755,7 @@ class ContactMasterTest extends TenantTestCase
 
         \Illuminate\Support\Facades\Event::assertDispatched(
             \Modules\Contact\src\Events\ContactRoleChanged::class,
-            fn($e) => $e->contactId === $contactId && $e->role === 'vendor' && $e->action === 'removed'
+            fn ($e) => $e->contactId === $contactId && $e->role === 'vendor' && $e->action === 'removed'
         );
     }
 
@@ -816,6 +812,7 @@ class ContactMasterTest extends TenantTestCase
     {
         $path = tempnam(sys_get_temp_dir(), 'import');
         file_put_contents($path, $csv);
+
         return new \Illuminate\Http\UploadedFile($path, 'contacts.csv', 'text/csv', null, true);
     }
 

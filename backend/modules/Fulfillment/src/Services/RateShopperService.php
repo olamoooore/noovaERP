@@ -2,10 +2,9 @@
 
 namespace Modules\Fulfillment\Services;
 
-use Modules\Fulfillment\Models\FulfillmentProvider;
-use Modules\Fulfillment\Contracts\RateRequest;
-use Modules\Fulfillment\Contracts\RateResponse;
 use Illuminate\Support\Collection;
+use Modules\Fulfillment\Contracts\RateRequest;
+use Modules\Fulfillment\Models\FulfillmentProvider;
 
 class RateShopperService
 {
@@ -39,7 +38,8 @@ class RateShopperService
                     ));
                 }
             } catch (\Exception $e) {
-                \Log::warning("Failed to get rates from provider {$provider->carrier_code}: " . $e->getMessage());
+                \Log::warning("Failed to get rates from provider {$provider->carrier_code}: ".$e->getMessage());
+
                 continue;
             }
         }

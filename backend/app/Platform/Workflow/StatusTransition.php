@@ -38,12 +38,43 @@ class StatusTransition implements StatusTransitionContract
         );
     }
 
-    public function getFromStatus(): string { return $this->fromStatus; }
-    public function getToStatus(): string { return $this->toStatus; }
-    public function getAction(): string { return $this->action; }
-    public function getRequiredPermission(): ?string { return $this->requiredPermission; }
-    public function getRequiredRole(): ?string { return $this->requiredRole; }
-    public function getConditions(): ?array { return $this->conditions; }
-    public function getEventsToFire(): array { return $this->eventsToFire; }
-    public function getLabel(): string { return $this->label; }
+    public function getFromStatus(): string
+    {
+        return $this->fromStatus;
+    }
+
+    public function getToStatus(): string
+    {
+        return $this->toStatus;
+    }
+
+    public function getAction(): string
+    {
+        return $this->action;
+    }
+
+    public function getRequiredPermission(): ?string
+    {
+        return $this->requiredPermission;
+    }
+
+    public function getRequiredRole(): ?string
+    {
+        return $this->requiredRole;
+    }
+
+    public function getConditions(): ?array
+    {
+        return $this->conditions;
+    }
+
+    public function getEventsToFire(): array
+    {
+        return $this->eventsToFire;
+    }
+
+    public function getLabel(): string
+    {
+        return $this->label;
+    }
 }

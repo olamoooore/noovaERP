@@ -2,9 +2,9 @@
 
 namespace Modules\Fulfillment\Services;
 
-use Modules\Fulfillment\Models\FulfillmentProvider;
-use Modules\Fulfillment\Contracts\CarrierInterface;
 use InvalidArgumentException;
+use Modules\Fulfillment\Contracts\CarrierInterface;
+use Modules\Fulfillment\Models\FulfillmentProvider;
 
 class CarrierConfigService
 {
@@ -19,7 +19,7 @@ class CarrierConfigService
     {
         $carrierClass = $this->carrierMap[$provider->carrier_code] ?? null;
 
-        if (!$carrierClass) {
+        if (! $carrierClass) {
             throw new InvalidArgumentException("Unknown carrier code: {$provider->carrier_code}");
         }
 

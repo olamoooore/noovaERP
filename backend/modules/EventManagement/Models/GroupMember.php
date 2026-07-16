@@ -6,20 +6,20 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Modules\EventManagement\Traits\HasTenantScope;
 use Modules\EventManagement\Traits\HasAuditTrail;
+use Modules\EventManagement\Traits\HasTenantScope;
 
 /**
  * GroupMember Model
- * 
+ *
  * Represents the relationship between artists and groups,
  * including roles, positions, and membership timeline.
- * 
+ *
  * Requirements: 12.1, 12.5
  */
 class GroupMember extends Model
 {
-    use HasFactory, SoftDeletes, HasTenantScope, HasAuditTrail;
+    use HasAuditTrail, HasFactory, HasTenantScope, SoftDeletes;
 
     protected $fillable = [
         'tenant_id',
@@ -131,11 +131,12 @@ class GroupMember extends Model
      */
     public function getYearsInGroupAttribute(): ?int
     {
-        if (!$this->joined_date) {
+        if (! $this->joined_date) {
             return null;
         }
 
         $endDate = $this->left_date ?: now();
+
         return $this->joined_date->diffInYears($endDate);
     }
 
@@ -161,7 +162,7 @@ class GroupMember extends Model
     public function addPosition(string $position): void
     {
         $positions = $this->positions ?? [];
-        if (!in_array($position, $positions)) {
+        if (! in_array($position, $positions)) {
             $positions[] = $position;
             $this->positions = $positions;
         }
@@ -173,7 +174,7 @@ class GroupMember extends Model
     public function removePosition(string $position): void
     {
         $positions = $this->positions ?? [];
-        $this->positions = array_values(array_filter($positions, fn($p) => $p !== $position));
+        $this->positions = array_values(array_filter($positions, fn ($p) => $p !== $position));
     }
 
     /**
@@ -182,7 +183,7 @@ class GroupMember extends Model
     public function getMainPositions(): array
     {
         $mainPositions = [];
-        
+
         if ($this->is_leader) {
             $mainPositions[] = 'Leader';
         }
@@ -205,7 +206,7 @@ class GroupMember extends Model
     public function getAllPositions(): array
     {
         $allPositions = $this->getMainPositions();
-        
+
         if ($this->positions) {
             $allPositions = array_merge($allPositions, $this->positions);
         }
@@ -239,7 +240,7 @@ class GroupMember extends Model
     /**
      * Graduate member from group
      */
-    public function graduate(string $reason = null): void
+    public function graduate(?string $reason = null): void
     {
         $this->status = 'graduated';
         $this->left_date = now();
@@ -253,7 +254,7 @@ class GroupMember extends Model
     /**
      * Put member on hiatus
      */
-    public function putOnHiatus(string $reason = null): void
+    public function putOnHiatus(?string $reason = null): void
     {
         $this->status = 'hiatus';
         $this->departure_reason = $reason;
@@ -276,6 +277,7 @@ class GroupMember extends Model
     public function getMembershipDuration(): int
     {
         $endDate = $this->left_date ?: now();
+
         return $this->joined_date ? $this->joined_date->diffInDays($endDate) : 0;
     }
 
@@ -301,7 +303,7 @@ class GroupMember extends Model
     public function getContributionScore(): int
     {
         $score = 0;
-        
+
         // Base score for being active
         if ($this->isActive()) {
             $score += 10;

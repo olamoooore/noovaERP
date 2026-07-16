@@ -264,6 +264,9 @@ export function setupKeyboardShortcuts(editor: Editor): () => void {
 
   // Setup iframe shortcuts
   const setupIframeShortcuts = () => {
+    // Editor may have been destroyed (e.g. React StrictMode remount / unmount)
+    // by the time this delayed callback runs.
+    if (!editor?.Canvas?.getElement) return
     const canvas = editor.Canvas.getElement()
     const canvasFrame = canvas?.querySelector('iframe') as HTMLIFrameElement | null
     
@@ -280,6 +283,7 @@ export function setupKeyboardShortcuts(editor: Editor): () => void {
   // Cleanup
   return () => {
     document.removeEventListener('keydown', handleKeyDown, true)
+    if (!editor?.Canvas?.getElement) return
     const canvas = editor.Canvas.getElement()
     const canvasFrame = canvas?.querySelector('iframe') as HTMLIFrameElement | null
     if (canvasFrame?.contentDocument) {

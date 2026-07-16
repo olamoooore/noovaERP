@@ -3,9 +3,9 @@
 namespace Modules\FinancialClose\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\FinancialClose\Models\AuditLog;
 use Modules\FinancialClose\Models\CloseTask;
 use Modules\FinancialClose\Models\TaskAssignment;
-use Modules\FinancialClose\Models\AuditLog;
 
 class FinancialCloseAssignmentService
 {
@@ -18,7 +18,7 @@ class FinancialCloseAssignmentService
             ->where('id', $taskId)
             ->first();
 
-        if (!$task) {
+        if (! $task) {
             return false;
         }
 
@@ -27,6 +27,7 @@ class FinancialCloseAssignmentService
                 'task_id' => $taskId,
                 'status' => $task->status,
             ]);
+
             return false;
         }
 
@@ -64,7 +65,7 @@ class FinancialCloseAssignmentService
             ->where('id', $taskId)
             ->first();
 
-        if (!$task) {
+        if (! $task) {
             return false;
         }
 
@@ -73,6 +74,7 @@ class FinancialCloseAssignmentService
                 'task_id' => $taskId,
                 'status' => $task->status,
             ]);
+
             return false;
         }
 

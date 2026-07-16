@@ -2,9 +2,9 @@
 
 namespace Modules\WebsiteBuilder\Services;
 
-use Modules\WebsiteBuilder\Models\Website;
-use Modules\WebsiteBuilder\Models\PublishLog;
 use Illuminate\Support\Facades\Storage;
+use Modules\WebsiteBuilder\Models\PublishLog;
+use Modules\WebsiteBuilder\Models\Website;
 
 class PublishingService
 {
@@ -24,11 +24,8 @@ class PublishingService
         ]);
 
         try {
-            $outputPath = $this->generateStaticSite($website, $newVersion, $rollbackVersion);
-
-            $log->markSuccess($outputPath);
-
-            // Update website status
+            // Update website status first — the public route serves from the
+            // database (currentVersion), not static files, so this is what matters.
             $website->update([
                 'status' => 'published',
                 'published_at' => now(),
@@ -40,6 +37,21 @@ class PublishingService
                     $page->currentVersion->update(['is_published' => true]);
                 }
             }
+
+            // Generate static files (optional — failure here should not
+            // prevent the publish from succeeding, since the public route
+            // reads directly from the database).
+            try {
+                $outputPath = $this->generateStaticSite($website, $newVersion, $rollbackVersion);
+            } catch (\Exception $staticEx) {
+                \Log::warning('PublishingService: static site generation failed (non-fatal)', [
+                    'website_id' => $website->id,
+                    'error' => $staticEx->getMessage(),
+                ]);
+                $outputPath = null;
+            }
+
+            $log->markSuccess($outputPath);
 
             return $log;
         } catch (\Exception $e) {
@@ -64,6 +76,7 @@ class PublishingService
                     $newPath = str_replace("v{$rollbackVersion}", "v{$version}", $file);
                     Storage::copy($file, $newPath);
                 }
+
                 return $outputDir;
             }
         }
@@ -144,10 +157,10 @@ HTML;
         return match ($type) {
             'page' => $childrenHtml,
             'section' => "<section style=\"{$this->propsToStyle($props)}\">{$childrenHtml}</section>",
-            'container' => "<div style=\"max-width: " . ($props['maxWidth'] ?? '1200px') . "; margin: 0 auto; padding: 0 20px;\">{$childrenHtml}</div>",
-            'text' => "<div style=\"{$this->propsToStyle($props)}\">" . ($props['content'] ?? '') . "</div>",
-            'image' => "<img src=\"" . ($props['src'] ?? '') . "\" alt=\"" . ($props['alt'] ?? '') . "\" style=\"{$this->propsToStyle($props)}\" />",
-            'button' => "<a href=\"" . ($props['href'] ?? '#') . "\" class=\"btn-" . ($props['variant'] ?? 'primary') . "\">" . ($props['text'] ?? 'Button') . "</a>",
+            'container' => '<div style="max-width: '.($props['maxWidth'] ?? '1200px')."; margin: 0 auto; padding: 0 20px;\">{$childrenHtml}</div>",
+            'text' => "<div style=\"{$this->propsToStyle($props)}\">".($props['content'] ?? '').'</div>',
+            'image' => '<img src="'.($props['src'] ?? '').'" alt="'.($props['alt'] ?? '')."\" style=\"{$this->propsToStyle($props)}\" />",
+            'button' => '<a href="'.($props['href'] ?? '#').'" class="btn-'.($props['variant'] ?? 'primary').'">'.($props['text'] ?? 'Button').'</a>',
             default => "<div style=\"{$this->propsToStyle($props)}\">{$childrenHtml}</div>",
         };
     }
@@ -159,17 +172,17 @@ HTML;
     {
         $styles = [];
 
-        if (!empty($props['backgroundColor'])) {
+        if (! empty($props['backgroundColor'])) {
             $styles[] = "background-color: {$props['backgroundColor']}";
         }
-        if (!empty($props['padding'])) {
+        if (! empty($props['padding'])) {
             $p = $props['padding'];
-            $styles[] = "padding: " . ($p['top'] ?? 0) . "px " . ($p['right'] ?? 0) . "px " . ($p['bottom'] ?? 0) . "px " . ($p['left'] ?? 0) . "px";
+            $styles[] = 'padding: '.($p['top'] ?? 0).'px '.($p['right'] ?? 0).'px '.($p['bottom'] ?? 0).'px '.($p['left'] ?? 0).'px';
         }
-        if (!empty($props['fontSize'])) {
+        if (! empty($props['fontSize'])) {
             $styles[] = "font-size: {$props['fontSize']}px";
         }
-        if (!empty($props['textAlign'])) {
+        if (! empty($props['textAlign'])) {
             $styles[] = "text-align: {$props['textAlign']}";
         }
 

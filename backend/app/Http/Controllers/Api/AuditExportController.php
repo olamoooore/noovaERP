@@ -29,7 +29,7 @@ class AuditExportController extends Controller
     public function index(Request $request)
     {
         $auditor = $request->attributes->get('auditor');
-        if (!$auditor) {
+        if (! $auditor) {
             return response()->json(['message' => 'Auditor access required'], 403);
         }
 
@@ -44,9 +44,9 @@ class AuditExportController extends Controller
     {
         $auditor = $request->attributes->get('auditor');
         $isAuditor = $auditor !== null;
-        $isAdmin = !$isAuditor && $request->user() !== null;
+        $isAdmin = ! $isAuditor && $request->user() !== null;
 
-        if ($isAuditor && !$auditor->scopes()->where('can_export', true)->exists()) {
+        if ($isAuditor && ! $auditor->scopes()->where('can_export', true)->exists()) {
             return response()->json(['message' => 'No permission to export data'], 403);
         }
 
@@ -68,7 +68,7 @@ class AuditExportController extends Controller
 
         if ($auditor) {
             $scope = $auditor->scopes()->where('entity_id', $validated['entity_id'])->first();
-            if (!$scope) {
+            if (! $scope) {
                 return response()->json(['message' => 'No scope for this entity'], 403);
             }
         } else {
@@ -77,7 +77,7 @@ class AuditExportController extends Controller
 
         $exportData = $this->gatherExportData($validated, $scope);
 
-        $fileName = 'audit-export-' . now()->format('Y-m-d-His') . '.zip';
+        $fileName = 'audit-export-'.now()->format('Y-m-d-His').'.zip';
         $filePath = "auditor/exports/{$auditorId}/{$fileName}";
 
         Storage::disk('local')->put($filePath, $this->createZipArchive($exportData, $fileName));
@@ -114,13 +114,13 @@ class AuditExportController extends Controller
     public function download(Request $request, string $id)
     {
         $auditor = $request->attributes->get('auditor');
-        if (!$auditor) {
+        if (! $auditor) {
             return response()->json(['message' => 'Auditor access required'], 403);
         }
 
         $export = AuditExport::where('auditor_id', $auditor->id)->findOrFail($id);
 
-        if (!Storage::disk('local')->exists($export->file_path)) {
+        if (! Storage::disk('local')->exists($export->file_path)) {
             return response()->json(['message' => 'Export file not found'], 404);
         }
 
@@ -146,7 +146,7 @@ class AuditExportController extends Controller
     public function show(Request $request, string $id)
     {
         $auditor = $request->attributes->get('auditor');
-        if (!$auditor) {
+        if (! $auditor) {
             return response()->json(['message' => 'Auditor access required'], 403);
         }
 
@@ -184,7 +184,7 @@ class AuditExportController extends Controller
 
     private function createZipArchive(array $data, string $fileName): string
     {
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         $tempFile = tempnam(sys_get_temp_dir(), 'audit-export-');
 
         if ($zip->open($tempFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {

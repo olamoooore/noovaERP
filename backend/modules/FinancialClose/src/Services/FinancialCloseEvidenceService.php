@@ -3,8 +3,8 @@
 namespace Modules\FinancialClose\Services;
 
 use Illuminate\Support\Facades\Log;
-use Modules\FinancialClose\Models\SupportingEvidence;
 use Modules\FinancialClose\Models\AccountReview;
+use Modules\FinancialClose\Models\SupportingEvidence;
 
 class FinancialCloseEvidenceService
 {
@@ -29,7 +29,7 @@ class FinancialCloseEvidenceService
             ->where('id', $reviewId)
             ->first();
 
-        if (!$review) {
+        if (! $review) {
             return null;
         }
 
@@ -37,6 +37,7 @@ class FinancialCloseEvidenceService
             Log::warning('FinancialClose: cannot attach evidence to locked review', [
                 'review_id' => $reviewId,
             ]);
+
             return null;
         }
 
@@ -59,7 +60,7 @@ class FinancialCloseEvidenceService
             ->where('id', $evidenceId)
             ->first();
 
-        if (!$evidence) {
+        if (! $evidence) {
             return false;
         }
 
@@ -67,7 +68,7 @@ class FinancialCloseEvidenceService
             ->where('id', $evidence->review_id)
             ->first();
 
-        if (!$review) {
+        if (! $review) {
             return false;
         }
 
@@ -77,6 +78,7 @@ class FinancialCloseEvidenceService
                 'evidence_id' => $evidenceId,
                 'review_status' => $review->status,
             ]);
+
             return false;
         }
 
@@ -94,7 +96,7 @@ class FinancialCloseEvidenceService
             ->where('id', $evidenceId)
             ->first();
 
-        if (!$evidence) {
+        if (! $evidence) {
             return false;
         }
 
@@ -112,7 +114,7 @@ class FinancialCloseEvidenceService
             ->where('id', $evidenceId)
             ->first();
 
-        if (!$evidence) {
+        if (! $evidence) {
             return false;
         }
 

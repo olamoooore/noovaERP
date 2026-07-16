@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace App\SuperAdmin\Application;
 
-use App\SuperAdmin\Domain\CatalogItem;
 use App\SuperAdmin\Domain\CatalogPrice;
 use App\SuperAdmin\Domain\CatalogPriceRule;
 use App\SuperAdmin\Domain\TenantEntitlement;
 use App\SuperAdmin\Domain\TenantQuoteSnapshot;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 
 class PricingEngineService
 {
@@ -34,9 +32,9 @@ class PricingEngineService
     {
         return CatalogPrice::updateOrCreate(
             [
-                'catalog_item_id'  => $catalogItemId,
+                'catalog_item_id' => $catalogItemId,
                 'billing_interval' => $billingInterval,
-                'currency'         => strtoupper($currency),
+                'currency' => strtoupper($currency),
             ],
             ['unit_amount' => $unitAmount]
         );
@@ -66,30 +64,30 @@ class PricingEngineService
     {
         return CatalogPriceRule::create([
             'catalog_item_id' => $data['catalog_item_id'] ?? null,
-            'name'            => $data['name'],
-            'rule_type'       => $data['rule_type'],
-            'condition'       => $data['condition'] ?? [],
-            'modifier_value'  => $data['modifier_value'],
-            'priority'        => $data['priority'] ?? 0,
-            'is_exclusive'    => $data['is_exclusive'] ?? false,
-            'is_active'       => $data['is_active'] ?? true,
-            'effective_from'  => $data['effective_from'] ?? now()->toDateString(),
-            'effective_to'    => $data['effective_to'] ?? null,
+            'name' => $data['name'],
+            'rule_type' => $data['rule_type'],
+            'condition' => $data['condition'] ?? [],
+            'modifier_value' => $data['modifier_value'],
+            'priority' => $data['priority'] ?? 0,
+            'is_exclusive' => $data['is_exclusive'] ?? false,
+            'is_active' => $data['is_active'] ?? true,
+            'effective_from' => $data['effective_from'] ?? now()->toDateString(),
+            'effective_to' => $data['effective_to'] ?? null,
         ]);
     }
 
     public function updateRule(CatalogPriceRule $rule, array $data): CatalogPriceRule
     {
         $rule->update(array_filter([
-            'name'           => $data['name']           ?? $rule->name,
-            'rule_type'      => $data['rule_type']      ?? $rule->rule_type,
-            'condition'      => $data['condition']      ?? $rule->condition,
+            'name' => $data['name'] ?? $rule->name,
+            'rule_type' => $data['rule_type'] ?? $rule->rule_type,
+            'condition' => $data['condition'] ?? $rule->condition,
             'modifier_value' => $data['modifier_value'] ?? $rule->modifier_value,
-            'priority'       => $data['priority']       ?? $rule->priority,
-            'is_exclusive'   => $data['is_exclusive']   ?? $rule->is_exclusive,
-            'is_active'      => $data['is_active']      ?? $rule->is_active,
+            'priority' => $data['priority'] ?? $rule->priority,
+            'is_exclusive' => $data['is_exclusive'] ?? $rule->is_exclusive,
+            'is_active' => $data['is_active'] ?? $rule->is_active,
             'effective_from' => $data['effective_from'] ?? $rule->effective_from,
-            'effective_to'   => array_key_exists('effective_to', $data) ? $data['effective_to'] : $rule->effective_to,
+            'effective_to' => array_key_exists('effective_to', $data) ? $data['effective_to'] : $rule->effective_to,
         ], fn ($v) => $v !== null));
 
         return $rule->fresh();
@@ -116,7 +114,7 @@ class PricingEngineService
         string $tenantId,
         string $billingInterval = 'monthly',
         string $currency = 'USD',
-        ?int   $planFamilyId = null,
+        ?int $planFamilyId = null,
     ): TenantQuoteSnapshot {
         $currency = strtoupper($currency);
 
@@ -140,57 +138,57 @@ class PricingEngineService
             ->byPriority()
             ->where(function ($q) use ($itemIds) {
                 $q->whereNull('catalog_item_id')
-                  ->orWhereIn('catalog_item_id', $itemIds);
+                    ->orWhereIn('catalog_item_id', $itemIds);
             })
             ->get();
 
         // ── Step 4: Build line items ──────────────────────────────────────────
-        $lineItems      = [];
-        $subtotalCents  = 0;
-        $totalDiscount  = 0;
+        $lineItems = [];
+        $subtotalCents = 0;
+        $totalDiscount = 0;
 
         // Count purchased add-ons for volume tier rules
         $addOnCount = $entitlements->where('source', 'add_on_purchased')->count();
 
         foreach ($entitlements as $entitlement) {
-            $item   = $entitlement->catalogItem;
-            $price  = $prices->get($entitlement->catalog_item_id);
+            $item = $entitlement->catalogItem;
+            $price = $prices->get($entitlement->catalog_item_id);
 
             // Items with no price row are included at $0
             $unitAmount = $price ? $price->unit_amount : 0;
-            $quantity   = 1;
+            $quantity = 1;
 
             // Tier-included items are always shown at $0 in quotes
             if ($entitlement->source === 'tier_included') {
                 $unitAmount = 0;
             }
 
-            $lineSubtotal   = $unitAmount * $quantity;
+            $lineSubtotal = $unitAmount * $quantity;
             $subtotalCents += $lineSubtotal;
 
             // Apply rules
             [$discountCents, $rulesApplied] = $this->applyRules(
-                rules:            $rules,
-                itemId:           $entitlement->catalog_item_id,
-                billingInterval:  $billingInterval,
-                baseAmount:       $lineSubtotal,
-                entitlementSource:$entitlement->source,
-                addOnCount:       $addOnCount,
+                rules: $rules,
+                itemId: $entitlement->catalog_item_id,
+                billingInterval: $billingInterval,
+                baseAmount: $lineSubtotal,
+                entitlementSource: $entitlement->source,
+                addOnCount: $addOnCount,
             );
 
-            $totalDiscount  += $discountCents;
-            $lineTotalCents  = max(0, $lineSubtotal - $discountCents);
+            $totalDiscount += $discountCents;
+            $lineTotalCents = max(0, $lineSubtotal - $discountCents);
 
             $lineItems[] = [
-                'catalog_item_id'  => $entitlement->catalog_item_id,
-                'item_key'         => $item?->key ?? '',
-                'item_name'        => $item?->name ?? 'Unknown',
-                'source'           => $entitlement->source,
-                'unit_amount'      => $unitAmount,
-                'quantity'         => $quantity,
-                'discount_cents'   => $discountCents,
+                'catalog_item_id' => $entitlement->catalog_item_id,
+                'item_key' => $item?->key ?? '',
+                'item_name' => $item?->name ?? 'Unknown',
+                'source' => $entitlement->source,
+                'unit_amount' => $unitAmount,
+                'quantity' => $quantity,
+                'discount_cents' => $discountCents,
                 'line_total_cents' => $lineTotalCents,
-                'rules_applied'    => $rulesApplied,
+                'rules_applied' => $rulesApplied,
             ];
         }
 
@@ -198,16 +196,16 @@ class PricingEngineService
 
         // ── Step 5: Persist snapshot ──────────────────────────────────────────
         $snapshot = TenantQuoteSnapshot::create([
-            'tenant_id'             => $tenantId,
-            'plan_family_id'        => $planFamilyId,
-            'billing_interval'      => $billingInterval,
-            'currency'              => $currency,
-            'subtotal_cents'        => $subtotalCents,
-            'discount_cents'        => $totalDiscount,
-            'total_cents'           => $totalCents,
-            'line_items'            => $lineItems,
+            'tenant_id' => $tenantId,
+            'plan_family_id' => $planFamilyId,
+            'billing_interval' => $billingInterval,
+            'currency' => $currency,
+            'subtotal_cents' => $subtotalCents,
+            'discount_cents' => $totalDiscount,
+            'total_cents' => $totalCents,
+            'line_items' => $lineItems,
             'generated_by_admin_id' => Auth::id(),
-            'generated_at'          => now(),
+            'generated_at' => now(),
         ]);
 
         return $snapshot;
@@ -242,15 +240,15 @@ class PricingEngineService
      */
     private function applyRules(
         Collection $rules,
-        int        $itemId,
-        string     $billingInterval,
-        int        $baseAmount,
-        string     $entitlementSource,
-        int        $addOnCount,
+        int $itemId,
+        string $billingInterval,
+        int $baseAmount,
+        string $entitlementSource,
+        int $addOnCount,
     ): array {
         $totalDiscount = 0;
-        $rulesApplied  = [];
-        $exclusiveHit  = false;
+        $rulesApplied = [];
+        $exclusiveHit = false;
 
         foreach ($rules as $rule) {
             if ($exclusiveHit) {
@@ -282,10 +280,10 @@ class PricingEngineService
      */
     private function evaluateRule(
         CatalogPriceRule $rule,
-        string           $billingInterval,
-        int              $baseAmount,
-        string           $entitlementSource,
-        int              $addOnCount,
+        string $billingInterval,
+        int $baseAmount,
+        string $entitlementSource,
+        int $addOnCount,
     ): int {
         $condition = $rule->condition ?? [];
 
@@ -296,6 +294,7 @@ class PricingEngineService
                 if (isset($condition['tier_key'])) {
                     // Would check tenant's tier — skipped for now, match all
                 }
+
                 return (int) round($baseAmount * ($rule->modifier_value / 100));
 
             case CatalogPriceRule::TYPE_FIXED_DISCOUNT:
@@ -305,6 +304,7 @@ class PricingEngineService
                 if ($billingInterval !== 'yearly') {
                     return 0;
                 }
+
                 return (int) round($baseAmount * ($rule->modifier_value / 100));
 
             case CatalogPriceRule::TYPE_VOLUME_TIER:
@@ -316,6 +316,7 @@ class PricingEngineService
                 if ($entitlementSource !== 'add_on_purchased') {
                     return 0;
                 }
+
                 return (int) round($baseAmount * ($rule->modifier_value / 100));
 
             default:

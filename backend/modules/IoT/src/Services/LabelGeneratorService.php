@@ -4,7 +4,7 @@ namespace Modules\IoT\Services;
 
 /**
  * Service for generating TSPL commands for label printers.
- * 
+ *
  * TSPL (TSC Printer Language) is used by many thermal label printers
  * including Gprinter, TSC, and Zebra compatible printers.
  */
@@ -30,7 +30,7 @@ class LabelGeneratorService
     {
         $config = array_merge($this->defaultConfig, $config);
         $dotsPerMm = $config['dpi'] / 25.4; // ~8 dots per mm for 203 DPI
-        
+
         $productName = $data['productName'] ?? 'Product';
         $barcode = $data['barcode'] ?? '';
         $price = $data['price'] ?? '';
@@ -38,27 +38,27 @@ class LabelGeneratorService
         $copies = $data['copies'] ?? 1;
 
         $commands = [];
-        
+
         // Initialize printer
         $commands[] = "SIZE {$config['labelWidth']} mm, {$config['labelHeight']} mm";
         $commands[] = "GAP {$config['gap']} mm, 0";
         $commands[] = "SPEED {$config['speed']}";
         $commands[] = "DENSITY {$config['density']}";
-        $commands[] = "DIRECTION 1";
-        $commands[] = "CLS";
+        $commands[] = 'DIRECTION 1';
+        $commands[] = 'CLS';
 
         // Calculate label dimensions in dots
-        $labelWidthDots = (int)($config['labelWidth'] * $dotsPerMm);  // ~608 dots for 76mm
-        $labelHeightDots = (int)($config['labelHeight'] * $dotsPerMm); // ~400 dots for 50mm
+        $labelWidthDots = (int) ($config['labelWidth'] * $dotsPerMm);  // ~608 dots for 76mm
+        $labelHeightDots = (int) ($config['labelHeight'] * $dotsPerMm); // ~400 dots for 50mm
         $centerX = $labelWidthDots / 2;
-        
+
         // Start content lower on the label - Y=240 is about 30mm from top
         $currentY = 240;
 
         // Product name (centered)
         $truncatedName = $this->truncateText($productName, 20);
         $nameWidth = strlen($truncatedName) * 8;
-        $nameX = max(20, (int)($centerX - $nameWidth / 2));
+        $nameX = max(20, (int) ($centerX - $nameWidth / 2));
         $commands[] = $this->textCommand($nameX, $currentY, '2', 0, 1, 1, $truncatedName);
         $currentY += 35;
 
@@ -66,7 +66,7 @@ class LabelGeneratorService
         if ($sku) {
             $skuText = "SKU: {$sku}";
             $skuWidth = strlen($skuText) * 6;
-            $skuX = max(20, (int)($centerX - $skuWidth / 2));
+            $skuX = max(20, (int) ($centerX - $skuWidth / 2));
             $commands[] = $this->textCommand($skuX, $currentY, '1', 0, 1, 1, $skuText);
             $currentY += 30;
         }
@@ -74,7 +74,7 @@ class LabelGeneratorService
         // Price (centered)
         if ($price) {
             $priceWidth = strlen($price) * 12;
-            $priceX = max(20, (int)($centerX - $priceWidth / 2));
+            $priceX = max(20, (int) ($centerX - $priceWidth / 2));
             $commands[] = $this->textCommand($priceX, $currentY, '3', 0, 1, 1, $price);
             $currentY += 40;
         }
@@ -82,7 +82,7 @@ class LabelGeneratorService
         // Barcode at bottom (centered)
         if ($barcode) {
             $barcodeWidth = strlen($barcode) * 18;
-            $barcodeX = max(20, (int)($centerX - $barcodeWidth / 2));
+            $barcodeX = max(20, (int) ($centerX - $barcodeWidth / 2));
             $barcodeHeight = 50;
             $commands[] = $this->barcodeCommand($barcodeX, $currentY, '128', $barcodeHeight, 1, 0, 2, 2, $barcode);
         }
@@ -90,7 +90,7 @@ class LabelGeneratorService
         // Print command
         $commands[] = "PRINT 1, {$copies}";
 
-        return implode("\r\n", $commands) . "\r\n";
+        return implode("\r\n", $commands)."\r\n";
     }
 
     /**
@@ -100,26 +100,26 @@ class LabelGeneratorService
     {
         $config = array_merge($this->defaultConfig, $config);
         $dotsPerMm = $config['dpi'] / 25.4;
-        
+
         $barcode = $data['barcode'] ?? '';
         $barcodeType = $data['barcodeType'] ?? 'CODE128';
         $text = $data['text'] ?? '';
         $copies = $data['copies'] ?? 1;
 
         // Calculate label dimensions in dots
-        $labelWidthDots = (int)($config['labelWidth'] * $dotsPerMm);
-        $labelHeightDots = (int)($config['labelHeight'] * $dotsPerMm);
+        $labelWidthDots = (int) ($config['labelWidth'] * $dotsPerMm);
+        $labelHeightDots = (int) ($config['labelHeight'] * $dotsPerMm);
         $centerX = $labelWidthDots / 2;
 
         $commands = [];
-        
+
         // Initialize printer
         $commands[] = "SIZE {$config['labelWidth']} mm, {$config['labelHeight']} mm";
         $commands[] = "GAP {$config['gap']} mm, 0";
         $commands[] = "SPEED {$config['speed']}";
         $commands[] = "DENSITY {$config['density']}";
-        $commands[] = "DIRECTION 1";
-        $commands[] = "CLS";
+        $commands[] = 'DIRECTION 1';
+        $commands[] = 'CLS';
 
         $currentY = 40;
 
@@ -127,7 +127,7 @@ class LabelGeneratorService
         if ($text) {
             $truncatedText = $this->truncateText($text, 20);
             $textWidth = strlen($truncatedText) * 10;
-            $textX = max(20, (int)($centerX - $textWidth / 2));
+            $textX = max(20, (int) ($centerX - $textWidth / 2));
             $commands[] = $this->textCommand($textX, $currentY, '2', 0, 1, 1, $truncatedText);
             $currentY += 40;
         }
@@ -135,16 +135,16 @@ class LabelGeneratorService
         // Barcode (centered)
         if ($barcode) {
             $tsplBarcodeType = $this->mapBarcodeType($barcodeType);
-            
+
             if ($barcodeType === 'QR') {
                 // QR Code - centered
                 $qrSize = 120; // Approximate QR size
-                $qrX = (int)($centerX - $qrSize / 2);
+                $qrX = (int) ($centerX - $qrSize / 2);
                 $commands[] = "QRCODE {$qrX},{$currentY},H,5,A,0,\"{$barcode}\"";
             } else {
                 // Linear barcode - centered
                 $barcodeWidth = strlen($barcode) * 22;
-                $barcodeX = max(20, (int)($centerX - $barcodeWidth / 2));
+                $barcodeX = max(20, (int) ($centerX - $barcodeWidth / 2));
                 $barcodeHeight = 70;
                 $commands[] = $this->barcodeCommand($barcodeX, $currentY, $tsplBarcodeType, $barcodeHeight, 1, 0, 2, 2, $barcode);
             }
@@ -153,7 +153,7 @@ class LabelGeneratorService
         // Print command
         $commands[] = "PRINT 1, {$copies}";
 
-        return implode("\r\n", $commands) . "\r\n";
+        return implode("\r\n", $commands)."\r\n";
     }
 
     /**
@@ -162,7 +162,7 @@ class LabelGeneratorService
     public function generateShippingLabel(array $data, array $config = []): string
     {
         $config = array_merge($this->defaultConfig, $config);
-        
+
         $fromName = $data['fromName'] ?? '';
         $fromAddress = $data['fromAddress'] ?? '';
         $toName = $data['toName'] ?? '';
@@ -171,25 +171,25 @@ class LabelGeneratorService
         $copies = $data['copies'] ?? 1;
 
         $commands = [];
-        
+
         // Initialize printer
         $commands[] = "SIZE {$config['labelWidth']} mm, {$config['labelHeight']} mm";
         $commands[] = "GAP {$config['gap']} mm, 0";
         $commands[] = "SPEED {$config['speed']}";
         $commands[] = "DENSITY {$config['density']}";
-        $commands[] = "DIRECTION 1";
-        $commands[] = "CLS";
+        $commands[] = 'DIRECTION 1';
+        $commands[] = 'CLS';
 
         // From section
-        $commands[] = $this->textCommand(20, 20, '1', 0, 1, 1, "FROM:");
+        $commands[] = $this->textCommand(20, 20, '1', 0, 1, 1, 'FROM:');
         $commands[] = $this->textCommand(20, 40, '2', 0, 1, 1, $this->truncateText($fromName, 25));
         $commands[] = $this->textCommand(20, 65, '1', 0, 1, 1, $this->truncateText($fromAddress, 35));
 
         // Separator line
-        $commands[] = "BAR 20, 100, 400, 2";
+        $commands[] = 'BAR 20, 100, 400, 2';
 
         // To section
-        $commands[] = $this->textCommand(20, 115, '1', 0, 1, 1, "TO:");
+        $commands[] = $this->textCommand(20, 115, '1', 0, 1, 1, 'TO:');
         $commands[] = $this->textCommand(20, 135, '3', 0, 1, 1, $this->truncateText($toName, 20));
         $commands[] = $this->textCommand(20, 175, '2', 0, 1, 1, $this->truncateText($toAddress, 30));
 
@@ -201,7 +201,7 @@ class LabelGeneratorService
         // Print command
         $commands[] = "PRINT 1, {$copies}";
 
-        return implode("\r\n", $commands) . "\r\n";
+        return implode("\r\n", $commands)."\r\n";
     }
 
     /**
@@ -211,56 +211,56 @@ class LabelGeneratorService
     {
         $config = array_merge($this->defaultConfig, $config);
         $dotsPerMm = $config['dpi'] / 25.4;
-        
+
         // Calculate label dimensions in dots
-        $labelWidthDots = (int)($config['labelWidth'] * $dotsPerMm);
-        $labelHeightDots = (int)($config['labelHeight'] * $dotsPerMm);
+        $labelWidthDots = (int) ($config['labelWidth'] * $dotsPerMm);
+        $labelHeightDots = (int) ($config['labelHeight'] * $dotsPerMm);
         $centerX = $labelWidthDots / 2;
-        
+
         $commands = [];
-        
+
         // Initialize printer
         $commands[] = "SIZE {$config['labelWidth']} mm, {$config['labelHeight']} mm";
         $commands[] = "GAP {$config['gap']} mm, 0";
         $commands[] = "SPEED {$config['speed']}";
         $commands[] = "DENSITY {$config['density']}";
-        $commands[] = "DIRECTION 1";
-        $commands[] = "CLS";
+        $commands[] = 'DIRECTION 1';
+        $commands[] = 'CLS';
 
         // Calculate total content height: title(30) + gap(30) + subtitle(25) + gap(25) + date(20) + gap(30) + barcode(70) = ~230
         $contentHeight = 230;
-        $startY = (int)(($labelHeightDots - $contentHeight) / 2);
+        $startY = (int) (($labelHeightDots - $contentHeight) / 2);
         $startY = max(25, $startY);
 
         // Title - centered
-        $title = "NoovaERP";
-        $titleX = (int)($centerX - strlen($title) * 8);
+        $title = 'NoovaERP';
+        $titleX = (int) ($centerX - strlen($title) * 8);
         $commands[] = $this->textCommand($titleX, $startY, '3', 0, 1, 1, $title);
-        
+
         // Subtitle - centered
-        $subtitle = "Label Printer Test";
-        $subtitleX = (int)($centerX - strlen($subtitle) * 5);
+        $subtitle = 'Label Printer Test';
+        $subtitleX = (int) ($centerX - strlen($subtitle) * 5);
         $commands[] = $this->textCommand($subtitleX, $startY + 55, '2', 0, 1, 1, $subtitle);
-        
+
         // Date - centered
         $dateStr = date('Y-m-d H:i');
-        $dateX = (int)($centerX - strlen($dateStr) * 4);
+        $dateX = (int) ($centerX - strlen($dateStr) * 4);
         $commands[] = $this->textCommand($dateX, $startY + 105, '1', 0, 1, 1, $dateStr);
-        
+
         // Test barcode - centered
-        $testBarcode = "TEST123";
+        $testBarcode = 'TEST123';
         $barcodeWidth = strlen($testBarcode) * 18;
-        $barcodeX = (int)($centerX - $barcodeWidth / 2);
+        $barcodeX = (int) ($centerX - $barcodeWidth / 2);
         $commands[] = $this->barcodeCommand($barcodeX, $startY + 150, '128', 55, 1, 0, 2, 2, $testBarcode);
 
         // Border box with margin
         $margin = 20;
-        $commands[] = "BOX {$margin}, {$margin}, " . ($labelWidthDots - $margin) . ", " . ($labelHeightDots - $margin) . ", 2";
+        $commands[] = "BOX {$margin}, {$margin}, ".($labelWidthDots - $margin).', '.($labelHeightDots - $margin).', 2';
 
         // Print command
-        $commands[] = "PRINT 1, 1";
+        $commands[] = 'PRINT 1, 1';
 
-        return implode("\r\n", $commands) . "\r\n";
+        return implode("\r\n", $commands)."\r\n";
     }
 
     /**
@@ -270,6 +270,7 @@ class LabelGeneratorService
     {
         // Escape quotes in content
         $content = str_replace('"', '\\"', $content);
+
         return "TEXT {$x},{$y},\"{$font}\",{$rotation},{$xMul},{$yMul},\"{$content}\"";
     }
 
@@ -280,6 +281,7 @@ class LabelGeneratorService
     {
         // Escape quotes in content
         $content = str_replace('"', '\\"', $content);
+
         return "BARCODE {$x},{$y},\"{$type}\",{$height},{$readable},{$rotation},{$narrow},{$wide},\"{$content}\"";
     }
 
@@ -310,6 +312,7 @@ class LabelGeneratorService
         if (strlen($text) <= $maxLength) {
             return $text;
         }
-        return substr($text, 0, $maxLength - 3) . '...';
+
+        return substr($text, 0, $maxLength - 3).'...';
     }
 }

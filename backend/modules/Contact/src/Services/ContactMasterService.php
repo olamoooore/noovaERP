@@ -5,44 +5,24 @@ namespace Modules\Contact\src\Services;
 use App\Platform\EventBus\DomainEventDispatcher;
 use App\Traits\ApiResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
-use Modules\Contact\src\Events\{
-    ContactCreated,
-    ContactUpdated,
-    ContactDeleted,
-    ContactRoleChanged,
-    ContactMerged,
-    ContactProfileUpdated,
-    ContactImportCompleted,
-};
-use Modules\Contact\src\Models\{
-    CoreContact,
-    ContactRole,
-    ContactIdentifier,
-    ContactImportBatch,
-    ContactImportStaging,
-    ContactAddress,
-    ContactMethod,
-    ContactRelationship,
-    ContactVisibility,
-    ContactGroup,
-    ContactGroupMember,
-    ContactRegistration,
-    ContactTaxProfile,
-    ContactBankAccount,
-    ContactSearchIndex,
-    ContactRelatedRecord,
-    ContactDuplicateCandidate,
-    ContactMergeHistory,
-    AccountingCustomerProfile,
-    AccountingVendorProfile,
-    CrmContactProfile,
-    HrStaffProfile,
-    PosLoyaltyProfile,
-    PropertyContactProfile,
-    ProjectContactProfile
-};
+use Modules\Contact\src\Events\ContactCreated;
+use Modules\Contact\src\Events\ContactDeleted;
+use Modules\Contact\src\Events\ContactImportCompleted;
+use Modules\Contact\src\Events\ContactMerged;
+use Modules\Contact\src\Events\ContactRoleChanged;
+use Modules\Contact\src\Events\ContactUpdated;
+use Modules\Contact\src\Models\ContactAddress;
+use Modules\Contact\src\Models\ContactIdentifier;
+use Modules\Contact\src\Models\ContactImportBatch;
+use Modules\Contact\src\Models\ContactImportStaging;
+use Modules\Contact\src\Models\ContactMergeHistory;
+use Modules\Contact\src\Models\ContactMethod;
+use Modules\Contact\src\Models\ContactRelatedRecord;
+use Modules\Contact\src\Models\ContactRelationship;
+use Modules\Contact\src\Models\ContactRole;
+use Modules\Contact\src\Models\ContactSearchIndex;
+use Modules\Contact\src\Models\CoreContact;
 
 /**
  * ContactMasterService — shared contact identity service (ADR 000 Pillar 3).
@@ -76,7 +56,7 @@ class ContactMasterService
                 'first_name' => $data['first_name'] ?? null,
                 'last_name' => $data['last_name'] ?? null,
                 'company_name' => $data['company_name'] ?? null,
-                'display_name' => $data['display_name'] ?? trim(($data['first_name'] ?? '') . ' ' . ($data['last_name'] ?? '')),
+                'display_name' => $data['display_name'] ?? trim(($data['first_name'] ?? '').' '.($data['last_name'] ?? '')),
                 'email' => $data['email'] ?? null,
                 'phone' => $data['phone'] ?? null,
                 'mobile' => $data['mobile'] ?? null,
@@ -105,7 +85,9 @@ class ContactMasterService
     public function update(string $id, array $data, string $tenantId): ?CoreContact
     {
         $contact = CoreContact::where('tenant_id', $tenantId)->where('id', $id)->first();
-        if (!$contact) return null;
+        if (! $contact) {
+            return null;
+        }
 
         $old = $contact->toArray();
 
@@ -123,7 +105,7 @@ class ContactMasterService
             'notes' => $data['notes'] ?? null,
             'is_active' => $data['is_active'] ?? null,
             'metadata' => $data['metadata'] ?? null,
-        ], fn($v) => $v !== null));
+        ], fn ($v) => $v !== null));
 
         $this->rebuildSearchIndex($contact);
 
@@ -140,7 +122,9 @@ class ContactMasterService
     public function delete(string $id, string $tenantId): bool
     {
         $contact = CoreContact::where('tenant_id', $tenantId)->where('id', $id)->first();
-        if (!$contact) return false;
+        if (! $contact) {
+            return false;
+        }
 
         // Check for transactions (invoices, orders, etc.)
         $hasTransactions = ContactRelatedRecord::where('tenant_id', $tenantId)
@@ -172,29 +156,30 @@ class ContactMasterService
     {
         $query = CoreContact::where('tenant_id', $tenantId);
 
-        if (!empty($filters['entity_id'])) {
+        if (! empty($filters['entity_id'])) {
             $query->where('entity_id', $filters['entity_id']);
         }
-        if (!empty($filters['contact_type'])) {
+        if (! empty($filters['contact_type'])) {
             $query->where('contact_type', $filters['contact_type']);
         }
-        if (!empty($filters['is_active'])) {
+        if (! empty($filters['is_active'])) {
             $query->where('is_active', $filters['is_active']);
         }
-        if (!empty($filters['role'])) {
-            $query->whereHas('roles', fn($q) => $q->where('role', $filters['role']));
+        if (! empty($filters['role'])) {
+            $query->whereHas('roles', fn ($q) => $q->where('role', $filters['role']));
         }
-        if (!empty($filters['search'])) {
+        if (! empty($filters['search'])) {
             $search = $filters['search'];
             $query->where(function ($q) use ($search) {
                 $q->where('display_name', 'ilike', "%{$search}%")
-                  ->orWhere('email', 'ilike', "%{$search}%")
-                  ->orWhere('phone', 'ilike', "%{$search}%")
-                  ->orWhere('company_name', 'ilike', "%{$search}%");
+                    ->orWhere('email', 'ilike', "%{$search}%")
+                    ->orWhere('phone', 'ilike', "%{$search}%")
+                    ->orWhere('company_name', 'ilike', "%{$search}%");
             });
         }
 
         $perPage = min($filters['per_page'] ?? 25, 100);
+
         return $query->orderBy('display_name')->paginate($perPage);
     }
 
@@ -203,7 +188,9 @@ class ContactMasterService
     public function addRole(string $contactId, string $role, string $tenantId, array $meta = []): ?ContactRole
     {
         $contact = $this->find($contactId, $tenantId);
-        if (!$contact) return null;
+        if (! $contact) {
+            return null;
+        }
 
         $contactRole = ContactRole::create([
             'id' => Str::uuid(),
@@ -250,7 +237,9 @@ class ContactMasterService
     public function addIdentifier(string $contactId, string $type, string $value, string $tenantId, array $meta = []): ?ContactIdentifier
     {
         $contact = $this->find($contactId, $tenantId);
-        if (!$contact) return null;
+        if (! $contact) {
+            return null;
+        }
 
         return ContactIdentifier::create([
             'id' => Str::uuid(),
@@ -270,7 +259,9 @@ class ContactMasterService
     public function addAddress(string $contactId, array $data, string $tenantId): ?ContactAddress
     {
         $contact = $this->find($contactId, $tenantId);
-        if (!$contact) return null;
+        if (! $contact) {
+            return null;
+        }
 
         return ContactAddress::create([
             'id' => Str::uuid(),
@@ -299,7 +290,9 @@ class ContactMasterService
     public function addMethod(string $contactId, array $data, string $tenantId): ?ContactMethod
     {
         $contact = $this->find($contactId, $tenantId);
-        if (!$contact) return null;
+        if (! $contact) {
+            return null;
+        }
 
         return ContactMethod::create([
             'id' => Str::uuid(),
@@ -320,7 +313,9 @@ class ContactMasterService
     public function addRelationship(string $contactId, string $relatedId, string $type, string $tenantId, array $meta = []): ?ContactRelationship
     {
         $contact = $this->find($contactId, $tenantId);
-        if (!$contact) return null;
+        if (! $contact) {
+            return null;
+        }
 
         // Prevent circular relationships
         if ($contactId === $relatedId) {
@@ -346,25 +341,26 @@ class ContactMasterService
     {
         $query = ContactSearchIndex::where('tenant_id', $tenantId)->where('is_active', true);
 
-        if (!empty($criteria['q'])) {
+        if (! empty($criteria['q'])) {
             $q = $criteria['q'];
             $query->where(function ($sq) use ($q) {
                 $sq->where('search_name', 'ilike', "%{$q}%")
-                   ->orWhere('email', 'ilike', "%{$q}%")
-                   ->orWhere('phone', 'ilike', "%{$q}%")
-                   ->orWhere('mobile', 'ilike', "%{$q}%")
-                   ->orWhere('company_name', 'ilike', "%{$q}%")
-                   ->orWhere('identifiers_text', 'ilike', "%{$q}%");
+                    ->orWhere('email', 'ilike', "%{$q}%")
+                    ->orWhere('phone', 'ilike', "%{$q}%")
+                    ->orWhere('mobile', 'ilike', "%{$q}%")
+                    ->orWhere('company_name', 'ilike', "%{$q}%")
+                    ->orWhere('identifiers_text', 'ilike', "%{$q}%");
             });
         }
-        if (!empty($criteria['role'])) {
+        if (! empty($criteria['role'])) {
             $query->where('primary_role', $criteria['role']);
         }
-        if (!empty($criteria['entity_id'])) {
-            $query->whereHas('contact', fn($q) => $q->where('entity_id', $criteria['entity_id']));
+        if (! empty($criteria['entity_id'])) {
+            $query->whereHas('contact', fn ($q) => $q->where('entity_id', $criteria['entity_id']));
         }
 
         $perPage = min($criteria['per_page'] ?? 25, 100);
+
         return $query->orderBy('display_name')->paginate($perPage);
     }
 
@@ -382,9 +378,13 @@ class ContactMasterService
 
         foreach ($contacts as $contact) {
             foreach ($contacts as $other) {
-                if ($contact->id === $other->id) continue;
+                if ($contact->id === $other->id) {
+                    continue;
+                }
                 $pairKey = collect([$contact->id, $other->id])->sort()->implode('-');
-                if (in_array($pairKey, $checked)) continue;
+                if (in_array($pairKey, $checked)) {
+                    continue;
+                }
                 $checked[] = $pairKey;
 
                 $score = 0;
@@ -433,7 +433,9 @@ class ContactMasterService
     {
         $primary = $this->find($primaryId, $tenantId);
         $merged = $this->find($mergedId, $tenantId);
-        if (!$primary || !$merged) return false;
+        if (! $primary || ! $merged) {
+            return false;
+        }
 
         return DB::transaction(function () use ($primary, $merged, $tenantId, $userId) {
             // Move roles
@@ -495,7 +497,9 @@ class ContactMasterService
     public function get360View(string $id, string $tenantId): ?array
     {
         $contact = $this->find($id, $tenantId);
-        if (!$contact) return null;
+        if (! $contact) {
+            return null;
+        }
 
         return [
             'contact' => $contact,
@@ -503,11 +507,11 @@ class ContactMasterService
             'identifiers' => $contact->identifiers,
             'addresses' => $contact->addresses,
             'methods' => $contact->methods,
-            'relationships' => $contact->relationships->map(fn($r) => [
+            'relationships' => $contact->relationships->map(fn ($r) => [
                 'relationship' => $r,
                 'related_contact' => CoreContact::find($r->related_contact_id),
             ]),
-            'groups' => $contact->groups->map(fn($gm) => $gm->group),
+            'groups' => $contact->groups->map(fn ($gm) => $gm->group),
             'registrations' => $contact->registrations,
             'tax_profiles' => $contact->taxProfiles,
             'bank_accounts' => $contact->bankAccounts,
@@ -669,7 +673,7 @@ class ContactMasterService
 
     private function mapImportRow(array $row, ?array $mapping): array
     {
-        if (!$mapping) {
+        if (! $mapping) {
             return [
                 'display_name' => $row['display_name'] ?? $row['name'] ?? null,
                 'first_name' => $row['first_name'] ?? null,
@@ -686,6 +690,7 @@ class ContactMasterService
         foreach ($mapping as $targetField => $sourceColumn) {
             $mapped[$targetField] = $row[$sourceColumn] ?? null;
         }
+
         return $mapped;
     }
 
@@ -697,7 +702,7 @@ class ContactMasterService
             $errors[] = 'At least one of display_name, first_name, or last_name is required.';
         }
 
-        if (!empty($data['email']) && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+        if (! empty($data['email']) && ! filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Invalid email address.';
         }
 
@@ -706,18 +711,22 @@ class ContactMasterService
 
     private function findDuplicateForImport(array $data, string $tenantId): ?CoreContact
     {
-        if (!empty($data['email'])) {
+        if (! empty($data['email'])) {
             $existing = CoreContact::where('tenant_id', $tenantId)
                 ->where('email', $data['email'])
                 ->first();
-            if ($existing) return $existing;
+            if ($existing) {
+                return $existing;
+            }
         }
 
-        if (!empty($data['phone'])) {
+        if (! empty($data['phone'])) {
             $existing = CoreContact::where('tenant_id', $tenantId)
                 ->where('phone', $data['phone'])
                 ->first();
-            if ($existing) return $existing;
+            if ($existing) {
+                return $existing;
+            }
         }
 
         return null;

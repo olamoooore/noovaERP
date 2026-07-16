@@ -2,11 +2,10 @@
 
 namespace Modules\FinancialReporting\Models;
 
+use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use App\Models\User;
-use Carbon\Carbon;
 
 class ReportCache extends Model
 {
@@ -29,13 +28,13 @@ class ReportCache extends Model
     ];
 
     protected $casts = [
-        'tenant_id'     => 'string',
-        'filters'        => 'array',
-        'data'          => 'array',
-        'metadata'      => 'array',
+        'tenant_id' => 'string',
+        'filters' => 'array',
+        'data' => 'array',
+        'metadata' => 'array',
         'last_accessed_at' => 'datetime',
-        'expires_at'     => 'datetime',
-        'generated_at'  => 'datetime',
+        'expires_at' => 'datetime',
+        'generated_at' => 'datetime',
     ];
 
     /**
@@ -105,6 +104,7 @@ class ReportCache extends Model
     public function getData(): array
     {
         $this->incrementHitCount();
+
         return $this->data;
     }
 
@@ -139,14 +139,14 @@ class ReportCache extends Model
         return static::updateOrCreate(
             ['cache_key' => $cacheKey, 'tenant_id' => $resolvedTenantId],
             [
-                'report_type'   => $reportType,
-                'filters'       => $filters,
-                'data'          => $data,
-                'metadata'      => $metadata,
-                'expires_at'    => now()->addSeconds($ttl),
-                'generated_at'  => now(),
-                'user_id'       => $userId,
-                'hit_count'     => 0,
+                'report_type' => $reportType,
+                'filters' => $filters,
+                'data' => $data,
+                'metadata' => $metadata,
+                'expires_at' => now()->addSeconds($ttl),
+                'generated_at' => now(),
+                'user_id' => $userId,
+                'hit_count' => 0,
             ]
         );
     }

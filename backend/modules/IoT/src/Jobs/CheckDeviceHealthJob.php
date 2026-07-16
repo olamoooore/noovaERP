@@ -16,6 +16,7 @@ class CheckDeviceHealthJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $timeout = 300; // 5 minutes timeout
+
     public $tries = 3;
 
     protected $deviceId;
@@ -44,10 +45,10 @@ class CheckDeviceHealthJob implements ShouldQueue
             } else {
                 // Check all devices
                 $results = $healthCheckService->checkAllDevices();
-                Log::info("Health check completed for " . count($results) . " devices");
+                Log::info('Health check completed for '.count($results).' devices');
             }
         } catch (\Exception $e) {
-            Log::error("Health check job failed: " . $e->getMessage());
+            Log::error('Health check job failed: '.$e->getMessage());
             throw $e;
         }
     }
@@ -57,6 +58,6 @@ class CheckDeviceHealthJob implements ShouldQueue
      */
     public function failed(\Throwable $exception): void
     {
-        Log::error("Health check job failed permanently: " . $exception->getMessage());
+        Log::error('Health check job failed permanently: '.$exception->getMessage());
     }
 }

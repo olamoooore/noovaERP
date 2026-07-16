@@ -9,12 +9,35 @@ use App\Modules\Contracts\BaseModuleContract;
  */
 class InventoryModuleContract extends BaseModuleContract
 {
-    public function getKey(): string { return 'inventory'; }
-    public function getName(): string { return 'Inventory'; }
-    public function getType(): string { return 'core'; }
-    public function getDescription(): string { return 'Stock management, purchase orders, and warehouse operations.'; }
-    public function getVersion(): string { return '1.0.0'; }
-    public function getDependencies(): array { return []; }
+    public function getKey(): string
+    {
+        return 'inventory';
+    }
+
+    public function getName(): string
+    {
+        return 'Inventory';
+    }
+
+    public function getType(): string
+    {
+        return 'core';
+    }
+
+    public function getDescription(): string
+    {
+        return 'Stock management, purchase orders, and warehouse operations.';
+    }
+
+    public function getVersion(): string
+    {
+        return '1.0.0';
+    }
+
+    public function getDependencies(): array
+    {
+        return [];
+    }
 
     public function getPermissions(): array
     {
@@ -32,9 +55,9 @@ class InventoryModuleContract extends BaseModuleContract
     public function getActivationRules(): array
     {
         return [
-            'requires'  => [],
-            'settings'  => ['warehouse_id' => null],
-            'min_tier'  => null,
+            'requires' => [],
+            'settings' => ['warehouse_id' => null],
+            'min_tier' => null,
         ];
     }
 
@@ -50,9 +73,9 @@ class InventoryModuleContract extends BaseModuleContract
     {
         return [
             'has_ai_assistant' => false,
-            'ai_suggestions'   => true,
-            'ai_automation'    => false,
-            'ai_data_access'   => ['inventory.stock', 'inventory.purchases'],
+            'ai_suggestions' => true,
+            'ai_automation' => false,
+            'ai_data_access' => ['inventory.stock', 'inventory.purchases'],
         ];
     }
 }

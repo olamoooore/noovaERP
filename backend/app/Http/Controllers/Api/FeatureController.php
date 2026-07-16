@@ -13,7 +13,6 @@ use Illuminate\Http\Request;
  * Entitlement checks now read from `tenant_entitlements` via FeatureGateService
  * (the canonical platform entitlement snapshot) rather than the legacy
  * `tenant_features` table, which lacks tenant identity and is being retired.
- *
  */
 class FeatureController extends Controller
 {
@@ -49,7 +48,7 @@ class FeatureController extends Controller
     {
         $feature = \DB::table('public.features')->where('id', $id)->first();
 
-        if (!$feature) {
+        if (! $feature) {
             return response()->json(['message' => 'Feature not found'], 404);
         }
 
@@ -72,24 +71,24 @@ class FeatureController extends Controller
     private function formatFeature(Feature $feature, bool $enabled): array
     {
         return [
-            'id'          => $feature->id,
-            'name'        => $feature->name,
-            'key'         => $feature->key,
+            'id' => $feature->id,
+            'name' => $feature->name,
+            'key' => $feature->key,
             'description' => $feature->description,
-            'is_core'     => $feature->is_core,
-            'enabled'     => $enabled,
+            'is_core' => $feature->is_core,
+            'enabled' => $enabled,
         ];
     }
 
     private function formatFeatureFromRow(object $feature, bool $enabled): array
     {
         return [
-            'id'          => $feature->id,
-            'name'        => $feature->name,
-            'key'         => $feature->key,
+            'id' => $feature->id,
+            'name' => $feature->name,
+            'key' => $feature->key,
             'description' => $feature->description ?? '',
-            'is_core'     => (bool) $feature->is_core,
-            'enabled'     => $enabled,
+            'is_core' => (bool) $feature->is_core,
+            'enabled' => $enabled,
         ];
     }
 
@@ -99,7 +98,7 @@ class FeatureController extends Controller
      */
     private function currentTenantId(): ?string
     {
-        if (!function_exists('tenant') || !tenant()) {
+        if (! function_exists('tenant') || ! tenant()) {
             return null;
         }
 

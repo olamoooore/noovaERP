@@ -18,7 +18,7 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
-            
+
             // Indexes for performance
             $table->index('slug');
             $table->index('is_active');

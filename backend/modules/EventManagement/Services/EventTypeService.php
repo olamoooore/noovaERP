@@ -2,10 +2,10 @@
 
 namespace Modules\EventManagement\Services;
 
-use Modules\EventManagement\Models\EventType;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
+use Modules\EventManagement\Models\EventType;
 
 class EventTypeService
 {
@@ -35,25 +35,22 @@ class EventTypeService
         return Cache::remember(
             self::CACHE_KEY_ACTIVE_TYPES,
             self::CACHE_TTL,
-            fn() => EventType::active()->orderBy('name')->get()
+            fn () => EventType::active()->orderBy('name')->get()
         );
     }
 
     /**
      * Get event type by slug
      * Results are cached to reduce database queries
-     *
-     * @param string $slug
-     * @return EventType|null
      */
     public function getTypeBySlug(string $slug): ?EventType
     {
-        $cacheKey = self::CACHE_KEY_BY_SLUG_PREFIX . $slug;
+        $cacheKey = self::CACHE_KEY_BY_SLUG_PREFIX.$slug;
 
         return Cache::remember(
             $cacheKey,
             self::CACHE_TTL,
-            fn() => EventType::where('slug', $slug)->first()
+            fn () => EventType::where('slug', $slug)->first()
         );
     }
 
@@ -61,8 +58,6 @@ class EventTypeService
      * Create a new event type
      * Validates uniqueness of name and slug
      *
-     * @param array $data
-     * @return EventType
      * @throws ValidationException
      */
     public function createType(array $data): EventType
@@ -70,14 +65,14 @@ class EventTypeService
         // Validate unique name
         if (EventType::where('name', $data['name'])->exists()) {
             throw ValidationException::withMessages([
-                'name' => ['An event type with this name already exists.']
+                'name' => ['An event type with this name already exists.'],
             ]);
         }
 
         // Validate unique slug
         if (EventType::where('slug', $data['slug'])->exists()) {
             throw ValidationException::withMessages([
-                'slug' => ['An event type with this slug already exists.']
+                'slug' => ['An event type with this slug already exists.'],
             ]);
         }
 
@@ -93,9 +88,6 @@ class EventTypeService
      * Update an existing event type
      * Validates uniqueness of name and slug (excluding current record)
      *
-     * @param string $id
-     * @param array $data
-     * @return EventType
      * @throws ValidationException
      */
     public function updateType(string $id, array $data): EventType
@@ -103,22 +95,22 @@ class EventTypeService
         $eventType = EventType::findOrFail($id);
 
         // Validate unique name (excluding current record)
-        if (isset($data['name']) && 
+        if (isset($data['name']) &&
             EventType::where('name', $data['name'])
                 ->where('id', '!=', $id)
                 ->exists()) {
             throw ValidationException::withMessages([
-                'name' => ['An event type with this name already exists.']
+                'name' => ['An event type with this name already exists.'],
             ]);
         }
 
         // Validate unique slug (excluding current record)
-        if (isset($data['slug']) && 
+        if (isset($data['slug']) &&
             EventType::where('slug', $data['slug'])
                 ->where('id', '!=', $id)
                 ->exists()) {
             throw ValidationException::withMessages([
-                'slug' => ['An event type with this slug already exists.']
+                'slug' => ['An event type with this slug already exists.'],
             ]);
         }
 
@@ -132,8 +124,6 @@ class EventTypeService
 
     /**
      * Clear all event type caches
-     *
-     * @return void
      */
     private function clearCache(): void
     {
@@ -144,7 +134,7 @@ class EventTypeService
         // Note: In production, consider using cache tags for more efficient clearing
         $eventTypes = EventType::all();
         foreach ($eventTypes as $eventType) {
-            Cache::forget(self::CACHE_KEY_BY_SLUG_PREFIX . $eventType->slug);
+            Cache::forget(self::CACHE_KEY_BY_SLUG_PREFIX.$eventType->slug);
         }
     }
 }

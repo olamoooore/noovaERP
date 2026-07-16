@@ -4,10 +4,10 @@ namespace Modules\WebsiteBuilder\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
+use Modules\WebsiteBuilder\Jobs\PublishWebsiteJob;
 use Modules\WebsiteBuilder\Models\Website;
 use Modules\WebsiteBuilder\Services\PublishingService;
-use Modules\WebsiteBuilder\Jobs\PublishWebsiteJob;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PublishController extends Controller
 {
@@ -21,12 +21,28 @@ class PublishController extends Controller
     public function publish($website): JsonResponse
     {
         $website = Website::findOrFail($website);
-        // Dispatch async job
-        PublishWebsiteJob::dispatch($website, TenantUserHelper::resolveTenantUserId());
+
+        if (app()->environment('local')) {
+            // Run synchronously in dev so we don't need a queue worker
+            try {
+                $this->publishingService->publish(
+                    $website,
+                    TenantUserHelper::resolveTenantUserId()
+                );
+            } catch (\Exception $e) {
+                return response()->json([
+                    'message' => 'Publish failed: ' . $e->getMessage(),
+                    'status' => 'failed',
+                ], 500);
+            }
+        } else {
+            // Dispatch async job in production
+            PublishWebsiteJob::dispatch($website, TenantUserHelper::resolveTenantUserId());
+        }
 
         return response()->json([
-            'message' => 'Publishing started. You will be notified when complete.',
-            'status' => 'pending',
+            'message' => 'Website published successfully.',
+            'status' => 'published',
         ]);
     }
 

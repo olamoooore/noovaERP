@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * ReconciliationException
- * 
+ *
  * Tracks unmatched/unreconciled items with aging for exception management.
  */
 class ReconciliationException extends Model
@@ -47,35 +47,50 @@ class ReconciliationException extends Model
      * Exception type constants
      */
     const TYPE_UNMATCHED_TRANSACTION = 'unmatched_transaction';
+
     const TYPE_BANK_ERROR = 'bank_error';
+
     const TYPE_TIMING_DIFFERENCE = 'timing_difference';
+
     const TYPE_MISSING_RECEIPT = 'missing_receipt';
+
     const TYPE_DUPLICATE = 'duplicate';
 
     /**
      * Status constants
      */
     const STATUS_OPEN = 'open';
+
     const STATUS_IN_PROGRESS = 'in_progress';
+
     const STATUS_PENDING_APPROVAL = 'pending_approval';
+
     const STATUS_RESOLVED = 'resolved';
+
     const STATUS_ESCALATED = 'escalated';
 
     /**
      * Priority constants
      */
     const PRIORITY_LOW = 'low';
+
     const PRIORITY_MEDIUM = 'medium';
+
     const PRIORITY_HIGH = 'high';
+
     const PRIORITY_CRITICAL = 'critical';
 
     /**
      * Aging bucket constants
      */
     const BUCKET_CURRENT = 'current';
+
     const BUCKET_1_30 = '1_30_days';
+
     const BUCKET_31_60 = '31_60_days';
+
     const BUCKET_61_90 = '61_90_days';
+
     const BUCKET_90_PLUS = '90_plus_days';
 
     /**
@@ -159,7 +174,7 @@ class ReconciliationException extends Model
             'status' => self::STATUS_RESOLVED,
             'resolved_by' => $userId,
             'resolved_at' => now(),
-            'notes' => $notes ? $this->notes . "\n" . $notes : $this->notes,
+            'notes' => $notes ? $this->notes."\n".$notes : $this->notes,
         ]);
     }
 
@@ -171,7 +186,7 @@ class ReconciliationException extends Model
         $this->update([
             'status' => self::STATUS_ESCALATED,
             'priority' => self::PRIORITY_HIGH,
-            'notes' => $this->notes . "\nEscalated: " . $reason,
+            'notes' => $this->notes."\nEscalated: ".$reason,
         ]);
     }
 
@@ -194,10 +209,19 @@ class ReconciliationException extends Model
      */
     public static function calculateAgingBucket(int $daysOpen): string
     {
-        if ($daysOpen <= 0) return self::BUCKET_CURRENT;
-        if ($daysOpen <= 30) return self::BUCKET_1_30;
-        if ($daysOpen <= 60) return self::BUCKET_31_60;
-        if ($daysOpen <= 90) return self::BUCKET_61_90;
+        if ($daysOpen <= 0) {
+            return self::BUCKET_CURRENT;
+        }
+        if ($daysOpen <= 30) {
+            return self::BUCKET_1_30;
+        }
+        if ($daysOpen <= 60) {
+            return self::BUCKET_31_60;
+        }
+        if ($daysOpen <= 90) {
+            return self::BUCKET_61_90;
+        }
+
         return self::BUCKET_90_PLUS;
     }
 

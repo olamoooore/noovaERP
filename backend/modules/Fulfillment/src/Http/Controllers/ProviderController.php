@@ -3,10 +3,10 @@
 namespace Modules\Fulfillment\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Modules\Fulfillment\Services\FulfillmentService;
-use Modules\Fulfillment\Services\CarrierConfigService;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Modules\Fulfillment\Services\CarrierConfigService;
+use Modules\Fulfillment\Services\FulfillmentService;
 
 class ProviderController extends Controller
 {

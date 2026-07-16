@@ -3,11 +3,10 @@
 namespace Modules\Loyalty\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 use Modules\Loyalty\Models\CustomerLoyalty;
-use Modules\Loyalty\Models\LoyaltyTransaction;
 use Modules\Loyalty\Models\LoyaltyRedemption;
 use Modules\Loyalty\Models\LoyaltyReward;
+use Modules\Loyalty\Models\LoyaltyTransaction;
 
 class LoyaltyDashboardController
 {
@@ -41,6 +40,7 @@ class LoyaltyDashboardController
             ->groupBy('tier.name')
             ->map(function ($group, $tierName) use ($totalMembers) {
                 $count = $group->count();
+
                 return [
                     'name' => $tierName,
                     'count' => $count,
@@ -60,6 +60,7 @@ class LoyaltyDashboardController
                 if (is_string($date)) {
                     $date = \Carbon\Carbon::parse($date);
                 }
+
                 return [
                     'id' => $transaction->id,
                     'customer_name' => $transaction->customerLoyalty->customer->name ?? 'Unknown',
@@ -72,17 +73,18 @@ class LoyaltyDashboardController
         // Recent redemptions (last 10)
         $recentRedemptions = LoyaltyRedemption::with([
             'customerLoyalty.customer:id,name',
-            'reward:id,name'
+            'reward:id,name',
         ])
             ->latest('redeemed_at')
             ->take(10)
             ->get()
             ->map(function ($redemption) {
-                $type = $redemption->reward_id ? 'Reward: ' . ($redemption->reward->name ?? 'Unknown') : 'Discount';
+                $type = $redemption->reward_id ? 'Reward: '.($redemption->reward->name ?? 'Unknown') : 'Discount';
                 $date = $redemption->redeemed_at;
                 if (is_string($date)) {
                     $date = \Carbon\Carbon::parse($date);
                 }
+
                 return [
                     'id' => $redemption->id,
                     'customer_name' => $redemption->customerLoyalty->customer->name ?? 'Unknown',

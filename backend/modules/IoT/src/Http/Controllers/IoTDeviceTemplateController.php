@@ -2,11 +2,10 @@
 
 namespace Modules\IoT\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Modules\IoT\Models\IoTDeviceTemplate;
-use Illuminate\Validation\Rule;
 
 class IoTDeviceTemplateController extends Controller
 {
@@ -42,19 +41,20 @@ class IoTDeviceTemplateController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('vendor', 'like', "%{$search}%")
-                  ->orWhere('model', 'like', "%{$search}%");
+                    ->orWhere('vendor', 'like', "%{$search}%")
+                    ->orWhere('model', 'like', "%{$search}%");
             });
         }
 
         $templates = $query->orderBy('is_popular', 'desc')
-                          ->orderBy('is_verified', 'desc')
-                          ->orderBy('name')
-                          ->get();
+            ->orderBy('is_verified', 'desc')
+            ->orderBy('name')
+            ->get();
 
         // Group by category if no specific category filter
-        if (!$request->has('category')) {
+        if (! $request->has('category')) {
             $grouped = $templates->groupBy('category');
+
             return response()->json($grouped);
         }
 
@@ -73,7 +73,7 @@ class IoTDeviceTemplateController extends Controller
             ->map(function ($item) {
                 return [
                     'key' => $item->category,
-                    'name' => match($item->category) {
+                    'name' => match ($item->category) {
                         'printers' => 'Printers',
                         'scanners' => 'Scanners',
                         'cameras' => 'Cameras',
@@ -83,7 +83,7 @@ class IoTDeviceTemplateController extends Controller
                         default => ucfirst($item->category),
                     },
                     'count' => $item->count,
-                    'icon' => match($item->category) {
+                    'icon' => match ($item->category) {
                         'printers' => 'solar:printer-bold-duotone',
                         'scanners' => 'solar:qr-code-bold-duotone',
                         'cameras' => 'solar:camera-bold-duotone',
@@ -104,6 +104,7 @@ class IoTDeviceTemplateController extends Controller
     public function show($template): JsonResponse
     {
         $template = IoTDeviceTemplate::findOrFail($template);
+
         return response()->json($template);
     }
 
@@ -169,7 +170,7 @@ class IoTDeviceTemplateController extends Controller
         // Check if template is being used by any devices
         if ($template->devices()->count() > 0) {
             return response()->json([
-                'message' => 'Cannot delete template that is being used by devices'
+                'message' => 'Cannot delete template that is being used by devices',
             ], 422);
         }
 
@@ -202,9 +203,9 @@ class IoTDeviceTemplateController extends Controller
         ];
 
         // Create the device using the existing IoTDeviceController logic
-        $deviceController = new IoTDeviceController();
+        $deviceController = new IoTDeviceController;
         $deviceRequest = new Request($device);
-        
+
         return $deviceController->store($deviceRequest);
     }
 }

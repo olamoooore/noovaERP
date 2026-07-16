@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Payment;
 use App\Models\Invoice;
+use App\Models\Payment;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
@@ -32,10 +32,10 @@ class PaymentController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('payment_number', 'ILIKE', "%{$search}%")
-                  ->orWhere('reference', 'ILIKE', "%{$search}%")
-                  ->orWhereHas('customer', function ($cq) use ($search) {
-                      $cq->where('name', 'ILIKE', "%{$search}%");
-                  });
+                    ->orWhere('reference', 'ILIKE', "%{$search}%")
+                    ->orWhereHas('customer', function ($cq) use ($search) {
+                        $cq->where('name', 'ILIKE', "%{$search}%");
+                    });
             });
         }
 
@@ -58,7 +58,7 @@ class PaymentController extends Controller
             ->whereIn('status', ['posted', 'sent', 'partial'])
             ->where(function ($q) {
                 $q->whereNull('balance')
-                  ->orWhere('balance', '>', 0);
+                    ->orWhere('balance', '>', 0);
             })
             ->orderBy('invoice_date', 'desc');
 
@@ -108,7 +108,7 @@ class PaymentController extends Controller
             $invoice = Invoice::findOrFail($validated['invoice_id']);
             $discountAmount = $validated['discount_amount'] ?? 0;
             $totalApplied = $validated['amount'] + $discountAmount;
-            
+
             if ($totalApplied > $invoice->balance) {
                 return response()->json([
                     'message' => 'Payment amount exceeds invoice balance',
@@ -127,7 +127,7 @@ class PaymentController extends Controller
             }
 
             // Validate bank balance if paying from a bank account
-            if (!empty($validated['bank_account_id'])) {
+            if (! empty($validated['bank_account_id'])) {
                 $bankAccount = \App\Models\BankAccount::find($validated['bank_account_id']);
                 if ($bankAccount) {
                     $currentBalance = $bankAccount->getCurrentBalance();
@@ -160,12 +160,14 @@ class PaymentController extends Controller
     public function show($payment)
     {
         $payment = Payment::findOrFail($payment);
+
         return response()->json($payment->load(['customer', 'invoice', 'journalEntry']));
     }
 
     public function destroy($payment)
     {
         $payment = Payment::findOrFail($payment);
+
         return response()->json(['message' => 'Payments cannot be deleted once posted'], 403);
     }
 }

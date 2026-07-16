@@ -10,18 +10,10 @@ namespace App\Accounting\DTOs;
 class AccountingOriginInvoiceData
 {
     /**
-     * @param int $customerId
-     * @param AccountingDocumentLineData[] $lines
-     * @param string|null $invoiceDate
-     * @param string|null $dueDate
-     * @param string|null $notes
-     * @param string|null $terms
-     * @param string|null $customerReference
-     * @param string|null $internalReference
-     * @param float $discountAmount
-     * @param bool $autoPost Whether to auto-post after creation
-     * @param array $originContext Freeform metadata bag
-     * @param string|null $createdViaRole Role of the creating user
+     * @param  AccountingDocumentLineData[]  $lines
+     * @param  bool  $autoPost  Whether to auto-post after creation
+     * @param  array  $originContext  Freeform metadata bag
+     * @param  string|null  $createdViaRole  Role of the creating user
      */
     public function __construct(
         public readonly int $customerId,

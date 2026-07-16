@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Http\Controllers\Api\OnboardingSessionsController;
 use App\Models\User;
 use App\Services\OnboardingStateMachine;
 use Illuminate\Support\Facades\DB;
@@ -52,6 +51,7 @@ class OnboardingBackTest extends TenantTestCase
             }
             $state = $this->machine->advance($sessionId);
         }
+
         return $state;
     }
 
@@ -188,7 +188,7 @@ class OnboardingBackTest extends TenantTestCase
         $this->advanceTo($sessionId, 'validation');
 
         // No actingAs / no token: auth:sanctum (first middleware) must reject.
-        $response = $this->postJson('/api/v1/accounting/onboarding/sessions/' . $sessionId . '/back');
+        $response = $this->postJson('/api/v1/accounting/onboarding/sessions/'.$sessionId.'/back');
 
         $response->assertUnauthorized();
     }
@@ -205,7 +205,7 @@ class OnboardingBackTest extends TenantTestCase
         // state-machine tests above.
         $response = $this->actingAs($user, 'sanctum')
             ->withoutMiddleware()
-            ->postJson('/api/v1/accounting/onboarding/sessions/' . $sessionId . '/back');
+            ->postJson('/api/v1/accounting/onboarding/sessions/'.$sessionId.'/back');
 
         $response->assertOk();
         $response->assertJsonStructure(['data' => ['session' => ['current_step', 'status']]]);

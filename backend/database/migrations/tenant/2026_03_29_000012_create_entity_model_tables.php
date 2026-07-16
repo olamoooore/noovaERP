@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('entity_groups')) {
+        if (! Schema::hasTable('entity_groups')) {
             Schema::create('entity_groups', function (Blueprint $table) {
                 $table->id();
                 $table->string('name');
@@ -20,7 +20,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('legal_entities')) {
+        if (! Schema::hasTable('legal_entities')) {
             Schema::create('legal_entities', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('group_id')->constrained('entity_groups')->cascadeOnDelete();
@@ -37,7 +37,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('branches')) {
+        if (! Schema::hasTable('branches')) {
             Schema::create('branches', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('legal_entity_id')->constrained('legal_entities')->cascadeOnDelete();
@@ -50,7 +50,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('entity_books')) {
+        if (! Schema::hasTable('entity_books')) {
             Schema::create('entity_books', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('legal_entity_id')->constrained('legal_entities')->cascadeOnDelete();

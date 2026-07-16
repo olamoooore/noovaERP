@@ -2,9 +2,9 @@
 
 namespace Modules\EventManagement\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class IdentityVerification extends Model
 {
@@ -39,16 +39,24 @@ class IdentityVerification extends Model
 
     // Verification levels
     const LEVEL_NONE = 'none';
+
     const LEVEL_BASIC = 'basic';
+
     const LEVEL_FULL = 'full';
 
     // Verification statuses
     const STATUS_NONE = 'none';
+
     const STATUS_PENDING = 'pending';
+
     const STATUS_VERIFIED = 'verified';
+
     const STATUS_REJECTED = 'rejected';
+
     const STATUS_EXPIRED = 'expired';
+
     const STATUS_CANCELLED = 'cancelled';
+
     const STATUS_SUPERSEDED = 'superseded';
 
     /**
@@ -105,7 +113,7 @@ class IdentityVerification extends Model
      */
     public function meetsRequiredLevel(string $requiredLevel): bool
     {
-        if (!$this->isValid()) {
+        if (! $this->isValid()) {
             return false;
         }
 
@@ -148,7 +156,7 @@ class IdentityVerification extends Model
             ->where('verification_status', self::STATUS_VERIFIED)
             ->where(function ($query) {
                 $query->whereNull('expires_at')
-                      ->orWhere('expires_at', '>', now());
+                    ->orWhere('expires_at', '>', now());
             })
             ->orderBy('created_at', 'desc')
             ->first();
@@ -160,7 +168,7 @@ class IdentityVerification extends Model
     public static function hasValidVerification(string $tenantId, int $customerId, string $requiredLevel): bool
     {
         $verification = static::getCurrentVerification($tenantId, $customerId);
-        
+
         return $verification && $verification->meetsRequiredLevel($requiredLevel);
     }
 
@@ -171,9 +179,10 @@ class IdentityVerification extends Model
     {
         if ($this->isExpired() && $this->verification_status === self::STATUS_VERIFIED) {
             $this->update(['verification_status' => self::STATUS_EXPIRED]);
+
             return true;
         }
-        
+
         return false;
     }
 
@@ -183,7 +192,7 @@ class IdentityVerification extends Model
     public function markAsVerified(?int $validityMonths = null): void
     {
         $expiryDate = null;
-        
+
         if ($validityMonths) {
             $expiryDate = now()->addMonths($validityMonths);
         } else {

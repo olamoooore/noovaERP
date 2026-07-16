@@ -7,9 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 class ArchiveRecord extends Model
 {
     protected $table = 'platform_archive_records';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
+
     protected $guarded = [];
 
     protected $casts = [

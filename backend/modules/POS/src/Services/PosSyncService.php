@@ -4,13 +4,13 @@ namespace Modules\POS\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\POS\Models\PosOfflineQueue;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosPayment;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosSetting;
 use Modules\POS\Models\PosTerminal;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PosSyncService
 {
@@ -76,13 +76,14 @@ class PosSyncService
 
             // Check for existing queue item with same idempotency key
             $existing = PosOfflineQueue::where('idempotency_key', $idempotencyKey)->first();
-            
+
             if ($existing) {
                 Log::info('Offline operation already queued', [
                     'queue_id' => $existing->id,
                     'queue_number' => $existing->queue_number,
                     'idempotency_key' => $idempotencyKey,
                 ]);
+
                 return $existing;
             }
 
@@ -160,8 +161,8 @@ class PosSyncService
             ->values()
             ->all();
 
-        if (!empty($missing)) {
-            throw new \InvalidArgumentException('Offline sync envelope incomplete: ' . implode(', ', $missing));
+        if (! empty($missing)) {
+            throw new \InvalidArgumentException('Offline sync envelope incomplete: '.implode(', ', $missing));
         }
 
         $this->assertOfflineGuardrails(
@@ -201,7 +202,7 @@ class PosSyncService
     private function assertDeviceRegistrationState(array $envelope, ?int $terminalId, ?int $sessionId): PosTerminal
     {
         $resolvedTerminalId = $terminalId;
-        if (!$resolvedTerminalId && is_numeric($envelope['offline_device_id'] ?? null)) {
+        if (! $resolvedTerminalId && is_numeric($envelope['offline_device_id'] ?? null)) {
             $resolvedTerminalId = (int) $envelope['offline_device_id'];
         }
 
@@ -209,11 +210,11 @@ class PosSyncService
             ? PosTerminal::where('id', $resolvedTerminalId)->where('is_active', true)->first()
             : null;
 
-        if (!$terminal) {
+        if (! $terminal) {
             throw new \InvalidArgumentException('Offline device is not registered or active.');
         }
 
-        if (!empty($envelope['device_revoked_at'])) {
+        if (! empty($envelope['device_revoked_at'])) {
             throw new \InvalidArgumentException('Offline device has been revoked.');
         }
 
@@ -224,7 +225,7 @@ class PosSyncService
                 ->where('status', 'open')
                 ->exists();
 
-            if (!$openSessionExists) {
+            if (! $openSessionExists) {
                 throw new \InvalidArgumentException('Offline session is not active for the registered device.');
             }
         }
@@ -271,8 +272,8 @@ class PosSyncService
         ];
 
         $allowedOperations = $allowedOperationsByTier[$requestedTier] ?? [];
-        if (!in_array($operationType, $allowedOperations, true)) {
-            throw new \InvalidArgumentException('Offline policy tier does not allow operation: ' . $operationType);
+        if (! in_array($operationType, $allowedOperations, true)) {
+            throw new \InvalidArgumentException('Offline policy tier does not allow operation: '.$operationType);
         }
 
         $allocationEnabled = (bool) PosSetting::getValue('offline_enable_stock_allocation', false);
@@ -292,7 +293,7 @@ class PosSyncService
         }
 
         $scope = (string) ($envelope['local_cache_visibility_scope'] ?? '');
-        if (!in_array($scope, ['user', 'session', 'device'], true)) {
+        if (! in_array($scope, ['user', 'session', 'device'], true)) {
             throw new \InvalidArgumentException('Offline local cache visibility scope is invalid.');
         }
     }
@@ -509,9 +510,9 @@ class PosSyncService
         }
 
         $approvalRequest = \App\Models\ApprovalRequest::findOrFail($payload['approval_request_id']);
-        
+
         if ($approvalRequest->status !== 'approved') {
-            throw new \Exception('Void operation not approved. Current status: ' . $approvalRequest->status);
+            throw new \Exception('Void operation not approved. Current status: '.$approvalRequest->status);
         }
 
         // Process void with approval tracking
@@ -573,9 +574,9 @@ class PosSyncService
         }
 
         $approvalRequest = \App\Models\ApprovalRequest::findOrFail($payload['approval_request_id']);
-        
+
         if ($approvalRequest->status !== 'approved') {
-            throw new \Exception('Refund operation not approved. Current status: ' . $approvalRequest->status);
+            throw new \Exception('Refund operation not approved. Current status: '.$approvalRequest->status);
         }
 
         if ($approvalRequest->requested_by === $approvalRequest->reviewed_by) {
@@ -587,7 +588,7 @@ class PosSyncService
         $idempotencyKey = "offline_refund_{$order->id}";
 
         $refundService = app(\App\Services\RefundService::class);
-        $refundLines = $order->items->map(fn($item) => [
+        $refundLines = $order->items->map(fn ($item) => [
             'line_id' => $item->id,
             'product_id' => $item->product_id,
             'variant_id' => $item->product_variant_id,
@@ -614,7 +615,7 @@ class PosSyncService
         $this->createRefundPaymentForSync($order, $returnOrder, $refundMethod, $reason, $approvalRequest->reviewed_by);
 
         $postingService = app(\Modules\POS\Services\PosPostingService::class);
-        
+
         try {
             $postingService->reverseOrder($order, $returnOrder, 'POS offline refund reversal');
         } catch (\Exception $e) {
@@ -631,7 +632,7 @@ class PosSyncService
                 $order->total,
                 "Offline refund payment for order #{$order->order_number}"
             );
-            
+
             if ($refundTransaction && $refundJournalEntry) {
                 $refundTransaction->update(['journal_entry_id' => $refundJournalEntry->id]);
             }
@@ -695,7 +696,7 @@ class PosSyncService
         $terminal = $order->terminal()->with('warehouse')->first();
         $warehouseId = $terminal?->warehouse_id;
 
-        if (!$warehouseId) {
+        if (! $warehouseId) {
             Log::warning('POS return has no terminal warehouse — stock restock skipped', [
                 'pos_order_id' => $order->id,
             ]);
@@ -717,7 +718,7 @@ class PosSyncService
                             warehouseId: $warehouseId,
                             quantity: $qty,
                             type: 'return',
-                            reference: 'Return: ' . $returnOrder->order_number,
+                            reference: 'Return: '.$returnOrder->order_number,
                             referenceType: 'PosOrder',
                             referenceId: $returnOrder->id,
                         );
@@ -770,7 +771,7 @@ class PosSyncService
     {
         $queueItem = PosOfflineQueue::findOrFail($queueId);
 
-        if (!$queueItem->hasFailed() && !$queueItem->hasConflict()) {
+        if (! $queueItem->hasFailed() && ! $queueItem->hasConflict()) {
             throw new \Exception("Queue item is {$queueItem->status}, cannot retry");
         }
 
@@ -793,8 +794,8 @@ class PosSyncService
         return DB::transaction(function () use ($queueId, $resolution, $resolutionData) {
             $queueItem = PosOfflineQueue::lockForUpdate()->findOrFail($queueId);
 
-            if (!$queueItem->hasConflict()) {
-                throw new \Exception("Queue item is not in conflict state");
+            if (! $queueItem->hasConflict()) {
+                throw new \Exception('Queue item is not in conflict state');
             }
 
             $queueItem->update([

@@ -19,7 +19,7 @@ return new class extends Migration
             $table->timestamp('last_heartbeat')->nullable();
             $table->jsonb('metadata')->nullable();
             $table->timestamps();
-            
+
             $table->index('status');
             $table->index('last_heartbeat');
         });

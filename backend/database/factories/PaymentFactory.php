@@ -2,11 +2,10 @@
 
 namespace Database\Factories;
 
-use App\Models\Payment;
-use App\Models\Invoice;
 use App\Models\Customer;
+use App\Models\Invoice;
+use App\Models\Payment;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Support\Str;
 
 class PaymentFactory extends Factory
 {
@@ -15,7 +14,7 @@ class PaymentFactory extends Factory
     public function definition(): array
     {
         return [
-            'payment_number' => 'PAY-' . date('Y') . '-' . str_pad((string) (Payment::count() + 1), 4, '0', STR_PAD_LEFT),
+            'payment_number' => 'PAY-'.date('Y').'-'.str_pad((string) (Payment::count() + 1), 4, '0', STR_PAD_LEFT),
             'customer_id' => Customer::factory(),
             'invoice_id' => Invoice::factory(),
             'payment_date' => now()->toDateString(),

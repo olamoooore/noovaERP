@@ -11,7 +11,7 @@ class EventTicketCheckoutService
 {
     public function prepareCheckoutProduct(Event $event): Product
     {
-        $product = $this->resolveExistingProduct($event) ?? new Product();
+        $product = $this->resolveExistingProduct($event) ?? new Product;
 
         $product->fill([
             'name' => $this->buildProductName($event),
@@ -95,7 +95,7 @@ class EventTicketCheckoutService
 
     private function buildProductSlug(Event $event): string
     {
-        return Str::slug($this->buildProductName($event)) . '-' . $event->id;
+        return Str::slug($this->buildProductName($event)).'-'.$event->id;
     }
 
     private function buildProductSku(Event $event): string

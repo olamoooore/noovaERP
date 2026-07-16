@@ -6,10 +6,10 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Migration: Create Advanced Fraud Prevention Tables - Task 8.1
- * 
+ *
  * Creates comprehensive fraud prevention database schema with risk scoring,
  * fraud timeline tracking, risk factor storage, and model versioning.
- * 
+ *
  * Requirements: 24.1, 24.3
  */
 class CreateAdvancedFraudPreventionTables extends Migration
@@ -36,7 +36,7 @@ class CreateAdvancedFraudPreventionTables extends Migration
             $table->timestamp('deprecated_at')->nullable();
             $table->bigInteger('created_by_user_id')->nullable();
             $table->timestamps();
-            
+
             $table->unique(['model_name', 'model_version']);
             $table->index(['model_status', 'activated_at']);
         });
@@ -63,7 +63,7 @@ class CreateAdvancedFraudPreventionTables extends Migration
             $table->bigInteger('override_by_user_id')->nullable();
             $table->text('override_reason')->nullable();
             $table->timestamps();
-            
+
             $table->index(['customer_id', 'risk_level', 'calculated_at']);
             $table->index(['ip_address', 'risk_level', 'calculated_at']);
             $table->index(['scoring_model_name', 'scoring_model_version']);
@@ -88,7 +88,7 @@ class CreateAdvancedFraudPreventionTables extends Migration
                 'account_suspended',
                 'account_restored',
                 'dispute_opened',
-                'dispute_resolved'
+                'dispute_resolved',
             ])->index();
             $table->enum('event_severity', ['info', 'warning', 'high', 'critical'])->default('info')->index();
             $table->json('event_data'); // Event-specific data and context
@@ -102,7 +102,7 @@ class CreateAdvancedFraudPreventionTables extends Migration
             $table->json('additional_metadata')->nullable();
             $table->timestamp('event_timestamp')->index();
             $table->timestamps();
-            
+
             $table->index(['booking_id', 'event_timestamp']);
             $table->index(['customer_id', 'event_type', 'event_timestamp']);
             $table->index(['event_type', 'event_severity', 'event_timestamp']);
@@ -123,7 +123,7 @@ class CreateAdvancedFraudPreventionTables extends Migration
             $table->integer('calculation_priority')->default(100); // Order of calculation
             $table->json('dependencies')->nullable(); // Other factors this depends on
             $table->timestamps();
-            
+
             $table->index(['factor_category', 'is_active']);
             $table->index(['calculation_priority', 'is_active']);
         });
@@ -144,7 +144,7 @@ class CreateAdvancedFraudPreventionTables extends Migration
             $table->timestamp('activated_at')->nullable();
             $table->bigInteger('created_by_user_id')->nullable();
             $table->timestamps();
-            
+
             $table->unique(['tenant_id', 'configuration_name']);
             $table->index(['tenant_id', 'is_active']);
             $table->index(['active_model_name', 'active_model_version']);
@@ -165,7 +165,7 @@ class CreateAdvancedFraudPreventionTables extends Migration
             $table->timestamp('last_detected_at')->nullable();
             $table->json('pattern_metadata')->nullable();
             $table->timestamps();
-            
+
             $table->index(['pattern_type', 'is_active']);
             $table->index(['accuracy_rate', 'is_active']);
         });
@@ -188,7 +188,7 @@ class CreateAdvancedFraudPreventionTables extends Migration
             $table->timestamp('first_seen_at')->index();
             $table->timestamp('last_seen_at')->index();
             $table->timestamps();
-            
+
             $table->index(['risk_classification', 'fraud_rate']);
             $table->index(['unique_customer_count', 'fraud_rate']);
         });
@@ -216,7 +216,7 @@ class CreateAdvancedFraudPreventionTables extends Migration
             $table->timestamp('last_seen_at')->index();
             $table->timestamp('reputation_updated_at')->nullable();
             $table->timestamps();
-            
+
             $table->index(['country_code', 'reputation_score']);
             $table->index(['is_vpn', 'is_proxy', 'reputation_score']);
             $table->index(['fraud_rate', 'reputation_score']);
@@ -238,7 +238,7 @@ class CreateAdvancedFraudPreventionTables extends Migration
             $table->timestamp('last_action_at')->index();
             $table->json('recent_actions')->nullable(); // Recent action details for analysis
             $table->timestamps();
-            
+
             $table->unique(['tracking_key', 'tracking_type', 'action_type']);
             $table->index(['tracking_type', 'action_type', 'last_action_at']);
             $table->index(['window_start', 'last_action_at']);

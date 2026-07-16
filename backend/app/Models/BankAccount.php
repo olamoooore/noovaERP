@@ -65,7 +65,7 @@ class BankAccount extends Model
     public function getUnreconciledTransactions()
     {
         return JournalEntryLine::where('account_id', $this->gl_account_id)
-            ->whereHas('journalEntry', fn($q) => $q->where('status', 'posted'))
+            ->whereHas('journalEntry', fn ($q) => $q->where('status', 'posted'))
             ->where(function ($q) {
                 $q->whereNull('reconciliation_id');
             })

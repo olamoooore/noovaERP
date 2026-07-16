@@ -6,20 +6,21 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Migration: Create Analytics Governance Tables - Task 5.1
- * 
+ *
  * Creates comprehensive analytics governance infrastructure with KPI definitions,
  * data health checks, metadata tracking, and lineage management.
- * 
+ *
  * Requirements: 21.1, 21.2, 21.3
  */
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * Run the migrations.
      */
     public function up(): void
     {
         // KPI Definitions table - versioned calculation logic
-        if (!Schema::hasTable('kpi_definitions')) {
+        if (! Schema::hasTable('kpi_definitions')) {
             Schema::create('kpi_definitions', function (Blueprint $table) {
                 $table->id();
                 $table->string('kpi_name', 100)->unique();
@@ -45,7 +46,7 @@ return new class extends Migration {
         }
 
         // Data Health Checks table - automated validation
-        if (!Schema::hasTable('data_health_checks')) {
+        if (! Schema::hasTable('data_health_checks')) {
             Schema::create('data_health_checks', function (Blueprint $table) {
                 $table->id();
                 $table->string('check_name', 100);
@@ -72,7 +73,7 @@ return new class extends Migration {
         }
 
         // Analytics Metadata table - lineage and dependency tracking
-        if (!Schema::hasTable('analytics_metadata')) {
+        if (! Schema::hasTable('analytics_metadata')) {
             Schema::create('analytics_metadata', function (Blueprint $table) {
                 $table->id();
                 $table->string('entity_type', 100); // kpi, report, dashboard, dataset
@@ -99,7 +100,7 @@ return new class extends Migration {
         }
 
         // KPI Calculations History table - track calculation results
-        if (!Schema::hasTable('kpi_calculations')) {
+        if (! Schema::hasTable('kpi_calculations')) {
             Schema::create('kpi_calculations', function (Blueprint $table) {
                 $table->id();
                 $table->string('kpi_name', 100);
@@ -123,7 +124,7 @@ return new class extends Migration {
         }
 
         // Data Quality Alerts table - track and manage data quality issues
-        if (!Schema::hasTable('data_quality_alerts')) {
+        if (! Schema::hasTable('data_quality_alerts')) {
             Schema::create('data_quality_alerts', function (Blueprint $table) {
                 $table->id();
                 $table->bigInteger('health_check_id');
@@ -146,7 +147,7 @@ return new class extends Migration {
         }
 
         // Analytics Reconciliation Log table - track reconciliation activities
-        if (!Schema::hasTable('analytics_reconciliation_log')) {
+        if (! Schema::hasTable('analytics_reconciliation_log')) {
             Schema::create('analytics_reconciliation_log', function (Blueprint $table) {
                 $table->id();
                 $table->string('reconciliation_type', 100); // kpi_vs_source, cross_kpi, etc.
@@ -170,7 +171,7 @@ return new class extends Migration {
         }
 
         // Analytics Cache Management table - track cached analytics
-        if (!Schema::hasTable('analytics_cache_management')) {
+        if (! Schema::hasTable('analytics_cache_management')) {
             Schema::create('analytics_cache_management', function (Blueprint $table) {
                 $table->id();
                 $table->string('cache_key', 255)->unique();
@@ -193,7 +194,7 @@ return new class extends Migration {
         }
 
         // Analytics Performance Metrics table - track performance
-        if (!Schema::hasTable('analytics_performance_metrics')) {
+        if (! Schema::hasTable('analytics_performance_metrics')) {
             Schema::create('analytics_performance_metrics', function (Blueprint $table) {
                 $table->id();
                 $table->string('operation_type', 100); // calculation, reconciliation, health_check

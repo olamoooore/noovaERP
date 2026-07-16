@@ -11,9 +11,6 @@ interface EventHandlerContract
 {
     /**
      * Handle the incoming domain event.
-     *
-     * @param DomainEventContract $event
-     * @return void
      */
     public function handle(DomainEventContract $event): void;
 }

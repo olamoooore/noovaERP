@@ -2,9 +2,9 @@
 
 namespace Modules\WhatsApp\Services;
 
-use Modules\WhatsApp\Models\WhatsAppApiKey;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Modules\WhatsApp\Models\WhatsAppApiKey;
 
 class WhatsAppService
 {
@@ -14,7 +14,7 @@ class WhatsAppService
     public function sendMessage(WhatsAppApiKey $apiKey, string $phoneNumber, string $message, ?array $orderData = null): array
     {
         // Validate API key
-        if (!$apiKey->isValid()) {
+        if (! $apiKey->isValid()) {
             return [
                 'success' => false,
                 'error' => 'API key is inactive or expired',
@@ -59,7 +59,7 @@ class WhatsAppService
         $endpoint = $apiKey->api_endpoint ?: 'https://api.twilio.com/2010-04-01';
 
         // Twilio expects account_sid:auth_token in the key
-        [$accountSid, $authToken] = explode(':', $apiKey->key . ':');
+        [$accountSid, $authToken] = explode(':', $apiKey->key.':');
 
         $response = Http::withBasicAuth($accountSid, $authToken)
             ->asForm()
@@ -92,7 +92,7 @@ class WhatsAppService
         $endpoint = $apiKey->api_endpoint ?: 'https://messages-sandbox.nexmo.com/v1/messages';
 
         $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $apiKey->key,
+            'Authorization' => 'Bearer '.$apiKey->key,
             'Content-Type' => 'application/json',
         ])->post($endpoint, [
             'from' => 'VONAGE_SANDBOX', // Replace with actual WhatsApp number
@@ -122,7 +122,7 @@ class WhatsAppService
      */
     protected function sendViaCustom(WhatsAppApiKey $apiKey, string $phoneNumber, string $message, ?array $orderData = null): array
     {
-        if (!$apiKey->api_endpoint) {
+        if (! $apiKey->api_endpoint) {
             return [
                 'success' => false,
                 'error' => 'API endpoint not configured',
@@ -131,7 +131,7 @@ class WhatsAppService
 
         // If order data is provided, send as webhook format
         if ($orderData) {
-            $webhookUrl = rtrim($apiKey->api_endpoint, '/') . '/webhooks/order-created';
+            $webhookUrl = rtrim($apiKey->api_endpoint, '/').'/webhooks/order-created';
             $payload = $orderData;
 
             Log::info('Sending order webhook to custom endpoint', [
@@ -188,7 +188,7 @@ class WhatsAppService
 
             return [
                 'success' => false,
-                'error' => 'Connection failed: ' . $e->getMessage(),
+                'error' => 'Connection failed: '.$e->getMessage(),
             ];
         }
     }
@@ -200,10 +200,11 @@ class WhatsAppService
     {
         $items = collect($orderData['items'] ?? [])->map(function ($item) {
             $name = $item['product_name'] ?? $item['name'] ?? 'Product';
+
             return "• {$name} (×{$item['quantity']}) - {$item['price']}";
         })->join("\n");
 
-        $trackingLine = isset($orderData['order_url']) ? "\n🔗 Track your order: {$orderData['order_url']}\n" : "";
+        $trackingLine = isset($orderData['order_url']) ? "\n🔗 Track your order: {$orderData['order_url']}\n" : '';
 
         return <<<MSG
 🛒 Order Confirmation

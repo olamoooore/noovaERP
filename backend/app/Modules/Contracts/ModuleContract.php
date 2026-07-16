@@ -2,8 +2,6 @@
 
 namespace App\Modules\Contracts;
 
-use Illuminate\Support\Collection;
-
 /**
  * Module Contract Interface
  *

@@ -27,9 +27,9 @@ return new class extends Migration
             $table->foreignId('posted_by')->nullable()->constrained('users');
             $table->timestamp('posted_at')->nullable();
             $table->timestamps();
-            
+
             $table->foreign('currency_code')->references('code')->on('currencies');
-            
+
             $table->index('customer_id');
             $table->index('invoice_id');
             $table->index('status');

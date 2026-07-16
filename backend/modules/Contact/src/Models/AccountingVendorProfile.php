@@ -10,8 +10,11 @@ class AccountingVendorProfile extends Model
     use HasFactory;
 
     protected $table = 'accounting_vendor_profiles';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [

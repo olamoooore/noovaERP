@@ -2,11 +2,10 @@
 
 namespace Modules\FinancialClose\Services;
 
-use Illuminate\Support\Facades\Log;
+use Modules\FinancialClose\Models\CloseReadinessSnapshot;
 use Modules\FinancialClose\Models\HealthEvent;
 use Modules\FinancialClose\Models\JobRunHistory;
 use Modules\FinancialClose\Models\OrchestrationAlert;
-use Modules\FinancialClose\Models\CloseReadinessSnapshot;
 
 class OrchestrationHealthService
 {
@@ -34,7 +33,7 @@ class OrchestrationHealthService
             ->where('id', $eventId)
             ->first();
 
-        if (!$event || $event->status !== 'open') {
+        if (! $event || $event->status !== 'open') {
             return false;
         }
 
@@ -68,7 +67,7 @@ class OrchestrationHealthService
             ->where('id', $jobRunId)
             ->first();
 
-        if (!$jobRun) {
+        if (! $jobRun) {
             return false;
         }
 
@@ -83,7 +82,7 @@ class OrchestrationHealthService
             'error_message' => $errorMessage,
         ]);
 
-        if (!$success) {
+        if (! $success) {
             $this->createAlert(
                 $tenantId,
                 'job_failed',

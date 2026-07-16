@@ -17,9 +17,13 @@ abstract class ContactEvent implements DomainEventContract
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     protected string $eventName;
+
     protected string $version = '1.0.0';
+
     protected string $correlationId;
+
     protected string $occurredAt;
+
     protected bool $idempotent = true;
 
     public function __construct(

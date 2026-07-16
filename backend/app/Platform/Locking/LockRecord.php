@@ -7,9 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 class LockRecord extends Model
 {
     protected $table = 'platform_lock_records';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
+
     protected $guarded = [];
 
     protected $casts = [

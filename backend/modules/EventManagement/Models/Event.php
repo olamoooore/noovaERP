@@ -5,9 +5,9 @@ namespace Modules\EventManagement\Models;
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Event extends Model
 {
@@ -15,6 +15,7 @@ class Event extends Model
 
     // Acquisition mode constants
     const MODE_BUY = 'buy';
+
     const MODE_BID = 'bid';
 
     protected $fillable = [
@@ -129,6 +130,6 @@ class Event extends Model
      */
     public function canAcceptBookings(): bool
     {
-        return $this->isPublished() && !$this->isSoldOut() && $this->status !== 'cancelled';
+        return $this->isPublished() && ! $this->isSoldOut() && $this->status !== 'cancelled';
     }
 }

@@ -1,12 +1,13 @@
 <?php
+
 /**
  * Delete all tenant products and re-import from CSV.
  * Usage: cd backend && php scripts/reimport_tenant_products.php
  */
 
-require __DIR__ . '/../vendor/autoload.php';
+require __DIR__.'/../vendor/autoload.php';
 
-$app = require __DIR__ . '/../bootstrap/app.php';
+$app = require __DIR__.'/../bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 use App\Models\Product;
@@ -48,14 +49,14 @@ try {
     echo "✓ Deleted {$existingCount} products\n";
 } catch (\Throwable $e) {
     DB::rollBack();
-    die("✗ Failed to delete products: " . $e->getMessage() . "\n");
+    exit('✗ Failed to delete products: '.$e->getMessage()."\n");
 }
 
 // ── Step 2: Read CSV ─────────────────────────────────────────────
 echo "\n=== STEP 2: Read CSV ===\n";
-$csvPath = __DIR__ . '/../../infinitykpop_clean_enriched revised 9 March 26.xlsx - ITEMS WITH BARCODE.csv';
-if (!file_exists($csvPath)) {
-    die("✗ CSV not found at: {$csvPath}\n");
+$csvPath = __DIR__.'/../../infinitykpop_clean_enriched revised 9 March 26.xlsx - ITEMS WITH BARCODE.csv';
+if (! file_exists($csvPath)) {
+    exit("✗ CSV not found at: {$csvPath}\n");
 }
 
 $handle = fopen($csvPath, 'r');
@@ -65,30 +66,33 @@ $rawHeader = fgetcsv($handle);
 $header = array_map(function ($h) {
     $h = strtolower(trim((string) $h));
     $h = preg_replace('/[^a-z0-9]+/', '_', $h);
+
     return trim($h, '_');
 }, $rawHeader);
 
 // Column aliases
 $columnAliases = [
-    'item_description'      => 'name',
-    'item_barcode'          => 'barcode',
-    'stock_code'            => 'sku',
-    'unit_cost_sgd'         => 'cost',
-    'selling_price_sgd'     => 'price',
-    'quantity'              => 'stock_quantity',
-    'product_type'          => 'category_name',
-    'artist'                => 'secondary_name',
-    'artist_group'          => 'manufacturer',
+    'item_description' => 'name',
+    'item_barcode' => 'barcode',
+    'stock_code' => 'sku',
+    'unit_cost_sgd' => 'cost',
+    'selling_price_sgd' => 'price',
+    'quantity' => 'stock_quantity',
+    'product_type' => 'category_name',
+    'artist' => 'secondary_name',
+    'artist_group' => 'manufacturer',
     'weblink_for_the_image' => 'image_url',
 ];
 
-$header = array_map(fn($key) => $columnAliases[$key] ?? $key, $header);
-echo "Headers: " . implode(', ', array_filter($header)) . "\n";
+$header = array_map(fn ($key) => $columnAliases[$key] ?? $key, $header);
+echo 'Headers: '.implode(', ', array_filter($header))."\n";
 
 // Read all rows
 $rows = [];
 while (($line = fgetcsv($handle)) !== false) {
-    if (count($line) < 3) continue;
+    if (count($line) < 3) {
+        continue;
+    }
     $row = [];
     foreach ($header as $i => $key) {
         if ($key !== '') {
@@ -101,7 +105,7 @@ while (($line = fgetcsv($handle)) !== false) {
     }
 }
 fclose($handle);
-echo "✓ Read " . count($rows) . " rows from CSV\n";
+echo '✓ Read '.count($rows)." rows from CSV\n";
 
 // ── Step 3: Import products ──────────────────────────────────────
 echo "\n=== STEP 3: Import products ===\n";
@@ -111,17 +115,20 @@ $categoriesCache = [];
 
 function parsePrice($value): float
 {
-    if ($value === null || trim((string)$value) === '') return 0;
-    $cleaned = preg_replace('/[^0-9.]/', '', trim((string)$value));
-    return $cleaned !== '' ? (float)$cleaned : 0;
+    if ($value === null || trim((string) $value) === '') {
+        return 0;
+    }
+    $cleaned = preg_replace('/[^0-9.]/', '', trim((string) $value));
+
+    return $cleaned !== '' ? (float) $cleaned : 0;
 }
 
 function resolveCategoryId($categoryValue, array &$cache): ?int
 {
-    if ($categoryValue === null || trim((string)$categoryValue) === '' || trim((string)$categoryValue) === '-') {
+    if ($categoryValue === null || trim((string) $categoryValue) === '' || trim((string) $categoryValue) === '-') {
         return null;
     }
-    $categoryValue = trim((string)$categoryValue);
+    $categoryValue = trim((string) $categoryValue);
     $cacheKey = strtolower($categoryValue);
     if (array_key_exists($cacheKey, $cache)) {
         return $cache[$cacheKey];
@@ -129,29 +136,33 @@ function resolveCategoryId($categoryValue, array &$cache): ?int
     $category = ProductCategory::whereRaw('LOWER(name) = ?', [$cacheKey])->first();
     if ($category) {
         $cache[$cacheKey] = $category->id;
+
         return $category->id;
     }
     $newCategory = ProductCategory::create([
-        'name'      => $categoryValue,
+        'name' => $categoryValue,
         'is_active' => true,
     ]);
     $cache[$cacheKey] = $newCategory->id;
     echo "  + Created category: {$categoryValue}\n";
+
     return $newCategory->id;
 }
 
 foreach ($rows as $index => $row) {
-    $name = trim((string)($row['name'] ?? ''));
-    if ($name === '') continue;
+    $name = trim((string) ($row['name'] ?? ''));
+    if ($name === '') {
+        continue;
+    }
 
     $cost = parsePrice($row['cost'] ?? null);
     $price = parsePrice($row['price'] ?? null);
 
-    $sku = trim((string)($row['sku'] ?? ''));
+    $sku = trim((string) ($row['sku'] ?? ''));
     if ($sku === '' || $sku === '-') {
         $base = Str::upper(Str::substr(preg_replace('/[^A-Za-z0-9]+/', '', $name), 0, 8));
         $base = $base !== '' ? $base : 'SKU';
-        $sku = $base . '-' . Str::upper(Str::random(6));
+        $sku = $base.'-'.Str::upper(Str::random(6));
     }
 
     $categoryId = resolveCategoryId($row['category_name'] ?? null, $categoriesCache);
@@ -160,7 +171,7 @@ foreach ($rows as $index => $row) {
     $description = '';
     $variantParts = [];
     foreach (['variant_edition', 'variant_theme', 'variant_format', 'variant_region', 'variant_colour'] as $vf) {
-        $val = trim((string)($row[$vf] ?? ''));
+        $val = trim((string) ($row[$vf] ?? ''));
         if ($val !== '' && $val !== '-') {
             $label = ucfirst(str_replace('variant_', '', $vf));
             $variantParts[] = "{$label}: {$val}";
@@ -170,42 +181,42 @@ foreach ($rows as $index => $row) {
         $description = implode(' | ', $variantParts);
     }
 
-    $imageUrl = trim((string)($row['image_url'] ?? ''));
+    $imageUrl = trim((string) ($row['image_url'] ?? ''));
     $imageValue = ($imageUrl !== '' && filter_var($imageUrl, FILTER_VALIDATE_URL)) ? $imageUrl : null;
 
-    $barcode = trim((string)($row['barcode'] ?? ''));
-    $secondaryName = trim((string)($row['secondary_name'] ?? ''));
-    $manufacturer = trim((string)($row['manufacturer'] ?? ''));
-    $unit = trim((string)($row['unit'] ?? ''));
+    $barcode = trim((string) ($row['barcode'] ?? ''));
+    $secondaryName = trim((string) ($row['secondary_name'] ?? ''));
+    $manufacturer = trim((string) ($row['manufacturer'] ?? ''));
+    $unit = trim((string) ($row['unit'] ?? ''));
 
     try {
         Product::create([
-            'name'              => $name,
-            'secondary_name'    => $secondaryName !== '' && $secondaryName !== '-' ? $secondaryName : null,
-            'sku'               => $sku,
-            'barcode'           => $barcode !== '' ? $barcode : null,
-            'description'       => $description !== '' ? $description : null,
+            'name' => $name,
+            'secondary_name' => $secondaryName !== '' && $secondaryName !== '-' ? $secondaryName : null,
+            'sku' => $sku,
+            'barcode' => $barcode !== '' ? $barcode : null,
+            'description' => $description !== '' ? $description : null,
             'short_description' => $description !== '' ? $description : null,
-            'category_id'       => $categoryId,
-            'type'              => 'product',
-            'cost'              => $cost,
-            'price'             => $price,
-            'track_inventory'   => true,
-            'stock_quantity'    => 0, // Initial stock is zero; use InventoryService to set real quantities
-            'is_active'         => true,
-            'image'             => $imageValue,
-            'manufacturer'      => $manufacturer !== '' && $manufacturer !== '-' ? $manufacturer : null,
-            'unit'              => $unit !== '' && $unit !== '-' ? $unit : null,
+            'category_id' => $categoryId,
+            'type' => 'product',
+            'cost' => $cost,
+            'price' => $price,
+            'track_inventory' => true,
+            'stock_quantity' => 0, // Initial stock is zero; use InventoryService to set real quantities
+            'is_active' => true,
+            'image' => $imageValue,
+            'manufacturer' => $manufacturer !== '' && $manufacturer !== '-' ? $manufacturer : null,
+            'unit' => $unit !== '' && $unit !== '-' ? $unit : null,
         ]);
         $created++;
     } catch (\Throwable $e) {
-        $errors[] = "Row " . ($index + 2) . ": " . $e->getMessage();
+        $errors[] = 'Row '.($index + 2).': '.$e->getMessage();
     }
 }
 
 echo "\n✓ Created: {$created} products\n";
 if (count($errors) > 0) {
-    echo "✗ Errors: " . count($errors) . "\n";
+    echo '✗ Errors: '.count($errors)."\n";
     foreach (array_slice($errors, 0, 20) as $err) {
         echo "  - {$err}\n";
     }

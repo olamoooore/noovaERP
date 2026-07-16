@@ -10,9 +10,18 @@ use Modules\TemplateBuilder\Contracts\DocumentTemplateServiceContract;
 use Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract;
 use Modules\TemplateBuilder\Renderers\BlockRenderer;
 use Modules\TemplateBuilder\Renderers\CodeRenderer;
+use Modules\TemplateBuilder\Services\AssignmentResolver;
+use Modules\TemplateBuilder\Services\AuditWriter;
+use Modules\TemplateBuilder\Services\CommunicationTemplateBridge;
 use Modules\TemplateBuilder\Services\DataSource\DataSourceRegistry;
 use Modules\TemplateBuilder\Services\DocumentTemplateService;
+use Modules\TemplateBuilder\Services\EditorialLifecycleService;
+use Modules\TemplateBuilder\Services\EligibilityEngine;
 use Modules\TemplateBuilder\Services\PdfGenerationService;
+use Modules\TemplateBuilder\Services\PublicTokenService;
+use Modules\TemplateBuilder\Services\RegistryService;
+use Modules\TemplateBuilder\Services\SurveyRuntimeService;
+use Modules\TemplateBuilder\Services\TemplateContentSanitiser;
 
 class TemplateBuilderServiceProvider extends ServiceProvider
 {
@@ -32,6 +41,20 @@ class TemplateBuilderServiceProvider extends ServiceProvider
         $this->app->tag([BlockRenderer::class, CodeRenderer::class], 'template_builder.renderers');
         $this->app->bind('template_builder.renderer.block', BlockRenderer::class);
         $this->app->bind('template_builder.renderer.code', CodeRenderer::class);
+
+        // ADR-004 Universal Template Platform core services.
+        $this->app->singleton(AssignmentResolver::class);
+        $this->app->singleton(AuditWriter::class);
+        $this->app->singleton(RegistryService::class);
+        $this->app->singleton(EditorialLifecycleService::class);
+        $this->app->singleton(EligibilityEngine::class);
+
+        // Security (ADR-004 §15) + runtimes (ADR-004 §12).
+        $this->app->singleton(TemplateContentSanitiser::class);
+        $this->app->singleton(PublicTokenService::class);
+        $this->app->singleton(FormRuntimeService::class);
+        $this->app->singleton(SurveyRuntimeService::class);
+        $this->app->singleton(CommunicationTemplateBridge::class);
     }
 
     public function boot(): void

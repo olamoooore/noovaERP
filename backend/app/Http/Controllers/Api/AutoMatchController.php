@@ -3,15 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\Reconciliation\AutoMatchingService;
 use App\Services\BankReconciliationService;
-use Illuminate\Http\Request;
+use App\Services\Reconciliation\AutoMatchingService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 /**
  * AutoMatchController
- * 
+ *
  * API endpoints for auto-matching functionality in bank reconciliation.
  */
 class AutoMatchController extends Controller
@@ -23,7 +23,7 @@ class AutoMatchController extends Controller
 
     /**
      * Get auto-match suggestions for bank transactions
-     * 
+     *
      * POST /api/v1/reconciliation/auto-match/suggest
      */
     public function suggestMatches(Request $request): JsonResponse
@@ -72,7 +72,7 @@ class AutoMatchController extends Controller
 
     /**
      * Accept match suggestions and create reconciliation items
-     * 
+     *
      * POST /api/v1/reconciliation/auto-match/accept
      */
     public function acceptMatches(Request $request): JsonResponse
@@ -116,7 +116,7 @@ class AutoMatchController extends Controller
 
     /**
      * Bulk accept high-confidence matches only
-     * 
+     *
      * POST /api/v1/reconciliation/auto-match/bulk-accept
      */
     public function bulkAcceptHighConfidence(Request $request): JsonResponse
@@ -139,9 +139,9 @@ class AutoMatchController extends Controller
             // Filter for high-confidence matches only
             $highConfidenceMatches = [];
             foreach ($suggestions as $suggestion) {
-                if (!empty($suggestion['matches'])) {
+                if (! empty($suggestion['matches'])) {
                     $bestMatch = $suggestion['matches'][0]; // Already sorted by confidence
-                    
+
                     if ($bestMatch['confidence'] >= $validated['min_confidence']) {
                         $highConfidenceMatches[] = [
                             'bank_transaction_id' => $suggestion['bank_transaction']['id'],
@@ -198,7 +198,7 @@ class AutoMatchController extends Controller
 
     /**
      * Get auto-matching statistics for analysis
-     * 
+     *
      * GET /api/v1/reconciliation/auto-match/statistics/{bankAccountId}
      */
     public function getStatistics(int $bankAccountId): JsonResponse
@@ -214,7 +214,7 @@ class AutoMatchController extends Controller
 
             // Convert to format for auto-matching
             $bankTransactions = collect($unreconciled['transactions'] ?? [])
-                ->map(fn($t) => [
+                ->map(fn ($t) => [
                     'id' => (string) $t['id'],
                     'date' => $t['transaction_date'],
                     'amount' => (float) ($t['debit'] - $t['credit']),

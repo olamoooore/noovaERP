@@ -10,8 +10,11 @@ class AccountingCustomerProfile extends Model
     use HasFactory;
 
     protected $table = 'accounting_customer_profiles';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [

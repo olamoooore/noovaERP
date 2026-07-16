@@ -10,7 +10,7 @@ class MFRSValidationServiceTest extends TestCase
 {
     public function test_validate_invoice_allows_header_only_invoice_when_totals_exist(): void
     {
-        $invoice = new Invoice();
+        $invoice = new Invoice;
         $invoice->setRawAttributes([
             'invoice_number' => 'INV-2026-0014',
             'invoice_date' => '2026-02-03',
@@ -33,7 +33,7 @@ class MFRSValidationServiceTest extends TestCase
 
         $invoice->lines = collect();
 
-        $validator = new MFRSValidationService();
+        $validator = new MFRSValidationService;
         $result = $validator->validateInvoice($invoice);
 
         $this->assertTrue($result['valid']);

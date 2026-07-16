@@ -17,15 +17,15 @@ return new class extends Migration
             $table->foreignId('gl_account_id')->constrained('chart_of_accounts');
             $table->boolean('is_active')->default(true);
             $table->timestamps();
-            
+
             $table->foreign('currency_code')->references('code')->on('currencies');
             $table->index('is_active');
         });
-        
+
         // Update bank_reconciliations table to reference bank_accounts
         if (Schema::hasTable('bank_reconciliations')) {
             Schema::table('bank_reconciliations', function (Blueprint $table) {
-                if (!Schema::hasColumn('bank_reconciliations', 'bank_account_id')) {
+                if (! Schema::hasColumn('bank_reconciliations', 'bank_account_id')) {
                     $table->foreignId('bank_account_id')->nullable()->after('id')->constrained('bank_accounts');
                 }
             });
@@ -42,7 +42,7 @@ return new class extends Migration
                 }
             });
         }
-        
+
         Schema::dropIfExists('bank_accounts');
     }
 };

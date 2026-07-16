@@ -3,11 +3,9 @@
 namespace App\Platform;
 
 use App\Platform\EventBus\DomainEventDispatcher;
-use App\Platform\EventBus\EventSubscription;
 use App\Platform\SystemLog\Contracts\SystemLogServiceContract;
 use App\Platform\SystemLog\SystemLogService;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Str;
 
 class PlatformServiceProvider extends ServiceProvider
 {
@@ -78,32 +76,32 @@ class PlatformServiceProvider extends ServiceProvider
         try {
             $dispatcher = app(DomainEventDispatcher::class);
 
-        // Accounting subscribes to all contact events
-        $this->createSubscription(
-            $dispatcher,
-            'accounting',
-            ['contact.created', 'contact.updated', 'contact.deleted', 'contact.role.changed'],
-            \App\Platform\EventBus\Handlers\AccountingContactSyncHandler::class,
-            100
-        );
+            // Accounting subscribes to all contact events
+            $this->createSubscription(
+                $dispatcher,
+                'accounting',
+                ['contact.created', 'contact.updated', 'contact.deleted', 'contact.role.changed'],
+                \App\Platform\EventBus\Handlers\AccountingContactSyncHandler::class,
+                100
+            );
 
-        // CRM subscribes to all contact events
-        $this->createSubscription(
-            $dispatcher,
-            'crm',
-            ['contact.created', 'contact.updated', 'contact.deleted', 'contact.role.changed', 'contact.profile.updated'],
-            \App\Platform\EventBus\Handlers\CrmContactSyncHandler::class,
-            100
-        );
+            // CRM subscribes to all contact events
+            $this->createSubscription(
+                $dispatcher,
+                'crm',
+                ['contact.created', 'contact.updated', 'contact.deleted', 'contact.role.changed', 'contact.profile.updated'],
+                \App\Platform\EventBus\Handlers\CrmContactSyncHandler::class,
+                100
+            );
 
-        // Audit trail — logs all domain events across all modules
-        $this->createSubscription(
-            $dispatcher,
-            'platform',
-            ['*'],
-            \App\Platform\EventBus\Handlers\AuditTrailHandler::class,
-            1000
-        );
+            // Audit trail — logs all domain events across all modules
+            $this->createSubscription(
+                $dispatcher,
+                'platform',
+                ['*'],
+                \App\Platform\EventBus\Handlers\AuditTrailHandler::class,
+                1000
+            );
         } catch (\Throwable $e) {
             // Table not available — skip registration
         }
@@ -116,10 +114,14 @@ class PlatformServiceProvider extends ServiceProvider
         string $handlerClass,
         int $priority = 100
     ): void {
-        $subscription = new class($moduleKey, $eventNames, $handlerClass, $priority) implements \App\Platform\EventBus\Contracts\EventSubscriptionContract {
+        $subscription = new class($moduleKey, $eventNames, $handlerClass, $priority) implements \App\Platform\EventBus\Contracts\EventSubscriptionContract
+        {
             private string $moduleKey;
+
             private array $eventNames;
+
             private string $handlerClass;
+
             private int $priority;
 
             public function __construct(string $moduleKey, array $eventNames, string $handlerClass, int $priority)
@@ -130,12 +132,35 @@ class PlatformServiceProvider extends ServiceProvider
                 $this->priority = $priority;
             }
 
-            public function getModuleKey(): string { return $this->moduleKey; }
-            public function getEventNames(): array { return $this->eventNames; }
-            public function getHandlerClass(): string { return $this->handlerClass; }
-            public function getPriority(): int { return $this->priority; }
-            public function getTenantFilter(): ?string { return null; }
-            public function getPayloadFilter(): ?array { return null; }
+            public function getModuleKey(): string
+            {
+                return $this->moduleKey;
+            }
+
+            public function getEventNames(): array
+            {
+                return $this->eventNames;
+            }
+
+            public function getHandlerClass(): string
+            {
+                return $this->handlerClass;
+            }
+
+            public function getPriority(): int
+            {
+                return $this->priority;
+            }
+
+            public function getTenantFilter(): ?string
+            {
+                return null;
+            }
+
+            public function getPayloadFilter(): ?array
+            {
+                return null;
+            }
         };
 
         $dispatcher->subscribe($subscription);

@@ -2,8 +2,8 @@
 
 namespace Modules\Fulfillment\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ShippingRule extends Model
@@ -57,7 +57,7 @@ class ShippingRule extends Model
                 ? $conditions['destination_country']
                 : [$conditions['destination_country']];
 
-            if (!in_array($context['destination_country'], $countries)) {
+            if (! in_array($context['destination_country'], $countries)) {
                 return false;
             }
         }

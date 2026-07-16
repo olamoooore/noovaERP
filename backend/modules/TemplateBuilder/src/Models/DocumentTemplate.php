@@ -8,6 +8,8 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Modules\TemplateBuilder\Platform\EditorialState;
+use Modules\TemplateBuilder\Platform\InteractionType;
 
 class DocumentTemplate extends Model
 {
@@ -21,9 +23,29 @@ class DocumentTemplate extends Model
 
     public const STATUS_DRAFT = 'draft';
 
+    public const STATUS_IN_REVIEW = 'in_review';
+
     public const STATUS_PUBLISHED = 'published';
 
+    public const STATUS_SUPERSEDED = 'superseded';
+
     public const STATUS_ARCHIVED = 'archived';
+
+    /**
+     * Legacy status set kept for back-compat with pre-ADR-004 callers.
+     *
+     * @return list<string>
+     */
+    public static function legacyStatuses(): array
+    {
+        return [self::STATUS_DRAFT, self::STATUS_PUBLISHED, self::STATUS_ARCHIVED];
+    }
+
+    /** @return list<string> */
+    public static function adr004Statuses(): array
+    {
+        return [self::STATUS_DRAFT, self::STATUS_IN_REVIEW, self::STATUS_PUBLISHED, self::STATUS_SUPERSEDED, self::STATUS_ARCHIVED];
+    }
 
     public $incrementing = false;
 
@@ -47,11 +69,21 @@ class DocumentTemplate extends Model
         'html',
         'css',
         'status',
+        'interaction_type',
+        'domain_module_code',
+        'registration_id',
+        'data_contract_version',
         'published_version',
         'is_system_default',
         'created_by',
         'updated_by',
         'metadata',
+        'review_status',
+        'reviewed_by',
+        'reviewed_at',
+        'review_decision',
+        'review_notes',
+        'superseded_by',
     ];
 
     protected $casts = [
@@ -62,6 +94,7 @@ class DocumentTemplate extends Model
         'paper_width_mm' => 'integer',
         'paper_height_mm' => 'integer',
         'is_system_default' => 'boolean',
+        'reviewed_at' => 'datetime',
     ];
 
     protected static function boot(): void
@@ -95,6 +128,16 @@ class DocumentTemplate extends Model
         return $this->hasMany(GeneratedDocument::class, 'template_id');
     }
 
+    public function registration()
+    {
+        return $this->belongsTo(TemplateRegistration::class, 'registration_id');
+    }
+
+    public function reviewer()
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by');
@@ -105,9 +148,20 @@ class DocumentTemplate extends Model
         return $query->where('status', self::STATUS_PUBLISHED);
     }
 
+    public function scopeResolvable($query)
+    {
+        // Only PUBLISHED templates are eligible for runtime resolution (ADR-004 §9).
+        return $query->where('status', self::STATUS_PUBLISHED);
+    }
+
     public function scopeForDocumentType($query, string $type)
     {
         return $query->where('document_type', $type);
+    }
+
+    public function scopeForInteraction($query, string $interactionType)
+    {
+        return $query->where('interaction_type', $interactionType);
     }
 
     public function getPublishedDefinition(): array
@@ -128,5 +182,36 @@ class DocumentTemplate extends Model
             'html' => $this->html,
             'css' => $this->css,
         ];
+    }
+
+    public function editorialState(): EditorialState
+    {
+        return EditorialState::from($this->status ?? EditorialState::Draft->value);
+    }
+
+    public function interactionType(): InteractionType
+    {
+        $value = $this->interaction_type ?? InteractionType::BusinessDocument->value;
+
+        return InteractionType::from($value);
+    }
+
+    /** Whether the current status permits editing the definition (ADR-004 §9). */
+    public function isEditable(): bool
+    {
+        return $this->editorialState()->isEditable();
+    }
+
+    /** Whether this template is eligible for runtime resolution (ADR-004 §9). */
+    public function isResolvable(): bool
+    {
+        return $this->editorialState()->isResolvable();
+    }
+
+    public function canTransitionTo(EditorialState|string $target): bool
+    {
+        $targetState = $target instanceof EditorialState ? $target : EditorialState::from($target);
+
+        return $this->editorialState()->canTransitionTo($targetState);
     }
 }

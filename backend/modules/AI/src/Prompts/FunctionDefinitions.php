@@ -4,7 +4,7 @@ namespace Modules\AI\Prompts;
 
 /**
  * Function Definitions
- * 
+ *
  * Defines all AI-callable functions
  */
 class FunctionDefinitions
@@ -139,7 +139,7 @@ class FunctionDefinitions
             'description' => 'List active warehouses (including default warehouse). Use when user asks about warehouses or wants stock by warehouse.',
             'parameters' => [
                 'type' => 'object',
-                'properties' => new \stdClass(),
+                'properties' => new \stdClass,
                 'required' => [],
             ],
         ];
@@ -166,7 +166,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function searchCustomers(): array
     {
         return [
@@ -184,7 +184,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function checkOrderStatus(): array
     {
         return [
@@ -202,7 +202,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function listCustomerOrders(): array
     {
         return [
@@ -210,12 +210,12 @@ class FunctionDefinitions
             'description' => 'List ALL orders/invoices for the logged-in customer. Use this when customer asks about THEIR orders WITHOUT specifying a specific order number. Examples: "how many orders?", "how many invoices?", "i got how many invoice", "do I have any orders?", "show me my orders", "list my orders", "what are my orders?". NO parameters needed - customer is already logged in. DO NOT use get_invoice or check_order_status for these questions!',
             'parameters' => [
                 'type' => 'object',
-                'properties' => new \stdClass(), // Empty object for no parameters
+                'properties' => new \stdClass, // Empty object for no parameters
                 'required' => [],
             ],
         ];
     }
-    
+
     protected static function getLoyaltyPoints(): array
     {
         return [
@@ -233,7 +233,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function getLoyaltyRewards(): array
     {
         return [
@@ -251,7 +251,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function searchProducts(): array
     {
         return [
@@ -277,7 +277,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function getProductDetails(): array
     {
         return [
@@ -299,7 +299,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function checkProductAvailability(): array
     {
         return [
@@ -325,7 +325,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function listProductCategories(): array
     {
         return [
@@ -333,12 +333,12 @@ class FunctionDefinitions
             'description' => 'List all available product categories in the catalog. Use when customer wants to browse categories or asks what types of products are available. Examples: "what categories do you have?", "show me product types", "what can I buy?"',
             'parameters' => [
                 'type' => 'object',
-                'properties' => new \stdClass(), // Empty object for no parameters
+                'properties' => new \stdClass, // Empty object for no parameters
                 'required' => [],
             ],
         ];
     }
-    
+
     protected static function getInvoice(): array
     {
         return [
@@ -578,7 +578,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function createTicket(): array
     {
         return [
@@ -609,7 +609,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function transferToHuman(): array
     {
         return [
@@ -674,7 +674,7 @@ class FunctionDefinitions
             'description' => 'Suggest account codes for AP invoices based on past posted OCR documents. Use when the user asks for account coding suggestions or how to code a supplier invoice.',
             'parameters' => [
                 'type' => 'object',
-                'properties' => new \stdClass(),
+                'properties' => new \stdClass,
                 'required' => [],
             ],
         ];
@@ -687,16 +687,16 @@ class FunctionDefinitions
             'description' => 'Review revenue invoices for anomalies and risks such as unusually large amounts, overdue balances, or draft invoices. Use when the user asks about revenue review, invoice risks, or revenue anomalies.',
             'parameters' => [
                 'type' => 'object',
-                'properties' => new \stdClass(),
+                'properties' => new \stdClass,
                 'required' => [],
             ],
         ];
     }
-    
+
     // ========================================
     // New Loyalty Functions
     // ========================================
-    
+
     protected static function checkLoyaltyPoints(): array
     {
         return [
@@ -714,7 +714,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function getLoyaltyProgramDetails(): array
     {
         return [
@@ -732,7 +732,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function getCustomerTierInfo(): array
     {
         return [
@@ -750,7 +750,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function listAvailableRewards(): array
     {
         return [
@@ -772,7 +772,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function checkRedemptionHistory(): array
     {
         return [
@@ -794,7 +794,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function calculatePointsForPurchase(): array
     {
         return [
@@ -816,7 +816,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function getTierBenefits(): array
     {
         return [
@@ -834,7 +834,7 @@ class FunctionDefinitions
             ],
         ];
     }
-    
+
     protected static function checkNextTierProgress(): array
     {
         return [

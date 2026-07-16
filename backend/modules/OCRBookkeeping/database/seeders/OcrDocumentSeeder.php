@@ -2,10 +2,10 @@
 
 namespace Modules\OCRBookkeeping\Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use Modules\OCRBookkeeping\Models\OcrDocument;
-use Illuminate\Support\Str;
 use Carbon\Carbon;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
+use Modules\OCRBookkeeping\Models\OcrDocument;
 
 class OcrDocumentSeeder extends Seeder
 {

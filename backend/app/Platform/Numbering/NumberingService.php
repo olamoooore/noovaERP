@@ -25,8 +25,8 @@ class NumberingService
     public function register(
         string $documentType,
         string $prefix,
-        int $padding = 6,
-        string $format = null,
+        int $padding,
+        ?string $format,
         string $tenantId,
         string $resetFrequency = 'never', // never, yearly, monthly
     ): NumberingSequence {
@@ -58,7 +58,7 @@ class NumberingService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$sequence) {
+            if (! $sequence) {
                 throw new \DomainException("No numbering sequence registered for '{$documentType}'");
             }
 
@@ -83,7 +83,7 @@ class NumberingService
             ->where('is_active', true)
             ->first();
 
-        if (!$sequence) {
+        if (! $sequence) {
             throw new \DomainException("No numbering sequence registered for '{$documentType}'");
         }
 
@@ -126,6 +126,7 @@ class NumberingService
         for ($i = 0; $i < $count; $i++) {
             $numbers[] = $this->next($documentType, $tenantId);
         }
+
         return $numbers;
     }
 
@@ -149,7 +150,7 @@ class NumberingService
         $year = date('Y');
         $month = date('m');
 
-        $format = $sequence->format ?? $sequence->prefix . '-{NNNNNN}';
+        $format = $sequence->format ?? $sequence->prefix.'-{NNNNNN}';
 
         return str_replace(
             ['{YYYY}', '{YY}', '{MM}', '{NNNNNN}', '{NNNNN}', '{NNNN}', '{NNN}', '{NN}', '{N}'],
@@ -160,7 +161,9 @@ class NumberingService
 
     private function checkReset(NumberingSequence $sequence): void
     {
-        if ($sequence->reset_frequency === 'never') return;
+        if ($sequence->reset_frequency === 'never') {
+            return;
+        }
 
         $lastReset = $sequence->updated_at;
         $shouldReset = false;

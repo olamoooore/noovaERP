@@ -23,20 +23,21 @@ class BankAccountsSeeder extends Seeder
             ->where('name', 'LIKE', '%Bank%')
             ->first();
 
-        if (!$cashAccount && !$bankAccount) {
+        if (! $cashAccount && ! $bankAccount) {
             // Use any asset account
             $cashAccount = DB::table('chart_of_accounts')
                 ->where('type', 'asset')
                 ->first();
         }
 
-        if (!$cashAccount) {
+        if (! $cashAccount) {
             $this->command->error('No asset account found. Please create asset accounts first.');
+
             return;
         }
 
         $glAccountId = $bankAccount ? $bankAccount->id : $cashAccount->id;
-        $this->command->info("Using GL account: " . ($bankAccount ? $bankAccount->name : $cashAccount->name) . " (ID: {$glAccountId})");
+        $this->command->info('Using GL account: '.($bankAccount ? $bankAccount->name : $cashAccount->name)." (ID: {$glAccountId})");
 
         // Clear existing bank accounts
         DB::table('bank_accounts')->truncate();
@@ -84,7 +85,6 @@ class BankAccountsSeeder extends Seeder
             ]));
         }
 
-        $this->command->info('Successfully seeded ' . count($bankAccounts) . ' bank accounts!');
+        $this->command->info('Successfully seeded '.count($bankAccounts).' bank accounts!');
     }
 }
-

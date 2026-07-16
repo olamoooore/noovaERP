@@ -3,25 +3,26 @@
 namespace Modules\EventManagement\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Modules\EventManagement\Services\BiddingService;
-use Modules\EventManagement\Services\AccessControlService;
-use Modules\EventManagement\Exceptions\InvalidAcquisitionModeException;
-use Modules\EventManagement\Exceptions\SaleNotStartedException;
-use Modules\EventManagement\Exceptions\SaleClosedException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
+use Modules\EventManagement\Exceptions\InvalidAcquisitionModeException;
+use Modules\EventManagement\Exceptions\SaleClosedException;
+use Modules\EventManagement\Exceptions\SaleNotStartedException;
+use Modules\EventManagement\Services\AccessControlService;
+use Modules\EventManagement\Services\BiddingService;
 
 /**
  * Bidding Controller
- * 
+ *
  * Handles ticket bidding operations with acquisition mode and sale window validation.
  * Requirements: 3.5, 4.5, 8.1, 8.2, 8.3, 8.7
  */
 class BiddingController extends Controller
 {
     protected BiddingService $biddingService;
+
     protected AccessControlService $accessControlService;
 
     public function __construct(
@@ -34,14 +35,11 @@ class BiddingController extends Controller
 
     /**
      * Submit a bid for event tickets
-     * 
+     *
      * Requirements: 3.5 - Bidding functionality
      * Requirements: 4.5 - Prevent bidding for purchase events
      * Requirements: 8.1, 8.2, 8.3 - Sale window enforcement
      * Requirements: 8.7 - Descriptive error messages
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function submitBid(Request $request): JsonResponse
     {
@@ -67,7 +65,7 @@ class BiddingController extends Controller
 
             return response()->json([
                 'data' => $bid,
-                'message' => 'Bid submitted successfully'
+                'message' => 'Bid submitted successfully',
             ], Response::HTTP_CREATED);
 
         } catch (InvalidAcquisitionModeException $e) {
@@ -85,25 +83,21 @@ class BiddingController extends Controller
 
     /**
      * Get bids for an event (staff only)
-     * 
+     *
      * Requirements: 9.2 - Staff can view bids
-     * 
-     * @param Request $request
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getBids(Request $request, int $eventId): JsonResponse
     {
         try {
             // Check if user is staff
             $user = $request->user();
-            if (!$this->accessControlService->canViewInventory($user)) {
+            if (! $this->accessControlService->canViewInventory($user)) {
                 return response()->json([
                     'error' => [
                         'code' => 'FORBIDDEN',
                         'message' => 'You do not have permission to view bids',
                         'request_id' => request()->header('X-Request-ID', uniqid()),
-                    ]
+                    ],
                 ], Response::HTTP_FORBIDDEN);
             }
 
@@ -112,7 +106,7 @@ class BiddingController extends Controller
 
             return response()->json([
                 'data' => $bids,
-                'message' => 'Bids retrieved successfully'
+                'message' => 'Bids retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
@@ -123,9 +117,6 @@ class BiddingController extends Controller
     /**
      * Handle acquisition mode errors
      * Requirements: 4.5, 8.7 - Descriptive error messages
-     * 
-     * @param InvalidAcquisitionModeException $e
-     * @return JsonResponse
      */
     protected function handleAcquisitionModeError(InvalidAcquisitionModeException $e): JsonResponse
     {
@@ -145,17 +136,13 @@ class BiddingController extends Controller
                     'attempted_action' => 'bid',
                 ],
                 'request_id' => $requestId,
-            ]
+            ],
         ], Response::HTTP_BAD_REQUEST);
     }
 
     /**
      * Handle sale window errors
      * Requirements: 8.1, 8.2, 8.7 - Descriptive error messages for sale window violations
-     * 
-     * @param \Exception $e
-     * @param string $status
-     * @return JsonResponse
      */
     protected function handleSaleWindowError(\Exception $e, string $status): JsonResponse
     {
@@ -178,16 +165,13 @@ class BiddingController extends Controller
                     'sale_status' => $status,
                 ],
                 'request_id' => $requestId,
-            ]
+            ],
         ], $statusCode);
     }
 
     /**
      * Handle validation errors
      * Requirements: 8.7 - Descriptive error messages
-     * 
-     * @param \Illuminate\Validation\ValidationException $e
-     * @return JsonResponse
      */
     protected function handleValidationError(\Illuminate\Validation\ValidationException $e): JsonResponse
     {
@@ -199,45 +183,40 @@ class BiddingController extends Controller
                 'message' => 'The provided data is invalid',
                 'validation_errors' => $e->errors(),
                 'request_id' => $requestId,
-            ]
+            ],
         ], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 
     /**
      * Accept or reject a bid (staff/admin only)
-     * 
+     *
      * Requirements: Bid management functionality
-     * 
-     * @param Request $request
-     * @param int $bidId
-     * @param string $action
-     * @return JsonResponse
      */
     public function handleBidAction(Request $request, int $bidId, string $action): JsonResponse
     {
         try {
             // Validate action
-            if (!in_array($action, ['accept', 'reject'])) {
+            if (! in_array($action, ['accept', 'reject'])) {
                 return response()->json([
                     'success' => false,
                     'error' => [
                         'code' => 'INVALID_ACTION',
                         'message' => 'Action must be either "accept" or "reject"',
                         'request_id' => request()->header('X-Request-ID', uniqid()),
-                    ]
+                    ],
                 ], 400);
             }
 
             // Check if user is staff/admin
             $user = $request->user();
-            if (!$this->accessControlService->canViewInventory($user)) {
+            if (! $this->accessControlService->canViewInventory($user)) {
                 return response()->json([
                     'success' => false,
                     'error' => [
                         'code' => 'FORBIDDEN',
                         'message' => 'You do not have permission to manage bids',
                         'request_id' => request()->header('X-Request-ID', uniqid()),
-                    ]
+                    ],
                 ], 403);
             }
 
@@ -249,8 +228,8 @@ class BiddingController extends Controller
 
             // Process the bid action
             $result = $this->biddingService->processBidAction(
-                $bidId, 
-                $action, 
+                $bidId,
+                $action,
                 $user->id,
                 $validated['admin_notes'] ?? null,
                 $validated['reason'] ?? null
@@ -266,7 +245,7 @@ class BiddingController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $result,
-                'message' => "Bid {$action}ed successfully"
+                'message' => "Bid {$action}ed successfully",
             ]);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
@@ -276,7 +255,7 @@ class BiddingController extends Controller
                     'code' => 'BID_NOT_FOUND',
                     'message' => 'The specified bid was not found',
                     'request_id' => request()->header('X-Request-ID', uniqid()),
-                ]
+                ],
             ], 404);
         } catch (\InvalidArgumentException $e) {
             return response()->json([
@@ -285,7 +264,7 @@ class BiddingController extends Controller
                     'code' => 'INVALID_BID_STATE',
                     'message' => $e->getMessage(),
                     'request_id' => request()->header('X-Request-ID', uniqid()),
-                ]
+                ],
             ], 400);
         } catch (\Exception $e) {
             return $this->handleGenericError($e);
@@ -294,24 +273,20 @@ class BiddingController extends Controller
 
     /**
      * Get bid details (staff/admin only)
-     * 
-     * @param Request $request
-     * @param int $bidId
-     * @return JsonResponse
      */
     public function getBidDetails(Request $request, int $bidId): JsonResponse
     {
         try {
             // Check if user is staff/admin
             $user = $request->user();
-            if (!$this->accessControlService->canViewInventory($user)) {
+            if (! $this->accessControlService->canViewInventory($user)) {
                 return response()->json([
                     'success' => false,
                     'error' => [
                         'code' => 'FORBIDDEN',
                         'message' => 'You do not have permission to view bid details',
                         'request_id' => request()->header('X-Request-ID', uniqid()),
-                    ]
+                    ],
                 ], 403);
             }
 
@@ -320,7 +295,7 @@ class BiddingController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $bid,
-                'message' => 'Bid details retrieved successfully'
+                'message' => 'Bid details retrieved successfully',
             ]);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
@@ -330,7 +305,7 @@ class BiddingController extends Controller
                     'code' => 'BID_NOT_FOUND',
                     'message' => 'The specified bid was not found',
                     'request_id' => request()->header('X-Request-ID', uniqid()),
-                ]
+                ],
             ], 404);
         } catch (\Exception $e) {
             return $this->handleGenericError($e);
@@ -339,23 +314,20 @@ class BiddingController extends Controller
 
     /**
      * Bulk process multiple bids (staff/admin only)
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function bulkProcessBids(Request $request): JsonResponse
     {
         try {
             // Check if user is staff/admin
             $user = $request->user();
-            if (!$this->accessControlService->canViewInventory($user)) {
+            if (! $this->accessControlService->canViewInventory($user)) {
                 return response()->json([
                     'success' => false,
                     'error' => [
                         'code' => 'FORBIDDEN',
                         'message' => 'You do not have permission to manage bids',
                         'request_id' => request()->header('X-Request-ID', uniqid()),
-                    ]
+                    ],
                 ], 403);
             }
 
@@ -382,13 +354,14 @@ class BiddingController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $results,
-                'message' => 'Bids processed successfully'
+                'message' => 'Bids processed successfully',
             ]);
 
         } catch (\Exception $e) {
             return $this->handleGenericError($e);
         }
     }
+
     protected function handleGenericError(\Exception $e): JsonResponse
     {
         $requestId = request()->header('X-Request-ID', uniqid());
@@ -406,7 +379,7 @@ class BiddingController extends Controller
                     'code' => 'RESOURCE_NOT_FOUND',
                     'message' => 'The requested resource was not found',
                     'request_id' => $requestId,
-                ]
+                ],
             ], Response::HTTP_NOT_FOUND);
         }
 
@@ -416,7 +389,7 @@ class BiddingController extends Controller
                     'code' => 'INVALID_ARGUMENT',
                     'message' => $e->getMessage(),
                     'request_id' => $requestId,
-                ]
+                ],
             ], Response::HTTP_BAD_REQUEST);
         }
 
@@ -425,7 +398,7 @@ class BiddingController extends Controller
                 'code' => 'INTERNAL_SERVER_ERROR',
                 'message' => 'An unexpected error occurred while processing your bid',
                 'request_id' => $requestId,
-            ]
+            ],
         ], Response::HTTP_INTERNAL_SERVER_ERROR);
     }
 }

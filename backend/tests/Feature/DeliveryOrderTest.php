@@ -16,9 +16,13 @@ use Tests\TenantTestCase;
 class DeliveryOrderTest extends TenantTestCase
 {
     protected User $user;
+
     protected Customer $customer;
+
     protected Product $productA;
+
     protected Product $productB;
+
     protected Warehouse $warehouse;
 
     protected function setUp(): void
@@ -33,7 +37,7 @@ class DeliveryOrderTest extends TenantTestCase
 
         $this->user = User::create([
             'name' => 'Test User',
-            'email' => 'test-delivery-' . uniqid() . '@test.local',
+            'email' => 'test-delivery-'.uniqid().'@test.local',
             'password' => bcrypt('password'),
         ]);
 
@@ -44,7 +48,7 @@ class DeliveryOrderTest extends TenantTestCase
 
         $this->productA = Product::factory()->create([
             'name' => 'Widget A',
-            'sku' => 'WGT-A-' . uniqid(),
+            'sku' => 'WGT-A-'.uniqid(),
             'price' => 100,
             'cost' => 25,
             'track_inventory' => false,
@@ -52,7 +56,7 @@ class DeliveryOrderTest extends TenantTestCase
 
         $this->productB = Product::factory()->create([
             'name' => 'Widget B',
-            'sku' => 'WGT-B-' . uniqid(),
+            'sku' => 'WGT-B-'.uniqid(),
             'price' => 200,
             'cost' => 50,
             'track_inventory' => false,
@@ -60,7 +64,7 @@ class DeliveryOrderTest extends TenantTestCase
 
         $this->warehouse = Warehouse::create([
             'name' => 'Test Warehouse',
-            'code' => 'TW-' . uniqid(),
+            'code' => 'TW-'.uniqid(),
             'is_active' => true,
         ]);
     }
@@ -111,6 +115,7 @@ class DeliveryOrderTest extends TenantTestCase
         ]);
 
         $do = $service->completeDeliveryOrder($do);
+
         return [$do, $service];
     }
 
@@ -365,7 +370,8 @@ class DeliveryOrderTest extends TenantTestCase
         try {
             $order = $soService->allocateOrder($order->fresh());
             $order = $soService->fulfilOrder($order);
-        } catch (\Exception $e) {}
+        } catch (\Exception $e) {
+        }
 
         // First invoice — should work for 40
         $invoice1 = $soService->createInvoice($order->fresh());

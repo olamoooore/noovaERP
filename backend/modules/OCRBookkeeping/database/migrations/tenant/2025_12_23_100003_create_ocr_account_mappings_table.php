@@ -15,31 +15,31 @@ return new class extends Migration
     {
         Schema::create('ocr_account_mappings', function (Blueprint $table) {
             $table->id();
-            
+
             // Vendor association (optional - can be pattern-based without vendor)
             $table->foreignId('vendor_id')->nullable()->constrained('customers')->onDelete('cascade');
-            
+
             // Description pattern for matching
             $table->string('description_pattern', 500)->nullable();
-            
+
             // Keywords extracted from descriptions (JSONB for flexible search)
             $table->jsonb('keywords')->nullable();
-            
+
             // Mapped account
             $table->foreignId('account_id')->constrained('chart_of_accounts')->onDelete('cascade');
-            
+
             // Confidence and usage tracking
             $table->decimal('confidence_score', 5, 2)->nullable();
             $table->integer('usage_count')->default(1);
             $table->timestamp('last_used_at')->useCurrent();
-            
+
             $table->timestamps();
-            
+
             // Indexes for performance
             $table->index('vendor_id');
             $table->index('account_id');
             $table->index('last_used_at');
-            
+
             // GIN index for JSONB keywords field (PostgreSQL specific)
             // This enables fast keyword searches
             $table->index('keywords', 'idx_ocr_account_mappings_keywords', 'gin');

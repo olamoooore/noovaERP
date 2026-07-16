@@ -48,8 +48,8 @@ class CustomerLoyaltyController extends Controller
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('customers.name', 'like', "%{$search}%")
-                  ->orWhere('customers.email', 'like', "%{$search}%")
-                  ->orWhere('customers.phone', 'like', "%{$search}%");
+                    ->orWhere('customers.email', 'like', "%{$search}%")
+                    ->orWhere('customers.phone', 'like', "%{$search}%");
             });
         }
 
@@ -68,7 +68,7 @@ class CustomerLoyaltyController extends Controller
                 'current_points' => $customer->current_points ?? 0,
                 'lifetime_points' => $customer->lifetime_points ?? 0,
                 'points_redeemed' => $customer->points_redeemed ?? 0,
-                'is_enrolled' => !is_null($customer->loyalty_id),
+                'is_enrolled' => ! is_null($customer->loyalty_id),
                 'joined_at' => $customer->joined_at,
             ];
         });
@@ -100,7 +100,7 @@ class CustomerLoyaltyController extends Controller
 
         // Get active program
         $program = LoyaltyProgram::where('is_active', true)->first();
-        if (!$program) {
+        if (! $program) {
             return response()->json([
                 'success' => false,
                 'message' => 'No active loyalty program found',
@@ -141,7 +141,7 @@ class CustomerLoyaltyController extends Controller
             ->where('customer_id', $customerId)
             ->first();
 
-        if (!$customerLoyalty) {
+        if (! $customerLoyalty) {
             return response()->json([
                 'enrolled' => false,
                 'message' => 'Customer not enrolled in loyalty program',

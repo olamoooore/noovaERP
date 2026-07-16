@@ -2,28 +2,29 @@
 
 namespace Modules\EventManagement\Http\Controllers;
 
-use Modules\EventManagement\Services\EventAnalyticsService;
-use Modules\EventManagement\Services\AuditService;
-use Modules\EventManagement\Http\Requests\AnalyticsReportRequest;
-use Illuminate\Http\Request;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Response;
-use Carbon\Carbon;
+use Modules\EventManagement\Http\Requests\AnalyticsReportRequest;
+use Modules\EventManagement\Services\AuditService;
+use Modules\EventManagement\Services\EventAnalyticsService;
 
 /**
  * AnalyticsController
- * 
+ *
  * Handles analytics and business intelligence endpoints for event performance.
  * Provides KPIs, sales trends, attendee insights with admin-only access control.
  * All endpoints require admin role and include comprehensive audit logging.
- * 
+ *
  * Requirements: 11.5
  */
 class AnalyticsController extends Controller
 {
     private EventAnalyticsService $analyticsService;
+
     private AuditService $auditService;
 
     public function __construct(
@@ -37,15 +38,12 @@ class AnalyticsController extends Controller
         $this->middleware(['auth:sanctum', 'rbac.event_management']);
         $this->middleware('rate_limit:analytics')->only([
             'generateReport',
-            'exportReport'
+            'exportReport',
         ]);
     }
 
     /**
      * Get event KPIs for a specific event
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getEventKPIs(int $eventId): JsonResponse
     {
@@ -61,7 +59,7 @@ class AnalyticsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $kpis,
-                'message' => 'Event KPIs retrieved successfully'
+                'message' => 'Event KPIs retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
@@ -74,16 +72,13 @@ class AnalyticsController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve event KPIs',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get ticket type performance for an event
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getTicketTypePerformance(int $eventId): JsonResponse
     {
@@ -99,23 +94,20 @@ class AnalyticsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $performance,
-                'message' => 'Ticket type performance retrieved successfully'
+                'message' => 'Ticket type performance retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve ticket type performance',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get sales velocity analysis for an event
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getSalesVelocity(int $eventId): JsonResponse
     {
@@ -131,23 +123,20 @@ class AnalyticsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $velocity,
-                'message' => 'Sales velocity analysis retrieved successfully'
+                'message' => 'Sales velocity analysis retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve sales velocity analysis',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get repeat attendee insights for an event
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getRepeatAttendees(int $eventId): JsonResponse
     {
@@ -163,23 +152,20 @@ class AnalyticsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $repeatAttendees,
-                'message' => 'Repeat attendee insights retrieved successfully'
+                'message' => 'Repeat attendee insights retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve repeat attendee insights',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Generate comprehensive analytics report with filters
-     * 
-     * @param AnalyticsReportRequest $request
-     * @return JsonResponse
      */
     public function generateReport(AnalyticsReportRequest $request): JsonResponse
     {
@@ -196,23 +182,20 @@ class AnalyticsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $report,
-                'message' => 'Analytics report generated successfully'
+                'message' => 'Analytics report generated successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to generate analytics report',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get sales trends over time
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getSalesTrends(Request $request): JsonResponse
     {
@@ -283,7 +266,7 @@ class AnalyticsController extends Controller
                 [
                     'date_from' => $dateFrom->toDateString(),
                     'date_to' => $dateTo->toDateString(),
-                    'granularity' => $granularity
+                    'granularity' => $granularity,
                 ]
             );
 
@@ -294,26 +277,23 @@ class AnalyticsController extends Controller
                     'granularity' => $granularity,
                     'date_range' => [
                         'from' => $dateFrom->toDateString(),
-                        'to' => $dateTo->toDateString()
-                    ]
+                        'to' => $dateTo->toDateString(),
+                    ],
                 ],
-                'message' => 'Sales trends retrieved successfully'
+                'message' => 'Sales trends retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve sales trends',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get customer insights and segmentation
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getCustomerInsights(Request $request): JsonResponse
     {
@@ -380,22 +360,21 @@ class AnalyticsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $insights,
-                'message' => 'Customer insights retrieved successfully'
+                'message' => 'Customer insights retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve customer insights',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Export analytics report to CSV
-     * 
-     * @param AnalyticsReportRequest $request
+     *
      * @return \Symfony\Component\HttpFoundation\StreamedResponse
      */
     public function exportReport(AnalyticsReportRequest $request)
@@ -410,7 +389,7 @@ class AnalyticsController extends Controller
                 ['filters' => $filters]
             );
 
-            $filename = 'analytics_report_' . now()->format('Y-m-d_H-i-s') . '.csv';
+            $filename = 'analytics_report_'.now()->format('Y-m-d_H-i-s').'.csv';
 
             return Response::streamDownload(function () use ($report) {
                 $handle = fopen('php://output', 'w');
@@ -428,7 +407,7 @@ class AnalyticsController extends Controller
                     'Repeat Customers',
                     'Average Ticket Price',
                     'Sales Duration (Hours)',
-                    'Peak Sales Velocity'
+                    'Peak Sales Velocity',
                 ]);
 
                 // CSV data
@@ -445,7 +424,7 @@ class AnalyticsController extends Controller
                         $event->repeat_customers,
                         $event->average_ticket_price,
                         $event->sales_duration_hours,
-                        $event->peak_sales_velocity
+                        $event->peak_sales_velocity,
                     ]);
                 }
 
@@ -459,15 +438,13 @@ class AnalyticsController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to export analytics report',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get analytics dashboard summary
-     * 
-     * @return JsonResponse
      */
     public function getDashboardSummary(): JsonResponse
     {
@@ -516,16 +493,16 @@ class AnalyticsController extends Controller
                 'data' => [
                     'summary' => $summary,
                     'top_events' => $topEvents,
-                    'period' => '30 days'
+                    'period' => '30 days',
                 ],
-                'message' => 'Dashboard summary retrieved successfully'
+                'message' => 'Dashboard summary retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve dashboard summary',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }

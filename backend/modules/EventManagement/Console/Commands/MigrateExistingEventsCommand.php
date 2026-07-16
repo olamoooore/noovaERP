@@ -8,7 +8,7 @@ use Modules\EventManagement\Models\EventType;
 
 /**
  * Command to migrate existing events to Phase 4 schema
- * 
+ *
  * This command ensures backward compatibility by:
  * - Setting event_type_id to Concert for existing events
  * - Setting ticket_acquisition_mode to 'buy' for existing events
@@ -42,7 +42,7 @@ class MigrateExistingEventsCommand extends Command
         $verify = $this->option('verify');
 
         $this->info('Starting migration of existing events to Phase 4 schema...');
-        
+
         if ($dryRun) {
             $this->warn('DRY RUN MODE - No changes will be made');
         }
@@ -53,10 +53,11 @@ class MigrateExistingEventsCommand extends Command
             // Step 1: Ensure Concert event type exists
             $this->info('Step 1: Ensuring Concert event type exists...');
             $concertType = $this->ensureConcertTypeExists($dryRun);
-            
-            if (!$concertType) {
+
+            if (! $concertType) {
                 $this->error('Failed to ensure Concert event type exists');
                 DB::rollBack();
+
                 return Command::FAILURE;
             }
 
@@ -65,12 +66,13 @@ class MigrateExistingEventsCommand extends Command
             // Step 2: Find events that need migration
             $eventsToMigrate = $this->findEventsNeedingMigration();
             $count = $eventsToMigrate->count();
-            
+
             $this->info("Found {$count} events that need migration");
 
             if ($count === 0) {
                 $this->info('No events need migration. All events are already up to date.');
                 DB::rollBack();
+
                 return Command::SUCCESS;
             }
 
@@ -90,19 +92,20 @@ class MigrateExistingEventsCommand extends Command
             $this->info("Updated sale window dates for {$updatedDatesCount} events");
 
             // Step 6: Verify referential integrity
-            if ($verify || !$dryRun) {
+            if ($verify || ! $dryRun) {
                 $this->info('Step 5: Verifying referential integrity...');
                 $integrityCheck = $this->verifyReferentialIntegrity();
-                
-                if (!$integrityCheck['valid']) {
+
+                if (! $integrityCheck['valid']) {
                     $this->error('Referential integrity check failed:');
                     foreach ($integrityCheck['errors'] as $error) {
                         $this->error("  - {$error}");
                     }
                     DB::rollBack();
+
                     return Command::FAILURE;
                 }
-                
+
                 $this->info('Referential integrity verified successfully');
             }
 
@@ -121,8 +124,9 @@ class MigrateExistingEventsCommand extends Command
 
         } catch (\Exception $e) {
             DB::rollBack();
-            $this->error('Migration failed: ' . $e->getMessage());
+            $this->error('Migration failed: '.$e->getMessage());
             $this->error($e->getTraceAsString());
+
             return Command::FAILURE;
         }
     }
@@ -134,10 +138,10 @@ class MigrateExistingEventsCommand extends Command
     {
         $concertType = EventType::where('slug', 'concert')->first();
 
-        if (!$concertType) {
+        if (! $concertType) {
             $this->warn('Concert event type does not exist. Creating it...');
-            
-            if (!$dryRun) {
+
+            if (! $dryRun) {
                 $concertType = EventType::create([
                     'name' => 'Concert',
                     'slug' => 'concert',
@@ -200,7 +204,7 @@ class MigrateExistingEventsCommand extends Command
         $query = DB::table('events')
             ->where(function ($q) {
                 $q->whereNull('ticket_acquisition_mode')
-                  ->orWhere('ticket_acquisition_mode', '');
+                    ->orWhere('ticket_acquisition_mode', '');
             });
 
         if ($dryRun) {
@@ -221,7 +225,7 @@ class MigrateExistingEventsCommand extends Command
         $query = DB::table('events')
             ->where(function ($q) {
                 $q->whereNull('sale_start_date')
-                  ->orWhereNull('sale_end_date');
+                    ->orWhereNull('sale_end_date');
             });
 
         if ($dryRun) {
@@ -229,14 +233,14 @@ class MigrateExistingEventsCommand extends Command
         }
 
         // Use raw SQL for COALESCE to handle null values properly
-        return DB::statement("
+        return DB::statement('
             UPDATE events 
             SET 
                 sale_start_date = COALESCE(sale_start_date, created_at),
                 sale_end_date = COALESCE(sale_end_date, event_date),
                 updated_at = ?
             WHERE sale_start_date IS NULL OR sale_end_date IS NULL
-        ", [now()]);
+        ', [now()]);
     }
 
     /**
@@ -270,7 +274,7 @@ class MigrateExistingEventsCommand extends Command
         $missingSaleDates = DB::table('events')
             ->where(function ($q) {
                 $q->whereNull('sale_start_date')
-                  ->orWhereNull('sale_end_date');
+                    ->orWhereNull('sale_end_date');
             })
             ->count();
 

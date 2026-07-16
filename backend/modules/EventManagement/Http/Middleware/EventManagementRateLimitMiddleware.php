@@ -4,7 +4,6 @@ namespace Modules\EventManagement\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -52,21 +51,21 @@ class EventManagementRateLimitMiddleware
             case 'admin_api':
                 // Admin API: Rate limit by user ID
                 return $user ? "admin_api:{$user->id}" : "admin_api:guest:{$ip}";
-                
+
             case 'public_api':
                 // Public API: Rate limit by IP and tenant
                 return "public_api:{$tenantId}:{$ip}";
-                
+
             case 'booking_creation':
                 // Booking creation: Stricter limits by user/IP
-                return $user 
-                    ? "booking:{$user->id}:{$tenantId}" 
+                return $user
+                    ? "booking:{$user->id}:{$tenantId}"
                     : "booking:guest:{$ip}:{$tenantId}";
-                    
+
             case 'ticket_validation':
                 // Ticket validation: Rate limit by IP
                 return "ticket_validation:{$ip}";
-                
+
             default:
                 // Default: Rate limit by IP
                 return "default:{$ip}";
@@ -119,10 +118,10 @@ class EventManagementRateLimitMiddleware
                 'details' => [
                     'max_attempts' => $maxAttempts,
                     'retry_after_seconds' => $retryAfter,
-                    'retry_after_minutes' => ceil($retryAfter / 60)
+                    'retry_after_minutes' => ceil($retryAfter / 60),
                 ],
-                'request_id' => request()->header('X-Request-ID', uniqid())
-            ]
+                'request_id' => request()->header('X-Request-ID', uniqid()),
+            ],
         ], Response::HTTP_TOO_MANY_REQUESTS, [
             'Retry-After' => $retryAfter,
             'X-RateLimit-Limit' => $maxAttempts,
@@ -155,24 +154,24 @@ class EventManagementRateLimitMiddleware
     protected function getTenantId(Request $request): string
     {
         // Try multiple methods to extract tenant ID
-        
+
         // Method 1: From header
         if ($tenantId = $request->header('X-Tenant-ID')) {
             return $tenantId;
         }
-        
+
         // Method 2: From subdomain
         $host = $request->getHost();
         if (preg_match('/^([^.]+)\./', $host, $matches)) {
             return $matches[1];
         }
-        
+
         // Method 3: From user context
         $user = $request->user();
         if ($user && isset($user->tenant_id)) {
             return $user->tenant_id;
         }
-        
+
         // Method 4: From JWT token (if available)
         if ($token = $request->bearerToken()) {
             try {
@@ -182,7 +181,7 @@ class EventManagementRateLimitMiddleware
                 // Ignore JWT parsing errors
             }
         }
-        
+
         // Default tenant
         return 'default';
     }

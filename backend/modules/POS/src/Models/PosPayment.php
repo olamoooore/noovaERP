@@ -2,9 +2,9 @@
 
 namespace Modules\POS\Models;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use App\Models\User;
 
 class PosPayment extends Model
 {

@@ -1,9 +1,9 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Fulfillment\Http\Controllers\AdminFulfillmentController;
 use Modules\Fulfillment\Http\Controllers\FulfillmentController;
 use Modules\Fulfillment\Http\Controllers\ProviderController;
-use Modules\Fulfillment\Http\Controllers\AdminFulfillmentController;
 
 // Public routes - for storefront checkout
 Route::prefix('fulfillment')->middleware(['api', 'tenant'])->group(function () {

@@ -4,16 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\User;
-use App\Platform\EventBus\DomainEventDispatcher;
-use App\Platform\EventBus\Events\EventRecord;
-use App\Platform\EventBus\EventSubscription;
-use App\Platform\EventBus\EventDeadLetter;
-use Modules\Contact\src\Events\ContactCreated;
-use App\Platform\EventBus\Contracts\EventHandlerContract;
 use App\Platform\EventBus\Contracts\DomainEventContract;
-use Modules\Contact\src\Models\CoreContact;
-use Spatie\Permission\Models\Role;
+use App\Platform\EventBus\Contracts\EventHandlerContract;
+use App\Platform\EventBus\DomainEventDispatcher;
+use App\Platform\EventBus\EventDeadLetter;
+use App\Platform\EventBus\Events\EventRecord;
+use Modules\Contact\src\Events\ContactCreated;
 use Tests\TenantTestCase;
 
 /**
@@ -22,6 +18,7 @@ use Tests\TenantTestCase;
 class DomainEventBusTest extends TenantTestCase
 {
     protected string $tenantUuid;
+
     protected DomainEventDispatcher $dispatcher;
 
     protected function setUp(): void
@@ -70,13 +67,37 @@ class DomainEventBusTest extends TenantTestCase
 
     public function test_subscribe_and_dispatch_to_handler(): void
     {
-        $subscription = new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract {
-            public function getModuleKey(): string { return 'test-module'; }
-            public function getEventNames(): array { return ['contact.created']; }
-            public function getHandlerClass(): string { return FakeContactCreatedHandler::class; }
-            public function getPriority(): int { return 100; }
-            public function getTenantFilter(): ?string { return null; }
-            public function getPayloadFilter(): ?array { return null; }
+        $subscription = new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract
+        {
+            public function getModuleKey(): string
+            {
+                return 'test-module';
+            }
+
+            public function getEventNames(): array
+            {
+                return ['contact.created'];
+            }
+
+            public function getHandlerClass(): string
+            {
+                return FakeContactCreatedHandler::class;
+            }
+
+            public function getPriority(): int
+            {
+                return 100;
+            }
+
+            public function getTenantFilter(): ?string
+            {
+                return null;
+            }
+
+            public function getPayloadFilter(): ?array
+            {
+                return null;
+            }
         };
 
         $this->dispatcher->subscribe($subscription);
@@ -91,13 +112,37 @@ class DomainEventBusTest extends TenantTestCase
 
     public function test_unsubscribe_removes_module_subscriptions(): void
     {
-        $subscription = new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract {
-            public function getModuleKey(): string { return 'removable-module'; }
-            public function getEventNames(): array { return ['contact.created']; }
-            public function getHandlerClass(): string { return FakeContactCreatedHandler::class; }
-            public function getPriority(): int { return 100; }
-            public function getTenantFilter(): ?string { return null; }
-            public function getPayloadFilter(): ?array { return null; }
+        $subscription = new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract
+        {
+            public function getModuleKey(): string
+            {
+                return 'removable-module';
+            }
+
+            public function getEventNames(): array
+            {
+                return ['contact.created'];
+            }
+
+            public function getHandlerClass(): string
+            {
+                return FakeContactCreatedHandler::class;
+            }
+
+            public function getPriority(): int
+            {
+                return 100;
+            }
+
+            public function getTenantFilter(): ?string
+            {
+                return null;
+            }
+
+            public function getPayloadFilter(): ?array
+            {
+                return null;
+            }
         };
 
         $this->dispatcher->subscribe($subscription);
@@ -114,15 +159,44 @@ class DomainEventBusTest extends TenantTestCase
     {
         $otherTenant = \Illuminate\Support\Str::uuid()->toString();
 
-        $subscription = new class($otherTenant) implements \App\Platform\EventBus\Contracts\EventSubscriptionContract {
+        $subscription = new class($otherTenant) implements \App\Platform\EventBus\Contracts\EventSubscriptionContract
+        {
             private string $tenantFilter;
-            public function __construct(string $tenant) { $this->tenantFilter = $tenant; }
-            public function getModuleKey(): string { return 'filtered-module'; }
-            public function getEventNames(): array { return ['contact.created']; }
-            public function getHandlerClass(): string { return FakeContactCreatedHandler::class; }
-            public function getPriority(): int { return 100; }
-            public function getTenantFilter(): ?string { return $this->tenantFilter; }
-            public function getPayloadFilter(): ?array { return null; }
+
+            public function __construct(string $tenant)
+            {
+                $this->tenantFilter = $tenant;
+            }
+
+            public function getModuleKey(): string
+            {
+                return 'filtered-module';
+            }
+
+            public function getEventNames(): array
+            {
+                return ['contact.created'];
+            }
+
+            public function getHandlerClass(): string
+            {
+                return FakeContactCreatedHandler::class;
+            }
+
+            public function getPriority(): int
+            {
+                return 100;
+            }
+
+            public function getTenantFilter(): ?string
+            {
+                return $this->tenantFilter;
+            }
+
+            public function getPayloadFilter(): ?array
+            {
+                return null;
+            }
         };
 
         $this->dispatcher->subscribe($subscription);
@@ -137,13 +211,37 @@ class DomainEventBusTest extends TenantTestCase
 
     public function test_payload_filter_selective_dispatch(): void
     {
-        $subscription = new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract {
-            public function getModuleKey(): string { return 'payload-filter-module'; }
-            public function getEventNames(): array { return ['contact.created']; }
-            public function getHandlerClass(): string { return FakeContactCreatedHandler::class; }
-            public function getPriority(): int { return 100; }
-            public function getTenantFilter(): ?string { return null; }
-            public function getPayloadFilter(): ?array { return ['contact_type' => 'company']; }
+        $subscription = new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract
+        {
+            public function getModuleKey(): string
+            {
+                return 'payload-filter-module';
+            }
+
+            public function getEventNames(): array
+            {
+                return ['contact.created'];
+            }
+
+            public function getHandlerClass(): string
+            {
+                return FakeContactCreatedHandler::class;
+            }
+
+            public function getPriority(): int
+            {
+                return 100;
+            }
+
+            public function getTenantFilter(): ?string
+            {
+                return null;
+            }
+
+            public function getPayloadFilter(): ?array
+            {
+                return ['contact_type' => 'company'];
+            }
         };
 
         $this->dispatcher->subscribe($subscription);
@@ -161,13 +259,37 @@ class DomainEventBusTest extends TenantTestCase
 
     public function test_failed_handler_creates_dead_letter(): void
     {
-        $subscription = new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract {
-            public function getModuleKey(): string { return 'failing-module'; }
-            public function getEventNames(): array { return ['contact.created']; }
-            public function getHandlerClass(): string { return FailingHandler::class; }
-            public function getPriority(): int { return 100; }
-            public function getTenantFilter(): ?string { return null; }
-            public function getPayloadFilter(): ?array { return null; }
+        $subscription = new class implements \App\Platform\EventBus\Contracts\EventSubscriptionContract
+        {
+            public function getModuleKey(): string
+            {
+                return 'failing-module';
+            }
+
+            public function getEventNames(): array
+            {
+                return ['contact.created'];
+            }
+
+            public function getHandlerClass(): string
+            {
+                return FailingHandler::class;
+            }
+
+            public function getPriority(): int
+            {
+                return 100;
+            }
+
+            public function getTenantFilter(): ?string
+            {
+                return null;
+            }
+
+            public function getPayloadFilter(): ?array
+            {
+                return null;
+            }
         };
 
         $this->dispatcher->subscribe($subscription);

@@ -56,8 +56,8 @@ class TenantQueryService
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('t.name', 'ILIKE', "%{$search}%")
-                  ->orWhere('t.email', 'ILIKE', "%{$search}%")
-                  ->orWhere('d.domain', 'ILIKE', "%{$search}%");
+                    ->orWhere('t.email', 'ILIKE', "%{$search}%")
+                    ->orWhere('d.domain', 'ILIKE', "%{$search}%");
             });
         }
 
@@ -65,9 +65,9 @@ class TenantQueryService
             // Filter by subscription plan family key; fall back to legacy tenants.plan for unsubscribed tenants
             $query->where(function ($q) use ($plan) {
                 $q->where('pf.key', $plan)
-                  ->orWhere(function ($q2) use ($plan) {
-                      $q2->whereNull('pf.key')->where('t.plan', $plan);
-                  });
+                    ->orWhere(function ($q2) use ($plan) {
+                        $q2->whereNull('pf.key')->where('t.plan', $plan);
+                    });
             });
         }
 
@@ -75,27 +75,27 @@ class TenantQueryService
             $query->whereRaw("(t.data->>'suspended')::boolean = true");
         } elseif ($status === 'trial') {
             $query->whereRaw("(t.data->>'suspended')::boolean IS NOT TRUE")
-                  ->whereNotNull('t.trial_ends_at')
-                  ->whereRaw('t.trial_ends_at > NOW()');
+                ->whereNotNull('t.trial_ends_at')
+                ->whereRaw('t.trial_ends_at > NOW()');
         } elseif ($status === 'active') {
             $query->whereRaw("(t.data->>'suspended')::boolean IS NOT TRUE")
-                  ->where(function ($q) {
-                      $q->whereNull('t.trial_ends_at')
+                ->where(function ($q) {
+                    $q->whereNull('t.trial_ends_at')
                         ->orWhereRaw('t.trial_ends_at <= NOW()');
-                  });
+                });
         }
 
         $paginator = $query->paginate($perPage, ['*'], 'page', $page);
 
         $items = collect($paginator->items())->map(function ($row) {
-            $data      = is_string($row->data) ? json_decode($row->data, true) : (array) ($row->data ?? []);
-            $suspended = !empty($data['suspended']);
-            $isTrial   = $row->trial_ends_at && strtotime($row->trial_ends_at) > time();
+            $data = is_string($row->data) ? json_decode($row->data, true) : (array) ($row->data ?? []);
+            $suspended = ! empty($data['suspended']);
+            $isTrial = $row->trial_ends_at && strtotime($row->trial_ends_at) > time();
 
             $status = match (true) {
                 $suspended => 'suspended',
-                $isTrial   => 'trial',
-                default    => 'active',
+                $isTrial => 'trial',
+                default => 'active',
             };
 
             $latestHealth = TenantHealthSnapshot::where('tenant_id', $row->id)
@@ -103,21 +103,21 @@ class TenantQueryService
                 ->first(['created_at', 'last_login_at']);
 
             return [
-                'id'                   => $row->id,
-                'name'                 => $row->name,
-                'email'                => $row->email,
+                'id' => $row->id,
+                'name' => $row->name,
+                'email' => $row->email,
                 // subscription_plan_name is authoritative; tenants.plan is the legacy fallback
-                'plan'                 => $row->subscription_plan_name ?? $row->plan,
-                'plan_key'             => $row->subscription_plan_key ?? $row->plan,
-                'plan_version'         => $row->subscription_plan_version,
-                'status'               => $status,
-                'trial_ends_at'        => $row->trial_ends_at,
+                'plan' => $row->subscription_plan_name ?? $row->plan,
+                'plan_key' => $row->subscription_plan_key ?? $row->plan,
+                'plan_version' => $row->subscription_plan_version,
+                'status' => $status,
+                'trial_ends_at' => $row->trial_ends_at,
                 'subscription_ends_at' => $row->subscription_ends_at,
-                'domain'               => $row->domain,
-                'created_at'           => $row->created_at,
-                'updated_at'           => $row->updated_at,
-                'last_health_check'    => $latestHealth?->created_at,
-                'last_login_at'        => $latestHealth?->last_login_at,
+                'domain' => $row->domain,
+                'created_at' => $row->created_at,
+                'updated_at' => $row->updated_at,
+                'last_health_check' => $latestHealth?->created_at,
+                'last_login_at' => $latestHealth?->last_login_at,
             ];
         });
 
@@ -169,14 +169,14 @@ class TenantQueryService
 
         abort_if(is_null($tenant), 404, 'Tenant not found.');
 
-        $data      = is_string($tenant->data) ? json_decode($tenant->data, true) : (array) ($tenant->data ?? []);
-        $suspended = !empty($data['suspended']);
-        $isTrial   = $tenant->trial_ends_at && strtotime($tenant->trial_ends_at) > time();
+        $data = is_string($tenant->data) ? json_decode($tenant->data, true) : (array) ($tenant->data ?? []);
+        $suspended = ! empty($data['suspended']);
+        $isTrial = $tenant->trial_ends_at && strtotime($tenant->trial_ends_at) > time();
 
         $status = match (true) {
             $suspended => 'suspended',
-            $isTrial   => 'trial',
-            default    => 'active',
+            $isTrial => 'trial',
+            default => 'active',
         };
 
         $recentOperations = TenantOperation::where('tenant_id', $tenantId)
@@ -196,21 +196,21 @@ class TenantQueryService
             ->get();
 
         return [
-            'id'                   => $tenant->id,
-            'name'                 => $tenant->name,
-            'email'                => $tenant->email,
-            'plan'                 => $tenant->subscription_plan_name ?? $tenant->plan,
-            'plan_key'             => $tenant->subscription_plan_key ?? $tenant->plan,
-            'plan_version'         => $tenant->subscription_plan_version,
-            'status'               => $status,
-            'trial_ends_at'        => $tenant->trial_ends_at,
+            'id' => $tenant->id,
+            'name' => $tenant->name,
+            'email' => $tenant->email,
+            'plan' => $tenant->subscription_plan_name ?? $tenant->plan,
+            'plan_key' => $tenant->subscription_plan_key ?? $tenant->plan,
+            'plan_version' => $tenant->subscription_plan_version,
+            'status' => $status,
+            'trial_ends_at' => $tenant->trial_ends_at,
             'subscription_ends_at' => $tenant->subscription_ends_at,
-            'domain'               => $tenant->domain,
-            'created_at'           => $tenant->created_at,
-            'modules_enabled'      => $data['modules_enabled'] ?? [],
-            'recent_operations'    => $recentOperations,
-            'latest_health'        => $latestHealth,
-            'notes'                => $notes,
+            'domain' => $tenant->domain,
+            'created_at' => $tenant->created_at,
+            'modules_enabled' => $data['modules_enabled'] ?? [],
+            'recent_operations' => $recentOperations,
+            'latest_health' => $latestHealth,
+            'notes' => $notes,
         ];
     }
 

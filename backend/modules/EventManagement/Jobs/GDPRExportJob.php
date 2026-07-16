@@ -2,7 +2,7 @@
 
 namespace Modules\EventManagement\Jobs;
 
-use Modules\EventManagement\Services\PIIVaultService;
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -10,15 +10,14 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
-use Carbon\Carbon;
+use Modules\EventManagement\Services\PIIVaultService;
 
 /**
  * GDPRExportJob - Task 4.3 (Part 2)
- * 
+ *
  * Handles GDPR data export requests with secure file generation,
  * encryption, and automated cleanup.
- * 
+ *
  * Requirements: 20.4, 20.5
  */
 class GDPRExportJob implements ShouldQueue
@@ -26,14 +25,18 @@ class GDPRExportJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     protected string $requestReference;
+
     protected string $entityType;
+
     protected int $entityId;
+
     protected array $requestedFields;
+
     protected array $exportOptions;
 
     private function currentTenantId(): string
     {
-        if (!function_exists('tenant') || !tenant()) {
+        if (! function_exists('tenant') || ! tenant()) {
             throw new \RuntimeException('GDPR export requires active tenant context.');
         }
 
@@ -42,17 +45,17 @@ class GDPRExportJob implements ShouldQueue
 
     private function exportDirectory(): string
     {
-        return storage_path('app/gdpr_exports/' . $this->currentTenantId());
+        return storage_path('app/gdpr_exports/'.$this->currentTenantId());
     }
 
     /**
      * Create a new job instance.
      *
-     * @param string $requestReference Unique reference for the export request
-     * @param string $entityType Type of entity to export
-     * @param int $entityId ID of the entity
-     * @param array $requestedFields Specific fields to export (empty for all)
-     * @param array $exportOptions Export configuration options
+     * @param  string  $requestReference  Unique reference for the export request
+     * @param  string  $entityType  Type of entity to export
+     * @param  int  $entityId  ID of the entity
+     * @param  array  $requestedFields  Specific fields to export (empty for all)
+     * @param  array  $exportOptions  Export configuration options
      */
     public function __construct(
         string $requestReference,
@@ -71,7 +74,7 @@ class GDPRExportJob implements ShouldQueue
             'encrypt_export' => true,
             'file_expires_days' => 7,
         ], $exportOptions);
-        
+
         // Set queue and connection
         $this->onQueue('gdpr-export');
         $this->onConnection('redis');
@@ -80,15 +83,14 @@ class GDPRExportJob implements ShouldQueue
     /**
      * Execute the job.
      *
-     * @param PIIVaultService $piiVaultService
      * @return void
-     * 
+     *
      * Requirements: 20.4, 20.5
      */
     public function handle(PIIVaultService $piiVaultService): void
     {
         $startTime = microtime(true);
-        
+
         Log::info('Starting GDPR export job', [
             'request_reference' => $this->requestReference,
             'entity_type' => $this->entityType,
@@ -127,7 +129,7 @@ class GDPRExportJob implements ShouldQueue
 
             // Step 7: Update request with completion details
             $executionTime = round((microtime(true) - $startTime) * 1000, 2);
-            
+
             $this->updateRequestStatus('completed', 'Export completed successfully', [
                 'export_file_path' => $exportFilePath,
                 'file_size_bytes' => filesize($exportFilePath),
@@ -144,7 +146,7 @@ class GDPRExportJob implements ShouldQueue
             ]);
 
         } catch (\Exception $e) {
-            $this->updateRequestStatus('failed', 'Export failed: ' . $e->getMessage(), [
+            $this->updateRequestStatus('failed', 'Export failed: '.$e->getMessage(), [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -163,7 +165,7 @@ class GDPRExportJob implements ShouldQueue
 
     /**
      * Collect related data from other tables based on entity type.
-     * 
+     *
      * @return array Related data organized by table/type
      */
     private function collectRelatedData(): array
@@ -174,15 +176,15 @@ class GDPRExportJob implements ShouldQueue
             case 'customer':
                 $relatedData = $this->collectCustomerRelatedData();
                 break;
-            
+
             case 'booking':
                 $relatedData = $this->collectBookingRelatedData();
                 break;
-            
+
             case 'attendee':
                 $relatedData = $this->collectAttendeeRelatedData();
                 break;
-            
+
             default:
                 Log::warning('Unknown entity type for GDPR export', [
                     'entity_type' => $this->entityType,
@@ -195,7 +197,7 @@ class GDPRExportJob implements ShouldQueue
 
     /**
      * Collect customer-related data for export.
-     * 
+     *
      * @return array Customer-related data
      */
     private function collectCustomerRelatedData(): array
@@ -207,7 +209,7 @@ class GDPRExportJob implements ShouldQueue
         $customer = DB::table('customers')
             ->where('id', $customerId)
             ->first();
-        
+
         if ($customer) {
             $data['customer_profile'] = [
                 'id' => $customer->id,
@@ -223,14 +225,14 @@ class GDPRExportJob implements ShouldQueue
             ->where('customer_id', $customerId)
             ->select('id', 'event_id', 'status', 'total_amount', 'created_at')
             ->get();
-        
+
         $data['bookings'] = $bookings->toArray();
 
         // Customer tier information
         $tierInfo = DB::table('customer_tiers')
             ->where('customer_id', $customerId)
             ->first();
-        
+
         if ($tierInfo) {
             $data['loyalty_tier'] = [
                 'tier_name' => $tierInfo->tier_name,
@@ -246,7 +248,7 @@ class GDPRExportJob implements ShouldQueue
             ->where('entity_id', $customerId)
             ->select('consent_type', 'consent_given', 'consent_given_at', 'consent_withdrawn_at')
             ->get();
-        
+
         $data['consent_history'] = $consentRecords->toArray();
 
         // Access log summary (last 30 days)
@@ -259,7 +261,7 @@ class GDPRExportJob implements ShouldQueue
             ->orderBy('pii_access_log.accessed_at', 'desc')
             ->limit(100)
             ->get();
-        
+
         $data['recent_access_history'] = $accessSummary->toArray();
 
         return $data;
@@ -267,7 +269,7 @@ class GDPRExportJob implements ShouldQueue
 
     /**
      * Collect booking-related data for export.
-     * 
+     *
      * @return array Booking-related data
      */
     private function collectBookingRelatedData(): array
@@ -286,7 +288,7 @@ class GDPRExportJob implements ShouldQueue
                 'events.venue_name'
             )
             ->first();
-        
+
         if ($booking) {
             $data['booking_details'] = [
                 'id' => $booking->id,
@@ -304,7 +306,7 @@ class GDPRExportJob implements ShouldQueue
             ->where('booking_id', $bookingId)
             ->select('id', 'ticket_type', 'status', 'issued_at', 'used_at')
             ->get();
-        
+
         $data['tickets'] = $tickets->toArray();
 
         // Payment records
@@ -312,7 +314,7 @@ class GDPRExportJob implements ShouldQueue
             ->where('booking_id', $bookingId)
             ->select('id', 'amount', 'status', 'payment_method', 'processed_at')
             ->get();
-        
+
         $data['payments'] = $payments->toArray();
 
         return $data;
@@ -320,7 +322,7 @@ class GDPRExportJob implements ShouldQueue
 
     /**
      * Collect attendee-related data for export.
-     * 
+     *
      * @return array Attendee-related data
      */
     private function collectAttendeeRelatedData(): array
@@ -339,7 +341,7 @@ class GDPRExportJob implements ShouldQueue
                 'events.event_date'
             )
             ->first();
-        
+
         if ($attendee) {
             $data['attendee_details'] = [
                 'id' => $attendee->id,
@@ -356,9 +358,9 @@ class GDPRExportJob implements ShouldQueue
 
     /**
      * Build complete export dataset combining PII and related data.
-     * 
-     * @param array $piiData PII data from vault
-     * @param array $relatedData Related data from other tables
+     *
+     * @param  array  $piiData  PII data from vault
+     * @param  array  $relatedData  Related data from other tables
      * @return array Complete export dataset
      */
     private function buildExportDataset(array $piiData, array $relatedData): array
@@ -392,43 +394,43 @@ class GDPRExportJob implements ShouldQueue
 
     /**
      * Generate export file in the specified format.
-     * 
-     * @param array $exportData Complete export dataset
+     *
+     * @param  array  $exportData  Complete export dataset
      * @return string Path to generated export file
      */
     private function generateExportFile(array $exportData): string
     {
         $fileName = "gdpr_export_{$this->requestReference}_{$this->entityType}_{$this->entityId}";
         $timestamp = Carbon::now()->format('Y-m-d_H-i-s');
-        
+
         switch ($this->exportOptions['format']) {
             case 'json':
                 $fileName .= "_{$timestamp}.json";
                 $content = json_encode($exportData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
                 break;
-            
+
             case 'csv':
                 $fileName .= "_{$timestamp}.csv";
                 $content = $this->convertToCSV($exportData);
                 break;
-            
+
             case 'xml':
                 $fileName .= "_{$timestamp}.xml";
                 $content = $this->convertToXML($exportData);
                 break;
-            
+
             default:
                 throw new \InvalidArgumentException("Unsupported export format: {$this->exportOptions['format']}");
         }
 
         // Create secure tenant-owned export directory if it doesn't exist
         $exportDir = $this->exportDirectory();
-        if (!is_dir($exportDir)) {
+        if (! is_dir($exportDir)) {
             mkdir($exportDir, 0750, true);
         }
 
-        $filePath = $exportDir . '/' . $fileName;
-        
+        $filePath = $exportDir.'/'.$fileName;
+
         if (file_put_contents($filePath, $content) === false) {
             throw new \RuntimeException("Failed to write export file: {$filePath}");
         }
@@ -441,17 +443,17 @@ class GDPRExportJob implements ShouldQueue
 
     /**
      * Convert export data to CSV format.
-     * 
-     * @param array $exportData Export dataset
+     *
+     * @param  array  $exportData  Export dataset
      * @return string CSV content
      */
     private function convertToCSV(array $exportData): string
     {
         $csv = [];
-        
+
         // Add header
-        $csv[] = "Section,Field,Value,Classification,Created At,Expires At";
-        
+        $csv[] = 'Section,Field,Value,Classification,Created At,Expires At';
+
         // Add PII data
         foreach ($exportData['pii_data'] as $piiRecord) {
             $csv[] = sprintf(
@@ -464,7 +466,7 @@ class GDPRExportJob implements ShouldQueue
                 $piiRecord['expires_at'] ?? ''
             );
         }
-        
+
         // Add related data (simplified)
         foreach ($exportData['related_data'] as $section => $records) {
             if (is_array($records)) {
@@ -482,26 +484,26 @@ class GDPRExportJob implements ShouldQueue
                 }
             }
         }
-        
+
         return implode("\n", $csv);
     }
 
     /**
      * Convert export data to XML format.
-     * 
-     * @param array $exportData Export dataset
+     *
+     * @param  array  $exportData  Export dataset
      * @return string XML content
      */
     private function convertToXML(array $exportData): string
     {
         $xml = new \SimpleXMLElement('<gdpr_export/>');
-        
+
         // Add metadata
         $metadata = $xml->addChild('metadata');
         foreach ($exportData['export_metadata'] as $key => $value) {
             $metadata->addChild($key, htmlspecialchars($value));
         }
-        
+
         // Add PII data
         $piiSection = $xml->addChild('pii_data');
         foreach ($exportData['pii_data'] as $piiRecord) {
@@ -510,7 +512,7 @@ class GDPRExportJob implements ShouldQueue
                 $record->addChild($key, htmlspecialchars($value));
             }
         }
-        
+
         // Add related data
         $relatedSection = $xml->addChild('related_data');
         foreach ($exportData['related_data'] as $section => $records) {
@@ -528,52 +530,52 @@ class GDPRExportJob implements ShouldQueue
                 }
             }
         }
-        
+
         return $xml->asXML();
     }
 
     /**
      * Encrypt export file for secure delivery.
-     * 
-     * @param string $filePath Path to export file
+     *
+     * @param  string  $filePath  Path to export file
      * @return string Path to encrypted file
      */
     private function encryptExportFile(string $filePath): string
     {
-        $encryptedFilePath = $filePath . '.encrypted';
-        
+        $encryptedFilePath = $filePath.'.encrypted';
+
         // Generate a random encryption key for this export
         $encryptionKey = random_bytes(32); // 256-bit key
         $iv = random_bytes(16); // 128-bit IV
-        
+
         // Read original file
         $content = file_get_contents($filePath);
-        
+
         // Encrypt content
         $encryptedContent = openssl_encrypt($content, 'AES-256-CBC', $encryptionKey, 0, $iv);
-        
+
         // Create encrypted file with key and IV prepended
-        $encryptedData = base64_encode($encryptionKey) . '|' . base64_encode($iv) . '|' . $encryptedContent;
-        
+        $encryptedData = base64_encode($encryptionKey).'|'.base64_encode($iv).'|'.$encryptedContent;
+
         if (file_put_contents($encryptedFilePath, $encryptedData) === false) {
             throw new \RuntimeException("Failed to write encrypted export file: {$encryptedFilePath}");
         }
-        
+
         // Set secure file permissions
         chmod($encryptedFilePath, 0640);
-        
+
         // Remove original unencrypted file
         unlink($filePath);
-        
+
         return $encryptedFilePath;
     }
 
     /**
      * Update export request status in database.
-     * 
-     * @param string $status New status
-     * @param string $message Status message
-     * @param array $metadata Additional metadata
+     *
+     * @param  string  $status  New status
+     * @param  string  $message  Status message
+     * @param  array  $metadata  Additional metadata
      */
     private function updateRequestStatus(string $status, string $message, array $metadata = []): void
     {
@@ -595,8 +597,6 @@ class GDPRExportJob implements ShouldQueue
 
     /**
      * Handle job failure.
-     * 
-     * @param \Throwable $exception
      */
     public function failed(\Throwable $exception): void
     {
@@ -609,7 +609,7 @@ class GDPRExportJob implements ShouldQueue
             'job_attempts' => $this->attempts(),
         ]);
 
-        $this->updateRequestStatus('failed', 'Export job failed permanently: ' . $exception->getMessage(), [
+        $this->updateRequestStatus('failed', 'Export job failed permanently: '.$exception->getMessage(), [
             'error' => $exception->getMessage(),
             'job_attempts' => $this->attempts(),
         ]);
@@ -617,8 +617,6 @@ class GDPRExportJob implements ShouldQueue
 
     /**
      * Get the tags that should be assigned to the job.
-     *
-     * @return array
      */
     public function tags(): array
     {
@@ -626,8 +624,8 @@ class GDPRExportJob implements ShouldQueue
             'gdpr-export',
             'privacy',
             'data-portability',
-            'entity:' . $this->entityType,
-            'format:' . $this->exportOptions['format'],
+            'entity:'.$this->entityType,
+            'format:'.$this->exportOptions['format'],
         ];
     }
 }

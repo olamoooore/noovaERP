@@ -49,7 +49,7 @@ class BarcodeScanned implements ShouldBroadcast
             'format' => $this->format,
             'scanResultId' => $this->scanResultId,
             'parsed' => $this->parsedData,
-            'isQrCode' => $this->format === 'QR' || !empty($this->parsedData),
+            'isQrCode' => $this->format === 'QR' || ! empty($this->parsedData),
             'scannedAt' => now()->toIso8601String(),
         ];
     }

@@ -8,13 +8,13 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (Schema::hasTable('pos_orders') && !Schema::hasColumn('pos_orders', 'deleted_at')) {
+        if (Schema::hasTable('pos_orders') && ! Schema::hasColumn('pos_orders', 'deleted_at')) {
             Schema::table('pos_orders', function (Blueprint $table) {
                 $table->softDeletes();
             });
         }
 
-        if (Schema::hasTable('web_orders') && !Schema::hasColumn('web_orders', 'deleted_at')) {
+        if (Schema::hasTable('web_orders') && ! Schema::hasColumn('web_orders', 'deleted_at')) {
             Schema::table('web_orders', function (Blueprint $table) {
                 $table->softDeletes();
             });

@@ -39,7 +39,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (!app()->environment('testing')) {
+        if (! app()->environment('testing')) {
             Schema::dropIfExists('tenant_features');
             Schema::dropIfExists('features');
         }

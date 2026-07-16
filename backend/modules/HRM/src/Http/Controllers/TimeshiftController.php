@@ -4,10 +4,10 @@ namespace Modules\HRM\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
-use Modules\HRM\Models\Timeshift;
 use Modules\HRM\Http\Requests\StoreTimeshiftRequest;
 use Modules\HRM\Http\Requests\UpdateTimeshiftRequest;
 use Modules\HRM\Http\Resources\TimeshiftResource;
+use Modules\HRM\Models\Timeshift;
 
 class TimeshiftController extends Controller
 {
@@ -23,7 +23,7 @@ class TimeshiftController extends Controller
         $data = $request->validated();
 
         // Only one default allowed — clear existing default first
-        if (!empty($data['is_default'])) {
+        if (! empty($data['is_default'])) {
             Timeshift::where('is_default', true)->update(['is_default' => false]);
         }
 
@@ -43,7 +43,7 @@ class TimeshiftController extends Controller
     {
         $data = $request->validated();
 
-        if (!empty($data['is_default'])) {
+        if (! empty($data['is_default'])) {
             Timeshift::where('is_default', true)
                 ->where('id', '!=', $timeshift->id)
                 ->update(['is_default' => false]);

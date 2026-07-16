@@ -35,6 +35,7 @@ class WarehouseController extends Controller
     public function show($warehouse)
     {
         $warehouse = Warehouse::findOrFail($warehouse);
+
         return $warehouse;
     }
 
@@ -91,7 +92,7 @@ class WarehouseController extends Controller
 
     private function enforceTierWarehouseLimit(array $validated, ?Warehouse $updating = null): void
     {
-        if (!array_key_exists('is_active', $validated) || $validated['is_active'] !== true) {
+        if (! array_key_exists('is_active', $validated) || $validated['is_active'] !== true) {
             return;
         }
 
@@ -124,7 +125,7 @@ class WarehouseController extends Controller
 
     private function currentTenantId(): ?string
     {
-        if (!function_exists('tenant') || !tenant()) {
+        if (! function_exists('tenant') || ! tenant()) {
             return null;
         }
 

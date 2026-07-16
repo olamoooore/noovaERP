@@ -9,6 +9,7 @@ use Modules\PaymentGateway\Models\PaymentGateway;
 class HitPayGateway implements PaymentGatewayInterface
 {
     protected PaymentGateway $gateway;
+
     protected string $baseUrl;
 
     public function __construct(PaymentGateway $gateway)
@@ -30,8 +31,8 @@ class HitPayGateway implements PaymentGatewayInterface
             $referenceNumber = $data['reference'] ?? null;
 
             // If we have metadata with invoice_id, use it to create a consistent reference
-            if (!$referenceNumber && isset($data['metadata']['invoice_id'])) {
-                $referenceNumber = 'INV-' . $data['metadata']['invoice_id'] . '-' . date('Ymd');
+            if (! $referenceNumber && isset($data['metadata']['invoice_id'])) {
+                $referenceNumber = 'INV-'.$data['metadata']['invoice_id'].'-'.date('Ymd');
             }
 
             // Check if a payment request already exists for this reference
@@ -57,7 +58,7 @@ class HitPayGateway implements PaymentGatewayInterface
                     return [
                         'success' => true,
                         'transaction_id' => $existingTransaction->transaction_id,
-                        'payment_url' => $paymentUrl . $existingTransaction->transaction_id,
+                        'payment_url' => $paymentUrl.$existingTransaction->transaction_id,
                         'status' => 'pending',
                         'amount' => $existingTransaction->amount,
                         'currency' => $existingTransaction->currency,
@@ -76,7 +77,6 @@ class HitPayGateway implements PaymentGatewayInterface
             // Add payment_methods if specified (otherwise HitPay uses account defaults)
             $paymentMethods = $data['payment_methods'] ?? null;
 
-
             // Only add redirect_url and webhook if not localhost
             $appUrl = config('app.url');
             $isLocalhost = str_contains($appUrl, 'localhost') || str_contains($appUrl, '127.0.0.1');
@@ -87,18 +87,18 @@ class HitPayGateway implements PaymentGatewayInterface
             } else {
                 // Redirect to frontend success page
                 $frontendUrl = config('app.frontend_url', 'http://localhost:5173');
-                $payload['redirect_url'] = $frontendUrl . '/payment/success';
+                $payload['redirect_url'] = $frontendUrl.'/payment/success';
             }
 
             // Add webhook only if APP_URL is not localhost or if HITPAY_WEBHOOK_URL is set
-            $webhookUrl = config('services.hitpay.webhook_url') ?? ($isLocalhost ? null : $appUrl . '/api/v1/webhooks/hitpay');
+            $webhookUrl = config('services.hitpay.webhook_url') ?? ($isLocalhost ? null : $appUrl.'/api/v1/webhooks/hitpay');
             if ($webhookUrl) {
                 $payload['webhook'] = $webhookUrl;
             }
 
             // Build form data - HitPay requires application/x-www-form-urlencoded
             $formPayload = $payload;
-            
+
             // Add payment_methods[] if specified
             if ($paymentMethods && is_array($paymentMethods)) {
                 foreach ($paymentMethods as $i => $method) {
@@ -110,7 +110,7 @@ class HitPayGateway implements PaymentGatewayInterface
 
             $response = Http::withHeaders([
                 'X-BUSINESS-API-KEY' => $this->gateway->api_key,
-            ])->asForm()->post($this->baseUrl . '/payment-requests', $formPayload);
+            ])->asForm()->post($this->baseUrl.'/payment-requests', $formPayload);
 
             if ($response->successful()) {
                 $result = $response->json();
@@ -118,7 +118,7 @@ class HitPayGateway implements PaymentGatewayInterface
                 // Add transaction_id to redirect URL
                 $redirectUrl = $payload['redirect_url'];
                 $separator = str_contains($redirectUrl, '?') ? '&' : '?';
-                $secureRedirectUrl = $redirectUrl . $separator . 'ref=' . urlencode($result['id']);
+                $secureRedirectUrl = $redirectUrl.$separator.'ref='.urlencode($result['id']);
 
                 // Store transaction in database
                 if (isset($data['metadata']['invoice_id'])) {
@@ -187,12 +187,12 @@ class HitPayGateway implements PaymentGatewayInterface
         try {
             \Log::info('Fetching payment status from HitPay', [
                 'transaction_id' => $transactionId,
-                'url' => $this->baseUrl . '/payment-requests/' . $transactionId,
+                'url' => $this->baseUrl.'/payment-requests/'.$transactionId,
             ]);
 
             $response = Http::withHeaders([
                 'X-BUSINESS-API-KEY' => $this->gateway->api_key,
-            ])->get($this->baseUrl . '/payment-requests/' . $transactionId);
+            ])->get($this->baseUrl.'/payment-requests/'.$transactionId);
 
             \Log::info('HitPay API response', [
                 'transaction_id' => $transactionId,
@@ -202,6 +202,7 @@ class HitPayGateway implements PaymentGatewayInterface
 
             if ($response->successful()) {
                 $result = $response->json();
+
                 return [
                     'success' => true,
                     'status' => $this->mapHitPayStatus($result['status']),
@@ -242,13 +243,14 @@ class HitPayGateway implements PaymentGatewayInterface
         try {
             $response = Http::withHeaders([
                 'X-BUSINESS-API-KEY' => $this->gateway->api_key,
-            ])->post($this->baseUrl . '/refund', [
+            ])->post($this->baseUrl.'/refund', [
                 'payment_id' => $transactionId,
                 'amount' => $amount,
             ]);
 
             if ($response->successful()) {
                 $result = $response->json();
+
                 return [
                     'success' => true,
                     'refund_id' => $result['id'],
@@ -282,16 +284,18 @@ class HitPayGateway implements PaymentGatewayInterface
         $receivedHmac = $data['hmac'] ?? null;
 
         // If no HMAC, reject the webhook — all HitPay webhooks must include a valid signature
-        if (!$receivedHmac) {
+        if (! $receivedHmac) {
             \Log::error('HitPay webhook rejected: missing HMAC signature');
+
             return false;
         }
 
         // Payment webhook with HMAC - MUST verify signature
         $secret = $this->gateway->api_secret;
 
-        if (!$secret) {
+        if (! $secret) {
             \Log::error('HitPay webhook verification failed: No API secret configured');
+
             return false;
         }
 
@@ -307,16 +311,18 @@ class HitPayGateway implements PaymentGatewayInterface
 
         $isValid = hash_equals($generatedHmac, $receivedHmac);
 
-        if (!$isValid) {
+        if (! $isValid) {
             \Log::error('HitPay webhook signature verification FAILED', [
                 'received_hmac' => $receivedHmac,
                 'generated_hmac' => $generatedHmac,
                 'webhook_data' => $dataForVerification,
             ]);
+
             return false;
         }
 
         \Log::info('HitPay webhook signature verified successfully');
+
         return true;
     }
 
@@ -332,7 +338,7 @@ class HitPayGateway implements PaymentGatewayInterface
 
         // Generate deterministic webhook_id for duplicate detection
         // Uses only payload data (no time()) so the same HitPay event always produces the same ID
-        $webhookId = 'hitpay_' . hash('sha256', json_encode($data));
+        $webhookId = 'hitpay_'.hash('sha256', json_encode($data));
 
         // Extract payment details from nested payments array if present
         $payment = null;
@@ -364,7 +370,7 @@ class HitPayGateway implements PaymentGatewayInterface
         try {
             $response = Http::withHeaders([
                 'X-BUSINESS-API-KEY' => $this->gateway->api_key,
-            ])->get($this->baseUrl . '/payment-requests');
+            ])->get($this->baseUrl.'/payment-requests');
 
             return $response->successful();
         } catch (\Exception $e) {
@@ -382,8 +388,8 @@ class HitPayGateway implements PaymentGatewayInterface
         try {
             // Get the actual payment_id from the transaction metadata
             $transaction = \Modules\PaymentGateway\Models\PaymentTransaction::where('transaction_id', $transactionId)->first();
-            
-            if (!$transaction) {
+
+            if (! $transaction) {
                 return [
                     'success' => false,
                     'message' => 'Transaction not found',
@@ -394,26 +400,26 @@ class HitPayGateway implements PaymentGatewayInterface
             $paymentId = $metadata['payment_id'] ?? null;
 
             // If payment_id not in metadata, try to fetch from HitPay API
-            if (!$paymentId) {
+            if (! $paymentId) {
                 \Log::info('HitPay refund: payment_id not in metadata, fetching from API', [
                     'transaction_id' => $transactionId,
                 ]);
-                
+
                 // Fetch payment request details from HitPay
                 $response = Http::withHeaders([
                     'X-BUSINESS-API-KEY' => $this->gateway->api_key,
-                ])->get($this->baseUrl . '/payment-requests/' . $transactionId);
+                ])->get($this->baseUrl.'/payment-requests/'.$transactionId);
 
                 if ($response->successful()) {
                     $data = $response->json();
                     // Extract payment_id from the payments array
                     if (isset($data['payments'][0]['id'])) {
                         $paymentId = $data['payments'][0]['id'];
-                        
+
                         // Save it to metadata for future use
                         $metadata['payment_id'] = $paymentId;
                         $transaction->update(['metadata' => $metadata]);
-                        
+
                         \Log::info('HitPay refund: payment_id retrieved and saved', [
                             'transaction_id' => $transactionId,
                             'payment_id' => $paymentId,
@@ -423,7 +429,7 @@ class HitPayGateway implements PaymentGatewayInterface
                             'transaction_id' => $transactionId,
                             'response' => $data,
                         ]);
-                        
+
                         return [
                             'success' => false,
                             'message' => 'Payment ID not found in HitPay. The payment may not have been completed.',
@@ -435,7 +441,7 @@ class HitPayGateway implements PaymentGatewayInterface
                         'status' => $response->status(),
                         'response' => $response->body(),
                     ]);
-                    
+
                     return [
                         'success' => false,
                         'message' => 'Could not retrieve payment details from HitPay.',
@@ -452,13 +458,14 @@ class HitPayGateway implements PaymentGatewayInterface
             $response = Http::withHeaders([
                 'X-BUSINESS-API-KEY' => $this->gateway->api_key,
                 'Content-Type' => 'application/json',
-            ])->post($this->baseUrl . '/refund', [
+            ])->post($this->baseUrl.'/refund', [
                 'payment_id' => $paymentId, // Use actual payment_id, not transaction_id
                 'amount' => $amount,
             ]);
 
             if ($response->successful()) {
                 $data = $response->json();
+
                 return [
                     'success' => true,
                     'refund_id' => $data['id'] ?? null,
@@ -482,7 +489,7 @@ class HitPayGateway implements PaymentGatewayInterface
                 'transaction_id' => $transactionId,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return [
                 'success' => false,
                 'message' => $e->getMessage(),

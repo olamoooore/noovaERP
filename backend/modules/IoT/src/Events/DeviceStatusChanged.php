@@ -29,7 +29,7 @@ class DeviceStatusChanged implements ShouldBroadcast
             // Broadcast to agent channel
             new Channel("agent.{$this->config->agent_id}"),
             // Broadcast to tenant channel for frontend
-            new Channel("tenant." . tenant()->id),
+            new Channel('tenant.'.tenant()->id),
         ];
     }
 

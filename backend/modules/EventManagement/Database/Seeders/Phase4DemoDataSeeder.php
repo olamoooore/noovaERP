@@ -2,17 +2,16 @@
 
 namespace Modules\EventManagement\Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use Modules\EventManagement\Models\Event;
-use Modules\EventManagement\Models\EventType;
-use Modules\EventManagement\Models\Bid;
 use App\Models\Customer;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Seeder;
+use Modules\EventManagement\Models\Bid;
+use Modules\EventManagement\Models\Event;
+use Modules\EventManagement\Models\EventType;
 
 /**
  * Phase 4 Demo Data Seeder
- * 
+ *
  * Creates demonstration data showcasing Phase 4 features:
  * - Multiple event types (Concert, Meet-the-Artist)
  * - Different acquisition modes (Direct Purchase, Bidding)

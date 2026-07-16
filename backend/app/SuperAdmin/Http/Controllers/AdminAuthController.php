@@ -25,7 +25,7 @@ class AdminAuthController extends Controller
     public function login(Request $request): JsonResponse
     {
         $request->validate([
-            'email'    => 'required|email',
+            'email' => 'required|email',
             'password' => 'required|string',
         ]);
 
@@ -35,7 +35,7 @@ class AdminAuthController extends Controller
         if (! $user || ! Hash::check($request->password, $user->password)) {
             Log::warning('Admin login failed: invalid credentials', [
                 'email' => $request->email,
-                'ip'    => $request->ip(),
+                'ip' => $request->ip(),
             ]);
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
@@ -45,8 +45,8 @@ class AdminAuthController extends Controller
         if (! in_array($user->role, self::ADMIN_ROLES, true)) {
             Log::warning('Admin login failed: insufficient role', [
                 'email' => $request->email,
-                'role'  => $user->role,
-                'ip'    => $request->ip(),
+                'role' => $user->role,
+                'ip' => $request->ip(),
             ]);
             throw ValidationException::withMessages([
                 'email' => ['This account does not have platform admin access.'],
@@ -60,11 +60,11 @@ class AdminAuthController extends Controller
 
         return response()->json([
             'token' => $token,
-            'user'  => [
-                'id'    => $user->id,
-                'name'  => $user->name,
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
                 'email' => $user->email,
-                'role'  => $user->role,
+                'role' => $user->role,
             ],
         ]);
     }
@@ -74,10 +74,10 @@ class AdminAuthController extends Controller
         $user = $request->user();
 
         return response()->json([
-            'id'    => $user->id,
-            'name'  => $user->name,
+            'id' => $user->id,
+            'name' => $user->name,
             'email' => $user->email,
-            'role'  => $user->role,
+            'role' => $user->role,
         ]);
     }
 

@@ -21,7 +21,7 @@ return new class extends Migration
             $table->foreignId('executed_by')->nullable()->constrained('users');
             $table->text('notes')->nullable();
             $table->timestamps();
-            
+
             // Indexes
             $table->index(['control_name', 'as_of_date']);
             $table->index('status');
@@ -46,7 +46,7 @@ return new class extends Migration
             $table->timestamp('resolved_at')->nullable();
             $table->foreignId('resolved_by')->nullable()->constrained('users');
             $table->timestamps();
-            
+
             // Indexes
             $table->index('exception_type');
             $table->index('status');
@@ -75,7 +75,7 @@ return new class extends Migration
             $table->timestamp('approved_at')->nullable();
             $table->foreignId('journal_entry_id')->nullable()->constrained();
             $table->timestamps();
-            
+
             // Indexes
             $table->index(['product_id', 'warehouse_id']);
             $table->index('count_date');

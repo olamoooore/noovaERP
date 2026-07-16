@@ -10,6 +10,8 @@ use Modules\TemplateBuilder\Contracts\DocumentTemplateServiceContract;
 use Modules\TemplateBuilder\Models\DocumentTemplate;
 use Modules\TemplateBuilder\Models\DocumentTemplateAssignment;
 use Modules\TemplateBuilder\Models\DocumentTemplateVersion;
+use Modules\TemplateBuilder\Platform\ResolutionContext;
+use Modules\TemplateBuilder\Platform\ResolutionResult;
 use Modules\TemplateBuilder\Services\DataSource\DataSourceRegistry;
 use Modules\TemplateBuilder\Support\DefaultTemplates;
 
@@ -18,6 +20,7 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
     public function __construct(
         private readonly TemplateRendererService $renderer,
         private readonly DataSourceRegistry $dataSources,
+        private readonly AssignmentResolver $resolver,
     ) {}
 
     public function list(array $filters = []): LengthAwarePaginator
@@ -159,25 +162,19 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
 
     public function resolveFor(string $documentType, array $context = []): ?DocumentTemplate
     {
-        $assignment = DocumentTemplateAssignment::where('document_type', $documentType)
-            ->active()
-            ->with('template')
-            ->get()
-            ->filter(fn (DocumentTemplateAssignment $a) => $a->template && $a->template->status === DocumentTemplate::STATUS_PUBLISHED)
-            ->sortByDesc('priority')
-            ->first();
+        // ADR-004 §11 — delegate to the deterministic resolver. Back-compat:
+        // callers still receive a single template (or null); use
+        // {@see resolveWithExplanation()} for the full outcome + explanation.
+        return $this->resolver->resolve(ResolutionContext::forDocument($documentType, $context))->template;
+    }
 
-        if ($assignment?->template) {
-            return $assignment->template;
-        }
-
-        // Fallback: system default for this document type.
-        return DocumentTemplate::published()
-            ->forDocumentType($documentType)
-            ->where('is_system_default', true)
-            ->latest()
-            ->first()
-            ?: DocumentTemplate::published()->forDocumentType($documentType)->latest()->first();
+    /**
+     * ADR-004 §11 — deterministic resolution with a structured outcome +
+     * explanation. Prefer this over {@see resolveFor()} for new callers.
+     */
+    public function resolveWithExplanation(string $documentType, array $context = []): ResolutionResult
+    {
+        return $this->resolver->resolve(ResolutionContext::forDocument($documentType, $context));
     }
 
     public function preview(DocumentTemplate $template, ?array $sampleData = null): array
@@ -190,10 +187,10 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
 
         // Wrap in the canvas template so the preview gets full styling (fonts, margins, CSS).
         $fullHtml = view('templatebuilder::canvas', [
-            'body'   => $result['html'],
-            'font'   => $template->default_font ?: config('templatebuilder.defaults.font', 'DejaVu Sans'),
+            'body' => $result['html'],
+            'font' => $template->default_font ?: config('templatebuilder.defaults.font', 'DejaVu Sans'),
             'margin' => is_array($template->margin) ? $template->margin : config('templatebuilder.defaults.margin_mm'),
-            'css'    => (string) ($template->css ?? ''),
+            'css' => (string) ($template->css ?? ''),
         ])->render();
 
         return [
@@ -230,11 +227,11 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
     {
         return collect(DefaultTemplates::definitions())->map(fn (array $d) => [
             'document_type' => $d['document_type'],
-            'name'          => $d['name'],
-            'mode'          => $d['mode'],
-            'format'        => $d['format'],
-            'orientation'   => $d['orientation'],
-            'description'   => 'Predefined starter layout — clone and customise.',
+            'name' => $d['name'],
+            'mode' => $d['mode'],
+            'format' => $d['format'],
+            'orientation' => $d['orientation'],
+            'description' => 'Predefined starter layout — clone and customise.',
         ])->values()->all();
     }
 
@@ -243,16 +240,16 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
         $definition = collect(DefaultTemplates::definitions())
             ->firstWhere('document_type', $documentType);
 
-        if (!$definition) {
+        if (! $definition) {
             throw new \RuntimeException("No starter template exists for document type '{$documentType}'.");
         }
 
         // User-owned copy: not a system default, starts as a draft, no code collision.
         $definition['is_system_default'] = false;
-        $definition['status']            = DocumentTemplate::STATUS_DRAFT;
+        $definition['status'] = DocumentTemplate::STATUS_DRAFT;
         $definition['published_version'] = 0;
-        $definition['code']              = null;
-        $definition['name']              = $definition['name'].' (Copy)';
+        $definition['code'] = null;
+        $definition['name'] = $definition['name'].' (Copy)';
 
         return DocumentTemplate::create($definition);
     }

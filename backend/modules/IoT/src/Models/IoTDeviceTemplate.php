@@ -2,8 +2,8 @@
 
 namespace Modules\IoT\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 
 class IoTDeviceTemplate extends Model
 {
@@ -65,12 +65,12 @@ class IoTDeviceTemplate extends Model
     // Helper methods
     public function getFullNameAttribute()
     {
-        return $this->vendor . ' ' . ($this->model ? $this->model . ' ' : '') . $this->name;
+        return $this->vendor.' '.($this->model ? $this->model.' ' : '').$this->name;
     }
 
     public function getCategoryDisplayNameAttribute()
     {
-        return match($this->category) {
+        return match ($this->category) {
             'printers' => 'Printers',
             'scanners' => 'Scanners',
             'cameras' => 'Cameras',

@@ -35,6 +35,7 @@ class RateLimitService
                 'current_count' => $current,
                 'limit' => $limit['requests'],
             ]);
+
             return false;
         }
 

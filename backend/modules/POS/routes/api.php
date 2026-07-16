@@ -1,17 +1,17 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Modules\POS\Http\Controllers\PosOrderController;
-use Modules\POS\Http\Controllers\PosProductController;
+use Modules\POS\Http\Controllers\CustomerDisplayController;
 use Modules\POS\Http\Controllers\PosBarcodeController;
-use Modules\POS\Http\Controllers\PosWarehouseController;
-use Modules\POS\Http\Controllers\PosSessionController;
-use Modules\POS\Http\Controllers\PosTerminalController;
+use Modules\POS\Http\Controllers\PosHeldOrderController;
+use Modules\POS\Http\Controllers\PosOrderController;
 use Modules\POS\Http\Controllers\PosPaymentMethodController;
+use Modules\POS\Http\Controllers\PosProductController;
+use Modules\POS\Http\Controllers\PosSessionController;
 use Modules\POS\Http\Controllers\PosSettingController;
 use Modules\POS\Http\Controllers\PosSyncController;
-use Modules\POS\Http\Controllers\CustomerDisplayController;
-use Modules\POS\Http\Controllers\PosHeldOrderController;
+use Modules\POS\Http\Controllers\PosTerminalController;
+use Modules\POS\Http\Controllers\PosWarehouseController;
 use Modules\POS\Http\Controllers\ReceiptSettingsController;
 use Modules\POS\Http\Controllers\ReceiptTemplateController;
 
@@ -44,18 +44,18 @@ Route::middleware(['auth:sanctum', 'feature:pos'])->group(function () {
     // POS Orders
     Route::get('/pos/sales/orders', [PosOrderController::class, 'index']);
     Route::get('/pos/orders', [PosOrderController::class, 'index']);
-    Route::post('/pos/orders', [PosOrderController::class, 'store'])->middleware(\App\Http\Middleware\RequirePermission::class . ':pos.create');
+    Route::post('/pos/orders', [PosOrderController::class, 'store'])->middleware(\App\Http\Middleware\RequirePermission::class.':pos.create');
     Route::get('/pos/orders/{posOrder}', [PosOrderController::class, 'show']);
-    Route::post('/pos/orders/{posOrder}/pay', [PosOrderController::class, 'pay'])->middleware(\App\Http\Middleware\RequirePermission::class . ':pos.create');
-    Route::post('/pos/orders/{posOrder}/cancel', [PosOrderController::class, 'cancel'])->middleware(\App\Http\Middleware\RequirePermission::class . ':pos.create');
-    Route::post('/pos/orders/{posOrder}/void', [PosOrderController::class, 'void'])->middleware(\App\Http\Middleware\RequirePermission::class . ':pos.create');
-    Route::post('/pos/orders/{posOrder}/refund', [PosOrderController::class, 'refund'])->middleware(\App\Http\Middleware\RequirePermission::class . ':pos.create');
-    Route::post('/pos/orders/{posOrder}/return', [PosOrderController::class, 'createReturn'])->middleware(\App\Http\Middleware\RequirePermission::class . ':pos.create');
+    Route::post('/pos/orders/{posOrder}/pay', [PosOrderController::class, 'pay'])->middleware(\App\Http\Middleware\RequirePermission::class.':pos.create');
+    Route::post('/pos/orders/{posOrder}/cancel', [PosOrderController::class, 'cancel'])->middleware(\App\Http\Middleware\RequirePermission::class.':pos.create');
+    Route::post('/pos/orders/{posOrder}/void', [PosOrderController::class, 'void'])->middleware(\App\Http\Middleware\RequirePermission::class.':pos.create');
+    Route::post('/pos/orders/{posOrder}/refund', [PosOrderController::class, 'refund'])->middleware(\App\Http\Middleware\RequirePermission::class.':pos.create');
+    Route::post('/pos/orders/{posOrder}/return', [PosOrderController::class, 'createReturn'])->middleware(\App\Http\Middleware\RequirePermission::class.':pos.create');
     Route::get('/pos/orders/{posOrder}/receipt', [PosOrderController::class, 'receipt']);
     Route::get('/pos/orders/{posOrder}/invoice', [PosOrderController::class, 'invoice']);
     Route::post('/pos/orders/{posOrder}/print-receipt', [PosOrderController::class, 'printReceipt']);
     Route::post('/pos/orders/{posOrder}/print-labels', [PosOrderController::class, 'printLabels']);
-    Route::delete('/pos/orders/{posOrder}', [PosOrderController::class, 'destroy'])->middleware(\App\Http\Middleware\RequirePermission::class . ':pos.create');
+    Route::delete('/pos/orders/{posOrder}', [PosOrderController::class, 'destroy'])->middleware(\App\Http\Middleware\RequirePermission::class.':pos.create');
 
     // POS Dashboard
     Route::get('/pos/dashboard', [PosOrderController::class, 'dashboard']);

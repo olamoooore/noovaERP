@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Modules\Inventory\Models\Supplier;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Modules\Inventory\Models\Supplier;
 
 /**
  * Supplier Management Controller
@@ -26,9 +26,9 @@ class SupplierController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('code', 'like', "%{$search}%")
-                  ->orWhere('contact_name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%");
+                    ->orWhere('code', 'like', "%{$search}%")
+                    ->orWhere('contact_name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
             });
         }
 
@@ -104,7 +104,7 @@ class SupplierController extends Controller
 
         return response()->json([
             'message' => 'Supplier created successfully',
-            'supplier' => $supplier
+            'supplier' => $supplier,
         ], 201);
     }
 
@@ -155,7 +155,7 @@ class SupplierController extends Controller
 
         return response()->json([
             'message' => 'Supplier updated successfully',
-            'supplier' => $supplier
+            'supplier' => $supplier,
         ]);
     }
 
@@ -168,14 +168,14 @@ class SupplierController extends Controller
         // Check if supplier has linked products
         if ($supplier->products()->count() > 0) {
             return response()->json([
-                'message' => 'Cannot delete supplier with linked products. Remove product associations first.'
+                'message' => 'Cannot delete supplier with linked products. Remove product associations first.',
             ], 422);
         }
 
         $supplier->delete();
 
         return response()->json([
-            'message' => 'Supplier deleted successfully'
+            'message' => 'Supplier deleted successfully',
         ]);
     }
 
@@ -188,8 +188,8 @@ class SupplierController extends Controller
         $products = $supplier->products()
             ->with(['category', 'brand'])
             ->withPivot([
-                'supplier_sku', 'cost', 'lead_time_days', 
-                'moq', 'is_preferred', 'last_purchase_date'
+                'supplier_sku', 'cost', 'lead_time_days',
+                'moq', 'is_preferred', 'last_purchase_date',
             ])
             ->paginate(20);
 
@@ -218,12 +218,12 @@ class SupplierController extends Controller
         // Check if already linked
         if ($supplier->products()->where('product_id', $validated['product_id'])->exists()) {
             return response()->json([
-                'message' => 'Product is already linked to this supplier'
+                'message' => 'Product is already linked to this supplier',
             ], 422);
         }
 
         // If this is marked as preferred, unset other preferred suppliers for this product
-        if (!empty($validated['is_preferred'])) {
+        if (! empty($validated['is_preferred'])) {
             \App\Models\ProductSupplier::where('product_id', $validated['product_id'])
                 ->update(['is_preferred' => false]);
         }
@@ -242,7 +242,7 @@ class SupplierController extends Controller
         ]);
 
         return response()->json([
-            'message' => 'Product linked to supplier successfully'
+            'message' => 'Product linked to supplier successfully',
         ], 201);
     }
 
@@ -266,14 +266,14 @@ class SupplierController extends Controller
         ]);
 
         // Check if link exists
-        if (!$supplier->products()->where('product_id', $productId)->exists()) {
+        if (! $supplier->products()->where('product_id', $productId)->exists()) {
             return response()->json([
-                'message' => 'Product is not linked to this supplier'
+                'message' => 'Product is not linked to this supplier',
             ], 404);
         }
 
         // If this is marked as preferred, unset other preferred suppliers
-        if (!empty($validated['is_preferred'])) {
+        if (! empty($validated['is_preferred'])) {
             \App\Models\ProductSupplier::where('product_id', $productId)
                 ->where('supplier_id', '!=', $supplier->id)
                 ->update(['is_preferred' => false]);
@@ -282,7 +282,7 @@ class SupplierController extends Controller
         $supplier->products()->updateExistingPivot($productId, $validated);
 
         return response()->json([
-            'message' => 'Product-supplier link updated successfully'
+            'message' => 'Product-supplier link updated successfully',
         ]);
     }
 
@@ -295,7 +295,7 @@ class SupplierController extends Controller
         $supplier->products()->detach($productId);
 
         return response()->json([
-            'message' => 'Product unlinked from supplier successfully'
+            'message' => 'Product unlinked from supplier successfully',
         ]);
     }
 
@@ -323,19 +323,19 @@ class SupplierController extends Controller
 
     private function normalizeSupplierInput(array $input): array
     {
-        if (!array_key_exists('contact_name', $input) && array_key_exists('contact_person', $input)) {
+        if (! array_key_exists('contact_name', $input) && array_key_exists('contact_person', $input)) {
             $input['contact_name'] = $input['contact_person'];
         }
 
-        if (!array_key_exists('address_line_1', $input) && array_key_exists('address', $input)) {
+        if (! array_key_exists('address_line_1', $input) && array_key_exists('address', $input)) {
             $input['address_line_1'] = $input['address'];
         }
 
-        if (!array_key_exists('tax_id', $input) && array_key_exists('tax_number', $input)) {
+        if (! array_key_exists('tax_id', $input) && array_key_exists('tax_number', $input)) {
             $input['tax_id'] = $input['tax_number'];
         }
 
-        if (!array_key_exists('payment_terms_days', $input) && array_key_exists('payment_terms', $input)) {
+        if (! array_key_exists('payment_terms_days', $input) && array_key_exists('payment_terms', $input)) {
             $input['payment_terms_days'] = $input['payment_terms'];
         }
 

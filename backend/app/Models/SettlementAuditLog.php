@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * SettlementAuditLog
- * 
+ *
  * Tracks invoice settlement mutations: paid_amount, balance, and status changes.
  * Provides durable audit trail for all settlement operations.
  */

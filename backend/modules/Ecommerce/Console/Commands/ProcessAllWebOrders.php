@@ -2,15 +2,15 @@
 
 namespace Modules\Ecommerce\Console\Commands;
 
+use App\Models\JournalEntryLink;
+use App\Models\StockMovement;
+use App\Models\Tenant;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Modules\Ecommerce\Models\WebOrder;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\PaymentGateway\Services\PaymentTransactionCompletionService;
-use App\Models\Tenant;
-use App\Models\StockMovement;
-use App\Models\JournalEntryLink;
 
 class ProcessAllWebOrders extends Command
 {
@@ -42,50 +42,55 @@ class ProcessAllWebOrders extends Command
         $this->info('Processing all web orders...');
 
         $tenantId = $this->option('tenant');
-        
-        if (!$tenantId) {
+
+        if (! $tenantId) {
             $this->error('The --tenant flag is required for this command.');
             $this->info('Usage: php artisan orders:process-all-web --tenant=<tenant-id>');
+
             return Command::FAILURE;
         }
 
         $tenant = Tenant::find($tenantId);
-        if (!$tenant) {
+        if (! $tenant) {
             $this->error("Tenant not found: {$tenantId}");
+
             return Command::FAILURE;
         }
-        
+
         $this->info("Processing tenant: {$tenant->id}");
-            
+
         $tenant->run(function () {
             $this->processTenantOrders();
         });
 
         $this->info('Done!');
+
         return Command::SUCCESS;
     }
-    
+
     /**
      * Process orders for a single tenant
      */
     protected function processTenantOrders()
     {
         // Check if web_orders table exists
-        if (!Schema::hasTable('web_orders')) {
+        if (! Schema::hasTable('web_orders')) {
             $this->info('  web_orders table does not exist, skipping tenant.');
+
             return;
         }
-        
+
         // Get ALL web orders
         $orders = WebOrder::orderBy('created_at', 'asc')->get();
-        
+
         if ($orders->isEmpty()) {
             $this->info('  No web orders found.');
+
             return;
         }
-        
+
         $this->info("  Found {$orders->count()} web order(s).");
-        
+
         $stats = [
             'total' => $orders->count(),
             'already_processed' => 0,
@@ -93,10 +98,10 @@ class ProcessAllWebOrders extends Command
             'failed' => 0,
             'skipped' => 0,
         ];
-        
+
         foreach ($orders as $order) {
             $result = $this->processOrder($order);
-            
+
             if ($result === 'already_processed') {
                 $stats['already_processed']++;
             } elseif ($result === 'processed') {
@@ -107,23 +112,24 @@ class ProcessAllWebOrders extends Command
                 $stats['skipped']++;
             }
         }
-        
+
         $this->info("  Stats: Total={$stats['total']}, Already Processed={$stats['already_processed']}, Processed={$stats['processed']}, Skipped={$stats['skipped']}, Failed={$stats['failed']}");
     }
-    
+
     /**
      * Process a single web order
      */
     protected function processOrder(WebOrder $order): string
     {
         $this->info("  Order: {$order->order_number} - Status: {$order->status}, Payment: {$order->payment_status}");
-        
+
         // Only process confirmed/paid orders
         if ($order->payment_status !== 'paid' || $order->status !== 'confirmed') {
-            $this->info("    Skipping - not a confirmed paid order");
+            $this->info('    Skipping - not a confirmed paid order');
+
             return 'skipped';
         }
-        
+
         // Check if already has invoice and journal entry
         $hasInvoice = $order->invoice_id !== null;
         $hasJournalEntry = \App\Models\JournalEntry::where('reference', $order->order_number)
@@ -139,18 +145,20 @@ class ProcessAllWebOrders extends Command
             ->exists();
 
         if ($hasInvoice && $hasJournalEntry && $hasStockDeduction && $hasPostingLink) {
-            $this->info("    Already has invoice, journal entry, and stock deduction");
+            $this->info('    Already has invoice, journal entry, and stock deduction');
+
             return 'already_processed';
         }
-        
+
         try {
             $transaction = PaymentTransaction::where('transaction_id', $order->payment_transaction_id)
                 ->orWhereJsonContains('metadata->order_id', $order->id)
                 ->first();
 
-            if (!$hasJournalEntry) {
-                if (!$transaction) {
-                    $this->warn("    No payment transaction found for canonical completion");
+            if (! $hasJournalEntry) {
+                if (! $transaction) {
+                    $this->warn('    No payment transaction found for canonical completion');
+
                     return 'skipped';
                 }
 
@@ -172,22 +180,22 @@ class ProcessAllWebOrders extends Command
             } else {
                 // Journal entry exists but stock might not be deducted.
                 // Route through canonical completion service to ensure audit trail and proper transaction handling.
-                if (!$hasStockDeduction && $hasPostingLink && $transaction) {
+                if (! $hasStockDeduction && $hasPostingLink && $transaction) {
                     try {
                         $this->completionService->complete(
                             $transaction,
                             $transaction->payment_method ?? $transaction->gateway->gateway_name ?? 'card'
                         );
-                        $this->info("    Stock deducted via canonical completion service");
+                        $this->info('    Stock deducted via canonical completion service');
                     } catch (\Exception $e) {
                         $this->warn("    Stock deduction failed: {$e->getMessage()}");
                         throw $e;
                     }
                 }
             }
-            
+
             return 'processed';
-            
+
         } catch (\Exception $e) {
             $this->error("    Failed: {$e->getMessage()}");
             Log::error('Failed to process web order', [
@@ -195,6 +203,7 @@ class ProcessAllWebOrders extends Command
                 'order_number' => $order->order_number,
                 'error' => $e->getMessage(),
             ]);
+
             return 'failed';
         }
     }

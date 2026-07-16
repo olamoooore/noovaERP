@@ -1,4 +1,5 @@
 <?php
+
 require 'vendor/autoload.php';
 $app = require_once 'bootstrap/app.php';
 $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
@@ -36,7 +37,7 @@ foreach ($tables as $t) {
             echo "OK    $t: seq=$nextVal max_id={$maxId->max_id}\n";
         }
     } catch (Exception $e) {
-        echo "ERROR $t: " . substr($e->getMessage(), 0, 80) . "\n";
+        echo "ERROR $t: ".substr($e->getMessage(), 0, 80)."\n";
     }
 }
 echo "\nFixed $fixed sequence(s).\n";

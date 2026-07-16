@@ -5,9 +5,9 @@ namespace Modules\POS\Services;
 use App\Models\Setting;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Modules\IoT\Models\DeviceConfiguration;
 use Modules\IoT\Services\DeviceCommandRouter;
 use Modules\IoT\Services\ReceiptGeneratorService;
-use Modules\IoT\Models\DeviceConfiguration;
 use Modules\POS\Models\PosOrder;
 
 class ReceiptPrintingService
@@ -25,20 +25,20 @@ class ReceiptPrintingService
         try {
             // Check if auto-print is enabled
             $autoPrint = Setting::getValue('receipt_printer_auto_print', true);
-            if (!$autoPrint) {
+            if (! $autoPrint) {
                 return ['success' => false, 'message' => 'Auto-print disabled'];
             }
 
             // Get printer configuration
             $printer = $this->getReceiptPrinter();
-            if (!$printer) {
+            if (! $printer) {
                 return ['success' => false, 'message' => 'No receipt printer configured'];
             }
 
             // Get device configuration
             $device = DeviceConfiguration::find($printer['device_id']);
-            
-            if (!$device) {
+
+            if (! $device) {
                 return ['success' => false, 'message' => 'Device not found'];
             }
 
@@ -47,7 +47,7 @@ class ReceiptPrintingService
 
             // Generate ESC/POS commands
             $escposCommands = $this->receiptGenerator->generateSalesReceipt($receiptData);
-            
+
             // Encode for JSON transmission
             $encodedCommands = $this->receiptGenerator->encodeForJson($escposCommands);
 
@@ -149,11 +149,12 @@ class ReceiptPrintingService
         $deviceId = Setting::getValue('receipt_printer_device_id');
         $agentId = Setting::getValue('receipt_printer_agent_id');
 
-        if (!$deviceId || !$agentId) {
+        if (! $deviceId || ! $agentId) {
             Log::warning('Receipt printer not configured', [
                 'device_id' => $deviceId,
                 'agent_id' => $agentId,
             ]);
+
             return null;
         }
 

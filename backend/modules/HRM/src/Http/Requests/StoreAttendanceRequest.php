@@ -15,10 +15,10 @@ class StoreAttendanceRequest extends FormRequest
     {
         return [
             'employee_id' => ['required', 'integer', 'exists:hrm_employees,id'],
-            'date'        => ['required', 'date'],
-            'check_in'    => ['required', 'date_format:H:i'],
-            'check_out'   => ['nullable', 'date_format:H:i', 'after:check_in'],
-            'notes'       => ['nullable', 'string'],
+            'date' => ['required', 'date'],
+            'check_in' => ['required', 'date_format:H:i'],
+            'check_out' => ['nullable', 'date_format:H:i', 'after:check_in'],
+            'notes' => ['nullable', 'string'],
         ];
     }
 }

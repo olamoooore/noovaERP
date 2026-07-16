@@ -3,8 +3,8 @@
 namespace Modules\IoT\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Modules\IoT\Models\IoTDevice;
 use Modules\IoT\Services\DeviceManager;
 

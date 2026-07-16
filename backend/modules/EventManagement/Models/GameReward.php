@@ -37,13 +37,16 @@ class GameReward extends Model
     ];
 
     public const TYPE_COIN = 'coin';
+
     public const TYPE_VOUCHER = 'voucher';
+
     public const TYPE_DISCOUNT = 'discount';
+
     public const TYPE_FREE_SHIPPING = 'free_shipping';
 
     public static function generateVoucherCode(): string
     {
-        return 'VR-' . strtoupper(Str::random(8)) . '-' . date('ymd');
+        return 'VR-'.strtoupper(Str::random(8)).'-'.date('ymd');
     }
 
     public function isAvailable(): bool
@@ -54,17 +57,19 @@ class GameReward extends Model
         if ($this->voucher_max_uses > 0 && $this->voucher_uses_remaining <= 0) {
             return false;
         }
+
         return true;
     }
 
     public function use(): bool
     {
-        if (!$this->isAvailable()) {
+        if (! $this->isAvailable()) {
             return false;
         }
         if ($this->voucher_max_uses > 0) {
             $this->decrement('voucher_uses_remaining');
         }
+
         return true;
     }
 

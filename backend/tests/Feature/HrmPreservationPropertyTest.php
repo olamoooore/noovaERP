@@ -76,7 +76,7 @@ class HrmPreservationPropertyTest extends TestCase
         parent::setUp();
 
         // Create features table if it doesn't exist
-        if (!Schema::hasTable('features')) {
+        if (! Schema::hasTable('features')) {
             Schema::create('features', function (Blueprint $table) {
                 $table->id();
                 $table->string('key')->unique();
@@ -89,7 +89,7 @@ class HrmPreservationPropertyTest extends TestCase
         }
 
         // Create tenant_features table if it doesn't exist
-        if (!Schema::hasTable('tenant_features')) {
+        if (! Schema::hasTable('tenant_features')) {
             Schema::create('tenant_features', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('feature_id')->constrained()->onDelete('cascade');
@@ -122,8 +122,8 @@ class HrmPreservationPropertyTest extends TestCase
             $this->assertContains(
                 $expectedKey,
                 $discoveredKeys,
-                "REGRESSION: Core module '{$expectedKey}' was discovered on unfixed code but is missing now. " .
-                "This indicates the fix broke module discovery for non-HRM modules."
+                "REGRESSION: Core module '{$expectedKey}' was discovered on unfixed code but is missing now. ".
+                'This indicates the fix broke module discovery for non-HRM modules.'
             );
 
             // Verify the module is marked as core
@@ -157,8 +157,8 @@ class HrmPreservationPropertyTest extends TestCase
             $this->assertContains(
                 $expectedKey,
                 $discoveredKeys,
-                "REGRESSION: Addon module '{$expectedKey}' was discovered on unfixed code but is missing now. " .
-                "This indicates the fix broke module discovery for non-HRM modules."
+                "REGRESSION: Addon module '{$expectedKey}' was discovered on unfixed code but is missing now. ".
+                'This indicates the fix broke module discovery for non-HRM modules.'
             );
 
             // Verify the module is marked as addon
@@ -191,8 +191,8 @@ class HrmPreservationPropertyTest extends TestCase
         $this->assertGreaterThanOrEqual(
             $expectedMinCount,
             count($modules),
-            "REGRESSION: Expected at least {$expectedMinCount} modules to be discovered, but found " . count($modules) . ". " .
-            "This indicates the fix broke module discovery."
+            "REGRESSION: Expected at least {$expectedMinCount} modules to be discovered, but found ".count($modules).'. '.
+            'This indicates the fix broke module discovery.'
         );
     }
 
@@ -220,8 +220,8 @@ class HrmPreservationPropertyTest extends TestCase
 
             $this->assertNotNull(
                 $feature,
-                "REGRESSION: Feature '{$expectedKey}' was seeded on unfixed code but is missing now. " .
-                "This indicates the fix broke feature seeding for non-HRM modules."
+                "REGRESSION: Feature '{$expectedKey}' was seeded on unfixed code but is missing now. ".
+                'This indicates the fix broke feature seeding for non-HRM modules.'
             );
 
             if ($feature) {
@@ -257,8 +257,8 @@ class HrmPreservationPropertyTest extends TestCase
             if ($feature) {
                 $this->assertTrue(
                     $feature->is_core,
-                    "REGRESSION: Core feature '{$coreKey}' should have is_core=true but has is_core=false. " .
-                    "This indicates the fix broke core feature marking."
+                    "REGRESSION: Core feature '{$coreKey}' should have is_core=true but has is_core=false. ".
+                    'This indicates the fix broke core feature marking.'
                 );
             }
         }
@@ -291,8 +291,8 @@ class HrmPreservationPropertyTest extends TestCase
             $this->assertEquals(
                 1,
                 $count,
-                "REGRESSION: Feature '{$key}' should have exactly 1 record but has {$count}. " .
-                "This indicates the seeder is creating duplicates instead of using updateOrCreate."
+                "REGRESSION: Feature '{$key}' should have exactly 1 record but has {$count}. ".
+                'This indicates the seeder is creating duplicates instead of using updateOrCreate.'
             );
         }
     }
@@ -310,18 +310,18 @@ class HrmPreservationPropertyTest extends TestCase
         $moduleManager = app(ModuleManager::class);
         $modules = $moduleManager->all();
 
-        $coreModules = collect($modules)->filter(fn($m) => $m->isCore());
-        $addonModules = collect($modules)->filter(fn($m) => !$m->isCore());
+        $coreModules = collect($modules)->filter(fn ($m) => $m->isCore());
+        $addonModules = collect($modules)->filter(fn ($m) => ! $m->isCore());
 
         // Property: Core modules SHALL come before addon modules
-        $firstAddonIndex = collect($modules)->search(fn($m) => !$m->isCore());
-        $lastCoreIndex = collect($modules)->search(fn($m) => $m->isCore(), true);
+        $firstAddonIndex = collect($modules)->search(fn ($m) => ! $m->isCore());
+        $lastCoreIndex = collect($modules)->search(fn ($m) => $m->isCore(), true);
 
         if ($firstAddonIndex !== false && $lastCoreIndex !== false) {
             $this->assertLessThan(
                 $firstAddonIndex,
                 $lastCoreIndex,
-                "REGRESSION: Core modules should come before addon modules in the discovery order."
+                'REGRESSION: Core modules should come before addon modules in the discovery order.'
             );
         }
 
@@ -333,7 +333,7 @@ class HrmPreservationPropertyTest extends TestCase
         $this->assertEquals(
             $sortedCoreKeys,
             $coreKeys,
-            "REGRESSION: Core modules should be sorted alphabetically by key."
+            'REGRESSION: Core modules should be sorted alphabetically by key.'
         );
 
         // Property: Within addon modules, they SHALL be sorted alphabetically by key
@@ -344,7 +344,7 @@ class HrmPreservationPropertyTest extends TestCase
         $this->assertEquals(
             $sortedAddonKeys,
             $addonKeys,
-            "REGRESSION: Addon modules should be sorted alphabetically by key."
+            'REGRESSION: Addon modules should be sorted alphabetically by key.'
         );
     }
 
@@ -365,7 +365,7 @@ class HrmPreservationPropertyTest extends TestCase
         foreach ($modules as $module) {
             $this->assertNotEmpty(
                 $module->key,
-                "REGRESSION: Discovered module has empty key. Module discovery should skip modules with empty keys."
+                'REGRESSION: Discovered module has empty key. Module discovery should skip modules with empty keys.'
             );
 
             $this->assertNotEmpty(
@@ -402,7 +402,7 @@ class HrmPreservationPropertyTest extends TestCase
             );
 
             // Verify the module.json exists in the base path
-            $manifestPath = $module->basePath . '/module.json';
+            $manifestPath = $module->basePath.'/module.json';
             $this->assertFileExists(
                 $manifestPath,
                 "REGRESSION: Module '{$module->key}' manifest does not exist at: {$manifestPath}"
@@ -429,7 +429,7 @@ class HrmPreservationPropertyTest extends TestCase
         $this->assertCount(
             count($uniqueKeys),
             $keys,
-            "REGRESSION: Feature keys are not unique. Found duplicate keys: " .
+            'REGRESSION: Feature keys are not unique. Found duplicate keys: '.
             implode(', ', array_diff_assoc($keys, $uniqueKeys))
         );
     }

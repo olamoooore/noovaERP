@@ -19,13 +19,13 @@ class RequestValidationMiddleware
     {
         // Validate common request headers
         $this->validateHeaders($request);
-        
+
         // Sanitize input data
         $this->sanitizeInput($request);
-        
+
         // Validate request size
         $this->validateRequestSize($request);
-        
+
         // Add request ID if not present
         $this->ensureRequestId($request);
 
@@ -59,9 +59,9 @@ class RequestValidationMiddleware
         // Validate Content-Type for JSON APIs
         if (in_array($request->method(), ['POST', 'PUT', 'PATCH'])) {
             $contentType = $request->header('Content-Type');
-            if ($contentType && !str_contains($contentType, 'application/json')) {
+            if ($contentType && ! str_contains($contentType, 'application/json')) {
                 $this->throwValidationError('Invalid Content-Type', [
-                    'Content-Type' => ['Content-Type must be application/json for API requests']
+                    'Content-Type' => ['Content-Type must be application/json for API requests'],
                 ]);
             }
         }
@@ -72,13 +72,13 @@ class RequestValidationMiddleware
      */
     protected function sanitizeInput(Request $request): void
     {
-        if (!$request->isJson()) {
+        if (! $request->isJson()) {
             return;
         }
 
         $input = $request->json()->all();
         $sanitized = $this->recursiveSanitize($input);
-        
+
         // Replace the input with sanitized version
         $request->merge($sanitized);
     }
@@ -88,7 +88,7 @@ class RequestValidationMiddleware
      */
     protected function recursiveSanitize($data): array
     {
-        if (!is_array($data)) {
+        if (! is_array($data)) {
             return $data;
         }
 
@@ -114,13 +114,13 @@ class RequestValidationMiddleware
     {
         // Remove null bytes
         $value = str_replace("\0", '', $value);
-        
+
         // Trim whitespace
         $value = trim($value);
-        
+
         // Remove control characters except newlines and tabs
         $value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $value);
-        
+
         return $value;
     }
 
@@ -134,7 +134,7 @@ class RequestValidationMiddleware
 
         if ($contentLength && $contentLength > $maxSize) {
             $this->throwValidationError('Request too large', [
-                'size' => ['Request size exceeds maximum allowed size of ' . ($maxSize / 1024 / 1024) . 'MB']
+                'size' => ['Request size exceeds maximum allowed size of '.($maxSize / 1024 / 1024).'MB'],
             ]);
         }
 
@@ -143,7 +143,7 @@ class RequestValidationMiddleware
             $content = $request->getContent();
             if (strlen($content) > $maxSize) {
                 $this->throwValidationError('Request too large', [
-                    'size' => ['Request content exceeds maximum allowed size']
+                    'size' => ['Request content exceeds maximum allowed size'],
                 ]);
             }
         }
@@ -154,7 +154,7 @@ class RequestValidationMiddleware
      */
     protected function ensureRequestId(Request $request): void
     {
-        if (!$request->header('X-Request-ID')) {
+        if (! $request->header('X-Request-ID')) {
             $requestId = uniqid('req_', true);
             $request->headers->set('X-Request-ID', $requestId);
         }
@@ -170,8 +170,8 @@ class RequestValidationMiddleware
                 'code' => 'VALIDATION_ERROR',
                 'message' => $message,
                 'details' => $errors,
-                'request_id' => request()->header('X-Request-ID', uniqid())
-            ]
+                'request_id' => request()->header('X-Request-ID', uniqid()),
+            ],
         ], Response::HTTP_BAD_REQUEST);
 
         abort($response);

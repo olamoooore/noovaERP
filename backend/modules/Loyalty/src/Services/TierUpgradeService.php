@@ -28,7 +28,7 @@ class TierUpgradeService
             ->first();
 
         // If no tier change needed
-        if (!$newTier || ($currentTier && $newTier->id === $currentTier->id)) {
+        if (! $newTier || ($currentTier && $newTier->id === $currentTier->id)) {
             return null;
         }
 
@@ -48,7 +48,7 @@ class TierUpgradeService
     {
         $customerLoyalty = CustomerLoyalty::with('tier')->findOrFail($customerLoyaltyId);
 
-        if (!$customerLoyalty->tier) {
+        if (! $customerLoyalty->tier) {
             return null;
         }
 
@@ -57,7 +57,7 @@ class TierUpgradeService
             ->orderBy('min_points', 'asc')
             ->first();
 
-        if (!$nextTier) {
+        if (! $nextTier) {
             return null; // Already at highest tier
         }
 
@@ -75,7 +75,7 @@ class TierUpgradeService
      */
     public function calculateTierProgress(CustomerLoyalty $customerLoyalty): float
     {
-        if (!$customerLoyalty->tier) {
+        if (! $customerLoyalty->tier) {
             return 0.0;
         }
 
@@ -88,7 +88,7 @@ class TierUpgradeService
             ->orderBy('min_points', 'asc')
             ->first();
 
-        if (!$nextTier) {
+        if (! $nextTier) {
             return 100.0; // At highest tier
         }
 

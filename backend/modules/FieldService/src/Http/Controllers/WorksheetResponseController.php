@@ -4,8 +4,8 @@ namespace Modules\FieldService\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Modules\FieldService\Models\WorkOrder;
 use Modules\FieldService\Models\WorksheetResponse;
@@ -44,7 +44,7 @@ class WorksheetResponseController extends Controller
             $template = WorksheetTemplate::find($workOrder->type->worksheet_template_id);
         }
 
-        if (!$template) {
+        if (! $template) {
             $template = WorksheetTemplate::where('is_default', true)->first();
         }
 
@@ -65,14 +65,14 @@ class WorksheetResponseController extends Controller
 
         $validated = $request->validate([
             'template_id' => 'required|exists:fs_worksheet_templates,id',
-            'responses'   => 'required|array',
+            'responses' => 'required|array',
         ]);
 
         $response = WorksheetResponse::updateOrCreate(
             ['work_order_id' => $workOrder->id],
             [
-                'template_id'  => $validated['template_id'],
-                'responses'    => $validated['responses'],
+                'template_id' => $validated['template_id'],
+                'responses' => $validated['responses'],
                 'completed_by' => Auth::id(),
                 'completed_at' => now(),
             ]
@@ -92,7 +92,7 @@ class WorksheetResponseController extends Controller
         $workOrder = $this->findWorkOrderOrFail($work_order_id);
 
         $validated = $request->validate([
-            'signer'    => 'required|in:technician,customer',
+            'signer' => 'required|in:technician,customer',
             'signature' => 'required|string',
         ]);
 
@@ -118,13 +118,13 @@ class WorksheetResponseController extends Controller
                 // PDF generation failure is non-fatal — log and continue
                 \Illuminate\Support\Facades\Log::warning('Worksheet PDF generation failed', [
                     'work_order_id' => $workOrder->id,
-                    'error'         => $e->getMessage(),
+                    'error' => $e->getMessage(),
                 ]);
             }
         }
 
         return response()->json([
-            'response'   => $response->fresh(),
+            'response' => $response->fresh(),
             'work_order' => $workOrder->only([
                 'id', 'technician_signed_at', 'customer_signed_at',
             ]),
@@ -143,16 +143,16 @@ class WorksheetResponseController extends Controller
         $response = WorksheetResponse::where('work_order_id', $workOrder->id)->firstOrFail();
 
         // Generate on-demand if PDF doesn't exist yet
-        if (!$response->pdf_path || !\Illuminate\Support\Facades\Storage::exists($response->pdf_path)) {
+        if (! $response->pdf_path || ! \Illuminate\Support\Facades\Storage::exists($response->pdf_path)) {
             $pdfPath = $this->pdfService->generate($workOrder, $response);
             $response->update(['pdf_path' => $pdfPath]);
         }
 
-        $path = storage_path('app/' . $response->pdf_path);
+        $path = storage_path('app/'.$response->pdf_path);
 
         return response()->file($path, [
-            'Content-Type'        => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="worksheet-' . $workOrder->reference . '.pdf"',
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="worksheet-'.$workOrder->reference.'.pdf"',
         ]);
     }
 
@@ -160,8 +160,8 @@ class WorksheetResponseController extends Controller
     {
         $workOrder = WorkOrder::query()->find($workOrderId);
 
-        if (!$workOrder) {
-            throw (new ModelNotFoundException())->setModel(WorkOrder::class, [$workOrderId]);
+        if (! $workOrder) {
+            throw (new ModelNotFoundException)->setModel(WorkOrder::class, [$workOrderId]);
         }
 
         return $workOrder;

@@ -7,17 +7,18 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * PIIIntegrationService - Task 4.4 (Service Integration)
- * 
+ *
  * Provides integration layer between existing services and PII vault,
  * implementing dual-write pattern during transition and service updates.
- * 
+ *
  * Requirements: 20.1, 20.4
  */
 class PIIIntegrationService
 {
     protected PIIVaultService $piiVaultService;
+
     protected AuditService $auditService;
-    
+
     // PII field mappings for different entity types
     private const PII_FIELD_MAPPINGS = [
         'customer' => [
@@ -68,20 +69,20 @@ class PIIIntegrationService
 
     /**
      * Store PII data for an entity using dual-write pattern.
-     * 
-     * @param string $entityType Type of entity (customer, booking, attendee)
-     * @param int $entityId ID of the entity
-     * @param array $piiData PII data to store
-     * @param array $options Storage options
+     *
+     * @param  string  $entityType  Type of entity (customer, booking, attendee)
+     * @param  int  $entityId  ID of the entity
+     * @param  array  $piiData  PII data to store
+     * @param  array  $options  Storage options
      * @return array Storage results
      */
     public function storePIIForEntity(string $entityType, int $entityId, array $piiData, array $options = []): array
     {
         $results = [];
         $fieldMappings = self::PII_FIELD_MAPPINGS[$entityType] ?? [];
-        
+
         foreach ($piiData as $fieldName => $value) {
-            if (isset($fieldMappings[$fieldName]) && !empty($value)) {
+            if (isset($fieldMappings[$fieldName]) && ! empty($value)) {
                 try {
                     $result = $this->piiVaultService->storePII(
                         $entityType,
@@ -93,9 +94,9 @@ class PIIIntegrationService
                             'data_classification' => 'sensitive',
                         ], $options)
                     );
-                    
+
                     $results[$fieldName] = $result;
-                    
+
                 } catch (\Exception $e) {
                     Log::error('Failed to store PII in vault', [
                         'entity_type' => $entityType,
@@ -103,7 +104,7 @@ class PIIIntegrationService
                         'field_name' => $fieldName,
                         'error' => $e->getMessage(),
                     ]);
-                    
+
                     $results[$fieldName] = [
                         'success' => false,
                         'error' => $e->getMessage(),
@@ -111,32 +112,32 @@ class PIIIntegrationService
                 }
             }
         }
-        
+
         return $results;
     }
 
     /**
      * Retrieve PII data for an entity from vault.
-     * 
-     * @param string $entityType Type of entity
-     * @param int $entityId ID of the entity
-     * @param array $requestedFields Specific fields to retrieve (empty for all)
-     * @param string $accessReason Reason for accessing the PII
-     * @param array $context Additional access context
+     *
+     * @param  string  $entityType  Type of entity
+     * @param  int  $entityId  ID of the entity
+     * @param  array  $requestedFields  Specific fields to retrieve (empty for all)
+     * @param  string  $accessReason  Reason for accessing the PII
+     * @param  array  $context  Additional access context
      * @return array Retrieved PII data
      */
     public function retrievePIIForEntity(
-        string $entityType, 
-        int $entityId, 
-        array $requestedFields = [], 
+        string $entityType,
+        int $entityId,
+        array $requestedFields = [],
         string $accessReason = 'Service operation',
         array $context = []
     ): array {
         $piiData = [];
         $fieldMappings = self::PII_FIELD_MAPPINGS[$entityType] ?? [];
-        
+
         $fieldsToRetrieve = empty($requestedFields) ? array_keys($fieldMappings) : $requestedFields;
-        
+
         foreach ($fieldsToRetrieve as $fieldName) {
             if (isset($fieldMappings[$fieldName])) {
                 try {
@@ -147,11 +148,11 @@ class PIIIntegrationService
                         $accessReason,
                         $context
                     );
-                    
+
                     if ($value !== null) {
                         $piiData[$fieldName] = $value;
                     }
-                    
+
                 } catch (\Exception $e) {
                     Log::error('Failed to retrieve PII from vault', [
                         'entity_type' => $entityType,
@@ -162,14 +163,14 @@ class PIIIntegrationService
                 }
             }
         }
-        
+
         return $piiData;
     }
 
     /**
      * Enhanced booking creation with PII vault integration.
-     * 
-     * @param array $bookingData Booking data including PII
+     *
+     * @param  array  $bookingData  Booking data including PII
      * @return array Booking creation result with PII vault IDs
      */
     public function createBookingWithPIIVault(array $bookingData): array
@@ -178,13 +179,13 @@ class PIIIntegrationService
             // Extract PII data from booking data
             $bookingPII = $this->extractBookingPII($bookingData);
             $attendeesPII = $this->extractAttendeesPII($bookingData['attendees'] ?? []);
-            
+
             // Create booking record with non-PII data
             $cleanBookingData = $this->removeBookingPII($bookingData);
-            
+
             // Store booking in database (this would call the original BookingService)
             $booking = $this->createBookingRecord($cleanBookingData);
-            
+
             // Store booking PII in vault
             $bookingPIIResults = $this->storePIIForEntity(
                 'booking',
@@ -198,7 +199,7 @@ class PIIIntegrationService
                     ],
                 ]
             );
-            
+
             // Store attendee PII in vault
             $attendeePIIResults = [];
             foreach ($booking->attendees as $index => $attendee) {
@@ -217,7 +218,7 @@ class PIIIntegrationService
                     );
                 }
             }
-            
+
             return [
                 'booking' => $booking,
                 'booking_pii_results' => $bookingPIIResults,
@@ -228,24 +229,24 @@ class PIIIntegrationService
 
     /**
      * Enhanced booking retrieval with PII vault integration.
-     * 
-     * @param int $bookingId Booking ID
-     * @param string $accessReason Reason for accessing PII
-     * @param array $context Access context
+     *
+     * @param  int  $bookingId  Booking ID
+     * @param  string  $accessReason  Reason for accessing PII
+     * @param  array  $context  Access context
      * @return array Complete booking data with PII
      */
     public function getBookingWithPII(int $bookingId, string $accessReason = 'Booking retrieval', array $context = []): array
     {
         // Get booking record from database
         $booking = DB::table('bookings')->where('id', $bookingId)->first();
-        
-        if (!$booking) {
+
+        if (! $booking) {
             throw new \InvalidArgumentException("Booking not found: {$bookingId}");
         }
-        
+
         // Get attendees
         $attendees = DB::table('booking_attendees')->where('booking_id', $bookingId)->get();
-        
+
         // Retrieve booking PII from vault
         $bookingPII = $this->retrievePIIForEntity(
             'booking',
@@ -254,7 +255,7 @@ class PIIIntegrationService
             $accessReason,
             $context
         );
-        
+
         // Retrieve attendee PII from vault
         $attendeesPII = [];
         foreach ($attendees as $attendee) {
@@ -266,7 +267,7 @@ class PIIIntegrationService
                 $context
             );
         }
-        
+
         return [
             'booking' => $booking,
             'booking_pii' => $bookingPII,
@@ -277,31 +278,31 @@ class PIIIntegrationService
 
     /**
      * Update existing services to use PII vault.
-     * 
-     * @param string $serviceName Name of service to update
+     *
+     * @param  string  $serviceName  Name of service to update
      * @return array Update results
      */
     public function updateServiceForPIIVault(string $serviceName): array
     {
         $results = [];
-        
+
         switch ($serviceName) {
             case 'BookingService':
                 $results = $this->updateBookingServiceForPIIVault();
                 break;
-                
+
             case 'CustomerService':
                 $results = $this->updateCustomerServiceForPIIVault();
                 break;
-                
+
             case 'TicketService':
                 $results = $this->updateTicketServiceForPIIVault();
                 break;
-                
+
             default:
                 throw new \InvalidArgumentException("Unknown service: {$serviceName}");
         }
-        
+
         return $results;
     }
 
@@ -311,13 +312,13 @@ class PIIIntegrationService
     {
         $piiFields = array_keys(self::PII_FIELD_MAPPINGS['booking']);
         $piiData = [];
-        
+
         foreach ($piiFields as $field) {
             if (isset($bookingData[$field])) {
                 $piiData[$field] = $bookingData[$field];
             }
         }
-        
+
         return $piiData;
     }
 
@@ -325,7 +326,7 @@ class PIIIntegrationService
     {
         $piiFields = array_keys(self::PII_FIELD_MAPPINGS['attendee']);
         $attendeesPII = [];
-        
+
         foreach ($attendeesData as $index => $attendeeData) {
             $attendeePII = [];
             foreach ($piiFields as $field) {
@@ -333,11 +334,11 @@ class PIIIntegrationService
                     $attendeePII[$field] = $attendeeData[$field];
                 }
             }
-            if (!empty($attendeePII)) {
+            if (! empty($attendeePII)) {
                 $attendeesPII[$index] = $attendeePII;
             }
         }
-        
+
         return $attendeesPII;
     }
 
@@ -345,11 +346,11 @@ class PIIIntegrationService
     {
         $piiFields = array_keys(self::PII_FIELD_MAPPINGS['booking']);
         $cleanData = $bookingData;
-        
+
         foreach ($piiFields as $field) {
             unset($cleanData[$field]);
         }
-        
+
         // Also clean attendees PII
         if (isset($cleanData['attendees'])) {
             $attendeePIIFields = array_keys(self::PII_FIELD_MAPPINGS['attendee']);
@@ -359,7 +360,7 @@ class PIIIntegrationService
                 }
             }
         }
-        
+
         return $cleanData;
     }
 
@@ -373,13 +374,13 @@ class PIIIntegrationService
             'tenant_id' => $tenantId,
             'event_id' => $cleanBookingData['event_id'],
             'customer_id' => $cleanBookingData['customer_id'] ?? null,
-            'booking_reference' => $cleanBookingData['booking_reference'] ?? 'BK-' . strtoupper(uniqid()),
+            'booking_reference' => $cleanBookingData['booking_reference'] ?? 'BK-'.strtoupper(uniqid()),
             'state' => 'new',
             'total_amount' => $cleanBookingData['total_amount'],
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        
+
         // Create attendees
         $attendees = [];
         foreach ($cleanBookingData['attendees'] ?? [] as $attendeeData) {
@@ -389,10 +390,10 @@ class PIIIntegrationService
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            
+
             $attendees[] = (object) ['id' => $attendeeId, 'booking_id' => $bookingId];
         }
-        
+
         return (object) [
             'id' => $bookingId,
             'event_id' => $cleanBookingData['event_id'],
@@ -448,7 +449,7 @@ class PIIIntegrationService
     {
         $resolvedTenantId = $tenantId ?? tenant('id');
 
-        if (!is_string($resolvedTenantId) || trim($resolvedTenantId) === '') {
+        if (! is_string($resolvedTenantId) || trim($resolvedTenantId) === '') {
             throw new \RuntimeException('Tenant context is required for PII booking writes');
         }
 

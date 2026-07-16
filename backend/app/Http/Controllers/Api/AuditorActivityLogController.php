@@ -11,7 +11,7 @@ class AuditorActivityLogController extends Controller
     public function index(Request $request)
     {
         $auditor = $request->attributes->get('auditor');
-        if (!$auditor) {
+        if (! $auditor) {
             return response()->json(['message' => 'Auditor access required'], 403);
         }
 
@@ -42,7 +42,7 @@ class AuditorActivityLogController extends Controller
     public function store(Request $request)
     {
         $auditor = $request->attributes->get('auditor');
-        if (!$auditor) {
+        if (! $auditor) {
             return response()->json(['message' => 'Auditor access required'], 403);
         }
 
@@ -73,7 +73,7 @@ class AuditorActivityLogController extends Controller
     public function stats(Request $request)
     {
         $auditor = $request->attributes->get('auditor');
-        if (!$auditor) {
+        if (! $auditor) {
             return response()->json(['message' => 'Auditor access required'], 403);
         }
 

@@ -3,13 +3,13 @@
 namespace Modules\Fulfillment\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Modules\Fulfillment\Contracts\RateRequest;
+use Modules\Fulfillment\Contracts\ShipmentRequest;
 use Modules\Fulfillment\Services\FulfillmentService;
 use Modules\Fulfillment\Services\RateShopperService;
 use Modules\Fulfillment\Services\TrackingService;
-use Modules\Fulfillment\Contracts\RateRequest;
-use Modules\Fulfillment\Contracts\ShipmentRequest;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
 
 class FulfillmentController extends Controller
 {
@@ -39,7 +39,7 @@ class FulfillmentController extends Controller
 
         $tenantId = tenant('id');
 
-        if (!empty($validated['provider_id'])) {
+        if (! empty($validated['provider_id'])) {
             $provider = \Modules\Fulfillment\Models\FulfillmentProvider::findOrFail($validated['provider_id']);
             $rates = $this->rateShopperService->getSingleProviderRates($provider, new RateRequest(
                 ...array_merge($validated, ['tenantId' => $tenantId])
@@ -195,7 +195,7 @@ class FulfillmentController extends Controller
     {
         $shipment = $this->fulfillmentService->getShipment($id);
 
-        if (!$shipment->tracking_number) {
+        if (! $shipment->tracking_number) {
             return response()->json([
                 'message' => 'No tracking number available',
             ], 404);

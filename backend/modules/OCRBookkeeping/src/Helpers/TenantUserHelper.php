@@ -17,7 +17,7 @@ class TenantUserHelper
     public static function getTenantUserId(): ?int
     {
         $authUser = Auth::user();
-        if (!$authUser) {
+        if (! $authUser) {
             return null;
         }
 
@@ -44,7 +44,7 @@ class TenantUserHelper
     {
         $tenantUserId = static::resolveTenantUserId($preferredUserId);
 
-        if (!$tenantUserId) {
+        if (! $tenantUserId) {
             throw new \RuntimeException('No tenant user is available for audit attribution.');
         }
 

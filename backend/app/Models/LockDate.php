@@ -55,7 +55,7 @@ class LockDate extends Model
             ->orderBy('lock_date', 'desc')
             ->first();
 
-        if (!$lockDate) {
+        if (! $lockDate) {
             // Check for 'all' type lock
             $lockDate = static::where('lock_type', 'all')
                 ->where('is_active', true)
@@ -63,7 +63,7 @@ class LockDate extends Model
                 ->first();
         }
 
-        if (!$lockDate) {
+        if (! $lockDate) {
             return false;
         }
 

@@ -5,10 +5,10 @@ namespace Modules\HRM\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Modules\HRM\Models\Attendance;
 use Modules\HRM\Http\Requests\StoreAttendanceRequest;
 use Modules\HRM\Http\Requests\UpdateAttendanceRequest;
 use Modules\HRM\Http\Resources\AttendanceResource;
+use Modules\HRM\Models\Attendance;
 
 class AttendanceController extends Controller
 {

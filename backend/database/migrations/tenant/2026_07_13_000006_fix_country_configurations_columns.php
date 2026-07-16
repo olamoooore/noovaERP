@@ -9,16 +9,16 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('acct_country_configurations', function (Blueprint $table) {
-            if (!Schema::hasColumn('acct_country_configurations', 'provider_name')) {
+            if (! Schema::hasColumn('acct_country_configurations', 'provider_name')) {
                 $table->string('provider_name')->default('default');
             }
-            if (!Schema::hasColumn('acct_country_configurations', 'api_credentials')) {
+            if (! Schema::hasColumn('acct_country_configurations', 'api_credentials')) {
                 $table->json('api_credentials')->nullable();
             }
-            if (!Schema::hasColumn('acct_country_configurations', 'test_mode')) {
+            if (! Schema::hasColumn('acct_country_configurations', 'test_mode')) {
                 $table->boolean('test_mode')->default(true);
             }
-            if (!Schema::hasColumn('acct_country_configurations', 'last_synced_at')) {
+            if (! Schema::hasColumn('acct_country_configurations', 'last_synced_at')) {
                 $table->timestamp('last_synced_at')->nullable();
             }
         });

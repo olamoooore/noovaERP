@@ -40,9 +40,9 @@ class VendorBillService
         // Without this guard a null account_id falls through to the 'general_expense'
         // mapping key which resolves to the SUSPENSE account — silently wrong.
         foreach ($bill->lines as $billLine) {
-            if (!$billLine->account_id) {
+            if (! $billLine->account_id) {
                 return PostingResult::failure(
-                    "Bill line '{$billLine->description}' (line #{$billLine->id}) has no GL account assigned. " .
+                    "Bill line '{$billLine->description}' (line #{$billLine->id}) has no GL account assigned. ".
                     'All bill lines must have an account selected before the bill can be posted.'
                 );
             }

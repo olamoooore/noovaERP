@@ -18,7 +18,7 @@ return [
     //
     // Prefer STOREFRONT_TENANT_ID (UUID) over STOREFRONT_TENANT_EMAIL.
     // Leave both null to rely on domain/subdomain resolution only.
-    'storefront_tenant_id'    => env('STOREFRONT_TENANT_ID'),
+    'storefront_tenant_id' => env('STOREFRONT_TENANT_ID'),
     'storefront_tenant_email' => env('STOREFRONT_TENANT_EMAIL'),
 
     'bootstrappers' => [
@@ -30,7 +30,7 @@ return [
 
     'database' => [
         'central_connection' => env('DB_CONNECTION', 'pgsql'),
-        
+
         'template_tenant_connection' => null,
 
         'prefix' => 'tenant',

@@ -38,7 +38,7 @@ class EmployeeUserLinkController extends Controller
 
         $link = $employee->userLinks()->create([
             'user_id' => $data['user_id'],
-            'type'    => $data['type'] ?? 'primary',
+            'type' => $data['type'] ?? 'primary',
         ]);
 
         $link->load('user');

@@ -34,7 +34,7 @@ class HrmEntitlementRebuildTest extends TestCase
 
     private function seedBaselineFixtureData(): void
     {
-        if (!DB::table('tenants')->exists()) {
+        if (! DB::table('tenants')->exists()) {
             DB::table('tenants')->insert([
                 'id' => (string) \Illuminate\Support\Str::uuid(),
                 'name' => 'HRM Rebuild Test Tenant',

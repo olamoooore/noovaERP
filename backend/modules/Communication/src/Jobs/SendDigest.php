@@ -27,6 +27,7 @@ class SendDigest implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 1;
+
     public int $timeout = 600;
 
     public function __construct(
@@ -43,7 +44,7 @@ class SendDigest implements ShouldQueue
             ->where('is_sent', false)
             ->where('scheduled_for', '<=', now())
             ->get()
-            ->groupBy(fn($item) => ($item->user_id ?? 'c' . $item->customer_id));
+            ->groupBy(fn ($item) => ($item->user_id ?? 'c'.$item->customer_id));
 
         $sentCount = 0;
 
@@ -51,7 +52,9 @@ class SendDigest implements ShouldQueue
             $messageIds = $items->pluck('message_id')->toArray();
             $messages = CommunicationMessage::whereIn('id', $messageIds)->get();
 
-            if ($messages->isEmpty()) continue;
+            if ($messages->isEmpty()) {
+                continue;
+            }
 
             // Build digest body
             $digestBody = $this->buildDigestHtml($messages);
@@ -62,13 +65,13 @@ class SendDigest implements ShouldQueue
 
             // Send the consolidated digest
             $engine->sendDirect(
-                subject: ucfirst($this->digestType) . ' Activity Digest — ' . now()->format('M j, Y'),
+                subject: ucfirst($this->digestType).' Activity Digest — '.now()->format('M j, Y'),
                 body: $digestBody,
                 recipientUserIds: $recipientUserIds,
                 recipientCustomerIds: $recipientCustomerIds,
                 channels: ['email', 'in_app'],
                 messageType: CommunicationMessage::TYPE_NOTIFICATION,
-                subtype: 'digest.' . $this->digestType,
+                subtype: 'digest.'.$this->digestType,
                 tenantId: $firstItem->tenant_id,
             );
 
@@ -92,16 +95,16 @@ class SendDigest implements ShouldQueue
     {
         $html = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">';
         $html .= '<h2 style="color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px;">';
-        $html .= ucfirst($this->digestType) . ' Activity Summary';
+        $html .= ucfirst($this->digestType).' Activity Summary';
         $html .= '</h2>';
 
         foreach ($messages as $message) {
             $html .= '<div style="margin: 16px 0; padding: 12px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid #007bff;">';
-            $html .= '<strong style="color: #333;">' . e($message->subject ?: $message->subtype) . '</strong>';
+            $html .= '<strong style="color: #333;">'.e($message->subject ?: $message->subtype).'</strong>';
             $html .= '<p style="color: #666; margin: 4px 0 0 0; font-size: 14px;">';
             $html .= \Illuminate\Support\Str::limit(strip_tags($message->body), 200);
             $html .= '</p>';
-            $html .= '<small style="color: #999;">' . $message->created_at->diffForHumans() . '</small>';
+            $html .= '<small style="color: #999;">'.$message->created_at->diffForHumans().'</small>';
             $html .= '</div>';
         }
 

@@ -4,7 +4,6 @@ namespace App\Providers;
 
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\PostingEngine;
-use App\Providers\CompliancePluginServiceProvider;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\Sanctum;
@@ -29,20 +28,16 @@ class AppServiceProvider extends ServiceProvider
         Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
 
         // --- Superadmin RBAC gates ---
-        Gate::define('manage-admin-users', fn(\App\Models\User $user) =>
-            $user->role === 'platform_super_admin'
+        Gate::define('manage-admin-users', fn (\App\Models\User $user) => $user->role === 'platform_super_admin'
         );
 
-        Gate::define('run-bulk-operations', fn(\App\Models\User $user) =>
-            in_array($user->role, ['platform_super_admin', 'platform_ops'], true)
+        Gate::define('run-bulk-operations', fn (\App\Models\User $user) => in_array($user->role, ['platform_super_admin', 'platform_ops'], true)
         );
 
-        Gate::define('view-revenue-analytics', fn(\App\Models\User $user) =>
-            in_array($user->role, ['platform_super_admin', 'billing_ops', 'sales_ops'], true)
+        Gate::define('view-revenue-analytics', fn (\App\Models\User $user) => in_array($user->role, ['platform_super_admin', 'billing_ops', 'sales_ops'], true)
         );
 
-        Gate::define('manage-collections', fn(\App\Models\User $user) =>
-            in_array($user->role, ['platform_super_admin', 'billing_ops'], true)
+        Gate::define('manage-collections', fn (\App\Models\User $user) => in_array($user->role, ['platform_super_admin', 'billing_ops'], true)
         );
 
         // Load Mail Configuration from Database
@@ -61,15 +56,15 @@ class AppServiceProvider extends ServiceProvider
                         'timeout' => null,
                         'local_domain' => env('MAIL_EHLO_DOMAIN'),
                     ];
-                    
+
                     // Update SMTP config
                     config(['mail.mailers.smtp' => $config]);
 
                     // Update From Address
-                    if (!empty($mail['from_address'])) {
+                    if (! empty($mail['from_address'])) {
                         config(['mail.from.address' => $mail['from_address']]);
                     }
-                    if (!empty($mail['from_name'])) {
+                    if (! empty($mail['from_name'])) {
                         config(['mail.from.name' => $mail['from_name']]);
                     }
                 }

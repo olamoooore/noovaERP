@@ -16,7 +16,7 @@ class BackfillWebhookTenantLookups extends Command
 
     public function handle(): int
     {
-        if (!Schema::hasTable(PaymentTransaction::webhookTenantLookupBaseTable())) {
+        if (! Schema::hasTable(PaymentTransaction::webhookTenantLookupBaseTable())) {
             $this->error('Shared webhook lookup table not found. Run the latest database migrations first.');
 
             return self::FAILURE;
@@ -42,7 +42,7 @@ class BackfillWebhookTenantLookups extends Command
         foreach ($tenants as $tenant) {
             try {
                 $tenantSynced = $tenant->run(function () use ($tenant): int {
-                    if (!Schema::hasTable('payment_transactions') || !Schema::hasTable('payment_gateways')) {
+                    if (! Schema::hasTable('payment_transactions') || ! Schema::hasTable('payment_gateways')) {
                         return 0;
                     }
 
@@ -61,7 +61,7 @@ class BackfillWebhookTenantLookups extends Command
                             foreach ($transactions as $transaction) {
                                 $gatewayName = $transaction->gateway?->gateway_name;
 
-                                if (!$gatewayName || !$transaction->transaction_id) {
+                                if (! $gatewayName || ! $transaction->transaction_id) {
                                     continue;
                                 }
 
@@ -91,6 +91,7 @@ class BackfillWebhookTenantLookups extends Command
                 });
             } catch (\Throwable $e) {
                 $this->warn("Tenant {$tenant->id}: backfill skipped ({$e->getMessage()})");
+
                 continue;
             }
 

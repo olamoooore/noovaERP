@@ -2,9 +2,9 @@
 
 namespace Modules\IoT\Services;
 
-use Modules\IoT\Models\DiscoveredDevice;
-use Modules\IoT\Events\DeviceDiscovered;
 use Carbon\Carbon;
+use Modules\IoT\Events\DeviceDiscovered;
+use Modules\IoT\Models\DiscoveredDevice;
 
 class DeviceDiscoveryService
 {
@@ -25,7 +25,7 @@ class DeviceDiscoveryService
         ];
 
         // Skip devices without vendor/product IDs
-        if (!$normalizedData['vendor_id'] || !$normalizedData['product_id']) {
+        if (! $normalizedData['vendor_id'] || ! $normalizedData['product_id']) {
             throw new \InvalidArgumentException('Device must have vendor_id and product_id');
         }
 
@@ -69,7 +69,7 @@ class DeviceDiscoveryService
                 'discovered_at' => now(),
                 'last_seen_at' => now(),
             ]);
-            
+
             // Broadcast new device discovery (only for new devices, not updates)
             // Template matching will be done by the controller
             broadcast(new DeviceDiscovered($device))->toOthers();
@@ -130,9 +130,8 @@ class DeviceDiscoveryService
      * Sync discovered devices with agent's current device list.
      * Marks devices not in the list as offline.
      * Also auto-creates DeviceConfiguration records for printer devices.
-     * 
-     * @param string $agentId
-     * @param array $currentDevices Array of device data from agent
+     *
+     * @param  array  $currentDevices  Array of device data from agent
      * @return array ['updated' => int, 'marked_offline' => int, 'configured' => int]
      */
     public function syncDevicesWithAgent(string $agentId, array $currentDevices): array
@@ -167,7 +166,7 @@ class DeviceDiscoveryService
                     })
                     ->exists();
 
-                if (!$existingConfig) {
+                if (! $existingConfig) {
                     \Modules\IoT\Models\DeviceConfiguration::create([
                         'agent_id' => $agentId,
                         'name' => $model,

@@ -23,9 +23,9 @@ class TenantApiKey extends Model
     ];
 
     protected $casts = [
-        'is_active'    => 'boolean',
+        'is_active' => 'boolean',
         'last_used_at' => 'datetime',
-        'expires_at'   => 'datetime',
+        'expires_at' => 'datetime',
     ];
 
     // ── Relations ─────────────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ class TenantApiKey extends Model
         return $query->where('is_active', true)
             ->where(function ($q) {
                 $q->whereNull('expires_at')
-                  ->orWhere('expires_at', '>', now());
+                    ->orWhere('expires_at', '>', now());
             });
     }
 
@@ -61,20 +61,20 @@ class TenantApiKey extends Model
     public static function generate(
         string $tenantId,
         string $name,
-        ?int   $adminId = null,
+        ?int $adminId = null,
         ?\Carbon\Carbon $expiresAt = null,
     ): array {
-        $raw    = 'ten_' . Str::random(40);
-        $hash   = hash('sha256', $raw);
+        $raw = 'ten_'.Str::random(40);
+        $hash = hash('sha256', $raw);
         $prefix = substr($raw, 0, 12);
 
         $model = static::create([
-            'tenant_id'           => $tenantId,
-            'name'                => $name,
-            'key_hash'            => $hash,
-            'key_prefix'          => $prefix,
-            'is_active'           => true,
-            'expires_at'          => $expiresAt,
+            'tenant_id' => $tenantId,
+            'name' => $name,
+            'key_hash' => $hash,
+            'key_prefix' => $prefix,
+            'is_active' => true,
+            'expires_at' => $expiresAt,
             'created_by_admin_id' => $adminId,
         ]);
 

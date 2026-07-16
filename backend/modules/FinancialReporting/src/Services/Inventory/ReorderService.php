@@ -11,7 +11,7 @@ class ReorderService extends BaseReportService
 {
     /**
      * Generate Reorder Report
-     * 
+     *
      * Identifies products that are below their reorder level
      * and calculates suggested order quantities
      */
@@ -85,37 +85,37 @@ class ReorderService extends BaseReportService
         }
 
         $products = $query->select([
-                'p.id',
-                'p.sku',
-                'p.name',
-                $currentStockSelect,
-                'p.reorder_level',
-                'p.cost as unit_cost',
-                'p.price as unit_price',
-                $categorySelect,
-                'p.unit',
-            ])
+            'p.id',
+            'p.sku',
+            'p.name',
+            $currentStockSelect,
+            'p.reorder_level',
+            'p.cost as unit_cost',
+            'p.price as unit_price',
+            $categorySelect,
+            'p.unit',
+        ])
             ->get();
 
         // Calculate suggested order quantities and additional metrics
         return $products->map(function ($product) {
             // Calculate how much below reorder level
             $shortage = max(0, $product->reorder_level - $product->current_stock);
-            
+
             // Suggested order quantity (reorder level + 50% buffer)
             $suggestedQuantity = $product->reorder_level + ceil($product->reorder_level * 0.5);
-            
+
             // Calculate order value
             $suggestedOrderValue = $suggestedQuantity * $product->unit_cost;
-            
+
             // Determine if critical (out of stock or very low)
-            $isCritical = $product->current_stock <= 0 || 
+            $isCritical = $product->current_stock <= 0 ||
                          $product->current_stock < ($product->reorder_level * 0.3);
-            
+
             // Calculate days until stockout (simple estimation)
             // This would ideally use historical sales data
             $daysUntilStockout = $this->estimateDaysUntilStockout($product->id, $product->current_stock);
-            
+
             // Get last purchase information
             $lastPurchase = $this->getLastPurchaseInfo($product->id);
 
@@ -150,8 +150,8 @@ class ReorderService extends BaseReportService
         try {
             // Check if invoice_items table exists
             $tableExists = DB::select("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'invoice_items')")[0]->exists;
-            
-            if (!$tableExists) {
+
+            if (! $tableExists) {
                 return null;
             }
 
@@ -191,15 +191,15 @@ class ReorderService extends BaseReportService
         try {
             // Check if invoice_items table exists
             $tableExists = DB::select("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'invoice_items')")[0]->exists;
-            
-            if (!$tableExists) {
+
+            if (! $tableExists) {
                 return [];
             }
 
             // This would typically query purchase orders or bills
             // For now, we'll return a placeholder structure
             // You would need to implement this based on your purchase order system
-            
+
             $lastPurchase = DB::table('invoice_items as ii')
                 ->join('invoices as i', 'i.id', '=', 'ii.invoice_id')
                 ->leftJoin('customers as c', 'c.id', '=', 'i.customer_id')
@@ -209,7 +209,7 @@ class ReorderService extends BaseReportService
                 ->select([
                     'i.invoice_date as date',
                     'ii.price as price',
-                    'c.name as supplier'
+                    'c.name as supplier',
                 ])
                 ->first();
 

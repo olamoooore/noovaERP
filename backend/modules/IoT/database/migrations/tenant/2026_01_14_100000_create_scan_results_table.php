@@ -22,7 +22,7 @@ return new class extends Migration
             $table->index('agent_id');
             $table->index('scanned_at');
             $table->index('barcode');
-            
+
             $table->foreign('device_id')
                 ->references('id')
                 ->on('device_configurations')

@@ -2,24 +2,25 @@
 
 namespace Modules\EventManagement\Services;
 
+use Exception;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Collection;
-use Exception;
 
 /**
  * Migration Monitoring Service
- * 
+ *
  * Provides real-time monitoring and alerting for migration conflicts,
  * production safety checks, and deployment validation.
  */
 class MigrationMonitoringService
 {
     private const CACHE_PREFIX = 'migration_monitor:';
+
     private const ALERT_THRESHOLD = 5; // minutes
-    
+
     private array $alertChannels = [];
+
     private array $monitoringRules = [];
 
     public function __construct()
@@ -35,58 +36,58 @@ class MigrationMonitoringService
     {
         $startTime = microtime(true);
         $monitoringId = $this->generateMonitoringId($migrationName);
-        
-        Log::info("Migration monitoring started", [
+
+        Log::info('Migration monitoring started', [
             'migration' => $migrationName,
             'monitoring_id' => $monitoringId,
-            'timestamp' => now()
+            'timestamp' => now(),
         ]);
 
         try {
             // Pre-execution validation
             $preValidation = $this->performPreExecutionValidation($migrationName);
-            if (!$preValidation['passed']) {
+            if (! $preValidation['passed']) {
                 $this->triggerAlert('pre_validation_failed', $migrationName, $preValidation);
-                throw new Exception('Pre-execution validation failed: ' . implode(', ', $preValidation['errors']));
+                throw new Exception('Pre-execution validation failed: '.implode(', ', $preValidation['errors']));
             }
 
             // Execute migration with monitoring
             $this->startExecutionMonitoring($monitoringId, $migrationName);
-            
+
             $result = $migrationCallback();
-            
+
             $executionTime = microtime(true) - $startTime;
-            
+
             // Post-execution validation
             $postValidation = $this->performPostExecutionValidation($migrationName);
-            if (!$postValidation['passed']) {
+            if (! $postValidation['passed']) {
                 $this->triggerAlert('post_validation_failed', $migrationName, $postValidation);
-                throw new Exception('Post-execution validation failed: ' . implode(', ', $postValidation['errors']));
+                throw new Exception('Post-execution validation failed: '.implode(', ', $postValidation['errors']));
             }
 
             // Record successful execution
             $this->recordSuccessfulExecution($monitoringId, $migrationName, $executionTime);
-            
+
             return [
                 'status' => 'success',
                 'execution_time' => $executionTime,
                 'monitoring_id' => $monitoringId,
                 'validation_results' => [
                     'pre_execution' => $preValidation,
-                    'post_execution' => $postValidation
-                ]
+                    'post_execution' => $postValidation,
+                ],
             ];
 
         } catch (Exception $e) {
             $executionTime = microtime(true) - $startTime;
-            
+
             // Record failed execution
             $this->recordFailedExecution($monitoringId, $migrationName, $e, $executionTime);
-            
+
             // Trigger failure alerts
             $this->triggerAlert('execution_failed', $migrationName, [
                 'error' => $e->getMessage(),
-                'execution_time' => $executionTime
+                'execution_time' => $executionTime,
             ]);
 
             throw $e;
@@ -103,12 +104,12 @@ class MigrationMonitoringService
         $validation = [
             'passed' => true,
             'errors' => [],
-            'warnings' => []
+            'warnings' => [],
         ];
 
         try {
             // Check database connection
-            if (!$this->validateDatabaseConnection()) {
+            if (! $this->validateDatabaseConnection()) {
                 $validation['passed'] = false;
                 $validation['errors'][] = 'Database connection failed';
             }
@@ -120,27 +121,27 @@ class MigrationMonitoringService
             }
 
             // Check disk space
-            if (!$this->validateDiskSpace()) {
+            if (! $this->validateDiskSpace()) {
                 $validation['warnings'][] = 'Low disk space detected';
             }
 
             // Check backup status
-            if (!$this->validateBackupStatus()) {
+            if (! $this->validateBackupStatus()) {
                 $validation['warnings'][] = 'Recent backup not found';
             }
 
             // Validate dependencies
-            $dependencyService = new MigrationDependencyService();
+            $dependencyService = new MigrationDependencyService;
             $dependencyCheck = $dependencyService->validateMigrationExecution($migrationName);
-            
-            if (!$dependencyCheck['can_execute']) {
+
+            if (! $dependencyCheck['can_execute']) {
                 $validation['passed'] = false;
                 $validation['errors'] = array_merge($validation['errors'], $dependencyCheck['blocking_issues']);
             }
 
         } catch (Exception $e) {
             $validation['passed'] = false;
-            $validation['errors'][] = 'Pre-validation system error: ' . $e->getMessage();
+            $validation['errors'][] = 'Pre-validation system error: '.$e->getMessage();
         }
 
         return $validation;
@@ -154,26 +155,26 @@ class MigrationMonitoringService
         $validation = [
             'passed' => true,
             'errors' => [],
-            'warnings' => []
+            'warnings' => [],
         ];
 
         try {
             // Verify migration was recorded
-            if (!$this->verifyMigrationRecorded($migrationName)) {
+            if (! $this->verifyMigrationRecorded($migrationName)) {
                 $validation['passed'] = false;
                 $validation['errors'][] = 'Migration not properly recorded in migrations table';
             }
 
             // Check for foreign key constraint violations
             $constraintViolations = $this->checkConstraintViolations();
-            if (!empty($constraintViolations)) {
+            if (! empty($constraintViolations)) {
                 $validation['passed'] = false;
                 $validation['errors'][] = 'Foreign key constraint violations detected';
             }
 
             // Validate table integrity
             $integrityCheck = $this->validateTableIntegrity($migrationName);
-            if (!$integrityCheck['passed']) {
+            if (! $integrityCheck['passed']) {
                 $validation['passed'] = false;
                 $validation['errors'] = array_merge($validation['errors'], $integrityCheck['errors']);
             }
@@ -186,7 +187,7 @@ class MigrationMonitoringService
 
         } catch (Exception $e) {
             $validation['passed'] = false;
-            $validation['errors'][] = 'Post-validation system error: ' . $e->getMessage();
+            $validation['errors'][] = 'Post-validation system error: '.$e->getMessage();
         }
 
         return $validation;
@@ -202,11 +203,11 @@ class MigrationMonitoringService
             'start_time' => now(),
             'status' => 'running',
             'pid' => getmypid(),
-            'memory_usage' => memory_get_usage(true)
+            'memory_usage' => memory_get_usage(true),
         ];
 
-        Cache::put(self::CACHE_PREFIX . $monitoringId, $monitoringData, now()->addHours(1));
-        
+        Cache::put(self::CACHE_PREFIX.$monitoringId, $monitoringData, now()->addHours(1));
+
         // Set up periodic monitoring
         $this->schedulePeriodicChecks($monitoringId);
     }
@@ -216,7 +217,7 @@ class MigrationMonitoringService
      */
     private function stopExecutionMonitoring(string $monitoringId): void
     {
-        Cache::forget(self::CACHE_PREFIX . $monitoringId);
+        Cache::forget(self::CACHE_PREFIX.$monitoringId);
     }
 
     /**
@@ -226,9 +227,9 @@ class MigrationMonitoringService
     {
         // This would typically integrate with a job queue system
         // For now, we'll log the monitoring setup
-        Log::info("Periodic monitoring scheduled", [
+        Log::info('Periodic monitoring scheduled', [
             'monitoring_id' => $monitoringId,
-            'check_interval' => '30 seconds'
+            'check_interval' => '30 seconds',
         ]);
     }
 
@@ -242,7 +243,7 @@ class MigrationMonitoringService
             'migration' => $migrationName,
             'timestamp' => now(),
             'context' => $context,
-            'severity' => $this->getAlertSeverity($alertType)
+            'severity' => $this->getAlertSeverity($alertType),
         ];
 
         Log::channel('migration_alerts')->error("Migration Alert: {$alertType}", $alert);
@@ -291,7 +292,7 @@ class MigrationMonitoringService
             'execution_failed' => 'critical',
             'performance_degradation' => 'medium',
             'constraint_violation' => 'high',
-            'dependency_missing' => 'high'
+            'dependency_missing' => 'high',
         ];
 
         return $severityMap[$alertType] ?? 'medium';
@@ -304,6 +305,7 @@ class MigrationMonitoringService
     {
         try {
             DB::connection()->getPdo();
+
             return true;
         } catch (Exception $e) {
             return false;
@@ -329,12 +331,13 @@ class MigrationMonitoringService
     {
         $freeBytes = disk_free_space('/');
         $totalBytes = disk_total_space('/');
-        
+
         if ($freeBytes === false || $totalBytes === false) {
             return true; // Can't determine, assume OK
         }
-        
+
         $freePercentage = ($freeBytes / $totalBytes) * 100;
+
         return $freePercentage > 10; // Require at least 10% free space
     }
 
@@ -368,15 +371,15 @@ class MigrationMonitoringService
     private function checkConstraintViolations(): array
     {
         $violations = [];
-        
+
         try {
             // This would run database-specific constraint checks
             // Implementation depends on your database system
-            
+
         } catch (Exception $e) {
-            $violations[] = 'Error checking constraints: ' . $e->getMessage();
+            $violations[] = 'Error checking constraints: '.$e->getMessage();
         }
-        
+
         return $violations;
     }
 
@@ -387,7 +390,7 @@ class MigrationMonitoringService
     {
         return [
             'passed' => true,
-            'errors' => []
+            'errors' => [],
         ];
     }
 
@@ -398,7 +401,7 @@ class MigrationMonitoringService
     {
         return [
             'significant_impact' => false,
-            'metrics' => []
+            'metrics' => [],
         ];
     }
 
@@ -407,10 +410,10 @@ class MigrationMonitoringService
      */
     private function recordSuccessfulExecution(string $monitoringId, string $migrationName, float $executionTime): void
     {
-        Log::info("Migration completed successfully", [
+        Log::info('Migration completed successfully', [
             'migration' => $migrationName,
             'monitoring_id' => $monitoringId,
-            'execution_time' => $executionTime
+            'execution_time' => $executionTime,
         ]);
     }
 
@@ -419,12 +422,12 @@ class MigrationMonitoringService
      */
     private function recordFailedExecution(string $monitoringId, string $migrationName, Exception $error, float $executionTime): void
     {
-        Log::error("Migration failed", [
+        Log::error('Migration failed', [
             'migration' => $migrationName,
             'monitoring_id' => $monitoringId,
             'execution_time' => $executionTime,
             'error' => $error->getMessage(),
-            'trace' => $error->getTraceAsString()
+            'trace' => $error->getTraceAsString(),
         ]);
     }
 
@@ -433,7 +436,7 @@ class MigrationMonitoringService
      */
     private function generateMonitoringId(string $migrationName): string
     {
-        return 'migration_' . md5($migrationName . microtime(true));
+        return 'migration_'.md5($migrationName.microtime(true));
     }
 
     /**
@@ -446,7 +449,7 @@ class MigrationMonitoringService
             'memory_limit' => 512 * 1024 * 1024, // 512MB
             'disk_space_threshold' => 10, // 10% free space
             'constraint_check_enabled' => true,
-            'performance_monitoring_enabled' => true
+            'performance_monitoring_enabled' => true,
         ];
     }
 
@@ -473,10 +476,10 @@ class MigrationMonitoringService
                 'severity' => $alert['severity'],
                 'context' => json_encode($alert['context']),
                 'created_at' => $alert['timestamp'],
-                'resolved_at' => null
+                'resolved_at' => null,
             ]);
         } catch (Exception $e) {
-            Log::error("Failed to store alert", ['error' => $e->getMessage()]);
+            Log::error('Failed to store alert', ['error' => $e->getMessage()]);
         }
     }
 
@@ -486,7 +489,7 @@ class MigrationMonitoringService
     private function sendSlackAlert(array $alert): void
     {
         // Implement Slack webhook integration
-        Log::info("Slack alert would be sent", $alert);
+        Log::info('Slack alert would be sent', $alert);
     }
 
     /**
@@ -495,7 +498,7 @@ class MigrationMonitoringService
     private function sendEmailAlert(array $alert): void
     {
         // Implement email notification
-        Log::info("Email alert would be sent", $alert);
+        Log::info('Email alert would be sent', $alert);
     }
 
     /**
@@ -515,7 +518,7 @@ class MigrationMonitoringService
             'active_migrations' => $this->getActiveMigrations(),
             'recent_alerts' => $this->getRecentAlerts(),
             'system_health' => $this->getSystemHealth(),
-            'performance_metrics' => $this->getPerformanceMetrics()
+            'performance_metrics' => $this->getPerformanceMetrics(),
         ];
     }
 
@@ -524,16 +527,16 @@ class MigrationMonitoringService
      */
     private function getActiveMigrations(): array
     {
-        $activeKeys = Cache::getRedis()->keys(self::CACHE_PREFIX . '*');
+        $activeKeys = Cache::getRedis()->keys(self::CACHE_PREFIX.'*');
         $activeMigrations = [];
-        
+
         foreach ($activeKeys as $key) {
             $data = Cache::get($key);
             if ($data) {
                 $activeMigrations[] = $data;
             }
         }
-        
+
         return $activeMigrations;
     }
 
@@ -563,7 +566,7 @@ class MigrationMonitoringService
             'database_connection' => $this->validateDatabaseConnection(),
             'disk_space_ok' => $this->validateDiskSpace(),
             'backup_status_ok' => $this->validateBackupStatus(),
-            'migration_lock_active' => $this->isMigrationLocked()
+            'migration_lock_active' => $this->isMigrationLocked(),
         ];
     }
 
@@ -575,7 +578,7 @@ class MigrationMonitoringService
         return [
             'memory_usage' => memory_get_usage(true),
             'peak_memory' => memory_get_peak_usage(true),
-            'execution_time' => microtime(true) - $_SERVER['REQUEST_TIME_FLOAT']
+            'execution_time' => microtime(true) - $_SERVER['REQUEST_TIME_FLOAT'],
         ];
     }
 }

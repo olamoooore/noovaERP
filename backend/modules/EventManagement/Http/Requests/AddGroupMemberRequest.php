@@ -7,10 +7,10 @@ use Illuminate\Validation\Rule;
 
 /**
  * Add Group Member Request
- * 
+ *
  * Validates data for adding an artist as a member to a K-POP group
  * with position assignments and member-specific metadata.
- * 
+ *
  * Requirements: 12.1, 12.2
  */
 class AddGroupMemberRequest extends FormRequest
@@ -36,7 +36,7 @@ class AddGroupMemberRequest extends FormRequest
                 'leader', 'main_vocalist', 'lead_vocalist', 'vocalist',
                 'main_dancer', 'lead_dancer', 'dancer',
                 'main_rapper', 'lead_rapper', 'rapper',
-                'visual', 'center', 'face_of_group', 'maknae'
+                'visual', 'center', 'face_of_group', 'maknae',
             ])],
             'is_leader' => ['nullable', 'boolean'],
             'is_main_vocalist' => ['nullable', 'boolean'],
@@ -101,7 +101,7 @@ class AddGroupMemberRequest extends FormRequest
         // Ensure arrays are properly formatted
         if ($this->has('positions') && is_string($this->positions)) {
             $this->merge([
-                'positions' => json_decode($this->positions, true) ?: []
+                'positions' => json_decode($this->positions, true) ?: [],
             ]);
         }
 
@@ -110,13 +110,13 @@ class AddGroupMemberRequest extends FormRequest
         foreach ($booleanFields as $field) {
             if ($this->has($field)) {
                 $this->merge([
-                    $field => filter_var($this->$field, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)
+                    $field => filter_var($this->$field, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE),
                 ]);
             }
         }
 
         // Set default status
-        if (!$this->has('status')) {
+        if (! $this->has('status')) {
             $this->merge(['status' => 'active']);
         }
     }

@@ -24,7 +24,7 @@ class LoyaltyTierSeeder extends Seeder
                 'min_redemption_points' => 100,
                 'max_redemption_percent' => 50.00,
                 'points_expiry_months' => 12,
-                'is_active' => !$hasAnotherActiveProgram,
+                'is_active' => ! $hasAnotherActiveProgram,
             ]
         );
 

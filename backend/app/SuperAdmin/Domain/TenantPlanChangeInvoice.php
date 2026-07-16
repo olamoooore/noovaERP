@@ -23,6 +23,7 @@ class TenantPlanChangeInvoice extends Model
     // ── Constants ─────────────────────────────────────────────────────────────
 
     public const TYPE_CREDIT = 'credit';
+
     public const TYPE_CHARGE = 'charge';
 
     // ── Relations ─────────────────────────────────────────────────────────────

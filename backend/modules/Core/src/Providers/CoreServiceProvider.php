@@ -2,9 +2,8 @@
 
 namespace Modules\Core\Providers;
 
-use Illuminate\Support\ServiceProvider;
-
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\ServiceProvider;
 
 class CoreServiceProvider extends ServiceProvider
 {
@@ -15,7 +14,7 @@ class CoreServiceProvider extends ServiceProvider
     {
         Route::prefix('api/v1')
             ->middleware('api')
-            ->group(__DIR__ . '/../../routes/api.php');
+            ->group(__DIR__.'/../../routes/api.php');
     }
 
     /**

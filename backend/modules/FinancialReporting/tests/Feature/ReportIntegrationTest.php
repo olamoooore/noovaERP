@@ -2,13 +2,13 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TenantTestCase;
-use Illuminate\Support\Facades\Artisan;
-use App\Models\User;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
+use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Artisan;
+use Tests\TenantTestCase;
 
 class ReportIntegrationTest extends TenantTestCase
 {
@@ -101,8 +101,8 @@ class ReportIntegrationTest extends TenantTestCase
     {
         for ($i = 1; $i <= 5; $i++) {
             $entry = JournalEntry::create([
-                'entry_number' => 'JE-TEST-' . str_pad(100 + $i, 4, '0', STR_PAD_LEFT),
-                'entry_date' => Carbon::parse('2024-01-' . (5 * $i)),
+                'entry_number' => 'JE-TEST-'.str_pad(100 + $i, 4, '0', STR_PAD_LEFT),
+                'entry_date' => Carbon::parse('2024-01-'.(5 * $i)),
                 'description' => "Sale #{$i}",
                 'status' => 'posted',
                 'created_by' => $this->user->id,
@@ -196,18 +196,18 @@ class ReportIntegrationTest extends TenantTestCase
     public function it_generates_complete_financial_statements_with_consistent_data()
     {
         $plResponse = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/profit-loss?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/profit-loss?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
 
         $bsResponse = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/balance-sheet?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/balance-sheet?'.http_build_query([
                 'as_of_date' => '2024-01-31',
             ]));
 
         $cfResponse = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/cash-flow?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/cash-flow?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
@@ -222,12 +222,12 @@ class ReportIntegrationTest extends TenantTestCase
     public function it_maintains_data_consistency_across_trial_balance_and_balance_sheet()
     {
         $tbResponse = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/trial-balance?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/trial-balance?'.http_build_query([
                 'as_of_date' => '2024-01-31',
             ]));
 
         $bsResponse = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/balance-sheet?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/balance-sheet?'.http_build_query([
                 'as_of_date' => '2024-01-31',
             ]));
 
@@ -264,7 +264,7 @@ class ReportIntegrationTest extends TenantTestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/profit-loss?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/profit-loss?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
@@ -286,7 +286,7 @@ class ReportIntegrationTest extends TenantTestCase
     public function it_handles_multi_period_comparison_correctly()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/profit-loss?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/profit-loss?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
                 'compare_start_date' => '2023-12-01',
@@ -302,7 +302,7 @@ class ReportIntegrationTest extends TenantTestCase
         $cashAccount = ChartOfAccount::where('code', '1000')->first();
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/general-ledger?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/general-ledger?'.http_build_query([
                 'account_id' => $cashAccount->id,
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
@@ -315,7 +315,7 @@ class ReportIntegrationTest extends TenantTestCase
     public function it_validates_accounting_equation_across_all_reports()
     {
         $bsResponse = $this->actingAs($this->user)
-            ->getJson('/api/v1/reports/financial/balance-sheet?' . http_build_query([
+            ->getJson('/api/v1/reports/financial/balance-sheet?'.http_build_query([
                 'as_of_date' => '2024-01-31',
             ]));
 

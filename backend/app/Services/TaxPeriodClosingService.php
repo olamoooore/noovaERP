@@ -11,8 +11,7 @@ class TaxPeriodClosingService
      * Close a tax period: lock it against new postings and generate the summary.
      *
      * @param  string  $period  Format: YYYY-MM (e.g. "2026-04")
-     * @param  int     $tenantId
-     * @return array   Summary of the closed period
+     * @return array Summary of the closed period
      */
     public function closePeriod(string $period, int $tenantId): array
     {
@@ -76,7 +75,7 @@ class TaxPeriodClosingService
             ->where('tenant_id', $tenantId)
             ->first();
 
-        if (!$lock) {
+        if (! $lock) {
             return null;
         }
 
@@ -92,7 +91,7 @@ class TaxPeriodClosingService
             ->where('tenant_id', $tenantId)
             ->orderBy('period', 'desc')
             ->get()
-            ->map(fn($row) => [
+            ->map(fn ($row) => [
                 'period' => $row->period,
                 'closed_at' => $row->closed_at,
                 'closed_by' => $row->closed_by,
@@ -117,7 +116,7 @@ class TaxPeriodClosingService
 
         foreach ($rows as $row) {
             $code = $row->tax_code;
-            if (!isset($byTaxCode[$code])) {
+            if (! isset($byTaxCode[$code])) {
                 $byTaxCode[$code] = [
                     'tax_code' => $code,
                     'taxable_amount' => 0,
@@ -145,7 +144,7 @@ class TaxPeriodClosingService
 
     protected function validatePeriodFormat(string $period): void
     {
-        if (!preg_match('/^\d{4}-\d{2}$/', $period)) {
+        if (! preg_match('/^\d{4}-\d{2}$/', $period)) {
             throw new \InvalidArgumentException("Period must be in YYYY-MM format. Got: {$period}");
         }
     }

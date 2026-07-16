@@ -7,7 +7,7 @@ use Illuminate\Validation\Rule;
 
 /**
  * AnalyticsReportRequest
- * 
+ *
  * Validates analytics report generation requests with proper filtering
  * and date range validation for business intelligence queries.
  */
@@ -31,34 +31,34 @@ class AnalyticsReportRequest extends FormRequest
             'date_from' => [
                 'sometimes',
                 'date',
-                'before_or_equal:date_to'
+                'before_or_equal:date_to',
             ],
             'date_to' => [
                 'sometimes',
                 'date',
                 'after_or_equal:date_from',
-                'before_or_equal:today'
+                'before_or_equal:today',
             ],
             'event_ids' => [
                 'sometimes',
                 'array',
-                'max:50' // Limit to prevent performance issues
+                'max:50', // Limit to prevent performance issues
             ],
             'event_ids.*' => [
                 'integer',
-                'exists:events,id'
+                'exists:events,id',
             ],
             'include_cancelled' => [
                 'sometimes',
-                'boolean'
+                'boolean',
             ],
             'group_by' => [
                 'sometimes',
-                Rule::in(['event', 'date', 'ticket_type', 'customer_segment'])
+                Rule::in(['event', 'date', 'ticket_type', 'customer_segment']),
             ],
             'metrics' => [
                 'sometimes',
-                'array'
+                'array',
             ],
             'metrics.*' => [
                 Rule::in([
@@ -68,13 +68,13 @@ class AnalyticsReportRequest extends FormRequest
                     'no_show_rate',
                     'customer_count',
                     'repeat_customers',
-                    'sales_velocity'
-                ])
+                    'sales_velocity',
+                ]),
             ],
             'format' => [
                 'sometimes',
-                Rule::in(['json', 'csv', 'excel'])
-            ]
+                Rule::in(['json', 'csv', 'excel']),
+            ],
         ];
     }
 
@@ -91,7 +91,7 @@ class AnalyticsReportRequest extends FormRequest
             'event_ids.*.exists' => 'One or more selected events do not exist.',
             'group_by.in' => 'Invalid grouping option selected.',
             'metrics.*.in' => 'Invalid metric selected.',
-            'format.in' => 'Invalid export format selected.'
+            'format.in' => 'Invalid export format selected.',
         ];
     }
 
@@ -105,7 +105,7 @@ class AnalyticsReportRequest extends FormRequest
             if ($this->has('date_from') && $this->has('date_to')) {
                 $dateFrom = \Carbon\Carbon::parse($this->date_from);
                 $dateTo = \Carbon\Carbon::parse($this->date_to);
-                
+
                 if ($dateFrom->diffInDays($dateTo) > 365) {
                     $validator->errors()->add(
                         'date_range',
@@ -145,14 +145,14 @@ class AnalyticsReportRequest extends FormRequest
         $validated['include_cancelled'] = $validated['include_cancelled'] ?? false;
         $validated['group_by'] = $validated['group_by'] ?? 'event';
         $validated['format'] = $validated['format'] ?? 'json';
-        
+
         // Default metrics if not specified
-        if (!isset($validated['metrics'])) {
+        if (! isset($validated['metrics'])) {
             $validated['metrics'] = [
                 'revenue',
                 'tickets_sold',
                 'capacity_utilization',
-                'customer_count'
+                'customer_count',
             ];
         }
 

@@ -18,7 +18,7 @@ return new class extends Migration
             $table->integer('reserved_capacity')->default(0)->after('capacity_version');
             $table->integer('confirmed_capacity')->default(0)->after('reserved_capacity');
             $table->timestamp('capacity_last_updated')->nullable()->after('confirmed_capacity');
-            
+
             // Index for capacity queries
             $table->index(['capacity_version', 'reserved_capacity'], 'idx_events_capacity_version');
         });
@@ -39,12 +39,12 @@ return new class extends Migration
             $table->timestamp('created_at')->useCurrent();
             $table->timestamp('confirmed_at')->nullable();
             $table->timestamp('expired_at')->nullable();
-            
+
             // Foreign key constraints
             $table->foreign('event_id')->references('id')->on('events')->onDelete('cascade');
             $table->foreign('booking_id')->references('id')->on('bookings')->onDelete('set null');
             $table->foreign('ticket_type_id')->references('id')->on('event_ticket_types')->onDelete('set null');
-            
+
             // Indexes for efficient capacity checking
             $table->index(['event_id', 'status', 'reservation_expires_at'], 'idx_reservations_event_status_expires');
             $table->index(['status', 'reservation_expires_at'], 'idx_reservations_status_expires');
@@ -59,12 +59,12 @@ return new class extends Migration
             $table->unsignedBigInteger('event_id');
             $table->enum('action', [
                 'reservation_created',
-                'reservation_confirmed', 
+                'reservation_confirmed',
                 'reservation_expired',
                 'reservation_cancelled',
                 'capacity_updated',
                 'overbooking_detected',
-                'capacity_reconciled'
+                'capacity_reconciled',
             ]);
             $table->integer('quantity_change')->comment('Change in capacity (+/-)');
             $table->integer('capacity_before')->comment('Capacity state before change');
@@ -78,12 +78,12 @@ return new class extends Migration
             $table->text('notes')->nullable();
             $table->json('audit_metadata')->nullable();
             $table->timestamp('logged_at')->useCurrent();
-            
+
             // Foreign key constraints
             $table->foreign('event_id')->references('id')->on('events')->onDelete('cascade');
             $table->foreign('related_reservation_id')->references('id')->on('capacity_reservations')->onDelete('set null');
             $table->foreign('related_booking_id')->references('id')->on('bookings')->onDelete('set null');
-            
+
             // Indexes for audit queries
             $table->index(['event_id', 'logged_at'], 'idx_capacity_audit_event_time');
             $table->index(['action', 'logged_at'], 'idx_capacity_audit_action_time');
@@ -103,10 +103,10 @@ return new class extends Migration
             $table->text('resolution_notes')->nullable();
             $table->json('reconciliation_data')->nullable()->comment('Detailed reconciliation data');
             $table->timestamp('reconciled_at')->useCurrent();
-            
+
             // Foreign key constraints
             $table->foreign('event_id')->references('id')->on('events')->onDelete('cascade');
-            
+
             // Indexes for reconciliation queries
             $table->index(['event_id', 'reconciled_at'], 'idx_capacity_reconciliation_event_time');
             $table->index(['status', 'reconciled_at'], 'idx_capacity_reconciliation_status_time');
@@ -121,14 +121,14 @@ return new class extends Migration
         Schema::dropIfExists('capacity_reconciliation_log');
         Schema::dropIfExists('capacity_audit_log');
         Schema::dropIfExists('capacity_reservations');
-        
+
         Schema::table('events', function (Blueprint $table) {
             $table->dropIndex('idx_events_capacity_version');
             $table->dropColumn([
                 'capacity_version',
-                'reserved_capacity', 
+                'reserved_capacity',
                 'confirmed_capacity',
-                'capacity_last_updated'
+                'capacity_last_updated',
             ]);
         });
     }

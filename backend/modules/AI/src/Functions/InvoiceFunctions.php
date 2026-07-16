@@ -7,40 +7,40 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Invoice Functions
- * 
+ *
  * AI-callable functions for invoice queries
  */
 class InvoiceFunctions
 {
     /**
      * Get invoice details by invoice number
-     * 
-     * @param array $args Arguments with invoice_number
+     *
+     * @param  array  $args  Arguments with invoice_number
      * @return array Invoice information
      */
     public static function getDetails(array $args): array
     {
         try {
             $invoiceNumber = $args['invoice_number'];
-            
+
             // Query invoices table (assuming it exists in Accounting module)
             $invoice = DB::table('invoices')
                 ->where('invoice_number', $invoiceNumber)
                 ->first();
-            
-            if (!$invoice) {
+
+            if (! $invoice) {
                 return [
                     'success' => false,
                     'found' => false,
                     'message' => "Invoice {$invoiceNumber} not found",
                 ];
             }
-            
+
             $balance = ($invoice->total ?? 0) - ($invoice->paid_amount ?? 0);
-            $isOverdue = isset($invoice->due_date) && 
-                         strtotime($invoice->due_date) < time() && 
+            $isOverdue = isset($invoice->due_date) &&
+                         strtotime($invoice->due_date) < time() &&
                          $balance > 0;
-            
+
             return [
                 'success' => true,
                 'found' => true,
@@ -53,13 +53,13 @@ class InvoiceFunctions
                 'is_overdue' => $isOverdue,
                 'issue_date' => $invoice->created_at ?? now()->format('Y-m-d'),
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('InvoiceFunctions::getDetails failed', [
                 'error' => $e->getMessage(),
                 'args' => $args,
             ]);
-            
+
             // Return mock data for development
             return [
                 'success' => true,

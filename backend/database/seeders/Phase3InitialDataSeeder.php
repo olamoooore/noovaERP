@@ -60,7 +60,7 @@ class Phase3InitialDataSeeder extends Seeder
                 [
                     'from_currency' => $rate['from_currency'],
                     'to_currency' => $rate['to_currency'],
-                    'effective_date' => $rate['effective_date']
+                    'effective_date' => $rate['effective_date'],
                 ],
                 array_merge($rate, ['created_at' => now(), 'updated_at' => now()])
             );

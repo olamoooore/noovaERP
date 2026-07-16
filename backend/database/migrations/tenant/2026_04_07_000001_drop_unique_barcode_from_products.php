@@ -8,11 +8,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('products') || !Schema::hasColumn('products', 'barcode')) {
+        if (! Schema::hasTable('products') || ! Schema::hasColumn('products', 'barcode')) {
             return;
         }
 
-        if (!$this->indexExists('products', 'products_barcode_unique')) {
+        if (! $this->indexExists('products', 'products_barcode_unique')) {
             return;
         }
 
@@ -23,7 +23,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (!Schema::hasTable('products') || !Schema::hasColumn('products', 'barcode')) {
+        if (! Schema::hasTable('products') || ! Schema::hasColumn('products', 'barcode')) {
             return;
         }
 

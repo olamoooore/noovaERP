@@ -1,12 +1,12 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\FinancialReporting\Controllers\AnalyticsController;
+use Modules\FinancialReporting\Controllers\CacheController;
 use Modules\FinancialReporting\Controllers\FinancialReportController;
 use Modules\FinancialReporting\Controllers\InventoryReportController;
-use Modules\FinancialReporting\Controllers\AnalyticsController;
 use Modules\FinancialReporting\Controllers\ReportExportController;
 use Modules\FinancialReporting\Controllers\ReportScheduleController;
-use Modules\FinancialReporting\Controllers\CacheController;
 use Modules\FinancialReporting\Controllers\ReportTemplateController;
 
 /*
@@ -23,7 +23,7 @@ Route::middleware([
     \App\Http\Middleware\ResolveEntityContext::class,
     \App\Http\Middleware\EnsureEntityAccess::class,
 ])->group(function () {
-    
+
     // Financial Reports
     Route::prefix('reports/financial')->name('reports.financial.')->group(function () {
         Route::get('/profit-loss', [FinancialReportController::class, 'profitLoss'])->name('profit-loss');
@@ -50,13 +50,13 @@ Route::middleware([
         Route::get('/sales/trends', [AnalyticsController::class, 'salesTrends'])->name('sales.trends');
         Route::get('/sales/by-category', [AnalyticsController::class, 'salesByCategory'])->name('sales.by-category');
         Route::get('/sales/profit-margins', [AnalyticsController::class, 'profitMargins'])->name('sales.profit-margins');
-        
+
         // Expense Analytics
         Route::get('/expenses/by-category', [AnalyticsController::class, 'expensesByCategory'])->name('expenses.by-category');
         Route::get('/expenses/by-vendor', [AnalyticsController::class, 'expensesByVendor'])->name('expenses.by-vendor');
         Route::get('/expenses/by-department', [AnalyticsController::class, 'expensesByDepartment'])->name('expenses.by-department');
         Route::get('/expenses/trends', [AnalyticsController::class, 'expenseTrends'])->name('expenses.trends');
-        
+
         // Customer Analytics
         Route::get('/customers/lifetime-value', [AnalyticsController::class, 'customerLifetimeValue'])->name('customers.lifetime-value');
         Route::get('/customers/purchase-patterns', [AnalyticsController::class, 'purchasePatterns'])->name('customers.purchase-patterns');

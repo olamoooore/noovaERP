@@ -330,7 +330,7 @@ class MyInvoiceSubmissionProviderTest extends TestCase
 
         $issueDate = $document['Invoice'][0]['IssueDate'][0]['_'];
         $issueTime = $document['Invoice'][0]['IssueTime'][0]['_'];
-        $issuedAt = new \DateTimeImmutable($issueDate . 'T' . rtrim($issueTime, 'Z') . 'Z');
+        $issuedAt = new \DateTimeImmutable($issueDate.'T'.rtrim($issueTime, 'Z').'Z');
 
         $this->assertGreaterThanOrEqual($before->getTimestamp(), $issuedAt->getTimestamp());
         $this->assertLessThanOrEqual($after->getTimestamp(), $issuedAt->getTimestamp());
@@ -432,11 +432,11 @@ class MyInvoiceSubmissionProviderTest extends TestCase
     /** Creates a provider that records every outgoing request into $container. */
     private function makeProviderCapturing(array $responses, array &$container): MyInvoiceSubmissionProvider
     {
-        $mock    = new MockHandler($responses);
+        $mock = new MockHandler($responses);
         $history = Middleware::history($container);
-        $stack   = HandlerStack::create($mock);
+        $stack = HandlerStack::create($mock);
         $stack->push($history);
-        $client  = new Client(['handler' => $stack]);
+        $client = new Client(['handler' => $stack]);
 
         return new MyInvoiceSubmissionProvider($client, 'https://sandbox.myinvoice.test');
     }
@@ -444,8 +444,8 @@ class MyInvoiceSubmissionProviderTest extends TestCase
     /** Decodes the UBL Invoice array from the first captured HTTP request. */
     private function captureUbl(array $container): array
     {
-        $body    = (string) $container[0]['request']->getBody();
-        $outer   = json_decode($body, true);
+        $body = (string) $container[0]['request']->getBody();
+        $outer = json_decode($body, true);
         $encoded = $outer['documents'][0]['document'] ?? '';
         $decoded = base64_decode($encoded, true);
 
@@ -461,7 +461,7 @@ class MyInvoiceSubmissionProviderTest extends TestCase
     {
         return new Response(201, [], json_encode([
             'submissionUID' => $ref,
-            'status'        => 'submitted',
+            'status' => 'submitted',
         ]));
     }
 
@@ -469,37 +469,37 @@ class MyInvoiceSubmissionProviderTest extends TestCase
     private function noteBasePayload(): array
     {
         return [
-            'document_type'   => 'credit_note',
-            'invoice_number'  => 'CN-2026-0001',
-            'invoice_date'    => '2026-07-01',
-            'currency_code'   => 'MYR',
+            'document_type' => 'credit_note',
+            'invoice_number' => 'CN-2026-0001',
+            'invoice_date' => '2026-07-01',
+            'currency_code' => 'MYR',
             'supplier' => [
-                'name'                 => 'NoovaERP Sdn Bhd',
-                'tin'                  => 'C2584563200',
+                'name' => 'NoovaERP Sdn Bhd',
+                'tin' => 'C2584563200',
                 'company_registration' => '202401234567',
-                'msic_code'            => '62010',
+                'msic_code' => '62010',
                 'address' => [
-                    'street'  => '1 Jalan Test',
-                    'city'    => 'Kuala Lumpur',
-                    'state'   => 'Wilayah Persekutuan',
+                    'street' => '1 Jalan Test',
+                    'city' => 'Kuala Lumpur',
+                    'state' => 'Wilayah Persekutuan',
                     'country' => 'MYS',
                 ],
             ],
             'buyer' => [
                 'name' => 'Buyer Sdn Bhd',
-                'tin'  => 'C1234567890',
+                'tin' => 'C1234567890',
                 'company_registration' => '202300012345',
                 'address' => [
-                    'street'  => '2 Jalan Buyer',
-                    'city'    => 'Petaling Jaya',
-                    'state'   => 'Selangor',
+                    'street' => '2 Jalan Buyer',
+                    'city' => 'Petaling Jaya',
+                    'state' => 'Selangor',
                     'country' => 'MYS',
                 ],
             ],
             'line_items' => [[
                 'description' => 'Credit for INV-2026-0005',
-                'quantity'    => 1,
-                'unit_price'  => 100.00,
+                'quantity' => 1,
+                'unit_price' => 100.00,
                 'line_amount' => 100.00,
             ]],
             'totals' => ['gross_amount' => 100.00],
@@ -513,7 +513,7 @@ class MyInvoiceSubmissionProviderTest extends TestCase
     public function test_credit_note_produces_type_code_02(): void
     {
         $container = [];
-        $provider  = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
+        $provider = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
 
         $payload = $this->noteBasePayload();
         $payload['document_type'] = 'credit_note';
@@ -524,7 +524,7 @@ class MyInvoiceSubmissionProviderTest extends TestCase
         $result = $provider->submit($payload, $this->submittedCredentials());
 
         $this->assertTrue($result['success'], $result['message'] ?? '');
-        $ubl     = $this->captureUbl($container);
+        $ubl = $this->captureUbl($container);
         $invoice = $ubl['Invoice'][0];
 
         $this->assertSame('02', $invoice['InvoiceTypeCode'][0]['_'], 'Credit Note must be type 02');
@@ -533,10 +533,10 @@ class MyInvoiceSubmissionProviderTest extends TestCase
     public function test_debit_note_produces_type_code_03(): void
     {
         $container = [];
-        $provider  = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
+        $provider = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
 
         $payload = $this->noteBasePayload();
-        $payload['document_type']  = 'debit_note';
+        $payload['document_type'] = 'debit_note';
         $payload['invoice_number'] = 'DN-2026-0001';
         $payload['original_invoice_references'] = [
             ['invoice_number' => 'INV-2026-0005'],
@@ -552,10 +552,10 @@ class MyInvoiceSubmissionProviderTest extends TestCase
     public function test_refund_note_produces_type_code_04(): void
     {
         $container = [];
-        $provider  = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
+        $provider = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
 
         $payload = $this->noteBasePayload();
-        $payload['document_type']  = 'refund_note';
+        $payload['document_type'] = 'refund_note';
         $payload['invoice_number'] = 'RN-2026-0001';
         $payload['original_invoice_references'] = [
             ['invoice_number' => 'INV-2026-0005'],
@@ -571,10 +571,10 @@ class MyInvoiceSubmissionProviderTest extends TestCase
     public function test_self_billed_invoice_produces_type_code_05(): void
     {
         $container = [];
-        $provider  = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
+        $provider = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
 
         $payload = $this->noteBasePayload();
-        $payload['document_type']  = 'self_billed_invoice';
+        $payload['document_type'] = 'self_billed_invoice';
         $payload['invoice_number'] = 'SBI-2026-0001';
         unset($payload['original_invoice_references']);
 
@@ -588,10 +588,10 @@ class MyInvoiceSubmissionProviderTest extends TestCase
     public function test_self_billed_credit_note_produces_type_code_06(): void
     {
         $container = [];
-        $provider  = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
+        $provider = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
 
         $payload = $this->noteBasePayload();
-        $payload['document_type']  = 'self_billed_credit_note';
+        $payload['document_type'] = 'self_billed_credit_note';
         $payload['invoice_number'] = 'SBCN-2026-0001';
         $payload['original_invoice_references'] = [
             ['invoice_number' => 'SBI-2026-0001'],
@@ -611,7 +611,7 @@ class MyInvoiceSubmissionProviderTest extends TestCase
     public function test_credit_note_billing_reference_uses_invoice_document_reference_with_uuid(): void
     {
         $container = [];
-        $provider  = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
+        $provider = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
 
         $payload = $this->noteBasePayload();
         $payload['document_type'] = 'credit_note';
@@ -621,8 +621,8 @@ class MyInvoiceSubmissionProviderTest extends TestCase
 
         $provider->submit($payload, $this->submittedCredentials());
 
-        $invoice  = $this->captureUbl($container)['Invoice'][0];
-        $bilRef   = $invoice['BillingReference'][0];
+        $invoice = $this->captureUbl($container)['Invoice'][0];
+        $bilRef = $invoice['BillingReference'][0];
 
         $this->assertArrayHasKey('InvoiceDocumentReference', $bilRef, 'Must use InvoiceDocumentReference, not AdditionalDocumentReference');
         $this->assertArrayNotHasKey('AdditionalDocumentReference', $bilRef);
@@ -635,7 +635,7 @@ class MyInvoiceSubmissionProviderTest extends TestCase
     public function test_credit_note_billing_reference_without_uuid_omits_uuid_field(): void
     {
         $container = [];
-        $provider  = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
+        $provider = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
 
         $payload = $this->noteBasePayload();
         $payload['original_invoice_references'] = [
@@ -652,7 +652,7 @@ class MyInvoiceSubmissionProviderTest extends TestCase
     public function test_credit_note_supports_multiple_original_references(): void
     {
         $container = [];
-        $provider  = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
+        $provider = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
 
         $payload = $this->noteBasePayload();
         $payload['original_invoice_references'] = [
@@ -672,11 +672,11 @@ class MyInvoiceSubmissionProviderTest extends TestCase
     public function test_legacy_original_invoice_number_scalar_still_works_for_credit_note(): void
     {
         $container = [];
-        $provider  = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
+        $provider = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
 
         $payload = $this->noteBasePayload();
         $payload['original_invoice_number'] = 'INV-2026-0005';
-        $payload['original_invoice_uuid']   = 'legacy-uuid-xyz';
+        $payload['original_invoice_uuid'] = 'legacy-uuid-xyz';
 
         $provider->submit($payload, $this->submittedCredentials());
 
@@ -692,7 +692,7 @@ class MyInvoiceSubmissionProviderTest extends TestCase
     public function test_regular_invoice_still_produces_type_code_01(): void
     {
         $container = [];
-        $provider  = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
+        $provider = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
 
         $result = $provider->submit($this->validPayload(), $this->submittedCredentials());
 
@@ -704,11 +704,11 @@ class MyInvoiceSubmissionProviderTest extends TestCase
     public function test_consolidated_invoice_produces_type_code_01_not_04(): void
     {
         $container = [];
-        $provider  = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
+        $provider = $this->makeProviderCapturing([$this->acceptedResponse()], $container);
 
         $payload = $this->validPayload();
         $payload['document_type'] = 'consolidated_invoice';
-        $payload['buyer']['tin']  = 'EI00000000010';
+        $payload['buyer']['tin'] = 'EI00000000010';
 
         $result = $provider->submit($payload, $this->submittedCredentials());
 

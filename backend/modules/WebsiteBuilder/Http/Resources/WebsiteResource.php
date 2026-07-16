@@ -17,7 +17,7 @@ class WebsiteResource extends JsonResource
             'status' => $this->status,
             'settings' => $this->settings,
             'favicon' => $this->favicon,
-            'created_by' => $this->whenLoaded('createdBy', fn() => [
+            'created_by' => $this->whenLoaded('createdBy', fn () => [
                 'id' => $this->createdBy->id,
                 'name' => $this->createdBy->name,
             ]),

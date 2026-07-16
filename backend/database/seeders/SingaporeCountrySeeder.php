@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -72,7 +72,7 @@ class SingaporeCountrySeeder extends Seeder
         }
 
         DB::table('chart_of_accounts')->whereIn('id', $candidates)->delete();
-        $this->command?->info('SG CoA cleanup: removed ' . count($candidates) . ' unused SG-prefixed accounts.');
+        $this->command?->info('SG CoA cleanup: removed '.count($candidates).' unused SG-prefixed accounts.');
     }
 
     private function seedTaxRates(): void
@@ -82,77 +82,79 @@ class SingaporeCountrySeeder extends Seeder
             ->where('code', 'SG-2020') // GST Output Tax Payable
             ->first();
 
-        if (!$taxAccount) {
+        if (! $taxAccount) {
             $taxAccount = DB::table('chart_of_accounts')
                 ->where('type', 'liability')
                 ->first();
         }
 
-        if (!$taxAccount) {
+        if (! $taxAccount) {
             $this->command?->warn('SG Tax: No liability account found — skipping SG tax rate seeding.');
+
             return;
         }
 
         $sgTaxRates = [
             [
-                'name'        => 'GST Standard Rated 9%',
-                'code'        => 'SG-GST9',
-                'rate'        => 9.00,
-                'type'        => 'gst',
+                'name' => 'GST Standard Rated 9%',
+                'code' => 'SG-GST9',
+                'rate' => 9.00,
+                'type' => 'gst',
                 'description' => 'Singapore GST — standard rated supply at 9% (effective 1 Jan 2024)',
             ],
             [
-                'name'        => 'GST Zero Rated 0%',
-                'code'        => 'SG-GST0',
-                'rate'        => 0.00,
-                'type'        => 'gst',
+                'name' => 'GST Zero Rated 0%',
+                'code' => 'SG-GST0',
+                'rate' => 0.00,
+                'type' => 'gst',
                 'description' => 'Singapore GST — zero-rated supply (exports, international services)',
             ],
             [
-                'name'        => 'GST Exempt',
-                'code'        => 'SG-GSTEX',
-                'rate'        => 0.00,
-                'type'        => 'gst',
+                'name' => 'GST Exempt',
+                'code' => 'SG-GSTEX',
+                'rate' => 0.00,
+                'type' => 'gst',
                 'description' => 'Singapore GST — exempt supply (financial services, residential leasing)',
             ],
             [
-                'name'        => 'GST Out of Scope',
-                'code'        => 'SG-GSTOS',
-                'rate'        => 0.00,
-                'type'        => 'gst',
+                'name' => 'GST Out of Scope',
+                'code' => 'SG-GSTOS',
+                'rate' => 0.00,
+                'type' => 'gst',
                 'description' => 'Singapore GST — out-of-scope supply (third country sales, private transactions)',
             ],
             [
-                'name'        => 'Withholding Tax 15% (SG)',
-                'code'        => 'SG-WHT15',
-                'rate'        => 15.00,
-                'type'        => 'withholding',
+                'name' => 'Withholding Tax 15% (SG)',
+                'code' => 'SG-WHT15',
+                'rate' => 15.00,
+                'type' => 'withholding',
                 'description' => 'Singapore Withholding Tax — 15% on payments to non-residents (Section 45)',
             ],
             [
-                'name'        => 'Withholding Tax 10% (SG)',
-                'code'        => 'SG-WHT10',
-                'rate'        => 10.00,
-                'type'        => 'withholding',
+                'name' => 'Withholding Tax 10% (SG)',
+                'code' => 'SG-WHT10',
+                'rate' => 10.00,
+                'type' => 'withholding',
                 'description' => 'Singapore Withholding Tax — 10% on management fees to non-residents',
             ],
         ];
 
         $inserted = 0;
-        $skipped  = 0;
+        $skipped = 0;
 
         foreach ($sgTaxRates as $rate) {
             if (DB::table('tax_rates')->where('code', $rate['code'])->exists()) {
                 $skipped++;
+
                 continue;
             }
 
             DB::table('tax_rates')->insert(array_merge($rate, [
                 'tax_account_id' => $taxAccount->id,
-                'is_compound'    => false,
-                'is_active'      => true,
-                'created_at'     => now(),
-                'updated_at'     => now(),
+                'is_compound' => false,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]));
             $inserted++;
         }

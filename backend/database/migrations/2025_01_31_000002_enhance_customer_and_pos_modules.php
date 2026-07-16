@@ -12,14 +12,14 @@ return new class extends Migration
     public function up(): void
     {
         // Guard: customers/products are tenant tables — skip when running central-only migrations
-        if (!Schema::hasTable('customers')) {
+        if (! Schema::hasTable('customers')) {
             return;
         }
 
         // =====================================================
         // CUSTOMER ENHANCEMENTS (res.partner pattern from Odoo)
         // =====================================================
-        
+
         // Customer Categories/Tags
         Schema::create('customer_categories', function (Blueprint $table) {
             $table->id();
@@ -113,7 +113,7 @@ return new class extends Migration
             $table->integer('points_redeemed_total')->default(0);
             $table->timestamp('last_activity_at')->nullable();
             $table->timestamps();
-            
+
             $table->unique(['customer_id', 'program_id']);
         });
 
@@ -135,87 +135,87 @@ return new class extends Migration
         // Enhance customers table with additional fields
         Schema::table('customers', function (Blueprint $table) {
             // Customer type
-            if (!Schema::hasColumn('customers', 'type')) {
+            if (! Schema::hasColumn('customers', 'type')) {
                 $table->enum('type', ['individual', 'company'])->default('individual')->after('id');
             }
-            
+
             // Internal reference
-            if (!Schema::hasColumn('customers', 'code')) {
+            if (! Schema::hasColumn('customers', 'code')) {
                 $table->string('code')->nullable()->after('type');
             }
-            
+
             // Parent company (for contacts of companies)
-            if (!Schema::hasColumn('customers', 'parent_id')) {
+            if (! Schema::hasColumn('customers', 'parent_id')) {
                 $table->foreignId('parent_id')->nullable()->after('code')->constrained('customers')->nullOnDelete();
             }
-            
+
             // Website & social
-            if (!Schema::hasColumn('customers', 'website')) {
+            if (! Schema::hasColumn('customers', 'website')) {
                 $table->string('website')->nullable();
             }
-            
+
             // Mobile phone
-            if (!Schema::hasColumn('customers', 'mobile')) {
+            if (! Schema::hasColumn('customers', 'mobile')) {
                 $table->string('mobile')->nullable();
             }
-            
+
             // Preferred language
-            if (!Schema::hasColumn('customers', 'language')) {
+            if (! Schema::hasColumn('customers', 'language')) {
                 $table->string('language', 10)->nullable();
             }
-            
+
             // Price list
-            if (!Schema::hasColumn('customers', 'price_list_id')) {
+            if (! Schema::hasColumn('customers', 'price_list_id')) {
                 $table->foreignId('price_list_id')->nullable()->constrained('customer_price_lists')->nullOnDelete();
             }
-            
+
             // Sales person
-            if (!Schema::hasColumn('customers', 'salesperson_id')) {
+            if (! Schema::hasColumn('customers', 'salesperson_id')) {
                 $table->foreignId('salesperson_id')->nullable()->constrained('users')->nullOnDelete();
             }
-            
+
             // Date of birth (for individuals)
-            if (!Schema::hasColumn('customers', 'date_of_birth')) {
+            if (! Schema::hasColumn('customers', 'date_of_birth')) {
                 $table->date('date_of_birth')->nullable();
             }
-            
+
             // Gender
-            if (!Schema::hasColumn('customers', 'gender')) {
+            if (! Schema::hasColumn('customers', 'gender')) {
                 $table->enum('gender', ['male', 'female', 'other'])->nullable();
             }
-            
+
             // Preferred contact method
-            if (!Schema::hasColumn('customers', 'preferred_contact')) {
+            if (! Schema::hasColumn('customers', 'preferred_contact')) {
                 $table->enum('preferred_contact', ['email', 'phone', 'sms', 'whatsapp'])->default('email');
             }
-            
+
             // Marketing opt-in
-            if (!Schema::hasColumn('customers', 'marketing_opt_in')) {
+            if (! Schema::hasColumn('customers', 'marketing_opt_in')) {
                 $table->boolean('marketing_opt_in')->default(false);
             }
-            
+
             // Customer since
-            if (!Schema::hasColumn('customers', 'customer_since')) {
+            if (! Schema::hasColumn('customers', 'customer_since')) {
                 $table->date('customer_since')->nullable();
             }
-            
+
             // Last interaction
-            if (!Schema::hasColumn('customers', 'last_interaction_at')) {
+            if (! Schema::hasColumn('customers', 'last_interaction_at')) {
                 $table->timestamp('last_interaction_at')->nullable();
             }
-            
+
             // Total purchases
-            if (!Schema::hasColumn('customers', 'total_purchases')) {
+            if (! Schema::hasColumn('customers', 'total_purchases')) {
                 $table->decimal('total_purchases', 15, 2)->default(0);
             }
-            
+
             // Total orders
-            if (!Schema::hasColumn('customers', 'total_orders')) {
+            if (! Schema::hasColumn('customers', 'total_orders')) {
                 $table->integer('total_orders')->default(0);
             }
-            
+
             // Average order value
-            if (!Schema::hasColumn('customers', 'average_order_value')) {
+            if (! Schema::hasColumn('customers', 'average_order_value')) {
                 $table->decimal('average_order_value', 12, 2)->default(0);
             }
         });
@@ -254,7 +254,7 @@ return new class extends Migration
             $table->timestamp('closed_at')->nullable();
             $table->foreignId('closed_by')->nullable()->constrained('users');
             $table->timestamps();
-            
+
             $table->index(['terminal_id', 'status']);
         });
 
@@ -288,46 +288,46 @@ return new class extends Migration
         // Update pos_orders table with additional fields
         Schema::table('pos_orders', function (Blueprint $table) {
             // Session tracking
-            if (!Schema::hasColumn('pos_orders', 'session_id')) {
+            if (! Schema::hasColumn('pos_orders', 'session_id')) {
                 $table->foreignId('session_id')->nullable()->after('id')->constrained('pos_sessions')->nullOnDelete();
             }
-            
+
             // Terminal tracking
-            if (!Schema::hasColumn('pos_orders', 'terminal_id')) {
+            if (! Schema::hasColumn('pos_orders', 'terminal_id')) {
                 $table->foreignId('terminal_id')->nullable()->after('session_id')->constrained('pos_terminals')->nullOnDelete();
             }
-            
+
             // Customer
-            if (!Schema::hasColumn('pos_orders', 'customer_id')) {
+            if (! Schema::hasColumn('pos_orders', 'customer_id')) {
                 $table->foreignId('customer_id')->nullable()->after('terminal_id')->constrained()->nullOnDelete();
             }
-            
+
             // Return/refund support
-            if (!Schema::hasColumn('pos_orders', 'is_return')) {
+            if (! Schema::hasColumn('pos_orders', 'is_return')) {
                 $table->boolean('is_return')->default(false);
             }
-            if (!Schema::hasColumn('pos_orders', 'original_order_id')) {
+            if (! Schema::hasColumn('pos_orders', 'original_order_id')) {
                 $table->foreignId('original_order_id')->nullable()->constrained('pos_orders')->nullOnDelete();
             }
-            
+
             // Loyalty points used
-            if (!Schema::hasColumn('pos_orders', 'loyalty_points_earned')) {
+            if (! Schema::hasColumn('pos_orders', 'loyalty_points_earned')) {
                 $table->integer('loyalty_points_earned')->default(0);
             }
-            if (!Schema::hasColumn('pos_orders', 'loyalty_points_redeemed')) {
+            if (! Schema::hasColumn('pos_orders', 'loyalty_points_redeemed')) {
                 $table->integer('loyalty_points_redeemed')->default(0);
             }
-            if (!Schema::hasColumn('pos_orders', 'loyalty_discount')) {
+            if (! Schema::hasColumn('pos_orders', 'loyalty_discount')) {
                 $table->decimal('loyalty_discount', 12, 2)->default(0);
             }
-            
+
             // Receipt
-            if (!Schema::hasColumn('pos_orders', 'receipt_number')) {
+            if (! Schema::hasColumn('pos_orders', 'receipt_number')) {
                 $table->string('receipt_number')->nullable();
             }
-            
+
             // Cashier name cache
-            if (!Schema::hasColumn('pos_orders', 'cashier_name')) {
+            if (! Schema::hasColumn('pos_orders', 'cashier_name')) {
                 $table->string('cashier_name')->nullable();
             }
         });
@@ -350,13 +350,13 @@ return new class extends Migration
 
         // Update pos_payments to link to payment methods
         Schema::table('pos_payments', function (Blueprint $table) {
-            if (!Schema::hasColumn('pos_payments', 'payment_method_id')) {
+            if (! Schema::hasColumn('pos_payments', 'payment_method_id')) {
                 $table->foreignId('payment_method_id')->nullable()->after('method')->constrained('pos_payment_methods')->nullOnDelete();
             }
-            if (!Schema::hasColumn('pos_payments', 'reference')) {
+            if (! Schema::hasColumn('pos_payments', 'reference')) {
                 $table->string('reference')->nullable(); // Card last 4, transaction ID, etc.
             }
-            if (!Schema::hasColumn('pos_payments', 'surcharge')) {
+            if (! Schema::hasColumn('pos_payments', 'surcharge')) {
                 $table->decimal('surcharge', 10, 2)->default(0);
             }
         });
@@ -397,7 +397,7 @@ return new class extends Migration
             $table->dropColumn([
                 'session_id', 'terminal_id', 'customer_id', 'is_return', 'original_order_id',
                 'loyalty_points_earned', 'loyalty_points_redeemed', 'loyalty_discount',
-                'receipt_number', 'cashier_name'
+                'receipt_number', 'cashier_name',
             ]);
         });
 
@@ -406,7 +406,7 @@ return new class extends Migration
         Schema::dropIfExists('pos_cash_movements');
         Schema::dropIfExists('pos_sessions');
         Schema::dropIfExists('pos_terminals');
-        
+
         Schema::dropIfExists('customer_loyalty_transactions');
         Schema::dropIfExists('customer_loyalty_balances');
         Schema::dropIfExists('customer_loyalty_programs');
@@ -419,10 +419,10 @@ return new class extends Migration
 
         Schema::table('customers', function (Blueprint $table) {
             $columns = [
-                'type', 'code', 'parent_id', 'website', 'mobile', 'language', 
+                'type', 'code', 'parent_id', 'website', 'mobile', 'language',
                 'price_list_id', 'salesperson_id', 'date_of_birth', 'gender',
                 'preferred_contact', 'marketing_opt_in', 'customer_since',
-                'last_interaction_at', 'total_purchases', 'total_orders', 'average_order_value'
+                'last_interaction_at', 'total_purchases', 'total_orders', 'average_order_value',
             ];
             foreach ($columns as $col) {
                 if (Schema::hasColumn('customers', $col)) {

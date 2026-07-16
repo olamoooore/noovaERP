@@ -137,7 +137,7 @@ class PosStructuredLoggingTest extends TestCase
     public function correlation_id_is_echoed_in_response_header()
     {
         // Make a request with a correlation ID header
-        $correlationId = 'test-correlation-' . uniqid();
+        $correlationId = 'test-correlation-'.uniqid();
 
         $response = $this->withHeaders([
             'X-Correlation-ID' => $correlationId,

@@ -12,10 +12,10 @@ class EmployeeFactory extends Factory
     public function definition(): array
     {
         return [
-            'name'           => $this->faker->name(),
-            'email'          => $this->faker->unique()->safeEmail(),
+            'name' => $this->faker->name(),
+            'email' => $this->faker->unique()->safeEmail(),
             'contact_number' => $this->faker->phoneNumber(),
-            'status'         => 'active',
+            'status' => 'active',
         ];
     }
 }

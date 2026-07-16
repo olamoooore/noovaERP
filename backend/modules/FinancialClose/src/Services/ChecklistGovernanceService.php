@@ -2,11 +2,10 @@
 
 namespace Modules\FinancialClose\Services;
 
-use Illuminate\Support\Facades\Log;
 use Modules\FinancialClose\Models\ChecklistTemplate;
-use Modules\FinancialClose\Models\TemplateVersion;
 use Modules\FinancialClose\Models\TemplateApproval;
 use Modules\FinancialClose\Models\TemplateChangeAudit;
+use Modules\FinancialClose\Models\TemplateVersion;
 
 class ChecklistGovernanceService
 {
@@ -20,7 +19,7 @@ class ChecklistGovernanceService
             ->where('id', $templateId)
             ->first();
 
-        if (!$template) {
+        if (! $template) {
             return null;
         }
 
@@ -53,7 +52,7 @@ class ChecklistGovernanceService
             ->where('id', $versionId)
             ->first();
 
-        if (!$version || $version->status !== 'draft') {
+        if (! $version || $version->status !== 'draft') {
             return false;
         }
 
@@ -78,7 +77,7 @@ class ChecklistGovernanceService
             ->where('id', $versionId)
             ->first();
 
-        if (!$version || $version->status !== 'pending_approval') {
+        if (! $version || $version->status !== 'pending_approval') {
             return false;
         }
 

@@ -4,8 +4,8 @@ namespace Modules\Ecommerce\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Modules\Ecommerce\Models\WebCustomerSession;
@@ -40,7 +40,7 @@ class WebAuthController extends Controller
 
             // Customer exists without password (legacy/orphaned) — update their record
             $existing->update([
-                'name' => $validated['first_name'] . ' ' . $validated['last_name'],
+                'name' => $validated['first_name'].' '.$validated['last_name'],
                 'phone' => $validated['phone'] ?? $existing->phone,
                 'password' => Hash::make($validated['password']),
             ]);
@@ -48,7 +48,7 @@ class WebAuthController extends Controller
         } else {
             // Create new customer
             $customerData = [
-                'name' => $validated['first_name'] . ' ' . $validated['last_name'],
+                'name' => $validated['first_name'].' '.$validated['last_name'],
                 'email' => $validated['email'],
                 'phone' => $validated['phone'] ?? null,
                 'is_active' => true,
@@ -64,7 +64,7 @@ class WebAuthController extends Controller
         }
 
         // Link guest orders by token
-        if (!empty($validated['guest_token'])) {
+        if (! empty($validated['guest_token'])) {
             WebOrder::where('guest_token', $validated['guest_token'])
                 ->whereNull('customer_id')
                 ->update(['customer_id' => $customer->id]);
@@ -102,7 +102,7 @@ class WebAuthController extends Controller
 
             // Get active loyalty program
             $program = \Modules\Loyalty\Models\LoyaltyProgram::where('is_active', true)->first();
-            if (!$program) {
+            if (! $program) {
                 return; // No active program to enroll in
             }
 
@@ -150,13 +150,13 @@ class WebAuthController extends Controller
         // Find customer by email
         $customer = Customer::where('email', $validated['email'])->first();
 
-        if (!$customer || !Hash::check($validated['password'], $customer->password)) {
+        if (! $customer || ! Hash::check($validated['password'], $customer->password)) {
             return response()->json([
                 'error' => 'Invalid credentials',
             ], 401);
         }
 
-        if (!$customer->is_active) {
+        if (! $customer->is_active) {
             return response()->json([
                 'error' => 'Account is inactive',
             ], 403);
@@ -199,7 +199,7 @@ class WebAuthController extends Controller
     {
         $customer = $request->attributes->get('web_customer');
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json([
                 'error' => 'Unauthorized',
             ], 401);
@@ -217,7 +217,7 @@ class WebAuthController extends Controller
     {
         $customer = $request->attributes->get('web_customer');
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json([
                 'error' => 'Unauthorized',
             ], 401);
@@ -230,7 +230,7 @@ class WebAuthController extends Controller
         ]);
 
         $customer->update([
-            'name' => $validated['first_name'] . ' ' . $validated['last_name'],
+            'name' => $validated['first_name'].' '.$validated['last_name'],
             'phone' => $validated['phone'] ?? $customer->phone,
         ]);
 

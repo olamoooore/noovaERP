@@ -2,19 +2,18 @@
 
 namespace Modules\EventManagement\Tests\Unit;
 
-use Tests\TestCase;
-use Modules\EventManagement\Services\StaffManagementService;
-use Modules\EventManagement\Services\AuditService;
-use Modules\EventManagement\Services\TenantSchemaManager;
-use Modules\EventManagement\Models\Event;
-use Modules\EventManagement\Exceptions\EventManagementException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Modules\EventManagement\Exceptions\EventManagementException;
+use Modules\EventManagement\Models\Event;
+use Modules\EventManagement\Services\AuditService;
+use Modules\EventManagement\Services\StaffManagementService;
+use Modules\EventManagement\Services\TenantSchemaManager;
+use Tests\TestCase;
 
 /**
  * StaffManagementService Unit Tests
- * 
+ *
  * Tests the core functionality of the StaffManagementService including
  * staff assignments, zone access control, scheduling, and performance tracking.
  */
@@ -23,20 +22,23 @@ class StaffManagementServiceTest extends TestCase
     use RefreshDatabase;
 
     private StaffManagementService $service;
+
     private AuditService $auditService;
+
     private TenantSchemaManager $tenantManager;
+
     private string $testTenantId = 'test-tenant-001';
 
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->auditService = $this->createMock(AuditService::class);
         $this->tenantManager = $this->createMock(TenantSchemaManager::class);
-        
+
         $this->tenantManager->method('getCurrentTenantId')
-                           ->willReturn($this->testTenantId);
-        
+            ->willReturn($this->testTenantId);
+
         $this->service = new StaffManagementService(
             $this->auditService,
             $this->tenantManager
@@ -49,7 +51,7 @@ class StaffManagementServiceTest extends TestCase
         $event = Event::factory()->create([
             'tenant_id' => $this->testTenantId,
             'title' => 'Test Concert',
-            'status' => 'active'
+            'status' => 'active',
         ]);
 
         // Create operational zone
@@ -61,7 +63,7 @@ class StaffManagementServiceTest extends TestCase
             'zone_type' => 'vip',
             'status' => 'inactive',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         $staffUserId = 'staff-001';
@@ -76,13 +78,13 @@ class StaffManagementServiceTest extends TestCase
             'can_override' => true,
             'contact_number' => '+1234567890',
             'emergency_contact' => '+0987654321',
-            'special_instructions' => 'VIP coordinator with override privileges'
+            'special_instructions' => 'VIP coordinator with override privileges',
         ];
 
         // Mock audit service
         $this->auditService->expects($this->once())
-                          ->method('logActivity')
-                          ->with('staff_assigned', $this->anything(), $this->anything());
+            ->method('logActivity')
+            ->with('staff_assigned', $this->anything(), $this->anything());
 
         // Assign staff
         $assignmentId = $this->service->assignStaffToEvent($event->id, $staffUserId, $assignmentData);
@@ -104,7 +106,7 @@ class StaffManagementServiceTest extends TestCase
         $this->assertTrue($assignment->can_override);
         $this->assertEquals('+1234567890', $assignment->contact_number);
         $this->assertEquals('assigned', $assignment->status);
-        
+
         // Verify permissions are stored as JSON
         $permissions = json_decode($assignment->permissions, true);
         $this->assertContains('zone_access_VIP', $permissions);
@@ -117,13 +119,13 @@ class StaffManagementServiceTest extends TestCase
         $event = Event::factory()->create([
             'tenant_id' => $this->testTenantId,
             'title' => 'Test Event',
-            'status' => 'active'
+            'status' => 'active',
         ]);
 
         $staffUserId = 'staff-002';
         $assignmentData = [
             'role' => 'security',
-            'responsibilities' => 'Security duties'
+            'responsibilities' => 'Security duties',
         ];
 
         // Create first assignment
@@ -134,7 +136,7 @@ class StaffManagementServiceTest extends TestCase
             'role' => 'security',
             'status' => 'assigned',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Expect exception for duplicate assignment
@@ -154,16 +156,16 @@ class StaffManagementServiceTest extends TestCase
             'role' => 'usher',
             'status' => 'assigned',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Mock audit service
         $this->auditService->expects($this->exactly(2))
-                          ->method('logActivity')
-                          ->withConsecutive(
-                              ['staff_check_in_out', $this->anything(), $this->anything()],
-                              ['staff_check_in_out', $this->anything(), $this->anything()]
-                          );
+            ->method('logActivity')
+            ->withConsecutive(
+                ['staff_check_in_out', $this->anything(), $this->anything()],
+                ['staff_check_in_out', $this->anything(), $this->anything()]
+            );
 
         // Test check-in
         $result = $this->service->checkInOutStaff($assignmentId, 'check_in');
@@ -195,7 +197,7 @@ class StaffManagementServiceTest extends TestCase
             'status' => 'checked_in',
             'checked_in_at' => now()->subHour(),
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         $this->expectException(EventManagementException::class);
@@ -214,13 +216,13 @@ class StaffManagementServiceTest extends TestCase
             'role' => 'coordinator',
             'status' => 'checked_in',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Mock audit service
         $this->auditService->expects($this->once())
-                          ->method('logActivity')
-                          ->with('staff_status_updated', $this->anything(), $this->anything());
+            ->method('logActivity')
+            ->with('staff_status_updated', $this->anything(), $this->anything());
 
         // Update status to active
         $result = $this->service->updateStaffStatus($assignmentId, 'active');
@@ -241,7 +243,7 @@ class StaffManagementServiceTest extends TestCase
             'role' => 'security',
             'status' => 'assigned',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         $this->expectException(EventManagementException::class);
@@ -265,7 +267,7 @@ class StaffManagementServiceTest extends TestCase
                 'status' => 'active',
                 'is_lead' => true,
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ],
             [
                 'tenant_id' => $this->testTenantId,
@@ -276,7 +278,7 @@ class StaffManagementServiceTest extends TestCase
                 'status' => 'checked_in',
                 'is_lead' => false,
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ],
             [
                 'tenant_id' => $this->testTenantId,
@@ -287,8 +289,8 @@ class StaffManagementServiceTest extends TestCase
                 'status' => 'absent',
                 'is_lead' => false,
                 'created_at' => now(),
-                'updated_at' => now()
-            ]
+                'updated_at' => now(),
+            ],
         ]);
 
         // Test without filters
@@ -318,13 +320,13 @@ class StaffManagementServiceTest extends TestCase
         $event1 = Event::factory()->create([
             'tenant_id' => $this->testTenantId,
             'title' => 'Event 1',
-            'event_date' => now()->subDays(30)
+            'event_date' => now()->subDays(30),
         ]);
 
         $event2 = Event::factory()->create([
             'tenant_id' => $this->testTenantId,
             'title' => 'Event 2',
-            'event_date' => now()->subDays(15)
+            'event_date' => now()->subDays(15),
         ]);
 
         // Create staff assignments with performance data
@@ -339,7 +341,7 @@ class StaffManagementServiceTest extends TestCase
                 'is_lead' => true,
                 'performance_rating' => 5,
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ],
             [
                 'tenant_id' => $this->testTenantId,
@@ -351,8 +353,8 @@ class StaffManagementServiceTest extends TestCase
                 'is_lead' => false,
                 'performance_rating' => 4,
                 'created_at' => now(),
-                'updated_at' => now()
-            ]
+                'updated_at' => now(),
+            ],
         ]);
 
         // Calculate performance
@@ -390,7 +392,7 @@ class StaffManagementServiceTest extends TestCase
                 'can_override' => true,
                 'permissions' => json_encode(['zone_access_VIP', 'guest_management', 'override_capacity']),
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ],
             [
                 'tenant_id' => $this->testTenantId,
@@ -403,8 +405,8 @@ class StaffManagementServiceTest extends TestCase
                 'can_override' => false,
                 'permissions' => json_encode(['zone_access_MAIN', 'incident_reporting']),
                 'created_at' => now(),
-                'updated_at' => now()
-            ]
+                'updated_at' => now(),
+            ],
         ]);
 
         // Get zone access
@@ -454,7 +456,7 @@ class StaffManagementServiceTest extends TestCase
                 'status' => 'active',
                 'is_lead' => true,
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ],
             [
                 'tenant_id' => $this->testTenantId,
@@ -465,7 +467,7 @@ class StaffManagementServiceTest extends TestCase
                 'status' => 'checked_in',
                 'is_lead' => false,
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ],
             [
                 'tenant_id' => $this->testTenantId,
@@ -476,7 +478,7 @@ class StaffManagementServiceTest extends TestCase
                 'status' => 'absent',
                 'is_lead' => false,
                 'created_at' => now(),
-                'updated_at' => now()
+                'updated_at' => now(),
             ],
             [
                 'tenant_id' => $this->testTenantId,
@@ -487,8 +489,8 @@ class StaffManagementServiceTest extends TestCase
                 'status' => 'active',
                 'is_lead' => true,
                 'created_at' => now(),
-                'updated_at' => now()
-            ]
+                'updated_at' => now(),
+            ],
         ]);
 
         // Generate report
@@ -543,13 +545,13 @@ class StaffManagementServiceTest extends TestCase
             'role' => 'usher',
             'status' => 'assigned',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Mock audit service
         $this->auditService->expects($this->once())
-                          ->method('logActivity')
-                          ->with('staff_assignment_removed', $this->anything(), $this->anything());
+            ->method('logActivity')
+            ->with('staff_assignment_removed', $this->anything(), $this->anything());
 
         // Remove assignment
         $result = $this->service->removeStaffAssignment($assignmentId, 'Staff no longer available');

@@ -2,20 +2,19 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Modules\FinancialReporting\Services\Export\ExcelExportService;
 use Illuminate\Support\Facades\Storage;
+use Modules\FinancialReporting\Services\Export\ExcelExportService;
+use Tests\TenantTestCase;
 
 class ExcelExportServiceTest extends TenantTestCase
 {
-
     protected ExcelExportService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->bindTenantContext();
-        $this->service = new ExcelExportService();
+        $this->service = new ExcelExportService;
         Storage::fake('local');
     }
 

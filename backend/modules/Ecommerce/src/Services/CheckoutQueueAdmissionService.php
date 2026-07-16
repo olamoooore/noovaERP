@@ -7,7 +7,9 @@ use Illuminate\Support\Facades\Cache;
 class CheckoutQueueAdmissionService
 {
     private const DEFAULT_MAX_ACTIVE = 200;
+
     private const DEFAULT_SLOT_TTL_SECONDS = 600;
+
     private const WAITING_TOKEN_TTL_SECONDS = 3600;
 
     public function join(string $campaignKey, int $maxActive = self::DEFAULT_MAX_ACTIVE, int $slotTtlSeconds = self::DEFAULT_SLOT_TTL_SECONDS): array
@@ -79,7 +81,7 @@ class CheckoutQueueAdmissionService
 
         $state = Cache::get($this->tokenStateKey($tenantId, $campaignKey, $token));
 
-        if (!$state) {
+        if (! $state) {
             return null;
         }
 
@@ -107,7 +109,7 @@ class CheckoutQueueAdmissionService
         $stateKey = $this->tokenStateKey($tenantId, $campaignKey, $token);
         $state = Cache::get($stateKey);
 
-        if (!$state) {
+        if (! $state) {
             return null;
         }
 
@@ -127,7 +129,7 @@ class CheckoutQueueAdmissionService
         $stateKey = $this->tokenStateKey($tenantId, $campaignKey, $token);
         $state = Cache::get($stateKey);
 
-        if (!$state) {
+        if (! $state) {
             return;
         }
 
@@ -146,6 +148,7 @@ class CheckoutQueueAdmissionService
     public function canProceedToCheckout(string $campaignKey, string $token): bool
     {
         $status = $this->getStatus($campaignKey, $token);
+
         return $status !== null && ($status['status'] ?? null) === 'active';
     }
 
@@ -158,17 +161,19 @@ class CheckoutQueueAdmissionService
             $waitingKey = $this->waitingSequenceKey($tenantId, $campaignKey, $sequence);
             $token = Cache::get($waitingKey);
 
-            if (!$token) {
+            if (! $token) {
                 $sequence++;
+
                 continue;
             }
 
             $stateKey = $this->tokenStateKey($tenantId, $campaignKey, (string) $token);
             $state = Cache::get($stateKey);
 
-            if (!$state || ($state['status'] ?? null) !== 'queued') {
+            if (! $state || ($state['status'] ?? null) !== 'queued') {
                 Cache::forget($waitingKey);
                 $sequence++;
+
                 continue;
             }
 
@@ -181,6 +186,7 @@ class CheckoutQueueAdmissionService
             Cache::put($stateKey, $state, $ttl);
 
             Cache::put($nextPromoteKey, $sequence + 1, self::WAITING_TOKEN_TTL_SECONDS);
+
             return;
         }
 
@@ -194,6 +200,7 @@ class CheckoutQueueAdmissionService
         }
 
         $nextPromoteSequence = (int) Cache::get($this->nextPromoteSequenceKey($tenantId, $campaignKey), 1);
+
         return max(1, $sequence - $nextPromoteSequence + 1);
     }
 
@@ -209,6 +216,7 @@ class CheckoutQueueAdmissionService
     private function normalizeCampaignKey(string $campaignKey): string
     {
         $trimmed = trim($campaignKey);
+
         return $trimmed === '' ? 'default' : $trimmed;
     }
 

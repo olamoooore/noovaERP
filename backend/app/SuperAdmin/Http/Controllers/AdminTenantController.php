@@ -20,10 +20,10 @@ class AdminTenantController extends Controller
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'search'   => ['nullable', 'string', 'max:100'],
-            'status'   => ['nullable', 'string', 'in:active,suspended,trial'],
-            'plan'     => ['nullable', 'string', 'max:50'],
-            'page'     => ['nullable', 'integer', 'min:1'],
+            'search' => ['nullable', 'string', 'max:100'],
+            'status' => ['nullable', 'string', 'in:active,suspended,trial'],
+            'plan' => ['nullable', 'string', 'max:50'],
+            'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:5', 'max:100'],
         ]);
 
@@ -38,9 +38,9 @@ class AdminTenantController extends Controller
         return response()->json([
             'data' => $paginator->items(),
             'meta' => [
-                'total'     => $paginator->total(),
-                'page'      => $paginator->currentPage(),
-                'per_page'  => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'page' => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
                 'last_page' => $paginator->lastPage(),
             ],
         ]);

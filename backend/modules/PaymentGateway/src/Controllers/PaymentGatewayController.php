@@ -4,9 +4,9 @@ namespace Modules\PaymentGateway\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Services\PaymentGatewayFactory;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PaymentGatewayController extends Controller
 {
@@ -62,6 +62,7 @@ class PaymentGatewayController extends Controller
     public function show($gateway)
     {
         $gateway = PaymentGateway::findOrFail($gateway);
+
         return response()->json($gateway->load(['creator', 'updater', 'transactions']));
     }
 
@@ -137,7 +138,7 @@ class PaymentGatewayController extends Controller
             ], 422);
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Connection test failed: ' . $e->getMessage(),
+                'message' => 'Connection test failed: '.$e->getMessage(),
                 'status' => 'error',
             ], 500);
         }
@@ -151,7 +152,7 @@ class PaymentGatewayController extends Controller
     {
         $gateway = PaymentGateway::findOrFail($gateway);
 
-        $newStatus = !$gateway->is_active;
+        $newStatus = ! $gateway->is_active;
 
         $gateway->update([
             'is_active' => $newStatus,

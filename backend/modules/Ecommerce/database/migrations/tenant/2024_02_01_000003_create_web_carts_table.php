@@ -12,17 +12,17 @@ return new class extends Migration
             $table->id();
             $table->foreignId('customer_id')->nullable()->constrained('customers')->nullOnDelete();
             $table->string('guest_token')->nullable()->index();
-            
+
             // Cart items stored as JSON
             $table->jsonb('items')->default('[]');
-            
+
             // Coupon
             $table->string('coupon_code')->nullable();
-            
+
             // Timestamps
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
-            
+
             // Only one cart per customer/guest
             $table->unique('customer_id');
             $table->unique('guest_token');

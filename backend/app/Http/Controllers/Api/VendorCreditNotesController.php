@@ -49,9 +49,9 @@ class VendorCreditNotesController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('credit_note_number', 'ILIKE', "%{$search}%")
-                  ->orWhereHas('vendor', function ($vq) use ($search) {
-                      $vq->where('name', 'ILIKE', "%{$search}%");
-                  });
+                    ->orWhereHas('vendor', function ($vq) use ($search) {
+                        $vq->where('name', 'ILIKE', "%{$search}%");
+                    });
             });
         }
 
@@ -66,6 +66,7 @@ class VendorCreditNotesController extends Controller
     public function show($creditNote)
     {
         $creditNote = VendorCreditNote::findOrFail($creditNote);
+
         return response()->json(
             $creditNote->load([
                 'vendor',
@@ -74,7 +75,7 @@ class VendorCreditNotesController extends Controller
                 'lines.account',
                 'journalEntry.lines.account',
                 'createdBy',
-                'postedBy'
+                'postedBy',
             ])
         );
     }
@@ -123,7 +124,7 @@ class VendorCreditNotesController extends Controller
         $creditNote = VendorCreditNote::findOrFail($creditNote);
         if ($creditNote->status !== 'draft') {
             return response()->json([
-                'message' => 'Only draft credit notes can be edited'
+                'message' => 'Only draft credit notes can be edited',
             ], 403);
         }
 
@@ -148,7 +149,7 @@ class VendorCreditNotesController extends Controller
         if ($creditNote->status !== 'draft') {
             return response()->json([
                 'message' => 'Only draft credit notes can be deleted. Use reversal for posted credit notes.',
-                'suggestion' => 'Create a reversal journal entry to correct this credit note.'
+                'suggestion' => 'Create a reversal journal entry to correct this credit note.',
             ], 403);
         }
 
@@ -165,7 +166,7 @@ class VendorCreditNotesController extends Controller
         $creditNote = VendorCreditNote::findOrFail($creditNote);
         if ($creditNote->status !== 'draft') {
             return response()->json([
-                'message' => 'Only draft credit notes can be posted'
+                'message' => 'Only draft credit notes can be posted',
             ], 403);
         }
 

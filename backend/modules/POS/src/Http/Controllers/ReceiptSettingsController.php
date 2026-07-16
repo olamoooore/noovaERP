@@ -72,7 +72,7 @@ class ReceiptSettingsController extends Controller
         }
 
         $currentSettings = Setting::getValue('receipt_settings', []);
-        
+
         $newSettings = array_merge($currentSettings, $request->only([
             'store_name',
             'store_address',
@@ -120,15 +120,15 @@ class ReceiptSettingsController extends Controller
 
         try {
             $currentSettings = Setting::getValue('receipt_settings', []);
-            if (!empty($currentSettings['logo_url'])) {
+            if (! empty($currentSettings['logo_url'])) {
                 $oldPath = str_replace('/storage/', '', $currentSettings['logo_url']);
                 Storage::disk('public')->delete($oldPath);
             }
 
             $file = $request->file('logo');
-            $filename = 'receipt_logo_' . time() . '.' . $file->getClientOriginalExtension();
+            $filename = 'receipt_logo_'.time().'.'.$file->getClientOriginalExtension();
             $path = $file->storeAs('receipts', $filename, 'public');
-            $url = '/storage/' . $path;
+            $url = '/storage/'.$path;
 
             $newSettings = array_merge($currentSettings, [
                 'logo_url' => $url,
@@ -145,7 +145,7 @@ class ReceiptSettingsController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'error' => 'Failed to upload logo: ' . $e->getMessage(),
+                'error' => 'Failed to upload logo: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -154,8 +154,8 @@ class ReceiptSettingsController extends Controller
     {
         try {
             $currentSettings = Setting::getValue('receipt_settings', []);
-            
-            if (!empty($currentSettings['logo_url'])) {
+
+            if (! empty($currentSettings['logo_url'])) {
                 $oldPath = str_replace('/storage/', '', $currentSettings['logo_url']);
                 Storage::disk('public')->delete($oldPath);
             }
@@ -173,7 +173,7 @@ class ReceiptSettingsController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'error' => 'Failed to delete logo: ' . $e->getMessage(),
+                'error' => 'Failed to delete logo: '.$e->getMessage(),
             ], 500);
         }
     }

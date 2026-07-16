@@ -2,12 +2,11 @@
 
 namespace App\Models;
 
-use App\Services\LockDateValidationService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
@@ -67,7 +66,7 @@ class JournalEntry extends Model
 
     /**
      * Boot the model.
-     * 
+     *
      * Workstream 2 (2026-04-15): Prevent deletion of posted entries.
      * Posted financial records must be reversed, not deleted.
      */
@@ -76,22 +75,22 @@ class JournalEntry extends Model
         parent::boot();
 
         static::creating(function ($entry) {
-            if (!$entry->lifecycle_status) {
+            if (! $entry->lifecycle_status) {
                 $entry->lifecycle_status = 'draft';
             }
-            if (!$entry->version_number) {
+            if (! $entry->version_number) {
                 $entry->version_number = 1;
             }
             if ($entry->is_active_version === null) {
                 $entry->is_active_version = true;
             }
-            if (!$entry->created_by) {
+            if (! $entry->created_by) {
                 $entry->created_by = TenantUserHelper::requireTenantUserId();
             }
         });
 
         static::saving(function ($entry) {
-            if ($entry->status === 'posted' && !$entry->posted_by) {
+            if ($entry->status === 'posted' && ! $entry->posted_by) {
                 $entry->posted_by = TenantUserHelper::requireTenantUserId();
             }
         });
@@ -100,9 +99,9 @@ class JournalEntry extends Model
             // Prevent deletion of posted entries
             if ($entry->status === 'posted' && $entry->posted_at !== null) {
                 throw new \RuntimeException(
-                    "Cannot delete posted journal entry #{$entry->entry_number}. " .
-                    "Posted entries must be reversed, not deleted. " .
-                    "Use the reversal endpoint to create a reversing entry."
+                    "Cannot delete posted journal entry #{$entry->entry_number}. ".
+                    'Posted entries must be reversed, not deleted. '.
+                    'Use the reversal endpoint to create a reversing entry.'
                 );
             }
 
@@ -189,15 +188,16 @@ class JournalEntry extends Model
 
     /**
      * Post the journal entry
-     * 
+     *
      * @deprecated Use PostingEngine::post() instead. This method does not create JournalEntryLink or PostingAuditLog.
      *             PostingEngine provides idempotency, audit trail, and proper transaction handling.
+     *
      * @throws \BadMethodCallException Always throws since this method is deprecated
      */
     public function post(): void
     {
         throw new \BadMethodCallException(
-            'JournalEntry::post() is deprecated. Use PostingEngine::post() instead. ' .
+            'JournalEntry::post() is deprecated. Use PostingEngine::post() instead. '.
             'This method does not create JournalEntryLink or PostingAuditLog which are required for audit compliance.'
         );
     }
@@ -207,12 +207,13 @@ class JournalEntry extends Model
      *
      * @deprecated Use PostingEngine::reverse() instead. This method does not create
      *              JournalEntryLink or PostingAuditLog which are required for audit compliance.
+     *
      * @throws \BadMethodCallException Always throws since this method is deprecated
      */
     public function reverse(?string $reason = null, ?string $reversalDate = null): self
     {
         throw new \BadMethodCallException(
-            'JournalEntry::reverse() is deprecated. Use PostingEngine::reverse() instead. ' .
+            'JournalEntry::reverse() is deprecated. Use PostingEngine::reverse() instead. '.
             'This method does not create JournalEntryLink or PostingAuditLog which are required for audit compliance.'
         );
     }
@@ -231,26 +232,26 @@ class JournalEntry extends Model
      */
     public static function generateEntryNumber(): string
     {
-        $prefix = 'JE-' . date('Y') . '-';
+        $prefix = 'JE-'.date('Y').'-';
 
         // Advisory lock key derived from a fixed namespace. The lock is released
         // automatically when the enclosing transaction commits/rolls back.
         // If there is no outer transaction, use a non-transactional advisory lock.
         $lockKey = crc32('journal_entry_number_gen');
-        \Illuminate\Support\Facades\DB::statement("SELECT pg_advisory_xact_lock(?)", [$lockKey]);
+        \Illuminate\Support\Facades\DB::statement('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
 
-        $latest = static::where('entry_number', 'like', $prefix . '%')
+        $latest = static::where('entry_number', 'like', $prefix.'%')
             ->orderByRaw("CAST(SUBSTRING(entry_number FROM '.{4}$') AS INTEGER) DESC")
             ->first();
 
         $number = $latest ? (int) substr($latest->entry_number, -4) + 1 : 1;
-        $candidate = $prefix . str_pad($number, 4, '0', STR_PAD_LEFT);
+        $candidate = $prefix.str_pad($number, 4, '0', STR_PAD_LEFT);
 
         // Skip numbers already taken by soft-deleted or other entries
         // (unique constraint on entry_number means we cannot reuse)
         while (static::withTrashed()->where('entry_number', $candidate)->exists()) {
             $number++;
-            $candidate = $prefix . str_pad($number, 4, '0', STR_PAD_LEFT);
+            $candidate = $prefix.str_pad($number, 4, '0', STR_PAD_LEFT);
         }
 
         return $candidate;

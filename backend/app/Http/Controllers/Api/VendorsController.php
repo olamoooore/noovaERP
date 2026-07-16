@@ -12,8 +12,7 @@ class VendorsController extends Controller
 {
     /**
      * List all vendors
-     * 
-     * @param Request $request
+     *
      * @return \Illuminate\Http\JsonResponse
      */
     public function index(Request $request)
@@ -73,18 +72,19 @@ class VendorsController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to fetch vendors: ' . $e->getMessage());
+            Log::error('Failed to fetch vendors: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to fetch vendors',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Get a single vendor
-     * 
-     * @param int $id
+     *
+     * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
     public function show($id)
@@ -92,21 +92,22 @@ class VendorsController extends Controller
         try {
             $vendor = Vendor::find($id);
 
-            if (!$vendor) {
+            if (! $vendor) {
                 return response()->json([
-                    'message' => 'Vendor not found'
+                    'message' => 'Vendor not found',
                 ], 404);
             }
 
             return response()->json([
-                'data' => $vendor
+                'data' => $vendor,
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to fetch vendor: ' . $e->getMessage());
+            Log::error('Failed to fetch vendor: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to fetch vendor',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -140,7 +141,7 @@ class VendorsController extends Controller
 
             // Defensive: if company_registration_number column doesn't exist in DB,
             // remove it to avoid SQL errors on tenants where the migration hasn't run.
-            if (isset($data['company_registration_number']) && !\Illuminate\Support\Facades\Schema::hasColumn('vendors', 'company_registration_number')) {
+            if (isset($data['company_registration_number']) && ! \Illuminate\Support\Facades\Schema::hasColumn('vendors', 'company_registration_number')) {
                 unset($data['company_registration_number']);
             }
 
@@ -166,7 +167,7 @@ class VendorsController extends Controller
             \Log::error('Vendor creation failed', ['error' => $e->getMessage()]);
 
             return response()->json([
-                'message' => 'Failed to create vendor — ' . $e->getMessage(),
+                'message' => 'Failed to create vendor — '.$e->getMessage(),
                 'error' => $e->getMessage(),
             ], 500);
         }
@@ -179,7 +180,7 @@ class VendorsController extends Controller
     {
         $vendor = Vendor::find($id);
 
-        if (!$vendor) {
+        if (! $vendor) {
             return response()->json([
                 'message' => 'Vendor not found',
             ], 404);
@@ -210,8 +211,7 @@ class VendorsController extends Controller
 
     /**
      * Import vendors from CSV file
-     * 
-     * @param Request $request
+     *
      * @return \Illuminate\Http\JsonResponse
      */
     public function import(Request $request)
@@ -227,15 +227,16 @@ class VendorsController extends Controller
         }
 
         $header = fgetcsv($handle);
-        if (!is_array($header) || count($header) === 0) {
+        if (! is_array($header) || count($header) === 0) {
             fclose($handle);
+
             return response()->json(['message' => 'CSV header missing'], 422);
         }
 
         $header = array_map(fn ($h) => strtolower(trim((string) $h)), $header);
         $rows = [];
         while (($data = fgetcsv($handle)) !== false) {
-            if (!is_array($data) || count(array_filter($data, fn ($v) => (string) $v !== '')) === 0) {
+            if (! is_array($data) || count(array_filter($data, fn ($v) => (string) $v !== '')) === 0) {
                 continue;
             }
             $row = [];
@@ -263,6 +264,7 @@ class VendorsController extends Controller
                         'row' => $index + 2,
                         'message' => 'Missing required field: name',
                     ];
+
                     continue;
                 }
 
@@ -289,6 +291,7 @@ class VendorsController extends Controller
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
+
             return response()->json(['message' => 'Import failed', 'error' => $e->getMessage()], 500);
         }
 

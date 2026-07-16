@@ -56,7 +56,7 @@ class VAL001CostingMethodSelectionTest extends TenantTestCase
     {
         $productId = (int) DB::table('products')->insertGetId([
             'name' => 'VAL001 Product',
-            'sku' => 'VAL001-' . Str::upper(Str::random(8)),
+            'sku' => 'VAL001-'.Str::upper(Str::random(8)),
             'cost' => 12.00,
             'price' => 20.00,
             'track_inventory' => true,

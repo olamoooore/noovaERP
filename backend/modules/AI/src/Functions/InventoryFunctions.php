@@ -10,7 +10,7 @@ use Modules\Inventory\Models\StockLevel;
 
 /**
  * Inventory Functions
- * 
+ *
  * AI-callable functions for inventory and stock queries
  */
 class InventoryFunctions
@@ -22,7 +22,7 @@ class InventoryFunctions
             $sku = $args['sku'] ?? null;
             $warehouseId = $args['warehouse_id'] ?? null;
 
-            if (!$productId && !$sku) {
+            if (! $productId && ! $sku) {
                 return [
                     'success' => false,
                     'error' => 'Please provide either product_id or sku',
@@ -34,14 +34,14 @@ class InventoryFunctions
                 ? $productQuery->find($productId)
                 : $productQuery->where('sku', $sku)->first();
 
-            if (!$product) {
+            if (! $product) {
                 return [
                     'success' => false,
                     'error' => 'Product not found',
                 ];
             }
 
-            if (!$product->track_inventory) {
+            if (! $product->track_inventory) {
                 return [
                     'success' => true,
                     'product' => [
@@ -61,7 +61,7 @@ class InventoryFunctions
                     ->where('warehouse_id', $warehouseId)
                     ->first();
 
-                if (!$level) {
+                if (! $level) {
                     return [
                         'success' => true,
                         'product' => [

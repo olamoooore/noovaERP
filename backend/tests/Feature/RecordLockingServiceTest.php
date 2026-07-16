@@ -5,15 +5,14 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\User;
-use App\Platform\Locking\LockRecord;
 use App\Platform\Locking\RecordLockingService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TenantTestCase;
 
 class RecordLockingServiceTest extends TenantTestCase
 {
     protected string $tenantUuid;
+
     protected RecordLockingService $service;
 
     protected function setUp(): void
@@ -22,7 +21,7 @@ class RecordLockingServiceTest extends TenantTestCase
 
         $this->tenantUuid = Str::uuid()->toString();
         $this->bindTenantContext($this->tenantUuid);
-        $this->service = new RecordLockingService();
+        $this->service = new RecordLockingService;
     }
 
     public function test_acquire_creates_lock(): void

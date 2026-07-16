@@ -37,15 +37,17 @@ class GenerateMissingPosInvoices extends Command
     {
         $tenantId = $this->option('tenant');
 
-        if (!$tenantId) {
+        if (! $tenantId) {
             $this->error('The --tenant flag is required for this command.');
             $this->info('Usage: php artisan pos:generate-invoices --tenant=<tenant-id>');
+
             return Command::FAILURE;
         }
 
         $tenant = Tenant::find($tenantId);
-        if (!$tenant) {
+        if (! $tenant) {
             $this->error("Tenant not found: {$tenantId}");
+
             return Command::FAILURE;
         }
 
@@ -56,6 +58,7 @@ class GenerateMissingPosInvoices extends Command
         });
 
         $this->info('Done!');
+
         return Command::SUCCESS;
     }
 
@@ -72,6 +75,7 @@ class GenerateMissingPosInvoices extends Command
             auth()->login($systemUser);
         } else {
             $this->error('No users found in the system. Cannot run without an authenticated user.');
+
             return;
         }
 
@@ -90,18 +94,20 @@ class GenerateMissingPosInvoices extends Command
             ->pluck('notes')
             ->map(function ($note) {
                 preg_match('/POS Order:?\s*#?([A-Z0-9-]+)/', $note, $matches);
+
                 return $matches[1] ?? null;
             })
             ->filter()
             ->toArray();
 
         $ordersWithoutInvoices = $paidOrders->filter(function ($order) use ($existingViaFK, $existingViaNotes) {
-            return !in_array($order->id, $existingViaFK)
-                && !in_array($order->order_number, $existingViaNotes);
+            return ! in_array($order->id, $existingViaFK)
+                && ! in_array($order->order_number, $existingViaNotes);
         });
 
         if ($ordersWithoutInvoices->isEmpty()) {
             $this->info('All paid POS orders already have invoices.');
+
             return 0;
         }
 
@@ -131,7 +137,7 @@ class GenerateMissingPosInvoices extends Command
                 DB::transaction(function () use ($order, $walkInCustomer, $salesOrderService) {
                     $order->loadMissing('items.product', 'items.variant', 'terminal.warehouse');
 
-                    if (!$order->customer_id) {
+                    if (! $order->customer_id) {
                         $order->update(['customer_id' => $walkInCustomer->id]);
                     }
 
@@ -166,11 +172,11 @@ class GenerateMissingPosInvoices extends Command
                     }
 
                     $invoice = $salesOrderService->createInvoice($salesOrder, [
-                        'subtotal'        => $order->subtotal,
-                        'tax_amount'      => $order->tax_amount ?? 0,
+                        'subtotal' => $order->subtotal,
+                        'tax_amount' => $order->tax_amount ?? 0,
                         'discount_amount' => $order->discount_amount ?? 0,
-                        'total'           => $order->total,
-                        'pos_order_id'    => $order->id,
+                        'total' => $order->total,
+                        'pos_order_id' => $order->id,
                     ]);
 
                     $salesOrderService->recordChannelPayment($invoice->fresh(), [
@@ -204,5 +210,4 @@ class GenerateMissingPosInvoices extends Command
 
         return 0;
     }
-
 }

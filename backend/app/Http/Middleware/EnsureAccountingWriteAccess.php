@@ -31,11 +31,11 @@ class EnsureAccountingWriteAccess
         /** @var User|null $user */
         $user = $request->user();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
-        if (!$this->accessService->canWrite($user)) {
+        if (! $this->accessService->canWrite($user)) {
             return response()->json([
                 'message' => 'You do not have permission to perform accounting write operations.',
             ], 403);

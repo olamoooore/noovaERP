@@ -3,13 +3,13 @@
 namespace Modules\Ecommerce\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Modules\Ecommerce\Models\WebOrder;
-use Modules\Ecommerce\Services\WebOrderPostingService;
 use Modules\Ecommerce\Services\WebOrderEventReservationService;
+use Modules\Ecommerce\Services\WebOrderPostingService;
 use Modules\EventManagement\Models\Booking;
 use Modules\PaymentGateway\Services\PaymentService;
 
@@ -17,8 +17,7 @@ class WebOrderController extends Controller
 {
     public function __construct(
         private readonly WebOrderEventReservationService $webOrderEventReservationService,
-    ) {
-    }
+    ) {}
 
     /**
      * Get order details for guest (by token)
@@ -29,7 +28,7 @@ class WebOrderController extends Controller
             ->where('guest_token', $token)
             ->first();
 
-        if (!$order) {
+        if (! $order) {
             return response()->json([
                 'error' => 'Order not found',
             ], 404);
@@ -47,7 +46,7 @@ class WebOrderController extends Controller
     {
         $customer = $request->attributes->get('web_customer');
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json([
                 'error' => 'Unauthorized',
             ], 401);
@@ -58,7 +57,7 @@ class WebOrderController extends Controller
             ->where('customer_id', $customer->id)
             ->first();
 
-        if (!$order) {
+        if (! $order) {
             return response()->json([
                 'error' => 'Order not found',
             ], 404);
@@ -76,7 +75,7 @@ class WebOrderController extends Controller
     {
         $customer = $request->attributes->get('web_customer');
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json([
                 'error' => 'Unauthorized',
             ], 401);
@@ -88,7 +87,7 @@ class WebOrderController extends Controller
             ->paginate($request->input('per_page', 10));
 
         return response()->json([
-            'orders' => $orders->map(fn($order) => $this->formatOrderResponse($order)),
+            'orders' => $orders->map(fn ($order) => $this->formatOrderResponse($order)),
             'pagination' => [
                 'current_page' => $orders->currentPage(),
                 'total' => $orders->total(),
@@ -119,9 +118,9 @@ class WebOrderController extends Controller
             $search = $request->input('search');
             $query->where(function ($q) use ($search) {
                 $q->where('order_number', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('first_name', 'like', "%{$search}%")
-                  ->orWhere('last_name', 'like', "%{$search}%");
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('first_name', 'like', "%{$search}%")
+                    ->orWhere('last_name', 'like', "%{$search}%");
             });
         }
 
@@ -137,7 +136,7 @@ class WebOrderController extends Controller
             ->paginate($request->input('per_page', 20));
 
         return response()->json([
-            'orders' => $orders->map(fn($order) => $this->formatOrderResponse($order)),
+            'orders' => $orders->map(fn ($order) => $this->formatOrderResponse($order)),
             'pagination' => [
                 'current_page' => $orders->currentPage(),
                 'total' => $orders->total(),
@@ -162,7 +161,7 @@ class WebOrderController extends Controller
         $order = WebOrder::with('items', 'customer', 'invoice')
             ->find($id);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json([
                 'error' => 'Order not found',
             ], 404);
@@ -200,7 +199,7 @@ class WebOrderController extends Controller
 
         $order = WebOrder::find($id);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json([
                 'error' => 'Order not found',
             ], 404);
@@ -212,13 +211,13 @@ class WebOrderController extends Controller
         $updateData = ['status' => $newStatus];
 
         // Set timestamps based on status change
-        if ($newStatus === 'confirmed' && !$order->confirmed_at) {
+        if ($newStatus === 'confirmed' && ! $order->confirmed_at) {
             $updateData['confirmed_at'] = now();
         }
-        if ($newStatus === 'shipped' && !$order->shipped_at) {
+        if ($newStatus === 'shipped' && ! $order->shipped_at) {
             $updateData['shipped_at'] = now();
         }
-        if ($newStatus === 'delivered' && !$order->delivered_at) {
+        if ($newStatus === 'delivered' && ! $order->delivered_at) {
             $updateData['delivered_at'] = now();
         }
         if ($newStatus === 'cancelled') {
@@ -246,7 +245,7 @@ class WebOrderController extends Controller
     {
         $customer = $request->attributes->get('web_customer');
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
@@ -255,11 +254,11 @@ class WebOrderController extends Controller
             ->where('customer_id', $customer->id)
             ->first();
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['error' => 'Order not found'], 404);
         }
 
-        if (!in_array($order->status, ['pending'])) {
+        if (! in_array($order->status, ['pending'])) {
             return response()->json([
                 'error' => 'Only pending orders can be cancelled',
             ], 422);
@@ -289,7 +288,7 @@ class WebOrderController extends Controller
     {
         $customer = $request->attributes->get('web_customer');
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
@@ -298,11 +297,11 @@ class WebOrderController extends Controller
             ->where('customer_id', $customer->id)
             ->first();
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['error' => 'Order not found'], 404);
         }
 
-        if (!$order->invoice) {
+        if (! $order->invoice) {
             return response()->json(['error' => 'No invoice found for this order'], 404);
         }
 
@@ -327,7 +326,7 @@ class WebOrderController extends Controller
                     'email' => $invoice->customer->email,
                     'phone' => $invoice->customer->phone,
                 ] : null,
-                'lines' => $invoice->lines->map(fn($line) => [
+                'lines' => $invoice->lines->map(fn ($line) => [
                     'id' => $line->id,
                     'description' => $line->description,
                     'quantity' => $line->quantity,
@@ -346,7 +345,7 @@ class WebOrderController extends Controller
     {
         $customer = $request->attributes->get('web_customer');
 
-        if (!$customer) {
+        if (! $customer) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
@@ -355,7 +354,7 @@ class WebOrderController extends Controller
             ->where('customer_id', $customer->id)
             ->first();
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['error' => 'Order not found'], 404);
         }
 
@@ -384,8 +383,8 @@ class WebOrderController extends Controller
                 'description' => "Web Order {$order->order_number} (retry)",
                 'email' => $order->email,
                 'gateway_id' => $validated['gateway_id'] ?? $request->input('gateway_id'),
-                'redirect_url' => $frontendOrigin . '/payment/callback',
-                'cancel_url' => $frontendOrigin . '/store/checkout',
+                'redirect_url' => $frontendOrigin.'/payment/callback',
+                'cancel_url' => $frontendOrigin.'/store/checkout',
                 'metadata' => [
                     'order_id' => $order->id,
                     'order_number' => $order->order_number,
@@ -437,9 +436,10 @@ class WebOrderController extends Controller
         $referer = trim((string) $request->headers->get('referer', ''));
         if ($referer !== '') {
             $parts = parse_url($referer);
-            if (!empty($parts['scheme']) && !empty($parts['host'])) {
-                $port = isset($parts['port']) ? ':' . $parts['port'] : '';
-                return rtrim($parts['scheme'] . '://' . $parts['host'] . $port, '/');
+            if (! empty($parts['scheme']) && ! empty($parts['host'])) {
+                $port = isset($parts['port']) ? ':'.$parts['port'] : '';
+
+                return rtrim($parts['scheme'].'://'.$parts['host'].$port, '/');
             }
         }
 
@@ -471,7 +471,7 @@ class WebOrderController extends Controller
             'currency' => $order->currency,
             'loyalty_points_earned' => $order->loyalty_points_earned,
             'loyalty_points_redeemed' => $order->loyalty_points_redeemed,
-            'items' => $order->items->map(fn($item) => [
+            'items' => $order->items->map(fn ($item) => [
                 'id' => $item->id,
                 'product_id' => $item->product_id,
                 'product_name' => $item->product_name,
@@ -493,7 +493,7 @@ class WebOrderController extends Controller
 
     private function loadEventBookingsForOrder(WebOrder $order): array
     {
-        if (!Schema::hasTable('bookings')) {
+        if (! Schema::hasTable('bookings')) {
             return [];
         }
 
@@ -506,6 +506,7 @@ class WebOrderController extends Controller
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);
+
             return [];
         }
 
@@ -555,7 +556,7 @@ class WebOrderController extends Controller
             ];
         }
 
-        if (!is_array($shippingMethod)) {
+        if (! is_array($shippingMethod)) {
             return null;
         }
 
@@ -610,6 +611,7 @@ class WebOrderController extends Controller
 
             if ($order->payment_status === WebOrder::PAYMENT_STATUS_PAID) {
                 $postingService->reverseOrderPosting($order, 'Web order cancelled');
+
                 return;
             }
 

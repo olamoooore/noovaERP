@@ -18,15 +18,16 @@ class TaxRatesSeeder extends Seeder
             ->where('name', 'LIKE', '%Tax%')
             ->first();
 
-        if (!$taxAccount) {
+        if (! $taxAccount) {
             // If no tax account exists, use any liability account
             $taxAccount = DB::table('chart_of_accounts')
                 ->where('type', 'liability')
                 ->first();
         }
 
-        if (!$taxAccount) {
+        if (! $taxAccount) {
             $this->command->error('No liability account found. Please create a liability account first.');
+
             return;
         }
 
@@ -126,7 +127,6 @@ class TaxRatesSeeder extends Seeder
             ]));
         }
 
-        $this->command->info('Successfully seeded ' . count($taxRates) . ' tax rates!');
+        $this->command->info('Successfully seeded '.count($taxRates).' tax rates!');
     }
 }
-

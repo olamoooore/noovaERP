@@ -2,12 +2,11 @@
 
 namespace Modules\FinancialReporting\Services\Reports;
 
+use Illuminate\Support\Facades\DB;
+use Modules\FinancialReporting\DTOs\ReportData;
+use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\Services\BaseReportService;
 use Modules\FinancialReporting\Services\ReportMappingReader;
-use Modules\FinancialReporting\DTOs\ReportFilter;
-use Modules\FinancialReporting\DTOs\ReportData;
-use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class BalanceSheetService extends BaseReportService
 {
@@ -18,13 +17,14 @@ class BalanceSheetService extends BaseReportService
         parent::__construct();
         $this->mappingReader = $mappingReader;
     }
+
     /**
      * Generate Balance Sheet report
      */
     public function generate(ReportFilter $filter): ReportData
     {
         // Validate as_of_date
-        if (!$filter->asOfDate) {
+        if (! $filter->asOfDate) {
             throw new \InvalidArgumentException('As of date is required for Balance Sheet report');
         }
 
@@ -85,11 +85,11 @@ class BalanceSheetService extends BaseReportService
                 'total_liabilities' => $totalLiabilities,
                 'total_equity' => $totalEquity,
                 'working_capital' => $workingCapital,
-                'current_ratio' => $currentLiabilities['total'] > 0 
-                    ? $currentAssets['total'] / $currentLiabilities['total'] 
+                'current_ratio' => $currentLiabilities['total'] > 0
+                    ? $currentAssets['total'] / $currentLiabilities['total']
                     : 0,
-                'debt_to_equity_ratio' => $totalEquity > 0 
-                    ? $totalLiabilities / $totalEquity 
+                'debt_to_equity_ratio' => $totalEquity > 0
+                    ? $totalLiabilities / $totalEquity
                     : 0,
             ],
             metadata: [
@@ -109,7 +109,7 @@ class BalanceSheetService extends BaseReportService
     protected function getAssetsByCategory(ReportFilter $filter, string $category, bool $useSummary): array
     {
         $accounts = $this->getAccountsByTypeAndCategory($filter, 'asset', $category, $useSummary);
-        
+
         $total = array_sum(array_column($accounts, 'balance'));
 
         return [
@@ -124,7 +124,7 @@ class BalanceSheetService extends BaseReportService
     protected function getLiabilitiesByCategory(ReportFilter $filter, string $category, bool $useSummary): array
     {
         $accounts = $this->getAccountsByTypeAndCategory($filter, 'liability', $category, $useSummary);
-        
+
         $total = array_sum(array_column($accounts, 'balance'));
 
         return [
@@ -238,7 +238,7 @@ class BalanceSheetService extends BaseReportService
 
         return $query->orderBy('coa.code')
             ->get()
-            ->map(fn($row) => [
+            ->map(fn ($row) => [
                 'account_id' => $row->id,
                 'code' => $row->code,
                 'name' => $row->name,
@@ -269,6 +269,7 @@ class BalanceSheetService extends BaseReportService
 
     /**
      * Get category code ranges (legacy, delegated to ReportMappingReader)
+     *
      * @deprecated Use getCategoryTagCode() + ReportMappingReader instead
      */
     protected function getCategoryCodeRanges(string $type, string $category): ?array
@@ -394,11 +395,11 @@ class BalanceSheetService extends BaseReportService
         $compareSummary = $compareReport->summary;
 
         $currentSummary = [
-            'total_assets' => $filter->asOfDate ? 
+            'total_assets' => $filter->asOfDate ?
                 $this->generate(new ReportFilter(asOfDate: $filter->asOfDate))->summary['total_assets'] : 0,
-            'total_liabilities' => $filter->asOfDate ? 
+            'total_liabilities' => $filter->asOfDate ?
                 $this->generate(new ReportFilter(asOfDate: $filter->asOfDate))->summary['total_liabilities'] : 0,
-            'total_equity' => $filter->asOfDate ? 
+            'total_equity' => $filter->asOfDate ?
                 $this->generate(new ReportFilter(asOfDate: $filter->asOfDate))->summary['total_equity'] : 0,
         ];
 

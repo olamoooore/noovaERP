@@ -2,11 +2,10 @@
 
 namespace App\Services;
 
-use App\Models\Invoice;
 use App\Models\Bill;
+use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\Payment;
-use Illuminate\Support\Facades\Auth;
 
 class DocumentLifecycleService
 {
@@ -77,7 +76,7 @@ class DocumentLifecycleService
             default => null,
         };
 
-        if (!$documentType || !$document->correction_group_id) {
+        if (! $documentType || ! $document->correction_group_id) {
             return;
         }
 
@@ -113,7 +112,7 @@ class DocumentLifecycleService
     public function recalculatePaymentState(Payment $payment): void
     {
         $invoice = $payment->invoice;
-        if (!$invoice) {
+        if (! $invoice) {
             return;
         }
 
@@ -156,6 +155,7 @@ class DocumentLifecycleService
                 if ($reconciliation === 'cleared') {
                     return 'Cleared';
                 }
+
                 return 'Paid';
             }
             if ($settlement === 'refunded') {

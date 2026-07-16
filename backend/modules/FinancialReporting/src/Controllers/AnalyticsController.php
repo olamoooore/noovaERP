@@ -5,10 +5,10 @@ namespace Modules\FinancialReporting\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Modules\FinancialReporting\Services\Analytics\SalesAnalyticsService;
-use Modules\FinancialReporting\Services\Analytics\ExpenseAnalyticsService;
-use Modules\FinancialReporting\Services\Analytics\CustomerAnalyticsService;
 use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Analytics\CustomerAnalyticsService;
+use Modules\FinancialReporting\Services\Analytics\ExpenseAnalyticsService;
+use Modules\FinancialReporting\Services\Analytics\SalesAnalyticsService;
 
 class AnalyticsController extends Controller
 {
@@ -16,8 +16,7 @@ class AnalyticsController extends Controller
         protected SalesAnalyticsService $salesAnalyticsService,
         protected ExpenseAnalyticsService $expenseAnalyticsService,
         protected CustomerAnalyticsService $customerAnalyticsService
-    ) {
-    }
+    ) {}
 
     /**
      * Get sales by product
@@ -55,7 +54,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate analytics. Please try again.'
+                'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
     }
@@ -89,7 +88,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate analytics. Please try again.'
+                'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
     }
@@ -108,7 +107,7 @@ class AnalyticsController extends Controller
         try {
             $filter = ReportFilter::fromRequest($validated);
             $interval = $validated['interval'] ?? 'day';
-            
+
             $reportData = $this->salesAnalyticsService->getSalesTrends($filter, $interval);
 
             // Transform response to match frontend expectations
@@ -126,7 +125,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate analytics. Please try again.'
+                'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
     }
@@ -160,7 +159,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate analytics. Please try again.'
+                'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
     }
@@ -191,7 +190,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate analytics. Please try again.'
+                'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
     }
@@ -232,7 +231,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate analytics. Please try again.'
+                'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
     }
@@ -266,7 +265,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate analytics. Please try again.'
+                'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
     }
@@ -300,7 +299,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate analytics. Please try again.'
+                'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
     }
@@ -319,7 +318,7 @@ class AnalyticsController extends Controller
         try {
             $filter = ReportFilter::fromRequest($validated);
             $interval = $validated['interval'] ?? 'month';
-            
+
             $reportData = $this->expenseAnalyticsService->getExpenseTrends($filter, $interval);
 
             return response()->json([
@@ -334,7 +333,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate analytics. Please try again.'
+                'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
     }
@@ -365,7 +364,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate analytics. Please try again.'
+                'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
     }
@@ -396,7 +395,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate analytics. Please try again.'
+                'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
     }
@@ -427,7 +426,7 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate analytics. Please try again.'
+                'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
     }
@@ -458,9 +457,8 @@ class AnalyticsController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to generate analytics. Please try again.'
+                'error' => 'Failed to generate analytics. Please try again.',
             ], 500);
         }
     }
 }
-

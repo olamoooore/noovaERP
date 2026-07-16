@@ -96,7 +96,7 @@ class WS07ProcurementBackboneTest extends TestCase
         $src = file_get_contents(base_path('app/Services/GoodsReceiptService.php'));
 
         $this->assertStringContainsString(
-            "adjustStock(",
+            'adjustStock(',
             $src,
             'GoodsReceiptService::confirm() must call InventoryService::adjustStock()'
         );
@@ -195,7 +195,7 @@ class WS07ProcurementBackboneTest extends TestCase
 
         // Three-way match must be invoked when bill_type = 'procurement'
         $this->assertStringContainsString(
-            "threeWayMatchService->validate(",
+            'threeWayMatchService->validate(',
             $src,
             'BillService::createBill() must call ThreeWayMatchService::validate() for procurement bills'
         );
@@ -257,9 +257,9 @@ class WS07ProcurementBackboneTest extends TestCase
             "VendorBillsController::store() must validate and accept the 'bill_type' field"
         );
         $this->assertStringContainsString(
-            "in:procurement,expense",
+            'in:procurement,expense',
             $src,
-            "VendorBillsController must validate bill_type as procurement or expense"
+            'VendorBillsController must validate bill_type as procurement or expense'
         );
     }
 
@@ -307,7 +307,7 @@ class WS07ProcurementBackboneTest extends TestCase
     public function test_three_way_match_service_rejects_bill_without_po_or_grn(): void
     {
         $service = app(ThreeWayMatchService::class);
-        $bill    = new Bill();
+        $bill = new Bill;
 
         $result = $service->validate($bill);
 
@@ -390,10 +390,10 @@ class WS07ProcurementBackboneTest extends TestCase
         );
 
         // Validate ordering: threeWayMatch before postBill
-        $matchPos   = strpos($src, 'threeWayMatchService->validate(');
+        $matchPos = strpos($src, 'threeWayMatchService->validate(');
         $postBillPos = strpos($src, 'postBill(');
 
-        $this->assertNotFalse($matchPos,    'threeWayMatchService->validate() must be present');
+        $this->assertNotFalse($matchPos, 'threeWayMatchService->validate() must be present');
         $this->assertNotFalse($postBillPos, 'postBill() must be present');
         $this->assertLessThan(
             $postBillPos,
@@ -447,7 +447,7 @@ class WS07ProcurementBackboneTest extends TestCase
         $this->assertStringContainsString('public function createBill(array $data, int $createdBy)', $billSvc, 'BillService has createBill()');
 
         // Step 4: Procurement bill → three-way match enforced
-        $this->assertStringContainsString("threeWayMatchService->validate(", $billSvc, 'BillService enforces three-way match');
+        $this->assertStringContainsString('threeWayMatchService->validate(', $billSvc, 'BillService enforces three-way match');
 
         // Step 5: Bill posting → VendorBillService → PostingEngine
         $postSvc = file_get_contents(base_path('app/Services/VendorBillService.php'));

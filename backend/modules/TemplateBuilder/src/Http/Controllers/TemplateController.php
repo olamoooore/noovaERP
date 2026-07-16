@@ -141,11 +141,11 @@ class TemplateController extends Controller
     public function samplePdf(string $id): Response
     {
         $template = $this->service->find($id);
-        if (!$template) {
+        if (! $template) {
             return response(['message' => 'Template not found'], 404);
         }
 
-        if (!$this->dataSources->has($template->document_type)) {
+        if (! $this->dataSources->has($template->document_type)) {
             return response(['message' => "No sample data for '{$template->document_type}'."], 422);
         }
 
@@ -156,10 +156,10 @@ class TemplateController extends Controller
             $result = app(\Modules\TemplateBuilder\Services\TemplateRendererService::class)
                 ->render($template, $sample);
             $fullHtml = view('templatebuilder::canvas', [
-                'body'  => $result['html'],
-                'font'  => $template->default_font ?: config('templatebuilder.defaults.font', 'DejaVu Sans'),
-                'margin'=> is_array($template->margin) ? $template->margin : config('templatebuilder.defaults.margin_mm'),
-                'css'   => (string) ($template->css ?? ''),
+                'body' => $result['html'],
+                'font' => $template->default_font ?: config('templatebuilder.defaults.font', 'DejaVu Sans'),
+                'margin' => is_array($template->margin) ? $template->margin : config('templatebuilder.defaults.margin_mm'),
+                'css' => (string) ($template->css ?? ''),
             ])->render();
 
             $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($fullHtml);
@@ -174,9 +174,9 @@ class TemplateController extends Controller
         }
 
         return response($bytes, 200, [
-            'Content-Type'        => 'application/pdf',
+            'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'inline; filename="template-'.$id.'-sample.pdf"',
-            'Content-Length'      => strlen($bytes),
+            'Content-Length' => strlen($bytes),
         ]);
     }
 }

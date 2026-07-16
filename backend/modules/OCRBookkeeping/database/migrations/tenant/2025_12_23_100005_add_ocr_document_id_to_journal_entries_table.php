@@ -20,7 +20,7 @@ return new class extends Migration
                 ->after('created_by')
                 ->constrained('ocr_documents')
                 ->onDelete('restrict');
-            
+
             // Add index for performance
             $table->index('ocr_document_id');
         });

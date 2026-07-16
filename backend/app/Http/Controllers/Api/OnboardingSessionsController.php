@@ -37,6 +37,7 @@ class OnboardingSessionsController extends Controller
     public function show(int $id): JsonResponse
     {
         $state = $this->machine->getSession($id);
+
         return response()->json(['data' => $state]);
     }
 
@@ -68,6 +69,7 @@ class OnboardingSessionsController extends Controller
     {
         $stepData = $request->input('step_data');
         $state = $this->machine->advance($id, $stepData);
+
         return response()->json(['data' => $state]);
     }
 
@@ -77,6 +79,7 @@ class OnboardingSessionsController extends Controller
     public function back(int $id): JsonResponse
     {
         $state = $this->machine->back($id);
+
         return response()->json(['data' => $state]);
     }
 
@@ -86,6 +89,7 @@ class OnboardingSessionsController extends Controller
     public function resume(int $id): JsonResponse
     {
         $state = $this->machine->resume($id);
+
         return response()->json(['data' => $state]);
     }
 
@@ -95,6 +99,7 @@ class OnboardingSessionsController extends Controller
     public function abandon(int $id): JsonResponse
     {
         $this->machine->abandon($id);
+
         return response()->json(['message' => 'Session abandoned.']);
     }
 
@@ -108,6 +113,7 @@ class OnboardingSessionsController extends Controller
         ]);
 
         $state = $this->machine->skipStep($id, $request->input('step_code'));
+
         return response()->json(['data' => $state]);
     }
 

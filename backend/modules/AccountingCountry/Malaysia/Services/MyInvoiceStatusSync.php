@@ -3,8 +3,8 @@
 namespace Modules\AccountingCountry\Malaysia\Services;
 
 use App\Accounting\Contracts\SubmissionStatusSyncContract;
-use App\Models\Accounting\ComplianceSubmission;
 use App\Models\Accounting\ComplianceEvent;
+use App\Models\Accounting\ComplianceSubmission;
 
 /**
  * Malaysia MyInvoice Status Sync
@@ -17,22 +17,22 @@ class MyInvoiceStatusSync implements SubmissionStatusSyncContract
      */
     public function syncStatus(object $submission, array $credentials): bool
     {
-        if (!$submission instanceof ComplianceSubmission) {
+        if (! $submission instanceof ComplianceSubmission) {
             return false;
         }
 
         try {
-            $provider = new MyInvoiceSubmissionProvider();
+            $provider = new MyInvoiceSubmissionProvider;
             $result = $provider->getStatus($submission->provider_reference, $credentials);
 
-            if (!($result['success'] ?? false)
+            if (! ($result['success'] ?? false)
                 && $this->isSubmissionUuidNotFoundError($result)
                 && is_string($submission->external_document_uuid)
                 && $submission->external_document_uuid !== '') {
                 $result = $provider->getStatusByDocumentUuid($submission->external_document_uuid, $credentials);
             }
 
-            if (!$result['success']) {
+            if (! $result['success']) {
                 return false;
             }
 
@@ -63,7 +63,7 @@ class MyInvoiceStatusSync implements SubmissionStatusSyncContract
                 || $submission->validation_link !== ($result['validation_link'] ?? null)
                 || $submission->status_details !== ($result['status_details'] ?? null);
 
-            if ($status === $oldStatus && !$metadataChanged) {
+            if ($status === $oldStatus && ! $metadataChanged) {
                 return false; // No change
             }
 
@@ -77,7 +77,7 @@ class MyInvoiceStatusSync implements SubmissionStatusSyncContract
                 'status_details' => $result['status_details'] ?? null,
             ];
 
-            if (!empty($result['error_code']) || !empty($result['details']['reason'])) {
+            if (! empty($result['error_code']) || ! empty($result['details']['reason'])) {
                 $submissionUpdate['error_code'] = $result['error_code'] ?? null;
                 $submissionUpdate['error_message'] = $result['details']['message']
                     ?? $result['details']['error_message']
@@ -96,10 +96,10 @@ class MyInvoiceStatusSync implements SubmissionStatusSyncContract
 
             // Handle status-specific logic
             match ($status) {
-                'accepted'  => $this->handleAcceptance($submission, $result['details'] ?? [], $oldStatus),
-                'rejected'  => $this->handleRejection($submission, $result['details'] ?? [], $oldStatus),
+                'accepted' => $this->handleAcceptance($submission, $result['details'] ?? [], $oldStatus),
+                'rejected' => $this->handleRejection($submission, $result['details'] ?? [], $oldStatus),
                 'cancelled' => $this->handleCancellation($submission, $result['details'] ?? [], $oldStatus),
-                default     => null,
+                default => null,
             };
 
             return true;
@@ -107,8 +107,9 @@ class MyInvoiceStatusSync implements SubmissionStatusSyncContract
         } catch (\Exception $e) {
             \Log::error('MyInvoice status sync failed', [
                 'submission_id' => $submission->id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -128,14 +129,14 @@ class MyInvoiceStatusSync implements SubmissionStatusSyncContract
      */
     public function handleAcceptance(object $submission, array $acceptanceDetails = [], string $previousStatus = ''): void
     {
-        if (!$submission instanceof ComplianceSubmission) {
+        if (! $submission instanceof ComplianceSubmission) {
             return;
         }
 
         $eventData = [
-            'accepted_at'     => now()->toIso8601String(),
-            'portal'          => 'myinvoice',
-            'details'         => $acceptanceDetails,
+            'accepted_at' => now()->toIso8601String(),
+            'portal' => 'myinvoice',
+            'details' => $acceptanceDetails,
         ];
         if ($previousStatus === 'rejection_declined_pending_expiry') {
             $eventData['resolution'] = 'Buyer rejection window expired; LHDN confirmed document Valid with no pending rejection.';
@@ -160,11 +161,11 @@ class MyInvoiceStatusSync implements SubmissionStatusSyncContract
      */
     public function handleRejection(object $submission, array $details, string $previousStatus = ''): void
     {
-        if (!$submission instanceof ComplianceSubmission) {
+        if (! $submission instanceof ComplianceSubmission) {
             return;
         }
 
-        $provider = new MyInvoiceSubmissionProvider();
+        $provider = new MyInvoiceSubmissionProvider;
 
         $errors = [];
         if (isset($details['validation_errors'])) {
@@ -178,30 +179,30 @@ class MyInvoiceStatusSync implements SubmissionStatusSyncContract
         }
 
         $mappedError = $provider->mapFinanceErrorCategory([
-            'code'    => $details['error_code'] ?? $details['response_code'] ?? null,
+            'code' => $details['error_code'] ?? $details['response_code'] ?? null,
             'message' => $details['message'] ?? $details['reason'] ?? 'Validation failed',
-            'reason'  => $details['reason'] ?? null,
+            'reason' => $details['reason'] ?? null,
         ]);
 
         $submission->update([
-            'error_code'       => $mappedError['code'],
-            'error_message'    => $mappedError['message'],
+            'error_code' => $mappedError['code'],
+            'error_message' => $mappedError['message'],
             'rejection_reason' => $details['reason'] ?? $mappedError['message'],
         ]);
 
         $submission->document?->update([
             'compliance_status' => 'rejected',
-            'compliance_notes'  => $mappedError['finance_action'],
-            'validation_link'   => $submission->validation_link,
+            'compliance_notes' => $mappedError['finance_action'],
+            'validation_link' => $submission->validation_link,
         ]);
 
         ComplianceEvent::log($submission->id, 'rejected', [
-            'reason'            => $details['reason'] ?? 'Validation failed',
-            'error_category'    => $mappedError['category'],
-            'finance_action'    => $mappedError['finance_action'],
+            'reason' => $details['reason'] ?? 'Validation failed',
+            'error_category' => $mappedError['category'],
+            'finance_action' => $mappedError['finance_action'],
             'validation_errors' => $errors,
-            'rejected_at'       => now()->toIso8601String(),
-            'portal'            => 'myinvoice',
+            'rejected_at' => now()->toIso8601String(),
+            'portal' => 'myinvoice',
         ], $previousStatus ?: null, 'scheduler');
     }
 
@@ -239,14 +240,14 @@ class MyInvoiceStatusSync implements SubmissionStatusSyncContract
     {
         $submission->document?->update([
             'compliance_status' => 'cancelled',
-            'compliance_notes'  => $details['reason'] ?? 'Cancelled in MyInvoice provider',
+            'compliance_notes' => $details['reason'] ?? 'Cancelled in MyInvoice provider',
         ]);
 
         ComplianceEvent::log($submission->id, 'cancel', [
-            'cancelled_at'   => now()->toIso8601String(),
-            'portal'         => 'myinvoice',
-            'details'        => $details,
-            'document_uuid'  => $submission->external_document_uuid,
+            'cancelled_at' => now()->toIso8601String(),
+            'portal' => 'myinvoice',
+            'details' => $details,
+            'document_uuid' => $submission->external_document_uuid,
         ], $previousStatus ?: null, 'scheduler');
     }
 }

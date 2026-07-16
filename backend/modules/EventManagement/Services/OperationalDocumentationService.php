@@ -4,12 +4,10 @@ namespace Modules\EventManagement\Services;
 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Collection;
-use Exception;
 
 /**
  * Operational Documentation Service
- * 
+ *
  * Creates comprehensive Phase 3 operational documentation including
  * procedures, troubleshooting guides, incident response procedures,
  * capacity planning guidance, and rollback procedures.
@@ -17,6 +15,7 @@ use Exception;
 class OperationalDocumentationService
 {
     private array $documentationStructure = [];
+
     private string $documentationPath = 'documentation/phase3';
 
     public function __construct()
@@ -38,7 +37,7 @@ class OperationalDocumentationService
             'capacity_planning_guidance' => $this->createCapacityPlanningGuidance(),
             'rollback_procedures' => $this->createRollbackProcedures(),
             'runbooks' => $this->createDetailedRunbooks(),
-            'training_materials' => $this->createTrainingMaterials()
+            'training_materials' => $this->createTrainingMaterials(),
         ];
 
         return [
@@ -46,7 +45,7 @@ class OperationalDocumentationService
             'documentation_results' => $documentationResults,
             'total_documents_created' => $this->countTotalDocuments($documentationResults),
             'documentation_path' => $this->documentationPath,
-            'timestamp' => now()
+            'timestamp' => now(),
         ];
     }
 
@@ -65,7 +64,7 @@ class OperationalDocumentationService
             'analytics_governance_operations' => $this->createAnalyticsGovernanceOperations(),
             'fraud_prevention_operations' => $this->createFraudPreventionOperations(),
             'operations_console_procedures' => $this->createOperationsConsoleProcedures(),
-            'api_governance_operations' => $this->createAPIGovernanceOperations()
+            'api_governance_operations' => $this->createAPIGovernanceOperations(),
         ];
 
         foreach ($procedures as $procedureName => $content) {
@@ -75,7 +74,7 @@ class OperationalDocumentationService
         return [
             'procedures_created' => count($procedures),
             'procedure_names' => array_keys($procedures),
-            'creation_status' => 'COMPLETED'
+            'creation_status' => 'COMPLETED',
         ];
     }
 
@@ -355,7 +354,7 @@ MARKDOWN;
             'fraud_detection_troubleshooting' => $this->createFraudDetectionTroubleshooting(),
             'offline_sync_troubleshooting' => $this->createOfflineSyncTroubleshooting(),
             'analytics_accuracy_troubleshooting' => $this->createAnalyticsAccuracyTroubleshooting(),
-            'performance_degradation_troubleshooting' => $this->createPerformanceTroubleshooting()
+            'performance_degradation_troubleshooting' => $this->createPerformanceTroubleshooting(),
         ];
 
         foreach ($guides as $guideName => $content) {
@@ -365,7 +364,7 @@ MARKDOWN;
         return [
             'guides_created' => count($guides),
             'guide_names' => array_keys($guides),
-            'creation_status' => 'COMPLETED'
+            'creation_status' => 'COMPLETED',
         ];
     }
 
@@ -567,7 +566,7 @@ MARKDOWN;
             'security_incident_response' => $this->createSecurityIncidentResponse(),
             'data_breach_response' => $this->createDataBreachResponse(),
             'performance_incident_response' => $this->createPerformanceIncidentResponse(),
-            'compliance_incident_response' => $this->createComplianceIncidentResponse()
+            'compliance_incident_response' => $this->createComplianceIncidentResponse(),
         ];
 
         foreach ($procedures as $procedureName => $content) {
@@ -577,7 +576,7 @@ MARKDOWN;
         return [
             'procedures_created' => count($procedures),
             'procedure_names' => array_keys($procedures),
-            'creation_status' => 'COMPLETED'
+            'creation_status' => 'COMPLETED',
         ];
     }
 
@@ -787,7 +786,7 @@ MARKDOWN;
             'infrastructure_capacity_planning' => $this->createInfrastructureCapacityPlanning(),
             'database_capacity_planning' => $this->createDatabaseCapacityPlanning(),
             'performance_capacity_planning' => $this->createPerformanceCapacityPlanning(),
-            'tenant_scaling_guidance' => $this->createTenantScalingGuidance()
+            'tenant_scaling_guidance' => $this->createTenantScalingGuidance(),
         ];
 
         foreach ($guidance as $guidanceName => $content) {
@@ -797,7 +796,7 @@ MARKDOWN;
         return [
             'guidance_created' => count($guidance),
             'guidance_names' => array_keys($guidance),
-            'creation_status' => 'COMPLETED'
+            'creation_status' => 'COMPLETED',
         ];
     }
 
@@ -812,7 +811,7 @@ MARKDOWN;
             'phase3_component_rollback' => $this->createPhase3ComponentRollback(),
             'database_migration_rollback' => $this->createDatabaseMigrationRollback(),
             'service_deployment_rollback' => $this->createServiceDeploymentRollback(),
-            'configuration_rollback' => $this->createConfigurationRollback()
+            'configuration_rollback' => $this->createConfigurationRollback(),
         ];
 
         foreach ($procedures as $procedureName => $content) {
@@ -822,7 +821,7 @@ MARKDOWN;
         return [
             'procedures_created' => count($procedures),
             'procedure_names' => array_keys($procedures),
-            'creation_status' => 'COMPLETED'
+            'creation_status' => 'COMPLETED',
         ];
     }
 
@@ -837,7 +836,7 @@ MARKDOWN;
             'daily_operations_runbook' => $this->createDailyOperationsRunbook(),
             'weekly_maintenance_runbook' => $this->createWeeklyMaintenanceRunbook(),
             'monthly_review_runbook' => $this->createMonthlyReviewRunbook(),
-            'emergency_procedures_runbook' => $this->createEmergencyProceduresRunbook()
+            'emergency_procedures_runbook' => $this->createEmergencyProceduresRunbook(),
         ];
 
         foreach ($runbooks as $runbookName => $content) {
@@ -847,7 +846,7 @@ MARKDOWN;
         return [
             'runbooks_created' => count($runbooks),
             'runbook_names' => array_keys($runbooks),
-            'creation_status' => 'COMPLETED'
+            'creation_status' => 'COMPLETED',
         ];
     }
 
@@ -862,7 +861,7 @@ MARKDOWN;
             'phase3_overview_training' => $this->createPhase3OverviewTraining(),
             'operational_procedures_training' => $this->createOperationalProceduresTraining(),
             'troubleshooting_training' => $this->createTroubleshootingTraining(),
-            'incident_response_training' => $this->createIncidentResponseTraining()
+            'incident_response_training' => $this->createIncidentResponseTraining(),
         ];
 
         foreach ($materials as $materialName => $content) {
@@ -872,7 +871,7 @@ MARKDOWN;
         return [
             'materials_created' => count($materials),
             'material_names' => array_keys($materials),
-            'creation_status' => 'COMPLETED'
+            'creation_status' => 'COMPLETED',
         ];
     }
 
@@ -882,15 +881,15 @@ MARKDOWN;
     private function saveDocument(string $relativePath, string $content): void
     {
         $fullPath = "{$this->documentationPath}/{$relativePath}";
-        
+
         // Ensure directory exists
         $directory = dirname($fullPath);
-        if (!Storage::exists($directory)) {
+        if (! Storage::exists($directory)) {
             Storage::makeDirectory($directory);
         }
-        
+
         Storage::put($fullPath, $content);
-        
+
         Log::info("Documentation created: {$fullPath}");
     }
 
@@ -913,6 +912,7 @@ MARKDOWN;
                 $total += $category['materials_created'];
             }
         }
+
         return $total;
     }
 
@@ -930,7 +930,7 @@ MARKDOWN;
                 'analytics_governance_operations',
                 'fraud_prevention_operations',
                 'operations_console_procedures',
-                'api_governance_operations'
+                'api_governance_operations',
             ],
             'troubleshooting_guides' => [
                 'capacity_overselling_troubleshooting',
@@ -938,68 +938,185 @@ MARKDOWN;
                 'fraud_detection_troubleshooting',
                 'offline_sync_troubleshooting',
                 'analytics_accuracy_troubleshooting',
-                'performance_degradation_troubleshooting'
+                'performance_degradation_troubleshooting',
             ],
             'incident_response' => [
                 'critical_incident_response',
                 'security_incident_response',
                 'data_breach_response',
                 'performance_incident_response',
-                'compliance_incident_response'
+                'compliance_incident_response',
             ],
             'capacity_planning' => [
                 'infrastructure_capacity_planning',
                 'database_capacity_planning',
                 'performance_capacity_planning',
-                'tenant_scaling_guidance'
+                'tenant_scaling_guidance',
             ],
             'rollback_procedures' => [
                 'phase3_component_rollback',
                 'database_migration_rollback',
                 'service_deployment_rollback',
-                'configuration_rollback'
-            ]
+                'configuration_rollback',
+            ],
         ];
     }
 
     // Placeholder methods for additional documentation content
-    private function createCapacityManagementOperations(): string { return "# Capacity Management Operations\n\n[Content to be implemented]"; }
-    private function createPIIVaultOperations(): string { return "# PII Vault Operations\n\n[Content to be implemented]"; }
-    private function createAnalyticsGovernanceOperations(): string { return "# Analytics Governance Operations\n\n[Content to be implemented]"; }
-    private function createFraudPreventionOperations(): string { return "# Fraud Prevention Operations\n\n[Content to be implemented]"; }
-    private function createOperationsConsoleProcedures(): string { return "# Operations Console Procedures\n\n[Content to be implemented]"; }
-    private function createAPIGovernanceOperations(): string { return "# API Governance Operations\n\n[Content to be implemented]"; }
-    
-    private function createPIIVaultTroubleshooting(): string { return "# PII Vault Troubleshooting\n\n[Content to be implemented]"; }
-    private function createFraudDetectionTroubleshooting(): string { return "# Fraud Detection Troubleshooting\n\n[Content to be implemented]"; }
-    private function createOfflineSyncTroubleshooting(): string { return "# Offline Sync Troubleshooting\n\n[Content to be implemented]"; }
-    private function createAnalyticsAccuracyTroubleshooting(): string { return "# Analytics Accuracy Troubleshooting\n\n[Content to be implemented]"; }
-    private function createPerformanceTroubleshooting(): string { return "# Performance Troubleshooting\n\n[Content to be implemented]"; }
-    
-    private function createSecurityIncidentResponse(): string { return "# Security Incident Response\n\n[Content to be implemented]"; }
-    private function createDataBreachResponse(): string { return "# Data Breach Response\n\n[Content to be implemented]"; }
-    private function createPerformanceIncidentResponse(): string { return "# Performance Incident Response\n\n[Content to be implemented]"; }
-    private function createComplianceIncidentResponse(): string { return "# Compliance Incident Response\n\n[Content to be implemented]"; }
-    
-    private function createInfrastructureCapacityPlanning(): string { return "# Infrastructure Capacity Planning\n\n[Content to be implemented]"; }
-    private function createDatabaseCapacityPlanning(): string { return "# Database Capacity Planning\n\n[Content to be implemented]"; }
-    private function createPerformanceCapacityPlanning(): string { return "# Performance Capacity Planning\n\n[Content to be implemented]"; }
-    private function createTenantScalingGuidance(): string { return "# Tenant Scaling Guidance\n\n[Content to be implemented]"; }
-    
-    private function createPhase3ComponentRollback(): string { return "# Phase 3 Component Rollback\n\n[Content to be implemented]"; }
-    private function createDatabaseMigrationRollback(): string { return "# Database Migration Rollback\n\n[Content to be implemented]"; }
-    private function createServiceDeploymentRollback(): string { return "# Service Deployment Rollback\n\n[Content to be implemented]"; }
-    private function createConfigurationRollback(): string { return "# Configuration Rollback\n\n[Content to be implemented]"; }
-    
-    private function createDailyOperationsRunbook(): string { return "# Daily Operations Runbook\n\n[Content to be implemented]"; }
-    private function createWeeklyMaintenanceRunbook(): string { return "# Weekly Maintenance Runbook\n\n[Content to be implemented]"; }
-    private function createMonthlyReviewRunbook(): string { return "# Monthly Review Runbook\n\n[Content to be implemented]"; }
-    private function createEmergencyProceduresRunbook(): string { return "# Emergency Procedures Runbook\n\n[Content to be implemented]"; }
-    
-    private function createPhase3OverviewTraining(): string { return "# Phase 3 Overview Training\n\n[Content to be implemented]"; }
-    private function createOperationalProceduresTraining(): string { return "# Operational Procedures Training\n\n[Content to be implemented]"; }
-    private function createTroubleshootingTraining(): string { return "# Troubleshooting Training\n\n[Content to be implemented]"; }
-    private function createIncidentResponseTraining(): string { return "# Incident Response Training\n\n[Content to be implemented]"; }
+    private function createCapacityManagementOperations(): string
+    {
+        return "# Capacity Management Operations\n\n[Content to be implemented]";
+    }
+
+    private function createPIIVaultOperations(): string
+    {
+        return "# PII Vault Operations\n\n[Content to be implemented]";
+    }
+
+    private function createAnalyticsGovernanceOperations(): string
+    {
+        return "# Analytics Governance Operations\n\n[Content to be implemented]";
+    }
+
+    private function createFraudPreventionOperations(): string
+    {
+        return "# Fraud Prevention Operations\n\n[Content to be implemented]";
+    }
+
+    private function createOperationsConsoleProcedures(): string
+    {
+        return "# Operations Console Procedures\n\n[Content to be implemented]";
+    }
+
+    private function createAPIGovernanceOperations(): string
+    {
+        return "# API Governance Operations\n\n[Content to be implemented]";
+    }
+
+    private function createPIIVaultTroubleshooting(): string
+    {
+        return "# PII Vault Troubleshooting\n\n[Content to be implemented]";
+    }
+
+    private function createFraudDetectionTroubleshooting(): string
+    {
+        return "# Fraud Detection Troubleshooting\n\n[Content to be implemented]";
+    }
+
+    private function createOfflineSyncTroubleshooting(): string
+    {
+        return "# Offline Sync Troubleshooting\n\n[Content to be implemented]";
+    }
+
+    private function createAnalyticsAccuracyTroubleshooting(): string
+    {
+        return "# Analytics Accuracy Troubleshooting\n\n[Content to be implemented]";
+    }
+
+    private function createPerformanceTroubleshooting(): string
+    {
+        return "# Performance Troubleshooting\n\n[Content to be implemented]";
+    }
+
+    private function createSecurityIncidentResponse(): string
+    {
+        return "# Security Incident Response\n\n[Content to be implemented]";
+    }
+
+    private function createDataBreachResponse(): string
+    {
+        return "# Data Breach Response\n\n[Content to be implemented]";
+    }
+
+    private function createPerformanceIncidentResponse(): string
+    {
+        return "# Performance Incident Response\n\n[Content to be implemented]";
+    }
+
+    private function createComplianceIncidentResponse(): string
+    {
+        return "# Compliance Incident Response\n\n[Content to be implemented]";
+    }
+
+    private function createInfrastructureCapacityPlanning(): string
+    {
+        return "# Infrastructure Capacity Planning\n\n[Content to be implemented]";
+    }
+
+    private function createDatabaseCapacityPlanning(): string
+    {
+        return "# Database Capacity Planning\n\n[Content to be implemented]";
+    }
+
+    private function createPerformanceCapacityPlanning(): string
+    {
+        return "# Performance Capacity Planning\n\n[Content to be implemented]";
+    }
+
+    private function createTenantScalingGuidance(): string
+    {
+        return "# Tenant Scaling Guidance\n\n[Content to be implemented]";
+    }
+
+    private function createPhase3ComponentRollback(): string
+    {
+        return "# Phase 3 Component Rollback\n\n[Content to be implemented]";
+    }
+
+    private function createDatabaseMigrationRollback(): string
+    {
+        return "# Database Migration Rollback\n\n[Content to be implemented]";
+    }
+
+    private function createServiceDeploymentRollback(): string
+    {
+        return "# Service Deployment Rollback\n\n[Content to be implemented]";
+    }
+
+    private function createConfigurationRollback(): string
+    {
+        return "# Configuration Rollback\n\n[Content to be implemented]";
+    }
+
+    private function createDailyOperationsRunbook(): string
+    {
+        return "# Daily Operations Runbook\n\n[Content to be implemented]";
+    }
+
+    private function createWeeklyMaintenanceRunbook(): string
+    {
+        return "# Weekly Maintenance Runbook\n\n[Content to be implemented]";
+    }
+
+    private function createMonthlyReviewRunbook(): string
+    {
+        return "# Monthly Review Runbook\n\n[Content to be implemented]";
+    }
+
+    private function createEmergencyProceduresRunbook(): string
+    {
+        return "# Emergency Procedures Runbook\n\n[Content to be implemented]";
+    }
+
+    private function createPhase3OverviewTraining(): string
+    {
+        return "# Phase 3 Overview Training\n\n[Content to be implemented]";
+    }
+
+    private function createOperationalProceduresTraining(): string
+    {
+        return "# Operational Procedures Training\n\n[Content to be implemented]";
+    }
+
+    private function createTroubleshootingTraining(): string
+    {
+        return "# Troubleshooting Training\n\n[Content to be implemented]";
+    }
+
+    private function createIncidentResponseTraining(): string
+    {
+        return "# Incident Response Training\n\n[Content to be implemented]";
+    }
 
     /**
      * Get documentation creation status
@@ -1010,7 +1127,7 @@ MARKDOWN;
             'documentation_path' => $this->documentationPath,
             'structure' => $this->documentationStructure,
             'total_categories' => count($this->documentationStructure),
-            'last_updated' => now()
+            'last_updated' => now(),
         ];
     }
 }

@@ -77,7 +77,7 @@ class ENT001PostingNoopSafetyTest extends TestCase
 
         $this->assertStringContainsString('Feature entitlement changes must be managed through plan configuration.', $source,
             'FeatureController::toggle must remain deny-closed to prevent unsafe runtime mutation toggles.');
-        $this->assertStringContainsString("return response()->json([", $source,
+        $this->assertStringContainsString('return response()->json([', $source,
             'FeatureController should explicitly return forbidden responses for mutation attempts.');
     }
 }

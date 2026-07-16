@@ -97,7 +97,7 @@ class RM002SubscriptionTierWarehouseModelTest extends TenantTestCase
         ]);
         $inactive->assertCreated();
 
-        $activationAttempt = $this->putJson('/api/v1/warehouses/' . $inactive->json('id'), [
+        $activationAttempt = $this->putJson('/api/v1/warehouses/'.$inactive->json('id'), [
             'is_active' => true,
         ]);
 
@@ -133,7 +133,7 @@ class RM002SubscriptionTierWarehouseModelTest extends TenantTestCase
             'updated_at' => now(),
         ]);
 
-        $response = $this->putJson('/api/v1/warehouses/' . $warehouseId, [
+        $response = $this->putJson('/api/v1/warehouses/'.$warehouseId, [
             'is_active' => false,
         ]);
 
@@ -169,7 +169,7 @@ class RM002SubscriptionTierWarehouseModelTest extends TenantTestCase
             'updated_at' => now(),
         ]);
 
-        $response = $this->deleteJson('/api/v1/warehouses/' . $warehouseId);
+        $response = $this->deleteJson('/api/v1/warehouses/'.$warehouseId);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['warehouse']);
@@ -231,7 +231,7 @@ class RM002SubscriptionTierWarehouseModelTest extends TenantTestCase
     {
         return (int) DB::table('products')->insertGetId([
             'name' => 'WH001 Test Product',
-            'sku' => 'WH001-' . Str::upper(Str::random(8)),
+            'sku' => 'WH001-'.Str::upper(Str::random(8)),
             'track_inventory' => true,
             'is_active' => true,
             'created_at' => now(),

@@ -2,40 +2,41 @@
 
 namespace Modules\EventManagement\Services;
 
+use Exception;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
-use Carbon\Carbon;
-use Exception;
 
 /**
  * CustomerHubSyncService - Task 10.4
- * 
+ *
  * Real-time synchronization across customer touchpoints with conflict resolution,
  * eventual consistency, immediate feedback, and customer notifications.
- * 
+ *
  * Requirements: 26.4, 26.5
  */
 class CustomerHubSyncService
 {
     private const CACHE_PREFIX = 'hub_sync:';
+
     private const SYNC_TIMEOUT = 30; // seconds
+
     private const MAX_RETRY_ATTEMPTS = 3;
+
     private const CONFLICT_RESOLUTION_TIMEOUT = 300; // 5 minutes
 
     /**
      * Synchronize data across all customer touchpoints
-     * 
-     * @param int $customerId Customer identifier
-     * @param array $syncData Data to synchronize
-     * @param array $options Synchronization options
+     *
+     * @param  int  $customerId  Customer identifier
+     * @param  array  $syncData  Data to synchronize
+     * @param  array  $options  Synchronization options
      * @return array Synchronization result
      */
     public function synchronizeCustomerData(int $customerId, array $syncData, array $options = []): array
     {
         try {
-            $correlationId = $options['correlation_id'] ?? 'sync_' . uniqid();
+            $correlationId = $options['correlation_id'] ?? 'sync_'.uniqid();
 
             // Get customer touchpoints
             $touchpoints = $this->getCustomerTouchpoints($customerId);
@@ -44,7 +45,7 @@ class CustomerHubSyncService
                 return [
                     'success' => true,
                     'message' => 'No touchpoints to synchronize',
-                    'correlation_id' => $correlationId
+                    'correlation_id' => $correlationId,
                 ];
             }
 
@@ -70,23 +71,23 @@ class CustomerHubSyncService
         } catch (Exception $e) {
             Log::error('Customer hub synchronization failed', [
                 'customer_id' => $customerId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Synchronization failed',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Process real-time status updates with immediate feedback
-     * 
-     * @param int $ticketId Ticket identifier
-     * @param string $newStatus New status
-     * @param array $context Update context
+     *
+     * @param  int  $ticketId  Ticket identifier
+     * @param  string  $newStatus  New status
+     * @param  array  $context  Update context
      * @return array Update processing result
      */
     public function processRealTimeStatusUpdate(int $ticketId, string $newStatus, array $context = []): array
@@ -96,7 +97,7 @@ class CustomerHubSyncService
 
             // Get customer ID
             $customerId = $this->getTicketCustomerId($ticketId);
-            if (!$customerId) {
+            if (! $customerId) {
                 throw new Exception('Ticket not found');
             }
 
@@ -106,7 +107,7 @@ class CustomerHubSyncService
                 'ticket_id' => $ticketId,
                 'new_status' => $newStatus,
                 'context' => $context,
-                'timestamp' => now()->toISOString()
+                'timestamp' => now()->toISOString(),
             ];
 
             // Queue immediate synchronization
@@ -123,7 +124,7 @@ class CustomerHubSyncService
             Log::info('Real-time status update processed', [
                 'ticket_id' => $ticketId,
                 'customer_id' => $customerId,
-                'new_status' => $newStatus
+                'new_status' => $newStatus,
             ]);
 
             return [
@@ -132,7 +133,7 @@ class CustomerHubSyncService
                 'customer_id' => $customerId,
                 'immediate_result' => $immediateResult,
                 'sync_queued' => true,
-                'message' => 'Status update processed and sync initiated'
+                'message' => 'Status update processed and sync initiated',
             ];
 
         } catch (Exception $e) {
@@ -140,24 +141,24 @@ class CustomerHubSyncService
             Log::error('Real-time status update failed', [
                 'ticket_id' => $ticketId,
                 'new_status' => $newStatus,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Status update failed',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Resolve synchronization conflicts with customer notification
-     * 
-     * @param string $conflictId Conflict identifier
-     * @param string $resolutionStrategy Resolution strategy
-     * @param array $resolutionData Resolution data
-     * @param int $resolvedBy Staff member resolving conflict
+     *
+     * @param  string  $conflictId  Conflict identifier
+     * @param  string  $resolutionStrategy  Resolution strategy
+     * @param  array  $resolutionData  Resolution data
+     * @param  int  $resolvedBy  Staff member resolving conflict
      * @return array Resolution result
      */
     public function resolveSyncConflict(string $conflictId, string $resolutionStrategy, array $resolutionData, int $resolvedBy): array
@@ -167,7 +168,7 @@ class CustomerHubSyncService
 
             // Get conflict details
             $conflict = $this->getSyncConflict($conflictId);
-            if (!$conflict) {
+            if (! $conflict) {
                 throw new Exception('Conflict not found');
             }
 
@@ -191,7 +192,7 @@ class CustomerHubSyncService
             Log::info('Sync conflict resolved', [
                 'conflict_id' => $conflictId,
                 'strategy' => $resolutionStrategy,
-                'resolved_by' => $resolvedBy
+                'resolved_by' => $resolvedBy,
             ]);
 
             return [
@@ -200,29 +201,29 @@ class CustomerHubSyncService
                 'resolution_strategy' => $resolutionStrategy,
                 'resolution_result' => $resolutionResult,
                 'resync_result' => $resyncResult,
-                'message' => 'Conflict resolved and data re-synchronized'
+                'message' => 'Conflict resolved and data re-synchronized',
             ];
 
         } catch (Exception $e) {
             DB::rollBack();
             Log::error('Sync conflict resolution failed', [
                 'conflict_id' => $conflictId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Conflict resolution failed',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Get synchronization status for customer
-     * 
-     * @param int $customerId Customer identifier
-     * @param array $options Status options
+     *
+     * @param  int  $customerId  Customer identifier
+     * @param  array  $options  Status options
      * @return array Synchronization status
      */
     public function getSynchronizationStatus(int $customerId, array $options = []): array
@@ -252,29 +253,29 @@ class CustomerHubSyncService
                     'pending_operations' => $pendingSyncs,
                     'active_conflicts' => $activeConflicts,
                     'touchpoint_status' => $touchpointStatus,
-                    'last_updated' => now()->toISOString()
-                ]
+                    'last_updated' => now()->toISOString(),
+                ],
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to get synchronization status', [
                 'customer_id' => $customerId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to get sync status',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Force synchronization across all touchpoints
-     * 
-     * @param int $customerId Customer identifier
-     * @param array $options Force sync options
+     *
+     * @param  int  $customerId  Customer identifier
+     * @param  array  $options  Force sync options
      * @return array Force sync result
      */
     public function forceSynchronization(int $customerId, array $options = []): array
@@ -288,21 +289,21 @@ class CustomerHubSyncService
                 'type' => 'full_sync',
                 'customer_data' => $customerData,
                 'force_sync' => true,
-                'timestamp' => now()->toISOString()
+                'timestamp' => now()->toISOString(),
             ];
 
             // Perform synchronization with force flag
             $syncOptions = array_merge($options, [
                 'force' => true,
                 'priority' => 'urgent',
-                'notify_customer' => true
+                'notify_customer' => true,
             ]);
 
             $result = $this->synchronizeCustomerData($customerId, $syncData, $syncOptions);
 
             Log::info('Force synchronization completed', [
                 'customer_id' => $customerId,
-                'success' => $result['success']
+                'success' => $result['success'],
             ]);
 
             return $result;
@@ -310,21 +311,21 @@ class CustomerHubSyncService
         } catch (Exception $e) {
             Log::error('Force synchronization failed', [
                 'customer_id' => $customerId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Force synchronization failed',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Process sync queue (background job)
-     * 
-     * @param array $options Processing options
+     *
+     * @param  array  $options  Processing options
      * @return array Processing result
      */
     public function processSyncQueue(array $options = []): array
@@ -362,7 +363,7 @@ class CustomerHubSyncService
                         $failureCount++;
                         Log::error('Sync operation processing failed', [
                             'operation_id' => $operation->id,
-                            'error' => $e->getMessage()
+                            'error' => $e->getMessage(),
                         ]);
                     }
                 }
@@ -373,18 +374,18 @@ class CustomerHubSyncService
                 'processed_count' => $processedCount,
                 'success_count' => $successCount,
                 'failure_count' => $failureCount,
-                'processing_time' => time() - $startTime
+                'processing_time' => time() - $startTime,
             ];
 
         } catch (Exception $e) {
             Log::error('Sync queue processing failed', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Queue processing failed',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }

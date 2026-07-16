@@ -1,21 +1,21 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Modules\EventManagement\Http\Controllers\EventController;
-use Modules\EventManagement\Http\Controllers\BookingController;
-use Modules\EventManagement\Http\Controllers\TicketController;
 use Modules\EventManagement\Http\Controllers\AnalyticsController;
-use Modules\EventManagement\Http\Controllers\FraudDetectionController;
 use Modules\EventManagement\Http\Controllers\AntiAbuseController;
+use Modules\EventManagement\Http\Controllers\BiddingController;
+use Modules\EventManagement\Http\Controllers\BookingController;
+use Modules\EventManagement\Http\Controllers\EventController;
+use Modules\EventManagement\Http\Controllers\EventOperationsController;
+use Modules\EventManagement\Http\Controllers\EventQueueController;
+use Modules\EventManagement\Http\Controllers\FraudDetectionController;
+use Modules\EventManagement\Http\Controllers\IdentityVerificationController;
+use Modules\EventManagement\Http\Controllers\IncidentController;
 use Modules\EventManagement\Http\Controllers\ManualReviewController;
 use Modules\EventManagement\Http\Controllers\OperationalCheckInController;
-use Modules\EventManagement\Http\Controllers\EventOperationsController;
-use Modules\EventManagement\Http\Controllers\StaffController;
-use Modules\EventManagement\Http\Controllers\IncidentController;
-use Modules\EventManagement\Http\Controllers\IdentityVerificationController;
 use Modules\EventManagement\Http\Controllers\PurchaseController;
-use Modules\EventManagement\Http\Controllers\BiddingController;
-use Modules\EventManagement\Http\Controllers\EventQueueController;
+use Modules\EventManagement\Http\Controllers\StaffController;
+use Modules\EventManagement\Http\Controllers\TicketController;
 use Modules\EventManagement\Http\Controllers\WaitingRoomController;
 
 /*
@@ -591,12 +591,12 @@ Route::prefix('customer')->middleware(['auth:sanctum', 'request.validation', 'en
 
     // Feedback routes
     Route::prefix('feedback')->group(function () {
-        Route::get('/types',              [Modules\EventManagement\Http\Controllers\FeedbackController::class, 'getFeedbackTypes']);
-        Route::get('/rating-categories',  [Modules\EventManagement\Http\Controllers\FeedbackController::class, 'getRatingCategories']);
-        Route::get('/my-feedback',        [Modules\EventManagement\Http\Controllers\FeedbackController::class, 'getMyFeedback']);
-        Route::get('/stats/{eventId}',    [Modules\EventManagement\Http\Controllers\FeedbackController::class, 'getFeedbackStats']);
-        Route::get('/',                   [Modules\EventManagement\Http\Controllers\FeedbackController::class, 'getFeedback']);
-        Route::post('/',                  [Modules\EventManagement\Http\Controllers\FeedbackController::class, 'submitFeedback']);
+        Route::get('/types', [Modules\EventManagement\Http\Controllers\FeedbackController::class, 'getFeedbackTypes']);
+        Route::get('/rating-categories', [Modules\EventManagement\Http\Controllers\FeedbackController::class, 'getRatingCategories']);
+        Route::get('/my-feedback', [Modules\EventManagement\Http\Controllers\FeedbackController::class, 'getMyFeedback']);
+        Route::get('/stats/{eventId}', [Modules\EventManagement\Http\Controllers\FeedbackController::class, 'getFeedbackStats']);
+        Route::get('/', [Modules\EventManagement\Http\Controllers\FeedbackController::class, 'getFeedback']);
+        Route::post('/', [Modules\EventManagement\Http\Controllers\FeedbackController::class, 'submitFeedback']);
         Route::post('/{feedbackId}/vote', [Modules\EventManagement\Http\Controllers\FeedbackController::class, 'voteFeedback']);
     });
 });

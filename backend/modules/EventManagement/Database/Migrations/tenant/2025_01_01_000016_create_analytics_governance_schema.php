@@ -22,7 +22,7 @@ return new class extends Migration
             $table->integer('version')->default(1);
             $table->boolean('is_active')->default(true);
             $table->timestamps();
-            
+
             $table->index(['is_active', 'kpi_name'], 'idx_active_name');
         });
 
@@ -37,7 +37,7 @@ return new class extends Migration
             $table->json('actual_result')->nullable();
             $table->enum('status', ['passed', 'failed', 'warning']);
             $table->timestamp('checked_at')->useCurrent();
-            
+
             $table->index(['status', 'checked_at'], 'idx_status_checked');
             $table->index('target_table', 'idx_target_table');
         });
@@ -50,7 +50,7 @@ return new class extends Migration
             $table->string('source_column', 100)->nullable();
             $table->json('transformation_logic')->nullable();
             $table->timestamp('last_updated')->useCurrent();
-            
+
             $table->foreign('kpi_name')->references('kpi_name')->on('kpi_definitions')->onDelete('cascade');
             $table->index(['kpi_name', 'source_table'], 'idx_kpi_source');
         });
@@ -64,7 +64,7 @@ return new class extends Migration
             $table->timestamp('calculated_at')->useCurrent();
             $table->timestamp('expires_at');
             $table->boolean('is_dirty')->default(false);
-            
+
             $table->foreign('kpi_name')->references('kpi_name')->on('kpi_definitions')->onDelete('cascade');
             $table->index(['expires_at', 'is_dirty'], 'idx_expires_dirty');
             $table->index('calculated_at', 'idx_calculated_at');

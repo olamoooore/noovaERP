@@ -2,21 +2,21 @@
 
 namespace Modules\EventManagement\Tests\PropertyBased;
 
-use Tests\TestCase;
-use Modules\EventManagement\Services\AccessControlService;
 use App\Models\User;
 use Mockery;
+use Modules\EventManagement\Services\AccessControlService;
+use Tests\TestCase;
 
 /**
  * Property Test 11: Inventory Access Control
- * 
+ *
  * Feature: erp-event-management-phase4
- * 
+ *
  * Validates Requirements: 6.4, 6.5
- * 
+ *
  * This property-based test ensures that non-staff users (customers) cannot
  * access inventory data, while staff users can.
- * 
+ *
  * Property Tested:
  * For any user without staff role, attempting to access inventory data should
  * fail with an authorization error.
@@ -28,19 +28,19 @@ class InventoryAccessControlTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         // Initialize service
-        $this->accessControlService = new AccessControlService();
+        $this->accessControlService = new AccessControlService;
     }
 
     /**
      * Property 11: Inventory Access Control
-     * 
+     *
      * For any user without staff role, attempting to access inventory data
      * should fail with an authorization error.
-     * 
+     *
      * Validates: Requirements 6.4, 6.5
-     * 
+     *
      * @test
      */
     public function property_non_staff_users_cannot_access_inventory_data(): void
@@ -53,10 +53,10 @@ class InventoryAccessControlTest extends TestCase
             try {
                 // Generate customer user (non-staff) - mock user without staff roles
                 $customerUser = $this->generateMockCustomerUser();
-                
+
                 // Attempt to check if user can view inventory
                 $canViewInventory = $this->accessControlService->canViewInventory($customerUser);
-                
+
                 // Assert access is denied
                 if ($canViewInventory === false) {
                     $passedIterations++;
@@ -69,7 +69,7 @@ class InventoryAccessControlTest extends TestCase
                         'message' => 'Customer user should not be able to view inventory',
                     ];
                 }
-                
+
             } catch (\Exception $e) {
                 $failures[] = [
                     'iteration' => $i + 1,
@@ -80,21 +80,21 @@ class InventoryAccessControlTest extends TestCase
         }
 
         $this->assertEmpty($failures,
-            "Inventory access control failures in " . count($failures) . " out of {$iterations} iterations:\n" .
+            'Inventory access control failures in '.count($failures)." out of {$iterations} iterations:\n".
             json_encode($failures, JSON_PRETTY_PRINT)
         );
-        
+
         $this->assertEquals($iterations, $passedIterations,
-            "All iterations should pass inventory access control test"
+            'All iterations should pass inventory access control test'
         );
     }
 
     /**
      * Additional test: Staff users CAN access inventory data
-     * 
+     *
      * This complements the main property test by verifying that staff users
      * are correctly granted access.
-     * 
+     *
      * @test
      */
     public function property_staff_users_can_access_inventory_data(): void
@@ -107,10 +107,10 @@ class InventoryAccessControlTest extends TestCase
             try {
                 // Generate staff user - mock user with staff roles
                 $staffUser = $this->generateMockStaffUser();
-                
+
                 // Attempt to check if user can view inventory
                 $canViewInventory = $this->accessControlService->canViewInventory($staffUser);
-                
+
                 // Assert access is granted
                 if ($canViewInventory === true) {
                     $passedIterations++;
@@ -123,7 +123,7 @@ class InventoryAccessControlTest extends TestCase
                         'message' => 'Staff user should be able to view inventory',
                     ];
                 }
-                
+
             } catch (\Exception $e) {
                 $failures[] = [
                     'iteration' => $i + 1,
@@ -134,12 +134,12 @@ class InventoryAccessControlTest extends TestCase
         }
 
         $this->assertEmpty($failures,
-            "Staff inventory access failures in " . count($failures) . " out of {$iterations} iterations:\n" .
+            'Staff inventory access failures in '.count($failures)." out of {$iterations} iterations:\n".
             json_encode($failures, JSON_PRETTY_PRINT)
         );
-        
+
         $this->assertEquals($iterations, $passedIterations,
-            "All iterations should pass staff inventory access test"
+            'All iterations should pass staff inventory access test'
         );
     }
 
@@ -156,7 +156,7 @@ class InventoryAccessControlTest extends TestCase
             ->with(['staff', 'admin', 'super-admin'])
             ->andReturn(false);
         $user->id = rand(1000, 9999);
-        
+
         return $user;
     }
 
@@ -175,7 +175,7 @@ class InventoryAccessControlTest extends TestCase
             ->andReturn(true);
         $user->id = rand(1000, 9999);
         $user->role = $randomRole;
-        
+
         return $user;
     }
 }

@@ -50,10 +50,10 @@ class VendorCreditNote extends Model
         parent::boot();
 
         static::creating(function ($creditNote) {
-            if (!$creditNote->credit_note_number) {
+            if (! $creditNote->credit_note_number) {
                 $creditNote->credit_note_number = static::generateCreditNoteNumber();
             }
-            if (!$creditNote->created_by) {
+            if (! $creditNote->created_by) {
                 $creditNote->created_by = TenantUserHelper::resolveTenantUserId();
             }
         });
@@ -104,7 +104,8 @@ class VendorCreditNote extends Model
     {
         $latest = static::orderBy('id', 'desc')->first();
         $number = $latest ? (int) substr($latest->credit_note_number, -4) + 1 : 1;
-        return 'VCN-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        return 'VCN-'.date('Y').'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 
     public function calculateTotals(): void

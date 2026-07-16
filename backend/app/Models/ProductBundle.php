@@ -53,6 +53,7 @@ class ProductBundle extends Model
     {
         $basePrice = $this->componentProduct->price * $this->quantity;
         $discount = $basePrice * ($this->discount_percent / 100);
+
         return $basePrice - $discount;
     }
 

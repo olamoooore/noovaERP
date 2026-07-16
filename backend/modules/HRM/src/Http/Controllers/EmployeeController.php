@@ -4,10 +4,10 @@ namespace Modules\HRM\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
-use Modules\HRM\Models\Employee;
 use Modules\HRM\Http\Requests\StoreEmployeeRequest;
 use Modules\HRM\Http\Requests\UpdateEmployeeRequest;
 use Modules\HRM\Http\Resources\EmployeeResource;
+use Modules\HRM\Models\Employee;
 
 class EmployeeController extends Controller
 {

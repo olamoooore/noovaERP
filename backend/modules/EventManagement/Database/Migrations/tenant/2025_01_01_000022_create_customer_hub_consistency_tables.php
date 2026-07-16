@@ -6,11 +6,11 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Migration: Create Customer Hub Consistency Tables - Task 10.1
- * 
+ *
  * Creates comprehensive customer hub consistency database schema with ticket
  * status tracking, single source of truth for ticket validity, status change
  * audit trails, and synchronization support across all customer touchpoints.
- * 
+ *
  * Requirements: 26.1, 26.2
  */
 class CreateCustomerHubConsistencyTables extends Migration
@@ -39,7 +39,7 @@ class CreateCustomerHubConsistencyTables extends Migration
                 'refunded',
                 'expired',
                 'suspended',
-                'invalid'
+                'invalid',
             ])->index();
             $table->enum('previous_status', [
                 'pending_payment',
@@ -53,7 +53,7 @@ class CreateCustomerHubConsistencyTables extends Migration
                 'refunded',
                 'expired',
                 'suspended',
-                'invalid'
+                'invalid',
             ])->nullable()->index();
             $table->timestamp('status_changed_at')->index();
             $table->bigInteger('changed_by_staff_id')->nullable()->index();
@@ -66,7 +66,7 @@ class CreateCustomerHubConsistencyTables extends Migration
                 'payment_processor',
                 'check_in_system',
                 'refund_system',
-                'notification_system'
+                'notification_system',
             ])->index();
             $table->json('status_metadata'); // Additional status-specific data
             $table->json('change_context'); // Context of the status change
@@ -76,7 +76,7 @@ class CreateCustomerHubConsistencyTables extends Migration
             $table->json('validation_data')->nullable(); // Validation checks performed
             $table->string('external_reference', 255)->nullable()->index(); // External system reference
             $table->timestamps();
-            
+
             $table->index(['ticket_id', 'status_changed_at']);
             $table->index(['customer_id', 'status']);
             $table->index(['event_id', 'status']);
@@ -98,7 +98,7 @@ class CreateCustomerHubConsistencyTables extends Migration
                 'suspended',
                 'revoked',
                 'expired',
-                'pending_validation'
+                'pending_validation',
             ])->default('valid')->index();
             $table->timestamp('valid_from')->index();
             $table->timestamp('valid_until')->nullable()->index();
@@ -114,7 +114,7 @@ class CreateCustomerHubConsistencyTables extends Migration
             $table->string('delivery_method', 100)->nullable()->index(); // email, sms, app, etc.
             $table->json('delivery_status')->nullable(); // Delivery confirmation details
             $table->timestamps();
-            
+
             $table->index(['validity_status', 'valid_from']);
             $table->index(['valid_until', 'validity_status']);
             $table->index(['current_owner_id', 'validity_status']);
@@ -134,7 +134,7 @@ class CreateCustomerHubConsistencyTables extends Migration
                 'completed',
                 'failed',
                 'partial',
-                'conflict'
+                'conflict',
             ])->default('pending')->index();
             $table->timestamp('sync_initiated_at')->index();
             $table->timestamp('sync_completed_at')->nullable();
@@ -147,7 +147,7 @@ class CreateCustomerHubConsistencyTables extends Migration
             $table->boolean('requires_manual_intervention')->default(false)->index();
             $table->json('conflict_resolution')->nullable(); // Conflict resolution data
             $table->timestamps();
-            
+
             $table->index(['customer_id', 'sync_status']);
             $table->index(['touchpoint_type', 'sync_status']);
             $table->index(['sync_initiated_at', 'sync_status']);
@@ -176,7 +176,7 @@ class CreateCustomerHubConsistencyTables extends Migration
                 'read',
                 'failed',
                 'bounced',
-                'unsubscribed'
+                'unsubscribed',
             ])->default('pending')->index();
             $table->timestamp('scheduled_at')->nullable()->index();
             $table->timestamp('sent_at')->nullable();
@@ -189,7 +189,7 @@ class CreateCustomerHubConsistencyTables extends Migration
             $table->string('external_message_id', 255)->nullable()->index();
             $table->json('error_details')->nullable();
             $table->timestamps();
-            
+
             $table->index(['customer_id', 'delivery_status']);
             $table->index(['notification_type', 'delivery_status']);
             $table->index(['delivery_channel', 'delivery_status']);
@@ -217,7 +217,7 @@ class CreateCustomerHubConsistencyTables extends Migration
             $table->integer('actions_performed')->default(0);
             $table->json('activity_log')->nullable(); // Log of activities during session
             $table->timestamps();
-            
+
             $table->index(['customer_id', 'session_status']);
             $table->index(['session_started_at', 'session_status']);
             $table->index(['last_activity_at', 'session_status']);
@@ -235,7 +235,7 @@ class CreateCustomerHubConsistencyTables extends Migration
                 'touchpoint_inconsistency',
                 'external_system_mismatch',
                 'timing_conflict',
-                'permission_violation'
+                'permission_violation',
             ])->index();
             $table->json('conflicting_changes'); // Details of conflicting changes
             $table->json('current_state'); // Current system state
@@ -246,14 +246,14 @@ class CreateCustomerHubConsistencyTables extends Migration
                 'merge_changes',
                 'manual_resolution',
                 'rollback_changes',
-                'escalate_to_admin'
+                'escalate_to_admin',
             ])->nullable()->index();
             $table->enum('conflict_status', [
                 'detected',
                 'analyzing',
                 'resolved',
                 'escalated',
-                'ignored'
+                'ignored',
             ])->default('detected')->index();
             $table->bigInteger('resolved_by_staff_id')->nullable()->index();
             $table->timestamp('resolved_at')->nullable();
@@ -263,7 +263,7 @@ class CreateCustomerHubConsistencyTables extends Migration
             $table->boolean('requires_customer_notification')->default(false)->index();
             $table->timestamp('detected_at')->index();
             $table->timestamps();
-            
+
             $table->index(['conflict_status', 'resolution_priority']);
             $table->index(['ticket_id', 'conflict_type']);
             $table->index(['customer_id', 'conflict_status']);
@@ -286,7 +286,7 @@ class CreateCustomerHubConsistencyTables extends Migration
                 'immediate',
                 'daily_digest',
                 'weekly_digest',
-                'minimal'
+                'minimal',
             ])->default('immediate')->index();
             $table->json('accessibility_settings')->nullable(); // Accessibility preferences
             $table->boolean('marketing_communications')->default(false)->index();
@@ -308,7 +308,7 @@ class CreateCustomerHubConsistencyTables extends Migration
                 'processing',
                 'completed',
                 'failed',
-                'partial'
+                'partial',
             ])->default('pending')->index();
             $table->timestamp('queued_at')->index();
             $table->timestamp('processing_started_at')->nullable();
@@ -319,7 +319,7 @@ class CreateCustomerHubConsistencyTables extends Migration
             $table->timestamp('next_retry_at')->nullable()->index();
             $table->string('correlation_id', 255)->nullable()->index();
             $table->timestamps();
-            
+
             $table->index(['sync_status', 'priority']);
             $table->index(['queued_at', 'sync_status']);
             $table->index(['customer_id', 'sync_status']);

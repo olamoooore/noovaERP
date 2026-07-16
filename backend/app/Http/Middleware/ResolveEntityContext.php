@@ -36,7 +36,7 @@ class ResolveEntityContext
     private function getUserDefaultEntity(Request $request): ?int
     {
         $user = $request->user();
-        if (!$user || !Schema::hasTable('legal_entities')) {
+        if (! $user || ! Schema::hasTable('legal_entities')) {
             return null;
         }
 
@@ -59,7 +59,7 @@ class ResolveEntityContext
 
     private function getDefaultBook(?int $entityId): ?int
     {
-        if (!$entityId || !Schema::hasTable('entity_books')) {
+        if (! $entityId || ! Schema::hasTable('entity_books')) {
             return null;
         }
 

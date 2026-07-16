@@ -35,7 +35,7 @@ trait TenantSafeJob
             ]);
 
             throw new \RuntimeException(
-                'Tenant context is required for ' . static::class . '. Job rejected - tenant enumeration is not allowed.'
+                'Tenant context is required for '.static::class.'. Job rejected - tenant enumeration is not allowed.'
             );
         }
 
@@ -54,7 +54,7 @@ trait TenantSafeJob
     {
         $tenantId = $this->getTenantId() ?? 'no-tenant';
 
-        return $tenantId . ':' . $baseId;
+        return $tenantId.':'.$baseId;
     }
 
     /**
@@ -66,7 +66,7 @@ trait TenantSafeJob
         $tenantId = $this->getTenantId();
 
         if ($tenantId) {
-            $tags[] = 'tenant:' . $tenantId;
+            $tags[] = 'tenant:'.$tenantId;
         }
 
         return $tags;

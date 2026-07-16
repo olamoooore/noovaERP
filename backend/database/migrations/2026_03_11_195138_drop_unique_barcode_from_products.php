@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        if (!Schema::hasTable('products')) {
+        if (! Schema::hasTable('products')) {
             return;
         }
 
@@ -24,7 +24,7 @@ return new class extends Migration
             ->where('indexname', 'products_barcode_unique')
             ->exists();
 
-        if (!$exists) {
+        if (! $exists) {
             return;
         }
 

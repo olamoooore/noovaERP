@@ -2,8 +2,8 @@
 
 namespace Modules\EventManagement\Http\Requests;
 
-use Modules\EventManagement\Models\Booking;
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\EventManagement\Models\Booking;
 
 class CreateBookingRequest extends FormRequest
 {

@@ -129,12 +129,12 @@ class WS06ChannelRuntimeConvergenceTest extends TestCase
 
         // Both reverseOrder and adjustStock (stock restoration) must be in the same method scope
         $createReturnStart = strpos($src, 'public function createReturn(');
-        $transactionPos    = strpos($src, 'DB::transaction(', $createReturnStart);
-        $reversePos        = strpos($src, 'reverseOrder(', $createReturnStart);
-        $adjustStockPos    = strpos($src, "type: 'return'", $createReturnStart);
+        $transactionPos = strpos($src, 'DB::transaction(', $createReturnStart);
+        $reversePos = strpos($src, 'reverseOrder(', $createReturnStart);
+        $adjustStockPos = strpos($src, "type: 'return'", $createReturnStart);
 
         $this->assertNotFalse($transactionPos, 'DB::transaction must appear inside createReturn()');
-        $this->assertNotFalse($reversePos,     'reverseOrder must appear inside createReturn() scope');
+        $this->assertNotFalse($reversePos, 'reverseOrder must appear inside createReturn() scope');
         $this->assertNotFalse($adjustStockPos, 'stock return adjustStock must appear inside createReturn() scope');
     }
 
@@ -294,7 +294,7 @@ class WS06ChannelRuntimeConvergenceTest extends TestCase
             $this->assertStringContainsString(
                 $canonicalClass,
                 $src,
-                basename($file) . " must delegate to $canonicalClass"
+                basename($file)." must delegate to $canonicalClass"
             );
         }
     }
@@ -311,14 +311,14 @@ class WS06ChannelRuntimeConvergenceTest extends TestCase
         ];
 
         foreach ($paths as $file) {
-            if (!file_exists($file)) {
+            if (! file_exists($file)) {
                 $this->markTestIncomplete("File not found: $file — skipping path check");
             }
             $src = file_get_contents($file);
             $this->assertStringContainsString(
                 $canonicalClass,
                 $src,
-                basename($file) . " must delegate to $canonicalClass"
+                basename($file)." must delegate to $canonicalClass"
             );
         }
     }
@@ -352,10 +352,10 @@ class WS06ChannelRuntimeConvergenceTest extends TestCase
         );
 
         // postPaidOrder (GL) must appear before adjustStock (stock) in source
-        $glPos    = strpos($src, 'postPaidOrder(');
+        $glPos = strpos($src, 'postPaidOrder(');
         $stockPos = strpos($src, 'adjustStock(');
 
-        $this->assertNotFalse($glPos,    'PosPaymentCompletionService must call postPaidOrder()');
+        $this->assertNotFalse($glPos, 'PosPaymentCompletionService must call postPaidOrder()');
         $this->assertNotFalse($stockPos, 'PosPaymentCompletionService must call adjustStock()');
         $this->assertLessThan(
             $stockPos,
@@ -372,10 +372,10 @@ class WS06ChannelRuntimeConvergenceTest extends TestCase
         );
 
         // postPaidOrder (GL) must call PostingEngine::post before deductStock
-        $glPos    = strpos($src, 'postingEngine->post(');
+        $glPos = strpos($src, 'postingEngine->post(');
         $stockPos = strpos($src, 'deductStock(');
 
-        $this->assertNotFalse($glPos,    'WebOrderPostingService must call PostingEngine::post()');
+        $this->assertNotFalse($glPos, 'WebOrderPostingService must call PostingEngine::post()');
         $this->assertNotFalse($stockPos, 'WebOrderPostingService must have deductStock()');
         $this->assertLessThan(
             $stockPos,

@@ -23,11 +23,11 @@ class TenantQuoteSnapshot extends Model
     ];
 
     protected $casts = [
-        'line_items'      => 'array',
-        'subtotal_cents'  => 'integer',
-        'discount_cents'  => 'integer',
-        'total_cents'     => 'integer',
-        'generated_at'    => 'datetime',
+        'line_items' => 'array',
+        'subtotal_cents' => 'integer',
+        'discount_cents' => 'integer',
+        'total_cents' => 'integer',
+        'generated_at' => 'datetime',
     ];
 
     // ── Relations ─────────────────────────────────────────────────────────────
@@ -58,16 +58,16 @@ class TenantQuoteSnapshot extends Model
 
     public function formattedSubtotal(): string
     {
-        return '$' . number_format($this->subtotal_cents / 100, 2);
+        return '$'.number_format($this->subtotal_cents / 100, 2);
     }
 
     public function formattedDiscount(): string
     {
-        return '$' . number_format($this->discount_cents / 100, 2);
+        return '$'.number_format($this->discount_cents / 100, 2);
     }
 
     public function formattedTotal(): string
     {
-        return '$' . number_format($this->total_cents / 100, 2);
+        return '$'.number_format($this->total_cents / 100, 2);
     }
 }

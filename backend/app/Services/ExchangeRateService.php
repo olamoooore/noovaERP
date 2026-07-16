@@ -2,9 +2,8 @@
 
 namespace App\Services;
 
-use App\Models\ExchangeRate;
 use App\Models\Currency;
-use Carbon\Carbon;
+use App\Models\ExchangeRate;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -30,7 +29,7 @@ class ExchangeRateService
 
         $rate = ExchangeRate::getLatestRate($fromCurrency, $toCurrency, $asOfDate);
 
-        if (!$rate) {
+        if (! $rate) {
             // Try inverse rate
             $inverseRate = ExchangeRate::getLatestRate($toCurrency, $fromCurrency, $asOfDate);
             if ($inverseRate) {
@@ -39,7 +38,7 @@ class ExchangeRateService
                     'to_currency' => $toCurrency,
                     'rate' => 1 / (float) $inverseRate->rate,
                     'effective_date' => $inverseRate->effective_date->format('Y-m-d'),
-                    'source' => 'inverse_' . $inverseRate->source,
+                    'source' => 'inverse_'.$inverseRate->source,
                 ];
             }
         }
@@ -65,7 +64,7 @@ class ExchangeRateService
 
         $rate = $this->getLatestRate($fromCurrency, $toCurrency, $asOfDate);
 
-        if (!$rate) {
+        if (! $rate) {
             throw new \Exception("No exchange rate found for {$fromCurrency} to {$toCurrency}");
         }
 
@@ -117,14 +116,14 @@ class ExchangeRateService
             // Example using exchangerate-api.com
             // You would need to sign up for an API key
             $apiKey = env('EXCHANGE_RATE_API_KEY');
-            
-            if (!$apiKey) {
+
+            if (! $apiKey) {
                 throw new \Exception('Exchange rate API key not configured');
             }
 
             $response = Http::get("https://v6.exchangerate-api.com/v6/{$apiKey}/latest/{$baseCurrency}");
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 throw new \Exception('Failed to fetch rates from API');
             }
 
@@ -133,11 +132,12 @@ class ExchangeRateService
             $effectiveDate = now()->format('Y-m-d');
 
             foreach ($targetCurrencies as $targetCurrency) {
-                if (!isset($rates[$targetCurrency])) {
+                if (! isset($rates[$targetCurrency])) {
                     $results[$targetCurrency] = [
                         'success' => false,
                         'message' => 'Rate not available from API',
                     ];
+
                     continue;
                 }
 
@@ -161,7 +161,7 @@ class ExchangeRateService
             }
 
         } catch (\Exception $e) {
-            throw new \Exception('Failed to sync rates: ' . $e->getMessage());
+            throw new \Exception('Failed to sync rates: '.$e->getMessage());
         }
 
         return $results;
@@ -196,6 +196,7 @@ class ExchangeRateService
         }
 
         $rate = $this->getLatestRate($fromCurrency, $toCurrency, $asOfDate);
+
         return $rate !== null;
     }
 
@@ -205,7 +206,7 @@ class ExchangeRateService
     public function getRateTrend(string $fromCurrency, string $toCurrency, int $days = 30): array
     {
         $startDate = now()->subDays($days)->format('Y-m-d');
-        
+
         $rates = ExchangeRate::where('from_currency', $fromCurrency)
             ->where('to_currency', $toCurrency)
             ->where('effective_date', '>=', $startDate)

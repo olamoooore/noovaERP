@@ -15,9 +15,9 @@ class StorePayrollRunRequest extends FormRequest
     {
         return [
             'period_start' => ['required', 'date'],
-            'period_end'   => ['required', 'date', 'after:period_start'],
-            'currency'     => ['nullable', 'string', 'size:3'],
-            'notes'        => ['nullable', 'string'],
+            'period_end' => ['required', 'date', 'after:period_start'],
+            'currency' => ['nullable', 'string', 'size:3'],
+            'notes' => ['nullable', 'string'],
         ];
     }
 }

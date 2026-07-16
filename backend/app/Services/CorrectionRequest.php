@@ -2,8 +2,6 @@
 
 namespace App\Services;
 
-use Illuminate\Routing\Redirector;
-
 class CorrectionRequest
 {
     public function __construct(

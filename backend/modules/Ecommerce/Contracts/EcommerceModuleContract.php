@@ -9,12 +9,35 @@ use App\Modules\Contracts\BaseModuleContract;
  */
 class EcommerceModuleContract extends BaseModuleContract
 {
-    public function getKey(): string { return 'ecommerce'; }
-    public function getName(): string { return 'Website'; }
-    public function getType(): string { return 'addon'; }
-    public function getDescription(): string { return 'E-commerce storefront — carts, orders, customer sessions'; }
-    public function getVersion(): string { return '1.0.0'; }
-    public function getDependencies(): array { return ['sales', 'inventory']; }
+    public function getKey(): string
+    {
+        return 'ecommerce';
+    }
+
+    public function getName(): string
+    {
+        return 'Website';
+    }
+
+    public function getType(): string
+    {
+        return 'addon';
+    }
+
+    public function getDescription(): string
+    {
+        return 'E-commerce storefront — carts, orders, customer sessions';
+    }
+
+    public function getVersion(): string
+    {
+        return '1.0.0';
+    }
+
+    public function getDependencies(): array
+    {
+        return ['sales', 'inventory'];
+    }
 
     public function getPermissions(): array
     {
@@ -32,26 +55,26 @@ class EcommerceModuleContract extends BaseModuleContract
     {
         return [
             'required_setup_steps' => ['storefront_setup'],
-            'default_settings'     => [],
-            'recommended_roles'    => ['admin'],
+            'default_settings' => [],
+            'recommended_roles' => ['admin'],
         ];
     }
 
     public function getActivationRules(): array
     {
         return [
-            'requires'  => ['sales', 'inventory'],
-            'settings'  => [],
-            'min_tier'  => null,
+            'requires' => ['sales', 'inventory'],
+            'settings' => [],
+            'min_tier' => null,
         ];
     }
 
     public function getDeactivationRules(): array
     {
         return [
-            'removes_data'       => false,
+            'removes_data' => false,
             'preserves_entities' => [],
-            'cleanup_jobs'       => [],
+            'cleanup_jobs' => [],
         ];
     }
 
@@ -69,9 +92,9 @@ class EcommerceModuleContract extends BaseModuleContract
     {
         return [
             'has_ai_assistant' => false,
-            'ai_suggestions'   => false,
-            'ai_automation'    => false,
-            'ai_data_access'   => [],
+            'ai_suggestions' => false,
+            'ai_automation' => false,
+            'ai_data_access' => [],
         ];
     }
 }

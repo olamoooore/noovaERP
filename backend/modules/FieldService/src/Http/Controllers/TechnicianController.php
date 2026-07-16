@@ -22,7 +22,7 @@ class TechnicianController extends Controller
 
         if ($request->filled('search')) {
             $search = $request->input('search');
-            $query->whereHas('user', fn($q) => $q->where('name', 'like', "%{$search}%")
+            $query->whereHas('user', fn ($q) => $q->where('name', 'like', "%{$search}%")
                 ->orWhere('email', 'like', "%{$search}%"));
         }
 
@@ -46,14 +46,14 @@ class TechnicianController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'user_id'              => 'required|exists:users,id|unique:fs_technicians,user_id',
-            'team_id'              => 'nullable|exists:fs_teams,id',
-            'skills'               => 'nullable|array',
-            'skills.*'             => 'string|max:100',
-            'certifications'       => 'nullable|array',
-            'certifications.*'     => 'string|max:100',
+            'user_id' => 'required|exists:users,id|unique:fs_technicians,user_id',
+            'team_id' => 'nullable|exists:fs_teams,id',
+            'skills' => 'nullable|array',
+            'skills.*' => 'string|max:100',
+            'certifications' => 'nullable|array',
+            'certifications.*' => 'string|max:100',
             'default_warehouse_id' => 'nullable|exists:warehouses,id',
-            'hourly_rate'          => 'nullable|numeric|min:0',
+            'hourly_rate' => 'nullable|numeric|min:0',
             'vehicle_registration' => 'nullable|string|max:50',
         ]);
 
@@ -67,15 +67,15 @@ class TechnicianController extends Controller
         $technician = $this->findTechnicianOrFail($technician_id);
 
         $validated = $request->validate([
-            'team_id'              => 'nullable|exists:fs_teams,id',
-            'skills'               => 'nullable|array',
-            'skills.*'             => 'string|max:100',
-            'certifications'       => 'nullable|array',
-            'certifications.*'     => 'string|max:100',
+            'team_id' => 'nullable|exists:fs_teams,id',
+            'skills' => 'nullable|array',
+            'skills.*' => 'string|max:100',
+            'certifications' => 'nullable|array',
+            'certifications.*' => 'string|max:100',
             'default_warehouse_id' => 'nullable|exists:warehouses,id',
-            'hourly_rate'          => 'nullable|numeric|min:0',
+            'hourly_rate' => 'nullable|numeric|min:0',
             'vehicle_registration' => 'nullable|string|max:50',
-            'is_active'            => 'nullable|boolean',
+            'is_active' => 'nullable|boolean',
         ]);
 
         $technician->update($validated);
@@ -88,6 +88,7 @@ class TechnicianController extends Controller
         $technician = $this->findTechnicianOrFail($technician_id);
 
         $technician->update(['is_active' => false]);
+
         return response()->json(['message' => 'Technician deactivated.']);
     }
 
@@ -130,8 +131,8 @@ class TechnicianController extends Controller
     {
         $technician = Technician::query()->find($technicianId);
 
-        if (!$technician) {
-            throw (new ModelNotFoundException())->setModel(Technician::class, [$technicianId]);
+        if (! $technician) {
+            throw (new ModelNotFoundException)->setModel(Technician::class, [$technicianId]);
         }
 
         return $technician;

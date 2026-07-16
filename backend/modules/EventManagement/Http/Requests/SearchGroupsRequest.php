@@ -7,10 +7,10 @@ use Illuminate\Validation\Rule;
 
 /**
  * Search Groups Request
- * 
+ *
  * Validates search and filtering parameters for group queries.
  * All parameters are optional for flexible searching.
- * 
+ *
  * Requirements: 12.1, 12.4
  */
 class SearchGroupsRequest extends FormRequest
@@ -32,15 +32,15 @@ class SearchGroupsRequest extends FormRequest
             'search' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', Rule::in(['active', 'inactive', 'hiatus', 'disbanded'])],
             'agency' => ['nullable', 'string', 'max:255'],
-            'debut_year' => ['nullable', 'integer', 'min:1900', 'max:' . date('Y')],
+            'debut_year' => ['nullable', 'integer', 'min:1900', 'max:'.date('Y')],
             'min_members' => ['nullable', 'integer', 'min:1', 'max:50'],
             'max_members' => ['nullable', 'integer', 'min:1', 'max:50', 'gte:min_members'],
             'genre' => ['nullable', 'string', Rule::in([
                 'k-pop', 'pop', 'dance', 'ballad', 'r&b', 'hip-hop', 'rock', 'electronic',
-                'trot', 'indie', 'folk', 'jazz', 'classical', 'experimental', 'other'
+                'trot', 'indie', 'folk', 'jazz', 'classical', 'experimental', 'other',
             ])],
             'sort_by' => ['nullable', 'string', Rule::in([
-                'name', 'korean_name', 'debut_date', 'formation_date', 'agency', 'member_count', 'created_at'
+                'name', 'korean_name', 'debut_date', 'formation_date', 'agency', 'member_count', 'created_at',
             ])],
             'sort_order' => ['nullable', Rule::in(['asc', 'desc'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],

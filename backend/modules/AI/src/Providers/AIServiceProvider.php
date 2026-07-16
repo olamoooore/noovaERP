@@ -13,7 +13,7 @@ class AIServiceProvider extends ServiceProvider
     {
         // Register config
         $this->mergeConfigFrom(
-            __DIR__ . '/../../config/ai.php',
+            __DIR__.'/../../config/ai.php',
             'ai'
         );
 

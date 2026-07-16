@@ -2,16 +2,16 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Customer;
-use App\Models\Product;
-use App\Models\Invoice;
 use App\Models\Department;
-use App\Models\Project;
+use App\Models\Invoice;
 use App\Models\Location;
+use App\Models\Product;
+use App\Models\Project;
 use App\Models\StockMovement;
-use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class FinancialReportingSeeder extends Seeder
 {
@@ -24,46 +24,46 @@ class FinancialReportingSeeder extends Seeder
 
         // Seed Departments
         $this->seedDepartments();
-        
+
         // Seed Projects
         $this->seedProjects();
-        
+
         // Seed Locations
         $this->seedLocations();
-        
+
         // Seed Vendors
         $this->seedVendors();
-        
+
         // Seed Customers
         $this->seedCustomers();
-        
+
         // Seed Products (if not enough)
         $this->seedProducts();
-        
+
         // Seed Invoices and Invoice Lines
         $this->seedInvoices();
-        
+
         // Seed Stock Movements
         $this->seedStockMovements();
 
         $this->info('Financial Reporting data seeded successfully!');
     }
-    
+
     private function info($message): void
     {
         if ($this->command) {
             $this->info($message);
         } else {
-            echo $message . "\n";
+            echo $message."\n";
         }
     }
-    
+
     private function warn($message): void
     {
         if ($this->command) {
             $this->warn($message);
         } else {
-            echo "⚠ " . $message . "\n";
+            echo '⚠ '.$message."\n";
         }
     }
 
@@ -247,9 +247,10 @@ class FinancialReportingSeeder extends Seeder
     private function seedProducts(): void
     {
         $existingCount = Product::count();
-        
+
         if ($existingCount >= 10) {
             $this->info('✓ Products already seeded (skipping)');
+
             return;
         }
 
@@ -270,7 +271,7 @@ class FinancialReportingSeeder extends Seeder
             Product::firstOrCreate(
                 ['sku' => $product['sku']],
                 array_merge($product, [
-                    'description' => 'High quality ' . $product['name'],
+                    'description' => 'High quality '.$product['name'],
                     'is_active' => true,
                 ])
             );
@@ -285,14 +286,16 @@ class FinancialReportingSeeder extends Seeder
         $products = Product::all();
         $user = DB::table('users')->first();
 
-        if ($customers->isEmpty() || $products->isEmpty() || !$user) {
+        if ($customers->isEmpty() || $products->isEmpty() || ! $user) {
             $this->warn('⚠ Skipping invoices (missing customers, products, or users)');
+
             return;
         }
 
         // Check if invoices already exist
         if (Invoice::count() > 0) {
             $this->info('✓ Invoices already seeded (skipping)');
+
             return;
         }
 
@@ -306,7 +309,7 @@ class FinancialReportingSeeder extends Seeder
             $dueDate = $invoiceDate->copy()->addDays($customer->payment_terms);
 
             $invoice = Invoice::create([
-                'invoice_number' => 'INV-' . date('Y') . '-' . str_pad($invoiceNumber++, 4, '0', STR_PAD_LEFT),
+                'invoice_number' => 'INV-'.date('Y').'-'.str_pad($invoiceNumber++, 4, '0', STR_PAD_LEFT),
                 'customer_id' => $customer->id,
                 'invoice_date' => $invoiceDate,
                 'due_date' => $dueDate,
@@ -359,14 +362,16 @@ class FinancialReportingSeeder extends Seeder
         $products = Product::all();
         $user = DB::table('users')->first();
 
-        if ($products->isEmpty() || !$user) {
+        if ($products->isEmpty() || ! $user) {
             $this->warn('⚠ Skipping stock movements (missing products or users)');
+
             return;
         }
 
         // Check if stock movements already exist
         if (StockMovement::count() > 0) {
             $this->info('✓ Stock movements already seeded (skipping)');
+
             return;
         }
 
@@ -395,7 +400,7 @@ class FinancialReportingSeeder extends Seeder
                     'product_id' => $product->id,
                     'type' => $type,
                     'quantity' => $quantity,
-                    'reference' => $type === 'in' ? 'PO-' . rand(1000, 9999) : 'SO-' . rand(1000, 9999),
+                    'reference' => $type === 'in' ? 'PO-'.rand(1000, 9999) : 'SO-'.rand(1000, 9999),
                     'notes' => $type === 'in' ? 'Purchase order' : 'Sales order',
                     'created_by' => $user->id,
                     'created_at' => $movementDate,
@@ -407,4 +412,3 @@ class FinancialReportingSeeder extends Seeder
         $this->info('✓ Stock movements seeded');
     }
 }
-

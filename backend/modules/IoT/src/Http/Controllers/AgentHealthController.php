@@ -15,13 +15,13 @@ class AgentHealthController extends Controller
 
     /**
      * Agent heartbeat - agent reports it's alive.
-     * 
+     *
      * POST /api/v1/iot/agents/{agentId}/heartbeat
      */
     public function heartbeat(Request $request, string $agentId): JsonResponse
     {
         // Log the heartbeat (optional - can store in database if needed)
-        \Log::info("Agent heartbeat received", [
+        \Log::info('Agent heartbeat received', [
             'agent_id' => $agentId,
             'timestamp' => now(),
             'data' => $request->all(),
@@ -37,26 +37,26 @@ class AgentHealthController extends Controller
 
     /**
      * Check agent health status.
-     * 
+     *
      * GET /api/v1/iot/agents/{agentId}/health
      */
     public function check(string $agentId): JsonResponse
     {
         // Check agent status from database (based on heartbeat)
         $agent = \DB::table('agents')->where('id', $agentId)->first();
-        
-        if (!$agent) {
+
+        if (! $agent) {
             return response()->json([
                 'success' => false,
                 'status' => 'unknown',
                 'error' => 'Agent not found',
             ], 404);
         }
-        
+
         // Consider agent online if heartbeat received in last 2 minutes
-        $isOnline = $agent->last_heartbeat && 
+        $isOnline = $agent->last_heartbeat &&
                     now()->diffInSeconds($agent->last_heartbeat) < 120;
-        
+
         if ($isOnline) {
             return response()->json([
                 'success' => true,
@@ -67,7 +67,7 @@ class AgentHealthController extends Controller
                 ],
             ]);
         }
-        
+
         return response()->json([
             'success' => false,
             'status' => 'offline',
@@ -78,7 +78,7 @@ class AgentHealthController extends Controller
 
     /**
      * Get list of devices from agent.
-     * 
+     *
      * GET /api/v1/iot/agents/{agentId}/devices
      */
     public function getDevices(string $agentId): JsonResponse
@@ -100,7 +100,7 @@ class AgentHealthController extends Controller
 
     /**
      * Get discovered devices from agent.
-     * 
+     *
      * GET /api/v1/iot/agents/{agentId}/discovered
      */
     public function getDiscovered(string $agentId): JsonResponse

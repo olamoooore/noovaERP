@@ -2,24 +2,28 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use Tests\TenantTestCase;
-use Modules\OCRBookkeeping\Models\OcrDocument;
-use Modules\OCRBookkeeping\Services\OcrPostingService;
-use App\Models\FiscalPeriod;
 use App\Models\ChartOfAccount;
-use App\Models\Vendor;
+use App\Models\FiscalPeriod;
 use App\Models\LockDateOverride;
 use App\Models\User;
-use Spatie\Permission\Models\Role;
-use Spatie\Permission\Models\Permission;
+use App\Models\Vendor;
 use Carbon\Carbon;
+use Modules\OCRBookkeeping\Models\OcrDocument;
+use Modules\OCRBookkeeping\Services\OcrPostingService;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+use Tests\TenantTestCase;
 
 class FiscalPeriodTest extends TenantTestCase
 {
     protected User $user;
+
     protected User $adminUser;
+
     protected OcrPostingService $service;
+
     protected Vendor $vendor;
+
     protected ChartOfAccount $expenseAccount;
 
     protected function setUp(): void

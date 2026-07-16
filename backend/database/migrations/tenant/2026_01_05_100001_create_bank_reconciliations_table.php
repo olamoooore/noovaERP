@@ -8,7 +8,7 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
-     * 
+     *
      * Bank Reconciliations table for tracking bank statement reconciliation
      */
     public function up(): void

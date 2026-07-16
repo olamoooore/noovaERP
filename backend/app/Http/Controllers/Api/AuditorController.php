@@ -3,18 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditExport;
 use App\Models\Auditor;
+use App\Models\AuditorActivityLog;
 use App\Models\AuditorScope;
 use App\Models\AuditQuery;
-use App\Models\AuditQueryResponse;
-use App\Models\AuditExport;
-use App\Models\AuditorActivityLog;
-use App\Models\LegalEntity;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class AuditorController extends Controller
 {
@@ -89,7 +85,7 @@ class AuditorController extends Controller
         return response()->json([
             'message' => 'Auditor invited successfully',
             'data' => $auditor,
-            'invitation_link' => url('/auditor/accept/' . $invitationToken),
+            'invitation_link' => url('/auditor/accept/'.$invitationToken),
         ], 201);
     }
 
@@ -119,13 +115,13 @@ class AuditorController extends Controller
         $auditor->update($validated);
 
         if (isset($validated['status'])) {
-            if ($validated['status'] === 'active' && !$auditor->accepted_at) {
+            if ($validated['status'] === 'active' && ! $auditor->accepted_at) {
                 $auditor->update(['accepted_at' => now()]);
             }
             if (in_array($validated['status'], ['expired', 'revoked'])) {
                 AuditQuery::where('auditor_id', $auditor->id)
                     ->whereIn('status', ['open', 'responded'])
-                    ->update(['status' => 'closed', 'closure_notes' => 'Auditor access ' . $validated['status']]);
+                    ->update(['status' => 'closed', 'closure_notes' => 'Auditor access '.$validated['status']]);
             }
         }
 
@@ -226,7 +222,7 @@ class AuditorController extends Controller
     public function dashboard(Request $request)
     {
         $auditor = $request->attributes->get('auditor');
-        if (!$auditor) {
+        if (! $auditor) {
             return response()->json(['message' => 'Auditor access required'], 403);
         }
 
@@ -305,7 +301,7 @@ class AuditorController extends Controller
     public function updateProfile(Request $request)
     {
         $auditor = $request->attributes->get('auditor');
-        if (!$auditor) {
+        if (! $auditor) {
             return response()->json(['message' => 'Auditor access required'], 403);
         }
 

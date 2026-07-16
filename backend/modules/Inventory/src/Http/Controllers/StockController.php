@@ -19,7 +19,7 @@ class StockController extends Controller
 
     private function resolveReasonForType(int $reasonId, string $expectedType): StockAdjustmentReason
     {
-        if (!Schema::hasTable('stock_adjustment_reasons')) {
+        if (! Schema::hasTable('stock_adjustment_reasons')) {
             throw ValidationException::withMessages([
                 'adjustment_reason_id' => ['Stock adjustment reasons table is not available. Run tenant migrations on the server.'],
             ]);
@@ -28,7 +28,7 @@ class StockController extends Controller
         $reason = StockAdjustmentReason::findOrFail($reasonId);
 
         $allowedTypes = $expectedType === 'both' ? ['both'] : [$expectedType, 'both'];
-        if (!in_array($reason->type, $allowedTypes, true)) {
+        if (! in_array($reason->type, $allowedTypes, true)) {
             throw ValidationException::withMessages([
                 'adjustment_reason_id' => ['Selected reason is not valid for this stock operation.'],
             ]);
@@ -203,7 +203,7 @@ class StockController extends Controller
             $search = $request->input('search');
             $query->where(function ($q) use ($search) {
                 $q->where('reference', 'like', "%{$search}%")
-                    ->orWhereHas('product', fn($pq) => $pq->where('name', 'like', "%{$search}%")->orWhere('sku', 'like', "%{$search}%"));
+                    ->orWhereHas('product', fn ($pq) => $pq->where('name', 'like', "%{$search}%")->orWhere('sku', 'like', "%{$search}%"));
             });
         }
 

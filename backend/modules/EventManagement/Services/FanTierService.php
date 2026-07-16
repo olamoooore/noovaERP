@@ -4,11 +4,11 @@ namespace Modules\EventManagement\Services;
 
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Modules\EventManagement\Models\Customer;
 use Modules\EventManagement\Models\CustomerTier;
 use Modules\EventManagement\Models\EarlyAccessWindow;
 use Modules\EventManagement\Models\FanTier;
 use Modules\EventManagement\Models\TierBenefit;
-use Modules\EventManagement\Models\Customer;
 
 class FanTierService
 {
@@ -48,9 +48,9 @@ class FanTierService
     public function updateFanTier(string $tenantId, int $fanTierId, array $data): FanTier
     {
         $fanTier = FanTier::forTenant($tenantId)->findOrFail($fanTierId);
-        
+
         $fanTier->update($data);
-        
+
         return $fanTier->fresh();
     }
 
@@ -60,7 +60,7 @@ class FanTierService
     public function deleteFanTier(string $tenantId, int $fanTierId): bool
     {
         $fanTier = FanTier::forTenant($tenantId)->findOrFail($fanTierId);
-        
+
         return $fanTier->delete();
     }
 
@@ -70,11 +70,11 @@ class FanTierService
     public function getFanTiers(string $tenantId, bool $activeOnly = false): Collection
     {
         $query = FanTier::forTenant($tenantId)->byPriority();
-        
+
         if ($activeOnly) {
             $query->active();
         }
-        
+
         return $query->get();
     }
 
@@ -124,7 +124,7 @@ class FanTierService
     {
         $stats = $this->calculateCustomerStats($tenantId, $customerId);
         $tiers = $this->getFanTiers($tenantId, true);
-        
+
         $currentTier = $this->getCustomerTier($tenantId, $customerId);
         $eligibleTiers = $tiers->filter(function ($tier) use ($stats) {
             return $tier->customerQualifies(
@@ -156,8 +156,8 @@ class FanTierService
     public function processAutomaticTierProgression(string $tenantId, int $customerId): ?CustomerTier
     {
         $progression = $this->calculateTierProgression($tenantId, $customerId);
-        
-        if (!$progression['highest_eligible_tier']) {
+
+        if (! $progression['highest_eligible_tier']) {
             return null;
         }
 
@@ -165,7 +165,7 @@ class FanTierService
         $eligibleTier = $progression['highest_eligible_tier'];
 
         // Check if customer should be upgraded
-        if (!$currentTier || $eligibleTier->priority_level > $currentTier->fanTier->priority_level) {
+        if (! $currentTier || $eligibleTier->priority_level > $currentTier->fanTier->priority_level) {
             return $this->assignCustomerToTier(
                 $tenantId,
                 $customerId,
@@ -201,7 +201,7 @@ class FanTierService
     {
         // Get existing customer tier if any
         $customerTier = $this->getCustomerTier($tenantId, $customerId);
-        
+
         if ($customerTier) {
             return [
                 'current_points' => $customerTier->current_points,
@@ -258,8 +258,8 @@ class FanTierService
     public function hasEarlyAccess(string $tenantId, int $customerId, int $eventId): array
     {
         $customerTier = $this->getCustomerTier($tenantId, $customerId);
-        
-        if (!$customerTier) {
+
+        if (! $customerTier) {
             return [
                 'has_access' => false,
                 'reason' => 'No tier assigned',
@@ -272,8 +272,8 @@ class FanTierService
             ->active()
             ->get();
 
-        $currentWindow = $earlyAccessWindows->first(fn($window) => $window->isCurrentlyOpen());
-        $upcomingWindow = $earlyAccessWindows->first(fn($window) => $window->isUpcoming());
+        $currentWindow = $earlyAccessWindows->first(fn ($window) => $window->isCurrentlyOpen());
+        $upcomingWindow = $earlyAccessWindows->first(fn ($window) => $window->isUpcoming());
 
         if ($currentWindow) {
             return [
@@ -331,8 +331,8 @@ class FanTierService
     public function getCustomerBenefits(string $tenantId, int $customerId): Collection
     {
         $customerTier = $this->getCustomerTier($tenantId, $customerId);
-        
-        if (!$customerTier) {
+
+        if (! $customerTier) {
             return collect();
         }
 

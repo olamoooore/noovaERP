@@ -2,22 +2,21 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Modules\FinancialReporting\Services\Cache\ReportCacheService;
-use Modules\FinancialReporting\Models\ReportCache;
-use Modules\FinancialReporting\DTOs\ReportFilter;
-use Modules\FinancialReporting\DTOs\ReportData;
 use Carbon\Carbon;
+use Modules\FinancialReporting\DTOs\ReportData;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Models\ReportCache;
+use Modules\FinancialReporting\Services\Cache\ReportCacheService;
+use Tests\TenantTestCase;
 
 class ReportCacheServiceTest extends TenantTestCase
 {
-
     protected ReportCacheService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new ReportCacheService();
+        $this->service = new ReportCacheService;
     }
 
     /** @test */
@@ -105,6 +104,7 @@ class ReportCacheServiceTest extends TenantTestCase
             $filter,
             function () use (&$callbackExecuted, $reportData) {
                 $callbackExecuted = true;
+
                 return $reportData;
             }
         );
@@ -133,6 +133,7 @@ class ReportCacheServiceTest extends TenantTestCase
             $filter,
             function () use (&$callbackExecuted, $reportData) {
                 $callbackExecuted = true;
+
                 return $reportData;
             }
         );
@@ -240,6 +241,7 @@ class ReportCacheServiceTest extends TenantTestCase
             $filter,
             function () use (&$callbackExecuted, $reportData) {
                 $callbackExecuted = true;
+
                 return $reportData;
             }
         );

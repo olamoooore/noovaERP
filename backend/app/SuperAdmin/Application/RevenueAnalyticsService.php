@@ -29,14 +29,14 @@ class RevenueAnalyticsService
             ->join('subscription_invoices as i', function ($join) {
                 // Get the billing_interval from the most recent invoice
                 $join->on('i.subscription_id', '=', 's.id')
-                     ->where('i.id', '=', DB::raw(
-                         "(SELECT id FROM subscription_invoices WHERE subscription_id = s.id ORDER BY created_at DESC LIMIT 1)"
-                     ));
+                    ->where('i.id', '=', DB::raw(
+                        '(SELECT id FROM subscription_invoices WHERE subscription_id = s.id ORDER BY created_at DESC LIMIT 1)'
+                    ));
             })
             ->join('plan_versions as pv', 'pv.id', '=', 's.plan_version_id')
             ->join('plan_prices as pp', function ($join) {
                 $join->on('pp.plan_version_id', '=', 'pv.id')
-                     ->on('pp.billing_interval', '=', 'i.billing_interval');
+                    ->on('pp.billing_interval', '=', 'i.billing_interval');
             })
             ->whereIn('s.status', ['active', 'trialing'])
             ->select(
@@ -48,8 +48,8 @@ class RevenueAnalyticsService
         $mrrCents = (int) ($rows->mrr_cents ?? 0);
 
         return [
-            'mrr_cents'        => $mrrCents,
-            'arr_cents'        => $mrrCents * 12,
+            'mrr_cents' => $mrrCents,
+            'arr_cents' => $mrrCents * 12,
             'subscriber_count' => (int) ($rows->subscriber_count ?? 0),
         ];
     }
@@ -67,8 +67,8 @@ class RevenueAnalyticsService
             ->first();
 
         return [
-            'revenue_cents'  => (int) ($row->revenue_cents ?? 0),
-            'invoice_count'  => (int) ($row->invoice_count  ?? 0),
+            'revenue_cents' => (int) ($row->revenue_cents ?? 0),
+            'invoice_count' => (int) ($row->invoice_count ?? 0),
         ];
     }
 
@@ -82,7 +82,7 @@ class RevenueAnalyticsService
         $subscriberCount = $mrr['subscriber_count'];
 
         return [
-            'arpu_cents'       => $subscriberCount > 0 ? (int) round($mrr['mrr_cents'] / $subscriberCount) : 0,
+            'arpu_cents' => $subscriberCount > 0 ? (int) round($mrr['mrr_cents'] / $subscriberCount) : 0,
             'subscriber_count' => $subscriberCount,
         ];
     }
@@ -95,15 +95,15 @@ class RevenueAnalyticsService
         return DB::table('subscriptions as s')
             ->join('subscription_invoices as i', function ($join) {
                 $join->on('i.subscription_id', '=', 's.id')
-                     ->where('i.id', '=', DB::raw(
-                         "(SELECT id FROM subscription_invoices WHERE subscription_id = s.id ORDER BY created_at DESC LIMIT 1)"
-                     ));
+                    ->where('i.id', '=', DB::raw(
+                        '(SELECT id FROM subscription_invoices WHERE subscription_id = s.id ORDER BY created_at DESC LIMIT 1)'
+                    ));
             })
             ->join('plan_versions as pv', 'pv.id', '=', 's.plan_version_id')
             ->join('plan_families as pf', 'pf.id', '=', 'pv.plan_family_id')
             ->join('plan_prices as pp', function ($join) {
                 $join->on('pp.plan_version_id', '=', 'pv.id')
-                     ->on('pp.billing_interval', '=', 'i.billing_interval');
+                    ->on('pp.billing_interval', '=', 'i.billing_interval');
             })
             ->whereIn('s.status', ['active', 'trialing'])
             ->select(
@@ -138,8 +138,8 @@ class RevenueAnalyticsService
             : 0.0;
 
         return [
-            'canceled_count'     => $canceled,
-            'active_base'        => $activeLastMonth,
+            'canceled_count' => $canceled,
+            'active_base' => $activeLastMonth,
             'churn_rate_percent' => $rate,
         ];
     }
@@ -162,13 +162,13 @@ class RevenueAnalyticsService
             ->sum('total');
 
         $delta = $thisMonth - $lastMonth;
-        $pct   = $lastMonth > 0 ? round(($delta / $lastMonth) * 100, 2) : null;
+        $pct = $lastMonth > 0 ? round(($delta / $lastMonth) * 100, 2) : null;
 
         return [
             'this_month_cents' => $thisMonth,
             'last_month_cents' => $lastMonth,
-            'delta_cents'      => $delta,
-            'growth_percent'   => $pct,
+            'delta_cents' => $delta,
+            'growth_percent' => $pct,
         ];
     }
 
@@ -183,16 +183,16 @@ class RevenueAnalyticsService
             ->pluck('count', 'status')
             ->toArray();
 
-        $active   = (int) ($rows['active']   ?? 0);
+        $active = (int) ($rows['active'] ?? 0);
         $trialing = (int) ($rows['trialing'] ?? 0);
-        $total    = array_sum($rows);
+        $total = array_sum($rows);
 
         return [
-            'active'          => $active,
-            'trialing'        => $trialing,
-            'past_due'        => (int) ($rows['past_due'] ?? 0),
-            'canceled'        => (int) ($rows['canceled'] ?? 0),
-            'paying_ratio'    => $total > 0 ? round(($active / $total) * 100, 1) : 0.0,
+            'active' => $active,
+            'trialing' => $trialing,
+            'past_due' => (int) ($rows['past_due'] ?? 0),
+            'canceled' => (int) ($rows['canceled'] ?? 0),
+            'paying_ratio' => $total > 0 ? round(($active / $total) * 100, 1) : 0.0,
         ];
     }
 }

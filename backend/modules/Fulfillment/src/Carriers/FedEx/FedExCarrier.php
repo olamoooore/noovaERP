@@ -58,7 +58,7 @@ class FedExCarrier extends AbstractCarrier
         if ($this->canUseLiveRateApi()) {
             try {
                 $liveRates = $this->fetchLiveRates($request);
-                if (!empty($liveRates)) {
+                if (! empty($liveRates)) {
                     return $liveRates;
                 }
             } catch (\Throwable $e) {
@@ -88,7 +88,7 @@ class FedExCarrier extends AbstractCarrier
         $isInternational = $request->originCountry !== $request->destinationCountry;
 
         foreach ($services as $code => $service) {
-            if (!$isInternational && in_array($code, ['INTERNATIONAL_PRIORITY', 'INTERNATIONAL_ECONOMY', 'FEDEX_INTERNATIONAL_FIRST'])) {
+            if (! $isInternational && in_array($code, ['INTERNATIONAL_PRIORITY', 'INTERNATIONAL_ECONOMY', 'FEDEX_INTERNATIONAL_FIRST'])) {
                 continue;
             }
 
@@ -131,16 +131,16 @@ class FedExCarrier extends AbstractCarrier
             );
         }
 
-        usort($rates, fn($a, $b) => $a->price <=> $b->price);
+        usort($rates, fn ($a, $b) => $a->price <=> $b->price);
 
         return $rates;
     }
 
     protected function canUseLiveRateApi(): bool
     {
-        return !empty($this->config['api_key'])
-            && !empty($this->config['api_secret'])
-            && !empty($this->config['account_number']);
+        return ! empty($this->config['api_key'])
+            && ! empty($this->config['api_secret'])
+            && ! empty($this->config['account_number']);
     }
 
     protected function fetchLiveRates(RateRequest $request): array
@@ -149,10 +149,10 @@ class FedExCarrier extends AbstractCarrier
 
         $baseUri = rtrim($this->resolveFedExBaseUri(), '/');
         $client = new \GuzzleHttp\Client([
-            'base_uri' => $baseUri . '/',
+            'base_uri' => $baseUri.'/',
             'timeout' => 30,
             'headers' => [
-                'Authorization' => 'Bearer ' . $token,
+                'Authorization' => 'Bearer '.$token,
                 'Content-Type' => 'application/json',
                 'X-locale' => 'en_US',
             ],
@@ -197,7 +197,7 @@ class FedExCarrier extends AbstractCarrier
         $payload = json_decode((string) $response->getBody(), true);
         $replyDetails = $payload['output']['rateReplyDetails'] ?? [];
 
-        if (!is_array($replyDetails) || empty($replyDetails)) {
+        if (! is_array($replyDetails) || empty($replyDetails)) {
             throw new \RuntimeException('FedEx rate API returned no rateReplyDetails');
         }
 
@@ -217,7 +217,7 @@ class FedExCarrier extends AbstractCarrier
                 ?? $ratedShipment['totalNetChargeWithDutiesAndTaxes']
                 ?? null;
 
-            if (!is_array($totalNetCharge) || !isset($totalNetCharge['amount'])) {
+            if (! is_array($totalNetCharge) || ! isset($totalNetCharge['amount'])) {
                 continue;
             }
 
@@ -241,7 +241,7 @@ class FedExCarrier extends AbstractCarrier
             );
         }
 
-        usort($rates, fn($a, $b) => $a->price <=> $b->price);
+        usort($rates, fn ($a, $b) => $a->price <=> $b->price);
 
         if (empty($rates)) {
             throw new \RuntimeException('FedEx rate API response could not be mapped to rates');
@@ -255,7 +255,7 @@ class FedExCarrier extends AbstractCarrier
         $baseUri = rtrim($this->resolveFedExBaseUri(), '/');
 
         $client = new \GuzzleHttp\Client([
-            'base_uri' => $baseUri . '/',
+            'base_uri' => $baseUri.'/',
             'timeout' => 20,
         ]);
 
@@ -270,7 +270,7 @@ class FedExCarrier extends AbstractCarrier
         $payload = json_decode((string) $response->getBody(), true);
         $token = $payload['access_token'] ?? null;
 
-        if (!$token) {
+        if (! $token) {
             throw new \RuntimeException('FedEx OAuth token missing in response');
         }
 
@@ -308,7 +308,7 @@ class FedExCarrier extends AbstractCarrier
 
     public function createShipment(ShipmentRequest $request): ShipmentResponse
     {
-        $trackingNumber = '7489' . str_pad(rand(0, 99999999), 8, '0', STR_PAD_LEFT);
+        $trackingNumber = '7489'.str_pad(rand(0, 99999999), 8, '0', STR_PAD_LEFT);
         $trackingUrl = "https://www.fedex.com/fedextrack/?trknbr={$trackingNumber}";
 
         $serviceType = $request->serviceType ?? 'INTERNATIONAL_PRIORITY';
@@ -371,7 +371,7 @@ class FedExCarrier extends AbstractCarrier
             statusDescription: 'Package in transit to destination',
             estimatedDelivery: now()->addDays(2)->format('Y-m-d'),
             actualDelivery: null,
-            events: array_map(fn($e) => [
+            events: array_map(fn ($e) => [
                 'status' => $e['status'],
                 'description' => $e['description'],
                 'location' => $e['location'],
@@ -387,6 +387,6 @@ class FedExCarrier extends AbstractCarrier
 
     public function validateCredentials(array $config): bool
     {
-        return !empty($config['api_key'] ?? $config['account_id'] ?? $config['account_number']);
+        return ! empty($config['api_key'] ?? $config['account_id'] ?? $config['account_number']);
     }
 }

@@ -2,14 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\Customer;
+use App\Models\JournalEntry;
+use App\Models\JournalEntryLink;
+use App\Models\Product;
 use App\Models\Tenant;
 use App\Models\User;
-use App\Models\Customer;
-use App\Models\Product;
-use App\Models\JournalEntryLink;
-use App\Models\JournalEntry;
-use Tests\TenantTestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TenantTestCase;
 
 class InvoiceIdempotencyTest extends TenantTestCase
 {
@@ -36,14 +36,14 @@ class InvoiceIdempotencyTest extends TenantTestCase
         ];
 
         // Create invoice (draft)
-        $invoice = 
+        $invoice =
             $this->actingAs($user)->postJson('/api/v1/accounting/invoices', $payload)
-                 ->json();
+                ->json();
 
         // First posting to GL
-        $this->actingAs($user)->postJson('/api/v1/accounting/invoices/' . $invoice['id'] . '/send')->assertOk();
+        $this->actingAs($user)->postJson('/api/v1/accounting/invoices/'.$invoice['id'].'/send')->assertOk();
         // Second posting (should be idempotent)
-        $second = $this->actingAs($user)->postJson('/api/v1/accounting/invoices/' . $invoice['id'] . '/send');
+        $second = $this->actingAs($user)->postJson('/api/v1/accounting/invoices/'.$invoice['id'].'/send');
         $second->assertOk();
 
         // Verify idempotency at DB level

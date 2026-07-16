@@ -24,10 +24,10 @@ class TenantHealthSnapshot extends Model
     ];
 
     protected $casts = [
-        'db_connected'       => 'boolean',
-        'metadata'           => 'array',
-        'last_login_at'      => 'datetime',
-        'created_at'         => 'datetime',
+        'db_connected' => 'boolean',
+        'metadata' => 'array',
+        'last_login_at' => 'datetime',
+        'created_at' => 'datetime',
         'error_rate_percent' => 'decimal:2',
     ];
 }

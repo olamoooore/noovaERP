@@ -15,7 +15,7 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->unsignedBigInteger('type_id')->nullable();
             $table->enum('status', [
-                'draft', 'scheduled', 'in_progress', 'on_hold', 'completed', 'invoiced', 'cancelled'
+                'draft', 'scheduled', 'in_progress', 'on_hold', 'completed', 'invoiced', 'cancelled',
             ])->default('draft');
             $table->enum('priority', ['low', 'normal', 'high', 'urgent'])->default('normal');
             $table->unsignedBigInteger('customer_id')->nullable();

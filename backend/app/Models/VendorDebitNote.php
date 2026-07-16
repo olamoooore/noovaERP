@@ -50,10 +50,10 @@ class VendorDebitNote extends Model
         parent::boot();
 
         static::creating(function ($debitNote) {
-            if (!$debitNote->debit_note_number) {
+            if (! $debitNote->debit_note_number) {
                 $debitNote->debit_note_number = static::generateDebitNoteNumber();
             }
-            if (!$debitNote->created_by) {
+            if (! $debitNote->created_by) {
                 $debitNote->created_by = TenantUserHelper::resolveTenantUserId();
             }
         });
@@ -103,7 +103,8 @@ class VendorDebitNote extends Model
     {
         $latest = static::orderBy('id', 'desc')->first();
         $number = $latest ? (int) substr($latest->debit_note_number, -4) + 1 : 1;
-        return 'VDN-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        return 'VDN-'.date('Y').'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 
     public function calculateTotals(): void

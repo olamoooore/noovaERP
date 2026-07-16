@@ -51,6 +51,7 @@ class CountrySetupSeeder extends Seeder
     {
         try {
             $tenant = tenancy()->tenant ?? null;
+
             return strtoupper($tenant?->tenant_country_code ?? '');
         } catch (\Throwable) {
             return '';

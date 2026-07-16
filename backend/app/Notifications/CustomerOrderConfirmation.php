@@ -2,25 +2,29 @@
 
 namespace App\Notifications;
 
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\View;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\View;
 
 class CustomerOrderConfirmation extends Notification implements ShouldQueue
 {
     use Queueable;
 
     public $orderId;
+
     public $order; // Runtime cache
+
     public $type; // 'Web' or 'POS'
+
     public $invoiceId;
+
     public $invoice; // Runtime cache
+
     public $tenantSchema; // Tenant schema for queue context
 
     public function __construct($order, $type = 'Web')
@@ -32,10 +36,10 @@ class CustomerOrderConfirmation extends Notification implements ShouldQueue
         // Capture the current tenant schema from the ACTUAL DB connection
         // (config may still say 'public' if search_path was set via raw SQL)
         try {
-            $result = DB::select("SHOW search_path");
+            $result = DB::select('SHOW search_path');
             $this->tenantSchema = $result[0]->search_path ?? 'public';
         } catch (\Exception $e) {
-            $this->tenantSchema = config('database.connections.' . DB::getDefaultConnection() . '.search_path') ?? 'public';
+            $this->tenantSchema = config('database.connections.'.DB::getDefaultConnection().'.search_path') ?? 'public';
         }
     }
 
@@ -51,15 +55,15 @@ class CustomerOrderConfirmation extends Notification implements ShouldQueue
             $schemaName = trim(explode(',', $this->tenantSchema)[0]);
             // Ensure it's quoted for SET statement
             if (strpos($schemaName, '"') === false) {
-                $schemaName = '"' . $schemaName . '"';
+                $schemaName = '"'.$schemaName.'"';
             }
-            $fullPath = $schemaName . ', public';
+            $fullPath = $schemaName.', public';
 
             config(["database.connections.{$connectionName}.search_path" => $fullPath]);
             DB::purge($connectionName);
             DB::reconnect($connectionName);
             DB::statement("SET search_path TO {$fullPath}");
-            Log::info("CustomerOrderConfirmation: Restored tenant search_path", ['search_path' => $fullPath]);
+            Log::info('CustomerOrderConfirmation: Restored tenant search_path', ['search_path' => $fullPath]);
         }
 
         // Always reload tenant mail config (even if search_path was already correct)
@@ -92,10 +96,10 @@ class CustomerOrderConfirmation extends Notification implements ShouldQueue
                         ],
                     ],
                 ]]);
-                if (!empty($mail['from_address'])) {
+                if (! empty($mail['from_address'])) {
                     config(['mail.from.address' => $mail['from_address']]);
                 }
-                if (!empty($mail['from_name'])) {
+                if (! empty($mail['from_name'])) {
                     config(['mail.from.name' => $mail['from_name']]);
                 }
                 // Purge the mailer so it picks up the new config, then disable SSL peer verification
@@ -146,7 +150,7 @@ class CustomerOrderConfirmation extends Notification implements ShouldQueue
             $this->ensureTenantContext();
 
             // Re-hydrate order
-            if (!$this->order) {
+            if (! $this->order) {
                 $this->order = \Modules\Ecommerce\Models\WebOrder::findOrFail($this->orderId);
                 $this->order->load('items');
             }
@@ -157,12 +161,12 @@ class CustomerOrderConfirmation extends Notification implements ShouldQueue
             ]);
 
             // Re-hydrate invoice if needed
-            if ($this->invoiceId && !$this->invoice) {
-                 $this->invoice = \App\Models\Invoice::find($this->invoiceId);
+            if ($this->invoiceId && ! $this->invoice) {
+                $this->invoice = \App\Models\Invoice::find($this->invoiceId);
             }
 
             // Get customer name
-            $customerName = (string) ($this->order->first_name . ' ' . $this->order->last_name); // Cast to string to be safe
+            $customerName = (string) ($this->order->first_name.' '.$this->order->last_name); // Cast to string to be safe
             if (empty(trim($customerName))) {
                 $customerName = $notifiable->name ?? 'Valued Customer';
             }
@@ -183,7 +187,7 @@ class CustomerOrderConfirmation extends Notification implements ShouldQueue
             if ($this->order->shipping_address) {
                 $addr = $this->order->shipping_address;
                 $shippingAddress = [
-                    'name' => trim(($addr['first_name'] ?? $this->order->first_name) . ' ' . ($addr['last_name'] ?? $this->order->last_name)),
+                    'name' => trim(($addr['first_name'] ?? $this->order->first_name).' '.($addr['last_name'] ?? $this->order->last_name)),
                     'address' => $addr['address'] ?? $addr['street'] ?? '',
                     'address2' => $addr['address2'] ?? $addr['street2'] ?? '',
                     'city' => $addr['city'] ?? '',
@@ -231,6 +235,7 @@ class CustomerOrderConfirmation extends Notification implements ShouldQueue
             }
 
             Log::info('CustomerOrderConfirmation: Returning MailMessage successfully');
+
             return $mail;
         } catch (\Exception $e) {
             Log::error('CustomerOrderConfirmation::toMail EXCEPTION', [
@@ -248,18 +253,18 @@ class CustomerOrderConfirmation extends Notification implements ShouldQueue
     protected function generateInvoicePdf($currency = '$')
     {
         $invoice = $this->invoice;
-        
+
         // Load relationships
-        if (!$invoice->relationLoaded('lines')) {
+        if (! $invoice->relationLoaded('lines')) {
             $invoice->load('lines.product', 'customer');
         }
 
         $customer = $invoice->customer;
 
         // If no customer, create a dummy object from order data
-        if (!$customer) {
-            $customer = new \stdClass();
-            $customer->name = $this->order->first_name . ' ' . $this->order->last_name;
+        if (! $customer) {
+            $customer = new \stdClass;
+            $customer->name = $this->order->first_name.' '.$this->order->last_name;
             $customer->first_name = $this->order->first_name;
             $customer->last_name = $this->order->last_name;
             $customer->email = $this->order->email;
@@ -275,7 +280,7 @@ class CustomerOrderConfirmation extends Notification implements ShouldQueue
 
         return Pdf::loadHTML($html)->output();
     }
-    
+
     /**
      * Future placeholder for SMS
      */

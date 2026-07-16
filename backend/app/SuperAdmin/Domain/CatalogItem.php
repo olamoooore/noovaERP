@@ -27,11 +27,11 @@ class CatalogItem extends Model
     ];
 
     protected $casts = [
-        'is_active'      => 'boolean',
-        'sort_order'     => 'integer',
-        'metadata'       => 'array',
+        'is_active' => 'boolean',
+        'sort_order' => 'integer',
+        'metadata' => 'array',
         'effective_from' => 'date',
-        'effective_to'   => 'date',
+        'effective_to' => 'date',
     ];
 
     // -------------------------------------------------------------------------
@@ -94,7 +94,7 @@ class CatalogItem extends Model
             ->where('effective_from', '<=', $today)
             ->where(function ($q) use ($today) {
                 $q->whereNull('effective_to')
-                  ->orWhere('effective_to', '>=', $today);
+                    ->orWhere('effective_to', '>=', $today);
             });
     }
 

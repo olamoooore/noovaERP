@@ -12,6 +12,7 @@ class PaymentReceiptNotification extends Notification
     use Queueable;
 
     protected $transaction;
+
     protected $invoice;
 
     public function __construct(PaymentTransaction $transaction)
@@ -34,17 +35,17 @@ class PaymentReceiptNotification extends Notification
         return (new MailMessage)
             ->subject("Payment Receipt - Invoice {$invoiceNumber}")
             ->greeting("Hello {$notifiable->name},")
-            ->line("Thank you for your payment!")
+            ->line('Thank you for your payment!')
             ->line("We have received your payment for Invoice **{$invoiceNumber}**.")
             ->line('')
-            ->line("**Payment Details:**")
+            ->line('**Payment Details:**')
             ->line("Amount: **{$currency} {$amount}**")
-            ->line("Payment Method: " . ucfirst($this->transaction->payment_method ?? 'N/A'))
+            ->line('Payment Method: '.ucfirst($this->transaction->payment_method ?? 'N/A'))
             ->line("Transaction ID: {$this->transaction->transaction_id}")
-            ->line("Date: " . $this->transaction->created_at->format('F j, Y, g:i a'))
+            ->line('Date: '.$this->transaction->created_at->format('F j, Y, g:i a'))
             ->line('')
             ->action('View Invoice', url("/invoices/{$this->invoice->id}"))
             ->line('If you have any questions about this payment, please contact our support team.')
-            ->salutation('Best regards, ' . config('app.name'));
+            ->salutation('Best regards, '.config('app.name'));
     }
 }

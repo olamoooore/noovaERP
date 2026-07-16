@@ -2,12 +2,10 @@
 
 namespace Modules\IoT\Services;
 
+use Illuminate\Support\Facades\Log;
 use Modules\IoT\Models\IoTDevice;
 use Modules\IoT\Models\IoTDeviceHealthLog;
 use Modules\IoT\Models\IoTDeviceMetric;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 
 class HealthCheckService
 {
@@ -24,10 +22,10 @@ class HealthCheckService
 
         try {
             $result = $this->performHealthCheck($device);
-            
+
             $endTime = microtime(true);
             $responseTime = (int) (($endTime - $startTime) * 1000); // Convert to milliseconds
-            
+
             $status = $result['status'];
             $healthData = $result['data'] ?? [];
             $errorMessage = $result['error'] ?? null;
@@ -37,8 +35,8 @@ class HealthCheckService
             $responseTime = (int) (($endTime - $startTime) * 1000);
             $status = 'error';
             $errorMessage = $e->getMessage();
-            
-            Log::warning("Health check failed for device {$device->id}: " . $e->getMessage());
+
+            Log::warning("Health check failed for device {$device->id}: ".$e->getMessage());
         }
 
         // Create health log entry
@@ -81,7 +79,7 @@ class HealthCheckService
     public function getDeviceHealthSummary(IoTDevice $device, int $days = 7): array
     {
         $startDate = now()->subDays($days);
-        
+
         // Get recent health logs
         $recentLogs = IoTDeviceHealthLog::where('iot_device_id', $device->id)
             ->where('checked_at', '>=', $startDate)
@@ -164,8 +162,8 @@ class HealthCheckService
      */
     private function performHealthCheck(IoTDevice $device): array
     {
-        $connectionType = $device->connection_type instanceof \BackedEnum 
-            ? $device->connection_type->value 
+        $connectionType = $device->connection_type instanceof \BackedEnum
+            ? $device->connection_type->value
             : $device->connection_type;
 
         switch ($connectionType) {
@@ -190,14 +188,14 @@ class HealthCheckService
         $ip = $config['ip'] ?? null;
         $port = $config['port'] ?? 9100;
 
-        if (!$ip) {
+        if (! $ip) {
             throw new \Exception('No IP address configured for LAN device');
         }
 
         // Try to connect to the device
         $connection = @fsockopen($ip, $port, $errno, $errstr, 5);
-        
-        if (!$connection) {
+
+        if (! $connection) {
             return [
                 'status' => 'offline',
                 'error' => "Cannot connect to {$ip}:{$port} - {$errstr}",
@@ -223,7 +221,7 @@ class HealthCheckService
     {
         $config = $device->config;
         $vendor = is_string($device->vendor) ? $device->vendor : (string) $device->vendor;
-        
+
         // For cloud devices, we might ping their API or check their status
         // This is vendor-specific implementation
         switch (strtolower($vendor)) {
@@ -307,7 +305,7 @@ class HealthCheckService
     private function updateDailyMetrics(IoTDevice $device, string $status, ?int $responseTime): void
     {
         $today = now()->toDateString();
-        
+
         $metric = IoTDeviceMetric::firstOrCreate(
             [
                 'iot_device_id' => $device->id,

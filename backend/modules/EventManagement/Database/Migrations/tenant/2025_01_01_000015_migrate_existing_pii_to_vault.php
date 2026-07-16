@@ -1,23 +1,26 @@
 <?php
 
+use Carbon\Carbon;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Modules\EventManagement\Services\PIIVaultService;
-use Carbon\Carbon;
 
 /**
  * Migration: Migrate Existing PII Data to Vault - Task 4.4
- * 
+ *
  * Migrates existing PII data from operational tables to the secure PII vault
  * using dual-write pattern during transition with validation and rollback procedures.
- * 
+ *
  * Requirements: 20.1, 20.4
  */
-return new class extends Migration {
+return new class extends Migration
+{
     private PIIVaultService $piiVaultService;
+
     private array $migrationLog = [];
+
     private int $batchSize = 100;
 
     /**
@@ -52,12 +55,11 @@ return new class extends Migration {
             echo "PII data migration completed successfully.\n";
 
         } catch (\Exception $e) {
-            echo "PII data migration failed: " . $e->getMessage() . "\n";
+            echo 'PII data migration failed: '.$e->getMessage()."\n";
 
             // Log the error
             // Log failed (skipped to avoid masking original error)
             // throw $e; is sufficient
-
 
             throw $e;
         }
@@ -86,7 +88,7 @@ return new class extends Migration {
             echo "PII vault migration rollback completed.\n";
 
         } catch (\Exception $e) {
-            echo "PII vault migration rollback failed: " . $e->getMessage() . "\n";
+            echo 'PII vault migration rollback failed: '.$e->getMessage()."\n";
             throw $e;
         }
     }
@@ -96,7 +98,7 @@ return new class extends Migration {
      */
     private function createMigrationTrackingTable(): void
     {
-        if (!Schema::hasTable('pii_migration_log')) {
+        if (! Schema::hasTable('pii_migration_log')) {
             Schema::create('pii_migration_log', function (Blueprint $table) {
                 $table->id();
                 $table->string('migration_step', 100);
@@ -143,7 +145,7 @@ return new class extends Migration {
                 $processedCount++;
 
                 foreach ($piiFields as $fieldName => $retentionPolicy) {
-                    if (!empty($customer->$fieldName)) {
+                    if (! empty($customer->$fieldName)) {
                         try {
                             // Store PII in vault
                             $result = $this->piiVaultService->storePII(
@@ -191,7 +193,7 @@ return new class extends Migration {
                                 'migrated_at' => Carbon::now(),
                             ]);
 
-                            echo "Error migrating customer {$customer->id} field {$fieldName}: " . $e->getMessage() . "\n";
+                            echo "Error migrating customer {$customer->id} field {$fieldName}: ".$e->getMessage()."\n";
                         }
                     }
                 }
@@ -230,7 +232,7 @@ return new class extends Migration {
                 $processedCount++;
 
                 foreach ($piiFields as $fieldName => $retentionPolicy) {
-                    if (!empty($attendee->$fieldName)) {
+                    if (! empty($attendee->$fieldName)) {
                         try {
                             // Store PII in vault
                             $result = $this->piiVaultService->storePII(
@@ -279,7 +281,7 @@ return new class extends Migration {
                                 'migrated_at' => Carbon::now(),
                             ]);
 
-                            echo "Error migrating attendee {$attendee->id} field {$fieldName}: " . $e->getMessage() . "\n";
+                            echo "Error migrating attendee {$attendee->id} field {$fieldName}: ".$e->getMessage()."\n";
                         }
                     }
                 }
@@ -318,7 +320,7 @@ return new class extends Migration {
                 $processedCount++;
 
                 foreach ($piiFields as $fieldName => $retentionPolicy) {
-                    if (!empty($booking->$fieldName)) {
+                    if (! empty($booking->$fieldName)) {
                         try {
                             // Store PII in vault
                             $result = $this->piiVaultService->storePII(
@@ -368,7 +370,7 @@ return new class extends Migration {
                                 'migrated_at' => Carbon::now(),
                             ]);
 
-                            echo "Error migrating booking {$booking->id} field {$fieldName}: " . $e->getMessage() . "\n";
+                            echo "Error migrating booking {$booking->id} field {$fieldName}: ".$e->getMessage()."\n";
                         }
                     }
                 }
@@ -467,7 +469,7 @@ return new class extends Migration {
         echo "Expected migrations: {$expectedMigrations}\n";
         echo "Successful migrations: {$actualMigrations}\n";
         echo "Failed migrations: {$failedMigrations}\n";
-        echo "Success rate: " . number_format($successRate, 2) . "%\n";
+        echo 'Success rate: '.number_format($successRate, 2)."%\n";
 
         if ($successRate < 95) {
             throw new \RuntimeException("Migration success rate ({$successRate}%) is below acceptable threshold (95%)");
@@ -538,7 +540,7 @@ return new class extends Migration {
                 }
 
             } catch (\Exception $e) {
-                echo "Error restoring customer {$migration->entity_id} field {$migration->field_name}: " . $e->getMessage() . "\n";
+                echo "Error restoring customer {$migration->entity_id} field {$migration->field_name}: ".$e->getMessage()."\n";
             }
         }
 
@@ -580,7 +582,7 @@ return new class extends Migration {
                 }
 
             } catch (\Exception $e) {
-                echo "Error restoring attendee {$migration->entity_id} field {$migration->field_name}: " . $e->getMessage() . "\n";
+                echo "Error restoring attendee {$migration->entity_id} field {$migration->field_name}: ".$e->getMessage()."\n";
             }
         }
 
@@ -622,7 +624,7 @@ return new class extends Migration {
                 }
 
             } catch (\Exception $e) {
-                echo "Error restoring booking {$migration->entity_id} field {$migration->field_name}: " . $e->getMessage() . "\n";
+                echo "Error restoring booking {$migration->entity_id} field {$migration->field_name}: ".$e->getMessage()."\n";
             }
         }
 

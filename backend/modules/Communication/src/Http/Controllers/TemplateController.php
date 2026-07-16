@@ -20,8 +20,8 @@ class TemplateController extends Controller
     public function index(Request $request): JsonResponse
     {
         $templates = CommunicationTemplate::query()
-            ->when($request->module, fn($q, $module) => $q->forModule($module))
-            ->when($request->is_active !== null, fn($q) => $q->where('is_active', $request->boolean('is_active')))
+            ->when($request->module, fn ($q, $module) => $q->forModule($module))
+            ->when($request->is_active !== null, fn ($q) => $q->where('is_active', $request->boolean('is_active')))
             ->orderBy('module')
             ->orderBy('key')
             ->paginate($request->input('per_page', 25));

@@ -10,14 +10,11 @@ class CustomerEventResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
-     *
-     * @param Request $request
-     * @return array
      */
     public function toArray(Request $request): array
     {
         $saleWindowService = app(SaleWindowService::class);
-        
+
         // Handle both Event models and test objects
         $saleStatus = 'open'; // default
         if (method_exists($this->resource, 'isSoldOut')) {
@@ -25,7 +22,7 @@ class CustomerEventResource extends JsonResource
         } elseif (property_exists($this->resource, 'sale_status')) {
             $saleStatus = $this->resource->sale_status;
         }
-        
+
         // Determine available actions based on acquisition mode
         $availableActions = [];
         if ($this->ticket_acquisition_mode === 'buy') {
@@ -33,7 +30,7 @@ class CustomerEventResource extends JsonResource
         } elseif ($this->ticket_acquisition_mode === 'bid') {
             $availableActions = ['bid'];
         }
-        
+
         return [
             'id' => $this->id,
             'name' => $this->title,   // alias for frontend compatibility

@@ -28,15 +28,17 @@ class DownloadProductImages extends Command
     {
         $tenantId = $this->option('tenant');
 
-        if (!$tenantId) {
+        if (! $tenantId) {
             $this->error('The --tenant flag is required for this command.');
             $this->info('Usage: php artisan products:download-images --tenant=<tenant-id>');
+
             return Command::FAILURE;
         }
 
         $tenant = \App\Models\Tenant::find($tenantId);
-        if (!$tenant) {
+        if (! $tenant) {
             $this->error("Tenant not found: {$tenantId}");
+
             return Command::FAILURE;
         }
 
@@ -73,23 +75,26 @@ class DownloadProductImages extends Command
         foreach ($products as $product) {
             $url = $product->image;
 
-            if ($this->option('skip-existing') && !str_starts_with($url, 'http')) {
+            if ($this->option('skip-existing') && ! str_starts_with($url, 'http')) {
                 $skipped++;
                 $bar->advance();
+
                 continue;
             }
 
             if ($dryRun) {
                 $this->line("\n  [{$product->id}] {$product->name} → {$url}");
                 $bar->advance();
+
                 continue;
             }
 
             try {
                 $imageUrl = $this->extractImageUrl($url);
-                if (!$imageUrl) {
+                if (! $imageUrl) {
                     $failed++;
                     $bar->advance();
+
                     continue;
                 }
 
@@ -137,7 +142,7 @@ class DownloadProductImages extends Command
      */
     private function extractWithmuuImage(string $url): ?string
     {
-        if (!preg_match('/goodsNo=(\d+)/', $url, $m)) {
+        if (! preg_match('/goodsNo=(\d+)/', $url, $m)) {
             return null;
         }
         $goodsNo = $m[1];
@@ -185,7 +190,7 @@ class DownloadProductImages extends Command
      */
     private function scanCdnPatterns(string $folderGoodsNo, string $fileId): ?string
     {
-        $goodsBase = self::WITHMUU_CDN_BASE . "/goods/{$folderGoodsNo}/image";
+        $goodsBase = self::WITHMUU_CDN_BASE."/goods/{$folderGoodsNo}/image";
         $extensions = ['jpg', 'jpeg'];
 
         // Phase 1: sentinel positions (quick check ~30 URLs)
@@ -209,6 +214,7 @@ class DownloadProductImages extends Command
                     return $info['url'];
                 }
             }
+
             return reset($found)['url'];
         }
 
@@ -217,13 +223,17 @@ class DownloadProductImages extends Command
         for ($batchStart = 1; $batchStart <= 100; $batchStart += 15) {
             $urls = [];
             for ($i = $batchStart; $i < min($batchStart + 15, 101); $i++) {
-                if (isset($checked[$i])) continue;
+                if (isset($checked[$i])) {
+                    continue;
+                }
                 $num = str_pad($i, 3, '0', STR_PAD_LEFT);
                 foreach ($extensions as $ext) {
                     $urls["d{$num}_{$ext}"] = "{$goodsBase}/detail/{$fileId}_detail_{$num}.{$ext}";
                 }
             }
-            if (empty($urls)) continue;
+            if (empty($urls)) {
+                continue;
+            }
 
             $found = $this->batchHeadCheck($urls);
             if ($found) {
@@ -277,6 +287,7 @@ class DownloadProductImages extends Command
         }
 
         curl_multi_close($mh);
+
         return $found;
     }
 
@@ -285,6 +296,7 @@ class DownloadProductImages extends Command
         if (preg_match('/\.(jpg|jpeg|png|webp|gif)(\?|$)/i', $url)) {
             return $url;
         }
+
         return null;
     }
 
@@ -299,7 +311,7 @@ class DownloadProductImages extends Command
             ])
             ->get($pageUrl);
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             return null;
         }
 
@@ -320,8 +332,9 @@ class DownloadProductImages extends Command
                 }
                 if (preg_match('/\.(jpg|jpeg|png|webp)(\?|$)/i', $imgSrc)) {
                     if (str_starts_with($imgSrc, '//')) {
-                        $imgSrc = 'https:' . $imgSrc;
+                        $imgSrc = 'https:'.$imgSrc;
                     }
+
                     return $imgSrc;
                 }
             }
@@ -336,7 +349,7 @@ class DownloadProductImages extends Command
     private function downloadImage(string $imageUrl, int $productId): ?string
     {
         if (str_starts_with($imageUrl, '//')) {
-            $imageUrl = 'https:' . $imageUrl;
+            $imageUrl = 'https:'.$imageUrl;
         }
 
         $isCdnUrl = str_contains($imageUrl, 'godomall.speedycdn.net');
@@ -359,19 +372,20 @@ class DownloadProductImages extends Command
             } catch (\Throwable $e) {
                 if ($attempt < $maxRetries - 1) {
                     sleep(2);
+
                     continue;
                 }
                 throw $e;
             }
         }
 
-        if (!$response || !$response->successful()) {
+        if (! $response || ! $response->successful()) {
             return null;
         }
 
         $contentType = $response->header('Content-Type') ?? '';
 
-        if (!str_contains($contentType, 'image') && !$isCdnUrl) {
+        if (! str_contains($contentType, 'image') && ! $isCdnUrl) {
             return null;
         }
 
@@ -389,7 +403,7 @@ class DownloadProductImages extends Command
             $extension = ($ext === 'jpeg') ? 'jpg' : $ext;
         }
 
-        $filename = "products/{$productId}_" . Str::random(8) . ".{$extension}";
+        $filename = "products/{$productId}_".Str::random(8).".{$extension}";
         Storage::disk('public')->put($filename, $response->body());
 
         return $filename;

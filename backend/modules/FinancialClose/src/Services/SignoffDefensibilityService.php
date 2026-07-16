@@ -3,13 +3,13 @@
 namespace Modules\FinancialClose\Services;
 
 use Illuminate\Support\Facades\Log;
+use Modules\FinancialClose\Models\AuditLog;
+use Modules\FinancialClose\Models\EvidenceFreezeSnapshot;
+use Modules\FinancialClose\Models\EvidenceVersionHistory;
 use Modules\FinancialClose\Models\Signoff;
 use Modules\FinancialClose\Models\SignoffAttestation;
 use Modules\FinancialClose\Models\SignoffReopenEvent;
-use Modules\FinancialClose\Models\EvidenceFreezeSnapshot;
-use Modules\FinancialClose\Models\EvidenceVersionHistory;
 use Modules\FinancialClose\Models\SupportingEvidence;
-use Modules\FinancialClose\Models\AuditLog;
 
 class SignoffDefensibilityService
 {
@@ -22,7 +22,7 @@ class SignoffDefensibilityService
             ->where('id', $signoffId)
             ->first();
 
-        if (!$signoff) {
+        if (! $signoff) {
             return null;
         }
 
@@ -45,7 +45,7 @@ class SignoffDefensibilityService
             ->where('id', $signoffId)
             ->first();
 
-        if (!$signoff) {
+        if (! $signoff) {
             return false;
         }
 
@@ -55,6 +55,7 @@ class SignoffDefensibilityService
                 'signoff_id' => $signoffId,
                 'reopened_by' => $reopenedBy,
             ]);
+
             return false;
         }
 
@@ -90,7 +91,7 @@ class SignoffDefensibilityService
             ->where('id', $signoffId)
             ->first();
 
-        if (!$signoff) {
+        if (! $signoff) {
             return 0;
         }
 

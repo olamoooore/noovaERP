@@ -3,7 +3,6 @@
 namespace App\Platform\Locking;
 
 use App\Platform\Locking\Contracts\RecordLockingServiceContract;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class RecordLockingService implements RecordLockingServiceContract
@@ -31,6 +30,7 @@ class RecordLockingService implements RecordLockingServiceContract
             $existing->update([
                 'expires_at' => now()->addMinutes($ttlMinutes),
             ]);
+
             return (object) [
                 'acquired' => true,
                 'lock_id' => $existing->id,
@@ -64,11 +64,12 @@ class RecordLockingService implements RecordLockingServiceContract
             ->whereNull('released_at')
             ->first();
 
-        if (!$lock) {
+        if (! $lock) {
             return false;
         }
 
         $lock->update(['released_at' => now()]);
+
         return true;
     }
 

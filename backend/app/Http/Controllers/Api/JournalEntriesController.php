@@ -2,15 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\DraftJournalRequest;
-use App\Accounting\DTOs\PostingRequest;
-use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\ReversalRequest;
-use App\Models\JournalEntry;
+use App\Http\Controllers\Controller;
 use App\Models\Journal;
-use App\Models\LockDate;
+use App\Models\JournalEntry;
 use App\Services\FiscalPeriodValidator;
 use App\Services\LockDateValidationService;
 use App\Services\ManualJournalPostingService;
@@ -121,7 +118,7 @@ class JournalEntriesController extends Controller
             'createdBy',
             'postedBy',
             'reversedEntry',
-            'reversalEntry'
+            'reversalEntry',
         ])->findOrFail($id);
 
         return response()->json($entry);
@@ -155,7 +152,7 @@ class JournalEntriesController extends Controller
         foreach ($validated['lines'] as $index => $line) {
             if (($line['debit'] > 0 && $line['credit'] > 0) || ($line['debit'] == 0 && $line['credit'] == 0)) {
                 return response()->json([
-                    'message' => "Line " . ($index + 1) . " must have either debit or credit, not both or neither",
+                    'message' => 'Line '.($index + 1).' must have either debit or credit, not both or neither',
                 ], 422);
             }
         }
@@ -165,7 +162,7 @@ class JournalEntriesController extends Controller
 
             $result = $this->postingEngine->createDraft($draftRequest);
 
-            if (!$result->success) {
+            if (! $result->success) {
                 \Log::warning('JournalEntriesController::store — createDraft failed', [
                     'error' => $result->error,
                     'request' => $request->except('password'),
@@ -265,6 +262,7 @@ class JournalEntriesController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Error updating journal entry',
                 'error' => $e->getMessage(),
@@ -315,17 +313,17 @@ class JournalEntriesController extends Controller
             $entry->entry_date,
         );
 
-        if ($lockValidation['is_locked'] && !$request->has('override_reason')) {
+        if ($lockValidation['is_locked'] && ! $request->has('override_reason')) {
             return response()->json([
-                'message'          => $lockValidation['message'],
+                'message' => $lockValidation['message'],
                 'requires_override' => true,
-                'lock_date'        => $lockValidation['lock_date'],
+                'lock_date' => $lockValidation['lock_date'],
             ], 422);
         }
 
         // Self-approval guard
         $approvedBy = $request->input('approved_by') ? (int) $request->input('approved_by') : null;
-        $userId     = TenantUserHelper::requireTenantUserId();
+        $userId = TenantUserHelper::requireTenantUserId();
 
         if ($lockValidation['is_locked'] && $approvedBy && $approvedBy === $userId) {
             return response()->json([
@@ -334,22 +332,22 @@ class JournalEntriesController extends Controller
         }
 
         $result = $this->manualJournalService->post(
-            entry:          $entry,
-            userId:         $userId,
+            entry: $entry,
+            userId: $userId,
             overrideReason: $request->input('override_reason'),
-            approvedBy:     $approvedBy,
+            approvedBy: $approvedBy,
         );
 
-        if (!$result->success) {
+        if (! $result->success) {
             return response()->json([
                 'message' => 'Error posting journal entry',
-                'error'   => $result->error,
+                'error' => $result->error,
             ], 422);
         }
 
         return response()->json([
             'message' => 'Journal entry posted successfully',
-            'entry'   => $result->journalEntry->load('lines.account'),
+            'entry' => $result->journalEntry->load('lines.account'),
         ]);
     }
 
@@ -363,12 +361,12 @@ class JournalEntriesController extends Controller
     {
         $validated = $request->validate([
             'reversal_date' => 'required|date',
-            'reason'        => 'required|string|max:500',
-            'reason_code'   => 'nullable|string|max:50',
-            'approved_by'   => 'nullable|integer|exists:users,id',
+            'reason' => 'required|string|max:500',
+            'reason_code' => 'nullable|string|max:50',
+            'approved_by' => 'nullable|integer|exists:users,id',
         ]);
 
-        $userId     = TenantUserHelper::requireTenantUserId();
+        $userId = TenantUserHelper::requireTenantUserId();
         $approvedBy = isset($validated['approved_by']) ? (int) $validated['approved_by'] : null;
 
         if ($approvedBy !== null && $approvedBy === $userId) {
@@ -380,29 +378,29 @@ class JournalEntriesController extends Controller
         try {
             $result = $this->postingEngine->reverse(new ReversalRequest(
                 journalEntryId: (int) $id,
-                reversalDate:   $validated['reversal_date'],
-                reason:         $validated['reason'],
-                reasonCode:     $validated['reason_code'] ?? null,
-                actorUserId:    $userId,
+                reversalDate: $validated['reversal_date'],
+                reason: $validated['reason'],
+                reasonCode: $validated['reason_code'] ?? null,
+                actorUserId: $userId,
                 approvalUserId: $approvedBy,
             ));
 
-            if (!$result->success) {
+            if (! $result->success) {
                 return response()->json([
                     'message' => 'Error reversing journal entry',
-                    'error'   => $result->error,
+                    'error' => $result->error,
                 ], 422);
             }
 
             return response()->json([
-                'message'        => 'Journal entry reversed successfully',
+                'message' => 'Journal entry reversed successfully',
                 'reversal_entry' => $result->journalEntry->load('lines.account'),
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Error reversing journal entry',
-                'error'   => $e->getMessage(),
+                'error' => $e->getMessage(),
             ], 422);
         }
     }

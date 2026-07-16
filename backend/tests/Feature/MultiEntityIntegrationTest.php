@@ -2,26 +2,28 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Artisan;
 use App\Models\User;
-use App\Services\EntityModuleService;
 use App\Services\EntityAccessService;
-use App\Services\IntercompanyPostingService;
-use App\Accounting\PostingEngine;
-use App\Accounting\DTOs\PostingRequest;
+use App\Services\EntityModuleService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use Tests\TestCase;
 
 class MultiEntityIntegrationTest extends TestCase
 {
     use RefreshDatabase;
 
     protected int $groupId;
+
     protected int $entityAId;
+
     protected int $entityBId;
+
     protected int $bookAId;
+
     protected int $bookBId;
+
     protected User $user;
 
     protected function setUp(): void

@@ -2,15 +2,12 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Collection;
-use Exception;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Monitoring Integration Service
- * 
+ *
  * Integrates Phase 3 components with existing monitoring infrastructure,
  * implements alerting for new failure modes, and creates health checks
  * for all new services and jobs.
@@ -18,7 +15,9 @@ use Exception;
 class MonitoringIntegrationService
 {
     private array $monitoringConfig = [];
+
     private array $healthChecks = [];
+
     private array $alertRules = [];
 
     public function __construct(
@@ -39,13 +38,13 @@ class MonitoringIntegrationService
             'alerting_integration' => $this->integrateAlerting(),
             'health_checks' => $this->setupHealthChecks(),
             'runbooks' => $this->createRunbooks(),
-            'metrics_collection' => $this->setupMetricsCollection()
+            'metrics_collection' => $this->setupMetricsCollection(),
         ];
 
         return [
             'status' => 'SUCCESS',
             'integration_results' => $integrationResults,
-            'timestamp' => now()
+            'timestamp' => now(),
         ];
     }
 
@@ -64,13 +63,13 @@ class MonitoringIntegrationService
             'analytics_governance_dashboard' => $this->createAnalyticsGovernanceDashboard(),
             'fraud_prevention_dashboard' => $this->createFraudPreventionDashboard(),
             'operations_console_dashboard' => $this->createOperationsConsoleDashboard(),
-            'api_governance_dashboard' => $this->createAPIGovernanceDashboard()
+            'api_governance_dashboard' => $this->createAPIGovernanceDashboard(),
         ];
 
         return [
             'dashboards_created' => count($dashboards),
             'dashboard_configs' => $dashboards,
-            'integration_status' => 'COMPLETED'
+            'integration_status' => 'COMPLETED',
         ];
     }
 
@@ -88,43 +87,43 @@ class MonitoringIntegrationService
                     'type' => 'graph',
                     'metrics' => [
                         'booking_facts_captured_per_minute',
-                        'analytics_facts_captured_per_minute'
+                        'analytics_facts_captured_per_minute',
                     ],
                     'thresholds' => [
                         'warning' => 100,
-                        'critical' => 50
-                    ]
+                        'critical' => 50,
+                    ],
                 ],
                 [
                     'title' => 'Facts Storage Size',
                     'type' => 'stat',
                     'metrics' => [
                         'booking_facts_table_size_mb',
-                        'analytics_facts_table_size_mb'
-                    ]
+                        'analytics_facts_table_size_mb',
+                    ],
                 ],
                 [
                     'title' => 'Reconciliation Accuracy',
                     'type' => 'gauge',
                     'metrics' => [
-                        'analytics_reconciliation_accuracy_percent'
+                        'analytics_reconciliation_accuracy_percent',
                     ],
                     'thresholds' => [
                         'warning' => 99.5,
-                        'critical' => 99.0
-                    ]
+                        'critical' => 99.0,
+                    ],
                 ],
                 [
                     'title' => 'Data Drift Detection',
                     'type' => 'table',
                     'metrics' => [
                         'data_drift_events_per_hour',
-                        'drift_resolution_time_minutes'
-                    ]
-                ]
+                        'drift_resolution_time_minutes',
+                    ],
+                ],
             ],
             'refresh_interval' => '30s',
-            'time_range' => '1h'
+            'time_range' => '1h',
         ];
     }
 
@@ -143,12 +142,12 @@ class MonitoringIntegrationService
                     'metrics' => [
                         'outbox_events_created_per_minute',
                         'outbox_events_processed_per_minute',
-                        'outbox_events_failed_per_minute'
+                        'outbox_events_failed_per_minute',
                     ],
                     'thresholds' => [
                         'warning' => 10, // failed events
-                        'critical' => 50
-                    ]
+                        'critical' => 50,
+                    ],
                 ],
                 [
                     'title' => 'Processing Latency',
@@ -156,31 +155,31 @@ class MonitoringIntegrationService
                     'metrics' => [
                         'outbox_processing_latency_p50',
                         'outbox_processing_latency_p95',
-                        'outbox_processing_latency_p99'
-                    ]
+                        'outbox_processing_latency_p99',
+                    ],
                 ],
                 [
                     'title' => 'Retry Statistics',
                     'type' => 'stat',
                     'metrics' => [
                         'outbox_retry_count_total',
-                        'outbox_max_retries_reached'
-                    ]
+                        'outbox_max_retries_reached',
+                    ],
                 ],
                 [
                     'title' => 'Idempotency Violations',
                     'type' => 'alert',
                     'metrics' => [
-                        'outbox_duplicate_processing_attempts'
+                        'outbox_duplicate_processing_attempts',
                     ],
                     'thresholds' => [
                         'warning' => 1,
-                        'critical' => 5
-                    ]
-                ]
+                        'critical' => 5,
+                    ],
+                ],
             ],
             'refresh_interval' => '10s',
-            'time_range' => '30m'
+            'time_range' => '30m',
         ];
     }
 
@@ -199,46 +198,46 @@ class MonitoringIntegrationService
                     'metrics' => [
                         'capacity_reservations_created_per_minute',
                         'capacity_reservations_expired_per_minute',
-                        'capacity_reservations_released_per_minute'
-                    ]
+                        'capacity_reservations_released_per_minute',
+                    ],
                 ],
                 [
                     'title' => 'Reservation Conflicts',
                     'type' => 'alert',
                     'metrics' => [
                         'capacity_reservation_conflicts_per_minute',
-                        'optimistic_lock_failures_per_minute'
+                        'optimistic_lock_failures_per_minute',
                     ],
                     'thresholds' => [
                         'warning' => 10,
-                        'critical' => 50
-                    ]
+                        'critical' => 50,
+                    ],
                 ],
                 [
                     'title' => 'Overselling Detection',
                     'type' => 'critical_alert',
                     'metrics' => [
-                        'overselling_incidents_total'
+                        'overselling_incidents_total',
                     ],
                     'thresholds' => [
-                        'critical' => 1 // Zero tolerance
-                    ]
+                        'critical' => 1, // Zero tolerance
+                    ],
                 ],
                 [
                     'title' => 'Reservation Performance',
                     'type' => 'histogram',
                     'metrics' => [
                         'capacity_reservation_latency_p95',
-                        'capacity_check_latency_p95'
+                        'capacity_check_latency_p95',
                     ],
                     'thresholds' => [
                         'warning' => 100, // 100ms
-                        'critical' => 200
-                    ]
-                ]
+                        'critical' => 200,
+                    ],
+                ],
             ],
             'refresh_interval' => '5s',
-            'time_range' => '15m'
+            'time_range' => '15m',
         ];
     }
 
@@ -257,8 +256,8 @@ class MonitoringIntegrationService
                     'metrics' => [
                         'pii_vault_stores_per_minute',
                         'pii_vault_retrievals_per_minute',
-                        'pii_vault_anonymizations_per_minute'
-                    ]
+                        'pii_vault_anonymizations_per_minute',
+                    ],
                 ],
                 [
                     'title' => 'Access Logging',
@@ -266,36 +265,36 @@ class MonitoringIntegrationService
                     'metrics' => [
                         'pii_access_attempts_per_minute',
                         'pii_unauthorized_access_attempts',
-                        'pii_access_audit_log_size'
-                    ]
+                        'pii_access_audit_log_size',
+                    ],
                 ],
                 [
                     'title' => 'Encryption Performance',
                     'type' => 'histogram',
                     'metrics' => [
                         'pii_encryption_latency_p95',
-                        'pii_decryption_latency_p95'
+                        'pii_decryption_latency_p95',
                     ],
                     'thresholds' => [
                         'warning' => 200, // 200ms
-                        'critical' => 500
-                    ]
+                        'critical' => 500,
+                    ],
                 ],
                 [
                     'title' => 'Retention Compliance',
                     'type' => 'gauge',
                     'metrics' => [
                         'pii_retention_compliance_percent',
-                        'overdue_anonymizations_count'
+                        'overdue_anonymizations_count',
                     ],
                     'thresholds' => [
                         'warning' => 95,
-                        'critical' => 90
-                    ]
-                ]
+                        'critical' => 90,
+                    ],
+                ],
             ],
             'refresh_interval' => '60s',
-            'time_range' => '4h'
+            'time_range' => '4h',
         ];
     }
 
@@ -313,40 +312,40 @@ class MonitoringIntegrationService
                     'type' => 'graph',
                     'metrics' => [
                         'data_health_checks_executed_per_hour',
-                        'data_health_check_failures_per_hour'
-                    ]
+                        'data_health_check_failures_per_hour',
+                    ],
                 ],
                 [
                     'title' => 'KPI Accuracy',
                     'type' => 'gauge',
                     'metrics' => [
                         'kpi_calculation_accuracy_percent',
-                        'analytics_source_consistency_percent'
+                        'analytics_source_consistency_percent',
                     ],
                     'thresholds' => [
                         'warning' => 99.5,
-                        'critical' => 99.0
-                    ]
+                        'critical' => 99.0,
+                    ],
                 ],
                 [
                     'title' => 'Real-time vs Batch Analytics',
                     'type' => 'comparison',
                     'metrics' => [
                         'realtime_counter_updates_per_minute',
-                        'batch_aggregation_lag_minutes'
-                    ]
+                        'batch_aggregation_lag_minutes',
+                    ],
                 ],
                 [
                     'title' => 'Data Quality Alerts',
                     'type' => 'alert_list',
                     'metrics' => [
                         'data_quality_alerts_active',
-                        'data_remediation_time_minutes'
-                    ]
-                ]
+                        'data_remediation_time_minutes',
+                    ],
+                ],
             ],
             'refresh_interval' => '120s',
-            'time_range' => '6h'
+            'time_range' => '6h',
         ];
     }
 
@@ -365,24 +364,24 @@ class MonitoringIntegrationService
                     'metrics' => [
                         'risk_scoring_latency_p50',
                         'risk_scoring_latency_p95',
-                        'risk_scoring_latency_p99'
+                        'risk_scoring_latency_p99',
                     ],
                     'thresholds' => [
                         'warning' => 50, // 50ms
-                        'critical' => 100
-                    ]
+                        'critical' => 100,
+                    ],
                 ],
                 [
                     'title' => 'Fraud Detection Rates',
                     'type' => 'gauge',
                     'metrics' => [
                         'fraud_detection_rate_percent',
-                        'false_positive_rate_percent'
+                        'false_positive_rate_percent',
                     ],
                     'thresholds' => [
                         'fraud_detection_warning' => 95,
-                        'false_positive_critical' => 2
-                    ]
+                        'false_positive_critical' => 2,
+                    ],
                 ],
                 [
                     'title' => 'Progressive Friction',
@@ -391,20 +390,20 @@ class MonitoringIntegrationService
                         'low_risk_bookings_per_minute',
                         'medium_risk_bookings_per_minute',
                         'high_risk_bookings_per_minute',
-                        'blocked_bookings_per_minute'
-                    ]
+                        'blocked_bookings_per_minute',
+                    ],
                 ],
                 [
                     'title' => 'Fraud Timeline Events',
                     'type' => 'event_log',
                     'metrics' => [
                         'fraud_events_logged_per_hour',
-                        'dispute_resolutions_per_day'
-                    ]
-                ]
+                        'dispute_resolutions_per_day',
+                    ],
+                ],
             ],
             'refresh_interval' => '30s',
-            'time_range' => '2h'
+            'time_range' => '2h',
         ];
     }
 
@@ -423,8 +422,8 @@ class MonitoringIntegrationService
                     'metrics' => [
                         'offline_checkins_queued_per_minute',
                         'offline_sync_operations_per_minute',
-                        'sync_conflicts_detected_per_hour'
-                    ]
+                        'sync_conflicts_detected_per_hour',
+                    ],
                 ],
                 [
                     'title' => 'Staff Overrides',
@@ -432,32 +431,32 @@ class MonitoringIntegrationService
                     'metrics' => [
                         'staff_overrides_per_hour',
                         'override_approval_time_minutes',
-                        'override_pattern_alerts'
-                    ]
+                        'override_pattern_alerts',
+                    ],
                 ],
                 [
                     'title' => 'Sync Performance',
                     'type' => 'histogram',
                     'metrics' => [
                         'offline_sync_latency_p95',
-                        'conflict_resolution_time_p95'
+                        'conflict_resolution_time_p95',
                     ],
                     'thresholds' => [
                         'warning' => 30000, // 30 seconds
-                        'critical' => 60000
-                    ]
+                        'critical' => 60000,
+                    ],
                 ],
                 [
                     'title' => 'Console Availability',
                     'type' => 'uptime',
                     'metrics' => [
                         'operations_console_uptime_percent',
-                        'offline_mode_duration_minutes'
-                    ]
-                ]
+                        'offline_mode_duration_minutes',
+                    ],
+                ],
             ],
             'refresh_interval' => '15s',
-            'time_range' => '1h'
+            'time_range' => '1h',
         ];
     }
 
@@ -475,24 +474,24 @@ class MonitoringIntegrationService
                     'type' => 'alert',
                     'metrics' => [
                         'api_contract_violations_per_hour',
-                        'schema_validation_failures_per_hour'
+                        'schema_validation_failures_per_hour',
                     ],
                     'thresholds' => [
                         'warning' => 10,
-                        'critical' => 50
-                    ]
+                        'critical' => 50,
+                    ],
                 ],
                 [
                     'title' => 'RBAC Matrix Compliance',
                     'type' => 'gauge',
                     'metrics' => [
                         'rbac_compliance_percent',
-                        'permission_violations_per_hour'
+                        'permission_violations_per_hour',
                     ],
                     'thresholds' => [
                         'warning' => 99.5,
-                        'critical' => 99.0
-                    ]
+                        'critical' => 99.0,
+                    ],
                 ],
                 [
                     'title' => 'API Usage Analytics',
@@ -500,20 +499,20 @@ class MonitoringIntegrationService
                     'metrics' => [
                         'api_requests_per_minute',
                         'api_error_rate_percent',
-                        'api_latency_p95'
-                    ]
+                        'api_latency_p95',
+                    ],
                 ],
                 [
                     'title' => 'Rate Limiting',
                     'type' => 'heatmap',
                     'metrics' => [
                         'rate_limit_hits_per_endpoint',
-                        'quota_exceeded_events_per_hour'
-                    ]
-                ]
+                        'quota_exceeded_events_per_hour',
+                    ],
+                ],
             ],
             'refresh_interval' => '30s',
-            'time_range' => '1h'
+            'time_range' => '1h',
         ];
     }
 
@@ -529,14 +528,14 @@ class MonitoringIntegrationService
             'warning_alerts' => $this->createWarningAlerts(),
             'performance_alerts' => $this->createPerformanceAlerts(),
             'security_alerts' => $this->createSecurityAlerts(),
-            'compliance_alerts' => $this->createComplianceAlerts()
+            'compliance_alerts' => $this->createComplianceAlerts(),
         ];
 
         return [
             'alert_rules_created' => array_sum(array_map('count', $alertRules)),
             'alert_categories' => array_keys($alertRules),
             'alert_rules' => $alertRules,
-            'integration_status' => 'COMPLETED'
+            'integration_status' => 'COMPLETED',
         ];
     }
 
@@ -553,7 +552,7 @@ class MonitoringIntegrationService
                 'severity' => 'CRITICAL',
                 'notification_channels' => ['pager_duty', 'slack_critical', 'email_oncall'],
                 'auto_escalation' => true,
-                'escalation_time' => '5m'
+                'escalation_time' => '5m',
             ],
             [
                 'name' => 'PII Vault Encryption Failure',
@@ -562,7 +561,7 @@ class MonitoringIntegrationService
                 'severity' => 'CRITICAL',
                 'notification_channels' => ['pager_duty', 'slack_security', 'email_security_team'],
                 'auto_escalation' => true,
-                'escalation_time' => '2m'
+                'escalation_time' => '2m',
             ],
             [
                 'name' => 'Outbox Pattern Failure',
@@ -571,7 +570,7 @@ class MonitoringIntegrationService
                 'severity' => 'CRITICAL',
                 'notification_channels' => ['pager_duty', 'slack_critical'],
                 'auto_escalation' => true,
-                'escalation_time' => '3m'
+                'escalation_time' => '3m',
             ],
             [
                 'name' => 'Tenant Isolation Breach',
@@ -580,7 +579,7 @@ class MonitoringIntegrationService
                 'severity' => 'CRITICAL',
                 'notification_channels' => ['pager_duty', 'slack_security', 'email_compliance'],
                 'auto_escalation' => true,
-                'escalation_time' => '1m'
+                'escalation_time' => '1m',
             ],
             [
                 'name' => 'Immutable Facts Corruption',
@@ -589,8 +588,8 @@ class MonitoringIntegrationService
                 'severity' => 'CRITICAL',
                 'notification_channels' => ['pager_duty', 'slack_critical'],
                 'auto_escalation' => true,
-                'escalation_time' => '5m'
-            ]
+                'escalation_time' => '5m',
+            ],
         ];
     }
 
@@ -606,7 +605,7 @@ class MonitoringIntegrationService
                 'condition' => 'capacity_reservation_conflicts_per_minute > 50',
                 'severity' => 'WARNING',
                 'notification_channels' => ['slack_ops', 'email_ops_team'],
-                'auto_escalation' => false
+                'auto_escalation' => false,
             ],
             [
                 'name' => 'Analytics Reconciliation Accuracy Drop',
@@ -614,7 +613,7 @@ class MonitoringIntegrationService
                 'condition' => 'analytics_reconciliation_accuracy_percent < 99.5',
                 'severity' => 'WARNING',
                 'notification_channels' => ['slack_analytics', 'email_data_team'],
-                'auto_escalation' => false
+                'auto_escalation' => false,
             ],
             [
                 'name' => 'Fraud Detection Rate Drop',
@@ -622,7 +621,7 @@ class MonitoringIntegrationService
                 'condition' => 'fraud_detection_rate_percent < 95',
                 'severity' => 'WARNING',
                 'notification_channels' => ['slack_security', 'email_fraud_team'],
-                'auto_escalation' => false
+                'auto_escalation' => false,
             ],
             [
                 'name' => 'High False Positive Rate',
@@ -630,7 +629,7 @@ class MonitoringIntegrationService
                 'condition' => 'false_positive_rate_percent > 2',
                 'severity' => 'WARNING',
                 'notification_channels' => ['slack_ops', 'email_fraud_team'],
-                'auto_escalation' => false
+                'auto_escalation' => false,
             ],
             [
                 'name' => 'PII Retention Compliance Issue',
@@ -638,8 +637,8 @@ class MonitoringIntegrationService
                 'condition' => 'pii_retention_compliance_percent < 95',
                 'severity' => 'WARNING',
                 'notification_channels' => ['slack_compliance', 'email_legal_team'],
-                'auto_escalation' => false
-            ]
+                'auto_escalation' => false,
+            ],
         ];
     }
 
@@ -655,7 +654,7 @@ class MonitoringIntegrationService
                 'condition' => 'risk_scoring_latency_p95 > 50',
                 'severity' => 'WARNING',
                 'notification_channels' => ['slack_performance'],
-                'auto_escalation' => false
+                'auto_escalation' => false,
             ],
             [
                 'name' => 'Slow Capacity Reservations',
@@ -663,7 +662,7 @@ class MonitoringIntegrationService
                 'condition' => 'capacity_reservation_latency_p95 > 100',
                 'severity' => 'WARNING',
                 'notification_channels' => ['slack_performance'],
-                'auto_escalation' => false
+                'auto_escalation' => false,
             ],
             [
                 'name' => 'PII Vault Performance Degradation',
@@ -671,7 +670,7 @@ class MonitoringIntegrationService
                 'condition' => 'pii_decryption_latency_p95 > 200',
                 'severity' => 'WARNING',
                 'notification_channels' => ['slack_performance'],
-                'auto_escalation' => false
+                'auto_escalation' => false,
             ],
             [
                 'name' => 'Offline Sync Performance Issue',
@@ -679,8 +678,8 @@ class MonitoringIntegrationService
                 'condition' => 'offline_sync_latency_p95 > 30000',
                 'severity' => 'WARNING',
                 'notification_channels' => ['slack_ops'],
-                'auto_escalation' => false
-            ]
+                'auto_escalation' => false,
+            ],
         ];
     }
 
@@ -697,7 +696,7 @@ class MonitoringIntegrationService
                 'severity' => 'HIGH',
                 'notification_channels' => ['slack_security', 'email_security_team'],
                 'auto_escalation' => true,
-                'escalation_time' => '10m'
+                'escalation_time' => '10m',
             ],
             [
                 'name' => 'API Contract Violations Spike',
@@ -705,7 +704,7 @@ class MonitoringIntegrationService
                 'condition' => 'api_contract_violations_per_hour > 100',
                 'severity' => 'HIGH',
                 'notification_channels' => ['slack_security', 'email_api_team'],
-                'auto_escalation' => false
+                'auto_escalation' => false,
             ],
             [
                 'name' => 'RBAC Permission Violations',
@@ -713,7 +712,7 @@ class MonitoringIntegrationService
                 'condition' => 'permission_violations_per_hour > 20',
                 'severity' => 'HIGH',
                 'notification_channels' => ['slack_security'],
-                'auto_escalation' => false
+                'auto_escalation' => false,
             ],
             [
                 'name' => 'Staff Override Pattern Alert',
@@ -721,8 +720,8 @@ class MonitoringIntegrationService
                 'condition' => 'override_pattern_alerts > 0',
                 'severity' => 'MEDIUM',
                 'notification_channels' => ['slack_ops', 'email_compliance'],
-                'auto_escalation' => false
-            ]
+                'auto_escalation' => false,
+            ],
         ];
     }
 
@@ -739,7 +738,7 @@ class MonitoringIntegrationService
                 'severity' => 'HIGH',
                 'notification_channels' => ['slack_compliance', 'email_legal_team', 'email_dpo'],
                 'auto_escalation' => true,
-                'escalation_time' => '15m'
+                'escalation_time' => '15m',
             ],
             [
                 'name' => 'Audit Trail Gaps',
@@ -747,7 +746,7 @@ class MonitoringIntegrationService
                 'condition' => 'audit_trail_gaps > 0',
                 'severity' => 'HIGH',
                 'notification_channels' => ['slack_compliance', 'email_audit_team'],
-                'auto_escalation' => false
+                'auto_escalation' => false,
             ],
             [
                 'name' => 'Data Retention Policy Violations',
@@ -755,8 +754,8 @@ class MonitoringIntegrationService
                 'condition' => 'retention_policy_violations > 0',
                 'severity' => 'MEDIUM',
                 'notification_channels' => ['slack_compliance'],
-                'auto_escalation' => false
-            ]
+                'auto_escalation' => false,
+            ],
         ];
     }
 
@@ -771,14 +770,14 @@ class MonitoringIntegrationService
             'service_health_checks' => $this->createServiceHealthChecks(),
             'job_health_checks' => $this->createJobHealthChecks(),
             'database_health_checks' => $this->createDatabaseHealthChecks(),
-            'integration_health_checks' => $this->createIntegrationHealthChecks()
+            'integration_health_checks' => $this->createIntegrationHealthChecks(),
         ];
 
         return [
             'health_checks_created' => array_sum(array_map('count', $healthChecks)),
             'health_check_categories' => array_keys($healthChecks),
             'health_checks' => $healthChecks,
-            'setup_status' => 'COMPLETED'
+            'setup_status' => 'COMPLETED',
         ];
     }
 
@@ -798,8 +797,8 @@ class MonitoringIntegrationService
                 'checks' => [
                     'database_connectivity',
                     'facts_capture_capability',
-                    'serialization_performance'
-                ]
+                    'serialization_performance',
+                ],
             ],
             [
                 'name' => 'OutboxService Health',
@@ -811,8 +810,8 @@ class MonitoringIntegrationService
                 'checks' => [
                     'database_connectivity',
                     'event_processing_capability',
-                    'idempotency_key_generation'
-                ]
+                    'idempotency_key_generation',
+                ],
             ],
             [
                 'name' => 'CapacityReservationService Health',
@@ -824,8 +823,8 @@ class MonitoringIntegrationService
                 'checks' => [
                     'database_connectivity',
                     'optimistic_locking_capability',
-                    'reservation_performance'
-                ]
+                    'reservation_performance',
+                ],
             ],
             [
                 'name' => 'PIIVaultService Health',
@@ -837,8 +836,8 @@ class MonitoringIntegrationService
                 'checks' => [
                     'encryption_capability',
                     'key_management_status',
-                    'access_logging_functionality'
-                ]
+                    'access_logging_functionality',
+                ],
             ],
             [
                 'name' => 'RiskScoringService Health',
@@ -850,8 +849,8 @@ class MonitoringIntegrationService
                 'checks' => [
                     'model_availability',
                     'scoring_performance',
-                    'threshold_configuration'
-                ]
+                    'threshold_configuration',
+                ],
             ],
             [
                 'name' => 'OfflineOperationsService Health',
@@ -863,9 +862,9 @@ class MonitoringIntegrationService
                 'checks' => [
                     'queue_management_capability',
                     'sync_functionality',
-                    'conflict_resolution_capability'
-                ]
-            ]
+                    'conflict_resolution_capability',
+                ],
+            ],
         ];
     }
 
@@ -884,8 +883,8 @@ class MonitoringIntegrationService
                 'checks' => [
                     'job_execution_frequency',
                     'processing_success_rate',
-                    'queue_lag_monitoring'
-                ]
+                    'queue_lag_monitoring',
+                ],
             ],
             [
                 'name' => 'CapacityReservationCleanup Job Health',
@@ -896,8 +895,8 @@ class MonitoringIntegrationService
                 'checks' => [
                     'cleanup_effectiveness',
                     'expired_reservation_handling',
-                    'reconciliation_accuracy'
-                ]
+                    'reconciliation_accuracy',
+                ],
             ],
             [
                 'name' => 'PIIRetentionEnforcement Job Health',
@@ -908,8 +907,8 @@ class MonitoringIntegrationService
                 'checks' => [
                     'retention_policy_enforcement',
                     'anonymization_success_rate',
-                    'compliance_reporting'
-                ]
+                    'compliance_reporting',
+                ],
             ],
             [
                 'name' => 'DataHealthCheck Job Health',
@@ -920,8 +919,8 @@ class MonitoringIntegrationService
                 'checks' => [
                     'reconciliation_execution',
                     'data_quality_validation',
-                    'alert_generation'
-                ]
+                    'alert_generation',
+                ],
             ],
             [
                 'name' => 'AnalyticsBatchAggregation Job Health',
@@ -932,9 +931,9 @@ class MonitoringIntegrationService
                 'checks' => [
                     'aggregation_completeness',
                     'performance_metrics',
-                    'cache_invalidation'
-                ]
-            ]
+                    'cache_invalidation',
+                ],
+            ],
         ];
     }
 
@@ -956,14 +955,14 @@ class MonitoringIntegrationService
                     'risk_scores',
                     'fraud_timeline',
                     'eligibility_decisions',
-                    'loyalty_ledger'
+                    'loyalty_ledger',
                 ],
                 'checks' => [
                     'table_accessibility',
                     'index_performance',
                     'constraint_integrity',
-                    'partition_health'
-                ]
+                    'partition_health',
+                ],
             ],
             [
                 'name' => 'Phase 3 Indexes Performance',
@@ -972,12 +971,12 @@ class MonitoringIntegrationService
                     'outbox_events_status_idx',
                     'capacity_reservations_event_idx',
                     'pii_vault_tenant_idx',
-                    'risk_scores_booking_idx'
+                    'risk_scores_booking_idx',
                 ],
                 'performance_thresholds' => [
                     'query_time_ms' => 100,
-                    'index_usage_percent' => 80
-                ]
+                    'index_usage_percent' => 80,
+                ],
             ],
             [
                 'name' => 'Phase 3 Data Integrity',
@@ -985,10 +984,10 @@ class MonitoringIntegrationService
                     'foreign_key_constraints',
                     'unique_constraints',
                     'check_constraints',
-                    'immutable_data_verification'
+                    'immutable_data_verification',
                 ],
-                'check_frequency' => 'hourly'
-            ]
+                'check_frequency' => 'hourly',
+            ],
         ];
     }
 
@@ -1004,13 +1003,13 @@ class MonitoringIntegrationService
                     'booking_service_integration',
                     'event_service_integration',
                     'customer_service_integration',
-                    'notification_service_integration'
+                    'notification_service_integration',
                 ],
                 'checks' => [
                     'api_compatibility',
                     'data_flow_integrity',
-                    'performance_impact'
-                ]
+                    'performance_impact',
+                ],
             ],
             [
                 'name' => 'Phase 2 Integration Health',
@@ -1018,13 +1017,13 @@ class MonitoringIntegrationService
                     'analytics_service_integration',
                     'loyalty_service_integration',
                     'fan_tier_service_integration',
-                    'recommendation_engine_integration'
+                    'recommendation_engine_integration',
                 ],
                 'checks' => [
                     'feature_compatibility',
                     'data_consistency',
-                    'performance_metrics'
-                ]
+                    'performance_metrics',
+                ],
             ],
             [
                 'name' => 'External System Integration Health',
@@ -1032,14 +1031,14 @@ class MonitoringIntegrationService
                     'payment_gateway',
                     'email_service',
                     'sms_service',
-                    'monitoring_system'
+                    'monitoring_system',
                 ],
                 'checks' => [
                     'connectivity_status',
                     'response_time_monitoring',
-                    'error_rate_tracking'
-                ]
-            ]
+                    'error_rate_tracking',
+                ],
+            ],
         ];
     }
 
@@ -1058,14 +1057,14 @@ class MonitoringIntegrationService
                 'pii_vault_runbook',
                 'fraud_prevention_runbook',
                 'operations_console_runbook',
-                'disaster_recovery_runbook'
+                'disaster_recovery_runbook',
             ],
             'runbook_locations' => [
                 'wiki_base_url' => 'https://wiki.company.com/phase3-runbooks/',
                 'confluence_space' => 'ERP-PHASE3-OPS',
-                'git_repository' => 'ops/erp-phase3-runbooks'
+                'git_repository' => 'ops/erp-phase3-runbooks',
             ],
-            'creation_status' => 'COMPLETED'
+            'creation_status' => 'COMPLETED',
         ];
     }
 
@@ -1081,7 +1080,7 @@ class MonitoringIntegrationService
             'collection_intervals' => $this->defineCollectionIntervals(),
             'retention_policies' => $this->defineRetentionPolicies(),
             'aggregation_rules' => $this->defineAggregationRules(),
-            'setup_status' => 'COMPLETED'
+            'setup_status' => 'COMPLETED',
         ];
     }
 
@@ -1099,7 +1098,7 @@ class MonitoringIntegrationService
             '/metrics/phase3/fraud-prevention',
             '/metrics/phase3/operations-console',
             '/metrics/phase3/api-governance',
-            '/metrics/phase3/system-health'
+            '/metrics/phase3/system-health',
         ];
     }
 
@@ -1112,7 +1111,7 @@ class MonitoringIntegrationService
             'high_frequency' => '10s', // Critical metrics
             'medium_frequency' => '30s', // Performance metrics
             'low_frequency' => '60s', // General health metrics
-            'batch_frequency' => '300s' // Batch job metrics
+            'batch_frequency' => '300s', // Batch job metrics
         ];
     }
 
@@ -1125,7 +1124,7 @@ class MonitoringIntegrationService
             'real_time_metrics' => '7d',
             'hourly_aggregates' => '30d',
             'daily_aggregates' => '1y',
-            'monthly_aggregates' => '5y'
+            'monthly_aggregates' => '5y',
         ];
     }
 
@@ -1138,7 +1137,7 @@ class MonitoringIntegrationService
             'counters' => 'sum',
             'gauges' => 'last',
             'histograms' => 'percentiles',
-            'timers' => 'percentiles'
+            'timers' => 'percentiles',
         ];
     }
 
@@ -1152,7 +1151,7 @@ class MonitoringIntegrationService
             'grafana_enabled' => true,
             'alertmanager_enabled' => true,
             'jaeger_enabled' => true,
-            'elasticsearch_enabled' => true
+            'elasticsearch_enabled' => true,
         ];
     }
 
@@ -1167,7 +1166,7 @@ class MonitoringIntegrationService
             'health_checks_active' => true,
             'runbooks_available' => true,
             'metrics_collecting' => true,
-            'last_updated' => now()
+            'last_updated' => now(),
         ];
     }
 }

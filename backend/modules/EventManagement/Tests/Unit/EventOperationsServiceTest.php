@@ -2,21 +2,20 @@
 
 namespace Modules\EventManagement\Tests\Unit;
 
-use Tests\TestCase;
-use Modules\EventManagement\Services\EventOperationsService;
-use Modules\EventManagement\Services\AuditService;
-use Modules\EventManagement\Services\TenantSchemaManager;
-use Modules\EventManagement\Models\Event;
-use Modules\EventManagement\Models\Booking;
-use Modules\EventManagement\Models\Ticket;
-use Modules\EventManagement\Exceptions\EventManagementException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Modules\EventManagement\Exceptions\EventManagementException;
+use Modules\EventManagement\Models\Booking;
+use Modules\EventManagement\Models\Event;
+use Modules\EventManagement\Models\Ticket;
+use Modules\EventManagement\Services\AuditService;
+use Modules\EventManagement\Services\EventOperationsService;
+use Modules\EventManagement\Services\TenantSchemaManager;
+use Tests\TestCase;
 
 /**
  * EventOperationsService Unit Tests
- * 
+ *
  * Tests the core functionality of the EventOperationsService including
  * live dashboard data, real-time monitoring, and operational management.
  */
@@ -25,20 +24,23 @@ class EventOperationsServiceTest extends TestCase
     use RefreshDatabase;
 
     private EventOperationsService $service;
+
     private AuditService $auditService;
+
     private TenantSchemaManager $tenantManager;
+
     private string $testTenantId = 'test-tenant-001';
 
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->auditService = $this->createMock(AuditService::class);
         $this->tenantManager = $this->createMock(TenantSchemaManager::class);
-        
+
         $this->tenantManager->method('getCurrentTenantId')
-                           ->willReturn($this->testTenantId);
-        
+            ->willReturn($this->testTenantId);
+
         $this->service = new EventOperationsService(
             $this->auditService,
             $this->tenantManager
@@ -51,19 +53,19 @@ class EventOperationsServiceTest extends TestCase
         $event = Event::factory()->create([
             'tenant_id' => $this->testTenantId,
             'title' => 'Test Concert',
-            'status' => 'active'
+            'status' => 'active',
         ]);
 
         // Create test bookings and tickets
         $booking = Booking::factory()->create([
             'tenant_id' => $this->testTenantId,
             'event_id' => $event->id,
-            'status' => 'confirmed'
+            'status' => 'confirmed',
         ]);
 
         Ticket::factory()->count(5)->create([
             'booking_id' => $booking->id,
-            'status' => 'active'
+            'status' => 'active',
         ]);
 
         // Create operational zones
@@ -78,7 +80,7 @@ class EventOperationsServiceTest extends TestCase
             'occupancy_percentage' => 50.0,
             'status' => 'open',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Create check-in counters
@@ -92,7 +94,7 @@ class EventOperationsServiceTest extends TestCase
             'total_processed' => 25,
             'status' => 'active',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Create staff assignments
@@ -105,13 +107,13 @@ class EventOperationsServiceTest extends TestCase
             'status' => 'active',
             'is_lead' => true,
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Mock audit service
         $this->auditService->expects($this->once())
-                          ->method('logActivity')
-                          ->with('operations_dashboard_access', $this->anything(), $this->anything());
+            ->method('logActivity')
+            ->with('operations_dashboard_access', $this->anything(), $this->anything());
 
         // Get dashboard data
         $dashboardData = $this->service->getLiveEventDashboard($event->id);
@@ -121,7 +123,7 @@ class EventOperationsServiceTest extends TestCase
         $this->assertEquals($event->id, $dashboardData['event_id']);
         $this->assertEquals('Test Concert', $dashboardData['event_title']);
         $this->assertEquals('active', $dashboardData['event_status']);
-        
+
         // Check that all required sections are present
         $this->assertArrayHasKey('check_in_metrics', $dashboardData);
         $this->assertArrayHasKey('zone_status', $dashboardData);
@@ -161,13 +163,13 @@ class EventOperationsServiceTest extends TestCase
             'occupancy_percentage' => 50.0,
             'status' => 'open',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Mock audit service
         $this->auditService->expects($this->once())
-                          ->method('logActivity')
-                          ->with('zone_occupancy_update', $this->anything(), $this->anything());
+            ->method('logActivity')
+            ->with('zone_occupancy_update', $this->anything(), $this->anything());
 
         // Update occupancy by +50
         $result = $this->service->updateZoneOccupancy($zoneId, 50);
@@ -199,12 +201,12 @@ class EventOperationsServiceTest extends TestCase
             'occupancy_percentage' => 95.0,
             'status' => 'open',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Mock audit service
         $this->auditService->expects($this->once())
-                          ->method('logActivity');
+            ->method('logActivity');
 
         // Update occupancy to reach 100%
         $result = $this->service->updateZoneOccupancy($zoneId, 5);
@@ -229,13 +231,13 @@ class EventOperationsServiceTest extends TestCase
             'checkins_per_hour' => 30,
             'status' => 'active',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Mock audit service
         $this->auditService->expects($this->once())
-                          ->method('logActivity')
-                          ->with('counter_queue_update', $this->anything(), $this->anything());
+            ->method('logActivity')
+            ->with('counter_queue_update', $this->anything(), $this->anything());
 
         // Process 3 people (decrease queue by 3)
         $result = $this->service->updateCounterQueue($counterId, -3);
@@ -265,13 +267,13 @@ class EventOperationsServiceTest extends TestCase
             'reported_by' => 'security-001',
             'zone_id' => 1,
             'people_affected' => 0,
-            'metadata' => ['location' => 'VIP entrance', 'time' => '14:30']
+            'metadata' => ['location' => 'VIP entrance', 'time' => '14:30'],
         ];
 
         // Mock audit service
         $this->auditService->expects($this->once())
-                          ->method('logActivity')
-                          ->with('incident_logged', $this->anything(), $this->anything());
+            ->method('logActivity')
+            ->with('incident_logged', $this->anything(), $this->anything());
 
         // Log incident
         $incidentId = $this->service->logIncident($eventId, $incidentData);
@@ -306,13 +308,13 @@ class EventOperationsServiceTest extends TestCase
             'impact_level' => 'medium',
             'attendees_affected' => 100,
             'requires_action' => true,
-            'recommended_actions' => 'Increase security patrols in VIP area'
+            'recommended_actions' => 'Increase security patrols in VIP area',
         ];
 
         // Mock audit service
         $this->auditService->expects($this->once())
-                          ->method('logActivity')
-                          ->with('event_status_changed', $this->anything(), $this->anything());
+            ->method('logActivity')
+            ->with('event_status_changed', $this->anything(), $this->anything());
 
         // Update status
         $statusLogId = $this->service->updateEventStatus($eventId, $statusType, $newStatus, $statusData);
@@ -342,7 +344,7 @@ class EventOperationsServiceTest extends TestCase
         $event = Event::factory()->create([
             'tenant_id' => $this->testTenantId,
             'title' => 'Test Event Report',
-            'status' => 'completed'
+            'status' => 'completed',
         ]);
 
         // Create some test data for the report
@@ -358,7 +360,7 @@ class EventOperationsServiceTest extends TestCase
             'resolved_at' => now()->subHour(),
             'status' => 'resolved',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         DB::table('staff_assignments')->insert([
@@ -369,7 +371,7 @@ class EventOperationsServiceTest extends TestCase
             'status' => 'checked_out',
             'performance_rating' => 4,
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         DB::table('operational_zones')->insert([
@@ -383,7 +385,7 @@ class EventOperationsServiceTest extends TestCase
             'occupancy_percentage' => 90.0,
             'status' => 'closed',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Generate report
@@ -433,12 +435,12 @@ class EventOperationsServiceTest extends TestCase
             'occupancy_percentage' => 5.0,
             'status' => 'open',
             'created_at' => now(),
-            'updated_at' => now()
+            'updated_at' => now(),
         ]);
 
         // Mock audit service
         $this->auditService->expects($this->once())
-                          ->method('logActivity');
+            ->method('logActivity');
 
         // Try to decrease occupancy by more than current occupancy
         $result = $this->service->updateZoneOccupancy($zoneId, -10);

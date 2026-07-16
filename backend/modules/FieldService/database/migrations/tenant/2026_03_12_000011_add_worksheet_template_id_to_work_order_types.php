@@ -10,8 +10,8 @@ return new class extends Migration
     {
         Schema::table('fs_work_order_types', function (Blueprint $table) {
             $table->unsignedBigInteger('worksheet_template_id')
-                  ->nullable()
-                  ->after('auto_invoice');
+                ->nullable()
+                ->after('auto_invoice');
         });
     }
 

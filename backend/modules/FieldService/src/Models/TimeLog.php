@@ -23,12 +23,12 @@ class TimeLog extends Model
     ];
 
     protected $casts = [
-        'date'           => 'date',
-        'started_at'     => 'datetime',
-        'ended_at'       => 'datetime',
+        'date' => 'date',
+        'started_at' => 'datetime',
+        'ended_at' => 'datetime',
         'duration_hours' => 'decimal:2',
-        'hourly_rate'    => 'decimal:2',
-        'is_billable'    => 'boolean',
+        'hourly_rate' => 'decimal:2',
+        'is_billable' => 'boolean',
     ];
 
     protected $appends = ['line_total'];
@@ -45,9 +45,10 @@ class TimeLog extends Model
 
     public function getLineTotalAttribute(): float
     {
-        if (!$this->is_billable) {
+        if (! $this->is_billable) {
             return 0.0;
         }
+
         return (float) $this->duration_hours * (float) $this->hourly_rate;
     }
 }

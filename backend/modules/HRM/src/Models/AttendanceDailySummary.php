@@ -21,9 +21,9 @@ class AttendanceDailySummary extends Model
     ];
 
     protected $casts = [
-        'date'          => 'date',
+        'date' => 'date',
         'worked_minutes' => 'integer',
-        'has_exception'  => 'boolean',
+        'has_exception' => 'boolean',
     ];
 
     public function employee(): BelongsTo

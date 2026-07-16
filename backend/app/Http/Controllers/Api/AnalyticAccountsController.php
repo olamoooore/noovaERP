@@ -41,9 +41,9 @@ class AnalyticAccountsController extends Controller
         // Search by code or name
         if ($request->has('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('code', 'LIKE', "%{$search}%")
-                  ->orWhere('name', 'LIKE', "%{$search}%");
+                    ->orWhere('name', 'LIKE', "%{$search}%");
             });
         }
 
@@ -58,8 +58,8 @@ class AnalyticAccountsController extends Controller
     public function tree(Request $request)
     {
         $type = $request->input('type');
-        
-        $query = AnalyticAccount::with(['children' => function($q) {
+
+        $query = AnalyticAccount::with(['children' => function ($q) {
             $q->with('children')->orderBy('code');
         }, 'manager'])->whereNull('parent_id');
 
@@ -78,6 +78,7 @@ class AnalyticAccountsController extends Controller
     public function show($id)
     {
         $account = AnalyticAccount::with(['parent', 'children', 'manager'])->findOrFail($id);
+
         return response()->json($account);
     }
 
@@ -113,7 +114,7 @@ class AnalyticAccountsController extends Controller
 
         return response()->json([
             'message' => 'Analytic account created successfully',
-            'account' => $account->load(['parent', 'manager'])
+            'account' => $account->load(['parent', 'manager']),
         ], 201);
     }
 
@@ -125,7 +126,7 @@ class AnalyticAccountsController extends Controller
         $account = AnalyticAccount::findOrFail($id);
 
         $validator = Validator::make($request->all(), [
-            'code' => 'sometimes|string|max:20|unique:analytic_accounts,code,' . $id,
+            'code' => 'sometimes|string|max:20|unique:analytic_accounts,code,'.$id,
             'name' => 'sometimes|string|max:255',
             'type' => 'sometimes|in:department,project,location,product_line',
             'parent_id' => 'nullable|exists:analytic_accounts,id',
@@ -153,12 +154,12 @@ class AnalyticAccountsController extends Controller
 
         $account->update($request->only([
             'code', 'name', 'type', 'parent_id', 'manager_id',
-            'budget_amount', 'description', 'is_active'
+            'budget_amount', 'description', 'is_active',
         ]));
 
         return response()->json([
             'message' => 'Analytic account updated successfully',
-            'account' => $account->fresh(['parent', 'manager'])
+            'account' => $account->fresh(['parent', 'manager']),
         ]);
     }
 
@@ -168,18 +169,18 @@ class AnalyticAccountsController extends Controller
     public function destroy($id)
     {
         $account = AnalyticAccount::findOrFail($id);
-        
+
         // Check if account has children
         if ($account->children()->count() > 0) {
             return response()->json([
-                'error' => 'Cannot delete account with child accounts'
+                'error' => 'Cannot delete account with child accounts',
             ], 422);
         }
 
         $account->update(['is_active' => false]);
 
         return response()->json([
-            'message' => 'Analytic account deactivated successfully'
+            'message' => 'Analytic account deactivated successfully',
         ]);
     }
 
@@ -291,6 +292,7 @@ class AnalyticAccountsController extends Controller
             }
             $current = $current->parent;
         }
+
         return false;
     }
 }

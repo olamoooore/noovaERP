@@ -2,19 +2,19 @@
 
 namespace App\Services;
 
-use App\Services\Reconciliation\ARGLReconciliationService;
 use App\Services\Reconciliation\APGLReconciliationService;
+use App\Services\Reconciliation\ARGLReconciliationService;
 
 /**
  * SubledgerReconciliationService
- * 
+ *
  * Unified facade for AR/AP subledger to GL reconciliation.
- * 
+ *
  * Workstream 2 (2026-04-15): Refactored to use canonical reconciliation services
  * instead of heuristics. Previously used name/code patterns which could match
  * wrong accounts. Now delegates to ARGLReconciliationService and APGLReconciliationService
  * which use the account_mappings table for proper account resolution.
- * 
+ *
  * @deprecated Use ARGLReconciliationService and APGLReconciliationService directly
  */
 class SubledgerReconciliationService
@@ -26,7 +26,7 @@ class SubledgerReconciliationService
 
     /**
      * Reconcile AR subledger to GL.
-     * 
+     *
      * Delegates to ARGLReconciliationService which uses account_mappings table
      * for proper AR control account resolution.
      */
@@ -49,7 +49,7 @@ class SubledgerReconciliationService
 
     /**
      * Reconcile AP subledger to GL.
-     * 
+     *
      * Delegates to APGLReconciliationService which uses account_mappings table
      * for proper AP control account resolution.
      */

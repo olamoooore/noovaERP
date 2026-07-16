@@ -32,13 +32,13 @@ class LoyaltyService
         return DB::transaction(function () use ($tenantId, $customerId, $basePoints, $sourceType, $sourceId, $description) {
             // Get customer tier for potential multipliers
             $customerTier = $this->fanTierService->getCustomerTier($tenantId, $customerId);
-            
+
             // Calculate final points with multipliers
             $multiplier = $this->getPointsMultiplier($tenantId, $customerId, $sourceType);
             $finalPoints = (int) ($basePoints * $multiplier);
 
             // Ensure customer tier exists (create default if needed)
-            if (!$customerTier) {
+            if (! $customerTier) {
                 $customerTier = $this->ensureCustomerTier($tenantId, $customerId);
             }
 
@@ -75,8 +75,8 @@ class LoyaltyService
     ): array {
         return DB::transaction(function () use ($tenantId, $customerId, $points, $sourceType, $sourceId, $description) {
             $customerTier = $this->fanTierService->getCustomerTier($tenantId, $customerId);
-            
-            if (!$customerTier) {
+
+            if (! $customerTier) {
                 return [
                     'success' => false,
                     'error' => 'Customer has no tier assigned',
@@ -108,8 +108,8 @@ class LoyaltyService
     public function getCustomerPointsInfo(string $tenantId, int $customerId): array
     {
         $customerTier = $this->fanTierService->getCustomerTier($tenantId, $customerId);
-        
-        if (!$customerTier) {
+
+        if (! $customerTier) {
             return [
                 'current_points' => 0,
                 'lifetime_points' => 0,
@@ -154,7 +154,7 @@ class LoyaltyService
 
         foreach ($expiredTransactions->groupBy('customer_id') as $customerId => $transactions) {
             $customerPointsExpired = $transactions->sum('points_amount');
-            
+
             if ($customerPointsExpired > 0) {
                 $this->expireCustomerPoints($tenantId, $customerId, $customerPointsExpired, $transactions);
                 $processedCustomers[] = $customerId;
@@ -175,8 +175,8 @@ class LoyaltyService
     public function calculatePointsDiscount(string $tenantId, int $customerId, int $pointsToRedeem, float $orderAmount): array
     {
         $customerTier = $this->fanTierService->getCustomerTier($tenantId, $customerId);
-        
-        if (!$customerTier || $customerTier->current_points < $pointsToRedeem) {
+
+        if (! $customerTier || $customerTier->current_points < $pointsToRedeem) {
             return [
                 'valid' => false,
                 'error' => 'Insufficient points',
@@ -186,7 +186,7 @@ class LoyaltyService
         // Get points redemption rate (e.g., 100 points = $1)
         $redemptionRate = $this->getPointsRedemptionRate($tenantId);
         $discountAmount = $pointsToRedeem / $redemptionRate;
-        
+
         // Cap discount at order amount
         $discountAmount = min($discountAmount, $orderAmount);
 
@@ -229,10 +229,10 @@ class LoyaltyService
     {
         $rules = $this->getPointsEarningRules($tenantId);
         $bookingRule = $rules['booking_completed'];
-        
+
         $basePoints = $bookingRule['base_points'];
         $amountPoints = (int) ($bookingAmount * $bookingRule['per_dollar_spent']);
-        
+
         return $basePoints + $amountPoints;
     }
 
@@ -242,7 +242,7 @@ class LoyaltyService
     private function getPointsMultiplier(string $tenantId, int $customerId, string $sourceType): float
     {
         $benefits = $this->fanTierService->getCustomerBenefits($tenantId, $customerId);
-        
+
         $multiplierBenefit = $benefits->first(function ($benefit) use ($sourceType) {
             return $benefit->benefit_type === TierBenefit::TYPE_POINTS_MULTIPLIER
                 && $benefit->appliesTo($sourceType);
@@ -257,7 +257,7 @@ class LoyaltyService
     private function recordMultiplierUsage(string $tenantId, int $customerId, string $sourceType, ?int $sourceId, float $multiplier): void
     {
         $benefits = $this->fanTierService->getCustomerBenefits($tenantId, $customerId);
-        
+
         $multiplierBenefit = $benefits->first(function ($benefit) use ($sourceType) {
             return $benefit->benefit_type === TierBenefit::TYPE_POINTS_MULTIPLIER
                 && $benefit->appliesTo($sourceType);
@@ -285,7 +285,7 @@ class LoyaltyService
             ->orderBy('priority_level')
             ->first();
 
-        if (!$defaultTier) {
+        if (! $defaultTier) {
             throw new \Exception('No default tier available for tenant');
         }
 
@@ -299,7 +299,7 @@ class LoyaltyService
     {
         DB::transaction(function () use ($tenantId, $customerId, $pointsToExpire, $expiredTransactions) {
             $customerTier = $this->fanTierService->getCustomerTier($tenantId, $customerId);
-            
+
             if ($customerTier) {
                 // Deduct expired points from current balance
                 $customerTier->decrement('current_points', $pointsToExpire);

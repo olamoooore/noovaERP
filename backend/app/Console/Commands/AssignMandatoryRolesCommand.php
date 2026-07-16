@@ -28,39 +28,41 @@ class AssignMandatoryRolesCommand extends Command
      * First match wins (order matters).
      */
     private const ROLE_PATTERNS = [
-        'CASH_MAIN'            => ['1010', '1000'],
-        'BANK_MAIN'            => ['1020', '1001'],
-        'AR_CONTROL'           => ['1100', '1110'],
-        'AP_CONTROL'           => ['2100', '2000'],
-        'INVENTORY'            => ['1200', '1210'],
-        'COGS'                 => ['5100', '5000'],
-        'TAX_INPUT'            => ['2200', '2210'],
-        'TAX_OUTPUT'           => ['2200', '2220'],
-        'RETAINED_EARNINGS'    => ['3100', '3900'],
-        'FX_GAIN'              => ['7200'],
-        'FX_LOSS'              => ['7201'],
-        'SUSPENSE'             => ['9000', '9999'],
-        'ACCRUED_EXPENSES'     => ['2300', '2310'],
-        'PREPAID_EXPENSES'     => ['1400', '1410'],
+        'CASH_MAIN' => ['1010', '1000'],
+        'BANK_MAIN' => ['1020', '1001'],
+        'AR_CONTROL' => ['1100', '1110'],
+        'AP_CONTROL' => ['2100', '2000'],
+        'INVENTORY' => ['1200', '1210'],
+        'COGS' => ['5100', '5000'],
+        'TAX_INPUT' => ['2200', '2210'],
+        'TAX_OUTPUT' => ['2200', '2220'],
+        'RETAINED_EARNINGS' => ['3100', '3900'],
+        'FX_GAIN' => ['7200'],
+        'FX_LOSS' => ['7201'],
+        'SUSPENSE' => ['9000', '9999'],
+        'ACCRUED_EXPENSES' => ['2300', '2310'],
+        'PREPAID_EXPENSES' => ['1400', '1410'],
         'OUTSTANDING_RECEIPTS' => ['1015'],
         'OUTSTANDING_PAYMENTS' => ['1025'],
         'INTERCOMPANY_DUE_FROM' => ['1800'],
-        'INTERCOMPANY_DUE_TO'   => ['2800'],
+        'INTERCOMPANY_DUE_TO' => ['2800'],
     ];
 
     public function handle(): int
     {
         $tenantId = $this->option('tenant');
 
-        if (!$tenantId) {
+        if (! $tenantId) {
             $this->error('The --tenant flag is required for this command.');
             $this->info('Usage: php artisan accounting:assign-roles --tenant=<tenant-id>');
+
             return self::FAILURE;
         }
 
         $tenant = \App\Models\Tenant::find($tenantId);
-        if (!$tenant) {
+        if (! $tenant) {
             $this->error("Tenant not found: {$tenantId}");
+
             return self::FAILURE;
         }
 
@@ -93,6 +95,7 @@ class AssignMandatoryRolesCommand extends Command
 
         if ($roles->isEmpty()) {
             $this->error('No mandatory account roles found. Run tenant migrations first.');
+
             return self::FAILURE;
         }
 
@@ -110,8 +113,9 @@ class AssignMandatoryRolesCommand extends Command
 
         foreach (self::ROLE_PATTERNS as $roleCode => $patterns) {
             $role = $roles->get($roleCode);
-            if (!$role) {
+            if (! $role) {
                 $this->warn("  Role '{$roleCode}' not found in account_roles table, skipping.");
+
                 continue;
             }
 
@@ -123,6 +127,7 @@ class AssignMandatoryRolesCommand extends Command
 
             if ($existing) {
                 $skipped++;
+
                 continue;
             }
 
@@ -135,15 +140,17 @@ class AssignMandatoryRolesCommand extends Command
                 }
             }
 
-            if (!$matchedAccount) {
+            if (! $matchedAccount) {
                 $ambiguous[] = $roleCode;
-                $this->warn("  [{$roleCode}] No matching account for patterns: " . implode(', ', $patterns));
+                $this->warn("  [{$roleCode}] No matching account for patterns: ".implode(', ', $patterns));
+
                 continue;
             }
 
-            if (!$force && !$dryRun) {
-                if (!$this->confirm("Assign {$roleCode} → {$matchedAccount->code} ({$matchedAccount->name})?", true)) {
+            if (! $force && ! $dryRun) {
+                if (! $this->confirm("Assign {$roleCode} → {$matchedAccount->code} ({$matchedAccount->name})?", true)) {
                     $this->line("  Skipped {$roleCode}.");
+
                     continue;
                 }
             }
@@ -151,17 +158,18 @@ class AssignMandatoryRolesCommand extends Command
             if ($dryRun) {
                 $this->line("  [would assign] {$roleCode} → {$matchedAccount->code} ({$matchedAccount->name})");
                 $assigned++;
+
                 continue;
             }
 
             DB::table('entity_account_roles')->insert([
-                'account_role_id'      => $role->id,
-                'chart_of_account_id'  => $matchedAccount->id,
-                'is_active'            => true,
-                'assigned_by'          => 'system:auto-assign',
-                'assigned_at'          => now(),
-                'created_at'           => now(),
-                'updated_at'           => now(),
+                'account_role_id' => $role->id,
+                'chart_of_account_id' => $matchedAccount->id,
+                'is_active' => true,
+                'assigned_by' => 'system:auto-assign',
+                'assigned_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
 
             $this->info("  [assigned] {$roleCode} → {$matchedAccount->code} ({$matchedAccount->name})");
@@ -170,8 +178,8 @@ class AssignMandatoryRolesCommand extends Command
 
         $this->newLine();
         $this->info("Assigned: {$assigned}, Skipped (existing): {$skipped}");
-        if (!empty($ambiguous)) {
-            $this->warn("Unresolved roles requiring manual assignment: " . implode(', ', $ambiguous));
+        if (! empty($ambiguous)) {
+            $this->warn('Unresolved roles requiring manual assignment: '.implode(', ', $ambiguous));
         }
 
         return self::SUCCESS;

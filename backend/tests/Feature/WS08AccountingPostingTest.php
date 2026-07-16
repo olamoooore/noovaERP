@@ -24,12 +24,10 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
-use App\Models\JournalEntryLink;
 use App\Models\JournalEntryLine;
+use App\Models\JournalEntryLink;
 use App\Models\LockDate;
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Services\OcrPostingService;
 use Modules\PaymentGateway\Controllers\PaymentController;
 use Tests\TestCase;
@@ -45,33 +43,33 @@ class WS08AccountingPostingTest extends TestCase
     /** Return two test accounts (debit, credit) and a balanced PostingRequest DTO. */
     private function makePostingRequest(
         string $documentType = 'test_doc',
-        int    $documentId   = 9001,
-        string $date         = '',
+        int $documentId = 9001,
+        string $date = '',
     ): PostingRequest {
         $date = $date ?: now()->addDays(30)->toDateString(); // safely in the future
 
-        $debitAccount  = ChartOfAccount::factory()->create(['type' => 'expense',   'is_active' => true]);
+        $debitAccount = ChartOfAccount::factory()->create(['type' => 'expense',   'is_active' => true]);
         $creditAccount = ChartOfAccount::factory()->create(['type' => 'liability', 'is_active' => true]);
 
         return new PostingRequest(
             documentType: $documentType,
-            documentId:   $documentId,
-            postingDate:  $date,
-            description:  "WS-08 test posting",
-            lines:        [
+            documentId: $documentId,
+            postingDate: $date,
+            description: 'WS-08 test posting',
+            lines: [
                 new PostingRequestLine(
                     accountMappingKey: 'expense',
-                    accountId:         $debitAccount->id,
-                    debit:             500.00,
-                    credit:            0.00,
-                    description:       'Test debit line',
+                    accountId: $debitAccount->id,
+                    debit: 500.00,
+                    credit: 0.00,
+                    description: 'Test debit line',
                 ),
                 new PostingRequestLine(
                     accountMappingKey: 'payable',
-                    accountId:         $creditAccount->id,
-                    debit:             0.00,
-                    credit:            500.00,
-                    description:       'Test credit line',
+                    accountId: $creditAccount->id,
+                    debit: 0.00,
+                    credit: 500.00,
+                    description: 'Test credit line',
                 ),
             ],
             userId: 1,
@@ -85,7 +83,7 @@ class WS08AccountingPostingTest extends TestCase
     /** @test */
     public function posting_engine_creates_balanced_journal_entry(): void
     {
-        $engine  = app(PostingEngineInterface::class);
+        $engine = app(PostingEngineInterface::class);
         $request = $this->makePostingRequest(documentId: 9001);
 
         $result = $engine->post($request);
@@ -97,15 +95,15 @@ class WS08AccountingPostingTest extends TestCase
         $this->assertEquals('posted', $entry->status);
 
         // Lines must be balanced
-        $totalDebit  = $entry->lines->sum('debit');
+        $totalDebit = $entry->lines->sum('debit');
         $totalCredit = $entry->lines->sum('credit');
-        $this->assertEqualsWithDelta(500.00, $totalDebit,  0.01, 'Total debit mismatch');
+        $this->assertEqualsWithDelta(500.00, $totalDebit, 0.01, 'Total debit mismatch');
         $this->assertEqualsWithDelta(500.00, $totalCredit, 0.01, 'Total credit mismatch');
 
         // JournalEntryLink must exist (idempotency record)
         $this->assertDatabaseHas('journal_entry_links', [
             'document_type' => 'test_doc',
-            'document_id'   => 9001,
+            'document_id' => 9001,
         ]);
     }
 
@@ -114,7 +112,7 @@ class WS08AccountingPostingTest extends TestCase
     {
         $engine = app(PostingEngineInterface::class);
 
-        $debitAccount  = ChartOfAccount::factory()->create(['type' => 'expense', 'is_active' => true]);
+        $debitAccount = ChartOfAccount::factory()->create(['type' => 'expense', 'is_active' => true]);
         $creditAccount = ChartOfAccount::factory()->create(['type' => 'liability', 'is_active' => true]);
 
         $request = DraftJournalRequest::fromArray([
@@ -157,7 +155,7 @@ class WS08AccountingPostingTest extends TestCase
     /** @test */
     public function posting_engine_is_idempotent_for_same_document_id(): void
     {
-        $engine   = app(PostingEngineInterface::class);
+        $engine = app(PostingEngineInterface::class);
         $request1 = $this->makePostingRequest(documentId: 9002);
         $request2 = $this->makePostingRequest(documentId: 9002); // identical document_id
 
@@ -190,13 +188,13 @@ class WS08AccountingPostingTest extends TestCase
             'lock_type' => 'journal_entries',
             'lock_date' => $lockThrough,
             'is_active' => true,
-            'reason'    => 'WS-08 test lock',
+            'reason' => 'WS-08 test lock',
         ]);
 
         // Try to post a date that is <= lockThrough → must be rejected
         $lockedDate = now()->subMonth()->startOfMonth()->toDateString();
-        $engine     = app(PostingEngineInterface::class);
-        $request    = $this->makePostingRequest(documentId: 9003, date: $lockedDate);
+        $engine = app(PostingEngineInterface::class);
+        $request = $this->makePostingRequest(documentId: 9003, date: $lockedDate);
 
         $result = $engine->post($request);
 
@@ -212,7 +210,7 @@ class WS08AccountingPostingTest extends TestCase
     public function journal_entries_controller_store_calls_lock_date_validation(): void
     {
         $controllerPath = base_path('app/Http/Controllers/Api/JournalEntriesController.php');
-        $source         = file_get_contents($controllerPath);
+        $source = file_get_contents($controllerPath);
 
         $this->assertStringContainsString(
             'lockDateService->validateTransactionDate(',
@@ -225,7 +223,7 @@ class WS08AccountingPostingTest extends TestCase
     public function journal_entries_controller_store_calls_fiscal_period_validation(): void
     {
         $controllerPath = base_path('app/Http/Controllers/Api/JournalEntriesController.php');
-        $source         = file_get_contents($controllerPath);
+        $source = file_get_contents($controllerPath);
 
         $this->assertStringContainsString(
             'fiscalValidator->validateDate(',
@@ -255,7 +253,7 @@ class WS08AccountingPostingTest extends TestCase
     public function ocr_document_unpost_does_not_call_posting_engine_directly(): void
     {
         $modelPath = base_path('modules/OCRBookkeeping/src/Models/OcrDocument.php');
-        $source    = file_get_contents($modelPath);
+        $source = file_get_contents($modelPath);
 
         $this->assertStringNotContainsString(
             'app(\App\Accounting\Contracts\PostingEngineInterface::class)',

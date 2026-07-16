@@ -54,7 +54,7 @@ class ResolveTenantFromWhatsAppWebhookTest extends TestCase
         $request = Request::create('/api/v1/whatsapp/webhooks/order-created', 'POST');
         $request->headers->set('x-api-key', $apiKey);
 
-        $middleware = new ResolveTenantFromWhatsAppWebhook();
+        $middleware = new ResolveTenantFromWhatsAppWebhook;
 
         $response = $middleware->handle($request, function (Request $request) use ($tenantId) {
             $this->assertSame($tenantId, $request->attributes->get('tenant_id'));
@@ -75,7 +75,7 @@ class ResolveTenantFromWhatsAppWebhookTest extends TestCase
         $request = Request::create('/api/v1/whatsapp/webhooks/order-created', 'POST');
         $request->headers->set('x-api-key', 'wapibiz_unknown_key');
 
-        $middleware = new ResolveTenantFromWhatsAppWebhook();
+        $middleware = new ResolveTenantFromWhatsAppWebhook;
         $response = $middleware->handle($request, fn () => new Response('unexpected', 200));
 
         $this->assertSame(401, $response->getStatusCode());

@@ -32,7 +32,9 @@ class TenantSelectedItem extends Model
     // -------------------------------------------------------------------------
 
     public const TYPE_ADD_ON_PURCHASED = 'add_on_purchased';
+
     public const TYPE_OVERRIDE_INCLUDE = 'override_include';
+
     public const TYPE_OVERRIDE_EXCLUDE = 'override_exclude';
 
     public const TYPES = [

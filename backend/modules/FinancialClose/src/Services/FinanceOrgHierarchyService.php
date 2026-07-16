@@ -64,6 +64,7 @@ class FinanceOrgHierarchyService
             Log::warning('FinancialClose: delegation effective_to cannot be before effective_from', [
                 'task_id' => $taskId,
             ]);
+
             return null;
         }
 

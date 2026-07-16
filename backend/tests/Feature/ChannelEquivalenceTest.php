@@ -2,27 +2,31 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use App\Models\User;
-use App\Models\Product;
 use App\Models\Customer;
-use Modules\POS\Models\PosOrder;
-use Modules\POS\Models\PosSession;
-use Modules\POS\Models\PosTerminal;
-use Modules\POS\Models\PosPayment;
 use App\Models\JournalEntry;
+use App\Models\Product;
 use App\Models\StockMovement;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Modules\POS\Models\PosOrder;
+use Modules\POS\Models\PosPayment;
+use Modules\POS\Models\PosSession;
+use Modules\POS\Models\PosTerminal;
+use Tests\TestCase;
 
 class ChannelEquivalenceTest extends TestCase
 {
     use RefreshDatabase;
 
     protected User $user;
+
     protected Product $product;
+
     protected Customer $customer;
+
     protected PosTerminal $terminal;
+
     protected PosSession $session;
 
     protected function setUp(): void
@@ -47,7 +51,7 @@ class ChannelEquivalenceTest extends TestCase
 
     /**
      * Test CHAN-001: Five-path payment equivalence
-     * 
+     *
      * Verify that POS, Ecommerce, Gateway, Webhook, and Backfill paths
      * produce identical GL entries, stock movements, and payment records
      * for the same product and amount.
@@ -197,7 +201,7 @@ class ChannelEquivalenceTest extends TestCase
             $order,
             'card',
             110.00,
-            'GATEWAY-' . uniqid()
+            'GATEWAY-'.uniqid()
         );
 
         return $this->extractOrderData($orderId);
@@ -226,7 +230,7 @@ class ChannelEquivalenceTest extends TestCase
             $order,
             'card',
             110.00,
-            'WEBHOOK-' . uniqid()
+            'WEBHOOK-'.uniqid()
         );
 
         return $this->extractOrderData($orderId);
@@ -265,7 +269,7 @@ class ChannelEquivalenceTest extends TestCase
     protected function attemptDuplicatePayment(int $orderId): array
     {
         $order = PosOrder::find($orderId);
-        
+
         try {
             app(\Modules\POS\Services\PosPaymentCompletionService::class)->complete(
                 $order,

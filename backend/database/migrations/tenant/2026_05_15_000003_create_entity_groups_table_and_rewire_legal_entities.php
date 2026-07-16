@@ -9,7 +9,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('entity_groups')) {
+        if (! Schema::hasTable('entity_groups')) {
             Schema::create('entity_groups', function (Blueprint $table) {
                 $table->id();
                 $table->string('name');
@@ -86,8 +86,9 @@ SQL);
 
     public function down(): void
     {
-        if (!Schema::hasTable('legal_entities') || !Schema::hasColumn('legal_entities', 'group_id')) {
+        if (! Schema::hasTable('legal_entities') || ! Schema::hasColumn('legal_entities', 'group_id')) {
             Schema::dropIfExists('entity_groups');
+
             return;
         }
 

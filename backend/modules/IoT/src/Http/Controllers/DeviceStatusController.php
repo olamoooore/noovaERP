@@ -4,8 +4,8 @@ namespace Modules\IoT\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
-use Modules\IoT\Models\DeviceConfiguration;
 use Modules\IoT\Http\Requests\UpdateDeviceStatusRequest;
+use Modules\IoT\Models\DeviceConfiguration;
 use Modules\IoT\Services\DeviceManagementService;
 
 class DeviceStatusController extends Controller
@@ -16,7 +16,7 @@ class DeviceStatusController extends Controller
 
     /**
      * Agent reports device status update.
-     * 
+     *
      * POST /api/v1/iot/agents/{agentId}/device-status
      */
     public function update(UpdateDeviceStatusRequest $request, string $agentId): JsonResponse

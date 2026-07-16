@@ -2,14 +2,13 @@
 
 namespace Modules\PaymentGateway\Models;
 
-use App\Models\Invoice;
 use App\Models\Customer;
+use App\Models\Invoice;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 
 class PaymentTransaction extends Model
 {
@@ -65,17 +64,17 @@ class PaymentTransaction extends Model
     public static function webhookTenantLookupTable(): string
     {
         return DB::connection()->getDriverName() === 'pgsql'
-            ? 'public.' . static::webhookTenantLookupBaseTable()
+            ? 'public.'.static::webhookTenantLookupBaseTable()
             : static::webhookTenantLookupBaseTable();
     }
 
     public function syncWebhookTenantLookup(): void
     {
-        if (!function_exists('tenant') || !tenant()) {
+        if (! function_exists('tenant') || ! tenant()) {
             return;
         }
 
-        if (!Schema::hasTable(static::webhookTenantLookupBaseTable())) {
+        if (! Schema::hasTable(static::webhookTenantLookupBaseTable())) {
             return;
         }
 
@@ -83,7 +82,7 @@ class PaymentTransaction extends Model
             ? $this->gateway?->gateway_name
             : $this->gateway()->value('gateway_name');
 
-        if (!$gatewayName || !$this->transaction_id) {
+        if (! $gatewayName || ! $this->transaction_id) {
             return;
         }
 
@@ -104,7 +103,7 @@ class PaymentTransaction extends Model
 
     public function deleteWebhookTenantLookup(): void
     {
-        if (!Schema::hasTable(static::webhookTenantLookupBaseTable()) || !$this->transaction_id) {
+        if (! Schema::hasTable(static::webhookTenantLookupBaseTable()) || ! $this->transaction_id) {
             return;
         }
 
@@ -112,7 +111,7 @@ class PaymentTransaction extends Model
             ? $this->gateway?->gateway_name
             : $this->gateway()->value('gateway_name');
 
-        if (!$gatewayName) {
+        if (! $gatewayName) {
             return;
         }
 
@@ -217,7 +216,7 @@ class PaymentTransaction extends Model
     /**
      * Mark transaction as failed
      */
-    public function markAsFailed(string $errorMessage = null): void
+    public function markAsFailed(?string $errorMessage = null): void
     {
         $this->update([
             'status' => 'failed',

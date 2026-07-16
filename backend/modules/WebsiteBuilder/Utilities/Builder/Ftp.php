@@ -1,5 +1,7 @@
 <?php
+
 namespace Modules\WebsiteBuilder\Utilities\Builder;
+
 /*
  * @autor: MultiFour
  * @version: 1.0.0
@@ -7,53 +9,66 @@ namespace Modules\WebsiteBuilder\Utilities\Builder;
  * Class ftpUploading
  */
 
- class Ftp {
-     private $conn_id = null;
+class Ftp
+{
+    private $conn_id = null;
 
-     private $ftp_server = "";
-     private $ftp_user_name = "";
-     private $ftp_user_pass = '';
+    private $ftp_server = '';
 
-     public function __construct($access) {
-         $this->ftp_server = $access['ftp_server'];
-         $this->ftp_user_name = $access['ftp_user_name'];
-         $this->ftp_user_pass = $access['ftp_user_pass'];
+    private $ftp_user_name = '';
 
-         $this->connect();
-     }
+    private $ftp_user_pass = '';
 
-     public function mkDir($destPath) {
-         if (!ftp_nlist($this->conn_id, $destPath))
-             ftp_mkdir($this->conn_id, $destPath);
-     }
+    public function __construct($access)
+    {
+        $this->ftp_server = $access['ftp_server'];
+        $this->ftp_user_name = $access['ftp_user_name'];
+        $this->ftp_user_pass = $access['ftp_user_pass'];
 
-     private function connect() {
-         $this->conn_id = ftp_connect($this->ftp_server,21,120);
-         if (!$this->conn_id)
-             throw new Exception("<span style='color:#FF0000'>Couldn't connect to $this->ftp_server</span>");
-         $login_result = ftp_login($this->conn_id, $this->ftp_user_name, $this->ftp_user_pass);
-         if (!$login_result)
-             throw new Exception("<span style='color:#FF0000'>You do not have access to this ftp server!</span>");
+        $this->connect();
+    }
 
-         if ((!$this->conn_id) || (!$login_result))
-             return false;
+    public function mkDir($destPath)
+    {
+        if (! ftp_nlist($this->conn_id, $destPath)) {
+            ftp_mkdir($this->conn_id, $destPath);
+        }
+    }
 
-         return true;
-     }
+    private function connect()
+    {
+        $this->conn_id = ftp_connect($this->ftp_server, 21, 120);
+        if (! $this->conn_id) {
+            throw new Exception("<span style='color:#FF0000'>Couldn't connect to $this->ftp_server</span>");
+        }
+        $login_result = ftp_login($this->conn_id, $this->ftp_user_name, $this->ftp_user_pass);
+        if (! $login_result) {
+            throw new Exception("<span style='color:#FF0000'>You do not have access to this ftp server!</span>");
+        }
 
-     public function upload($file, $destPath, $destName) {
-         if ( is_array(ftp_nlist($this->conn_id, ".")) ) {
-             $this->connect();
-         }
-         $this->mkDir($destPath);
-         $upload = ftp_put($this->conn_id, $destPath . $destName, $file, FTP_BINARY);  // upload the file
-         if (!$upload)
-             return false;
+        if ((! $this->conn_id) || (! $login_result)) {
+            return false;
+        }
 
-         return true;
-     }
+        return true;
+    }
 
-     public function close() {
-         ftp_close($this->conn_id);
-     }
- }
+    public function upload($file, $destPath, $destName)
+    {
+        if (is_array(ftp_nlist($this->conn_id, '.'))) {
+            $this->connect();
+        }
+        $this->mkDir($destPath);
+        $upload = ftp_put($this->conn_id, $destPath.$destName, $file, FTP_BINARY);  // upload the file
+        if (! $upload) {
+            return false;
+        }
+
+        return true;
+    }
+
+    public function close()
+    {
+        ftp_close($this->conn_id);
+    }
+}

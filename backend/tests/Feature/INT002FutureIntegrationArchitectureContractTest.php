@@ -29,8 +29,8 @@ class INT002FutureIntegrationArchitectureContractTest extends TestCase
         $this->assertStringContainsString("'message' => 'Operation queued successfully'", $controller);
         $this->assertStringContainsString("'data' => \$queueItem", $controller);
         $this->assertStringContainsString("return response()->json(['data' => \$item]);", $controller);
-        $this->assertStringContainsString("return response()->json([", $controller);
-            $this->assertStringContainsString("'count' => \$items->count()", $controller);
+        $this->assertStringContainsString('return response()->json([', $controller);
+        $this->assertStringContainsString("'count' => \$items->count()", $controller);
     }
 
     public function test_repository_contains_pre_push_guardrail_hook_for_tenant_drift(): void

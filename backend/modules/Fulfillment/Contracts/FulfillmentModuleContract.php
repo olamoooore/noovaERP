@@ -9,12 +9,35 @@ use App\Modules\Contracts\BaseModuleContract;
  */
 class FulfillmentModuleContract extends BaseModuleContract
 {
-    public function getKey(): string { return 'fulfillment'; }
-    public function getName(): string { return 'Fulfillment'; }
-    public function getType(): string { return 'addon'; }
-    public function getDescription(): string { return 'Multi-tenant fulfillment — shipments, carriers, tracking, shipping rates and zones'; }
-    public function getVersion(): string { return '1.0.0'; }
-    public function getDependencies(): array { return ['inventory', 'sales']; }
+    public function getKey(): string
+    {
+        return 'fulfillment';
+    }
+
+    public function getName(): string
+    {
+        return 'Fulfillment';
+    }
+
+    public function getType(): string
+    {
+        return 'addon';
+    }
+
+    public function getDescription(): string
+    {
+        return 'Multi-tenant fulfillment — shipments, carriers, tracking, shipping rates and zones';
+    }
+
+    public function getVersion(): string
+    {
+        return '1.0.0';
+    }
+
+    public function getDependencies(): array
+    {
+        return ['inventory', 'sales'];
+    }
 
     public function getPermissions(): array
     {
@@ -33,26 +56,26 @@ class FulfillmentModuleContract extends BaseModuleContract
     {
         return [
             'required_setup_steps' => ['carrier_setup'],
-            'default_settings'     => [],
-            'recommended_roles'    => ['admin'],
+            'default_settings' => [],
+            'recommended_roles' => ['admin'],
         ];
     }
 
     public function getActivationRules(): array
     {
         return [
-            'requires'  => ['inventory', 'sales'],
-            'settings'  => [],
-            'min_tier'  => null,
+            'requires' => ['inventory', 'sales'],
+            'settings' => [],
+            'min_tier' => null,
         ];
     }
 
     public function getDeactivationRules(): array
     {
         return [
-            'removes_data'       => false,
+            'removes_data' => false,
             'preserves_entities' => [],
-            'cleanup_jobs'       => [],
+            'cleanup_jobs' => [],
         ];
     }
 
@@ -71,9 +94,9 @@ class FulfillmentModuleContract extends BaseModuleContract
     {
         return [
             'has_ai_assistant' => false,
-            'ai_suggestions'   => false,
-            'ai_automation'    => false,
-            'ai_data_access'   => [],
+            'ai_suggestions' => false,
+            'ai_automation' => false,
+            'ai_data_access' => [],
         ];
     }
 }

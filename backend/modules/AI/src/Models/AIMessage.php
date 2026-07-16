@@ -43,6 +43,6 @@ class AIMessage extends Model
 
     public function hasFunctionCall(): bool
     {
-        return !empty($this->function_call);
+        return ! empty($this->function_call);
     }
 }

@@ -21,7 +21,7 @@ class FeatureGateController extends Controller
     public function all(Request $request): JsonResponse
     {
         $tenantId = $request->attributes->get('tenant_id');
-        $fresh    = $request->header('X-Feature-Gate-Fresh') === '1';
+        $fresh = $request->header('X-Feature-Gate-Fresh') === '1';
 
         // Logging: Track tenant ID
         \Log::info('[FeatureGateController] Fetching features', [
@@ -48,8 +48,8 @@ class FeatureGateController extends Controller
 
         return response()->json([
             'tenant_id' => $tenantId,
-            'count'     => count($features),
-            'features'  => $features,
+            'count' => count($features),
+            'features' => $features,
             'cached_at' => now()->toIso8601String(),
         ]);
     }
@@ -63,7 +63,7 @@ class FeatureGateController extends Controller
     public function check(Request $request, string $key): JsonResponse
     {
         $tenantId = $request->attributes->get('tenant_id');
-        $fresh    = $request->header('X-Feature-Gate-Fresh') === '1';
+        $fresh = $request->header('X-Feature-Gate-Fresh') === '1';
 
         // Sanitise key — allow only lowercase alphanumeric, dots, underscores
         if (! preg_match('/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){0,2}$/', $key)) {
@@ -84,18 +84,18 @@ class FeatureGateController extends Controller
     public function checkMany(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'keys'   => ['required', 'array', 'min:1', 'max:50'],
+            'keys' => ['required', 'array', 'min:1', 'max:50'],
             'keys.*' => ['string', 'regex:/^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*){0,2}$/'],
         ]);
 
         $tenantId = $request->attributes->get('tenant_id');
-        $fresh    = $request->header('X-Feature-Gate-Fresh') === '1';
+        $fresh = $request->header('X-Feature-Gate-Fresh') === '1';
 
         $results = $this->gate->checkMany($tenantId, $data['keys'], $fresh);
 
         return response()->json([
             'tenant_id' => $tenantId,
-            'results'   => $results,
+            'results' => $results,
             'cached_at' => now()->toIso8601String(),
         ]);
     }

@@ -7,9 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 class PolicyRule extends Model
 {
     protected $table = 'platform_policy_rules';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
+
     protected $guarded = [];
 
     protected $casts = [

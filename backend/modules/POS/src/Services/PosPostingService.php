@@ -25,7 +25,7 @@ class PosPostingService
     {
         // TASK TAX-001: Resolve tax information for tax audit trail
         $taxResolutionService = app(\App\Services\TaxResolutionService::class);
-        
+
         $lines = [];
 
         // DR Cash
@@ -55,7 +55,7 @@ class PosPostingService
             // Resolve tax code from first item (simplified - assumes single tax rate per order)
             $taxCode = 'SALES-TAX';
             $taxId = null;
-            
+
             if ($order->items->isNotEmpty()) {
                 $firstItem = $order->items->first();
                 if ($firstItem->product) {
@@ -67,7 +67,7 @@ class PosPostingService
                     $taxId = $taxInfo['tax_id'];
                 }
             }
-            
+
             $lines[] = new PostingRequestLine(
                 accountMappingKey: 'sales_tax_payable',
                 accountId: null,
@@ -138,7 +138,7 @@ class PosPostingService
             entityBookId: request()->attributes->get('entity_book_id'),
         ));
 
-        if (!$result->success) {
+        if (! $result->success) {
             throw new \RuntimeException("POS posting failed: {$result->error}");
         }
 
@@ -188,14 +188,14 @@ class PosPostingService
             })
             ->map(function ($item) {
                 if ($item->product_variant_id && $item->variant) {
-                    return $item->variant->sku ?: $item->variant->name ?: 'variant#' . $item->product_variant_id;
+                    return $item->variant->sku ?: $item->variant->name ?: 'variant#'.$item->product_variant_id;
                 }
 
                 if ($item->product_id && $item->product) {
-                    return $item->product->sku ?: $item->product->name ?: 'product#' . $item->product_id;
+                    return $item->product->sku ?: $item->product->name ?: 'product#'.$item->product_id;
                 }
 
-                return 'line#' . $item->id;
+                return 'line#'.$item->id;
             })
             ->unique()
             ->values()
@@ -211,10 +211,10 @@ class PosPostingService
      * PostingEngine::reverse(). Must be called inside the same DB transaction
      * as stock restoration to guarantee atomicity.
      *
-     * @param  PosOrder  $originalOrder   The paid order whose GL is being reversed
-     * @param  PosOrder  $returnOrder     The return order (used for log context)
-     * @param  string    $reason          Human-readable reversal reason
-     * @return JournalEntry|null          The reversal entry, or null if no GL existed
+     * @param  PosOrder  $originalOrder  The paid order whose GL is being reversed
+     * @param  PosOrder  $returnOrder  The return order (used for log context)
+     * @param  string  $reason  Human-readable reversal reason
+     * @return JournalEntry|null The reversal entry, or null if no GL existed
      */
     public function reverseOrder(PosOrder $originalOrder, PosOrder $returnOrder, string $reason = 'POS return'): ?JournalEntry
     {
@@ -223,24 +223,25 @@ class PosPostingService
             ->where('relation_type', 'post')
             ->first();
 
-        if (!$link) {
+        if (! $link) {
             Log::warning('No journal entry found to reverse for POS return', [
                 'original_order_id' => $originalOrder->id,
-                'return_order_id'   => $returnOrder->id,
+                'return_order_id' => $returnOrder->id,
             ]);
+
             return null;
         }
 
         $result = $this->postingEngine->reverse(new ReversalRequest(
             journalEntryId: $link->journal_entry_id,
-            reversalDate:   now()->toDateString(),
-            reason:         $reason,
-            reasonCode:     'POS_RETURN',
-            actorUserId:    TenantUserHelper::resolveTenantUserId(),
+            reversalDate: now()->toDateString(),
+            reason: $reason,
+            reasonCode: 'POS_RETURN',
+            actorUserId: TenantUserHelper::resolveTenantUserId(),
             approvalUserId: null,
         ));
 
-        if (!$result->success) {
+        if (! $result->success) {
             throw new \RuntimeException(
                 "GL reversal failed for POS return of order {$originalOrder->order_number}: {$result->error}"
             );
@@ -248,7 +249,7 @@ class PosPostingService
 
         Log::info('POS order posting reversed', [
             'original_order_id' => $originalOrder->id,
-            'return_order_id'   => $returnOrder->id,
+            'return_order_id' => $returnOrder->id,
             'reversal_entry_id' => $result->journalEntry?->id,
         ]);
 
@@ -257,16 +258,16 @@ class PosPostingService
 
     /**
      * Post GL entry for refund payment (cash out)
-     * 
+     *
      * This creates a journal entry for the refund payment itself,
      * separate from the sales reversal. This ensures cash drawer
      * reconciliation works correctly.
      *
-     * @param  PosOrder  $order          The order being refunded
-     * @param  string    $refundMethod   Payment method (cash, card, store_credit)
-     * @param  float     $refundAmount   Amount being refunded
-     * @param  string    $description    Description for the entry
-     * @return JournalEntry              The refund payment journal entry
+     * @param  PosOrder  $order  The order being refunded
+     * @param  string  $refundMethod  Payment method (cash, card, store_credit)
+     * @param  float  $refundAmount  Amount being refunded
+     * @param  string  $description  Description for the entry
+     * @return JournalEntry The refund payment journal entry
      */
     public function postRefundPayment(
         PosOrder $order,
@@ -308,7 +309,7 @@ class PosPostingService
             entityBookId: request()->attributes->get('entity_book_id'),
         ));
 
-        if (!$result->success) {
+        if (! $result->success) {
             throw new \RuntimeException("Refund payment posting failed: {$result->error}");
         }
 

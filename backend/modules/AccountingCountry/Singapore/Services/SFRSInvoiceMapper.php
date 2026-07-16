@@ -76,16 +76,16 @@ class SFRSInvoiceMapper implements InvoiceSchemaMapperContract
         // Check required fields
         $required = ['invoice_id', 'document_type', 'supplier', 'customer', 'line_items', 'totals'];
         foreach ($required as $field) {
-            if (!isset($payload[$field])) {
+            if (! isset($payload[$field])) {
                 return false;
             }
         }
 
         // Validate party structure
-        if (!$this->validateParty($payload['supplier'])) {
+        if (! $this->validateParty($payload['supplier'])) {
             return false;
         }
-        if (!$this->validateParty($payload['customer'])) {
+        if (! $this->validateParty($payload['customer'])) {
             return false;
         }
 
@@ -132,7 +132,7 @@ class SFRSInvoiceMapper implements InvoiceSchemaMapperContract
     private function mapLineItem($line, $invoice): array
     {
         return [
-            'id' => (string)$line->id,
+            'id' => (string) $line->id,
             'quantity' => $line->quantity,
             'unit_code' => $line->unit_code ?? 'C62', // Default: piece
             'description' => $line->description,
@@ -177,7 +177,7 @@ class SFRSInvoiceMapper implements InvoiceSchemaMapperContract
                             'amount' => $invoice->tax_amount ?? 0,
                             'currency_id' => $invoice->currency_code ?? 'SGD',
                         ],
-                    ]
+                    ],
                 ],
             ],
             'legal_monetary_total' => [
@@ -210,7 +210,7 @@ class SFRSInvoiceMapper implements InvoiceSchemaMapperContract
      */
     private function mapPaymentTerms($invoice): array
     {
-        if (!$invoice->payment_terms) {
+        if (! $invoice->payment_terms) {
             return [];
         }
 

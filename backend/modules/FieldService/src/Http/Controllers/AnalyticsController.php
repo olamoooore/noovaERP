@@ -5,26 +5,26 @@ namespace Modules\FieldService\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Modules\FieldService\Models\WorkOrder;
 use Modules\FieldService\Models\Technician;
 use Modules\FieldService\Models\TimeLog;
+use Modules\FieldService\Models\WorkOrder;
 
 class AnalyticsController extends Controller
 {
     public function dashboard()
     {
-        $today        = now()->toDateString();
+        $today = now()->toDateString();
         $startOfMonth = now()->startOfMonth()->toDateString();
 
         $kpis = [
-            'open'              => WorkOrder::whereIn('status', ['draft', 'scheduled'])->count(),
-            'in_progress'       => WorkOrder::where('status', 'in_progress')->count(),
-            'completed_today'   => WorkOrder::where('status', 'completed')
-                                       ->whereDate('completed_at', $today)
-                                       ->count(),
-            'mtd_revenue'       => WorkOrder::where('status', 'invoiced')
-                                       ->whereDate('completed_at', '>=', $startOfMonth)
-                                       ->sum('total_amount'),
+            'open' => WorkOrder::whereIn('status', ['draft', 'scheduled'])->count(),
+            'in_progress' => WorkOrder::where('status', 'in_progress')->count(),
+            'completed_today' => WorkOrder::where('status', 'completed')
+                ->whereDate('completed_at', $today)
+                ->count(),
+            'mtd_revenue' => WorkOrder::where('status', 'invoiced')
+                ->whereDate('completed_at', '>=', $startOfMonth)
+                ->sum('total_amount'),
         ];
 
         $statusBreakdown = WorkOrder::select('status', DB::raw('COUNT(*) as count'))
@@ -38,8 +38,8 @@ class AnalyticsController extends Controller
             ->get();
 
         return response()->json([
-            'kpis'               => $kpis,
-            'status_breakdown'   => $statusBreakdown,
+            'kpis' => $kpis,
+            'status_breakdown' => $statusBreakdown,
             'recent_work_orders' => $recentWorkOrders,
         ]);
     }
@@ -47,27 +47,27 @@ class AnalyticsController extends Controller
     public function technicianPerformance(Request $request)
     {
         $from = $request->get('from', now()->startOfMonth()->toDateString());
-        $to   = $request->get('to',   now()->toDateString());
+        $to = $request->get('to', now()->toDateString());
 
         $stats = Technician::with('user')
             ->where('is_active', true)
             ->get()
             ->map(function (Technician $tech) use ($from, $to) {
                 $wos = $tech->workOrders()
-                    ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59']);
+                    ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59']);
 
                 $hours = TimeLog::where('technician_id', $tech->id)
-                    ->whereBetween('start_time', [$from . ' 00:00:00', $to . ' 23:59:59'])
+                    ->whereBetween('start_time', [$from.' 00:00:00', $to.' 23:59:59'])
                     ->sum(DB::raw('TIMESTAMPDIFF(MINUTE, start_time, end_time)')) / 60;
 
                 return [
-                    'id'           => $tech->id,
-                    'name'         => $tech->user->name ?? 'Unknown',
-                    'avatar'       => $tech->user->avatar ?? null,
-                    'assigned'     => (clone $wos)->count(),
-                    'completed'    => (clone $wos)->where('status', 'completed')->count(),
+                    'id' => $tech->id,
+                    'name' => $tech->user->name ?? 'Unknown',
+                    'avatar' => $tech->user->avatar ?? null,
+                    'assigned' => (clone $wos)->count(),
+                    'completed' => (clone $wos)->where('status', 'completed')->count(),
                     'hours_logged' => round($hours, 2),
-                    'avg_rating'   => round((clone $wos)->whereNotNull('customer_rating')->avg('customer_rating') ?? 0, 1),
+                    'avg_rating' => round((clone $wos)->whereNotNull('customer_rating')->avg('customer_rating') ?? 0, 1),
                 ];
             });
 
@@ -77,15 +77,15 @@ class AnalyticsController extends Controller
     public function revenue(Request $request)
     {
         $from = $request->get('from', now()->subDays(30)->toDateString());
-        $to   = $request->get('to',   now()->toDateString());
+        $to = $request->get('to', now()->toDateString());
 
         $daily = WorkOrder::select(
-                DB::raw('DATE(completed_at) as date'),
-                DB::raw('SUM(total_amount) as revenue'),
-                DB::raw('COUNT(*) as count')
-            )
+            DB::raw('DATE(completed_at) as date'),
+            DB::raw('SUM(total_amount) as revenue'),
+            DB::raw('COUNT(*) as count')
+        )
             ->where('status', 'invoiced')
-            ->whereBetween('completed_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->whereBetween('completed_at', [$from.' 00:00:00', $to.' 23:59:59'])
             ->groupBy('date')
             ->orderBy('date')
             ->get();
@@ -99,11 +99,11 @@ class AnalyticsController extends Controller
      */
     public function jobsAnalysis(Request $request)
     {
-        $from       = $request->get('from', now()->subDays(30)->toDateString());
-        $to         = $request->get('to',   now()->toDateString());
+        $from = $request->get('from', now()->subDays(30)->toDateString());
+        $to = $request->get('to', now()->toDateString());
 
         $query = WorkOrder::with(['type', 'customer', 'leadTechnician.user'])
-            ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59']);
+            ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59']);
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -115,7 +115,7 @@ class AnalyticsController extends Controller
             $query->where('customer_id', $request->customer_id);
         }
         if ($request->filled('technician_id')) {
-            $query->whereHas('technicians', fn($q) => $q->where('technicians.id', $request->technician_id));
+            $query->whereHas('technicians', fn ($q) => $q->where('technicians.id', $request->technician_id));
         }
         if ($request->filled('priority')) {
             $query->where('priority', $request->priority);
@@ -124,26 +124,26 @@ class AnalyticsController extends Controller
         $jobs = $query->orderByDesc('created_at')->paginate(50);
 
         // Summary aggregates for the filtered set (use the same base query without pagination)
-        $baseQuery = WorkOrder::whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59']);
+        $baseQuery = WorkOrder::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59']);
         $this->applyJobFilters($baseQuery, $request);
 
         $summary = [
-            'total'     => (clone $baseQuery)->count(),
+            'total' => (clone $baseQuery)->count(),
             'completed' => (clone $baseQuery)->where('status', 'completed')->count(),
-            'invoiced'  => (clone $baseQuery)->where('status', 'invoiced')->count(),
-            'revenue'   => (clone $baseQuery)->whereIn('status', ['completed', 'invoiced'])->sum('total_amount'),
-            'by_type'   => (clone $baseQuery)->select('type_id', DB::raw('COUNT(*) as count'))
-                                ->with('type:id,name,color')
-                                ->groupBy('type_id')
-                                ->get(),
+            'invoiced' => (clone $baseQuery)->where('status', 'invoiced')->count(),
+            'revenue' => (clone $baseQuery)->whereIn('status', ['completed', 'invoiced'])->sum('total_amount'),
+            'by_type' => (clone $baseQuery)->select('type_id', DB::raw('COUNT(*) as count'))
+                ->with('type:id,name,color')
+                ->groupBy('type_id')
+                ->get(),
             'by_status' => (clone $baseQuery)->select('status', DB::raw('COUNT(*) as count'))
-                                ->groupBy('status')
-                                ->get()
-                                ->pluck('count', 'status'),
+                ->groupBy('status')
+                ->get()
+                ->pluck('count', 'status'),
         ];
 
         return response()->json([
-            'jobs'    => $jobs,
+            'jobs' => $jobs,
             'summary' => $summary,
         ]);
     }
@@ -153,17 +153,17 @@ class AnalyticsController extends Controller
      */
     public function exportCsv(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $from  = $request->get('from', now()->subDays(30)->toDateString());
-        $to    = $request->get('to',   now()->toDateString());
+        $from = $request->get('from', now()->subDays(30)->toDateString());
+        $to = $request->get('to', now()->toDateString());
 
         $query = WorkOrder::with(['type:id,name', 'customer:id,name', 'leadTechnician.user:id,name'])
-            ->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59']);
+            ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59']);
 
         $this->applyJobFilters($query, $request);
 
         $headers = [
-            'Content-Type'        => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="field-service-jobs-' . $from . '-to-' . $to . '.csv"',
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="field-service-jobs-'.$from.'-to-'.$to.'.csv"',
         ];
 
         return response()->stream(function () use ($query) {
@@ -212,7 +212,7 @@ class AnalyticsController extends Controller
             $query->where('customer_id', $request->customer_id);
         }
         if ($request->filled('technician_id')) {
-            $query->whereHas('technicians', fn($q) => $q->where('technicians.id', $request->technician_id));
+            $query->whereHas('technicians', fn ($q) => $q->where('technicians.id', $request->technician_id));
         }
         if ($request->filled('priority')) {
             $query->where('priority', $request->priority);

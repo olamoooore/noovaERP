@@ -4,21 +4,21 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ReconciliationException;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * ReconciliationExceptionController
- * 
+ *
  * API endpoints for reconciliation exception management.
  */
 class ReconciliationExceptionController extends Controller
 {
     /**
      * List exceptions with filters
-     * 
+     *
      * GET /api/v1/reconciliation/exceptions
      */
     public function index(Request $request): JsonResponse
@@ -39,37 +39,37 @@ class ReconciliationExceptionController extends Controller
             $query = ReconciliationException::with(['bankAccount', 'assignedUser']);
 
             // Apply filters
-            if (!empty($validated['status'])) {
+            if (! empty($validated['status'])) {
                 $query->where('status', $validated['status']);
             } else {
                 $query->open(); // Default to open exceptions
             }
 
-            if (!empty($validated['exception_type'])) {
+            if (! empty($validated['exception_type'])) {
                 $query->where('exception_type', $validated['exception_type']);
             }
 
-            if (!empty($validated['aging_bucket'])) {
+            if (! empty($validated['aging_bucket'])) {
                 $query->inBucket($validated['aging_bucket']);
             }
 
-            if (!empty($validated['priority'])) {
+            if (! empty($validated['priority'])) {
                 $query->where('priority', $validated['priority']);
             }
 
-            if (!empty($validated['assigned_to'])) {
+            if (! empty($validated['assigned_to'])) {
                 $query->assignedTo($validated['assigned_to']);
             }
 
-            if (!empty($validated['bank_account_id'])) {
+            if (! empty($validated['bank_account_id'])) {
                 $query->where('bank_account_id', $validated['bank_account_id']);
             }
 
-            if (!empty($validated['date_from'])) {
+            if (! empty($validated['date_from'])) {
                 $query->where('transaction_date', '>=', $validated['date_from']);
             }
 
-            if (!empty($validated['date_to'])) {
+            if (! empty($validated['date_to'])) {
                 $query->where('transaction_date', '<=', $validated['date_to']);
             }
 
@@ -83,6 +83,7 @@ class ReconciliationExceptionController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Exception list failed', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve exceptions',
@@ -93,7 +94,7 @@ class ReconciliationExceptionController extends Controller
 
     /**
      * Create new exception
-     * 
+     *
      * POST /api/v1/reconciliation/exceptions
      */
     public function store(Request $request): JsonResponse
@@ -125,6 +126,7 @@ class ReconciliationExceptionController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Exception creation failed', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create exception',
@@ -135,7 +137,7 @@ class ReconciliationExceptionController extends Controller
 
     /**
      * Get single exception
-     * 
+     *
      * GET /api/v1/reconciliation/exceptions/{id}
      */
     public function show(int $id): JsonResponse
@@ -160,7 +162,7 @@ class ReconciliationExceptionController extends Controller
 
     /**
      * Update exception
-     * 
+     *
      * PUT /api/v1/reconciliation/exceptions/{id}
      */
     public function update(Request $request, int $id): JsonResponse
@@ -185,6 +187,7 @@ class ReconciliationExceptionController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Exception update failed', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update exception',
@@ -195,7 +198,7 @@ class ReconciliationExceptionController extends Controller
 
     /**
      * Resolve exception
-     * 
+     *
      * POST /api/v1/reconciliation/exceptions/{id}/resolve
      */
     public function resolve(Request $request, int $id): JsonResponse
@@ -217,6 +220,7 @@ class ReconciliationExceptionController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Exception resolution failed', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to resolve exception',
@@ -227,7 +231,7 @@ class ReconciliationExceptionController extends Controller
 
     /**
      * Escalate exception
-     * 
+     *
      * POST /api/v1/reconciliation/exceptions/{id}/escalate
      */
     public function escalate(Request $request, int $id): JsonResponse
@@ -249,6 +253,7 @@ class ReconciliationExceptionController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Exception escalation failed', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to escalate exception',
@@ -259,7 +264,7 @@ class ReconciliationExceptionController extends Controller
 
     /**
      * Get aging statistics
-     * 
+     *
      * GET /api/v1/reconciliation/exceptions/aging
      */
     public function agingStatistics(): JsonResponse
@@ -284,6 +289,7 @@ class ReconciliationExceptionController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Aging statistics failed', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve statistics',
@@ -294,14 +300,14 @@ class ReconciliationExceptionController extends Controller
 
     /**
      * Bulk update aging for all open exceptions
-     * 
+     *
      * POST /api/v1/reconciliation/exceptions/age-all
      */
     public function ageAll(): JsonResponse
     {
         try {
             $exceptions = ReconciliationException::open()->get();
-            
+
             foreach ($exceptions as $exception) {
                 $exception->updateAging();
             }
@@ -316,6 +322,7 @@ class ReconciliationExceptionController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Bulk aging update failed', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update aging',

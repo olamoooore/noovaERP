@@ -4,7 +4,7 @@ namespace Modules\AI\SubModules;
 
 /**
  * Inventory Module
- * 
+ *
  * Handles inventory and stock queries
  */
 class InventoryModule extends BaseModule
@@ -42,7 +42,7 @@ class InventoryModule extends BaseModule
 
     public function getSystemPrompt(): string
     {
-        return <<<PROMPT
+        return <<<'PROMPT'
 **INVENTORY MODULE ACTIVE**
 
 You are now in Inventory mode. Focus on:

@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::table('loyalty_transactions', function (Blueprint $table) {
             $table->string('idempotency_key', 120)->nullable()->after('reference_id');
-            
+
             // Unique index on (customer_loyalty_id, idempotency_key) to prevent duplicates
             $table->unique(['customer_loyalty_id', 'idempotency_key'], 'loyalty_tx_idempotency_unique');
         });

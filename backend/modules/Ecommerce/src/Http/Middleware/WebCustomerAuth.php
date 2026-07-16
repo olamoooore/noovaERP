@@ -17,7 +17,7 @@ class WebCustomerAuth
     {
         $token = $request->bearerToken();
 
-        if (!$token) {
+        if (! $token) {
             return response()->json([
                 'error' => 'Unauthorized',
                 'message' => 'Bearer token required',
@@ -28,10 +28,10 @@ class WebCustomerAuth
         Log::debug('WebCustomerAuth: Checking tenant context', [
             'tenancy_initialized' => tenancy()->initialized,
             'tenant_id' => tenancy()->initialized ? tenancy()->tenant?->id : null,
-            'search_path' => DB::select("SHOW search_path")[0]->search_path ?? 'unknown',
+            'search_path' => DB::select('SHOW search_path')[0]->search_path ?? 'unknown',
         ]);
 
-        if (!tenancy()->initialized || !tenancy()->tenant?->id) {
+        if (! tenancy()->initialized || ! tenancy()->tenant?->id) {
             Log::warning('WebCustomerAuth: Missing tenant context');
 
             return response()->json([
@@ -45,10 +45,11 @@ class WebCustomerAuth
             ->where('expires_at', '>', now())
             ->first();
 
-        if (!$session || !$session->isValid()) {
+        if (! $session || ! $session->isValid()) {
             Log::debug('WebCustomerAuth: Session not found or invalid', [
-                'token_prefix' => substr($token, 0, 10) . '...',
+                'token_prefix' => substr($token, 0, 10).'...',
             ]);
+
             return response()->json([
                 'error' => 'Unauthorized',
                 'message' => 'Invalid or expired token',

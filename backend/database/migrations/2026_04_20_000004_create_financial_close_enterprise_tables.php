@@ -468,37 +468,37 @@ return new class extends Migration
         });
     }
 
-        public function down(): void
-        {
-            Schema::dropIfExists('fco_orchestration_alerts');
-            Schema::dropIfExists('fco_job_run_history');
-            Schema::dropIfExists('fco_health_events');
-            Schema::dropIfExists('fco_evidence_version_history');
-            Schema::dropIfExists('fco_evidence_freeze_snapshots');
-            Schema::dropIfExists('fco_signoff_reopen_events');
-            Schema::dropIfExists('fco_signoff_attestations');
-            Schema::dropIfExists('fco_absence_windows');
-            Schema::dropIfExists('fco_assignment_workload_snapshots');
-            Schema::dropIfExists('fco_task_complexity_rules');
-            Schema::dropIfExists('fco_user_capacity_profiles');
-            Schema::dropIfExists('fco_intercompany_close_dependencies');
-            Schema::dropIfExists('fco_consolidation_tasks');
-            Schema::dropIfExists('fco_group_cycle_dependencies');
-            Schema::dropIfExists('fco_group_close_cycles');
-            Schema::dropIfExists('fco_exception_register');
-            Schema::dropIfExists('fco_override_approvals');
-            Schema::dropIfExists('fco_override_requests');
-            Schema::dropIfExists('fco_template_change_audit');
-            Schema::dropIfExists('fco_template_variant_bindings');
-            Schema::dropIfExists('fco_template_approvals');
-            Schema::dropIfExists('fco_template_versions');
-            Schema::dropIfExists('close_calendar_overrides');
-            Schema::dropIfExists('close_holiday_calendars');
-            Schema::dropIfExists('close_calendar_milestones');
-            Schema::dropIfExists('close_calendar_templates');
-            Schema::dropIfExists('close_backup_assignment_rules');
-            Schema::dropIfExists('close_task_delegations');
-            Schema::dropIfExists('org_finance_role_assignments');
-            Schema::dropIfExists('org_finance_roles');
-        }
-}; 
+    public function down(): void
+    {
+        Schema::dropIfExists('fco_orchestration_alerts');
+        Schema::dropIfExists('fco_job_run_history');
+        Schema::dropIfExists('fco_health_events');
+        Schema::dropIfExists('fco_evidence_version_history');
+        Schema::dropIfExists('fco_evidence_freeze_snapshots');
+        Schema::dropIfExists('fco_signoff_reopen_events');
+        Schema::dropIfExists('fco_signoff_attestations');
+        Schema::dropIfExists('fco_absence_windows');
+        Schema::dropIfExists('fco_assignment_workload_snapshots');
+        Schema::dropIfExists('fco_task_complexity_rules');
+        Schema::dropIfExists('fco_user_capacity_profiles');
+        Schema::dropIfExists('fco_intercompany_close_dependencies');
+        Schema::dropIfExists('fco_consolidation_tasks');
+        Schema::dropIfExists('fco_group_cycle_dependencies');
+        Schema::dropIfExists('fco_group_close_cycles');
+        Schema::dropIfExists('fco_exception_register');
+        Schema::dropIfExists('fco_override_approvals');
+        Schema::dropIfExists('fco_override_requests');
+        Schema::dropIfExists('fco_template_change_audit');
+        Schema::dropIfExists('fco_template_variant_bindings');
+        Schema::dropIfExists('fco_template_approvals');
+        Schema::dropIfExists('fco_template_versions');
+        Schema::dropIfExists('close_calendar_overrides');
+        Schema::dropIfExists('close_holiday_calendars');
+        Schema::dropIfExists('close_calendar_milestones');
+        Schema::dropIfExists('close_calendar_templates');
+        Schema::dropIfExists('close_backup_assignment_rules');
+        Schema::dropIfExists('close_task_delegations');
+        Schema::dropIfExists('org_finance_role_assignments');
+        Schema::dropIfExists('org_finance_roles');
+    }
+};

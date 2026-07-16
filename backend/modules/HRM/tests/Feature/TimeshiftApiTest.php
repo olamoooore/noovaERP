@@ -8,7 +8,6 @@ use Modules\HRM\Tests\HrmTestCase;
 
 class TimeshiftApiTest extends HrmTestCase
 {
-
     protected User $user;
 
     protected function setUp(): void
@@ -20,12 +19,13 @@ class TimeshiftApiTest extends HrmTestCase
 
     private function schedulePayload(): array
     {
-        $days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
-        return array_map(fn($day) => [
-            'day'     => $day,
-            'enabled' => in_array($day, ['monday','tuesday','wednesday','thursday','friday']),
-            'start'   => '09:00',
-            'end'     => '18:00',
+        $days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+        return array_map(fn ($day) => [
+            'day' => $day,
+            'enabled' => in_array($day, ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']),
+            'start' => '09:00',
+            'end' => '18:00',
         ], $days);
     }
 
@@ -42,9 +42,9 @@ class TimeshiftApiTest extends HrmTestCase
     public function test_can_create_timeshift(): void
     {
         $payload = [
-            'name'       => 'Morning Shift',
+            'name' => 'Morning Shift',
             'is_default' => true,
-            'schedule'   => $this->schedulePayload(),
+            'schedule' => $this->schedulePayload(),
         ];
 
         $response = $this->postJson('/api/v1/hrm/timeshifts', $payload);
@@ -59,9 +59,9 @@ class TimeshiftApiTest extends HrmTestCase
         Timeshift::factory()->create(['is_default' => true]);
 
         $response = $this->postJson('/api/v1/hrm/timeshifts', [
-            'name'       => 'Night Shift',
+            'name' => 'Night Shift',
             'is_default' => true,
-            'schedule'   => $this->schedulePayload(),
+            'schedule' => $this->schedulePayload(),
         ]);
 
         $response->assertStatus(201);

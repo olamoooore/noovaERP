@@ -3,9 +3,9 @@
 namespace Modules\FieldService\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use Modules\FieldService\Models\WorkOrder;
-use Modules\FieldService\Models\Technician;
 use Modules\FieldService\Models\Team;
+use Modules\FieldService\Models\Technician;
+use Modules\FieldService\Models\WorkOrder;
 
 class FieldServiceServiceProvider extends ServiceProvider
 {

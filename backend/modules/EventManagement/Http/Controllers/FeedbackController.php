@@ -2,12 +2,12 @@
 
 namespace Modules\EventManagement\Http\Controllers;
 
-use Illuminate\Http\Request;
+use Exception;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
-use Exception;
 
 /**
  * FeedbackController
@@ -33,7 +33,7 @@ class FeedbackController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $types,
+            'data' => $types,
         ]);
     }
 
@@ -52,7 +52,7 @@ class FeedbackController extends Controller
 
         return response()->json([
             'success' => true,
-            'data'    => $categories,
+            'data' => $categories,
         ]);
     }
 
@@ -77,12 +77,12 @@ class FeedbackController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data'    => $feedback,
+                'data' => $feedback,
             ]);
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'error'   => 'Failed to load feedback',
+                'error' => 'Failed to load feedback',
                 'message' => $e->getMessage(),
             ], 500);
         }
@@ -95,7 +95,7 @@ class FeedbackController extends Controller
     {
         try {
             $customerId = $request->user()->id;
-            $eventId    = $request->query('event_id');
+            $eventId = $request->query('event_id');
 
             $feedback = [];
 
@@ -113,12 +113,12 @@ class FeedbackController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data'    => $feedback,
+                'data' => $feedback,
             ]);
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'error'   => 'Failed to load feedback',
+                'error' => 'Failed to load feedback',
                 'message' => $e->getMessage(),
             ], 500);
         }
@@ -130,18 +130,18 @@ class FeedbackController extends Controller
     public function submitFeedback(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'event_id'     => 'required|integer',
-            'rating'       => 'required|integer|min:1|max:5',
-            'comment'      => 'nullable|string|max:2000',
-            'category'     => 'nullable|string|max:100',
+            'event_id' => 'required|integer',
+            'rating' => 'required|integer|min:1|max:5',
+            'comment' => 'nullable|string|max:2000',
+            'category' => 'nullable|string|max:100',
             'is_anonymous' => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'error'   => 'Validation failed',
-                'errors'  => $validator->errors(),
+                'error' => 'Validation failed',
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -152,25 +152,25 @@ class FeedbackController extends Controller
 
             if (\Schema::hasTable('event_feedback')) {
                 $id = DB::table('event_feedback')->insertGetId([
-                    'customer_id'  => $customerId,
-                    'event_id'     => $request->input('event_id'),
-                    'rating'       => $request->input('rating'),
-                    'comment'      => $request->input('comment'),
-                    'category'     => $request->input('category', 'general'),
+                    'customer_id' => $customerId,
+                    'event_id' => $request->input('event_id'),
+                    'rating' => $request->input('rating'),
+                    'comment' => $request->input('comment'),
+                    'category' => $request->input('category', 'general'),
                     'is_anonymous' => $request->boolean('is_anonymous', false),
-                    'created_at'   => now(),
-                    'updated_at'   => now(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ]);
             }
 
             return response()->json([
                 'success' => true,
-                'data'    => ['id' => $id] + $request->only(['event_id', 'rating', 'comment', 'category', 'is_anonymous']),
+                'data' => ['id' => $id] + $request->only(['event_id', 'rating', 'comment', 'category', 'is_anonymous']),
             ], 201);
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'error'   => 'Failed to submit feedback',
+                'error' => 'Failed to submit feedback',
                 'message' => $e->getMessage(),
             ], 500);
         }
@@ -188,8 +188,8 @@ class FeedbackController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'error'   => 'Validation failed',
-                'errors'  => $validator->errors(),
+                'error' => 'Validation failed',
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -203,9 +203,9 @@ class FeedbackController extends Controller
     {
         try {
             $stats = [
-                'event_id'     => $eventId,
-                'total'        => 0,
-                'average'      => 0,
+                'event_id' => $eventId,
+                'total' => 0,
+                'average' => 0,
                 'distribution' => [1 => 0, 2 => 0, 3 => 0, 4 => 0, 5 => 0],
             ];
 
@@ -228,7 +228,7 @@ class FeedbackController extends Controller
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'error'   => 'Failed to load feedback stats',
+                'error' => 'Failed to load feedback stats',
                 'message' => $e->getMessage(),
             ], 500);
         }

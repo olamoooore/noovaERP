@@ -52,7 +52,7 @@ class HRMPermissionSeeder extends Seeder
         }
 
         if (isset($this->command)) {
-            $this->command->info('HRM permissions seeded: ' . count($permissions) . ' permissions.');
+            $this->command->info('HRM permissions seeded: '.count($permissions).' permissions.');
         }
     }
 }

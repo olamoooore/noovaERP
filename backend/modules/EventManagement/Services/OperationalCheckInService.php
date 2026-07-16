@@ -2,28 +2,30 @@
 
 namespace Modules\EventManagement\Services;
 
-use Modules\EventManagement\Models\Ticket;
-use Modules\EventManagement\Models\Booking;
-use Modules\EventManagement\Models\Event;
-use Modules\EventManagement\Exceptions\EventManagementException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Modules\EventManagement\Exceptions\EventManagementException;
+use Modules\EventManagement\Models\Booking;
+use Modules\EventManagement\Models\Event;
+use Modules\EventManagement\Models\Ticket;
 
 /**
  * OperationalCheckInService
- * 
+ *
  * Extends the existing check-in system for operational use with bulk check-in
  * capabilities, queue management, crowd control features, and real-time
  * capacity monitoring per zone.
- * 
+ *
  * Requirements: 15.1, 15.3
  */
 class OperationalCheckInService
 {
     private TicketService $ticketService;
+
     private EventOperationsService $operationsService;
+
     private AuditService $auditService;
+
     private TenantSchemaManager $tenantManager;
 
     public function __construct(
@@ -40,21 +42,18 @@ class OperationalCheckInService
 
     /**
      * Check in a single ticket with operational features
-     * 
-     * @param string $ticketCode
-     * @param int $counterId
-     * @param array $operationalData
+     *
      * @return array Check-in result
      */
     public function checkInTicket(string $ticketCode, int $counterId, array $operationalData = []): array
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         return DB::transaction(function () use ($ticketCode, $counterId, $operationalData, $tenantId) {
             // Validate ticket
             $validation = $this->ticketService->validateTicket($ticketCode);
-            
-            if (!$validation['valid']) {
+
+            if (! $validation['valid']) {
                 throw new EventManagementException("Invalid ticket: {$validation['message']}");
             }
 
@@ -117,17 +116,14 @@ class OperationalCheckInService
                 'checked_in_at' => $ticket->checked_in_at,
                 'counter_code' => $counter->counter_code,
                 'zone_code' => $operationalData['zone_code'] ?? null,
-                'message' => 'Check-in successful'
+                'message' => 'Check-in successful',
             ];
         });
     }
 
     /**
      * Bulk check-in multiple tickets for staff operations
-     * 
-     * @param array $ticketCodes
-     * @param int $counterId
-     * @param array $operationalData
+     *
      * @return array Bulk check-in results
      */
     public function bulkCheckIn(array $ticketCodes, int $counterId, array $operationalData = []): array
@@ -147,7 +143,7 @@ class OperationalCheckInService
                     'success' => false,
                     'ticket_code' => $ticketCode,
                     'error' => $e->getMessage(),
-                    'message' => 'Check-in failed'
+                    'message' => 'Check-in failed',
                 ];
                 $failureCount++;
             }
@@ -177,37 +173,34 @@ class OperationalCheckInService
 
     /**
      * Check in by booking reference (group check-in)
-     * 
-     * @param string $bookingReference
-     * @param int $counterId
-     * @param array $operationalData
+     *
      * @return array Group check-in result
      */
     public function checkInByBookingReference(string $bookingReference, int $counterId, array $operationalData = []): array
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         // Find booking
         $booking = Booking::where('booking_reference', $bookingReference)
-                         ->where('tenant_id', $tenantId)
-                         ->with(['tickets', 'event'])
-                         ->first();
+            ->where('tenant_id', $tenantId)
+            ->with(['tickets', 'event'])
+            ->first();
 
-        if (!$booking) {
+        if (! $booking) {
             throw new EventManagementException("Booking not found: {$bookingReference}");
         }
 
         // Get all active tickets for the booking
         $activeTickets = $booking->tickets->where('status', 'active');
-        
+
         if ($activeTickets->isEmpty()) {
             throw new EventManagementException("No active tickets found for booking {$bookingReference}");
         }
 
         // Validate counter supports group check-in
         $counter = $this->validateCounter($counterId, $booking->event->id, $tenantId);
-        
-        if (!$counter->supports_group_checkin) {
+
+        if (! $counter->supports_group_checkin) {
             throw new EventManagementException("Counter {$counter->counter_code} does not support group check-in");
         }
 
@@ -230,14 +223,13 @@ class OperationalCheckInService
 
     /**
      * Get real-time check-in statistics for an event
-     * 
-     * @param int $eventId
+     *
      * @return array Check-in statistics
      */
     public function getCheckInStatistics(int $eventId): array
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         // Get total tickets for the event
         $totalTickets = DB::table('tickets')
             ->join('bookings', 'tickets.booking_id', '=', 'bookings.id')
@@ -273,7 +265,7 @@ class OperationalCheckInService
             ->select([
                 'check_in_counters.counter_code',
                 'check_in_counters.counter_name',
-                DB::raw('COUNT(*) as checkins_count')
+                DB::raw('COUNT(*) as checkins_count'),
             ])
             ->groupBy('check_in_counters.id', 'check_in_counters.counter_code', 'check_in_counters.counter_name')
             ->get();
@@ -287,7 +279,7 @@ class OperationalCheckInService
             ->whereNotNull('tickets.checked_in_zone')
             ->select([
                 'tickets.checked_in_zone as zone_code',
-                DB::raw('COUNT(*) as checkins_count')
+                DB::raw('COUNT(*) as checkins_count'),
             ])
             ->groupBy('tickets.checked_in_zone')
             ->get();
@@ -310,14 +302,13 @@ class OperationalCheckInService
 
     /**
      * Get queue management data for crowd control
-     * 
-     * @param int $eventId
+     *
      * @return array Queue management data
      */
     public function getQueueManagementData(int $eventId): array
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         // Get all counters for the event
         $counters = DB::table('check_in_counters')
             ->where('event_id', $eventId)
@@ -331,16 +322,16 @@ class OperationalCheckInService
 
         // Calculate average wait time
         $avgProcessingTime = $counters->where('average_processing_time', '>', 0)
-                                    ->avg('average_processing_time');
-        $avgWaitTime = $avgProcessingTime && $activeCounters > 0 
-            ? ($totalQueueLength / $activeCounters) * $avgProcessingTime 
+            ->avg('average_processing_time');
+        $avgWaitTime = $avgProcessingTime && $activeCounters > 0
+            ? ($totalQueueLength / $activeCounters) * $avgProcessingTime
             : 0;
 
         // Identify bottlenecks
         $bottlenecks = $counters->where('current_queue_length', '>', 15)
-                               ->sortByDesc('current_queue_length')
-                               ->take(5)
-                               ->values();
+            ->sortByDesc('current_queue_length')
+            ->take(5)
+            ->values();
 
         // Get recommendations
         $recommendations = $this->generateQueueRecommendations($counters, $totalQueueLength, $activeCounters);
@@ -361,14 +352,13 @@ class OperationalCheckInService
 
     /**
      * Monitor zone capacity in real-time
-     * 
-     * @param int $eventId
+     *
      * @return array Zone capacity monitoring data
      */
     public function monitorZoneCapacity(int $eventId): array
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         // Get all zones for the event
         $zones = DB::table('operational_zones')
             ->where('event_id', $eventId)
@@ -435,28 +425,24 @@ class OperationalCheckInService
 
     /**
      * Emergency check-in override for staff
-     * 
-     * @param string $ticketCode
-     * @param int $counterId
-     * @param string $overrideReason
-     * @param array $operationalData
+     *
      * @return array Override result
      */
     public function emergencyCheckInOverride(string $ticketCode, int $counterId, string $overrideReason, array $operationalData = []): array
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         // Validate staff has override permissions
         $staffId = $operationalData['staff_id'] ?? auth()->user()->id;
-        if (!$this->validateStaffOverridePermission($staffId, $counterId, $tenantId)) {
-            throw new EventManagementException("Staff member does not have override permissions");
+        if (! $this->validateStaffOverridePermission($staffId, $counterId, $tenantId)) {
+            throw new EventManagementException('Staff member does not have override permissions');
         }
 
-        return DB::transaction(function () use ($ticketCode, $counterId, $overrideReason, $operationalData, $tenantId) {
+        return DB::transaction(function () use ($ticketCode, $counterId, $overrideReason, $operationalData) {
             // Try to find ticket even if invalid
             $ticket = Ticket::where('ticket_code', $ticketCode)->first();
-            
-            if (!$ticket) {
+
+            if (! $ticket) {
                 throw new EventManagementException("Ticket not found: {$ticketCode}");
             }
 
@@ -491,17 +477,14 @@ class OperationalCheckInService
                 'previous_status' => $previousStatus,
                 'override_reason' => $overrideReason,
                 'checked_in_at' => $ticket->checked_in_at,
-                'message' => 'Emergency override successful'
+                'message' => 'Emergency override successful',
             ];
         });
     }
 
     /**
      * Validate counter exists and is operational
-     * 
-     * @param int $counterId
-     * @param int $eventId
-     * @param string $tenantId
+     *
      * @return object Counter data
      */
     private function validateCounter(int $counterId, int $eventId, string $tenantId): object
@@ -513,11 +496,11 @@ class OperationalCheckInService
             ->whereNull('deleted_at')
             ->first();
 
-        if (!$counter) {
-            throw new EventManagementException("Counter not found or not available for this event");
+        if (! $counter) {
+            throw new EventManagementException('Counter not found or not available for this event');
         }
 
-        if (!in_array($counter->status, ['active', 'busy'])) {
+        if (! in_array($counter->status, ['active', 'busy'])) {
             throw new EventManagementException("Counter {$counter->counter_code} is not active");
         }
 
@@ -526,17 +509,12 @@ class OperationalCheckInService
 
     /**
      * Validate zone capacity before check-in
-     * 
-     * @param string $zoneCode
-     * @param int $eventId
-     * @param string $tenantId
-     * @return void
      */
     private function validateZoneCapacity(string $zoneCode, int $eventId, string $tenantId): void
     {
         $zone = $this->getZoneByCode($zoneCode, $eventId, $tenantId);
-        
-        if (!$zone) {
+
+        if (! $zone) {
             throw new EventManagementException("Zone {$zoneCode} not found");
         }
 
@@ -551,10 +529,7 @@ class OperationalCheckInService
 
     /**
      * Get zone by code
-     * 
-     * @param string $zoneCode
-     * @param int $eventId
-     * @param string $tenantId
+     *
      * @return object|null Zone data
      */
     private function getZoneByCode(string $zoneCode, int $eventId, string $tenantId): ?object
@@ -569,10 +544,7 @@ class OperationalCheckInService
 
     /**
      * Validate staff override permission
-     * 
-     * @param string $staffId
-     * @param int $counterId
-     * @param string $tenantId
+     *
      * @return bool Has permission
      */
     private function validateStaffOverridePermission(string $staffId, int $counterId, string $tenantId): bool
@@ -591,10 +563,8 @@ class OperationalCheckInService
 
     /**
      * Generate queue management recommendations
-     * 
-     * @param Collection $counters
-     * @param int $totalQueueLength
-     * @param int $activeCounters
+     *
+     * @param  Collection  $counters
      * @return array Recommendations
      */
     private function generateQueueRecommendations($counters, int $totalQueueLength, int $activeCounters): array
@@ -627,7 +597,7 @@ class OperationalCheckInService
             $activeCounterQueues = $counters->where('status', 'active')->pluck('current_queue_length');
             $maxQueue = $activeCounterQueues->max();
             $minQueue = $activeCounterQueues->min();
-            
+
             if ($maxQueue - $minQueue > 10) {
                 $recommendations[] = [
                     'type' => 'redistribute_queues',

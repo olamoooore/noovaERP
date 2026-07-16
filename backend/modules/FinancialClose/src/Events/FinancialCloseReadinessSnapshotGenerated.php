@@ -13,7 +13,7 @@ class FinancialCloseReadinessSnapshotGenerated
         public readonly string $tenantId,
         public readonly string $entityId,
         public readonly string $periodId,
-        public readonly float  $readinessScore,
-        public readonly int    $openBlockers,
+        public readonly float $readinessScore,
+        public readonly int $openBlockers,
     ) {}
 }

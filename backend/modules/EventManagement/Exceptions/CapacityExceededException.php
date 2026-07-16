@@ -5,7 +5,9 @@ namespace Modules\EventManagement\Exceptions;
 class CapacityExceededException extends EventManagementException
 {
     protected $eventId;
+
     protected $requestedTickets;
+
     protected $availableCapacity;
 
     public function __construct(int $eventId, int $requestedTickets, int $availableCapacity, string $message = '', int $code = 0, ?\Throwable $previous = null)
@@ -36,7 +38,7 @@ class CapacityExceededException extends EventManagementException
         return [
             'event_id' => $this->eventId,
             'requested_tickets' => $this->requestedTickets,
-            'available_capacity' => $this->availableCapacity
+            'available_capacity' => $this->availableCapacity,
         ];
     }
 }

@@ -23,14 +23,14 @@ class DemoTenantSeeder extends Seeder
     {
         $tenant = Tenant::where('email', 'admin@demo.com')->first();
 
-        if (!$tenant) {
+        if (! $tenant) {
             $tenant = Tenant::create([
                 'id' => Str::uuid(),
                 'name' => 'Demo Corp',
                 'email' => 'admin@demo.com',
                 'plan' => 'trial',
             ]);
-            
+
             $tenant->domains()->create([
                 'domain' => 'demo.localhost',
             ]);
@@ -39,7 +39,7 @@ class DemoTenantSeeder extends Seeder
         // Ensure public schema user + user_company_access exist (for login)
         DB::statement('SET search_path TO public');
         $publicUser = User::where('email', 'admin@demo.com')->first();
-        if (!$publicUser) {
+        if (! $publicUser) {
             $publicUser = User::create([
                 'name' => 'Admin User',
                 'email' => 'admin@demo.com',
@@ -56,7 +56,7 @@ class DemoTenantSeeder extends Seeder
 
         $tenant->run(function () {
             $user = User::where('email', 'admin@demo.com')->first();
-            if (!$user) {
+            if (! $user) {
                 User::create([
                     'name' => 'Admin User',
                     'email' => 'admin@demo.com',

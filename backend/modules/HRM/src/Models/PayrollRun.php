@@ -16,11 +16,11 @@ class PayrollRun extends Model
     protected $table = 'hrm_payroll_runs';
 
     protected $attributes = [
-        'status'           => 'draft',
-        'total_gross'      => 0,
+        'status' => 'draft',
+        'total_gross' => 0,
         'total_deductions' => 0,
-        'total_net'        => 0,
-        'currency'         => 'USD',
+        'total_net' => 0,
+        'currency' => 'USD',
     ];
 
     protected $fillable = [
@@ -40,12 +40,12 @@ class PayrollRun extends Model
     ];
 
     protected $casts = [
-        'period_start'     => 'date',
-        'period_end'       => 'date',
-        'approved_at'      => 'datetime',
-        'total_gross'      => 'decimal:2',
+        'period_start' => 'date',
+        'period_end' => 'date',
+        'approved_at' => 'datetime',
+        'total_gross' => 'decimal:2',
         'total_deductions' => 'decimal:2',
-        'total_net'        => 'decimal:2',
+        'total_net' => 'decimal:2',
     ];
 
     // -------------------------------------------------------------------------
@@ -82,6 +82,6 @@ class PayrollRun extends Model
     public function scopeOverlapping($query, string $start, string $end)
     {
         return $query->where('period_start', '<=', $end)
-                     ->where('period_end', '>=', $start);
+            ->where('period_end', '>=', $start);
     }
 }

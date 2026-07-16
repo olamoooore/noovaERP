@@ -3,7 +3,6 @@
 namespace Modules\OCRBookkeeping\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Facades\Route;
 
 class OCRBookkeepingServiceProvider extends ServiceProvider
 {

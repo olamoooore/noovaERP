@@ -6,12 +6,12 @@ use App\Accounting\Services\FxRevaluationService;
 use App\Http\Controllers\Controller;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
-use Modules\FinancialReporting\Services\Reports\TrialBalanceService;
-use Modules\FinancialReporting\Services\Reports\GeneralLedgerService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Reports\GeneralLedgerService;
+use Modules\FinancialReporting\Services\Reports\TrialBalanceService;
 
 class AccountingController extends Controller
 {
@@ -152,7 +152,7 @@ class AccountingController extends Controller
         }
 
         // Prevent deactivation if balance is non-zero
-        if (isset($validated['is_active']) && !$validated['is_active']) {
+        if (isset($validated['is_active']) && ! $validated['is_active']) {
             $balance = $account->getBalance();
             if (abs($balance) > 0.01) {
                 return response()->json([
@@ -350,8 +350,8 @@ class AccountingController extends Controller
 
             $accounts = ChartOfAccount::withSum([
                 'journalEntryLines as balance' => function ($q) use ($asOfDate) {
-                    $q->whereHas('journalEntry', fn($je) => $je->where('status', 'posted')->where('entry_date', '<=', $asOfDate));
-                }
+                    $q->whereHas('journalEntry', fn ($je) => $je->where('status', 'posted')->where('entry_date', '<=', $asOfDate));
+                },
             ], DB::raw('debit - credit'))->get();
 
             $assets = $accounts->whereIn('type', ['asset'])->values();
@@ -392,8 +392,8 @@ class AccountingController extends Controller
 
             $accounts = ChartOfAccount::withSum([
                 'journalEntryLines as balance' => function ($q) use ($startDate, $endDate) {
-                    $q->whereHas('journalEntry', fn($je) => $je->where('status', 'posted')->whereBetween('entry_date', [$startDate, $endDate]));
-                }
+                    $q->whereHas('journalEntry', fn ($je) => $je->where('status', 'posted')->whereBetween('entry_date', [$startDate, $endDate]));
+                },
             ], DB::raw('credit - debit'))->get();
 
             $revenue = $accounts->whereIn('type', ['revenue', 'income'])->values();
@@ -426,9 +426,9 @@ class AccountingController extends Controller
     {
         $validated = $request->validate([
             'revaluation_date' => 'required|date',
-            'base_currency'    => 'required|string|size:3',
-            'account_ids'      => 'nullable|array',
-            'account_ids.*'    => 'integer|exists:chart_of_accounts,id',
+            'base_currency' => 'required|string|size:3',
+            'account_ids' => 'nullable|array',
+            'account_ids.*' => 'integer|exists:chart_of_accounts,id',
         ]);
 
         $results = $fxService->revalue(
@@ -438,12 +438,12 @@ class AccountingController extends Controller
         );
 
         $posted = collect($results)->filter(fn ($r) => $r->success);
-        $failed = collect($results)->filter(fn ($r) => !$r->success);
+        $failed = collect($results)->filter(fn ($r) => ! $r->success);
 
         return response()->json([
-            'message'        => $posted->count() . ' revaluation entries posted',
+            'message' => $posted->count().' revaluation entries posted',
             'posted_entries' => $posted->map(fn ($r) => $r->journalEntryId)->values(),
-            'failures'       => $failed->map(fn ($r) => $r->error)->values(),
+            'failures' => $failed->map(fn ($r) => $r->error)->values(),
         ]);
     }
 }

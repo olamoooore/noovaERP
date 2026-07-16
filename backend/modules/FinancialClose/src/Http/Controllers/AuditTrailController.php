@@ -26,10 +26,18 @@ class AuditTrailController extends Controller
                 DB::raw("'fco_audit_log' as source"),
             ]);
 
-        if ($action) $query->where('action', $action);
-        if ($entityType) $query->where('entity_type', $entityType);
-        if ($dateFrom) $query->where('created_at', '>=', $dateFrom);
-        if ($dateTo) $query->where('created_at', '<=', $dateTo . ' 23:59:59');
+        if ($action) {
+            $query->where('action', $action);
+        }
+        if ($entityType) {
+            $query->where('entity_type', $entityType);
+        }
+        if ($dateFrom) {
+            $query->where('created_at', '>=', $dateFrom);
+        }
+        if ($dateTo) {
+            $query->where('created_at', '<=', $dateTo.' 23:59:59');
+        }
 
         $query->orderBy('created_at', 'desc');
 
@@ -39,7 +47,7 @@ class AuditTrailController extends Controller
             return is_numeric($id) && $id !== 'system';
         }));
         $users = [];
-        if (!empty($userIds)) {
+        if (! empty($userIds)) {
             $userRows = DB::table('users')->whereIn('id', $userIds)->get(['id', 'name', 'email']);
             foreach ($userRows as $u) {
                 $users[$u->id] = $u;
@@ -49,17 +57,18 @@ class AuditTrailController extends Controller
         $data = $logs->map(function ($log) use ($users) {
             $actor = $users[$log->actor_id] ?? null;
             $after = is_string($log->after) ? json_decode($log->after, true) : $log->after;
+
             return [
-                'id'          => $log->id,
-                'actor_id'    => $log->actor_id,
-                'actor_name'  => $actor ? $actor->name : ($log->actor_id === 'system' ? 'System' : $log->actor_id),
+                'id' => $log->id,
+                'actor_id' => $log->actor_id,
+                'actor_name' => $actor ? $actor->name : ($log->actor_id === 'system' ? 'System' : $log->actor_id),
                 'actor_email' => $actor ? $actor->email : null,
-                'action'      => $log->action,
+                'action' => $log->action,
                 'entity_type' => $log->entity_type,
-                'entity_id'   => $log->entity_id,
+                'entity_id' => $log->entity_id,
                 'description' => $after['reason'] ?? $after['description'] ?? $log->action,
-                'created_at'  => $log->created_at,
-                'source'      => $log->source,
+                'created_at' => $log->created_at,
+                'source' => $log->source,
             ];
         });
 
@@ -67,9 +76,9 @@ class AuditTrailController extends Controller
             'data' => $data,
             'meta' => [
                 'current_page' => $logs->currentPage(),
-                'last_page'    => $logs->lastPage(),
-                'per_page'     => $logs->perPage(),
-                'total'        => $logs->total(),
+                'last_page' => $logs->lastPage(),
+                'per_page' => $logs->perPage(),
+                'total' => $logs->total(),
             ],
         ]);
     }

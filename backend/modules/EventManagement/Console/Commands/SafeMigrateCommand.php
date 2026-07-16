@@ -4,13 +4,12 @@ namespace Modules\EventManagement\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Artisan;
-use Modules\EventManagement\Services\MigrationMonitoringService;
 use Modules\EventManagement\Services\MigrationDependencyService;
+use Modules\EventManagement\Services\MigrationMonitoringService;
 
 /**
  * Safe Migration Command
- * 
+ *
  * Enhanced migration command with comprehensive monitoring,
  * validation, and safety checks for production deployments.
  */
@@ -49,25 +48,28 @@ class SafeMigrateCommand extends Command
             // Step 1: Pre-migration validation
             $this->info('🔍 Step 1: Pre-migration validation');
             $validationResults = $this->performPreMigrationValidation($skipBackupCheck);
-            
-            if (!$validationResults['passed'] && !$force) {
+
+            if (! $validationResults['passed'] && ! $force) {
                 $this->displayValidationResults($validationResults);
                 $this->error('❌ Pre-migration validation failed. Use --force to override.');
+
                 return 1;
             }
 
             if ($validateOnly) {
                 $this->displayValidationResults($validationResults);
+
                 return $validationResults['passed'] ? 0 : 1;
             }
 
             // Step 2: Dependency validation
             $this->info('🔗 Step 2: Dependency validation');
             $dependencyResults = $this->dependencyService->validateDependencies();
-            
-            if ($dependencyResults['status'] === 'failed' && !$force) {
+
+            if ($dependencyResults['status'] === 'failed' && ! $force) {
                 $this->displayDependencyResults($dependencyResults);
                 $this->error('❌ Dependency validation failed. Use --force to override.');
+
                 return 1;
             }
 
@@ -78,28 +80,30 @@ class SafeMigrateCommand extends Command
 
             if ($dryRun) {
                 $this->info('🏃 Dry run completed - no migrations executed');
+
                 return 0;
             }
 
             // Step 4: Confirm execution
-            if (!$force && !$this->confirmExecution($migrationPlan)) {
+            if (! $force && ! $this->confirmExecution($migrationPlan)) {
                 $this->info('Migration cancelled by user');
+
                 return 0;
             }
 
             // Step 5: Execute migrations with monitoring
             $this->info('🚀 Step 5: Executing migrations');
             $executionResults = $this->executeMigrationsWithMonitoring(
-                $migrationPlan, 
-                $enableMonitoring, 
+                $migrationPlan,
+                $enableMonitoring,
                 $rollbackOnFailure
             );
 
             // Step 6: Post-migration validation
             $this->info('✅ Step 6: Post-migration validation');
             $postValidation = $this->performPostMigrationValidation();
-            
-            if (!$postValidation['passed']) {
+
+            if (! $postValidation['passed']) {
                 $this->warn('⚠️  Post-migration validation warnings detected');
                 $this->displayValidationResults($postValidation);
             }
@@ -110,13 +114,13 @@ class SafeMigrateCommand extends Command
             return $executionResults['overall_success'] ? 0 : 1;
 
         } catch (\Exception $e) {
-            $this->error("❌ Migration failed: " . $e->getMessage());
-            
+            $this->error('❌ Migration failed: '.$e->getMessage());
+
             if ($rollbackOnFailure) {
                 $this->warn('🔄 Attempting automatic rollback...');
                 $this->attemptRollback();
             }
-            
+
             return 1;
         }
     }
@@ -130,7 +134,7 @@ class SafeMigrateCommand extends Command
             'passed' => true,
             'checks' => [],
             'errors' => [],
-            'warnings' => []
+            'warnings' => [],
         ];
 
         // Database connection check
@@ -157,7 +161,7 @@ class SafeMigrateCommand extends Command
         // Disk space check
         $this->line('  • Checking disk space...');
         $diskSpaceOk = $this->checkDiskSpace();
-        if (!$diskSpaceOk) {
+        if (! $diskSpaceOk) {
             $validation['warnings'][] = 'Low disk space detected';
             $validation['checks']['disk_space'] = '⚠️  Low';
         } else {
@@ -165,10 +169,10 @@ class SafeMigrateCommand extends Command
         }
 
         // Backup check
-        if (!$skipBackupCheck) {
+        if (! $skipBackupCheck) {
             $this->line('  • Checking backup status...');
             $backupOk = $this->checkBackupStatus();
-            if (!$backupOk) {
+            if (! $backupOk) {
                 $validation['warnings'][] = 'Recent backup not found';
                 $validation['checks']['backup_status'] = '⚠️  No recent backup';
             } else {
@@ -181,7 +185,7 @@ class SafeMigrateCommand extends Command
         // Migration timestamp validation
         $this->line('  • Validating migration timestamps...');
         $timestampValidation = $this->validateMigrationTimestamps();
-        if (!$timestampValidation['passed']) {
+        if (! $timestampValidation['passed']) {
             $validation['passed'] = false;
             $validation['errors'] = array_merge($validation['errors'], $timestampValidation['errors']);
             $validation['checks']['timestamp_validation'] = '❌ Conflicts found';
@@ -200,15 +204,15 @@ class SafeMigrateCommand extends Command
         $validation = [
             'passed' => true,
             'checks' => [],
-            'warnings' => []
+            'warnings' => [],
         ];
 
         // Check migration table consistency
         $this->line('  • Verifying migration records...');
         $migrationRecordsOk = $this->verifyMigrationRecords();
         $validation['checks']['migration_records'] = $migrationRecordsOk ? '✅ Consistent' : '⚠️  Issues found';
-        
-        if (!$migrationRecordsOk) {
+
+        if (! $migrationRecordsOk) {
             $validation['warnings'][] = 'Migration record inconsistencies detected';
         }
 
@@ -216,8 +220,8 @@ class SafeMigrateCommand extends Command
         $this->line('  • Checking foreign key constraints...');
         $constraintsOk = $this->checkForeignKeyConstraints();
         $validation['checks']['foreign_keys'] = $constraintsOk ? '✅ Valid' : '⚠️  Violations found';
-        
-        if (!$constraintsOk) {
+
+        if (! $constraintsOk) {
             $validation['warnings'][] = 'Foreign key constraint violations detected';
         }
 
@@ -225,8 +229,8 @@ class SafeMigrateCommand extends Command
         $this->line('  • Assessing performance impact...');
         $performanceOk = $this->assessPerformanceImpact();
         $validation['checks']['performance'] = $performanceOk ? '✅ Normal' : '⚠️  Impact detected';
-        
-        if (!$performanceOk) {
+
+        if (! $performanceOk) {
             $validation['warnings'][] = 'Significant performance impact detected';
         }
 
@@ -239,12 +243,12 @@ class SafeMigrateCommand extends Command
     private function getMigrationPlan(): array
     {
         $pendingMigrations = $this->getPendingMigrations();
-        
+
         return [
             'total_migrations' => count($pendingMigrations),
             'migrations' => $pendingMigrations,
             'estimated_time' => $this->estimateExecutionTime($pendingMigrations),
-            'risk_level' => $this->assessRiskLevel($pendingMigrations)
+            'risk_level' => $this->assessRiskLevel($pendingMigrations),
         ];
     }
 
@@ -258,40 +262,40 @@ class SafeMigrateCommand extends Command
             'executed_migrations' => [],
             'failed_migrations' => [],
             'execution_time' => 0,
-            'monitoring_data' => []
+            'monitoring_data' => [],
         ];
 
         $startTime = microtime(true);
 
         foreach ($plan['migrations'] as $migration) {
             $this->line("  • Executing: {$migration}");
-            
+
             try {
                 if ($enableMonitoring) {
                     $migrationResult = $this->monitoringService->monitorMigrationExecution(
                         $migration,
-                        fn() => $this->executeSingleMigration($migration)
+                        fn () => $this->executeSingleMigration($migration)
                     );
-                    
+
                     $results['monitoring_data'][$migration] = $migrationResult;
                 } else {
                     $this->executeSingleMigration($migration);
                 }
-                
+
                 $results['executed_migrations'][] = $migration;
                 $this->info("    ✅ Completed: {$migration}");
-                
+
             } catch (\Exception $e) {
                 $results['overall_success'] = false;
                 $results['failed_migrations'][] = [
                     'migration' => $migration,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ];
-                
+
                 $this->error("    ❌ Failed: {$migration} - {$e->getMessage()}");
-                
+
                 if ($rollbackOnFailure) {
-                    $this->warn("    🔄 Rolling back due to failure...");
+                    $this->warn('    🔄 Rolling back due to failure...');
                     $this->rollbackMigration($migration);
                     break;
                 }
@@ -299,7 +303,7 @@ class SafeMigrateCommand extends Command
         }
 
         $results['execution_time'] = microtime(true) - $startTime;
-        
+
         return $results;
     }
 
@@ -310,20 +314,20 @@ class SafeMigrateCommand extends Command
     {
         $this->line('');
         $this->info('Validation Results:');
-        
+
         foreach ($results['checks'] as $check => $status) {
-            $this->line("  {$status} " . ucwords(str_replace('_', ' ', $check)));
+            $this->line("  {$status} ".ucwords(str_replace('_', ' ', $check)));
         }
-        
-        if (!empty($results['errors'])) {
+
+        if (! empty($results['errors'])) {
             $this->line('');
             $this->error('Errors:');
             foreach ($results['errors'] as $error) {
                 $this->line("  • {$error}");
             }
         }
-        
-        if (!empty($results['warnings'])) {
+
+        if (! empty($results['warnings'])) {
             $this->line('');
             $this->warn('Warnings:');
             foreach ($results['warnings'] as $warning) {
@@ -339,15 +343,15 @@ class SafeMigrateCommand extends Command
     {
         $this->line('');
         $this->info('Dependency Validation Results:');
-        
-        if (!empty($results['violations'])) {
+
+        if (! empty($results['violations'])) {
             $this->error('Violations:');
             foreach ($results['violations'] as $violation) {
                 $this->line("  • {$violation['message']}");
             }
         }
-        
-        if (!empty($results['warnings'])) {
+
+        if (! empty($results['warnings'])) {
             $this->warn('Warnings:');
             foreach ($results['warnings'] as $warning) {
                 $this->line("  • {$warning['message']}");
@@ -364,7 +368,7 @@ class SafeMigrateCommand extends Command
         $this->info("Migrations to execute: {$plan['total_migrations']}");
         $this->info("Estimated time: {$plan['estimated_time']} seconds");
         $this->info("Risk level: {$plan['risk_level']}");
-        
+
         if ($plan['total_migrations'] > 0) {
             $this->line('');
             $this->line('Migration list:');
@@ -381,16 +385,16 @@ class SafeMigrateCommand extends Command
     {
         $this->line('');
         $this->info('Migration Execution Results:');
-        $this->info("Total execution time: " . number_format($results['execution_time'], 2) . " seconds");
-        $this->info("Successful migrations: " . count($results['executed_migrations']));
-        
-        if (!empty($results['failed_migrations'])) {
-            $this->error("Failed migrations: " . count($results['failed_migrations']));
+        $this->info('Total execution time: '.number_format($results['execution_time'], 2).' seconds');
+        $this->info('Successful migrations: '.count($results['executed_migrations']));
+
+        if (! empty($results['failed_migrations'])) {
+            $this->error('Failed migrations: '.count($results['failed_migrations']));
             foreach ($results['failed_migrations'] as $failure) {
                 $this->line("  • {$failure['migration']}: {$failure['error']}");
             }
         }
-        
+
         if ($results['overall_success']) {
             $this->info('🎉 All migrations completed successfully!');
         } else {
@@ -405,31 +409,80 @@ class SafeMigrateCommand extends Command
     {
         if ($plan['total_migrations'] === 0) {
             $this->info('No pending migrations to execute.');
+
             return false;
         }
 
         $this->line('');
         $message = "Execute {$plan['total_migrations']} migration(s)";
-        
+
         if ($plan['risk_level'] === 'high') {
-            $message .= " (HIGH RISK)";
+            $message .= ' (HIGH RISK)';
         }
-        
-        return $this->confirm($message . '?');
+
+        return $this->confirm($message.'?');
     }
 
     // Helper methods (simplified implementations)
-    private function isMigrationLocked(): bool { return false; }
-    private function checkDiskSpace(): bool { return true; }
-    private function checkBackupStatus(): bool { return true; }
-    private function validateMigrationTimestamps(): array { return ['passed' => true, 'errors' => []]; }
-    private function verifyMigrationRecords(): bool { return true; }
-    private function checkForeignKeyConstraints(): bool { return true; }
-    private function assessPerformanceImpact(): bool { return true; }
-    private function getPendingMigrations(): array { return []; }
-    private function estimateExecutionTime(array $migrations): int { return count($migrations) * 5; }
-    private function assessRiskLevel(array $migrations): string { return 'low'; }
-    private function executeSingleMigration(string $migration): void { /* Execute migration */ }
-    private function rollbackMigration(string $migration): void { /* Rollback migration */ }
-    private function attemptRollback(): void { /* Attempt rollback */ }
+    private function isMigrationLocked(): bool
+    {
+        return false;
+    }
+
+    private function checkDiskSpace(): bool
+    {
+        return true;
+    }
+
+    private function checkBackupStatus(): bool
+    {
+        return true;
+    }
+
+    private function validateMigrationTimestamps(): array
+    {
+        return ['passed' => true, 'errors' => []];
+    }
+
+    private function verifyMigrationRecords(): bool
+    {
+        return true;
+    }
+
+    private function checkForeignKeyConstraints(): bool
+    {
+        return true;
+    }
+
+    private function assessPerformanceImpact(): bool
+    {
+        return true;
+    }
+
+    private function getPendingMigrations(): array
+    {
+        return [];
+    }
+
+    private function estimateExecutionTime(array $migrations): int
+    {
+        return count($migrations) * 5;
+    }
+
+    private function assessRiskLevel(array $migrations): string
+    {
+        return 'low';
+    }
+
+    private function executeSingleMigration(string $migration): void
+    { /* Execute migration */
+    }
+
+    private function rollbackMigration(string $migration): void
+    { /* Rollback migration */
+    }
+
+    private function attemptRollback(): void
+    { /* Attempt rollback */
+    }
 }

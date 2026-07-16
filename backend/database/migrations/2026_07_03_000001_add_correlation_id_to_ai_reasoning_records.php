@@ -16,7 +16,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('ai_reasoning_records', function (Blueprint $table) {
-            if (!Schema::hasColumn('ai_reasoning_records', 'correlation_id')) {
+            if (! Schema::hasColumn('ai_reasoning_records', 'correlation_id')) {
                 $table->string('correlation_id', 80)->nullable()->after('session_id');
                 $table->index(['tenant_id', 'correlation_id']);
             }

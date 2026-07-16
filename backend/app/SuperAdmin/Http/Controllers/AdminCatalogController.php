@@ -8,7 +8,6 @@ use App\SuperAdmin\Application\CatalogService;
 use App\SuperAdmin\Domain\CatalogDependency;
 use App\SuperAdmin\Domain\CatalogIncompatibility;
 use App\SuperAdmin\Domain\CatalogItem;
-use App\SuperAdmin\Domain\CatalogItemType;
 use App\SuperAdmin\Domain\CatalogVisibilityRule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,10 +30,10 @@ class AdminCatalogController
     public function createType(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'key'         => 'required|string|alpha_dash|unique:catalog_item_types,key',
-            'name'        => 'required|string|max:100',
+            'key' => 'required|string|alpha_dash|unique:catalog_item_types,key',
+            'name' => 'required|string|max:100',
             'description' => 'nullable|string',
-            'sort_order'  => 'nullable|integer|min:0',
+            'sort_order' => 'nullable|integer|min:0',
         ]);
 
         $type = $this->catalog->createType($data);
@@ -74,16 +73,16 @@ class AdminCatalogController
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'key'            => 'required|string|max:120|unique:catalog_items,key',
-            'name'           => 'required|string|max:150',
-            'description'    => 'nullable|string',
-            'type_id'        => 'required|integer|exists:catalog_item_types,id',
-            'parent_id'      => 'nullable|integer|exists:catalog_items,id',
-            'is_active'      => 'nullable|boolean',
-            'sort_order'     => 'nullable|integer|min:0',
-            'metadata'       => 'nullable|array',
+            'key' => 'required|string|max:120|unique:catalog_items,key',
+            'name' => 'required|string|max:150',
+            'description' => 'nullable|string',
+            'type_id' => 'required|integer|exists:catalog_item_types,id',
+            'parent_id' => 'nullable|integer|exists:catalog_items,id',
+            'is_active' => 'nullable|boolean',
+            'sort_order' => 'nullable|integer|min:0',
+            'metadata' => 'nullable|array',
             'effective_from' => 'nullable|date',
-            'effective_to'   => 'nullable|date|after:effective_from',
+            'effective_to' => 'nullable|date|after:effective_from',
         ]);
 
         try {
@@ -118,15 +117,15 @@ class AdminCatalogController
     public function update(Request $request, CatalogItem $item): JsonResponse
     {
         $data = $request->validate([
-            'name'           => 'sometimes|string|max:150',
-            'description'    => 'nullable|string',
-            'type_id'        => 'sometimes|integer|exists:catalog_item_types,id',
-            'parent_id'      => 'nullable|integer|exists:catalog_items,id',
-            'is_active'      => 'sometimes|boolean',
-            'sort_order'     => 'sometimes|integer|min:0',
-            'metadata'       => 'nullable|array',
+            'name' => 'sometimes|string|max:150',
+            'description' => 'nullable|string',
+            'type_id' => 'sometimes|integer|exists:catalog_item_types,id',
+            'parent_id' => 'nullable|integer|exists:catalog_items,id',
+            'is_active' => 'sometimes|boolean',
+            'sort_order' => 'sometimes|integer|min:0',
+            'metadata' => 'nullable|array',
             'effective_from' => 'sometimes|date',
-            'effective_to'   => 'nullable|date',
+            'effective_to' => 'nullable|date',
         ]);
 
         $updated = $this->catalog->updateItem($item, $data);
@@ -153,7 +152,7 @@ class AdminCatalogController
     {
         $data = $request->validate([
             'depends_on_item_id' => 'required|integer|exists:catalog_items,id|different:item',
-            'type'               => 'nullable|in:required,optional',
+            'type' => 'nullable|in:required,optional',
         ]);
 
         $dependsOn = CatalogItem::findOrFail($data['depends_on_item_id']);
@@ -182,7 +181,7 @@ class AdminCatalogController
     {
         $data = $request->validate([
             'incompatible_item_id' => 'required|integer|exists:catalog_items,id|different:item',
-            'reason'               => 'nullable|string',
+            'reason' => 'nullable|string',
         ]);
 
         $incompatibleWith = CatalogItem::findOrFail($data['incompatible_item_id']);

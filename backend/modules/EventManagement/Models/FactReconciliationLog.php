@@ -7,10 +7,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * FactReconciliationLog Model
- * 
+ *
  * Tracks reconciliation between source data and analytics facts
  * to ensure data consistency and detect drift.
- * 
+ *
  * @property int $id
  * @property string $reconciliation_type
  * @property int|null $event_id
@@ -25,9 +25,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class FactReconciliationLog extends Model
 {
     protected $table = 'fact_reconciliation_log';
-    
+
     public $timestamps = false; // Only reconciled_at
-    
+
     protected $fillable = [
         'reconciliation_type',
         'event_id',
@@ -36,7 +36,7 @@ class FactReconciliationLog extends Model
         'fact_data_summary',
         'discrepancies',
         'status',
-        'notes'
+        'notes',
     ];
 
     protected $casts = [
@@ -44,18 +44,23 @@ class FactReconciliationLog extends Model
         'source_data_summary' => 'array',
         'fact_data_summary' => 'array',
         'discrepancies' => 'array',
-        'reconciled_at' => 'datetime'
+        'reconciled_at' => 'datetime',
     ];
 
     // Status constants
     public const STATUS_PASSED = 'passed';
+
     public const STATUS_FAILED = 'failed';
+
     public const STATUS_WARNING = 'warning';
 
     // Reconciliation type constants
     public const TYPE_REVENUE_RECONCILIATION = 'revenue_reconciliation';
+
     public const TYPE_CAPACITY_RECONCILIATION = 'capacity_reconciliation';
+
     public const TYPE_BOOKING_COUNT_RECONCILIATION = 'booking_count_reconciliation';
+
     public const TYPE_ANALYTICS_CONSISTENCY = 'analytics_consistency';
 
     /**

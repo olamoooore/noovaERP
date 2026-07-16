@@ -10,11 +10,11 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Modules\AI\Models\AIConversation;
 use Modules\AI\Models\AIMessage;
-use Modules\AI\Services\OllamaService;
-use Modules\AI\Services\FunctionRouter;
-use Modules\AI\Services\SubModuleManager;
-use Modules\AI\Prompts\SystemPrompt;
 use Modules\AI\Prompts\FunctionDefinitions;
+use Modules\AI\Prompts\SystemPrompt;
+use Modules\AI\Services\FunctionRouter;
+use Modules\AI\Services\OllamaService;
+use Modules\AI\Services\SubModuleManager;
 use Stancl\Tenancy\Facades\Tenancy;
 
 class ProcessAIMessage implements ShouldQueue
@@ -22,10 +22,13 @@ class ProcessAIMessage implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $timeout = 180;
+
     public int $tries = 1;
 
     protected int $conversationId;
+
     protected int $pendingMessageId;
+
     protected string $tenantId;
 
     public function __construct(int $conversationId, int $pendingMessageId, string $tenantId)
@@ -49,17 +52,17 @@ class ProcessAIMessage implements ShouldQueue
             // Build system prompt using the same method as ChatbotService
             $activeModule = $conversation->active_module ?? 'general';
             $basePrompt = SystemPrompt::get($conversation);
-            
+
             if ($activeModule !== 'general') {
                 $module = $moduleManager->getModule($activeModule);
                 if ($module) {
-                    $basePrompt .= "\n\n" . $module->getSystemPrompt();
+                    $basePrompt .= "\n\n".$module->getSystemPrompt();
                 }
             }
 
             // Build message history
             $messages = [['role' => 'system', 'content' => $basePrompt]];
-            
+
             $maxHistory = config('ai.conversation.max_history', 10);
             $history = $conversation->messages()
                 ->whereNotNull('content')
@@ -81,7 +84,7 @@ class ProcessAIMessage implements ShouldQueue
                 if ($module) {
                     $moduleFunctions = $module->getFunctions();
                     $allFunctions = FunctionDefinitions::getAll();
-                    $functions = array_values(array_filter($allFunctions, function($f) use ($moduleFunctions) {
+                    $functions = array_values(array_filter($allFunctions, function ($f) use ($moduleFunctions) {
                         return in_array($f['name'], $moduleFunctions);
                     }));
                 } else {
@@ -141,7 +144,7 @@ class ProcessAIMessage implements ShouldQueue
             // Update pending message with error fallback
             try {
                 // Ensure tenancy is active for the error update
-                if (!Tenancy::getTenant()) {
+                if (! Tenancy::getTenant()) {
                     Tenancy::initialize($this->tenantId);
                 }
 
@@ -161,6 +164,7 @@ class ProcessAIMessage implements ShouldQueue
     {
         $text = preg_replace('/```json\s*\{[^}]*\}\s*```/', '', $text);
         $text = preg_replace('/\{"(name|arguments)":[^}]*\}/', '', $text);
+
         return trim($text) ?: 'How can I help you?';
     }
 }

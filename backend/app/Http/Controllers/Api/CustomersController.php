@@ -11,8 +11,7 @@ class CustomersController extends Controller
 {
     /**
      * List all customers
-     * 
-     * @param Request $request
+     *
      * @return \Illuminate\Http\JsonResponse
      */
     public function index(Request $request)
@@ -45,18 +44,19 @@ class CustomersController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to fetch customers: ' . $e->getMessage());
+            Log::error('Failed to fetch customers: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to fetch customers',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Get a single customer
-     * 
-     * @param int $id
+     *
+     * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
     public function show($id)
@@ -66,29 +66,29 @@ class CustomersController extends Controller
                 ->where('id', $id)
                 ->first();
 
-            if (!$customer) {
+            if (! $customer) {
                 return response()->json([
-                    'message' => 'Customer not found'
+                    'message' => 'Customer not found',
                 ], 404);
             }
 
             return response()->json([
-                'data' => $customer
+                'data' => $customer,
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to fetch customer: ' . $e->getMessage());
+            Log::error('Failed to fetch customer: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to fetch customer',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Import customers from CSV file
-     * 
-     * @param Request $request
+     *
      * @return \Illuminate\Http\JsonResponse
      */
     public function import(Request $request)
@@ -104,48 +104,50 @@ class CustomersController extends Controller
         }
 
         $rawHeader = fgetcsv($handle);
-        if (!is_array($rawHeader) || count($rawHeader) === 0) {
+        if (! is_array($rawHeader) || count($rawHeader) === 0) {
             fclose($handle);
+
             return response()->json(['message' => 'CSV header missing'], 422);
         }
 
         $columnAliases = [
-            'customer_id'       => 'code',
-            'customer_code'     => 'code',
-            'cust_id'           => 'code',
-            'id'                => 'code',
-            'customer_name'     => 'name',
-            'company_name'      => 'company',
-            'email_address'     => 'email',
-            'telephone'         => 'phone',
-            'mobile_number'     => 'mobile',
-            'tax_id'            => 'tax_number',
-            'vat_number'        => 'tax_number',
-            'address'           => 'billing_address',
-            'billing'           => 'billing_address',
-            'shipping'          => 'shipping_address',
-            'credit'            => 'credit_limit',
+            'customer_id' => 'code',
+            'customer_code' => 'code',
+            'cust_id' => 'code',
+            'id' => 'code',
+            'customer_name' => 'name',
+            'company_name' => 'company',
+            'email_address' => 'email',
+            'telephone' => 'phone',
+            'mobile_number' => 'mobile',
+            'tax_id' => 'tax_number',
+            'vat_number' => 'tax_number',
+            'address' => 'billing_address',
+            'billing' => 'billing_address',
+            'shipping' => 'shipping_address',
+            'credit' => 'credit_limit',
             'payment_terms_days' => 'payment_terms',
-            'category_name'     => 'category',
+            'category_name' => 'category',
             'customer_category' => 'category',
-            'contact'           => 'contact_name',
-            'contact_person'    => 'contact_name',
-            'name_of_contact'   => 'contact_name',
+            'contact' => 'contact_name',
+            'contact_person' => 'contact_name',
+            'name_of_contact' => 'contact_name',
             'contact_person_name' => 'contact_name',
-            'contact_category'  => 'contact_job_title',
-            'contact_role'      => 'contact_job_title',
+            'contact_category' => 'contact_job_title',
+            'contact_role' => 'contact_job_title',
         ];
 
         $header = array_map(function ($h) use ($columnAliases) {
             $h = strtolower(trim((string) $h));
             $h = preg_replace('/[^a-z0-9]+/', '_', $h);
             $h = trim($h, '_');
+
             return $columnAliases[$h] ?? $h;
         }, $rawHeader);
 
         $rows = [];
         while (($data = fgetcsv($handle)) !== false) {
-            if (!is_array($data) || count(array_filter($data, fn ($v) => (string) $v !== '')) === 0) {
+            if (! is_array($data) || count(array_filter($data, fn ($v) => (string) $v !== '')) === 0) {
                 continue;
             }
             $row = [];
@@ -174,6 +176,7 @@ class CustomersController extends Controller
                         'row' => $index + 2,
                         'message' => 'Missing required field: name',
                     ];
+
                     continue;
                 }
 
@@ -190,19 +193,19 @@ class CustomersController extends Controller
                 }
 
                 $customerData = [
-                    'code'             => $code,
-                    'name'             => $name,
-                    'type'             => $type,
-                    'email'            => $row['email'] ?? null,
-                    'phone'            => $row['phone'] ?? null,
-                    'mobile'           => $row['mobile'] ?? null,
-                    'company'          => $row['company'] ?? null,
-                    'tax_number'       => $row['tax_number'] ?? null,
-                    'website'          => $row['website'] ?? null,
-                    'billing_address'  => $row['billing_address'] ?? null,
+                    'code' => $code,
+                    'name' => $name,
+                    'type' => $type,
+                    'email' => $row['email'] ?? null,
+                    'phone' => $row['phone'] ?? null,
+                    'mobile' => $row['mobile'] ?? null,
+                    'company' => $row['company'] ?? null,
+                    'tax_number' => $row['tax_number'] ?? null,
+                    'website' => $row['website'] ?? null,
+                    'billing_address' => $row['billing_address'] ?? null,
                     'shipping_address' => $row['shipping_address'] ?? null,
-                    'notes'            => $row['notes'] ?? null,
-                    'is_active'        => true,
+                    'notes' => $row['notes'] ?? null,
+                    'is_active' => true,
                 ];
 
                 if (isset($row['credit_limit']) && $row['credit_limit'] !== '') {
@@ -228,7 +231,7 @@ class CustomersController extends Controller
                         $base = $code;
                         $seq = 2;
                         do {
-                            $candidate = $base . '-' . $seq;
+                            $candidate = $base.'-'.$seq;
                             $seq++;
                         } while (DB::table('customers')->where('code', $candidate)->whereNull('deleted_at')->exists());
                         $code = $candidate;
@@ -274,14 +277,14 @@ class CustomersController extends Controller
                         if ($contactName !== '') {
                             DB::table('customer_contacts')->insert([
                                 'customer_id' => $customerId,
-                                'name'        => $contactName,
-                                'job_title'   => $row['contact_job_title'] ?? null,
-                                'email'       => $row['contact_email'] ?? null,
-                                'phone'       => $row['contact_phone'] ?? null,
-                                'mobile'      => $row['contact_mobile'] ?? null,
-                                'is_primary'  => false,
-                                'created_at'  => now(),
-                                'updated_at'  => now(),
+                                'name' => $contactName,
+                                'job_title' => $row['contact_job_title'] ?? null,
+                                'email' => $row['contact_email'] ?? null,
+                                'phone' => $row['contact_phone'] ?? null,
+                                'mobile' => $row['contact_mobile'] ?? null,
+                                'is_primary' => false,
+                                'created_at' => now(),
+                                'updated_at' => now(),
                             ]);
                         }
                     }
@@ -296,6 +299,7 @@ class CustomersController extends Controller
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
+
             return response()->json(['message' => 'Import failed', 'error' => $e->getMessage()], 500);
         }
 

@@ -18,7 +18,7 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
             $table->integer('usage_count')->default(0);
             $table->timestamps();
-            
+
             $table->index('category');
             $table->index('is_active');
             $table->index('language');

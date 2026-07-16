@@ -7,13 +7,13 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Platform\Exceptions\ExceptionQueue;
 use App\Platform\Exceptions\ExceptionService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TenantTestCase;
 
 class ExceptionServiceTest extends TenantTestCase
 {
     protected string $tenantUuid;
+
     protected ExceptionService $service;
 
     protected function setUp(): void
@@ -22,7 +22,7 @@ class ExceptionServiceTest extends TenantTestCase
 
         $this->tenantUuid = Str::uuid()->toString();
         $this->bindTenantContext($this->tenantUuid);
-        $this->service = new ExceptionService();
+        $this->service = new ExceptionService;
     }
 
     public function test_log_creates_exception(): void

@@ -56,15 +56,17 @@ class ImportMasterCoaCommand extends Command
     {
         $tenantId = $this->option('tenant');
 
-        if (!$tenantId) {
+        if (! $tenantId) {
             $this->error('The --tenant flag is required for this command.');
             $this->info('Usage: php artisan accounting:import-master-coa --tenant=<tenant-id>');
+
             return self::FAILURE;
         }
 
         $tenant = \App\Models\Tenant::find($tenantId);
-        if (!$tenant) {
+        if (! $tenant) {
             $this->error("Tenant not found: {$tenantId}");
+
             return self::FAILURE;
         }
 
@@ -95,22 +97,24 @@ class ImportMasterCoaCommand extends Command
             if ($existing) {
                 $nodeMap[$code] = $existing->id;
                 $this->line("  [exists] {$code} — {$name}");
+
                 continue;
             }
 
             if ($dryRun) {
                 $this->line("  [would create] {$code} — {$name}");
+
                 continue;
             }
 
             $parentId = $parentCode ? ($nodeMap[$parentCode] ?? null) : null;
             $id = DB::table('master_coa_nodes')->insertGetId([
-                'code'       => $code,
-                'name'       => $name,
-                'type'       => $type,
-                'parent_id'  => $parentId,
-                'level'      => $level,
-                'is_active'  => true,
+                'code' => $code,
+                'name' => $name,
+                'type' => $type,
+                'parent_id' => $parentId,
+                'level' => $level,
+                'is_active' => true,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -122,7 +126,7 @@ class ImportMasterCoaCommand extends Command
         $this->info('Mapping entity accounts to master nodes...');
         $entityAccounts = DB::table('chart_of_accounts')->get();
         $masterCodes = $dryRun
-            ? array_map(fn($n) => $n[0], self::MASTER_NODES)
+            ? array_map(fn ($n) => $n[0], self::MASTER_NODES)
             : array_keys($nodeMap);
 
         sort($masterCodes);
@@ -137,37 +141,40 @@ class ImportMasterCoaCommand extends Command
 
             if ($exists) {
                 $skipped++;
+
                 continue;
             }
 
             // find best matching master node by longest code prefix
             $bestMatch = $this->findBestMasterCode($account->code, $masterCodes);
 
-            if (!$bestMatch) {
+            if (! $bestMatch) {
                 $this->warn("  [no match] {$account->code} — {$account->name}");
+
                 continue;
             }
 
             if ($dryRun) {
                 $this->line("  [would map] {$account->code} → master {$bestMatch}");
                 $mapped++;
+
                 continue;
             }
 
             $masterNodeId = $nodeMap[$bestMatch] ?? null;
-            if (!$masterNodeId) {
+            if (! $masterNodeId) {
                 continue;
             }
 
             DB::table('entity_account_mappings')->insert([
                 'chart_of_account_id' => $account->id,
-                'master_coa_node_id'  => $masterNodeId,
-                'mapping_type'        => 'auto',
-                'confidence'          => 0.8,
-                'is_manual_override'  => false,
-                'version'             => 1,
-                'created_at'          => now(),
-                'updated_at'          => now(),
+                'master_coa_node_id' => $masterNodeId,
+                'mapping_type' => 'auto',
+                'confidence' => 0.8,
+                'is_manual_override' => false,
+                'version' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
             $mapped++;
         }

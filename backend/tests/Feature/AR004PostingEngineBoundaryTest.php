@@ -88,13 +88,13 @@ class AR004PostingEngineBoundaryTest extends TestCase
     {
         $source = file_get_contents(base_path('app/Accounting/InventoryPostingEngine.php'));
 
-            // Source may mention PostingEngine in comments; guard against actual usage only.
-            $this->assertStringNotContainsString('use App\Accounting\PostingEngine', $source,
-                'InventoryPostingEngine must not import PostingEngine.');
-            $this->assertStringNotContainsString('new PostingEngine(', $source,
-                'InventoryPostingEngine must not instantiate PostingEngine.');
-            $this->assertStringNotContainsString('$postingEngine->post(', $source,
-                'InventoryPostingEngine must not call PostingEngine::post() inline (AR-004 boundary).');
+        // Source may mention PostingEngine in comments; guard against actual usage only.
+        $this->assertStringNotContainsString('use App\Accounting\PostingEngine', $source,
+            'InventoryPostingEngine must not import PostingEngine.');
+        $this->assertStringNotContainsString('new PostingEngine(', $source,
+            'InventoryPostingEngine must not instantiate PostingEngine.');
+        $this->assertStringNotContainsString('$postingEngine->post(', $source,
+            'InventoryPostingEngine must not call PostingEngine::post() inline (AR-004 boundary).');
     }
 
     public function test_inventory_posting_engine_documents_deferred_accounting_pattern(): void

@@ -50,8 +50,8 @@ class AIKnowledgeBase extends Model
             ->language($language)
             ->where(function ($q) use ($query) {
                 $q->where('question', 'ilike', "%{$query}%")
-                  ->orWhere('answer', 'ilike', "%{$query}%")
-                  ->orWhereJsonContains('keywords', $query);
+                    ->orWhere('answer', 'ilike', "%{$query}%")
+                    ->orWhereJsonContains('keywords', $query);
             })
             ->orderBy('usage_count', 'desc')
             ->limit($limit)

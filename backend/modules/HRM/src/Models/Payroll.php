@@ -28,11 +28,11 @@ class Payroll extends Model
     ];
 
     protected $casts = [
-        'period_start'        => 'date',
-        'period_end'          => 'date',
+        'period_start' => 'date',
+        'period_end' => 'date',
         'base_monthly_salary' => 'decimal:2',
-        'net_pay'             => 'decimal:2',
-        'policy_snapshot'     => 'array',
+        'net_pay' => 'decimal:2',
+        'policy_snapshot' => 'array',
     ];
 
     // -------------------------------------------------------------------------

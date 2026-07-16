@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\AuditLog;
-use App\Console\Commands\ExportAuditLogs;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
@@ -81,7 +80,7 @@ class AuditLogExportTest extends TestCase
     /** @test */
     public function export_command_exports_all_logs_as_csv()
     {
-        $outputFile = sys_get_temp_dir() . '/audit_test_' . uniqid() . '.csv';
+        $outputFile = sys_get_temp_dir().'/audit_test_'.uniqid().'.csv';
 
         $exitCode = Artisan::call('audit:export', [
             '--format' => 'csv',
@@ -102,7 +101,7 @@ class AuditLogExportTest extends TestCase
     /** @test */
     public function export_command_exports_all_logs_as_json()
     {
-        $outputFile = sys_get_temp_dir() . '/audit_test_' . uniqid() . '.json';
+        $outputFile = sys_get_temp_dir().'/audit_test_'.uniqid().'.json';
 
         $exitCode = Artisan::call('audit:export', [
             '--format' => 'json',
@@ -122,7 +121,7 @@ class AuditLogExportTest extends TestCase
     /** @test */
     public function export_command_filters_by_operation()
     {
-        $outputFile = sys_get_temp_dir() . '/audit_test_' . uniqid() . '.json';
+        $outputFile = sys_get_temp_dir().'/audit_test_'.uniqid().'.json';
 
         Artisan::call('audit:export', [
             '--format' => 'json',
@@ -140,7 +139,7 @@ class AuditLogExportTest extends TestCase
     /** @test */
     public function export_command_filters_by_date_range()
     {
-        $outputFile = sys_get_temp_dir() . '/audit_test_' . uniqid() . '.json';
+        $outputFile = sys_get_temp_dir().'/audit_test_'.uniqid().'.json';
 
         Artisan::call('audit:export', [
             '--format' => 'json',
@@ -159,7 +158,7 @@ class AuditLogExportTest extends TestCase
     /** @test */
     public function export_command_filters_by_actor()
     {
-        $outputFile = sys_get_temp_dir() . '/audit_test_' . uniqid() . '.json';
+        $outputFile = sys_get_temp_dir().'/audit_test_'.uniqid().'.json';
 
         Artisan::call('audit:export', [
             '--format' => 'json',
@@ -180,7 +179,7 @@ class AuditLogExportTest extends TestCase
     /** @test */
     public function csv_export_contains_required_compliance_fields()
     {
-        $outputFile = sys_get_temp_dir() . '/audit_test_' . uniqid() . '.csv';
+        $outputFile = sys_get_temp_dir().'/audit_test_'.uniqid().'.csv';
 
         Artisan::call('audit:export', [
             '--format' => 'csv',

@@ -5,8 +5,8 @@ namespace Modules\Inventory\Services;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Models\StockLevel;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\Inventory\Models\StockReservation;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * StockReservationService
@@ -45,9 +45,9 @@ class StockReservationService
         ) {
             // ── Idempotency check ─────────────────────────────────────────────
             $existing = StockReservation::where([
-                'source_document_type'     => $sourceDocumentType,
-                'source_document_id'       => $sourceDocumentId,
-                'source_document_line_id'  => $sourceDocumentLineId,
+                'source_document_type' => $sourceDocumentType,
+                'source_document_id' => $sourceDocumentId,
+                'source_document_line_id' => $sourceDocumentLineId,
             ])->whereIn('status', ['open', 'allocated'])->first();
 
             if ($existing) {
@@ -64,24 +64,24 @@ class StockReservationService
 
             if ($available < $quantity) {
                 throw new \Exception(
-                    "Cannot reserve {$quantity} units of product #{$productId} in warehouse #{$warehouseId}. " .
+                    "Cannot reserve {$quantity} units of product #{$productId} in warehouse #{$warehouseId}. ".
                     "Available: {$available}."
                 );
             }
 
             // ── Create reservation record ─────────────────────────────────────
             $reservation = StockReservation::create([
-                'product_id'              => $productId,
-                'warehouse_id'            => $warehouseId,
-                'quantity'                => $quantity,
-                'quantity_fulfilled'      => 0,
-                'status'                  => 'open',
-                'source_document_type'    => $sourceDocumentType,
-                'source_document_id'      => $sourceDocumentId,
+                'product_id' => $productId,
+                'warehouse_id' => $warehouseId,
+                'quantity' => $quantity,
+                'quantity_fulfilled' => 0,
+                'status' => 'open',
+                'source_document_type' => $sourceDocumentType,
+                'source_document_id' => $sourceDocumentId,
                 'source_document_line_id' => $sourceDocumentLineId,
-                'expires_at'              => $expiresAt,
-                'created_by'              => TenantUserHelper::resolveTenantUserId(),
-                'notes'                   => $notes,
+                'expires_at' => $expiresAt,
+                'created_by' => TenantUserHelper::resolveTenantUserId(),
+                'notes' => $notes,
             ]);
 
             // ── Increment the stock_levels counter ────────────────────────────
@@ -89,21 +89,21 @@ class StockReservationService
                 $stockLevel->increment('reserved_quantity', $quantity);
             } else {
                 StockLevel::create([
-                    'product_id'        => $productId,
-                    'warehouse_id'      => $warehouseId,
-                    'quantity'          => 0,
+                    'product_id' => $productId,
+                    'warehouse_id' => $warehouseId,
+                    'quantity' => 0,
                     'reserved_quantity' => $quantity,
-                    'min_quantity'      => 0,
+                    'min_quantity' => 0,
                 ]);
             }
 
             Log::info('Stock reserved', [
-                'reservation_id'       => $reservation->id,
-                'product_id'           => $productId,
-                'warehouse_id'         => $warehouseId,
-                'quantity'             => $quantity,
+                'reservation_id' => $reservation->id,
+                'product_id' => $productId,
+                'warehouse_id' => $warehouseId,
+                'quantity' => $quantity,
                 'source_document_type' => $sourceDocumentType,
-                'source_document_id'   => $sourceDocumentId,
+                'source_document_id' => $sourceDocumentId,
             ]);
 
             return $reservation;
@@ -118,7 +118,7 @@ class StockReservationService
     public function release(StockReservation $reservation, ?string $reason = null): StockReservation
     {
         return DB::transaction(function () use ($reservation, $reason) {
-            if (!$reservation->isActive()) {
+            if (! $reservation->isActive()) {
                 throw new \InvalidArgumentException(
                     "Cannot release reservation #{$reservation->id} with status '{$reservation->status}'."
                 );
@@ -127,11 +127,11 @@ class StockReservationService
             $qtyToRelease = $reservation->remaining_quantity;
 
             $reservation->update([
-                'status'      => 'released',
+                'status' => 'released',
                 'released_by' => TenantUserHelper::resolveTenantUserId(),
                 'released_at' => now(),
-                'notes'       => $reservation->notes
-                    ? $reservation->notes . "\nRelease reason: {$reason}"
+                'notes' => $reservation->notes
+                    ? $reservation->notes."\nRelease reason: {$reason}"
                     : $reason,
             ]);
 
@@ -150,9 +150,9 @@ class StockReservationService
 
             Log::info('Stock reservation released', [
                 'reservation_id' => $reservation->id,
-                'product_id'     => $reservation->product_id,
-                'warehouse_id'   => $reservation->warehouse_id,
-                'qty_released'   => $qtyToRelease,
+                'product_id' => $reservation->product_id,
+                'warehouse_id' => $reservation->warehouse_id,
+                'qty_released' => $qtyToRelease,
             ]);
 
             return $reservation->fresh();
@@ -168,7 +168,7 @@ class StockReservationService
     public function fulfil(StockReservation $reservation, int $quantityFulfilled): StockReservation
     {
         return DB::transaction(function () use ($reservation, $quantityFulfilled) {
-            if (!$reservation->isActive()) {
+            if (! $reservation->isActive()) {
                 throw new \InvalidArgumentException(
                     "Cannot fulfil reservation #{$reservation->id} with status '{$reservation->status}'."
                 );
@@ -186,7 +186,7 @@ class StockReservationService
 
             $reservation->update([
                 'quantity_fulfilled' => $newFulfilled,
-                'status'             => $status,
+                'status' => $status,
             ]);
 
             // Decrement the reserved counter by the fulfilled amount
@@ -210,7 +210,7 @@ class StockReservationService
     public function expireOverdue(): int
     {
         $expired = StockReservation::expired()->get();
-        $count   = 0;
+        $count = 0;
 
         foreach ($expired as $reservation) {
             try {
@@ -220,7 +220,7 @@ class StockReservationService
             } catch (\Throwable $e) {
                 Log::error('Failed to expire stock reservation', [
                     'reservation_id' => $reservation->id,
-                    'error'          => $e->getMessage(),
+                    'error' => $e->getMessage(),
                 ]);
             }
         }

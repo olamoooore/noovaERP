@@ -15,7 +15,7 @@ class BackfillWebhookTenantLookups extends Command
 
     public function handle(): int
     {
-        if (!Schema::hasTable(WhatsAppApiKey::webhookTenantLookupBaseTable())) {
+        if (! Schema::hasTable(WhatsAppApiKey::webhookTenantLookupBaseTable())) {
             $this->error('Shared WhatsApp webhook lookup table not found. Run the latest database migrations first.');
 
             return self::FAILURE;
@@ -41,7 +41,7 @@ class BackfillWebhookTenantLookups extends Command
         foreach ($tenants as $tenant) {
             try {
                 $tenantSynced = $tenant->run(function (): int {
-                    if (!Schema::hasTable('whatsapp_api_keys')) {
+                    if (! Schema::hasTable('whatsapp_api_keys')) {
                         return 0;
                     }
 
@@ -61,6 +61,7 @@ class BackfillWebhookTenantLookups extends Command
                 });
             } catch (\Throwable $e) {
                 $this->warn("Tenant {$tenant->id}: backfill skipped ({$e->getMessage()})");
+
                 continue;
             }
 

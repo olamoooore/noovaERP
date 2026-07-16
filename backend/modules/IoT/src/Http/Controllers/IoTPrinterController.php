@@ -3,11 +3,11 @@
 namespace Modules\IoT\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Modules\IoT\Enums\DeviceType;
 use Modules\IoT\Models\IoTDevice;
 use Modules\IoT\Services\DeviceManager;
-use Modules\IoT\Enums\DeviceType;
 
 class IoTPrinterController extends Controller
 {
@@ -40,7 +40,7 @@ class IoTPrinterController extends Controller
 
         try {
             $printer = $this->deviceManager->getPrinterDriver($device);
-            
+
             $result = $printer->print($validated);
 
             return response()->json($result, $result['success'] ? 200 : 500);

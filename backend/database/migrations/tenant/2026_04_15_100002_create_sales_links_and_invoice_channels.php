@@ -46,11 +46,11 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('invoices')) {
+        if (! Schema::hasTable('invoices')) {
             return;
         }
 
-        if (!Schema::hasColumn('invoices', 'pos_order_id')) {
+        if (! Schema::hasColumn('invoices', 'pos_order_id')) {
             Schema::table('invoices', function (Blueprint $table) {
                 $table->unsignedBigInteger('pos_order_id')->nullable()->after('journal_entry_id');
                 $table->index('pos_order_id');
@@ -62,7 +62,7 @@ return new class extends Migration
             }
         }
 
-        if (!Schema::hasColumn('invoices', 'web_order_id')) {
+        if (! Schema::hasColumn('invoices', 'web_order_id')) {
             Schema::table('invoices', function (Blueprint $table) {
                 $table->unsignedBigInteger('web_order_id')->nullable()->after('pos_order_id');
                 $table->index('web_order_id');
@@ -74,7 +74,7 @@ return new class extends Migration
             }
         }
 
-        if (!Schema::hasColumn('invoices', 'sales_order_id')) {
+        if (! Schema::hasColumn('invoices', 'sales_order_id')) {
             Schema::table('invoices', function (Blueprint $table) {
                 $table->unsignedBigInteger('sales_order_id')->nullable()->after('web_order_id');
                 $table->index('sales_order_id');

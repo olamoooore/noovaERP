@@ -5,12 +5,11 @@ namespace App\Services;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
-use App\Models\FixedAsset;
 use App\Models\DepreciationSchedule;
+use App\Models\FixedAsset;
 use App\Models\JournalEntry;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * Depreciation Service
@@ -28,8 +27,9 @@ class DepreciationService
 
     /**
      * Calculate depreciation for a period
-     * @param string $periodDate - Date in format Y-m-d (e.g., '2024-01-31')
-     * @param array|null $assetIds - Specific asset IDs or null for all active assets
+     *
+     * @param  string  $periodDate  - Date in format Y-m-d (e.g., '2024-01-31')
+     * @param  array|null  $assetIds  - Specific asset IDs or null for all active assets
      */
     public function calculateDepreciationForPeriod(string $periodDate, ?array $assetIds = null): array
     {
@@ -58,8 +58,9 @@ class DepreciationService
                     'asset_id' => $asset->id,
                     'asset_name' => $asset->name,
                     'status' => 'skipped',
-                    'message' => 'Already depreciated for this period'
+                    'message' => 'Already depreciated for this period',
                 ];
+
                 continue;
             }
 
@@ -69,8 +70,9 @@ class DepreciationService
                     'asset_id' => $asset->id,
                     'asset_name' => $asset->name,
                     'status' => 'skipped',
-                    'message' => 'Asset fully depreciated'
+                    'message' => 'Asset fully depreciated',
                 ];
+
                 continue;
             }
 
@@ -91,8 +93,9 @@ class DepreciationService
                         'asset_id' => $asset->id,
                         'asset_name' => $asset->name,
                         'status' => 'skipped',
-                        'message' => 'No depreciation needed'
+                        'message' => 'No depreciation needed',
                     ];
+
                     continue;
                 }
 
@@ -137,7 +140,7 @@ class DepreciationService
                     'asset_id' => $asset->id,
                     'asset_name' => $asset->name,
                     'status' => 'error',
-                    'message' => $e->getMessage()
+                    'message' => $e->getMessage(),
                 ];
             }
         }
@@ -237,13 +240,13 @@ class DepreciationService
             documentType: 'depreciation',
             documentId: $asset->id,
             postingDate: $periodDate->format('Y-m-d'),
-            description: "Depreciation for {$asset->name} - " . $periodDate->format('M Y'),
+            description: "Depreciation for {$asset->name} - ".$periodDate->format('M Y'),
             lines: $lines,
             reference: $asset->asset_number,
             userId: TenantUserHelper::resolveTenantUserId(),
         ));
 
-        if (!$result->success) {
+        if (! $result->success) {
             throw new \Exception($result->error);
         }
 
@@ -321,13 +324,13 @@ class DepreciationService
             documentType: 'asset_disposal',
             documentId: $asset->id,
             postingDate: $disposalDate->format('Y-m-d'),
-            description: "Disposal of {$asset->name} - {$disposalMethod}" . ($notes ? " - {$notes}" : ''),
+            description: "Disposal of {$asset->name} - {$disposalMethod}".($notes ? " - {$notes}" : ''),
             lines: $lines,
             reference: $asset->asset_number,
             userId: TenantUserHelper::resolveTenantUserId(),
         ));
 
-        if (!$result->success) {
+        if (! $result->success) {
             throw new \Exception($result->error);
         }
 

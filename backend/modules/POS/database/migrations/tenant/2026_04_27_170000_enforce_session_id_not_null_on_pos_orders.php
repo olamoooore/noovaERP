@@ -2,9 +2,9 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -12,12 +12,12 @@ return new class extends Migration
      * Run the migrations.
      *
      * TASK: POS-005 - Add NOT NULL constraint on pos_orders.session_id
-     * 
+     *
      * RATIONALE:
      * - Session ownership is mandatory for POS orders
      * - Offline sync and payment guards depend on session_id being present
      * - DB-level enforcement prevents sessionless orders from being created
-     * 
+     *
      * SAFETY:
      * - Preflight check counts null session_id rows
      * - Defers NOT NULL enforcement if paid legacy orders still have null session_id
@@ -54,7 +54,7 @@ return new class extends Migration
                     ->count();
 
                 Log::warning(
-                    "Skipping NOT NULL enforcement for pos_orders.session_id because legacy orders still have null session_id.",
+                    'Skipping NOT NULL enforcement for pos_orders.session_id because legacy orders still have null session_id.',
                     [
                         'migration' => '2026_04_27_170000_enforce_session_id_not_null_on_pos_orders',
                         'remaining_null_session_count' => $remainingNull,

@@ -3,15 +3,15 @@
 namespace Modules\EventManagement\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * StaffAssignment Model
- * 
+ *
  * Represents staff role assignments per event with zone-based access control
  * and performance tracking.
- * 
+ *
  * @property int $id
  * @property string $tenant_id
  * @property int $event_id
@@ -134,8 +134,8 @@ class StaffAssignment extends Model
     public function operationalZone(): BelongsTo
     {
         return $this->belongsTo(OperationalZone::class, 'zone', 'zone_code')
-                    ->where('event_id', $this->event_id)
-                    ->where('tenant_id', $this->tenant_id);
+            ->where('event_id', $this->event_id)
+            ->where('tenant_id', $this->tenant_id);
     }
 
     /**
@@ -163,6 +163,7 @@ class StaffAssignment extends Model
 
         // Check permissions for additional zone access
         $permissions = $this->permissions ?? [];
+
         return in_array("zone_access_{$zoneCode}", $permissions);
     }
 
@@ -172,6 +173,7 @@ class StaffAssignment extends Model
     public function hasPermission(string $permission): bool
     {
         $permissions = $this->permissions ?? [];
+
         return in_array($permission, $permissions);
     }
 
@@ -180,7 +182,7 @@ class StaffAssignment extends Model
      */
     public function getShiftDurationAttribute(): ?float
     {
-        if (!$this->shift_start || !$this->shift_end) {
+        if (! $this->shift_start || ! $this->shift_end) {
             return null;
         }
 
@@ -192,11 +194,12 @@ class StaffAssignment extends Model
      */
     public function getWorkDurationAttribute(): ?float
     {
-        if (!$this->checked_in_at) {
+        if (! $this->checked_in_at) {
             return null;
         }
 
         $endTime = $this->checked_out_at ?? now();
+
         return $this->checked_in_at->diffInHours($endTime);
     }
 
@@ -205,7 +208,7 @@ class StaffAssignment extends Model
      */
     public function isLate(): bool
     {
-        if (!$this->shift_start || !$this->checked_in_at) {
+        if (! $this->shift_start || ! $this->checked_in_at) {
             return false;
         }
 

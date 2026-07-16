@@ -9,7 +9,9 @@ use Modules\PaymentGateway\Models\PaymentGateway;
 class PayPalGateway implements PaymentGatewayInterface
 {
     protected PaymentGateway $gateway;
+
     protected string $baseUrl;
+
     protected ?string $accessToken = null;
 
     public function __construct(PaymentGateway $gateway)
@@ -33,12 +35,13 @@ class PayPalGateway implements PaymentGatewayInterface
             $response = Http::withBasicAuth(
                 $this->gateway->api_key, // Client ID
                 $this->gateway->api_secret // Client Secret
-            )->asForm()->post($this->baseUrl . '/v1/oauth2/token', [
+            )->asForm()->post($this->baseUrl.'/v1/oauth2/token', [
                 'grant_type' => 'client_credentials',
             ]);
 
             if ($response->successful()) {
                 $this->accessToken = $response->json()['access_token'];
+
                 return $this->accessToken;
             }
 
@@ -52,6 +55,7 @@ class PayPalGateway implements PaymentGatewayInterface
             \Log::error('PayPal OAuth exception', [
                 'error' => $e->getMessage(),
             ]);
+
             return null;
         }
     }
@@ -63,7 +67,7 @@ class PayPalGateway implements PaymentGatewayInterface
     {
         try {
             $token = $this->getAccessToken();
-            if (!$token) {
+            if (! $token) {
                 return [
                     'success' => false,
                     'error' => 'Failed to authenticate with PayPal',
@@ -86,13 +90,13 @@ class PayPalGateway implements PaymentGatewayInterface
                     $approveLink = $existingTransaction->metadata['approve_link'] ?? null;
 
                     // If approve_link not in metadata, fetch from PayPal API
-                    if (!$approveLink) {
+                    if (! $approveLink) {
                         \Log::info('Approve link not in metadata, fetching from PayPal API');
 
                         $token = $this->getAccessToken();
                         if ($token) {
                             $response = Http::withToken($token)
-                                ->get($this->baseUrl . '/v2/checkout/orders/' . $existingTransaction->transaction_id);
+                                ->get($this->baseUrl.'/v2/checkout/orders/'.$existingTransaction->transaction_id);
 
                             if ($response->successful()) {
                                 $orderData = $response->json();
@@ -129,8 +133,8 @@ class PayPalGateway implements PaymentGatewayInterface
 
             // Build return URL
             $frontendUrl = config('app.frontend_url', 'http://localhost:5173');
-            $returnUrl = $data['redirect_url'] ?? ($frontendUrl . '/payment/success');
-            $cancelUrl = $data['cancel_url'] ?? ($frontendUrl . '/checkout');
+            $returnUrl = $data['redirect_url'] ?? ($frontendUrl.'/payment/success');
+            $cancelUrl = $data['cancel_url'] ?? ($frontendUrl.'/checkout');
 
             $payload = [
                 'intent' => 'CAPTURE',
@@ -156,7 +160,7 @@ class PayPalGateway implements PaymentGatewayInterface
             \Log::info('PayPal Order Request', ['payload' => $payload]);
 
             $response = Http::withToken($token)
-                ->post($this->baseUrl . '/v2/checkout/orders', $payload);
+                ->post($this->baseUrl.'/v2/checkout/orders', $payload);
 
             if ($response->successful()) {
                 $result = $response->json();
@@ -178,7 +182,7 @@ class PayPalGateway implements PaymentGatewayInterface
                     }
                 }
 
-                if (!$approveLink) {
+                if (! $approveLink) {
                     \Log::error('PayPal approve link not found in response', [
                         'order_id' => $result['id'] ?? 'N/A',
                         'links' => $result['links'] ?? [],
@@ -193,7 +197,7 @@ class PayPalGateway implements PaymentGatewayInterface
                 // Add transaction_id to return URL
                 $secureReturnUrl = $returnUrl;
                 $separator = str_contains($secureReturnUrl, '?') ? '&' : '?';
-                $secureReturnUrl .= $separator . 'ref=' . urlencode($result['id']);
+                $secureReturnUrl .= $separator.'ref='.urlencode($result['id']);
 
                 \Log::info('PayPal order ready for approval', [
                     'order_id' => $result['id'],
@@ -242,7 +246,7 @@ class PayPalGateway implements PaymentGatewayInterface
     {
         try {
             $token = $this->getAccessToken();
-            if (!$token) {
+            if (! $token) {
                 return [
                     'success' => false,
                     'error' => 'Authentication failed',
@@ -250,7 +254,7 @@ class PayPalGateway implements PaymentGatewayInterface
             }
 
             $response = Http::withToken($token)
-                ->get($this->baseUrl . '/v2/checkout/orders/' . $transactionId);
+                ->get($this->baseUrl.'/v2/checkout/orders/'.$transactionId);
 
             if ($response->successful()) {
                 $result = $response->json();
@@ -289,7 +293,7 @@ class PayPalGateway implements PaymentGatewayInterface
     {
         try {
             $token = $this->getAccessToken();
-            if (!$token) {
+            if (! $token) {
                 return [
                     'success' => false,
                     'error' => 'Authentication failed',
@@ -305,7 +309,7 @@ class PayPalGateway implements PaymentGatewayInterface
                     'Content-Type' => 'application/json',
                 ])
                 ->withBody('{}', 'application/json')
-                ->post($this->baseUrl . '/v2/checkout/orders/' . $orderId . '/capture');
+                ->post($this->baseUrl.'/v2/checkout/orders/'.$orderId.'/capture');
 
             \Log::info('PayPal capture response', [
                 'order_id' => $orderId,
@@ -369,7 +373,7 @@ class PayPalGateway implements PaymentGatewayInterface
     {
         try {
             $token = $this->getAccessToken();
-            if (!$token) {
+            if (! $token) {
                 return [
                     'success' => false,
                     'message' => 'Authentication failed',
@@ -379,7 +383,7 @@ class PayPalGateway implements PaymentGatewayInterface
             // Get transaction to find capture_id
             $transaction = \Modules\PaymentGateway\Models\PaymentTransaction::where('transaction_id', $transactionId)->first();
 
-            if (!$transaction) {
+            if (! $transaction) {
                 return [
                     'success' => false,
                     'message' => 'Transaction not found',
@@ -389,9 +393,9 @@ class PayPalGateway implements PaymentGatewayInterface
             $captureId = $transaction->metadata['capture_id'] ?? null;
 
             // If no capture_id, try to get it from PayPal API
-            if (!$captureId) {
+            if (! $captureId) {
                 $orderResponse = Http::withToken($token)
-                    ->get($this->baseUrl . '/v2/checkout/orders/' . $transactionId);
+                    ->get($this->baseUrl.'/v2/checkout/orders/'.$transactionId);
 
                 if ($orderResponse->successful()) {
                     $orderData = $orderResponse->json();
@@ -406,7 +410,7 @@ class PayPalGateway implements PaymentGatewayInterface
                 }
             }
 
-            if (!$captureId) {
+            if (! $captureId) {
                 return [
                     'success' => false,
                     'message' => 'Capture ID not found. Payment may not have been captured yet.',
@@ -421,10 +425,11 @@ class PayPalGateway implements PaymentGatewayInterface
             ];
 
             $response = Http::withToken($token)
-                ->post($this->baseUrl . '/v2/payments/captures/' . $captureId . '/refund', $payload);
+                ->post($this->baseUrl.'/v2/payments/captures/'.$captureId.'/refund', $payload);
 
             if ($response->successful()) {
                 $result = $response->json();
+
                 return [
                     'success' => true,
                     'refund_id' => $result['id'] ?? null,
@@ -479,13 +484,14 @@ class PayPalGateway implements PaymentGatewayInterface
     {
         try {
             $token = $this->getAccessToken();
-            if (!$token) {
+            if (! $token) {
                 return false;
             }
 
             $webhookId = config('services.paypal.webhook_id');
-            if (!$webhookId) {
+            if (! $webhookId) {
                 \Log::warning('PayPal webhook ID not configured');
+
                 return false;
             }
 
@@ -508,10 +514,11 @@ class PayPalGateway implements PaymentGatewayInterface
             ];
 
             $response = Http::withToken($token)
-                ->post($this->baseUrl . '/v1/notifications/verify-webhook-signature', $payload);
+                ->post($this->baseUrl.'/v1/notifications/verify-webhook-signature', $payload);
 
             if ($response->successful()) {
                 $result = $response->json();
+
                 return $result['verification_status'] === 'SUCCESS';
             }
 
@@ -520,6 +527,7 @@ class PayPalGateway implements PaymentGatewayInterface
             \Log::error('PayPal webhook verification exception', [
                 'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -571,6 +579,7 @@ class PayPalGateway implements PaymentGatewayInterface
     {
         try {
             $token = $this->getAccessToken();
+
             return $token !== null;
         } catch (\Exception $e) {
             return false;

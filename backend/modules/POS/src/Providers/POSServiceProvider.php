@@ -20,6 +20,6 @@ class POSServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // Register module views
-        $this->loadViewsFrom(__DIR__ . '/../../resources/views', 'pos');
+        $this->loadViewsFrom(__DIR__.'/../../resources/views', 'pos');
     }
 }

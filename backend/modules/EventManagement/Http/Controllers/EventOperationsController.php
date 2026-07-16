@@ -2,25 +2,26 @@
 
 namespace Modules\EventManagement\Http\Controllers;
 
-use Modules\EventManagement\Services\EventOperationsService;
-use Modules\EventManagement\Services\AuditService;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Validator;
+use Modules\EventManagement\Services\AuditService;
+use Modules\EventManagement\Services\EventOperationsService;
 
 /**
  * EventOperationsController
- * 
+ *
  * Handles live event management and operations endpoints.
  * Provides real-time dashboard data, zone management, queue monitoring,
  * and incident logging for operational staff.
- * 
+ *
  * Requirements: 15.1, 15.4, 15.5
  */
 class EventOperationsController extends Controller
 {
     private EventOperationsService $operationsService;
+
     private AuditService $auditService;
 
     public function __construct(
@@ -35,15 +36,12 @@ class EventOperationsController extends Controller
         $this->middleware('rate_limit:operations')->only([
             'getLiveDashboard',
             'updateZoneOccupancy',
-            'updateCounterQueue'
+            'updateCounterQueue',
         ]);
     }
 
     /**
      * Get live event operations dashboard
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getLiveDashboard(int $eventId): JsonResponse
     {
@@ -53,7 +51,7 @@ class EventOperationsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $dashboard,
-                'message' => 'Live dashboard data retrieved successfully'
+                'message' => 'Live dashboard data retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
@@ -71,16 +69,13 @@ class EventOperationsController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve live dashboard data',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get real-time check-in metrics
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getCheckInMetrics(int $eventId): JsonResponse
     {
@@ -91,23 +86,20 @@ class EventOperationsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $metrics,
-                'message' => 'Check-in metrics retrieved successfully'
+                'message' => 'Check-in metrics retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve check-in metrics',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get zone status and occupancy
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getZoneStatus(int $eventId): JsonResponse
     {
@@ -118,24 +110,20 @@ class EventOperationsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $zones,
-                'message' => 'Zone status retrieved successfully'
+                'message' => 'Zone status retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve zone status',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Update zone occupancy
-     * 
-     * @param Request $request
-     * @param int $zoneId
-     * @return JsonResponse
      */
     public function updateZoneOccupancy(Request $request, int $zoneId): JsonResponse
     {
@@ -148,7 +136,7 @@ class EventOperationsController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -158,23 +146,20 @@ class EventOperationsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $updatedZone,
-                'message' => 'Zone occupancy updated successfully'
+                'message' => 'Zone occupancy updated successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update zone occupancy',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get queue status across all counters
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getQueueStatus(int $eventId): JsonResponse
     {
@@ -185,24 +170,20 @@ class EventOperationsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $queueStatus,
-                'message' => 'Queue status retrieved successfully'
+                'message' => 'Queue status retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve queue status',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Update check-in counter queue
-     * 
-     * @param Request $request
-     * @param int $counterId
-     * @return JsonResponse
      */
     public function updateCounterQueue(Request $request, int $counterId): JsonResponse
     {
@@ -215,7 +196,7 @@ class EventOperationsController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -225,24 +206,20 @@ class EventOperationsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $updatedCounter,
-                'message' => 'Counter queue updated successfully'
+                'message' => 'Counter queue updated successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update counter queue',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Log an operational incident
-     * 
-     * @param Request $request
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function logIncident(Request $request, int $eventId): JsonResponse
     {
@@ -270,7 +247,7 @@ class EventOperationsController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -282,24 +259,20 @@ class EventOperationsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => ['incident_id' => $incidentId],
-                'message' => 'Incident logged successfully'
+                'message' => 'Incident logged successfully',
             ], 201);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to log incident',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get recent incidents for an event
-     * 
-     * @param int $eventId
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getRecentIncidents(int $eventId, Request $request): JsonResponse
     {
@@ -312,24 +285,20 @@ class EventOperationsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $incidents,
-                'message' => 'Recent incidents retrieved successfully'
+                'message' => 'Recent incidents retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve recent incidents',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Update event operational status
-     * 
-     * @param Request $request
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function updateEventStatus(Request $request, int $eventId): JsonResponse
     {
@@ -355,7 +324,7 @@ class EventOperationsController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -372,23 +341,20 @@ class EventOperationsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => ['status_log_id' => $statusLogId],
-                'message' => 'Event status updated successfully'
+                'message' => 'Event status updated successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update event status',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get current event operational status
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getCurrentStatus(int $eventId): JsonResponse
     {
@@ -399,23 +365,20 @@ class EventOperationsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $status,
-                'message' => 'Current event status retrieved successfully'
+                'message' => 'Current event status retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve current event status',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Generate operational report for an event
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function generateOperationalReport(int $eventId): JsonResponse
     {
@@ -435,23 +398,20 @@ class EventOperationsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $report,
-                'message' => 'Operational report generated successfully'
+                'message' => 'Operational report generated successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to generate operational report',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get staff status for an event
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getStaffStatus(int $eventId): JsonResponse
     {
@@ -462,23 +422,20 @@ class EventOperationsController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $staffStatus,
-                'message' => 'Staff status retrieved successfully'
+                'message' => 'Staff status retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve staff status',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get operational dashboard summary from view
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getDashboardSummary(int $eventId): JsonResponse
     {
@@ -490,24 +447,24 @@ class EventOperationsController extends Controller
                 ->where('tenant_id', $tenantId)
                 ->first();
 
-            if (!$summary) {
+            if (! $summary) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Event not found or no operational data available'
+                    'message' => 'Event not found or no operational data available',
                 ], 404);
             }
 
             return response()->json([
                 'success' => true,
                 'data' => $summary,
-                'message' => 'Dashboard summary retrieved successfully'
+                'message' => 'Dashboard summary retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve dashboard summary',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }

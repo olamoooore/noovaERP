@@ -3,9 +3,9 @@
 namespace Modules\FinancialClose\Listeners;
 
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Support\Facades\Log;
 use Modules\FinancialClose\Events\FinancialCloseCycleOpened;
 use Modules\FinancialClose\Jobs\GenerateTasksFromChecklistJob;
-use Illuminate\Support\Facades\Log;
 
 /**
  * On cycle open, dispatch task generation from the linked checklist template.
@@ -19,7 +19,7 @@ class TriggerTaskGenerationOnCycleOpened implements ShouldQueue
 
         Log::info('FinancialClose: TriggerTaskGenerationOnCycleOpened dispatching GenerateTasksFromChecklistJob', [
             'tenant_id' => $event->tenantId,
-            'cycle_id'  => $event->cycleId,
+            'cycle_id' => $event->cycleId,
         ]);
 
         GenerateTasksFromChecklistJob::dispatch(

@@ -14,7 +14,7 @@ class MyInvoiceMapperTest extends TestCase
 {
     public function test_map_invoice_uses_tax_exclusive_line_amounts_and_consistent_totals(): void
     {
-        $invoice = new Invoice();
+        $invoice = new Invoice;
         $invoice->setRawAttributes([
             'id' => 16,
             'invoice_number' => 'INV-2026-0014',
@@ -46,7 +46,7 @@ class MyInvoiceMapperTest extends TestCase
             'country_code' => 'MY',
         ]);
 
-        $line = new InvoiceLine();
+        $line = new InvoiceLine;
         $line->setRawAttributes([
             'id' => 15,
             'description' => 'testing',
@@ -60,7 +60,7 @@ class MyInvoiceMapperTest extends TestCase
 
         $invoice->setRelation('lines', new Collection([$line]));
 
-        $mapper = new MyInvoiceMapper();
+        $mapper = new MyInvoiceMapper;
         $payload = $mapper->mapInvoice($invoice);
 
         $this->assertSame(150.00, $payload['line_items'][0]['line_amount']);
@@ -73,7 +73,7 @@ class MyInvoiceMapperTest extends TestCase
 
     public function test_map_invoice_uses_legacy_customer_shipping_address_and_mobile(): void
     {
-        $invoice = new Invoice();
+        $invoice = new Invoice;
         $invoice->setRawAttributes([
             'id' => 17,
             'invoice_number' => 'INV-2026-0015',
@@ -107,7 +107,7 @@ class MyInvoiceMapperTest extends TestCase
             'is_individual' => true,
         ]);
 
-        $line = new InvoiceLine();
+        $line = new InvoiceLine;
         $line->setRawAttributes([
             'id' => 17,
             'description' => 'POS item',
@@ -121,7 +121,7 @@ class MyInvoiceMapperTest extends TestCase
 
         $invoice->setRelation('lines', new Collection([$line]));
 
-        $mapper = new MyInvoiceMapper();
+        $mapper = new MyInvoiceMapper;
         $payload = $mapper->mapInvoice($invoice);
 
         $this->assertSame('10, paper mill road, jebba, Kwara state', $payload['buyer']['address']['street']);
@@ -133,7 +133,7 @@ class MyInvoiceMapperTest extends TestCase
 
     public function test_map_invoice_builds_fallback_line_when_invoice_has_no_lines(): void
     {
-        $invoice = new Invoice();
+        $invoice = new Invoice;
         $invoice->setRawAttributes([
             'id' => 16,
             'invoice_number' => 'INV-2026-0014',
@@ -160,9 +160,9 @@ class MyInvoiceMapperTest extends TestCase
             'email' => 'hello@draxel.com',
         ]);
 
-        $invoice->setRelation('lines', new Collection());
+        $invoice->setRelation('lines', new Collection);
 
-        $mapper = new MyInvoiceMapper();
+        $mapper = new MyInvoiceMapper;
         $payload = $mapper->mapInvoice($invoice);
 
         $this->assertCount(1, $payload['line_items']);
@@ -178,44 +178,44 @@ class MyInvoiceMapperTest extends TestCase
      */
     public function test_supplier_tin_is_null_when_supplier_has_no_tin(): void
     {
-        $invoice = new Invoice();
+        $invoice = new Invoice;
         $invoice->setRawAttributes([
-            'id'             => 99,
+            'id' => 99,
             'invoice_number' => 'INV-NOSUP-001',
-            'invoice_date'   => '2026-07-01',
-            'currency_code'  => 'MYR',
-            'subtotal'       => 100.00,
-            'tax_amount'     => 6.00,
-            'discount_amount'=> 0,
-            'total'          => 106.00,
-            'paid_amount'    => 0,
+            'invoice_date' => '2026-07-01',
+            'currency_code' => 'MYR',
+            'subtotal' => 100.00,
+            'tax_amount' => 6.00,
+            'discount_amount' => 0,
+            'total' => 106.00,
+            'paid_amount' => 0,
         ], true);
 
         // Supplier with null identity fields — simulates what resolveSupplier() now returns
         // when no invoice supplier is present (DB context fills these later, not .env).
         $invoice->supplier = (object) [
-            'name'                     => 'Company Name',
-            'tax_identification_number'=> null,
-            'company_registration'     => null,
-            'identity_type'            => 'BRN',
-            'identity_number'          => null,
-            'country_code'             => 'MY',
-            'is_individual'            => false,
+            'name' => 'Company Name',
+            'tax_identification_number' => null,
+            'company_registration' => null,
+            'identity_type' => 'BRN',
+            'identity_number' => null,
+            'country_code' => 'MY',
+            'is_individual' => false,
         ];
 
         $invoice->setRelation('customer', (object) [
             'name' => 'Test Customer',
-            'tin'  => 'C1234567890',
+            'tin' => 'C1234567890',
         ]);
         $invoice->setRelation('lines', new Collection([
-            tap(new InvoiceLine(), fn($l) => $l->setRawAttributes([
+            tap(new InvoiceLine, fn ($l) => $l->setRawAttributes([
                 'id' => 1, 'description' => 'Item', 'quantity' => 1,
                 'unit_price' => 100.00, 'tax_rate' => 6.0, 'tax_amount' => 6.00,
                 'discount_amount' => 0, 'line_total' => 106.00,
             ], true)),
         ]));
 
-        $mapper  = new MyInvoiceMapper();
+        $mapper = new MyInvoiceMapper;
         $payload = $mapper->mapInvoice($invoice);
 
         $this->assertNull($payload['supplier']['tin'],
@@ -230,24 +230,24 @@ class MyInvoiceMapperTest extends TestCase
      */
     public function test_buyer_without_tin_receives_lhdn_general_public_tin(): void
     {
-        $invoice = new Invoice();
+        $invoice = new Invoice;
         $invoice->setRawAttributes([
-            'id'             => 100,
+            'id' => 100,
             'invoice_number' => 'INV-NOTINBUYER-001',
-            'invoice_date'   => '2026-07-01',
-            'currency_code'  => 'MYR',
-            'subtotal'       => 50.00,
-            'tax_amount'     => 0,
-            'discount_amount'=> 0,
-            'total'          => 50.00,
-            'paid_amount'    => 0,
+            'invoice_date' => '2026-07-01',
+            'currency_code' => 'MYR',
+            'subtotal' => 50.00,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total' => 50.00,
+            'paid_amount' => 0,
         ], true);
 
         $invoice->supplier = (object) [
-            'name'                      => 'Supplier Co',
+            'name' => 'Supplier Co',
             'tax_identification_number' => 'C9999999990',
-            'company_registration'      => '202400000001',
-            'country_code'              => 'MY',
+            'company_registration' => '202400000001',
+            'country_code' => 'MY',
         ];
 
         $invoice->setRelation('customer', (object) [
@@ -256,14 +256,14 @@ class MyInvoiceMapperTest extends TestCase
         ]);
 
         $invoice->setRelation('lines', new Collection([
-            tap(new InvoiceLine(), fn($l) => $l->setRawAttributes([
+            tap(new InvoiceLine, fn ($l) => $l->setRawAttributes([
                 'id' => 2, 'description' => 'Walk-in sale', 'quantity' => 1,
                 'unit_price' => 50.00, 'tax_rate' => 0, 'tax_amount' => 0,
                 'discount_amount' => 0, 'line_total' => 50.00,
             ], true)),
         ]));
 
-        $mapper  = new MyInvoiceMapper();
+        $mapper = new MyInvoiceMapper;
         $payload = $mapper->mapInvoice($invoice);
 
         $this->assertSame('EI00000000010', $payload['buyer']['tin'],
@@ -286,20 +286,20 @@ class MyInvoiceMapperTest extends TestCase
         // We verify this by reflection on the private constant / builder.
 
         $provider = new \Modules\AccountingCountry\Malaysia\Services\MyInvoiceSubmissionProvider(
-            new \GuzzleHttp\Client(),
+            new \GuzzleHttp\Client,
             'https://sandbox.myinvois.hasil.gov.my'
         );
 
-        $ref    = new \ReflectionClass($provider);
+        $ref = new \ReflectionClass($provider);
         $method = $ref->getMethod('buildUblDocumentFromMappedPayload');
         $method->setAccessible(true);
 
         $ubl = $method->invoke($provider, [
-            'document_type'  => 'invoice',
-            'invoice_id'     => 1,
+            'document_type' => 'invoice',
+            'invoice_id' => 1,
             'invoice_number' => 'INV-VERS-001',
-            'invoice_date'   => '2026-07-01',
-            'currency_code'  => 'MYR',
+            'invoice_date' => '2026-07-01',
+            'currency_code' => 'MYR',
             'supplier' => [
                 'name' => 'Supplier', 'tin' => 'C0000000000',
                 'company_registration' => '202400000001',

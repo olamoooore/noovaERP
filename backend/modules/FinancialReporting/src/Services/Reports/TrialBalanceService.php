@@ -12,7 +12,7 @@ class TrialBalanceService extends BaseReportService
 {
     /**
      * Generate Trial Balance report
-     * 
+     *
      * A Trial Balance lists all accounts with their debit and credit balances
      * as of a specific date, verifying that total debits = total credits
      */
@@ -29,13 +29,13 @@ class TrialBalanceService extends BaseReportService
                 'asOfDate' => $filter->asOfDate?->format('Y-m-d'),
                 'endDate' => $filter->endDate?->format('Y-m-d'),
                 'startDate' => $filter->startDate?->format('Y-m-d'),
-            ]
+            ],
         ]);
 
         // Check search_path
-        $searchPath = \DB::select("SHOW search_path");
+        $searchPath = \DB::select('SHOW search_path');
         \Log::info('Current search_path in TrialBalanceService', [
-            'search_path' => $searchPath[0]->search_path ?? 'unknown'
+            'search_path' => $searchPath[0]->search_path ?? 'unknown',
         ]);
 
         // Get all account balances
@@ -43,7 +43,7 @@ class TrialBalanceService extends BaseReportService
 
         \Log::info('TrialBalanceService accounts retrieved', [
             'count' => $accounts->count(),
-            'accounts' => $accounts->toArray()
+            'accounts' => $accounts->toArray(),
         ]);
 
         // Calculate totals
@@ -53,7 +53,7 @@ class TrialBalanceService extends BaseReportService
         $isBalanced = $difference < 0.01; // Allow for rounding errors
 
         // Map accounts to match frontend expectations (debit/credit instead of debit_balance/credit_balance)
-        $accountsData = $accounts->values()->map(function($account) {
+        $accountsData = $accounts->values()->map(function ($account) {
             return [
                 'id' => $account->id,
                 'code' => $account->code,
@@ -109,13 +109,13 @@ class TrialBalanceService extends BaseReportService
         }
 
         $accounts = $query->select([
-                'coa.id',
-                'coa.code',
-                'coa.name',
-                'coa.type as account_type',
-                DB::raw('SUM(jel.debit) as total_debit'),
-                DB::raw('SUM(jel.credit) as total_credit'),
-            ])
+            'coa.id',
+            'coa.code',
+            'coa.name',
+            'coa.type as account_type',
+            DB::raw('SUM(jel.debit) as total_debit'),
+            DB::raw('SUM(jel.credit) as total_credit'),
+        ])
             ->groupBy('coa.id', 'coa.code', 'coa.name', 'coa.type')
             ->orderBy('coa.code')
             ->get();
@@ -123,7 +123,7 @@ class TrialBalanceService extends BaseReportService
         // Calculate debit/credit balance based on account type
         return $accounts->map(function ($account) {
             $netBalance = $account->total_debit - $account->total_credit;
-            
+
             // Determine normal balance side based on account type
             $normalDebitAccounts = ['asset', 'expense'];
             $isNormalDebit = in_array($account->account_type, $normalDebitAccounts);
@@ -156,14 +156,14 @@ class TrialBalanceService extends BaseReportService
 
     /**
      * Verify trial balance integrity
-     * 
+     *
      * This method checks if the trial balance is in balance
      * and returns any discrepancies
      */
     public function verifyBalance(Carbon $asOfDate): array
     {
         $accounts = $this->getTrialBalanceAccounts($asOfDate);
-        
+
         $totalDebits = $accounts->sum('debit_balance');
         $totalCredits = $accounts->sum('credit_balance');
         $difference = $totalDebits - $totalCredits;

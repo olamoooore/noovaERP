@@ -15,7 +15,7 @@ class AccountingFunctions
     /**
      * Get outstanding (unpaid) invoices
      *
-     * @param array $args Arguments
+     * @param  array  $args  Arguments
      * @return array Invoice list
      */
     public static function getOutstandingInvoices(array $args): array
@@ -24,7 +24,7 @@ class AccountingFunctions
 
             Log::info('AI Accounting: getOutstandingInvoices called', ['user_id' => auth()->id(), 'args' => $args]);
 
-            if (!tenancy()->initialized) {
+            if (! tenancy()->initialized) {
                 throw new \RuntimeException('Tenant context not initialized for AI accounting audit');
             }
 
@@ -102,7 +102,7 @@ class AccountingFunctions
 
             $invoiceNumber = $args['invoice_number'] ?? null;
 
-            if (!$invoiceNumber) {
+            if (! $invoiceNumber) {
                 return [
                     'success' => false,
                     'error' => 'Invoice number is required.',
@@ -129,7 +129,7 @@ class AccountingFunctions
                     'terms',
                 ]);
 
-            if (!$invoice) {
+            if (! $invoice) {
                 return [
                     'success' => true,
                     'found' => false,
@@ -304,7 +304,7 @@ class AccountingFunctions
                 $customerId = null;
             }
 
-            if (!$customerId && !$customerName) {
+            if (! $customerId && ! $customerName) {
                 return [
                     'success' => false,
                     'error' => 'Please provide either a customer ID or customer name.',
@@ -317,7 +317,7 @@ class AccountingFunctions
             if ($customerId) {
                 $query->where('id', $customerId);
             } elseif ($customerName) {
-                $query->where('name', 'ilike', '%' . $customerName . '%');
+                $query->where('name', 'ilike', '%'.$customerName.'%');
             }
 
             $customer = $query->first([
@@ -328,7 +328,7 @@ class AccountingFunctions
                 'total_outstanding',
             ]);
 
-            if (!$customer) {
+            if (! $customer) {
                 return [
                     'success' => true,
                     'found' => false,
@@ -490,7 +490,6 @@ class AccountingFunctions
         }
     }
 
-
     public static function getSupplierInvoices(array $args): array
     {
         try {
@@ -521,7 +520,7 @@ class AccountingFunctions
             ]);
 
             DB::table('ai_accounting_audit_logs')->insert([
-                'user_id'   => auth()->id(),
+                'user_id' => auth()->id(),
                 'tool_name' => 'getSupplierInvoices',
                 'arguments' => json_encode($args),
                 'tenant_id' => null,
@@ -532,28 +531,28 @@ class AccountingFunctions
             if ($bills->isEmpty()) {
                 return [
                     'success' => true,
-                    'found'   => false,
+                    'found' => false,
                     'message' => 'No supplier bills found.',
-                    'bills'   => [],
+                    'bills' => [],
                 ];
             }
 
             return [
                 'success' => true,
-                'found'   => true,
-                'count'   => $bills->count(),
-                'bills'   => $bills->toArray(),
+                'found' => true,
+                'count' => $bills->count(),
+                'bills' => $bills->toArray(),
             ];
 
         } catch (\Exception $e) {
             Log::error('AccountingFunctions::getSupplierInvoices failed', [
                 'error' => $e->getMessage(),
-                'args'  => $args,
+                'args' => $args,
             ]);
 
             return [
                 'success' => false,
-                'error'   => 'Failed to retrieve supplier bills.',
+                'error' => 'Failed to retrieve supplier bills.',
             ];
         }
     }
@@ -565,15 +564,15 @@ class AccountingFunctions
 
             $period = $args['period'] ?? 'this_month';
 
-            $startDate = match($period) {
-                'this_year'  => now()->startOfYear(),
+            $startDate = match ($period) {
+                'this_year' => now()->startOfYear(),
                 'last_month' => now()->subMonth()->startOfMonth(),
-                default      => now()->startOfMonth(),
+                default => now()->startOfMonth(),
             };
-            $endDate = match($period) {
-                'this_year'  => now()->endOfYear(),
+            $endDate = match ($period) {
+                'this_year' => now()->endOfYear(),
                 'last_month' => now()->subMonth()->endOfMonth(),
-                default      => now()->endOfMonth(),
+                default => now()->endOfMonth(),
             };
 
             $lines = DB::table('journal_entry_lines as jel')
@@ -590,33 +589,33 @@ class AccountingFunctions
             $netIncome = $revenue - $expenses;
 
             DB::table('ai_accounting_audit_logs')->insert([
-                'user_id'    => auth()->id(),
-                'tool_name'  => 'getFinancialReport',
-                'arguments'  => json_encode($args),
-                'tenant_id'  => null,
+                'user_id' => auth()->id(),
+                'tool_name' => 'getFinancialReport',
+                'arguments' => json_encode($args),
+                'tenant_id' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
 
             return [
-                'success'    => true,
-                'period'     => $period,
+                'success' => true,
+                'period' => $period,
                 'start_date' => $startDate->toDateString(),
-                'end_date'   => $endDate->toDateString(),
-                'revenue'    => round($revenue, 2),
-                'expenses'   => round($expenses, 2),
+                'end_date' => $endDate->toDateString(),
+                'revenue' => round($revenue, 2),
+                'expenses' => round($expenses, 2),
                 'net_income' => round($netIncome, 2),
             ];
 
         } catch (\Exception $e) {
             Log::error('AccountingFunctions::getFinancialReport failed', [
                 'error' => $e->getMessage(),
-                'args'  => $args,
+                'args' => $args,
             ]);
 
             return [
                 'success' => false,
-                'error'   => 'Failed to retrieve financial report.',
+                'error' => 'Failed to retrieve financial report.',
             ];
         }
     }
@@ -627,13 +626,13 @@ class AccountingFunctions
             Log::info('AI Accounting: getCustomerLedger called', ['user_id' => auth()->id(), 'args' => $args]);
 
             $customerName = $args['customer_name'] ?? null;
-            $customerId   = $args['customer_id'] ?? null;
-            $limit        = $args['limit'] ?? 5;
+            $customerId = $args['customer_id'] ?? null;
+            $limit = $args['limit'] ?? 5;
 
-            if (!$customerName && !$customerId) {
+            if (! $customerName && ! $customerId) {
                 return [
                     'success' => false,
-                    'error'   => 'Please provide a customer name or customer ID.',
+                    'error' => 'Please provide a customer name or customer ID.',
                 ];
             }
 
@@ -643,17 +642,17 @@ class AccountingFunctions
                 $customerId = filter_var($customerId, FILTER_SANITIZE_NUMBER_INT);
                 $customerQuery->where('id', $customerId);
             } elseif ($customerName) {
-                $customerQuery->where('name', 'ilike', '%' . $customerName . '%');
+                $customerQuery->where('name', 'ilike', '%'.$customerName.'%');
             }
 
             $customer = $customerQuery->first([
                 'id', 'name', 'email', 'credit_limit', 'payment_terms', 'total_outstanding',
             ]);
 
-            if (!$customer) {
+            if (! $customer) {
                 return [
                     'success' => true,
-                    'found'   => false,
+                    'found' => false,
                     'message' => 'Customer not found.',
                 ];
             }
@@ -674,31 +673,31 @@ class AccountingFunctions
                 ]);
 
             DB::table('ai_accounting_audit_logs')->insert([
-                'user_id'    => auth()->id(),
-                'tool_name'  => 'getCustomerLedger',
-                'arguments'  => json_encode($args),
-                'tenant_id'  => null,
+                'user_id' => auth()->id(),
+                'tool_name' => 'getCustomerLedger',
+                'arguments' => json_encode($args),
+                'tenant_id' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
 
             return [
-                'success'          => true,
-                'found'            => true,
-                'customer'         => $customer,
-                'invoices'         => $invoices->toArray(),
-                'invoice_count'    => $invoices->count(),
+                'success' => true,
+                'found' => true,
+                'customer' => $customer,
+                'invoices' => $invoices->toArray(),
+                'invoice_count' => $invoices->count(),
             ];
 
         } catch (\Exception $e) {
             Log::error('AccountingFunctions::getCustomerLedger failed', [
                 'error' => $e->getMessage(),
-                'args'  => $args,
+                'args' => $args,
             ]);
 
             return [
                 'success' => false,
-                'error'   => 'Failed to retrieve customer ledger.',
+                'error' => 'Failed to retrieve customer ledger.',
             ];
         }
     }
@@ -709,13 +708,13 @@ class AccountingFunctions
             Log::info('AI Accounting: getSupplierLedger called', ['user_id' => auth()->id(), 'args' => $args]);
 
             $vendorName = $args['vendor_name'] ?? null;
-            $vendorId   = $args['vendor_id'] ?? null;
-            $limit      = $args['limit'] ?? 5;
+            $vendorId = $args['vendor_id'] ?? null;
+            $limit = $args['limit'] ?? 5;
 
-            if (!$vendorName && !$vendorId) {
+            if (! $vendorName && ! $vendorId) {
                 return [
                     'success' => false,
-                    'error'   => 'Please provide a vendor name or vendor ID.',
+                    'error' => 'Please provide a vendor name or vendor ID.',
                 ];
             }
 
@@ -725,17 +724,17 @@ class AccountingFunctions
                 $vendorId = (int) filter_var($vendorId, FILTER_SANITIZE_NUMBER_INT);
                 $vendorQuery->where('id', $vendorId);
             } elseif ($vendorName) {
-                $vendorQuery->where('name', 'ilike', '%' . $vendorName . '%');
+                $vendorQuery->where('name', 'ilike', '%'.$vendorName.'%');
             }
 
             $vendor = $vendorQuery->first([
                 'id', 'name', 'email', 'payment_terms', 'total_spending',
             ]);
 
-            if (!$vendor) {
+            if (! $vendor) {
                 return [
                     'success' => true,
-                    'found'   => false,
+                    'found' => false,
                     'message' => 'Vendor not found.',
                 ];
             }
@@ -756,33 +755,32 @@ class AccountingFunctions
                 ]);
 
             DB::table('ai_accounting_audit_logs')->insert([
-                'user_id'    => auth()->id(),
-                'tool_name'  => 'getSupplierLedger',
-                'arguments'  => json_encode($args),
-                'tenant_id'  => null,
+                'user_id' => auth()->id(),
+                'tool_name' => 'getSupplierLedger',
+                'arguments' => json_encode($args),
+                'tenant_id' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
 
             return [
-                'success'     => true,
-                'found'       => true,
-                'vendor'      => $vendor,
-                'bills'       => $bills->toArray(),
-                'bill_count'  => $bills->count(),
+                'success' => true,
+                'found' => true,
+                'vendor' => $vendor,
+                'bills' => $bills->toArray(),
+                'bill_count' => $bills->count(),
             ];
 
         } catch (\Exception $e) {
             Log::error('AccountingFunctions::getSupplierLedger failed', [
                 'error' => $e->getMessage(),
-                'args'  => $args,
+                'args' => $args,
             ]);
 
             return [
                 'success' => false,
-                'error'   => 'Failed to retrieve supplier ledger.',
+                'error' => 'Failed to retrieve supplier ledger.',
             ];
         }
     }
-
 }

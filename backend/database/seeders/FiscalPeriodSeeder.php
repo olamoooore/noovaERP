@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\FiscalPeriod;
 use Carbon\Carbon;
+use Illuminate\Database\Seeder;
 
 class FiscalPeriodSeeder extends Seeder
 {
@@ -15,8 +15,9 @@ class FiscalPeriodSeeder extends Seeder
     {
         // Get the first user ID or use null if no users exist yet
         $userId = \App\Models\User::value('id');
-        if (!$userId) {
+        if (! $userId) {
             $this->command->warn('No users found in tenant schema. Skipping fiscal period seeding.');
+
             return;
         }
         $currentYear = Carbon::now()->year;
@@ -47,7 +48,7 @@ class FiscalPeriodSeeder extends Seeder
         for ($month = 1; $month <= 12; $month++) {
             $date = Carbon::create($currentYear, $month, 1);
             $now = Carbon::now();
-            
+
             // Lock periods that are more than 1 month old
             $isLocked = $date->copy()->endOfMonth()->lt($now->copy()->subMonth());
             $status = $isLocked ? 'locked' : ($date->lte($now) ? 'open' : 'open');
@@ -81,7 +82,7 @@ class FiscalPeriodSeeder extends Seeder
             $startDate = Carbon::create($currentYear, $startMonth, 1);
             $endDate = Carbon::create($currentYear, $endMonth, 1)->endOfMonth();
             $now = Carbon::now();
-            
+
             $isLocked = $endDate->lt($now->copy()->subMonth());
             $status = $isLocked ? 'locked' : 'open';
 
@@ -125,8 +126,8 @@ class FiscalPeriodSeeder extends Seeder
         }
 
         $this->command->info('Fiscal periods seeded successfully!');
-        $this->command->info('Created ' . count($periods) . ' fiscal periods');
-        $this->command->info('Locked periods: ' . collect($periods)->where('is_locked', true)->count());
-        $this->command->info('Open periods: ' . collect($periods)->where('is_locked', false)->count());
+        $this->command->info('Created '.count($periods).' fiscal periods');
+        $this->command->info('Locked periods: '.collect($periods)->where('is_locked', true)->count());
+        $this->command->info('Open periods: '.collect($periods)->where('is_locked', false)->count());
     }
 }

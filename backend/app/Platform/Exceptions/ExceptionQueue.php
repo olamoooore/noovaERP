@@ -7,9 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 class ExceptionQueue extends Model
 {
     protected $table = 'platform_exception_queue';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
+
     protected $guarded = [];
 
     protected $casts = [

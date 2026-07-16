@@ -3,14 +3,13 @@
 namespace Modules\EventManagement\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\EventManagement\Traits\HasTenantScope;
 
 /**
  * CustomerPreference Model
- * 
+ *
  * Stores customer personalization settings and preferences for event recommendations.
- * 
+ *
  * @property int $id
  * @property string $tenant_id
  * @property string $customer_id
@@ -142,7 +141,7 @@ class CustomerPreference extends Model
      */
     public function isPriceInRange(float $price): bool
     {
-        if (!$this->preferred_price_range) {
+        if (! $this->preferred_price_range) {
             return true; // No preference set
         }
 
@@ -174,7 +173,7 @@ class CustomerPreference extends Model
     public function addPreferredGenre(string $genre): void
     {
         $genres = $this->preferred_genres ?? [];
-        if (!in_array($genre, $genres)) {
+        if (! in_array($genre, $genres)) {
             $genres[] = $genre;
             $this->preferred_genres = $genres;
             $this->save();
@@ -187,7 +186,7 @@ class CustomerPreference extends Model
     public function removePreferredGenre(string $genre): void
     {
         $genres = $this->preferred_genres ?? [];
-        $genres = array_filter($genres, fn($g) => $g !== $genre);
+        $genres = array_filter($genres, fn ($g) => $g !== $genre);
         $this->preferred_genres = array_values($genres);
         $this->save();
     }
@@ -198,7 +197,7 @@ class CustomerPreference extends Model
     public function addPreferredArtist(int $artistId): void
     {
         $artists = $this->preferred_artists ?? [];
-        if (!in_array($artistId, $artists)) {
+        if (! in_array($artistId, $artists)) {
             $artists[] = $artistId;
             $this->preferred_artists = $artists;
             $this->save();
@@ -211,7 +210,7 @@ class CustomerPreference extends Model
     public function removePreferredArtist(int $artistId): void
     {
         $artists = $this->preferred_artists ?? [];
-        $artists = array_filter($artists, fn($a) => $a !== $artistId);
+        $artists = array_filter($artists, fn ($a) => $a !== $artistId);
         $this->preferred_artists = array_values($artists);
         $this->save();
     }
@@ -228,8 +227,8 @@ class CustomerPreference extends Model
         if ($max !== null) {
             $range['max'] = $max;
         }
-        
-        $this->preferred_price_range = !empty($range) ? $range : null;
+
+        $this->preferred_price_range = ! empty($range) ? $range : null;
         $this->save();
     }
 }

@@ -64,7 +64,7 @@ class FlashSale extends Model
 
     public function isActive(): bool
     {
-        if (!$this->is_active) {
+        if (! $this->is_active) {
             return false;
         }
         if ($this->starts_at && $this->starts_at->isFuture()) {
@@ -73,25 +73,28 @@ class FlashSale extends Model
         if ($this->ends_at && $this->ends_at->isPast()) {
             return false;
         }
+
         return true;
     }
 
     public function isAvailable(): bool
     {
-        if (!$this->isActive()) {
+        if (! $this->isActive()) {
             return false;
         }
         if ($this->max_quantity !== null && $this->quantity_remaining <= 0) {
             return false;
         }
+
         return true;
     }
 
     public function getProductIdsArrayAttribute(): array
     {
-        if (!$this->product_ids) {
+        if (! $this->product_ids) {
             return [];
         }
+
         return array_map('intval', explode(',', $this->product_ids));
     }
 
@@ -104,17 +107,19 @@ class FlashSale extends Model
             return false;
         }
         $this->decrement('quantity_remaining', $quantity);
+
         return true;
     }
 
     public function getDiscountDisplayAttribute(): string
     {
         if ($this->discount_percent) {
-            return round($this->discount_percent, 0) . '% OFF';
+            return round($this->discount_percent, 0).'% OFF';
         }
         if ($this->discount_amount) {
-            return '$' . number_format($this->discount_amount, 2) . ' OFF';
+            return '$'.number_format($this->discount_amount, 2).' OFF';
         }
+
         return '';
     }
 }

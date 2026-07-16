@@ -2,20 +2,19 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Modules\FinancialReporting\Services\Analytics\ExpenseAnalyticsService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
 use Carbon\Carbon;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Analytics\ExpenseAnalyticsService;
+use Tests\TenantTestCase;
 
 class ExpenseAnalyticsServiceTest extends TenantTestCase
 {
-
     protected ExpenseAnalyticsService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new ExpenseAnalyticsService();
+        $this->service = new ExpenseAnalyticsService;
     }
 
     /** @test */
@@ -88,7 +87,7 @@ class ExpenseAnalyticsServiceTest extends TenantTestCase
     /** @test */
     public function it_uses_default_dates_when_not_provided()
     {
-        $filter = new ReportFilter();
+        $filter = new ReportFilter;
 
         $result = $this->service->getExpensesByCategory($filter);
 

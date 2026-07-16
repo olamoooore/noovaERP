@@ -2,8 +2,8 @@
 
 namespace Modules\FinancialReporting\Providers;
 
-use Illuminate\Support\Facades\Route;
 use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
+use Illuminate\Support\Facades\Route;
 
 class RouteServiceProvider extends ServiceProvider
 {
@@ -40,6 +40,6 @@ class RouteServiceProvider extends ServiceProvider
         Route::prefix('api/v1')
             ->middleware('api')
             ->namespace($this->moduleNamespace)
-            ->group(__DIR__ . '/../../routes/api.php');
+            ->group(__DIR__.'/../../routes/api.php');
     }
 }

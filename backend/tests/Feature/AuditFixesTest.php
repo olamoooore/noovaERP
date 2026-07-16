@@ -52,7 +52,7 @@ class AuditFixesTest extends TestCase
 
     public function test_web_order_has_state_machine(): void
     {
-        $order = new \Modules\Ecommerce\Models\WebOrder();
+        $order = new \Modules\Ecommerce\Models\WebOrder;
 
         $this->assertTrue(method_exists($order, 'transitionTo'));
         $this->assertTrue(method_exists($order, 'canTransitionTo'));
@@ -63,7 +63,7 @@ class AuditFixesTest extends TestCase
 
     public function test_web_order_state_machine_rejects_invalid_transition(): void
     {
-        $order = new \Modules\Ecommerce\Models\WebOrder();
+        $order = new \Modules\Ecommerce\Models\WebOrder;
         $order->status = 'pending';
 
         $this->assertFalse($order->canTransitionTo('shipped'));
@@ -73,13 +73,13 @@ class AuditFixesTest extends TestCase
 
     public function test_web_order_has_soft_deletes(): void
     {
-        $order = new \Modules\Ecommerce\Models\WebOrder();
+        $order = new \Modules\Ecommerce\Models\WebOrder;
         $this->assertTrue(in_array(\Illuminate\Database\Eloquent\SoftDeletes::class, class_uses_recursive($order)));
     }
 
     public function test_pos_order_has_soft_deletes(): void
     {
-        $order = new \Modules\POS\Models\PosOrder();
+        $order = new \Modules\POS\Models\PosOrder;
         $this->assertTrue(in_array(\Illuminate\Database\Eloquent\SoftDeletes::class, class_uses_recursive($order)));
     }
 
@@ -101,7 +101,7 @@ class AuditFixesTest extends TestCase
     public function test_three_way_match_rejects_unlinked_bill(): void
     {
         $service = app(ThreeWayMatchService::class);
-        $bill = new Bill();
+        $bill = new Bill;
 
         $result = $service->validate($bill);
 
@@ -163,7 +163,7 @@ class AuditFixesTest extends TestCase
     {
         $source = file_get_contents(base_path('modules/PaymentGateway/src/Controllers/PaymentWebhookController.php'));
 
-        $this->assertStringContainsString("Invalid signature", $source);
+        $this->assertStringContainsString('Invalid signature', $source);
         $this->assertStringContainsString("return response()->json(['error' => 'Invalid signature'], 400)", $source);
     }
 
@@ -723,9 +723,9 @@ class AuditFixesTest extends TestCase
         foreach ($criticalFiles as $path) {
             $source = file_get_contents($path);
             $this->assertStringNotContainsString('auth()->id() ?? 1', $source,
-                basename($path) . " must not use auth()->id() ?? 1 fallback pattern.");
+                basename($path).' must not use auth()->id() ?? 1 fallback pattern.');
             $this->assertStringNotContainsString("auth()->id() ?? 'system'", $source,
-                basename($path) . " must not use auth()->id() ?? 'system' fallback pattern.");
+                basename($path)." must not use auth()->id() ?? 'system' fallback pattern.");
         }
     }
 

@@ -27,26 +27,26 @@ class SubscriptionService
         Tenant::findOrFail($tenantId);
         $planVersion = PlanVersion::findOrFail($planVersionId);
 
-        $now    = now();
+        $now = now();
         $status = $trialEndsAt && $trialEndsAt->isFuture() ? 'trialing' : 'active';
 
         $periodEnd = match ($billingInterval) {
-            'yearly'  => $now->copy()->addYear(),
-            default   => $now->copy()->addMonth(),
+            'yearly' => $now->copy()->addYear(),
+            default => $now->copy()->addMonth(),
         };
 
         return DB::transaction(function () use (
             $tenantId, $planVersionId, $billingInterval,
-            $trialEndsAt, $now, $status, $periodEnd, $planVersion,
+            $trialEndsAt, $now, $status, $periodEnd,
         ) {
             $subscription = Subscription::create([
-                'tenant_id'            => $tenantId,
-                'plan_version_id'      => $planVersionId,
-                'status'               => $status,
-                'trial_starts_at'      => $trialEndsAt ? $now : null,
-                'trial_ends_at'        => $trialEndsAt,
+                'tenant_id' => $tenantId,
+                'plan_version_id' => $planVersionId,
+                'status' => $status,
+                'trial_starts_at' => $trialEndsAt ? $now : null,
+                'trial_ends_at' => $trialEndsAt,
                 'current_period_start' => $now,
-                'current_period_end'   => $periodEnd,
+                'current_period_end' => $periodEnd,
             ]);
 
             // Generate opening invoice for active (non-trial) subscriptions
@@ -75,8 +75,8 @@ class SubscriptionService
         $before = $subscription->toAuditSnapshot();
 
         $subscription->update([
-            'canceled_at'          => now(),
-            'cancellation_reason'  => $reason,
+            'canceled_at' => now(),
+            'cancellation_reason' => $reason,
             // Status stays 'active' — access continues until current_period_end
         ]);
 
@@ -96,9 +96,9 @@ class SubscriptionService
         $before = $subscription->toAuditSnapshot();
 
         $subscription->update([
-            'canceled_at'         => null,
+            'canceled_at' => null,
             'cancellation_reason' => null,
-            'status'              => 'active',
+            'status' => 'active',
         ]);
 
         $this->auditLogger->log(
@@ -126,16 +126,16 @@ class SubscriptionService
 
             $periodEnd = match ($billingInterval) {
                 'yearly' => $now->copy()->addYear(),
-                default  => $now->copy()->addMonth(),
+                default => $now->copy()->addMonth(),
             };
 
             $subscription->update([
-                'plan_version_id'      => $newVersion->id,
-                'status'               => 'active',
+                'plan_version_id' => $newVersion->id,
+                'status' => 'active',
                 'current_period_start' => $now,
-                'current_period_end'   => $periodEnd,
-                'canceled_at'          => null,
-                'cancellation_reason'  => null,
+                'current_period_end' => $periodEnd,
+                'canceled_at' => null,
+                'cancellation_reason' => null,
             ]);
 
             // Generate invoice for the new plan

@@ -32,8 +32,8 @@ class AdminActionLog extends Model
 
     protected $casts = [
         'before_snapshot' => 'array',
-        'after_snapshot'  => 'array',
-        'created_at'      => 'datetime',
+        'after_snapshot' => 'array',
+        'created_at' => 'datetime',
     ];
 
     public function adminUser(): BelongsTo

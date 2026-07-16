@@ -2,11 +2,11 @@
 
 namespace Modules\EventManagement\Models;
 
-use Modules\EventManagement\Services\DataEncryptionService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Modules\EventManagement\Services\DataEncryptionService;
 
 class BookingAttendee extends Model
 {
@@ -38,6 +38,7 @@ class BookingAttendee extends Model
         }
 
         $encryptionService = app(DataEncryptionService::class);
+
         return $encryptionService->decryptIdInformation($value);
     }
 
@@ -48,6 +49,7 @@ class BookingAttendee extends Model
     {
         if (empty($value)) {
             $this->attributes['encrypted_id_info'] = null;
+
             return;
         }
 
@@ -76,7 +78,7 @@ class BookingAttendee extends Model
      */
     public function hasIdInformation(): bool
     {
-        return !empty($this->getIdInformation());
+        return ! empty($this->getIdInformation());
     }
 
     /**
@@ -115,20 +117,20 @@ class BookingAttendee extends Model
     public function validateAgainstEventRequirements(): bool
     {
         $event = $this->booking->event;
-        
-        if (!tenancy()->initialized) {
+
+        if (! tenancy()->initialized) {
             throw new \RuntimeException('Tenant context not initialized for BookingAttendee validation');
         }
-        
+
         $eventSettings = EventSettings::forTenant((string) tenant()->id);
 
         // Check if ID is required but not provided
-        if ($eventSettings && $eventSettings->requiresAttendeeId() && !$this->hasIdInformation()) {
+        if ($eventSettings && $eventSettings->requiresAttendeeId() && ! $this->hasIdInformation()) {
             return false;
         }
 
         // Check if attendee has required basic information
-        if (!$this->hasRequiredInformation()) {
+        if (! $this->hasRequiredInformation()) {
             return false;
         }
 
@@ -140,7 +142,7 @@ class BookingAttendee extends Model
      */
     public function hasRequiredInformation(): bool
     {
-        return !empty($this->attendee_name);
+        return ! empty($this->attendee_name);
     }
 
     /**
@@ -148,7 +150,7 @@ class BookingAttendee extends Model
      */
     public function hasContactInformation(): bool
     {
-        return !empty($this->attendee_email) || !empty($this->attendee_phone);
+        return ! empty($this->attendee_email) || ! empty($this->attendee_phone);
     }
 
     /**
@@ -165,12 +167,12 @@ class BookingAttendee extends Model
     public function isDataComplete(): bool
     {
         // Basic required information
-        if (!$this->hasRequiredInformation()) {
+        if (! $this->hasRequiredInformation()) {
             return false;
         }
 
         // Check if contact information is provided (at least one)
-        if (!$this->hasContactInformation()) {
+        if (! $this->hasContactInformation()) {
             return false;
         }
 

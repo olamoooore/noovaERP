@@ -2,11 +2,10 @@
 
 namespace Modules\FinancialClose\Services;
 
-use Illuminate\Support\Facades\Log;
-use Modules\FinancialClose\Models\OverrideRequest;
-use Modules\FinancialClose\Models\OverrideApproval;
-use Modules\FinancialClose\Models\ExceptionRegister;
 use Modules\FinancialClose\Models\AuditLog;
+use Modules\FinancialClose\Models\ExceptionRegister;
+use Modules\FinancialClose\Models\OverrideApproval;
+use Modules\FinancialClose\Models\OverrideRequest;
 
 class OverrideGovernanceService
 {
@@ -37,7 +36,7 @@ class OverrideGovernanceService
             ->where('id', $requestId)
             ->first();
 
-        if (!$request || $request->status !== 'pending') {
+        if (! $request || $request->status !== 'pending') {
             return false;
         }
 
@@ -73,7 +72,7 @@ class OverrideGovernanceService
             ->where('id', $requestId)
             ->first();
 
-        if (!$request || $request->status !== 'pending') {
+        if (! $request || $request->status !== 'pending') {
             return false;
         }
 
@@ -122,7 +121,7 @@ class OverrideGovernanceService
     {
         $query = OverrideRequest::where('tenant_id', $tenantId);
 
-        if (!empty($filters['status'])) {
+        if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
 

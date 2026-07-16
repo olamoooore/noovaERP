@@ -32,11 +32,11 @@ class AttendanceEventController extends Controller
         }
 
         if ($request->filled('date_from')) {
-            $query->where('captured_at', '>=', $request->string('date_from') . ' 00:00:00');
+            $query->where('captured_at', '>=', $request->string('date_from').' 00:00:00');
         }
 
         if ($request->filled('date_to')) {
-            $query->where('captured_at', '<=', $request->string('date_to') . ' 23:59:59');
+            $query->where('captured_at', '<=', $request->string('date_to').' 23:59:59');
         }
 
         if ($request->filled('status')) {

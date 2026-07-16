@@ -16,9 +16,13 @@ class EventDeadLetter extends Model
     use HasFactory;
 
     protected $table = 'domain_event_dead_letters';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
+
     protected $guarded = [];
 
     protected $casts = [

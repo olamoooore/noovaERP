@@ -9,12 +9,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('products', function (Blueprint $table) {
-            if (!Schema::hasColumn('products', 'is_preorder')) {
+            if (! Schema::hasColumn('products', 'is_preorder')) {
                 $table->boolean('is_preorder')->default(false)->after('track_inventory');
                 $table->index('is_preorder');
             }
 
-            if (!Schema::hasColumn('products', 'preorder_available_at')) {
+            if (! Schema::hasColumn('products', 'preorder_available_at')) {
                 $table->date('preorder_available_at')->nullable()->after('is_preorder');
             }
         });

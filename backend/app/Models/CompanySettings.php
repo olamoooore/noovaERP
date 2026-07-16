@@ -94,10 +94,10 @@ class CompanySettings extends Model
     /**
      * Get the current fiscal year start date
      */
-    public function getFiscalYearStartDate(int $year = null): \Carbon\Carbon
+    public function getFiscalYearStartDate(?int $year = null): \Carbon\Carbon
     {
         $year = $year ?? now()->year;
-        
+
         return \Carbon\Carbon::create(
             $year,
             $this->fiscal_year_start_month,
@@ -108,7 +108,7 @@ class CompanySettings extends Model
     /**
      * Get the current fiscal year end date
      */
-    public function getFiscalYearEndDate(int $year = null): \Carbon\Carbon
+    public function getFiscalYearEndDate(?int $year = null): \Carbon\Carbon
     {
         return $this->getFiscalYearStartDate($year)->addYear()->subDay();
     }
@@ -120,7 +120,7 @@ class CompanySettings extends Model
     {
         // Parse number format (e.g., "1,234.56" or "1.234,56")
         $format = $this->number_format ?? '1,234.56';
-        
+
         if (strpos($format, ',') < strpos($format, '.')) {
             // US format: 1,234.56
             return number_format($amount, 2, '.', ',');
@@ -136,11 +136,11 @@ class CompanySettings extends Model
     public function formatDate($date): string
     {
         $format = $this->date_format ?? 'Y-m-d';
-        
+
         if ($date instanceof \Carbon\Carbon) {
             return $date->format($format);
         }
-        
+
         return \Carbon\Carbon::parse($date)->format($format);
     }
 

@@ -81,18 +81,18 @@ class ApprovalService implements ApprovalServiceContract
         return DB::transaction(function () use ($requestId, $userId, $notes) {
             $request = ApprovalRequest::lockForUpdate()->findOrFail($requestId);
 
-            if (!$request->isPending()) {
+            if (! $request->isPending()) {
                 throw new \DomainException("Request is {$request->status}, cannot approve");
             }
 
             if ($request->isExpired()) {
                 $request->update(['status' => 'expired']);
-                throw new \DomainException("Request has expired");
+                throw new \DomainException('Request has expired');
             }
 
             // Self-approval check
             if ($request->requested_by == $userId) {
-                throw new \DomainException("Self-approval is not permitted");
+                throw new \DomainException('Self-approval is not permitted');
             }
 
             // Check delegation
@@ -125,7 +125,7 @@ class ApprovalService implements ApprovalServiceContract
         return DB::transaction(function () use ($requestId, $userId, $reason) {
             $request = ApprovalRequest::lockForUpdate()->findOrFail($requestId);
 
-            if (!$request->isPending()) {
+            if (! $request->isPending()) {
                 throw new \DomainException("Request is {$request->status}, cannot reject");
             }
 
@@ -157,7 +157,7 @@ class ApprovalService implements ApprovalServiceContract
         return DB::transaction(function () use ($requestId) {
             $request = ApprovalRequest::lockForUpdate()->findOrFail($requestId);
 
-            if (!$request->isPending()) {
+            if (! $request->isPending()) {
                 throw new \DomainException("Request is {$request->status}, cannot escalate");
             }
 
@@ -256,7 +256,7 @@ class ApprovalService implements ApprovalServiceContract
     {
         $policy = $this->findPolicy($type, $amount);
 
-        if (!$policy) {
+        if (! $policy) {
             return [
                 'required' => false,
                 'reason' => 'No policy defined',

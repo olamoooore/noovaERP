@@ -9,12 +9,35 @@ use App\Modules\Contracts\BaseModuleContract;
  */
 class PaymentGatewayModuleContract extends BaseModuleContract
 {
-    public function getKey(): string { return 'payment_gateway'; }
-    public function getName(): string { return 'Payment Gateway'; }
-    public function getType(): string { return 'addon'; }
-    public function getDescription(): string { return 'Multi-gateway payment processing — Stripe, HitPay, offline methods'; }
-    public function getVersion(): string { return '1.0.0'; }
-    public function getDependencies(): array { return []; }
+    public function getKey(): string
+    {
+        return 'payment_gateway';
+    }
+
+    public function getName(): string
+    {
+        return 'Payment Gateway';
+    }
+
+    public function getType(): string
+    {
+        return 'addon';
+    }
+
+    public function getDescription(): string
+    {
+        return 'Multi-gateway payment processing — Stripe, HitPay, offline methods';
+    }
+
+    public function getVersion(): string
+    {
+        return '1.0.0';
+    }
+
+    public function getDependencies(): array
+    {
+        return [];
+    }
 
     public function getPermissions(): array
     {
@@ -33,26 +56,26 @@ class PaymentGatewayModuleContract extends BaseModuleContract
     {
         return [
             'required_setup_steps' => ['gateway_configuration'],
-            'default_settings'     => [],
-            'recommended_roles'    => ['admin'],
+            'default_settings' => [],
+            'recommended_roles' => ['admin'],
         ];
     }
 
     public function getActivationRules(): array
     {
         return [
-            'requires'  => [],
-            'settings'  => [],
-            'min_tier'  => null,
+            'requires' => [],
+            'settings' => [],
+            'min_tier' => null,
         ];
     }
 
     public function getDeactivationRules(): array
     {
         return [
-            'removes_data'       => false,
+            'removes_data' => false,
             'preserves_entities' => [],
-            'cleanup_jobs'       => [],
+            'cleanup_jobs' => [],
         ];
     }
 
@@ -69,9 +92,9 @@ class PaymentGatewayModuleContract extends BaseModuleContract
     {
         return [
             'has_ai_assistant' => false,
-            'ai_suggestions'   => false,
-            'ai_automation'    => false,
-            'ai_data_access'   => [],
+            'ai_suggestions' => false,
+            'ai_automation' => false,
+            'ai_data_access' => [],
         ];
     }
 }

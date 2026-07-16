@@ -3,23 +3,22 @@
 namespace Modules\EventManagement\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Facades\Route;
-use Modules\EventManagement\Http\Middleware\RBACMiddleware;
-use Modules\EventManagement\Http\Middleware\EventManagementRateLimitMiddleware;
-use Modules\EventManagement\Http\Middleware\RequestValidationMiddleware;
-use Modules\EventManagement\Services\EventService;
-use Modules\EventManagement\Services\BookingService;
-use Modules\EventManagement\Services\TicketService;
-use Modules\EventManagement\Services\AuditService;
-use Modules\EventManagement\Services\TenantSchemaManager;
-use Modules\EventManagement\Services\DataRetentionService;
-use Modules\EventManagement\Services\MigrationMonitoringService;
-use Modules\EventManagement\Services\MigrationDependencyService;
 use Modules\EventManagement\Console\Commands\CleanupAuditLogsCommand;
-use Modules\EventManagement\Console\Commands\ValidateMigrationTimestampsCommand;
-use Modules\EventManagement\Console\Commands\SafeMigrateCommand;
 use Modules\EventManagement\Console\Commands\MigrateExistingEventsCommand;
+use Modules\EventManagement\Console\Commands\SafeMigrateCommand;
 use Modules\EventManagement\Console\Commands\SecurityAuditCommand;
+use Modules\EventManagement\Console\Commands\ValidateMigrationTimestampsCommand;
+use Modules\EventManagement\Http\Middleware\EventManagementRateLimitMiddleware;
+use Modules\EventManagement\Http\Middleware\RBACMiddleware;
+use Modules\EventManagement\Http\Middleware\RequestValidationMiddleware;
+use Modules\EventManagement\Services\AuditService;
+use Modules\EventManagement\Services\BookingService;
+use Modules\EventManagement\Services\DataRetentionService;
+use Modules\EventManagement\Services\EventService;
+use Modules\EventManagement\Services\MigrationDependencyService;
+use Modules\EventManagement\Services\MigrationMonitoringService;
+use Modules\EventManagement\Services\TenantSchemaManager;
+use Modules\EventManagement\Services\TicketService;
 
 class EventManagementServiceProvider extends ServiceProvider
 {
@@ -60,7 +59,7 @@ class EventManagementServiceProvider extends ServiceProvider
 
         // Publish configuration
         $this->publishes([
-            __DIR__ . '/../Config/event_management.php' => config_path('event_management.php'),
+            __DIR__.'/../Config/event_management.php' => config_path('event_management.php'),
         ], 'event-management-config');
 
         // Register console commands

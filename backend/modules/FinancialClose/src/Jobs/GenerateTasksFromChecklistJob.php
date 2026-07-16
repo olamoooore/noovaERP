@@ -9,10 +9,10 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Modules\FinancialClose\Services\FinancialCloseChecklistService;
 use Modules\FinancialClose\Models\CloseCycle;
 use Modules\FinancialClose\Models\CloseTask;
 use Modules\FinancialClose\Models\JobRunHistory;
+use Modules\FinancialClose\Services\FinancialCloseChecklistService;
 
 /**
  * Dispatched when a cycle opens — expands the active checklist template into tasks.
@@ -44,10 +44,11 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
             ->where('id', $this->cycleId)
             ->first();
 
-        if (!$cycle) {
+        if (! $cycle) {
             Log::warning('FinancialClose: GenerateTasksFromChecklistJob — cycle not found', [
                 'cycle_id' => $this->cycleId,
             ]);
+
             return;
         }
 
@@ -57,25 +58,25 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
             $result = $checklistService->expandTemplateIntoTasks($this->tenantId, $this->cycleId, $templateId, $this->userId);
 
             Log::info('FinancialClose: GenerateTasksFromChecklistJob complete (template)', [
-                'tenant_id'      => $this->tenantId,
-                'cycle_id'       => $this->cycleId,
-                'template_id'    => $templateId,
-                'result'         => $result,
+                'tenant_id' => $this->tenantId,
+                'cycle_id' => $this->cycleId,
+                'template_id' => $templateId,
+                'result' => $result,
                 'correlation_id' => $this->correlationId,
             ]);
 
             JobRunHistory::create([
-                'tenant_id'      => $this->tenantId,
-                'job_type'       => 'GenerateTasksFromChecklistJob',
-                'status'         => $result ? 'success' : 'failed',
-                'started_at'     => $startedAt,
-                'completed_at'   => now(),
-                'duration_ms'    => (int) ($startedAt->diffInMilliseconds(now())),
-                'error_message'  => $result ? null : 'Task expansion returned false',
-                'metadata'       => [
-                    'cycle_id'       => $this->cycleId,
-                    'template_id'    => $templateId,
-                    'result'         => $result,
+                'tenant_id' => $this->tenantId,
+                'job_type' => 'GenerateTasksFromChecklistJob',
+                'status' => $result ? 'success' : 'failed',
+                'started_at' => $startedAt,
+                'completed_at' => now(),
+                'duration_ms' => (int) ($startedAt->diffInMilliseconds(now())),
+                'error_message' => $result ? null : 'Task expansion returned false',
+                'metadata' => [
+                    'cycle_id' => $this->cycleId,
+                    'template_id' => $templateId,
+                    'result' => $result,
                     'correlation_id' => $this->correlationId,
                 ],
             ]);
@@ -83,22 +84,22 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
             $generated = $this->generateConditionalTasks($this->tenantId, $this->cycleId, $this->userId);
 
             Log::info('FinancialClose: GenerateTasksFromChecklistJob complete (conditional)', [
-                'tenant_id'      => $this->tenantId,
-                'cycle_id'       => $this->cycleId,
-                'tasks_created'  => $generated,
+                'tenant_id' => $this->tenantId,
+                'cycle_id' => $this->cycleId,
+                'tasks_created' => $generated,
                 'correlation_id' => $this->correlationId,
             ]);
 
             JobRunHistory::create([
-                'tenant_id'      => $this->tenantId,
-                'job_type'       => 'GenerateTasksFromChecklistJob',
-                'status'         => 'success',
-                'started_at'     => $startedAt,
-                'completed_at'   => now(),
-                'duration_ms'    => (int) ($startedAt->diffInMilliseconds(now())),
-                'metadata'       => [
-                    'cycle_id'       => $this->cycleId,
-                    'tasks_created'  => $generated,
+                'tenant_id' => $this->tenantId,
+                'job_type' => 'GenerateTasksFromChecklistJob',
+                'status' => 'success',
+                'started_at' => $startedAt,
+                'completed_at' => now(),
+                'duration_ms' => (int) ($startedAt->diffInMilliseconds(now())),
+                'metadata' => [
+                    'cycle_id' => $this->cycleId,
+                    'tasks_created' => $generated,
                     'correlation_id' => $this->correlationId,
                 ],
             ]);
@@ -126,12 +127,12 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
             ->filter(fn ($task, $type) => $type !== null);
 
         $activeExistingTasks = $allExistingTasks->filter(
-            fn ($task) => !in_array($task->status, ['completed', 'cancelled'], true)
+            fn ($task) => ! in_array($task->status, ['completed', 'cancelled'], true)
         );
 
         $upsertTask = function (array $data) use ($tenantId, $cycleId, $userId, $allExistingTasks, $activeExistingTasks, &$count) {
             $type = $data['metadata']['type'] ?? null;
-            if (!$type) {
+            if (! $type) {
                 return;
             }
 
@@ -150,7 +151,7 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
 
                 if ($needsUpdate) {
                     $updatePayload = [
-                        'title'    => $data['title'],
+                        'title' => $data['title'],
                         'metadata' => array_merge($metadata, [
                             'document_links' => $data['metadata']['document_links'] ?? [],
                         ]),
@@ -169,14 +170,14 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
             }
 
             CloseTask::create([
-                'tenant_id'    => $tenantId,
-                'cycle_id'     => $cycleId,
-                'title'        => $data['title'],
-                'status'       => 'created',
-                'priority'     => $data['priority'],
-                'is_critical'  => $data['is_critical'],
-                'assigned_to'  => $userId,
-                'metadata'     => $data['metadata'],
+                'tenant_id' => $tenantId,
+                'cycle_id' => $cycleId,
+                'title' => $data['title'],
+                'status' => 'created',
+                'priority' => $data['priority'],
+                'is_critical' => $data['is_critical'],
+                'assigned_to' => $userId,
+                'metadata' => $data['metadata'],
             ]);
             $count++;
         };
@@ -190,15 +191,15 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
 
         if ($unpostedJEs->isNotEmpty()) {
             $upsertTask([
-                'title'       => "Review and post {$unpostedJEs->count()} draft journal entries",
-                'priority'    => 'high',
+                'title' => "Review and post {$unpostedJEs->count()} draft journal entries",
+                'priority' => 'high',
                 'is_critical' => true,
-                'metadata'    => [
-                    'type'          => 'unposted_journal_entries',
-                    'count'         => $unpostedJEs->count(),
+                'metadata' => [
+                    'type' => 'unposted_journal_entries',
+                    'count' => $unpostedJEs->count(),
                     'document_links' => $unpostedJEs->map(fn ($je) => [
-                        'type'  => 'journal_entry',
-                        'id'    => $je->id,
+                        'type' => 'journal_entry',
+                        'id' => $je->id,
                         'title' => $je->entry_number ?: "JE #{$je->id}",
                     ])->all(),
                 ],
@@ -215,15 +216,15 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
 
         if ($unpaidBills->isNotEmpty()) {
             $upsertTask([
-                'title'       => "Process {$unpaidBills->count()} unpaid vendor bills",
-                'priority'    => 'high',
+                'title' => "Process {$unpaidBills->count()} unpaid vendor bills",
+                'priority' => 'high',
                 'is_critical' => true,
-                'metadata'    => [
-                    'type'          => 'unpaid_bills',
-                    'count'         => $unpaidBills->count(),
+                'metadata' => [
+                    'type' => 'unpaid_bills',
+                    'count' => $unpaidBills->count(),
                     'document_links' => $unpaidBills->map(fn ($bill) => [
-                        'type'  => 'bill',
-                        'id'    => $bill->id,
+                        'type' => 'bill',
+                        'id' => $bill->id,
                         'title' => $bill->bill_number ?: ($bill->vendor_name ? "{$bill->vendor_name} Bill" : "Bill #{$bill->id}"),
                     ])->all(),
                 ],
@@ -241,15 +242,15 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
 
         if ($overdueInvoices->isNotEmpty()) {
             $upsertTask([
-                'title'       => "Follow up on {$overdueInvoices->count()} overdue customer invoices",
-                'priority'    => 'critical',
+                'title' => "Follow up on {$overdueInvoices->count()} overdue customer invoices",
+                'priority' => 'critical',
                 'is_critical' => true,
-                'metadata'    => [
-                    'type'          => 'overdue_invoices',
-                    'count'         => $overdueInvoices->count(),
+                'metadata' => [
+                    'type' => 'overdue_invoices',
+                    'count' => $overdueInvoices->count(),
                     'document_links' => $overdueInvoices->map(fn ($inv) => [
-                        'type'  => 'invoice',
-                        'id'    => $inv->id,
+                        'type' => 'invoice',
+                        'id' => $inv->id,
                         'title' => $inv->invoice_number ?: ($inv->customer_name ? "{$inv->customer_name} Invoice" : "Invoice #{$inv->id}"),
                     ])->all(),
                 ],
@@ -291,22 +292,23 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
                     $title = $payment
                         ? $payment->payment_number
                         : ($je->entry_number ?: "JE #{$je->id}");
+
                     return [
-                        'type'  => 'journal_entry',
-                        'id'    => $je->id,
+                        'type' => 'journal_entry',
+                        'id' => $je->id,
                         'title' => $title,
                     ];
                 })->all();
 
                 $upsertTask([
-                    'title'       => "Reconcile {$journalEntries->count()} journal entries with unreconciled bank lines",
-                    'priority'    => 'high',
+                    'title' => "Reconcile {$journalEntries->count()} journal entries with unreconciled bank lines",
+                    'priority' => 'high',
                     'is_critical' => false,
-                    'metadata'    => [
-                        'type'           => 'unreconciled_transactions',
-                        'count'          => $journalEntries->count(),
+                    'metadata' => [
+                        'type' => 'unreconciled_transactions',
+                        'count' => $journalEntries->count(),
                         'bank_account_id' => $bankAccountId,
-                        'document_links'  => $documentLinks,
+                        'document_links' => $documentLinks,
                     ],
                 ]);
             }
@@ -335,18 +337,18 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
             $difference = $glBalance - $subledgerBalance;
 
             $upsertTask([
-                'title'       => "Reconcile AP subledger ({$unpaidBills->count()} unpaid bills, \${$subledgerBalance} subledger vs \${$glBalance} GL)",
-                'priority'    => 'high',
+                'title' => "Reconcile AP subledger ({$unpaidBills->count()} unpaid bills, \${$subledgerBalance} subledger vs \${$glBalance} GL)",
+                'priority' => 'high',
                 'is_critical' => false,
-                'metadata'    => [
-                    'type'              => 'ap_subledger_reconciliation',
-                    'count'             => $unpaidBills->count(),
-                    'gl_ap_balance'     => $glBalance,
+                'metadata' => [
+                    'type' => 'ap_subledger_reconciliation',
+                    'count' => $unpaidBills->count(),
+                    'gl_ap_balance' => $glBalance,
                     'subledger_balance' => $subledgerBalance,
-                    'difference'        => $difference,
-                    'document_links'    => $unpaidBills->map(fn ($bill) => [
-                        'type'  => 'bill',
-                        'id'    => $bill->id,
+                    'difference' => $difference,
+                    'document_links' => $unpaidBills->map(fn ($bill) => [
+                        'type' => 'bill',
+                        'id' => $bill->id,
                         'title' => $bill->bill_number ?: ($bill->vendor_name ? "{$bill->vendor_name} Bill" : "Bill #{$bill->id}"),
                     ])->all(),
                 ],
@@ -363,10 +365,10 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
             ->get(['journal_entries.id', 'journal_entries.entry_number', 'fixed_assets.name as asset_name']);
 
         $depreciationDocumentLinks = $depreciationJEs->map(fn ($je) => [
-            'type'  => 'journal_entry',
-            'id'    => $je->id,
+            'type' => 'journal_entry',
+            'id' => $je->id,
             'title' => $je->entry_number ?: "JE #{$je->id}",
-            'meta'  => ['asset_name' => $je->asset_name],
+            'meta' => ['asset_name' => $je->asset_name],
         ])->all();
 
         // 7. Default close tasks (always created, idempotent by type)
@@ -419,7 +421,7 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
 
         foreach ($defaultTasks as $task) {
             $metadata = [
-                'type'          => $task['type'],
+                'type' => $task['type'],
                 'document_links' => $task['document_links'],
             ];
 
@@ -429,10 +431,10 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
             }
 
             $upsertTask([
-                'title'       => $task['title'],
-                'priority'    => $task['priority'],
+                'title' => $task['title'],
+                'priority' => $task['priority'],
                 'is_critical' => $task['is_critical'],
-                'metadata'    => $metadata,
+                'metadata' => $metadata,
             ]);
         }
 
@@ -446,12 +448,12 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
 
         foreach ($defaultTasks as $task) {
             $currentTask = $allActiveTasks->get($task['type']);
-            if (!$currentTask) {
+            if (! $currentTask) {
                 continue;
             }
             foreach ($task['depends_on'] ?? [] as $depType) {
                 $depTask = $allActiveTasks->get($depType);
-                if (!$depTask) {
+                if (! $depTask) {
                     continue;
                 }
                 \Modules\FinancialClose\Models\TaskDependency::updateOrCreate(

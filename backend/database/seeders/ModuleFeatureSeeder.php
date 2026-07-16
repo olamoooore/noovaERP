@@ -3,10 +3,8 @@
 namespace Database\Seeders;
 
 use App\Models\Feature;
-use App\Models\TenantFeature;
 use App\Modules\ModuleManager;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Str;
 
 class ModuleFeatureSeeder extends Seeder
 {
@@ -17,10 +15,10 @@ class ModuleFeatureSeeder extends Seeder
 
         $allModules = $modules->all();
         $moduleCount = count($allModules);
-        
+
         \Log::info('[ModuleFeatureSeeder] Starting seeding process', [
             'total_modules' => $moduleCount,
-            'module_keys' => array_map(fn($m) => $m->key, $allModules),
+            'module_keys' => array_map(fn ($m) => $m->key, $allModules),
         ]);
 
         $seededCount = 0;
@@ -56,7 +54,7 @@ class ModuleFeatureSeeder extends Seeder
                     'key' => $module->key,
                     'error' => $e->getMessage(),
                 ];
-                
+
                 \Log::error('[ModuleFeatureSeeder] Failed to seed module', [
                     'key' => $module->key,
                     'error' => $e->getMessage(),

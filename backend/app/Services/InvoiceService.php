@@ -7,7 +7,6 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\BankAccount;
 use App\Models\Invoice;
-use App\Models\InvoiceLine;
 use App\Models\Payment;
 use App\Models\SettlementAuditLog;
 use Illuminate\Support\Facades\Auth;
@@ -94,7 +93,7 @@ class InvoiceService
     public function postInvoice(Invoice $invoice): Invoice
     {
         DB::beginTransaction();
-        
+
         try {
             // Re-fetch with lock to prevent concurrent posting
             $invoice = Invoice::where('id', $invoice->id)->lockForUpdate()->firstOrFail();
@@ -195,14 +194,14 @@ class InvoiceService
                 userId: TenantUserHelper::requireTenantUserId($invoice->created_by),
             ));
 
-            if (!$result->success) {
+            if (! $result->success) {
                 throw new \Exception($result->error);
             }
 
             // Status transitions to 'posted' (accounting released to GL).
             // The operational 'sent' status is set separately via InvoiceController::send().
             $invoice->update([
-                'status'           => 'posted',
+                'status' => 'posted',
                 'journal_entry_id' => $result->journalEntryId,
             ]);
 
@@ -211,7 +210,7 @@ class InvoiceService
             // Reduce inventory for product lines via canonical InventoryService path.
             // Source-linked invoices must carry explicit warehouse context; do not inject defaults.
             $requiresInventoryMovement = $invoice->lines->contains(fn ($line) => $line->product && $line->product->track_inventory)
-                && !$this->shouldSkipInventoryAdjustment($invoice);
+                && ! $this->shouldSkipInventoryAdjustment($invoice);
             $warehouseId = $requiresInventoryMovement ? $this->resolveInventoryWarehouseId($invoice) : null;
             if ($requiresInventoryMovement && $warehouseId === null) {
                 throw new \RuntimeException(
@@ -223,13 +222,13 @@ class InvoiceService
                 foreach ($invoice->lines as $line) {
                     if ($line->product && $line->product->track_inventory) {
                         $this->inventoryService->adjustStock(
-                            productId:     $line->product_id,
-                            warehouseId:   $warehouseId,
-                            quantity:      $line->quantity,
-                            type:          'sale',
-                            reference:     $invoice->invoice_number,
+                            productId: $line->product_id,
+                            warehouseId: $warehouseId,
+                            quantity: $line->quantity,
+                            type: 'sale',
+                            reference: $invoice->invoice_number,
                             referenceType: 'Invoice',
-                            referenceId:   $invoice->id,
+                            referenceId: $invoice->id,
                         );
                     }
                 }
@@ -243,7 +242,7 @@ class InvoiceService
             \App\Accounting\Events\InvoicePosted::dispatch($invoice->fresh());
 
             return $invoice->fresh(['journalEntry', 'lines']);
-            
+
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -256,10 +255,10 @@ class InvoiceService
     public function recordPayment(Invoice $invoice, array $paymentData): Payment
     {
         DB::beginTransaction();
-        
+
         try {
             $paymentData['customer_id'] = $invoice->customer_id;
-            $paymentData['invoice_id']  = $invoice->id;
+            $paymentData['invoice_id'] = $invoice->id;
             $paymentData['payment_date'] = $paymentData['payment_date'] ?? now();
             $paymentData['received_by'] = TenantUserHelper::requireTenantUserId($paymentData['received_by'] ?? Auth::id() ?? $invoice->created_by);
             // bank_account_id is passed through from the caller if provided
@@ -272,7 +271,7 @@ class InvoiceService
             // Resolve the cash/bank GL account based on payment method + bank account.
             // bank_account_id (if provided) takes precedence and gives the exact GL account.
             // Otherwise fall back to a mapping key derived from the payment method.
-            $bankAccountId  = $paymentData['bank_account_id'] ?? null;
+            $bankAccountId = $paymentData['bank_account_id'] ?? null;
             $bankGlAccountId = null;
 
             if ($bankAccountId) {
@@ -282,7 +281,7 @@ class InvoiceService
 
             $cashMappingKey = match ($payment->method ?? 'cash') {
                 'bank_transfer' => 'bank',
-                default         => 'cash',
+                default => 'cash',
             };
 
             // DR Cash/Bank
@@ -315,7 +314,7 @@ class InvoiceService
                 userId: TenantUserHelper::requireTenantUserId($payment->received_by),
             ));
 
-            if (!$result->success) {
+            if (! $result->success) {
                 throw new \Exception($result->error);
             }
 
@@ -327,9 +326,9 @@ class InvoiceService
             $this->syncInvoicePaymentState($invoice, (float) $payment->amount, $payment);
 
             DB::commit();
-            
+
             return $payment->fresh('journalEntry');
-            
+
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -350,12 +349,13 @@ class InvoiceService
         }
 
         $salesOrder = $invoice->salesOrder()->first();
+
         return $this->resolveSalesOrderWarehouseId($salesOrder);
     }
 
     private function resolveSalesOrderWarehouseId(?SalesOrder $salesOrder): ?int
     {
-        if (!$salesOrder) {
+        if (! $salesOrder) {
             return null;
         }
 
@@ -381,7 +381,7 @@ class InvoiceService
     private function synchronizeSalesOrderPosting(Invoice $invoice): void
     {
         $salesOrder = $invoice->salesOrder;
-        if (!$salesOrder) {
+        if (! $salesOrder) {
             return;
         }
 
@@ -409,7 +409,7 @@ class InvoiceService
     {
         $salesOrder = $invoice->salesOrder;
 
-        if (!$salesOrder) {
+        if (! $salesOrder) {
             return false;
         }
 
@@ -435,7 +435,7 @@ class InvoiceService
     public function recordChannelPayment(Invoice $invoice, array $paymentData): Payment
     {
         $paymentData['customer_id'] = $paymentData['customer_id'] ?? $invoice->customer_id;
-        $paymentData['invoice_id']  = $invoice->id;
+        $paymentData['invoice_id'] = $invoice->id;
         $paymentData['payment_date'] = $paymentData['payment_date'] ?? now();
         $paymentData['received_by'] = TenantUserHelper::resolveTenantUserId($paymentData['received_by'] ?? $invoice->created_by);
 
@@ -503,7 +503,7 @@ class InvoiceService
 
         Invoice::where('id', $invoice->id)->update([
             'balance' => $newBalance,
-            'status'  => $newBalance <= 0 ? 'paid' : ($invoice->paid_amount > 0 ? 'partial' : $invoice->status),
+            'status' => $newBalance <= 0 ? 'paid' : ($invoice->paid_amount > 0 ? 'partial' : $invoice->status),
         ]);
 
         $invoice->refresh();

@@ -21,7 +21,7 @@ class PosProductController extends Controller
         }
 
         $results = Product::findAllSellableByBarcodeOrSku($lookupCode);
-        
+
         if (empty($results)) {
             return response()->json(['message' => 'Product not found'], 404);
         }

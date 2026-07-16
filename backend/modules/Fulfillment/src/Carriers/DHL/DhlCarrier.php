@@ -87,14 +87,14 @@ class DhlCarrier extends AbstractCarrier
             );
         }
 
-        usort($rates, fn($a, $b) => $a->price <=> $b->price);
+        usort($rates, fn ($a, $b) => $a->price <=> $b->price);
 
         return $rates;
     }
 
     public function createShipment(ShipmentRequest $request): ShipmentResponse
     {
-        $trackingNumber = 'DHL' . strtoupper(uniqid());
+        $trackingNumber = 'DHL'.strtoupper(uniqid());
         $trackingUrl = "https://www.dhl.com/en/express/tracking.html?AWB={$trackingNumber}";
 
         $baseRate = 45.00;
@@ -142,7 +142,7 @@ class DhlCarrier extends AbstractCarrier
             statusDescription: 'Package in transit',
             estimatedDelivery: now()->addDays(1)->format('Y-m-d'),
             actualDelivery: null,
-            events: array_map(fn($e) => [
+            events: array_map(fn ($e) => [
                 'status' => $e['status'],
                 'description' => $e['description'],
                 'location' => $e['location'],
@@ -158,6 +158,6 @@ class DhlCarrier extends AbstractCarrier
 
     public function validateCredentials(array $config): bool
     {
-        return !empty($config['api_key']) && !empty($config['api_secret']);
+        return ! empty($config['api_key']) && ! empty($config['api_secret']);
     }
 }

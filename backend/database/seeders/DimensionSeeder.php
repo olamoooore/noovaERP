@@ -2,11 +2,11 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Department;
-use App\Models\Project;
 use App\Models\Location;
+use App\Models\Project;
 use Carbon\Carbon;
+use Illuminate\Database\Seeder;
 
 class DimensionSeeder extends Seeder
 {
@@ -24,7 +24,7 @@ class DimensionSeeder extends Seeder
                 'name' => 'Sales Department',
                 'description' => 'Sales and business development team',
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -33,7 +33,7 @@ class DimensionSeeder extends Seeder
                 'name' => 'Marketing Department',
                 'description' => 'Marketing and communications team',
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -42,7 +42,7 @@ class DimensionSeeder extends Seeder
                 'name' => 'IT Department',
                 'description' => 'Information technology and systems',
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -51,7 +51,7 @@ class DimensionSeeder extends Seeder
                 'name' => 'Human Resources',
                 'description' => 'Human resources and recruitment',
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -60,7 +60,7 @@ class DimensionSeeder extends Seeder
                 'name' => 'Finance Department',
                 'description' => 'Finance and accounting team',
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -69,7 +69,7 @@ class DimensionSeeder extends Seeder
                 'name' => 'Operations',
                 'description' => 'Operations and logistics',
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -78,7 +78,7 @@ class DimensionSeeder extends Seeder
                 'name' => 'Administration',
                 'description' => 'General administration',
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -87,7 +87,7 @@ class DimensionSeeder extends Seeder
                 'name' => 'Research & Development',
                 'description' => 'Research and product development',
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -108,7 +108,7 @@ class DimensionSeeder extends Seeder
                 'status' => 'active',
                 'budget' => 50000.00,
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -121,7 +121,7 @@ class DimensionSeeder extends Seeder
                 'status' => 'active',
                 'budget' => 150000.00,
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -134,7 +134,7 @@ class DimensionSeeder extends Seeder
                 'status' => 'active',
                 'budget' => 30000.00,
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -147,7 +147,7 @@ class DimensionSeeder extends Seeder
                 'status' => 'active',
                 'budget' => 200000.00,
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -160,7 +160,7 @@ class DimensionSeeder extends Seeder
                 'status' => 'completed',
                 'budget' => 75000.00,
                 'is_active' => false,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -173,7 +173,7 @@ class DimensionSeeder extends Seeder
                 'status' => 'active',
                 'budget' => 80000.00,
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -195,7 +195,7 @@ class DimensionSeeder extends Seeder
                 'country' => 'USA',
                 'postal_code' => '10001',
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -209,7 +209,7 @@ class DimensionSeeder extends Seeder
                 'country' => 'USA',
                 'postal_code' => '90001',
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -223,7 +223,7 @@ class DimensionSeeder extends Seeder
                 'country' => 'USA',
                 'postal_code' => '60601',
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -237,7 +237,7 @@ class DimensionSeeder extends Seeder
                 'country' => 'USA',
                 'postal_code' => '07101',
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -251,7 +251,7 @@ class DimensionSeeder extends Seeder
                 'country' => 'UK',
                 'postal_code' => 'EC1A 1BB',
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -265,7 +265,7 @@ class DimensionSeeder extends Seeder
                 'country' => 'Singapore',
                 'postal_code' => '048623',
                 'is_active' => true,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -279,7 +279,7 @@ class DimensionSeeder extends Seeder
                 'country' => 'USA',
                 'postal_code' => '33101',
                 'is_active' => false,
-                
+
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -290,8 +290,8 @@ class DimensionSeeder extends Seeder
         }
 
         $this->command->info('Dimensions seeded successfully!');
-        $this->command->info('Created ' . count($departments) . ' departments');
-        $this->command->info('Created ' . count($projects) . ' projects');
-        $this->command->info('Created ' . count($locations) . ' locations');
+        $this->command->info('Created '.count($departments).' departments');
+        $this->command->info('Created '.count($projects).' projects');
+        $this->command->info('Created '.count($locations).' locations');
     }
 }

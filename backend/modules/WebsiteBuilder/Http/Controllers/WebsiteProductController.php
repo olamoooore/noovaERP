@@ -4,9 +4,9 @@ namespace Modules\WebsiteBuilder\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -80,12 +80,12 @@ class WebsiteProductController extends Controller
         if ($request->filled('search')) {
             $search = (string) $request->input('search');
             $searchLower = strtolower($search);
-            $query->where(function ($q) use ($search, $searchLower) {
-                $q->whereRaw('LOWER(name) LIKE ?', ['%' . $searchLower . '%'])
-                    ->orWhereRaw('LOWER(secondary_name) LIKE ?', ['%' . $searchLower . '%'])
-                    ->orWhereRaw('LOWER(description) LIKE ?', ['%' . $searchLower . '%'])
-                    ->orWhereRaw('LOWER(meta_keywords) LIKE ?', ['%' . $searchLower . '%'])
-                    ->orWhereRaw('LOWER(sku) LIKE ?', ['%' . $searchLower . '%']);
+            $query->where(function ($q) use ($searchLower) {
+                $q->whereRaw('LOWER(name) LIKE ?', ['%'.$searchLower.'%'])
+                    ->orWhereRaw('LOWER(secondary_name) LIKE ?', ['%'.$searchLower.'%'])
+                    ->orWhereRaw('LOWER(description) LIKE ?', ['%'.$searchLower.'%'])
+                    ->orWhereRaw('LOWER(meta_keywords) LIKE ?', ['%'.$searchLower.'%'])
+                    ->orWhereRaw('LOWER(sku) LIKE ?', ['%'.$searchLower.'%']);
             });
         }
 
@@ -99,7 +99,7 @@ class WebsiteProductController extends Controller
         $sortBy = $request->input('sort_by', 'created_at');
         $sortDir = strtolower($request->input('sort_dir', 'desc'));
         $allowedSorts = ['name', 'price', 'created_at'];
-        
+
         if (in_array($sortBy, $allowedSorts)) {
             $query->reorder($sortBy, in_array($sortDir, ['asc', 'desc']) ? $sortDir : 'asc');
         }
@@ -116,18 +116,18 @@ class WebsiteProductController extends Controller
 
             // Convert image path to absolute URL if it's a relative path
             $imageUrl = $this->getAbsoluteImageUrl($product->image);
-            
+
             // Convert gallery images to absolute URLs
             $gallery = $product->gallery ?? [];
             if (is_array($gallery)) {
-                $gallery = array_map(fn($img) => $this->getAbsoluteImageUrl($img), $gallery);
+                $gallery = array_map(fn ($img) => $this->getAbsoluteImageUrl($img), $gallery);
             }
-            
+
             return [
                 'id' => $product->id,
                 'name' => $product->name,
                 'secondary_name' => $product->secondary_name,
-                'slug' => \Str::slug($product->name) . '-' . $product->id,
+                'slug' => \Str::slug($product->name).'-'.$product->id,
                 'sku' => $product->sku,
                 'description' => $product->description,
                 'short_description' => $product->short_description,
@@ -142,7 +142,7 @@ class WebsiteProductController extends Controller
                     'id' => $product->brand->id,
                     'name' => $product->brand->name,
                 ] : null,
-                'tags' => $product->meta_keywords 
+                'tags' => $product->meta_keywords
                     ? array_map('trim', explode(',', $product->meta_keywords))
                     : [],
                 'is_new_arrival' => (bool) $product->is_new_arrival,
@@ -185,16 +185,16 @@ class WebsiteProductController extends Controller
             ->with(['category', 'brand', 'variants', 'bundleComponents.componentProduct']);
 
         $this->applyWebsiteVisibilityFilter($query, $request);
-        
+
         $product = $query->findOrFail($id);
 
         // Convert image path to absolute URL
         $imageUrl = $this->getAbsoluteImageUrl($product->image);
-        
+
         // Convert gallery images to absolute URLs
         $gallery = $product->gallery ?? [];
         if (is_array($gallery)) {
-            $gallery = array_map(fn($img) => $this->getAbsoluteImageUrl($img), $gallery);
+            $gallery = array_map(fn ($img) => $this->getAbsoluteImageUrl($img), $gallery);
         }
 
         $effectiveStockQuantity = $product->track_inventory
@@ -205,7 +205,7 @@ class WebsiteProductController extends Controller
             'id' => $product->id,
             'name' => $product->name,
             'secondary_name' => $product->secondary_name,
-            'slug' => \Str::slug($product->name) . '-' . $product->id,
+            'slug' => \Str::slug($product->name).'-'.$product->id,
             'sku' => $product->sku,
             'description' => $product->description,
             'short_description' => $product->short_description,
@@ -220,7 +220,7 @@ class WebsiteProductController extends Controller
                 'id' => $product->brand->id,
                 'name' => $product->brand->name,
             ] : null,
-            'tags' => $product->meta_keywords 
+            'tags' => $product->meta_keywords
                 ? array_map('trim', explode(',', $product->meta_keywords))
                 : [],
             'is_new_arrival' => (bool) $product->is_new_arrival,
@@ -274,7 +274,7 @@ class WebsiteProductController extends Controller
                 $q->where('is_active', true);
                 $this->applyWebsiteVisibilityFilter($q, $request);
             }]);
-        
+
         $categories = $query->orderBy('name')
             ->get()
             ->map(function ($category) {
@@ -288,7 +288,7 @@ class WebsiteProductController extends Controller
 
         return response()->json($categories);
     }
-    
+
     /**
      * Get product tags (derived from meta_keywords).
      * Returns unique tags across all website-visible products.
@@ -301,21 +301,23 @@ class WebsiteProductController extends Controller
             ->where('meta_keywords', '!=', '');
 
         $this->applyWebsiteVisibilityFilter($query, $request);
-        
+
         $products = $query->pluck('meta_keywords');
-        
+
         // Extract unique tags from comma-separated meta_keywords
         $tags = collect();
         foreach ($products as $keywords) {
-            if (!$keywords) continue;
+            if (! $keywords) {
+                continue;
+            }
             $keywordArray = array_map('trim', explode(',', $keywords));
             foreach ($keywordArray as $keyword) {
-                if (!empty($keyword)) {
+                if (! empty($keyword)) {
                     $tags->push($keyword);
                 }
             }
         }
-        
+
         // Count occurrences and format
         $tagCounts = $tags->countBy()->map(function ($count, $name) {
             return [
@@ -324,7 +326,7 @@ class WebsiteProductController extends Controller
                 'product_count' => $count,
             ];
         })->values()->sortByDesc('product_count')->values();
-        
+
         return response()->json($tagCounts);
     }
 
@@ -334,50 +336,50 @@ class WebsiteProductController extends Controller
      */
     private function getAbsoluteImageUrl(?string $imagePath): ?string
     {
-        if (!$imagePath) {
+        if (! $imagePath) {
             return null;
         }
-        
+
         // Trim whitespace
         $imagePath = trim($imagePath);
-        
+
         if (empty($imagePath)) {
             return null;
         }
-        
+
         // Already an absolute URL - return as-is
         if (str_starts_with($imagePath, 'http://') || str_starts_with($imagePath, 'https://')) {
             return $imagePath;
         }
-        
+
         // Handle data URLs (base64 images)
         if (str_starts_with($imagePath, 'data:')) {
             return $imagePath;
         }
-        
+
         // Remove leading slash if present
         $imagePath = ltrim($imagePath, '/');
-        
+
         // Always use APP_URL from config for consistent storage URLs
         $baseUrl = rtrim(config('app.url'), '/');
-        
+
         // Handle various storage path formats
         if (str_starts_with($imagePath, 'storage/')) {
-            return $baseUrl . '/' . $imagePath;
+            return $baseUrl.'/'.$imagePath;
         }
-        
-        if (str_starts_with($imagePath, 'products/') || 
+
+        if (str_starts_with($imagePath, 'products/') ||
             str_starts_with($imagePath, 'images/') ||
             str_starts_with($imagePath, 'uploads/')) {
-            return $baseUrl . '/storage/' . $imagePath;
+            return $baseUrl.'/storage/'.$imagePath;
         }
-        
+
         if (str_starts_with($imagePath, 'public/storage/')) {
-            return $baseUrl . '/' . str_replace('public/', '', $imagePath);
+            return $baseUrl.'/'.str_replace('public/', '', $imagePath);
         }
-        
+
         // Default: assume it's a path relative to storage
-        return $baseUrl . '/storage/' . $imagePath;
+        return $baseUrl.'/storage/'.$imagePath;
     }
 
     private function applyWebsiteVisibilityFilter(Builder $query, ?Request $request = null): void
@@ -386,7 +388,7 @@ class WebsiteProductController extends Controller
             return;
         }
 
-        if (!Schema::hasColumn('products', 'show_on_website')) {
+        if (! Schema::hasColumn('products', 'show_on_website')) {
             return;
         }
 

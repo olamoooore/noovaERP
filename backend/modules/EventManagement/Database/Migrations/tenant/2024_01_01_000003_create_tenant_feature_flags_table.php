@@ -17,10 +17,10 @@ return new class extends Migration
             $table->string('feature', 100);
             $table->boolean('enabled')->default(false);
             $table->timestamps();
-            
+
             // Unique constraint to prevent duplicate feature flags per tenant
             $table->unique(['tenant_id', 'feature']);
-            
+
             // Indexes for performance
             $table->index('tenant_id');
             $table->index('feature');

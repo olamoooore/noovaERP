@@ -2,13 +2,13 @@
 
 namespace Modules\EventManagement\Services;
 
-use Modules\Ecommerce\Services\WebOrderEventReservationService;
+use Carbon\Carbon;
 use Modules\Ecommerce\Models\WebOrder;
+use Modules\Ecommerce\Services\WebOrderEventReservationService;
 use Modules\EventManagement\Models\Booking;
 use Modules\EventManagement\Models\BookingAttendee;
 use Modules\EventManagement\Models\Event;
 use Modules\EventManagement\Models\Ticket;
-use Carbon\Carbon;
 
 class WebOrderTicketFulfillmentService
 {
@@ -16,8 +16,7 @@ class WebOrderTicketFulfillmentService
         private readonly EventTicketCheckoutService $eventTicketCheckoutService,
         private readonly TicketService $ticketService,
         private readonly WebOrderEventReservationService $webOrderEventReservationService,
-    ) {
-    }
+    ) {}
 
     public function syncPaidWebOrder(WebOrder $order): void
     {
@@ -39,7 +38,7 @@ class WebOrderTicketFulfillmentService
         foreach ($ticketQuantities as $productId => $quantity) {
             $event = $eventsByProduct->get((int) $productId);
 
-            if (!$event || $quantity <= 0) {
+            if (! $event || $quantity <= 0) {
                 continue;
             }
 
@@ -81,7 +80,7 @@ class WebOrderTicketFulfillmentService
             $booking->save();
         }
 
-        if (!$booking->wasRecentlyCreated) {
+        if (! $booking->wasRecentlyCreated) {
             $this->webOrderEventReservationService->markFulfilled($order, $booking->id, $event->id);
         }
 
@@ -103,7 +102,7 @@ class WebOrderTicketFulfillmentService
     private function issueMissingTickets(Booking $booking): void
     {
         $ticketedAttendeeIds = $booking->tickets->pluck('attendee_id')->filter()->map(fn ($id) => (int) $id)->all();
-        $missingAttendees = $booking->attendees->filter(fn ($attendee) => !in_array((int) $attendee->id, $ticketedAttendeeIds, true));
+        $missingAttendees = $booking->attendees->filter(fn ($attendee) => ! in_array((int) $attendee->id, $ticketedAttendeeIds, true));
 
         foreach ($missingAttendees as $attendee) {
             $ticketCode = $this->ticketService->generateUniqueCode();

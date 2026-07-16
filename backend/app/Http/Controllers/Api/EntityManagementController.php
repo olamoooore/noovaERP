@@ -17,6 +17,7 @@ class EntityManagementController extends Controller
     public function indexGroups(): JsonResponse
     {
         $groups = DB::table(self::GROUPS_TABLE)->orderBy('name')->get();
+
         return response()->json($groups);
     }
 
@@ -24,7 +25,7 @@ class EntityManagementController extends Controller
     {
         $data = $request->validate([
             'name' => 'required|string|max:255',
-            'code' => 'required|string|max:50|unique:' . self::GROUPS_TABLE . ',code',
+            'code' => 'required|string|max:50|unique:'.self::GROUPS_TABLE.',code',
             'base_currency' => 'required|string|size:3|exists:currencies,code',
             'fiscal_year_start' => 'sometimes|string|max:5',
         ]);
@@ -42,9 +43,10 @@ class EntityManagementController extends Controller
     public function showGroup(int $id): JsonResponse
     {
         $group = DB::table(self::GROUPS_TABLE)->find($id);
-        if (!$group) {
+        if (! $group) {
             return response()->json(['message' => 'Group not found'], 404);
         }
+
         return response()->json($group);
     }
 
@@ -69,13 +71,14 @@ class EntityManagementController extends Controller
         }
 
         DB::table(self::GROUPS_TABLE)->where('id', $id)->update(array_merge($data, ['updated_at' => now()]));
+
         return response()->json(DB::table(self::GROUPS_TABLE)->find($id));
     }
 
     public function destroyGroup(int $id): JsonResponse
     {
         $group = DB::table(self::GROUPS_TABLE)->find($id);
-        if (!$group) {
+        if (! $group) {
             return response()->json(['message' => 'Group not found'], 404);
         }
 
@@ -86,6 +89,7 @@ class EntityManagementController extends Controller
         }
 
         DB::table(self::GROUPS_TABLE)->where('id', $id)->delete();
+
         return response()->json(['message' => 'Group deleted successfully']);
     }
 
@@ -105,7 +109,7 @@ class EntityManagementController extends Controller
     public function storeEntity(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'group_id' => 'required|integer|exists:' . self::GROUPS_TABLE . ',id',
+            'group_id' => 'required|integer|exists:'.self::GROUPS_TABLE.',id',
             'name' => 'required|string|max:255',
             'code' => 'required|string|max:50|unique:legal_entities,code',
             'country_code' => 'sometimes|string|size:2',
@@ -126,9 +130,10 @@ class EntityManagementController extends Controller
     public function showEntity(int $id): JsonResponse
     {
         $entity = DB::table('legal_entities')->find($id);
-        if (!$entity) {
+        if (! $entity) {
             return response()->json(['message' => 'Entity not found'], 404);
         }
+
         return response()->json($entity);
     }
 
@@ -155,13 +160,14 @@ class EntityManagementController extends Controller
         }
 
         DB::table('legal_entities')->where('id', $id)->update(array_merge($data, ['updated_at' => now()]));
+
         return response()->json(DB::table('legal_entities')->find($id));
     }
 
     public function destroyEntity(int $id): JsonResponse
     {
         $entity = DB::table('legal_entities')->find($id);
-        if (!$entity) {
+        if (! $entity) {
             return response()->json(['message' => 'Entity not found'], 404);
         }
 
@@ -173,6 +179,7 @@ class EntityManagementController extends Controller
         }
 
         DB::table('legal_entities')->where('id', $id)->delete();
+
         return response()->json(['message' => 'Entity deleted successfully']);
     }
 
@@ -209,9 +216,10 @@ class EntityManagementController extends Controller
     public function showBranch(int $id): JsonResponse
     {
         $branch = DB::table('branches')->find($id);
-        if (!$branch) {
+        if (! $branch) {
             return response()->json(['message' => 'Branch not found'], 404);
         }
+
         return response()->json($branch);
     }
 
@@ -224,22 +232,24 @@ class EntityManagementController extends Controller
         ]);
 
         $branch = DB::table('branches')->find($id);
-        if (!$branch) {
+        if (! $branch) {
             return response()->json(['message' => 'Branch not found'], 404);
         }
 
         DB::table('branches')->where('id', $id)->update(array_merge($data, ['updated_at' => now()]));
+
         return response()->json(DB::table('branches')->find($id));
     }
 
     public function destroyBranch(int $id): JsonResponse
     {
         $branch = DB::table('branches')->find($id);
-        if (!$branch) {
+        if (! $branch) {
             return response()->json(['message' => 'Branch not found'], 404);
         }
 
         DB::table('branches')->where('id', $id)->delete();
+
         return response()->json(['message' => 'Branch deleted successfully']);
     }
 
@@ -279,9 +289,10 @@ class EntityManagementController extends Controller
     public function showBook(int $id): JsonResponse
     {
         $book = DB::table('entity_books')->find($id);
-        if (!$book) {
+        if (! $book) {
             return response()->json(['message' => 'Entity book not found'], 404);
         }
+
         return response()->json($book);
     }
 
@@ -296,22 +307,24 @@ class EntityManagementController extends Controller
         ]);
 
         $book = DB::table('entity_books')->find($id);
-        if (!$book) {
+        if (! $book) {
             return response()->json(['message' => 'Entity book not found'], 404);
         }
 
         DB::table('entity_books')->where('id', $id)->update(array_merge($data, ['updated_at' => now()]));
+
         return response()->json(DB::table('entity_books')->find($id));
     }
 
     public function destroyBook(int $id): JsonResponse
     {
         $book = DB::table('entity_books')->find($id);
-        if (!$book) {
+        if (! $book) {
             return response()->json(['message' => 'Entity book not found'], 404);
         }
 
         DB::table('entity_books')->where('id', $id)->delete();
+
         return response()->json(['message' => 'Entity book deleted successfully']);
     }
 
@@ -320,6 +333,7 @@ class EntityManagementController extends Controller
     public function indexModules(int $entityId): JsonResponse
     {
         $service = app(\App\Services\EntityModuleService::class);
+
         return response()->json($service->listModules($entityId));
     }
 

@@ -19,6 +19,6 @@ class EnableAllFeaturesSeeder extends Seeder
             );
         }
 
-        $this->command->info('Enabled ' . $features->count() . ' features for demo tenant');
+        $this->command->info('Enabled '.$features->count().' features for demo tenant');
     }
 }

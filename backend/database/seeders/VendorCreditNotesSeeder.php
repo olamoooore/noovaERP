@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
+use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class VendorCreditNotesSeeder extends Seeder
 {
@@ -18,9 +18,10 @@ class VendorCreditNotesSeeder extends Seeder
         // Get existing bills and vendors
         $bills = DB::table('bills')->limit(2)->get();
         $users = DB::table('users')->limit(1)->get();
-        
+
         if ($bills->isEmpty() || $users->isEmpty()) {
             $this->command->warn('No bills or users found. Skipping vendor credit notes seeder.');
+
             return;
         }
 
@@ -41,13 +42,13 @@ class VendorCreditNotesSeeder extends Seeder
 
             // Create 2-3 credit notes per bill
             $creditNotesPerBill = $billIndex === 0 ? 3 : 2;
-            
+
             for ($i = 0; $i < $creditNotesPerBill && $creditNoteCount < 5; $i++) {
                 $creditNoteCount++;
-                
+
                 // Create credit note
                 $creditNoteId = DB::table('vendor_credit_notes')->insertGetId([
-                    'credit_note_number' => 'VCN-2026-' . str_pad($creditNoteCount, 4, '0', STR_PAD_LEFT),
+                    'credit_note_number' => 'VCN-2026-'.str_pad($creditNoteCount, 4, '0', STR_PAD_LEFT),
                     'vendor_id' => $bill->vendor_id,
                     'bill_id' => $bill->id,
                     'credit_note_date' => Carbon::now()->subDays(rand(1, 30))->format('Y-m-d'),
@@ -73,7 +74,9 @@ class VendorCreditNotesSeeder extends Seeder
                 $creditPercentage = [0.3, 0.5, 0.25][$i % 3]; // 30%, 50%, or 25%
 
                 foreach ($billLines as $lineIndex => $billLine) {
-                    if ($lineIndex >= 2) break; // Only credit first 2 lines
+                    if ($lineIndex >= 2) {
+                        break;
+                    } // Only credit first 2 lines
 
                     $quantity = $billLine->quantity * $creditPercentage;
                     $unitPrice = $billLine->unit_price;
@@ -84,7 +87,7 @@ class VendorCreditNotesSeeder extends Seeder
                         'credit_note_id' => $creditNoteId,
                         'bill_line_id' => $billLine->id,
                         'product_id' => $billLine->product_id ?? null,
-                        'description' => $billLine->description . ' (Vendor Credit)',
+                        'description' => $billLine->description.' (Vendor Credit)',
                         'quantity' => $quantity,
                         'unit_price' => $unitPrice,
                         'tax_rate' => $billLine->tax_rate ?? 0,
@@ -110,16 +113,16 @@ class VendorCreditNotesSeeder extends Seeder
 
                 $creditNotes[] = [
                     'id' => $creditNoteId,
-                    'number' => 'VCN-2026-' . str_pad($creditNoteCount, 4, '0', STR_PAD_LEFT),
+                    'number' => 'VCN-2026-'.str_pad($creditNoteCount, 4, '0', STR_PAD_LEFT),
                     'status' => $creditNoteCount <= 2 ? 'posted' : 'draft',
                     'total' => $totalAmount,
                 ];
             }
         }
 
-        $this->command->info('Created ' . count($creditNotes) . ' vendor credit notes:');
+        $this->command->info('Created '.count($creditNotes).' vendor credit notes:');
         foreach ($creditNotes as $cn) {
-            $this->command->info("  - {$cn['number']} ({$cn['status']}): $" . number_format($cn['total'], 2));
+            $this->command->info("  - {$cn['number']} ({$cn['status']}): $".number_format($cn['total'], 2));
         }
     }
 

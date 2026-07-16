@@ -26,7 +26,7 @@ final class InvoiceCreationToken
     {
         if ($this->consumed) {
             throw new \LogicException(
-                'InvoiceCreationToken has already been consumed. ' .
+                'InvoiceCreationToken has already been consumed. '.
                 'Each token allows exactly one invoice creation.'
             );
         }

@@ -2,8 +2,8 @@
 
 namespace Modules\Loyalty\Listeners;
 
-use Modules\Loyalty\Services\PointsEarningService;
 use Illuminate\Support\Facades\Log;
+use Modules\Loyalty\Services\PointsEarningService;
 
 /**
  * Listener for invoice payment events

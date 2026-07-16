@@ -33,10 +33,10 @@ class CatalogService
     public function createType(array $data): CatalogItemType
     {
         $type = CatalogItemType::create([
-            'key'         => $data['key'],
-            'name'        => $data['name'],
+            'key' => $data['key'],
+            'name' => $data['name'],
             'description' => $data['description'] ?? null,
-            'sort_order'  => $data['sort_order'] ?? 0,
+            'sort_order' => $data['sort_order'] ?? 0,
         ]);
 
         $this->audit->log('catalog_type.created', $type, [], $type->toArray());
@@ -82,17 +82,17 @@ class CatalogService
 
         $item = DB::transaction(function () use ($data) {
             return CatalogItem::create([
-                'key'            => $data['key'],
-                'name'           => $data['name'],
-                'description'    => $data['description'] ?? null,
-                'type_id'        => $data['type_id'],
-                'parent_id'      => $data['parent_id'] ?? null,
-                'is_active'      => $data['is_active'] ?? true,
-                'sort_order'     => $data['sort_order'] ?? 0,
-                'metadata'       => $data['metadata'] ?? null,
+                'key' => $data['key'],
+                'name' => $data['name'],
+                'description' => $data['description'] ?? null,
+                'type_id' => $data['type_id'],
+                'parent_id' => $data['parent_id'] ?? null,
+                'is_active' => $data['is_active'] ?? true,
+                'sort_order' => $data['sort_order'] ?? 0,
+                'metadata' => $data['metadata'] ?? null,
                 'effective_from' => $data['effective_from'] ?? now()->toDateString(),
-                'effective_to'   => $data['effective_to'] ?? null,
-                'source'         => 'catalog',
+                'effective_to' => $data['effective_to'] ?? null,
+                'source' => 'catalog',
             ]);
         });
 
@@ -110,15 +110,15 @@ class CatalogService
 
         DB::transaction(function () use ($item, $data) {
             $item->update(array_filter([
-                'name'           => $data['name']           ?? $item->name,
-                'description'    => array_key_exists('description', $data) ? $data['description'] : $item->description,
-                'type_id'        => $data['type_id']        ?? $item->type_id,
-                'parent_id'      => array_key_exists('parent_id', $data) ? $data['parent_id'] : $item->parent_id,
-                'is_active'      => $data['is_active']      ?? $item->is_active,
-                'sort_order'     => $data['sort_order']     ?? $item->sort_order,
-                'metadata'       => array_key_exists('metadata', $data) ? $data['metadata'] : $item->metadata,
+                'name' => $data['name'] ?? $item->name,
+                'description' => array_key_exists('description', $data) ? $data['description'] : $item->description,
+                'type_id' => $data['type_id'] ?? $item->type_id,
+                'parent_id' => array_key_exists('parent_id', $data) ? $data['parent_id'] : $item->parent_id,
+                'is_active' => $data['is_active'] ?? $item->is_active,
+                'sort_order' => $data['sort_order'] ?? $item->sort_order,
+                'metadata' => array_key_exists('metadata', $data) ? $data['metadata'] : $item->metadata,
                 'effective_from' => $data['effective_from'] ?? $item->effective_from,
-                'effective_to'   => array_key_exists('effective_to', $data) ? $data['effective_to'] : $item->effective_to,
+                'effective_to' => array_key_exists('effective_to', $data) ? $data['effective_to'] : $item->effective_to,
             ], fn ($v) => $v !== null || array_key_exists('description', $data) || array_key_exists('metadata', $data) || array_key_exists('parent_id', $data) || array_key_exists('effective_to', $data)));
         });
 
@@ -137,7 +137,7 @@ class CatalogService
         $before = $item->toAuditSnapshot();
 
         $item->update([
-            'is_active'    => false,
+            'is_active' => false,
             'effective_to' => now()->toDateString(),
         ]);
 
@@ -161,7 +161,7 @@ class CatalogService
     {
         $dep = CatalogDependency::firstOrCreate(
             ['item_id' => $item->id, 'depends_on_item_id' => $dependsOn->id],
-            ['type'    => $type],
+            ['type' => $type],
         );
 
         $this->audit->log(
@@ -177,7 +177,7 @@ class CatalogService
     public function removeDependency(CatalogDependency $dependency): void
     {
         $snapshot = [
-            'item_key'       => $dependency->item->key ?? $dependency->item_id,
+            'item_key' => $dependency->item->key ?? $dependency->item_id,
             'depends_on_key' => $dependency->dependsOn->key ?? $dependency->depends_on_item_id,
         ];
 
@@ -194,7 +194,7 @@ class CatalogService
     {
         $incompat = CatalogIncompatibility::firstOrCreate(
             ['item_id' => $item->id, 'incompatible_item_id' => $incompatibleWith->id],
-            ['reason'  => $reason],
+            ['reason' => $reason],
         );
 
         $this->audit->log(
@@ -210,8 +210,8 @@ class CatalogService
     public function removeIncompatibility(CatalogIncompatibility $incompat): void
     {
         $snapshot = [
-            'item_key'          => $incompat->item->key ?? $incompat->item_id,
-            'incompatible_key'  => $incompat->incompatibleItem->key ?? $incompat->incompatible_item_id,
+            'item_key' => $incompat->item->key ?? $incompat->item_id,
+            'incompatible_key' => $incompat->incompatibleItem->key ?? $incompat->incompatible_item_id,
         ];
 
         $incompat->delete();
@@ -226,7 +226,7 @@ class CatalogService
     public function addVisibilityRule(CatalogItem $item, string $ruleType, array $condition): CatalogVisibilityRule
     {
         $rule = CatalogVisibilityRule::create([
-            'item_id'   => $item->id,
+            'item_id' => $item->id,
             'rule_type' => $ruleType,
             'condition' => $condition,
         ]);
@@ -265,9 +265,9 @@ class CatalogService
 
         $legacyModules = ModuleCatalogEntry::all();
 
-        $synced  = 0;
+        $synced = 0;
         $skipped = 0;
-        $keys    = [];
+        $keys = [];
 
         DB::transaction(function () use ($legacyModules, $moduleType, &$synced, &$skipped, &$keys) {
             foreach ($legacyModules as $module) {
@@ -275,21 +275,22 @@ class CatalogService
 
                 if ($exists) {
                     $skipped++;
+
                     continue;
                 }
 
                 CatalogItem::create([
-                    'key'            => $module->module_key,
-                    'name'           => $module->name,
-                    'description'    => $module->description,
-                    'type_id'        => $moduleType->id,
-                    'parent_id'      => null,
-                    'is_active'      => $module->is_active,
-                    'sort_order'     => $module->sort_order,
-                    'metadata'       => null,
+                    'key' => $module->module_key,
+                    'name' => $module->name,
+                    'description' => $module->description,
+                    'type_id' => $moduleType->id,
+                    'parent_id' => null,
+                    'is_active' => $module->is_active,
+                    'sort_order' => $module->sort_order,
+                    'metadata' => null,
                     'effective_from' => now()->toDateString(),
-                    'effective_to'   => null,
-                    'source'         => 'legacy_module',
+                    'effective_to' => null,
+                    'source' => 'legacy_module',
                 ]);
 
                 $synced++;
@@ -315,8 +316,8 @@ class CatalogService
     {
         if (! preg_match(self::KEY_PATTERN, $key)) {
             throw new \InvalidArgumentException(
-                "Invalid catalog key \"{$key}\". Keys must follow the convention: " .
-                "module[.submodule[.feature]] using lowercase letters, digits, and underscores only."
+                "Invalid catalog key \"{$key}\". Keys must follow the convention: ".
+                'module[.submodule[.feature]] using lowercase letters, digits, and underscores only.'
             );
         }
     }

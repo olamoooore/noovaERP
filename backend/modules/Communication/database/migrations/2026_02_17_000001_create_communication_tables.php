@@ -60,7 +60,7 @@ return new class extends Migration
 
             // Status
             $table->enum('status', ['draft', 'queued', 'sent', 'delivered', 'failed', 'cancelled'])
-                  ->default('draft');
+                ->default('draft');
 
             $table->timestamp('scheduled_at')->nullable();
             $table->timestamp('sent_at')->nullable();
@@ -115,9 +115,9 @@ return new class extends Migration
 
             $table->unsignedBigInteger('message_id');
             $table->foreign('message_id')
-                  ->references('id')
-                  ->on('communication_messages')
-                  ->onDelete('cascade');
+                ->references('id')
+                ->on('communication_messages')
+                ->onDelete('cascade');
 
             // Recipient
             $table->unsignedBigInteger('recipient_user_id')->nullable();
@@ -128,14 +128,14 @@ return new class extends Migration
 
             // Channel
             $table->enum('channel', ['email', 'in_app', 'sms', 'whatsapp', 'push', 'slack'])
-                  ->default('email');
+                ->default('email');
 
             // Provider used (smtp, ses, twilio, etc.)
             $table->string('provider')->nullable();
 
             // Delivery status
             $table->enum('status', ['pending', 'processing', 'sent', 'delivered', 'failed', 'bounced', 'cancelled'])
-                  ->default('pending');
+                ->default('pending');
 
             $table->unsignedTinyInteger('retry_count')->default(0);
             $table->unsignedTinyInteger('max_retries')->default(5);
@@ -215,7 +215,7 @@ return new class extends Migration
 
             // Delivery mode
             $table->enum('delivery_mode', ['instant', 'digest_daily', 'digest_weekly', 'minimal'])
-                  ->default('instant');
+                ->default('instant');
 
             $table->time('digest_time')->nullable()->default('08:00:00');
             $table->string('timezone')->default('UTC');
@@ -252,7 +252,7 @@ return new class extends Migration
             $table->string('provider')->nullable();
             $table->enum('event', [
                 'queued', 'sent', 'delivered', 'opened', 'clicked',
-                'bounced', 'complained', 'unsubscribed', 'failed'
+                'bounced', 'complained', 'unsubscribed', 'failed',
             ]);
 
             $table->json('event_data')->nullable();

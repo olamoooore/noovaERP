@@ -45,7 +45,7 @@ class CustomerAddress extends Model
             $this->zip,
             $this->country,
         ]);
-        
+
         return implode(', ', $parts);
     }
 
@@ -55,7 +55,7 @@ class CustomerAddress extends Model
     protected static function boot()
     {
         parent::boot();
-        
+
         static::saving(function ($address) {
             if ($address->is_default) {
                 static::where('customer_id', $address->customer_id)

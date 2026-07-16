@@ -22,7 +22,7 @@ class RestrictAuditorWriteAccess
     {
         $user = $request->user();
 
-        if (!$user || !$user->hasRole('Auditor')) {
+        if (! $user || ! $user->hasRole('Auditor')) {
             return $next($request);
         }
 
@@ -36,7 +36,7 @@ class RestrictAuditorWriteAccess
 
         // Check if this write operation is allowed for auditors
         foreach ($this->allowedWriteRoutes as $route => $methods) {
-            $pattern = '#^' . preg_replace('#\\*#', '[^/]+', $route) . '$#';
+            $pattern = '#^'.preg_replace('#\\*#', '[^/]+', $route).'$#';
             if (preg_match($pattern, $path) && in_array($method, $methods)) {
                 return $next($request);
             }

@@ -3,9 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\JournalEntry;
-use App\Models\Journal;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Support\Str;
 
 class JournalEntryFactory extends Factory
 {
@@ -14,7 +12,7 @@ class JournalEntryFactory extends Factory
     public function definition(): array
     {
         return [
-            'entry_number' => 'JE-' . date('Y') . '-' . str_pad((string) (JournalEntry::count() + 1), 4, '0', STR_PAD_LEFT),
+            'entry_number' => 'JE-'.date('Y').'-'.str_pad((string) (JournalEntry::count() + 1), 4, '0', STR_PAD_LEFT),
             'entry_date' => now()->toDateString(),
             'type' => 'manual',
             'reference' => $this->faker->optional()->word(),

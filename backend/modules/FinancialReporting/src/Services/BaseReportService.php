@@ -2,16 +2,18 @@
 
 namespace Modules\FinancialReporting\Services;
 
-use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\FinancialReporting\DTOs\ReportFilter;
-use Carbon\Carbon;
 
 abstract class BaseReportService
 {
     protected bool $cacheEnabled;
+
     protected int $cacheTtl;
+
     protected string $cachePrefix;
 
     public function __construct()
@@ -26,12 +28,12 @@ abstract class BaseReportService
      */
     protected function remember(string $key, callable $callback): mixed
     {
-        if (!$this->cacheEnabled) {
+        if (! $this->cacheEnabled) {
             return $callback();
         }
 
-        $fullKey = $this->cachePrefix . $key;
-        
+        $fullKey = $this->cachePrefix.$key;
+
         return Cache::tags(config('financialreporting.cache.tags', []))
             ->remember($fullKey, $this->cacheTtl, $callback);
     }
@@ -41,7 +43,7 @@ abstract class BaseReportService
      */
     protected function clearCache(string $key): void
     {
-        $fullKey = $this->cachePrefix . $key;
+        $fullKey = $this->cachePrefix.$key;
         Cache::forget($fullKey);
     }
 
@@ -55,14 +57,14 @@ abstract class BaseReportService
 
     /**
      * Determine if we should use summary table
-     * 
+     *
      * Workstream 2 (2026-04-15): Added validation to ensure summary data exists
      * and is fresh. Prevents async reporting drift caused by missing/outdated summaries.
      */
     protected function shouldUseSummary(Carbon $date): bool
     {
         $daysThreshold = config('financialreporting.reports.use_summary_after_days', 7);
-        
+
         // If date is not old enough, always use direct query
         if ($date->diffInDays(now()) <= $daysThreshold) {
             return false;
@@ -74,7 +76,7 @@ abstract class BaseReportService
 
     /**
      * Check if summary data is fresh and complete for the given date.
-     * 
+     *
      * Workstream 2 (2026-04-15): Prevents async reporting drift by validating
      * that summary jobs have completed before using summary data.
      */
@@ -87,7 +89,7 @@ abstract class BaseReportService
             ->exists();
 
         // If no journal entries, summary is not needed (fresh by definition)
-        if (!$journalEntriesExist) {
+        if (! $journalEntriesExist) {
             return true;
         }
 
@@ -96,8 +98,9 @@ abstract class BaseReportService
             ->where('summary_date', $date->format('Y-m-d'))
             ->exists();
 
-        if (!$summaryExists) {
+        if (! $summaryExists) {
             Log::warning("Summary data missing for date {$date->format('Y-m-d')}, falling back to direct query");
+
             return false;
         }
 
@@ -114,9 +117,10 @@ abstract class BaseReportService
             ->count();
 
         if ($summaryLineCount !== $journalLineCount) {
-            Log::warning("Summary data incomplete for date {$date->format('Y-m-d')}. " .
-                "Summary lines: {$summaryLineCount}, Journal lines: {$journalLineCount}. " .
-                "Falling back to direct query.");
+            Log::warning("Summary data incomplete for date {$date->format('Y-m-d')}. ".
+                "Summary lines: {$summaryLineCount}, Journal lines: {$journalLineCount}. ".
+                'Falling back to direct query.');
+
             return false;
         }
 

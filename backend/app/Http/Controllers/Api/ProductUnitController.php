@@ -23,6 +23,7 @@ class ProductUnitController extends Controller
         ]);
 
         $unit = ProductUnit::create($validated);
+
         return response()->json($unit, 201);
     }
 
@@ -38,6 +39,7 @@ class ProductUnitController extends Controller
         ]);
 
         $productUnit->update($validated);
+
         return response()->json($productUnit);
     }
 
@@ -45,6 +47,7 @@ class ProductUnitController extends Controller
     {
         $productUnit = ProductUnit::findOrFail($id);
         $productUnit->delete();
+
         return response()->json(['message' => 'Unit deleted successfully']);
     }
 }

@@ -3,12 +3,12 @@
 namespace Modules\FinancialReporting\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Modules\FinancialReporting\Jobs\ClearReportCache;
 use Modules\FinancialReporting\Models\ReportCache;
-use Carbon\Carbon;
 
 /**
  * Cache Controller
@@ -24,6 +24,7 @@ class CacheController extends Controller
         if (function_exists('tenant') && tenant()) {
             return (string) tenant('id');
         }
+
         return null;
     }
 
@@ -128,14 +129,14 @@ class CacheController extends Controller
     {
         $tenantId = $this->currentTenantId();
         $query = ReportCache::where('cache_key', $cacheKey);
-        
+
         if ($tenantId) {
             $query->where('tenant_id', $tenantId);
         }
-        
+
         $entry = $query->first();
 
-        if (!$entry) {
+        if (! $entry) {
             return response()->json([
                 'success' => false,
                 'message' => 'Cache entry not found',
@@ -155,11 +156,11 @@ class CacheController extends Controller
     {
         $tenantId = $this->currentTenantId();
         $query = ReportCache::where('cache_key', $cacheKey);
-        
+
         if ($tenantId) {
             $query->where('tenant_id', $tenantId);
         }
-        
+
         $deleted = $query->delete();
 
         if ($deleted === 0) {

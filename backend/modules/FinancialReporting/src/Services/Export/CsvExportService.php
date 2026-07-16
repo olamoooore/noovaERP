@@ -9,29 +9,29 @@ class CsvExportService
 {
     private function tenantExportDirectory(): string
     {
-        if (!function_exists('tenant') || !tenant()) {
+        if (! function_exists('tenant') || ! tenant()) {
             throw new \RuntimeException('Report exports require an active tenant context.');
         }
 
-        return 'reports/' . tenant('id');
+        return 'reports/'.tenant('id');
     }
 
     private function exportFilename(?string $filename): string
     {
-        $name = $filename ? pathinfo($filename, PATHINFO_FILENAME) : 'report_' . now()->format('Y-m-d_His');
+        $name = $filename ? pathinfo($filename, PATHINFO_FILENAME) : 'report_'.now()->format('Y-m-d_His');
         $safeName = Str::of($name)->ascii()->replaceMatches('/[^A-Za-z0-9._-]+/', '_')->trim('_')->value();
         $safeName = $safeName !== '' ? $safeName : 'report';
 
-        return $safeName . '_' . Str::lower(Str::random(16)) . '.csv';
+        return $safeName.'_'.Str::lower(Str::random(16)).'.csv';
     }
 
     /**
      * Export report data to CSV
      */
-    public function exportReport(array $reportData, string $filename = null): string
+    public function exportReport(array $reportData, ?string $filename = null): string
     {
         $filename = $this->exportFilename($filename);
-        $path = $this->tenantExportDirectory() . '/' . $filename;
+        $path = $this->tenantExportDirectory().'/'.$filename;
 
         // Create CSV content
         $csvContent = $this->generateCsvContent($reportData);
@@ -39,7 +39,7 @@ class CsvExportService
         // Store the file
         Storage::disk('local')->put($path, $csvContent);
 
-        return storage_path('app/' . $path);
+        return storage_path('app/'.$path);
     }
 
     /**
@@ -68,7 +68,7 @@ class CsvExportService
         }
 
         // Add main data
-        if (isset($reportData['data']) && is_array($reportData['data']) && !empty($reportData['data'])) {
+        if (isset($reportData['data']) && is_array($reportData['data']) && ! empty($reportData['data'])) {
             // Get headers from first data row
             $headers = array_keys($reportData['data'][0]);
             fputcsv($output, $headers);
@@ -101,10 +101,10 @@ class CsvExportService
     /**
      * Export multiple reports to a single CSV with sections
      */
-    public function exportMultipleReports(array $reports, string $filename = null): string
+    public function exportMultipleReports(array $reports, ?string $filename = null): string
     {
         $filename = $this->exportFilename($filename ?? 'reports');
-        $path = $this->tenantExportDirectory() . '/' . $filename;
+        $path = $this->tenantExportDirectory().'/'.$filename;
 
         $output = fopen('php://temp', 'r+');
 
@@ -129,7 +129,7 @@ class CsvExportService
             }
 
             // Add data
-            if (isset($reportData['data']) && is_array($reportData['data']) && !empty($reportData['data'])) {
+            if (isset($reportData['data']) && is_array($reportData['data']) && ! empty($reportData['data'])) {
                 $headers = array_keys($reportData['data'][0]);
                 fputcsv($output, $headers);
 
@@ -157,18 +157,18 @@ class CsvExportService
 
         Storage::disk('local')->put($path, $csvContent);
 
-        return storage_path('app/' . $path);
+        return storage_path('app/'.$path);
     }
 
     /**
      * Stream CSV download (for large datasets)
      */
-    public function streamCsv(array $reportData, string $filename = null): \Symfony\Component\HttpFoundation\StreamedResponse
+    public function streamCsv(array $reportData, ?string $filename = null): \Symfony\Component\HttpFoundation\StreamedResponse
     {
         $this->tenantExportDirectory();
         $filename = $this->exportFilename($filename);
 
-        return response()->stream(function() use ($reportData) {
+        return response()->stream(function () use ($reportData) {
             $output = fopen('php://output', 'w');
 
             // Add title and metadata
@@ -184,7 +184,7 @@ class CsvExportService
             }
 
             // Add data
-            if (isset($reportData['data']) && is_array($reportData['data']) && !empty($reportData['data'])) {
+            if (isset($reportData['data']) && is_array($reportData['data']) && ! empty($reportData['data'])) {
                 $headers = array_keys($reportData['data'][0]);
                 fputcsv($output, $headers);
 
@@ -207,7 +207,7 @@ class CsvExportService
             fclose($output);
         }, 200, [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ]);
     }
 

@@ -10,8 +10,11 @@ class HrStaffProfile extends Model
     use HasFactory;
 
     protected $table = 'hr_staff_profiles';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [

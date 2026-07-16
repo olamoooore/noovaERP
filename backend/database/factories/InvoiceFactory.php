@@ -2,10 +2,9 @@
 
 namespace Database\Factories;
 
-use App\Models\Invoice;
 use App\Models\Customer;
+use App\Models\Invoice;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Support\Str;
 
 class InvoiceFactory extends Factory
 {
@@ -14,7 +13,7 @@ class InvoiceFactory extends Factory
     public function definition(): array
     {
         return [
-            'invoice_number' => 'INV-' . date('Y') . '-' . str_pad((string) (Invoice::count() + 1), 4, '0', STR_PAD_LEFT),
+            'invoice_number' => 'INV-'.date('Y').'-'.str_pad((string) (Invoice::count() + 1), 4, '0', STR_PAD_LEFT),
             'customer_id' => Customer::factory(),
             'invoice_date' => now()->toDateString(),
             'due_date' => now()->addDays(30)->toDateString(),

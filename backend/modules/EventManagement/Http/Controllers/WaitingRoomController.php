@@ -9,8 +9,7 @@ use Modules\EventManagement\Services\WaitingRoomService;
 
 class WaitingRoomController extends Controller
 {
-    public function __construct(private WaitingRoomService $waitingRoomService)
-    {}
+    public function __construct(private WaitingRoomService $waitingRoomService) {}
 
     public function getGames(Request $request): JsonResponse
     {
@@ -38,7 +37,7 @@ class WaitingRoomController extends Controller
             $request->user()?->email
         );
 
-        if (!$result) {
+        if (! $result) {
             return response()->json([
                 'success' => false,
                 'error' => 'INVALID_SESSION',
@@ -87,7 +86,7 @@ class WaitingRoomController extends Controller
     public function getMyRewards(Request $request): JsonResponse
     {
         $customerId = $request->user()?->id;
-        if (!$customerId) {
+        if (! $customerId) {
             return response()->json([
                 'success' => false,
                 'error' => 'UNAUTHORIZED',
@@ -105,7 +104,7 @@ class WaitingRoomController extends Controller
     public function redeemReward(Request $request): JsonResponse
     {
         $customerId = $request->user()?->id;
-        if (!$customerId) {
+        if (! $customerId) {
             return response()->json([
                 'success' => false,
                 'error' => 'UNAUTHORIZED',

@@ -2,8 +2,8 @@
 
 namespace Modules\FinancialClose\DTOs;
 
-use Modules\FinancialClose\Enums\TaskStatus;
 use Modules\FinancialClose\Enums\TaskPriority;
+use Modules\FinancialClose\Enums\TaskStatus;
 
 class TaskSummary
 {

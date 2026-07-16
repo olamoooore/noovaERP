@@ -3,9 +3,9 @@
 namespace Modules\Sales\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class DeliveryOrder extends Model
 {
@@ -116,7 +116,7 @@ class DeliveryOrder extends Model
         $prefix = "DO-{$year}-";
 
         $latest = static::withTrashed()
-            ->where('delivery_order_number', 'like', $prefix . '%')
+            ->where('delivery_order_number', 'like', $prefix.'%')
             ->orderBy('id', 'desc')
             ->first();
 
@@ -124,6 +124,6 @@ class DeliveryOrder extends Model
             ? (int) substr($latest->delivery_order_number, -4) + 1
             : 1;
 
-        return $prefix . str_pad($number, 4, '0', STR_PAD_LEFT);
+        return $prefix.str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 }

@@ -29,7 +29,7 @@ class ProductAttributeController extends Controller
         $baseSlug = $slug;
         $counter = 1;
         while (ProductAttribute::where('slug', $slug)->exists()) {
-            $slug = $baseSlug . '-' . $counter++;
+            $slug = $baseSlug.'-'.$counter++;
         }
 
         $attribute = ProductAttribute::create([
@@ -39,7 +39,7 @@ class ProductAttributeController extends Controller
             'is_active' => $validated['is_active'] ?? true,
         ]);
 
-        if (!empty($validated['values'])) {
+        if (! empty($validated['values'])) {
             foreach ($validated['values'] as $val) {
                 $attribute->values()->create($val);
             }
@@ -66,13 +66,19 @@ class ProductAttributeController extends Controller
         if (isset($validated['name'])) {
             $updateData['name'] = $validated['name'];
             $newSlug = Str::slug($validated['name']);
-            if ($newSlug !== $productAttribute->slug && !ProductAttribute::where('slug', $newSlug)->where('id', '!=', $productAttribute->id)->exists()) {
+            if ($newSlug !== $productAttribute->slug && ! ProductAttribute::where('slug', $newSlug)->where('id', '!=', $productAttribute->id)->exists()) {
                 $updateData['slug'] = $newSlug;
             }
         }
-        if (isset($validated['type'])) $updateData['type'] = $validated['type'];
-        if (isset($validated['is_active'])) $updateData['is_active'] = $validated['is_active'];
-        if (!empty($updateData)) $productAttribute->update($updateData);
+        if (isset($validated['type'])) {
+            $updateData['type'] = $validated['type'];
+        }
+        if (isset($validated['is_active'])) {
+            $updateData['is_active'] = $validated['is_active'];
+        }
+        if (! empty($updateData)) {
+            $productAttribute->update($updateData);
+        }
 
         if (isset($validated['values'])) {
             $currentIds = collect($validated['values'])->pluck('id')->filter()->toArray();
@@ -100,6 +106,7 @@ class ProductAttributeController extends Controller
     {
         $productAttribute = ProductAttribute::findOrFail($id);
         $productAttribute->delete();
+
         return response()->json(['message' => 'Attribute deleted successfully']);
     }
 }

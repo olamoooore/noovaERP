@@ -27,10 +27,10 @@ return [
     'reports' => [
         // Use daily_ledger_summaries for data older than X days
         'use_summary_after_days' => env('FINANCIAL_REPORTING_SUMMARY_DAYS', 7),
-        
+
         // Maximum date range for reports (in days)
         'max_date_range' => env('FINANCIAL_REPORTING_MAX_RANGE', 365),
-        
+
         // Default pagination
         'per_page' => env('FINANCIAL_REPORTING_PER_PAGE', 50),
     ],
@@ -44,18 +44,18 @@ return [
         'disk' => env('FINANCIAL_REPORTING_EXPORT_DISK', 'local'),
         'path' => 'exports/reports',
         'cleanup_after_hours' => env('FINANCIAL_REPORTING_EXPORT_CLEANUP', 24),
-        
+
         'pdf' => [
             'enabled' => true,
             'orientation' => 'portrait', // portrait or landscape
             'paper_size' => 'a4',
         ],
-        
+
         'excel' => [
             'enabled' => true,
             'format' => 'xlsx', // xlsx or csv
         ],
-        
+
         'csv' => [
             'enabled' => true,
             'delimiter' => ',',

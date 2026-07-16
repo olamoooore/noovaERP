@@ -27,9 +27,9 @@ class AdminTenantNoteController extends Controller
         return response()->json([
             'data' => $notes->items(),
             'meta' => [
-                'total'     => $notes->total(),
-                'page'      => $notes->currentPage(),
-                'per_page'  => $notes->perPage(),
+                'total' => $notes->total(),
+                'page' => $notes->currentPage(),
+                'per_page' => $notes->perPage(),
                 'last_page' => $notes->lastPage(),
             ],
         ]);
@@ -42,9 +42,9 @@ class AdminTenantNoteController extends Controller
         ]);
 
         $note = AdminNote::create([
-            'tenant_id'     => $tenantId,
+            'tenant_id' => $tenantId,
             'admin_user_id' => Auth::id(),
-            'body'          => $validated['body'],
+            'body' => $validated['body'],
         ]);
 
         $this->auditLogger->log(

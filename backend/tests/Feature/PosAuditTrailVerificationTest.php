@@ -4,8 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\AuditLog;
 use App\Services\AuditLogger;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -250,7 +250,7 @@ class PosAuditTrailVerificationTest extends TestCase
         $trail = AuditLog::where('reference_id', $orderId)
             ->orWhere(function ($q) use ($orderId) {
                 $q->where('operation', 'approval_grant')
-                  ->whereJsonContains('metadata->approved_reference_id', $orderId);
+                    ->whereJsonContains('metadata->approved_reference_id', $orderId);
             })
             ->orderBy('created_at')
             ->get();

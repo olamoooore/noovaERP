@@ -1,8 +1,8 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Middleware\SecureWebhookAccess;
 use App\Http\Middleware\ResolveTenantFromWebhook;
+use App\Http\Middleware\SecureWebhookAccess;
+use Illuminate\Support\Facades\Route;
 use Modules\PaymentGateway\Controllers\PaymentWebhookController;
 
 /*
@@ -25,23 +25,23 @@ Route::prefix('api/v1')->group(function () {
     Route::post('/webhooks/stripe', [PaymentWebhookController::class, 'stripe'])
         ->name('webhooks.stripe')
         ->middleware([
-            SecureWebhookAccess::class . ':stripe',
-            ResolveTenantFromWebhook::class . ':stripe',
+            SecureWebhookAccess::class.':stripe',
+            ResolveTenantFromWebhook::class.':stripe',
         ]);
 
     // HitPay webhooks - secured with rate limiting, replay prevention, and HMAC verification
     Route::post('/webhooks/hitpay', [PaymentWebhookController::class, 'hitpay'])
         ->name('webhooks.hitpay')
         ->middleware([
-            SecureWebhookAccess::class . ':hitpay',
-            ResolveTenantFromWebhook::class . ':hitpay',
+            SecureWebhookAccess::class.':hitpay',
+            ResolveTenantFromWebhook::class.':hitpay',
         ]);
 
     // PayPal webhooks - secured with rate limiting, replay prevention, and certificate verification
     Route::post('/webhooks/paypal', [PaymentWebhookController::class, 'paypal'])
         ->name('webhooks.paypal')
         ->middleware([
-            SecureWebhookAccess::class . ':paypal',
-            ResolveTenantFromWebhook::class . ':paypal',
+            SecureWebhookAccess::class.':paypal',
+            ResolveTenantFromWebhook::class.':paypal',
         ]);
 });

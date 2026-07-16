@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('fco_close_cycles', function (Blueprint $table) {
-            if (!Schema::hasColumn('fco_close_cycles', 'template_id')) {
+            if (! Schema::hasColumn('fco_close_cycles', 'template_id')) {
                 $table->uuid('template_id')->nullable()->after('period_id');
                 $table->index(['tenant_id', 'template_id']);
             }

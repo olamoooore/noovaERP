@@ -2,13 +2,13 @@
 
 namespace Modules\EventManagement\Http\Controllers\Admin;
 
-use Illuminate\Http\Request;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Modules\EventManagement\Services\ArtistCanonicalizationService;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
-use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class ArtistManagementController extends Controller
 {
@@ -36,9 +36,9 @@ class ArtistManagementController extends Controller
                     ->leftJoin('artist_canonical as ac', 'a.id', '=', 'ac.master_record_id')
                     ->where('a.is_active', true)
                     ->whereNull('ac.id')
-                    ->count()
+                    ->count(),
             ];
-            
+
             $recentMerges = DB::table('artist_merge_log as aml')
                 ->join('artists as source', 'aml.source_artist_id', '=', 'source.id')
                 ->join('artists as target', 'aml.target_artist_id', '=', 'target.id')
@@ -48,25 +48,25 @@ class ArtistManagementController extends Controller
                     'aml.merged_at',
                     'source.name as source_name',
                     'target.name as target_name',
-                    'aml.is_reversible'
+                    'aml.is_reversible',
                 ])
                 ->orderBy('aml.merged_at', 'desc')
                 ->limit(10)
                 ->get();
-            
+
             return response()->json([
                 'success' => true,
                 'data' => [
                     'stats' => $stats,
-                    'recent_merges' => $recentMerges
-                ]
+                    'recent_merges' => $recentMerges,
+                ],
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to load artist management dashboard',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -82,29 +82,29 @@ class ArtistManagementController extends Controller
                 'limit' => 'integer|min:1|max:100',
                 'canonical_type' => 'in:artist,group',
                 'language_code' => 'string|max:5',
-                'term_type' => 'in:canonical,alias,romanized,translated'
+                'term_type' => 'in:canonical,alias,romanized,translated',
             ]);
-            
+
             $query = $request->get('query');
             $limit = $request->get('limit', 20);
             $filters = array_filter([
                 'canonical_type' => $request->get('canonical_type'),
                 'language_code' => $request->get('language_code'),
-                'term_type' => $request->get('term_type')
+                'term_type' => $request->get('term_type'),
             ]);
-            
+
             $results = $this->canonicalizationService->searchArtists($query, $limit, $filters);
-            
+
             return response()->json([
                 'success' => true,
-                'data' => $results
+                'data' => $results,
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Artist search failed',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -116,24 +116,24 @@ class ArtistManagementController extends Controller
     {
         try {
             $canonical = $this->canonicalizationService->getCanonicalArtist($artistId);
-            
-            if (!$canonical) {
+
+            if (! $canonical) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Canonical artist not found'
+                    'message' => 'Canonical artist not found',
                 ], 404);
             }
-            
+
             return response()->json([
                 'success' => true,
-                'data' => $canonical
+                'data' => $canonical,
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get canonical artist',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -148,27 +148,27 @@ class ArtistManagementController extends Controller
                 'artist_id' => 'required|integer|exists:artists,id',
                 'canonical_name' => 'required|string|max:255',
                 'canonical_type' => 'required|in:artist,group',
-                'metadata' => 'array'
+                'metadata' => 'array',
             ]);
-            
+
             $canonicalId = $this->canonicalizationService->createCanonicalArtist(
                 $request->get('artist_id'),
                 $request->get('canonical_name'),
                 $request->get('canonical_type'),
                 $request->get('metadata', [])
             );
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Canonical artist created successfully',
-                'data' => ['canonical_id' => $canonicalId]
+                'data' => ['canonical_id' => $canonicalId],
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create canonical artist',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -184,9 +184,9 @@ class ArtistManagementController extends Controller
                 'alias_name' => 'required|string|max:255',
                 'alias_type' => 'required|in:stage_name,romanized,translated,former_name,nickname',
                 'language_code' => 'nullable|string|max:5',
-                'is_primary' => 'boolean'
+                'is_primary' => 'boolean',
             ]);
-            
+
             $aliasId = $this->canonicalizationService->createAlias(
                 $request->get('canonical_id'),
                 $request->get('alias_name'),
@@ -194,18 +194,18 @@ class ArtistManagementController extends Controller
                 $request->get('language_code'),
                 $request->get('is_primary', false)
             );
-            
+
             return response()->json([
                 'success' => true,
                 'message' => 'Artist alias created successfully',
-                'data' => ['alias_id' => $aliasId]
+                'data' => ['alias_id' => $aliasId],
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create artist alias',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -217,45 +217,45 @@ class ArtistManagementController extends Controller
     {
         try {
             $artist = DB::table('artists')->find($artistId);
-            if (!$artist) {
+            if (! $artist) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Artist not found'
+                    'message' => 'Artist not found',
                 ], 404);
             }
-            
+
             // Find potential duplicates based on name similarity
             $candidates = $this->canonicalizationService->searchArtists($artist->name, 10);
-            
+
             // Remove the source artist from candidates
             $candidates = array_filter($candidates, function ($candidate) use ($artistId) {
                 return $candidate['artist_id'] !== $artistId;
             });
-            
+
             // Add similarity scores and conflict analysis
             foreach ($candidates as &$candidate) {
                 $candidate['similarity_score'] = $this->calculateSimilarityScore($artist->name, $candidate['canonical_name']);
                 $candidate['conflicts'] = $this->analyzeConflicts($artistId, $candidate['artist_id']);
             }
-            
+
             // Sort by similarity score
             usort($candidates, function ($a, $b) {
                 return $b['similarity_score'] <=> $a['similarity_score'];
             });
-            
+
             return response()->json([
                 'success' => true,
                 'data' => [
                     'source_artist' => $artist,
-                    'candidates' => array_values($candidates)
-                ]
+                    'candidates' => array_values($candidates),
+                ],
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get merge candidates',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -270,19 +270,19 @@ class ArtistManagementController extends Controller
                 'source_artist_id' => 'required|integer|exists:artists,id',
                 'target_artist_id' => 'required|integer|exists:artists,id',
                 'merge_reason' => 'required|string|max:1000',
-                'conflict_resolution' => 'array'
+                'conflict_resolution' => 'array',
             ]);
-            
+
             $sourceArtistId = $request->get('source_artist_id');
             $targetArtistId = $request->get('target_artist_id');
-            
+
             if ($sourceArtistId === $targetArtistId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Cannot merge artist with itself'
+                    'message' => 'Cannot merge artist with itself',
                 ], 400);
             }
-            
+
             $success = $this->canonicalizationService->mergeArtists(
                 $sourceArtistId,
                 $targetArtistId,
@@ -290,17 +290,17 @@ class ArtistManagementController extends Controller
                 TenantUserHelper::resolveTenantUserId(), // tenant-resolved user
                 $request->get('conflict_resolution', [])
             );
-            
+
             return response()->json([
                 'success' => $success,
-                'message' => $success ? 'Artists merged successfully' : 'Artist merge failed'
+                'message' => $success ? 'Artists merged successfully' : 'Artist merge failed',
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to merge artists',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -313,7 +313,7 @@ class ArtistManagementController extends Controller
         try {
             $limit = $request->get('limit', 50);
             $artistId = $request->get('artist_id');
-            
+
             $query = DB::table('artist_merge_log as aml')
                 ->join('artists as source', 'aml.source_artist_id', '=', 'source.id')
                 ->join('artists as target', 'aml.target_artist_id', '=', 'target.id')
@@ -329,16 +329,16 @@ class ArtistManagementController extends Controller
                     'aml.is_reversible',
                     'aml.reversed_at',
                     'source.name as source_name',
-                    'target.name as target_name'
+                    'target.name as target_name',
                 ]);
-            
+
             if ($artistId) {
                 $query->where(function ($q) use ($artistId) {
                     $q->where('aml.source_artist_id', $artistId)
-                      ->orWhere('aml.target_artist_id', $artistId);
+                        ->orWhere('aml.target_artist_id', $artistId);
                 });
             }
-            
+
             $history = $query
                 ->orderBy('aml.merged_at', 'desc')
                 ->limit($limit)
@@ -346,19 +346,20 @@ class ArtistManagementController extends Controller
                 ->map(function ($merge) {
                     $merge->merged_data = json_decode($merge->merged_data, true);
                     $merge->conflict_resolution = json_decode($merge->conflict_resolution, true);
+
                     return $merge;
                 });
-            
+
             return response()->json([
                 'success' => true,
-                'data' => $history
+                'data' => $history,
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get merge history',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -371,33 +372,33 @@ class ArtistManagementController extends Controller
         try {
             $request->validate([
                 'file' => 'required|file|mimes:csv,txt',
-                'canonical_id' => 'required|integer|exists:artist_canonical,id'
+                'canonical_id' => 'required|integer|exists:artist_canonical,id',
             ]);
-            
+
             $canonicalId = $request->get('canonical_id');
             $file = $request->file('file');
-            
+
             $csvData = array_map('str_getcsv', file($file->getPathname()));
             $header = array_shift($csvData); // Remove header row
-            
+
             $imported = 0;
             $errors = [];
-            
+
             foreach ($csvData as $index => $row) {
                 try {
                     if (count($row) < 2) {
                         continue; // Skip incomplete rows
                     }
-                    
+
                     $aliasName = trim($row[0]);
                     $aliasType = trim($row[1]);
                     $languageCode = isset($row[2]) ? trim($row[2]) : null;
                     $isPrimary = isset($row[3]) ? (bool) trim($row[3]) : false;
-                    
+
                     if (empty($aliasName) || empty($aliasType)) {
                         continue;
                     }
-                    
+
                     $this->canonicalizationService->createAlias(
                         $canonicalId,
                         $aliasName,
@@ -405,28 +406,28 @@ class ArtistManagementController extends Controller
                         $languageCode,
                         $isPrimary
                     );
-                    
+
                     $imported++;
-                    
+
                 } catch (\Exception $e) {
-                    $errors[] = "Row " . ($index + 2) . ": " . $e->getMessage();
+                    $errors[] = 'Row '.($index + 2).': '.$e->getMessage();
                 }
             }
-            
+
             return response()->json([
                 'success' => true,
                 'message' => "Successfully imported {$imported} aliases",
                 'data' => [
                     'imported_count' => $imported,
-                    'errors' => $errors
-                ]
+                    'errors' => $errors,
+                ],
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Bulk import failed',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -438,60 +439,60 @@ class ArtistManagementController extends Controller
     {
         try {
             $artist = DB::table('artists')->find($artistId);
-            if (!$artist) {
+            if (! $artist) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Artist not found'
+                    'message' => 'Artist not found',
                 ], 404);
             }
-            
+
             // Get direct relationships
             $relationships = $this->canonicalizationService->getArtistRelationships($artistId);
-            
+
             // Build visualization data
             $nodes = [
                 [
                     'id' => $artistId,
                     'name' => $artist->name,
                     'type' => 'primary',
-                    'canonical_name' => $this->canonicalizationService->getCanonicalArtist($artistId)['canonical_name'] ?? $artist->name
-                ]
+                    'canonical_name' => $this->canonicalizationService->getCanonicalArtist($artistId)['canonical_name'] ?? $artist->name,
+                ],
             ];
-            
+
             $edges = [];
-            
+
             foreach ($relationships as $relationship) {
                 $nodes[] = [
                     'id' => $relationship->related_artist_id,
                     'name' => $relationship->related_artist_name,
                     'type' => 'related',
-                    'canonical_name' => $relationship->related_canonical_name ?? $relationship->related_artist_name
+                    'canonical_name' => $relationship->related_canonical_name ?? $relationship->related_artist_name,
                 ];
-                
+
                 $edges[] = [
                     'source' => $artistId,
                     'target' => $relationship->related_artist_id,
                     'relationship_type' => $relationship->relationship_type,
                     'start_date' => $relationship->relationship_start,
                     'end_date' => $relationship->relationship_end,
-                    'is_active' => is_null($relationship->relationship_end)
+                    'is_active' => is_null($relationship->relationship_end),
                 ];
             }
-            
+
             return response()->json([
                 'success' => true,
                 'data' => [
                     'nodes' => $nodes,
                     'edges' => $edges,
-                    'center_artist' => $artistId
-                ]
+                    'center_artist' => $artistId,
+                ],
             ]);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get relationship visualization',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -506,8 +507,9 @@ class ArtistManagementController extends Controller
         if ($maxLength === 0) {
             return 1.0;
         }
-        
+
         $distance = levenshtein(strtolower($name1), strtolower($name2));
+
         return 1.0 - ($distance / $maxLength);
     }
 
@@ -517,33 +519,33 @@ class ArtistManagementController extends Controller
     private function analyzeConflicts(int $artistId1, int $artistId2): array
     {
         $conflicts = [];
-        
+
         // Check for shared events
         $sharedEvents = DB::table('artist_events as ae1')
             ->join('artist_events as ae2', 'ae1.event_id', '=', 'ae2.event_id')
             ->where('ae1.artist_id', $artistId1)
             ->where('ae2.artist_id', $artistId2)
             ->count();
-        
+
         if ($sharedEvents > 0) {
             $conflicts[] = [
                 'type' => 'shared_events',
                 'count' => $sharedEvents,
-                'description' => "Both artists are associated with {$sharedEvents} shared events"
+                'description' => "Both artists are associated with {$sharedEvents} shared events",
             ];
         }
-        
+
         // Check for different canonical types
         $canonical1 = DB::table('artist_canonical')->where('master_record_id', $artistId1)->first();
         $canonical2 = DB::table('artist_canonical')->where('master_record_id', $artistId2)->first();
-        
+
         if ($canonical1 && $canonical2 && $canonical1->canonical_type !== $canonical2->canonical_type) {
             $conflicts[] = [
                 'type' => 'canonical_type_mismatch',
-                'description' => "Different canonical types: {$canonical1->canonical_type} vs {$canonical2->canonical_type}"
+                'description' => "Different canonical types: {$canonical1->canonical_type} vs {$canonical2->canonical_type}",
             ];
         }
-        
+
         return $conflicts;
     }
 }

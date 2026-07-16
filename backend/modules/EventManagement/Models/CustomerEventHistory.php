@@ -3,15 +3,15 @@
 namespace Modules\EventManagement\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\EventManagement\Traits\HasTenantScope;
 
 /**
  * CustomerEventHistory Model
- * 
+ *
  * Tracks customer interactions with events for analytics and personalization.
- * 
+ *
  * @property int $id
  * @property string $tenant_id
  * @property string $customer_id
@@ -30,7 +30,7 @@ use Modules\EventManagement\Traits\HasTenantScope;
  */
 class CustomerEventHistory extends Model
 {
-    use SoftDeletes, HasTenantScope;
+    use HasTenantScope, SoftDeletes;
 
     protected $table = 'customer_event_history';
 

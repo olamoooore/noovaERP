@@ -10,7 +10,7 @@ return new class extends Migration
      * Run the migrations.
      *
      * TASK: ACC-002 - Store tax identity on GL journal entry lines
-     * 
+     *
      * RATIONALE:
      * - GL lines must store tax identity for tax audit trail
      * - Enables tax_transaction_details writer to link GL to tax reporting
@@ -21,12 +21,12 @@ return new class extends Migration
         Schema::table('journal_entry_lines', function (Blueprint $table) {
             $table->string('tax_code', 50)->nullable()->after('description');
             $table->unsignedBigInteger('tax_id')->nullable()->after('tax_code');
-            
+
             $table->foreign('tax_id')
-                  ->references('id')
-                  ->on('taxes')
-                  ->onDelete('set null');
-            
+                ->references('id')
+                ->on('taxes')
+                ->onDelete('set null');
+
             $table->index('tax_code');
             $table->index('tax_id');
         });

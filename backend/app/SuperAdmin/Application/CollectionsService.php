@@ -38,7 +38,7 @@ class CollectionsService
                 $q->where(function ($overdue) {
                     // Unpaid and past due date
                     $overdue->whereNotIn('status', ['paid', 'void'])
-                            ->where('due_date', '<', now());
+                        ->where('due_date', '<', now());
                 })->orWhereNotNull('collection_stage');
             })
             ->orderBy('collection_stage_updated_at')
@@ -71,14 +71,14 @@ class CollectionsService
 
         $before = [
             'collection_stage' => $currentStage,
-            'invoice_status'   => $invoice->status,
+            'invoice_status' => $invoice->status,
         ];
 
         DB::transaction(function () use ($invoice, $nextStage, $note) {
             $invoice->update([
-                'collection_stage'            => $nextStage,
+                'collection_stage' => $nextStage,
                 'collection_stage_updated_at' => now(),
-                'collection_notes'            => $note,
+                'collection_notes' => $note,
             ]);
 
             // Auto-suspend the tenant when an invoice reaches suspended stage
@@ -90,13 +90,13 @@ class CollectionsService
                 );
 
                 TenantOperation::create([
-                    'tenant_id'     => $tenantId,
+                    'tenant_id' => $tenantId,
                     'admin_user_id' => Auth::id(),
-                    'operation'     => 'collection_suspend',
-                    'payload'       => ['invoice_id' => $invoice->id, 'collection_note' => $note],
-                    'result'        => ['collection_stage' => 'suspended'],
-                    'status'        => 'success',
-                    'created_at'    => now(),
+                    'operation' => 'collection_suspend',
+                    'payload' => ['invoice_id' => $invoice->id, 'collection_note' => $note],
+                    'result' => ['collection_stage' => 'suspended'],
+                    'status' => 'success',
+                    'created_at' => now(),
                 ]);
             }
         });
@@ -120,15 +120,15 @@ class CollectionsService
     {
         $before = [
             'collection_stage' => $invoice->collection_stage,
-            'invoice_status'   => $invoice->status,
+            'invoice_status' => $invoice->status,
         ];
 
         $wasAtSuspended = $invoice->collection_stage === 'suspended';
 
         $invoice->update([
-            'collection_stage'            => null,
+            'collection_stage' => null,
             'collection_stage_updated_at' => now(),
-            'collection_notes'            => $note,
+            'collection_notes' => $note,
         ]);
 
         // Reinstate the tenant if this invoice caused the suspension

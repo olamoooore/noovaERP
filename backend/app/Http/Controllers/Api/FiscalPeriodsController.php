@@ -43,23 +43,23 @@ class FiscalPeriodsController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name'        => 'required|string|max:100',
-            'code'        => 'required|string|max:50|unique:fiscal_periods,code',
+            'name' => 'required|string|max:100',
+            'code' => 'required|string|max:50|unique:fiscal_periods,code',
             'period_start' => 'required|date',
-            'period_end'  => 'required|date|after:period_start',
+            'period_end' => 'required|date|after:period_start',
             'period_type' => 'required|in:monthly,quarterly,yearly',
             'fiscal_year' => 'required|integer|min:2000|max:2100',
         ]);
 
-        $validated['is_locked']  = false;
-        $validated['status']     = 'open';
+        $validated['is_locked'] = false;
+        $validated['status'] = 'open';
         $validated['created_by'] = TenantUserHelper::resolveTenantUserId();
 
         $period = FiscalPeriod::create($validated);
 
         return response()->json([
             'message' => 'Fiscal period created successfully',
-            'data'    => $period,
+            'data' => $period,
         ], 201);
     }
 
@@ -75,7 +75,7 @@ class FiscalPeriodsController extends Controller
         $count = FiscalPeriod::createMonthlyPeriodsForYear($validated['fiscal_year']);
 
         return response()->json([
-            'message'      => "{$count} fiscal period(s) created for {$validated['fiscal_year']}",
+            'message' => "{$count} fiscal period(s) created for {$validated['fiscal_year']}",
             'periods_created' => $count,
         ]);
     }
@@ -86,6 +86,7 @@ class FiscalPeriodsController extends Controller
     public function show($id)
     {
         $period = FiscalPeriod::findOrFail($id);
+
         return response()->json(['data' => $period]);
     }
 
@@ -104,10 +105,10 @@ class FiscalPeriodsController extends Controller
         }
 
         $validated = $request->validate([
-            'name'        => 'sometimes|string|max:100',
-            'code'        => 'sometimes|string|max:50|unique:fiscal_periods,code,' . $id,
+            'name' => 'sometimes|string|max:100',
+            'code' => 'sometimes|string|max:50|unique:fiscal_periods,code,'.$id,
             'period_start' => 'sometimes|date',
-            'period_end'  => 'sometimes|date|after:period_start',
+            'period_end' => 'sometimes|date|after:period_start',
             'period_type' => 'sometimes|in:monthly,quarterly,yearly',
             'fiscal_year' => 'sometimes|integer|min:2000|max:2100',
         ]);
@@ -116,7 +117,7 @@ class FiscalPeriodsController extends Controller
 
         return response()->json([
             'message' => 'Fiscal period updated successfully',
-            'data'    => $period->fresh(),
+            'data' => $period->fresh(),
         ]);
     }
 
@@ -135,14 +136,14 @@ class FiscalPeriodsController extends Controller
         }
 
         Log::info('Fiscal period locked', [
-            'period_id'   => $period->id,
+            'period_id' => $period->id,
             'period_code' => $period->code,
-            'locked_by'   => TenantUserHelper::resolveTenantUserId(),
+            'locked_by' => TenantUserHelper::resolveTenantUserId(),
         ]);
 
         return response()->json([
             'message' => "Fiscal period '{$period->name}' has been locked.",
-            'data'    => $period->fresh(),
+            'data' => $period->fresh(),
         ]);
     }
 
@@ -161,14 +162,14 @@ class FiscalPeriodsController extends Controller
         }
 
         Log::warning('Fiscal period unlocked', [
-            'period_id'    => $period->id,
-            'period_code'  => $period->code,
-            'unlocked_by'  => TenantUserHelper::resolveTenantUserId(),
+            'period_id' => $period->id,
+            'period_code' => $period->code,
+            'unlocked_by' => TenantUserHelper::resolveTenantUserId(),
         ]);
 
         return response()->json([
             'message' => "Fiscal period '{$period->name}' has been unlocked.",
-            'data'    => $period->fresh(),
+            'data' => $period->fresh(),
         ]);
     }
 
@@ -187,7 +188,7 @@ class FiscalPeriodsController extends Controller
 
         return response()->json([
             'message' => "Fiscal period '{$period->name}' has been closed.",
-            'data'    => $period->fresh(),
+            'data' => $period->fresh(),
         ]);
     }
 
@@ -206,7 +207,7 @@ class FiscalPeriodsController extends Controller
 
         return response()->json([
             'message' => "Fiscal period '{$period->name}' has been reopened.",
-            'data'    => $period->fresh(),
+            'data' => $period->fresh(),
         ]);
     }
 

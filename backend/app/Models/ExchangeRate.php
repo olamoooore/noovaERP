@@ -68,7 +68,7 @@ class ExchangeRate extends Model
 
         $rate = static::getLatestRate($fromCurrency, $toCurrency, $asOfDate);
 
-        if (!$rate) {
+        if (! $rate) {
             throw new \Exception("No exchange rate found for {$fromCurrency} to {$toCurrency}");
         }
 

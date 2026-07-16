@@ -18,16 +18,16 @@ return new class extends Migration
             $table->string('date_format', 20)->default('MM/DD/YYYY');
             $table->string('number_format', 20)->default('1,234.56');
             $table->string('timezone', 50)->default('UTC');
-            
+
             // Default accounts
             $table->foreignId('default_receivable_account_id')->nullable()->constrained('chart_of_accounts');
             $table->foreignId('default_payable_account_id')->nullable()->constrained('chart_of_accounts');
             $table->foreignId('default_revenue_account_id')->nullable()->constrained('chart_of_accounts');
             $table->foreignId('default_expense_account_id')->nullable()->constrained('chart_of_accounts');
             $table->foreignId('default_tax_account_id')->nullable()->constrained('chart_of_accounts');
-            
+
             $table->timestamps();
-            
+
             $table->foreign('base_currency')->references('code')->on('currencies');
         });
     }

@@ -2,11 +2,10 @@
 
 namespace Tests\Feature;
 
-use Tests\TenantTestCase;
-use App\Models\User;
-use App\Models\Product;
-use App\Models\Customer;
 use App\Models\ApprovalRequest;
+use App\Models\Customer;
+use App\Models\Product;
+use App\Models\User;
 use App\SuperAdmin\Application\FeatureGateService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -15,16 +14,24 @@ use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Spatie\Permission\Models\Role;
+use Tests\TenantTestCase;
 
 class PosRbacTest extends TenantTestCase
 {
     protected User $cashier;
+
     protected User $manager;
+
     protected User $supervisor;
+
     protected Product $product;
+
     protected Customer $customer;
+
     protected PosTerminal $terminal;
+
     protected PosSession $session;
+
     protected string $tenantId;
 
     protected function setUp(): void
@@ -33,7 +40,7 @@ class PosRbacTest extends TenantTestCase
 
         $this->ensureFeaturesTableExists();
 
-        if (Schema::hasTable('pos_orders') && !Schema::hasColumn('pos_orders', 'deleted_at')) {
+        if (Schema::hasTable('pos_orders') && ! Schema::hasColumn('pos_orders', 'deleted_at')) {
             Schema::table('pos_orders', function (Blueprint $table) {
                 $table->softDeletes();
             });
@@ -41,16 +48,16 @@ class PosRbacTest extends TenantTestCase
 
         if (Schema::hasTable('pos_orders')) {
             Schema::table('pos_orders', function (Blueprint $table) {
-                if (!Schema::hasColumn('pos_orders', 'payment_state')) {
+                if (! Schema::hasColumn('pos_orders', 'payment_state')) {
                     $table->string('payment_state')->nullable();
                 }
-                if (!Schema::hasColumn('pos_orders', 'payment_method')) {
+                if (! Schema::hasColumn('pos_orders', 'payment_method')) {
                     $table->string('payment_method')->nullable();
                 }
-                if (!Schema::hasColumn('pos_orders', 'amount_tendered')) {
+                if (! Schema::hasColumn('pos_orders', 'amount_tendered')) {
                     $table->decimal('amount_tendered', 15, 2)->nullable();
                 }
-                if (!Schema::hasColumn('pos_orders', 'change_due')) {
+                if (! Schema::hasColumn('pos_orders', 'change_due')) {
                     $table->decimal('change_due', 15, 2)->nullable();
                 }
             });
@@ -311,9 +318,9 @@ class PosRbacTest extends TenantTestCase
 
         foreach ($routes as [$method, $uri]) {
             $response = $this->json($method, $uri);
-            
+
             // Should return 401 (unauthorized)
-            $this->assertEquals(401, $response->status(), 
+            $this->assertEquals(401, $response->status(),
                 "Route {$method} {$uri} should require authentication");
         }
     }
@@ -337,9 +344,9 @@ class PosRbacTest extends TenantTestCase
 
         foreach ($routes as [$method, $uri]) {
             $response = $this->actingAs($userWithoutPos)->json($method, $uri);
-            
+
             // In this test we force FeatureGateService to deny POS.
-            $this->assertContains($response->status(), [403, 422], 
+            $this->assertContains($response->status(), [403, 422],
                 "Route {$method} {$uri} should require POS entitlement");
         }
     }
@@ -397,23 +404,23 @@ class PosRbacTest extends TenantTestCase
     public function test_pos_routes_have_correct_middleware()
     {
         $routes = \Route::getRoutes();
-        
+
         $posRoutes = collect($routes)->filter(function ($route) {
             return str_contains($route->uri(), 'api/v1/pos/');
         });
 
         foreach ($posRoutes as $route) {
             $middleware = $route->middleware();
-            
+
             // Verify auth middleware
-            $this->assertContains('auth:sanctum', $middleware, 
+            $this->assertContains('auth:sanctum', $middleware,
                 "Route {$route->uri()} must have auth:sanctum middleware");
-            
+
             // Verify entitlement middleware
             $hasEntitlement = collect($middleware)->contains(function ($m) {
                 return str_contains($m, 'entitlement') || str_contains($m, 'feature:pos');
             });
-            $this->assertTrue($hasEntitlement, 
+            $this->assertTrue($hasEntitlement,
                 "Route {$route->uri()} must have entitlement middleware");
         }
     }
@@ -503,6 +510,7 @@ class PosRbacTest extends TenantTestCase
         ]);
 
         $response->assertStatus(201);
+
         return PosOrder::find($response->json('id'));
     }
 
@@ -551,7 +559,7 @@ class PosRbacTest extends TenantTestCase
 
     private function ensureFeaturesTableExists(): void
     {
-        if (!Schema::hasTable('features')) {
+        if (! Schema::hasTable('features')) {
             Schema::create('features', function (Blueprint $table) {
                 $table->id();
                 $table->string('key')->unique();
@@ -576,7 +584,7 @@ class PosRbacTest extends TenantTestCase
 
     private function ensureOpenFiscalPeriodForToday(): void
     {
-        if (!Schema::hasTable('fiscal_periods')) {
+        if (! Schema::hasTable('fiscal_periods')) {
             return;
         }
 

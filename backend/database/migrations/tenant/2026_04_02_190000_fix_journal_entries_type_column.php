@@ -11,10 +11,10 @@ return new class extends Migration
         // 'manual','invoice','payment','adjustment','opening'
         // but the PostingEngine needs: pos_order, credit_note, bill,
         // vendor_credit_note, ocr_document, web_order, fx_revaluation, etc.
-        DB::statement("ALTER TABLE journal_entries DROP CONSTRAINT IF EXISTS journal_entries_type_check");
+        DB::statement('ALTER TABLE journal_entries DROP CONSTRAINT IF EXISTS journal_entries_type_check');
 
         // Ensure column is VARCHAR(50) to accept any document type string
-        DB::statement("ALTER TABLE journal_entries ALTER COLUMN type TYPE VARCHAR(50)");
+        DB::statement('ALTER TABLE journal_entries ALTER COLUMN type TYPE VARCHAR(50)');
     }
 
     public function down(): void

@@ -10,8 +10,11 @@ class ContactVisibility extends Model
     use HasFactory;
 
     protected $table = 'contact_visibility';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [

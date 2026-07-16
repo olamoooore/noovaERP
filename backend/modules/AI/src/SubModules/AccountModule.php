@@ -4,7 +4,7 @@ namespace Modules\AI\SubModules;
 
 /**
  * Account Module
- * 
+ *
  * Handles account information and profile queries
  */
 class AccountModule extends BaseModule
@@ -16,7 +16,7 @@ class AccountModule extends BaseModule
     {
         return 'account';
     }
-    
+
     /**
      * Get display name
      */
@@ -24,7 +24,7 @@ class AccountModule extends BaseModule
     {
         return 'My Account';
     }
-    
+
     /**
      * Get module description
      */
@@ -32,7 +32,7 @@ class AccountModule extends BaseModule
     {
         return 'View account details, update profile, and manage settings';
     }
-    
+
     /**
      * Get module icon
      */
@@ -40,7 +40,7 @@ class AccountModule extends BaseModule
     {
         return '👤';
     }
-    
+
     /**
      * Get available functions for this module
      */
@@ -50,13 +50,13 @@ class AccountModule extends BaseModule
             'search_customers',
         ];
     }
-    
+
     /**
      * Get module-specific system prompt
      */
     public function getSystemPrompt(): string
     {
-        return <<<PROMPT
+        return <<<'PROMPT'
 **ACCOUNT MODULE ACTIVE**
 
 You are now in Account mode. Focus on:
@@ -71,7 +71,7 @@ Available functions:
 Keep responses focused on account and profile information.
 PROMPT;
     }
-    
+
     /**
      * Get module metadata
      */

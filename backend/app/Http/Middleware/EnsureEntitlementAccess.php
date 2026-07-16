@@ -46,9 +46,9 @@ class EnsureEntitlementAccess
         // Query features from public schema explicitly to avoid tenant search_path interference
         $originalSearchPath = null;
         try {
-            $result = DB::select("SHOW search_path");
+            $result = DB::select('SHOW search_path');
             $originalSearchPath = $result[0]->search_path ?? null;
-            DB::statement("SET search_path TO public");
+            DB::statement('SET search_path TO public');
             $feature = \App\Models\Feature::query()->where('key', $featureKey)->first();
         } catch (\Throwable $e) {
             $feature = null;
@@ -144,14 +144,12 @@ class EnsureEntitlementAccess
     /**
      * Attempt to resolve and initialize a tenant from the request Host header.
      * Used as a fallback for agent requests that bypass Sanctum authentication.
-     *
-     * @return \App\Models\Tenant|null
      */
     private function resolveTenantFromHost(Request $request): ?\App\Models\Tenant
     {
         $host = $request->getHost();
 
-        if (!$host) {
+        if (! $host) {
             return null;
         }
 
@@ -163,7 +161,7 @@ class EnsureEntitlementAccess
 
                 if ($tenant) {
                     Log::info('EnsureEntitlementAccess: Initializing tenant from Host header', [
-                        'host'      => $host,
+                        'host' => $host,
                         'tenant_id' => $tenant->id,
                     ]);
 
@@ -174,7 +172,7 @@ class EnsureEntitlementAccess
             }
         } catch (\Throwable $e) {
             Log::warning('EnsureEntitlementAccess: Domain-based tenant resolution failed', [
-                'host'  => $host,
+                'host' => $host,
                 'error' => $e->getMessage(),
             ]);
         }
@@ -184,7 +182,7 @@ class EnsureEntitlementAccess
 
     private function currentTenantId(): ?string
     {
-        if (!function_exists('tenant') || !tenant()) {
+        if (! function_exists('tenant') || ! tenant()) {
             return null;
         }
 

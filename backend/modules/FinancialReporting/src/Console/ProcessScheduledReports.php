@@ -2,10 +2,10 @@
 
 namespace Modules\FinancialReporting\Console;
 
-use Illuminate\Console\Command;
-use Modules\FinancialReporting\Models\ReportSchedule;
-use Modules\FinancialReporting\Jobs\GenerateScheduledReport;
 use Carbon\Carbon;
+use Illuminate\Console\Command;
+use Modules\FinancialReporting\Jobs\GenerateScheduledReport;
+use Modules\FinancialReporting\Models\ReportSchedule;
 
 /**
  * Console command to process scheduled reports
@@ -46,6 +46,7 @@ class ProcessScheduledReports extends Command
 
         if ($schedules->isEmpty()) {
             $this->info('No schedules due to run.');
+
             return Command::SUCCESS;
         }
 
@@ -54,11 +55,11 @@ class ProcessScheduledReports extends Command
         foreach ($schedules as $schedule) {
             try {
                 $this->info("Dispatching job for schedule: {$schedule->name} (ID: {$schedule->id})");
-                
+
                 // Dispatch the job
                 GenerateScheduledReport::dispatch($schedule);
-                
-                $this->info("✓ Job dispatched successfully");
+
+                $this->info('✓ Job dispatched successfully');
             } catch (\Exception $e) {
                 $this->error("✗ Failed to dispatch job: {$e->getMessage()}");
             }

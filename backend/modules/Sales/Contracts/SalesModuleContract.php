@@ -9,12 +9,35 @@ use App\Modules\Contracts\BaseModuleContract;
  */
 class SalesModuleContract extends BaseModuleContract
 {
-    public function getKey(): string { return 'sales'; }
-    public function getName(): string { return 'Sales'; }
-    public function getType(): string { return 'core'; }
-    public function getDescription(): string { return 'Sales orders, quotes, and revenue management.'; }
-    public function getVersion(): string { return '1.0.0'; }
-    public function getDependencies(): array { return []; }
+    public function getKey(): string
+    {
+        return 'sales';
+    }
+
+    public function getName(): string
+    {
+        return 'Sales';
+    }
+
+    public function getType(): string
+    {
+        return 'core';
+    }
+
+    public function getDescription(): string
+    {
+        return 'Sales orders, quotes, and revenue management.';
+    }
+
+    public function getVersion(): string
+    {
+        return '1.0.0';
+    }
+
+    public function getDependencies(): array
+    {
+        return [];
+    }
 
     public function getPermissions(): array
     {
@@ -33,8 +56,8 @@ class SalesModuleContract extends BaseModuleContract
     {
         return [
             'required_setup_steps' => ['channel_setup', 'tax_setup'],
-            'default_settings'     => ['currency' => 'USD'],
-            'recommended_roles'    => ['sales_manager', 'sales_rep'],
+            'default_settings' => ['currency' => 'USD'],
+            'recommended_roles' => ['sales_manager', 'sales_rep'],
         ];
     }
 
@@ -50,9 +73,9 @@ class SalesModuleContract extends BaseModuleContract
     {
         return [
             'has_ai_assistant' => true,
-            'ai_suggestions'   => true,
-            'ai_automation'    => false,
-            'ai_data_access'   => ['sales.orders', 'sales.quotes'],
+            'ai_suggestions' => true,
+            'ai_automation' => false,
+            'ai_data_access' => ['sales.orders', 'sales.quotes'],
         ];
     }
 }

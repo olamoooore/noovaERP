@@ -23,10 +23,10 @@ class Technician extends Model
     ];
 
     protected $casts = [
-        'skills'         => 'array',
+        'skills' => 'array',
         'certifications' => 'array',
-        'hourly_rate'    => 'decimal:2',
-        'is_active'      => 'boolean',
+        'hourly_rate' => 'decimal:2',
+        'is_active' => 'boolean',
     ];
 
     public function user(): BelongsTo

@@ -24,7 +24,7 @@ return new class extends Migration
             $table->timestamp('tier_upgraded_at')->nullable();
             $table->timestamp('joined_at')->nullable();
             $table->timestamps();
-            
+
             $table->unique('customer_id');
             $table->index('loyalty_program_id');
             $table->index('loyalty_tier_id');

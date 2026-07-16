@@ -7,9 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 class ApprovalEscalation extends Model
 {
     protected $table = 'platform_approval_escalations';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
+
     protected $guarded = [];
 
     protected $casts = [

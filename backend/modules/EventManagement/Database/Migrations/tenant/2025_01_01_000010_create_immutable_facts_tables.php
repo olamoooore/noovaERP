@@ -23,14 +23,14 @@ return new class extends Migration
             $table->json('tier_snapshot')->nullable()->comment('Customer tier data at booking time');
             $table->json('metadata')->nullable()->comment('Additional booking context');
             $table->timestamp('created_at')->useCurrent();
-            
+
             // Foreign key constraints
             $table->foreign('booking_id')->references('id')->on('bookings')->onDelete('cascade');
-            
+
             // Indexes for performance and tenant isolation
             $table->index('booking_id', 'idx_booking_facts_booking_id');
             $table->index('created_at', 'idx_booking_facts_created_at');
-            
+
             // Ensure one fact record per booking
             $table->unique('booking_id', 'unique_booking_facts');
         });
@@ -40,12 +40,12 @@ return new class extends Migration
             $table->id();
             $table->enum('fact_type', [
                 'booking_created',
-                'payment_confirmed', 
+                'payment_confirmed',
                 'ticket_issued',
                 'check_in',
                 'cancellation',
                 'refund',
-                'transfer'
+                'transfer',
             ])->comment('Type of analytics fact');
             $table->unsignedBigInteger('booking_id');
             $table->unsignedBigInteger('event_id');
@@ -53,11 +53,11 @@ return new class extends Migration
             $table->json('calculated_metrics')->nullable()->comment('Pre-calculated metrics');
             $table->timestamp('fact_timestamp')->useCurrent();
             $table->string('idempotency_key', 255)->unique()->comment('Ensures exactly-once processing');
-            
+
             // Foreign key constraints
             $table->foreign('booking_id')->references('id')->on('bookings')->onDelete('cascade');
             $table->foreign('event_id')->references('id')->on('events')->onDelete('cascade');
-            
+
             // Indexes for analytics queries and tenant isolation
             $table->index(['fact_type', 'fact_timestamp'], 'idx_analytics_facts_type_time');
             $table->index(['event_id', 'fact_timestamp'], 'idx_analytics_facts_event_time');
@@ -78,10 +78,10 @@ return new class extends Migration
             $table->enum('status', ['passed', 'failed', 'warning'])->default('passed');
             $table->text('notes')->nullable();
             $table->timestamp('reconciled_at')->useCurrent();
-            
+
             // Foreign key constraints
             $table->foreign('event_id')->references('id')->on('events')->onDelete('cascade');
-            
+
             // Indexes for reconciliation queries
             $table->index(['reconciliation_type', 'reconciliation_date'], 'idx_reconciliation_type_date');
             $table->index(['event_id', 'reconciliation_date'], 'idx_reconciliation_event_date');

@@ -7,7 +7,7 @@ use Modules\EventManagement\Services\MigrationValidationService;
 
 /**
  * Validate Migrations Command
- * 
+ *
  * CLI command for validating migration timestamps, dependencies,
  * and production safety. Implements long-term operational improvements.
  */
@@ -41,14 +41,14 @@ class ValidateMigrationsCommand extends Command
         $allPassed = true;
 
         // Validate timestamps
-        if (!$dependencies && !$production) {
+        if (! $dependencies && ! $production) {
             $this->info("\n📅 Validating Migration Timestamps...");
             $timestampResults = $this->validateTimestamps($fix);
             $allPassed = $allPassed && $timestampResults;
         }
 
         // Validate dependencies
-        if ($dependencies || (!$timestamps && !$production)) {
+        if ($dependencies || (! $timestamps && ! $production)) {
             $this->info("\n🔗 Validating Migration Dependencies...");
             $dependencyResults = $this->validateDependencies();
             $allPassed = $allPassed && $dependencyResults;
@@ -95,19 +95,19 @@ class ValidateMigrationsCommand extends Command
                 if ($fixResults['fixes_successful'] > 0) {
                     $this->info("✅ Successfully fixed {$fixResults['fixes_successful']} conflicts");
                 } else {
-                    $this->error("❌ Failed to fix conflicts automatically");
+                    $this->error('❌ Failed to fix conflicts automatically');
                 }
             }
         }
 
-        if (!empty($results['warnings'])) {
+        if (! empty($results['warnings'])) {
             $this->warn("\n⚠️  Found {count($results(['warnings'])} warnings:");
             foreach ($results['warnings'] as $warning) {
                 $this->line("  • {$warning['message']}");
             }
         }
 
-        if (!empty($results['recommendations'])) {
+        if (! empty($results['recommendations'])) {
             $this->info("\n💡 Recommendations:");
             foreach ($results['recommendations'] as $rec) {
                 $priority = $rec['priority'] === 'critical' ? '🚨' : '📋';
@@ -129,14 +129,14 @@ class ValidateMigrationsCommand extends Command
         if (empty($results['dependency_issues']) && empty($results['circular_dependencies'])) {
             $this->info('✅ No dependency issues found');
         } else {
-            if (!empty($results['dependency_issues'])) {
+            if (! empty($results['dependency_issues'])) {
                 $this->error("❌ Found {count($results(['dependency_issues'])} dependency issues:");
                 foreach ($results['dependency_issues'] as $issue) {
                     $this->warn("  • {$issue['message']}");
                 }
             }
 
-            if (!empty($results['circular_dependencies'])) {
+            if (! empty($results['circular_dependencies'])) {
                 $this->error("❌ Found {count($results(['circular_dependencies'])} circular dependencies:");
                 foreach ($results['circular_dependencies'] as $circular) {
                     $this->warn("  • {$circular['message']}");
@@ -154,14 +154,14 @@ class ValidateMigrationsCommand extends Command
     {
         $results = $this->validationService->monitorProductionMigrations();
 
-        $this->line("Overall Status: " . ($results['overall_status'] === 'HEALTHY' ? '✅ HEALTHY' : '⚠️  ISSUES DETECTED'));
+        $this->line('Overall Status: '.($results['overall_status'] === 'HEALTHY' ? '✅ HEALTHY' : '⚠️  ISSUES DETECTED'));
 
         foreach ($results['checks'] as $checkName => $check) {
             $status = $check['status'] === 'OK' ? '✅' : '❌';
-            $this->line("  {$status} " . ucwords(str_replace('_', ' ', $checkName)));
+            $this->line("  {$status} ".ucwords(str_replace('_', ' ', $checkName)));
         }
 
-        if (!empty($results['alerts'])) {
+        if (! empty($results['alerts'])) {
             $this->warn("\n🚨 Production Alerts:");
             foreach ($results['alerts'] as $alert) {
                 $this->line("  • {$alert['message']}");
@@ -176,7 +176,7 @@ class ValidateMigrationsCommand extends Command
      */
     private function displaySummary(bool $allPassed, float $totalTime): void
     {
-        $this->info("\n" . str_repeat('=', 50));
+        $this->info("\n".str_repeat('=', 50));
         $this->info('MIGRATION VALIDATION SUMMARY');
         $this->info(str_repeat('=', 50));
 
@@ -186,14 +186,14 @@ class ValidateMigrationsCommand extends Command
             $this->error('❌ Some validations failed - review issues above');
         }
 
-        $this->line("Validation completed in " . number_format($totalTime, 2) . " seconds");
+        $this->line('Validation completed in '.number_format($totalTime, 2).' seconds');
 
-        if (!$allPassed) {
+        if (! $allPassed) {
             $this->warn("\n⚠️  Next Steps:");
-            $this->line("  1. Fix critical issues immediately");
-            $this->line("  2. Run with --fix to auto-resolve conflicts");
-            $this->line("  3. Review warnings and recommendations");
-            $this->line("  4. Re-run validation after fixes");
+            $this->line('  1. Fix critical issues immediately');
+            $this->line('  2. Run with --fix to auto-resolve conflicts');
+            $this->line('  3. Review warnings and recommendations');
+            $this->line('  4. Re-run validation after fixes');
         }
     }
 }

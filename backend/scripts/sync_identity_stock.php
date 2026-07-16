@@ -10,9 +10,9 @@ use Illuminate\Support\Facades\DB;
 use Modules\Inventory\Models\StockLevel;
 use Modules\Inventory\Services\InventoryService;
 
-require __DIR__ . '/../vendor/autoload.php';
+require __DIR__.'/../vendor/autoload.php';
 
-$app = require __DIR__ . '/../bootstrap/app.php';
+$app = require __DIR__.'/../bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
 
 $arguments = $argv;
@@ -32,11 +32,13 @@ $dryRun = false;
 foreach ($arguments as $argument) {
     if ($argument === '--deactivate-others') {
         $deactivateOthers = true;
+
         continue;
     }
 
     if ($argument === '--dry-run') {
         $dryRun = true;
+
         continue;
     }
 
@@ -45,13 +47,13 @@ foreach ($arguments as $argument) {
     }
 }
 
-if (!is_file($sourcePath)) {
+if (! is_file($sourcePath)) {
     fwrite(STDERR, "Source TSV not found: {$sourcePath}\n");
     exit(1);
 }
 
 $tenant = Tenant::find($tenantId);
-if (!$tenant) {
+if (! $tenant) {
     fwrite(STDERR, "Tenant not found: {$tenantId}\n");
     exit(1);
 }
@@ -73,17 +75,17 @@ $targetWarehouse = $warehouseCode
     ? Warehouse::where('code', $warehouseCode)->first()
     : null;
 
-if (!$targetWarehouse) {
+if (! $targetWarehouse) {
     $targetWarehouse = Warehouse::where('is_active', true)->orderBy('id')->first();
 }
 
-if (!$targetWarehouse) {
+if (! $targetWarehouse) {
     fwrite(STDERR, "No warehouse available for tenant {$tenantId}\n");
     exit(1);
 }
 
 $timestamp = now()->format('Ymd_His');
-$backupPath = sys_get_temp_dir() . "/stock_sync_backup_{$tenantId}_{$timestamp}.json";
+$backupPath = sys_get_temp_dir()."/stock_sync_backup_{$tenantId}_{$timestamp}.json";
 
 $backup = [
     'tenant_id' => $tenantId,
@@ -180,7 +182,7 @@ $applySync = function () use ($products, $desiredQuantities, &$summary, &$matche
         if ((int) $product->stock_quantity !== $desiredQuantity) {
             try {
                 $inventoryService = app(InventoryService::class);
-                
+
                 $inventoryService->adjustStock(
                     productId: $product->id,
                     warehouseId: $targetWarehouse->id,
@@ -227,13 +229,13 @@ if ($dryRun) {
 
 $summary['local_only_keys'] = count(array_diff_key($desiredQuantities, $matchedKeys));
 
-echo json_encode($summary, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . PHP_EOL;
+echo json_encode($summary, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE).PHP_EOL;
 
 function buildIdentityKey(?string $barcode, ?string $name, ?string $secondaryName): string
 {
     return mb_strtolower(trim((string) $barcode))
-        . '|'
-        . mb_strtolower(trim((string) $name))
-        . '|'
-        . mb_strtolower(trim((string) ($secondaryName ?? '')));
+        .'|'
+        .mb_strtolower(trim((string) $name))
+        .'|'
+        .mb_strtolower(trim((string) ($secondaryName ?? '')));
 }

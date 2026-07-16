@@ -20,7 +20,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (!Schema::hasColumn('products', 'is_merchandise')) {
+        if (! Schema::hasColumn('products', 'is_merchandise')) {
             return;
         }
 

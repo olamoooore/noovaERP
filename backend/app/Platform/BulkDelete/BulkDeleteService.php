@@ -17,10 +17,10 @@ class BulkDeleteService
     /**
      * Bulk delete records by IDs.
      *
-     * @param string $table The table to delete from
-     * @param array $ids Array of record IDs to delete
-     * @param string|null $tenantId Tenant ID for tenant-scoped tables
-     * @param array $options Additional options
+     * @param  string  $table  The table to delete from
+     * @param  array  $ids  Array of record IDs to delete
+     * @param  string|null  $tenantId  Tenant ID for tenant-scoped tables
+     * @param  array  $options  Additional options
      * @return array{deleted: int, errors: array}
      */
     public function delete(string $table, array $ids, ?string $tenantId = null, array $options = []): array
@@ -52,11 +52,11 @@ class BulkDeleteService
             $fkCheck = $options['check_fk'] ?? true;
             if ($fkCheck) {
                 $blocked = $this->checkForeignKeyDependencies($table, $ids, $tenantId);
-                if (!empty($blocked)) {
+                if (! empty($blocked)) {
                     return [
                         'deleted' => 0,
                         'errors' => array_map(
-                            fn($b) => ['message' => "Cannot delete: referenced by {$b['table']}.{$b['column']} ({$b['count']} reference(s))"],
+                            fn ($b) => ['message' => "Cannot delete: referenced by {$b['table']}.{$b['column']} ({$b['count']} reference(s))"],
                             $blocked
                         ),
                     ];
@@ -87,7 +87,8 @@ class BulkDeleteService
                 'ids' => $ids,
                 'error' => $e->getMessage(),
             ]);
-            return ['deleted' => 0, 'errors' => [['message' => 'Delete failed: ' . $e->getMessage()]]];
+
+            return ['deleted' => 0, 'errors' => [['message' => 'Delete failed: '.$e->getMessage()]]];
         }
     }
 
@@ -131,7 +132,7 @@ class BulkDeleteService
         foreach ($dependencies as $fk) {
             $count = DB::table($fk['table'])
                 ->whereIn($fk['column'], $ids)
-                ->when($tenantId && $this->hasColumn($fk['table'], 'tenant_id'), fn($q) => $q->where('tenant_id', $tenantId))
+                ->when($tenantId && $this->hasColumn($fk['table'], 'tenant_id'), fn ($q) => $q->where('tenant_id', $tenantId))
                 ->count();
 
             if ($count > 0) {

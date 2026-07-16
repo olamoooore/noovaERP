@@ -2,14 +2,14 @@
 
 namespace Modules\OCRBookkeeping\Services;
 
+use App\Models\Vendor;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use App\Models\Vendor;
 use Modules\OCRBookkeeping\Models\OcrVendorMapping;
 
 /**
  * Vendor Mapping Service
- * 
+ *
  * Provides intelligent vendor matching and learning capabilities
  * Uses fuzzy search with Levenshtein distance for name matching
  */
@@ -27,8 +27,8 @@ class VendorMappingService
 
     /**
      * Find matching vendor using fuzzy search
-     * 
-     * @param string $extractedName The vendor name extracted from OCR
+     *
+     * @param  string  $extractedName  The vendor name extracted from OCR
      * @return array Array of vendor matches with confidence scores
      */
     public function findVendorMatch(string $extractedName): array
@@ -47,7 +47,7 @@ class VendorMappingService
 
         if ($existingMapping && $existingMapping->vendor) {
             Log::info("Found exact mapping for: {$extractedName} -> {$existingMapping->vendor->name}");
-            
+
             return [[
                 'vendor_id' => $existingMapping->vendor_id,
                 'name' => $existingMapping->vendor->name,
@@ -68,9 +68,9 @@ class VendorMappingService
 
     /**
      * Perform fuzzy search on vendors using Levenshtein distance
-     * 
-     * @param string $extractedName Original extracted name
-     * @param string $normalizedName Normalized version
+     *
+     * @param  string  $extractedName  Original extracted name
+     * @param  string  $normalizedName  Normalized version
      * @return array Array of matches with confidence scores
      */
     private function fuzzySearchVendors(string $extractedName, string $normalizedName): array
@@ -84,7 +84,7 @@ class VendorMappingService
 
         foreach ($vendors as $vendor) {
             $vendorNormalized = OcrVendorMapping::normalizeName($vendor->name);
-            
+
             // Calculate similarity using multiple methods
             $confidence = $this->calculateSimilarity($normalizedName, $vendorNormalized, $extractedName, $vendor->name);
 
@@ -110,11 +110,11 @@ class VendorMappingService
 
     /**
      * Calculate similarity between two names using multiple algorithms
-     * 
-     * @param string $normalizedExtracted Normalized extracted name
-     * @param string $normalizedVendor Normalized vendor name
-     * @param string $originalExtracted Original extracted name
-     * @param string $originalVendor Original vendor name
+     *
+     * @param  string  $normalizedExtracted  Normalized extracted name
+     * @param  string  $normalizedVendor  Normalized vendor name
+     * @param  string  $originalExtracted  Original extracted name
+     * @param  string  $originalVendor  Original vendor name
      * @return float Confidence score between 0 and 1
      */
     private function calculateSimilarity(
@@ -129,7 +129,7 @@ class VendorMappingService
         }
 
         // Method 2: Contains check
-        if (str_contains($normalizedVendor, $normalizedExtracted) || 
+        if (str_contains($normalizedVendor, $normalizedExtracted) ||
             str_contains($normalizedExtracted, $normalizedVendor)) {
             return 0.9;
         }
@@ -156,28 +156,25 @@ class VendorMappingService
 
     /**
      * Calculate similarity using Levenshtein distance
-     * 
-     * @param string $str1
-     * @param string $str2
+     *
      * @return float Similarity score between 0 and 1
      */
     private function levenshteinSimilarity(string $str1, string $str2): float
     {
         $maxLen = max(strlen($str1), strlen($str2));
-        
+
         if ($maxLen === 0) {
             return 1.0;
         }
 
         $distance = levenshtein($str1, $str2);
+
         return 1 - ($distance / $maxLen);
     }
 
     /**
      * Calculate similarity based on word overlap
-     * 
-     * @param string $str1
-     * @param string $str2
+     *
      * @return float Similarity score between 0 and 1
      */
     private function wordOverlapSimilarity(string $str1, string $str2): float
@@ -197,17 +194,16 @@ class VendorMappingService
 
     /**
      * Store confirmed vendor mapping for learning
-     * 
-     * @param string $extractedName The extracted vendor name
-     * @param int $vendorId The confirmed vendor ID
-     * @param float|null $confidenceScore Optional confidence score
-     * @return OcrVendorMapping
+     *
+     * @param  string  $extractedName  The extracted vendor name
+     * @param  int  $vendorId  The confirmed vendor ID
+     * @param  float|null  $confidenceScore  Optional confidence score
      */
     public function storeMapping(string $extractedName, int $vendorId, ?float $confidenceScore = null): OcrVendorMapping
     {
         $normalizedName = OcrVendorMapping::normalizeName($extractedName);
 
-        Log::info("Storing vendor mapping", [
+        Log::info('Storing vendor mapping', [
             'extracted_name' => $extractedName,
             'normalized_name' => $normalizedName,
             'vendor_id' => $vendorId,
@@ -219,12 +215,12 @@ class VendorMappingService
         if ($mapping) {
             // Update existing mapping
             $mapping->recordUsage();
-            
+
             if ($confidenceScore !== null) {
                 $mapping->updateConfidence($confidenceScore);
             }
 
-            Log::info("Updated existing vendor mapping", [
+            Log::info('Updated existing vendor mapping', [
                 'mapping_id' => $mapping->id,
                 'usage_count' => $mapping->usage_count,
             ]);
@@ -241,7 +237,7 @@ class VendorMappingService
             'usage_count' => 1,
         ]);
 
-        Log::info("Created new vendor mapping", [
+        Log::info('Created new vendor mapping', [
             'mapping_id' => $mapping->id,
         ]);
 
@@ -250,8 +246,7 @@ class VendorMappingService
 
     /**
      * Get the best match (highest confidence) for a vendor name
-     * 
-     * @param string $extractedName
+     *
      * @return array|null Best match or null if no good match found
      */
     public function getBestMatch(string $extractedName): ?array
@@ -274,20 +269,16 @@ class VendorMappingService
 
     /**
      * Check if a vendor name should be auto-matched
-     * 
-     * @param string $extractedName
-     * @return bool
      */
     public function shouldAutoMatch(string $extractedName): bool
     {
         $bestMatch = $this->getBestMatch($extractedName);
+
         return $bestMatch !== null;
     }
 
     /**
      * Get vendor mapping statistics
-     * 
-     * @return array
      */
     public function getStatistics(): array
     {
@@ -301,8 +292,8 @@ class VendorMappingService
 
     /**
      * Bulk import vendor mappings from array
-     * 
-     * @param array $mappings Array of ['extracted_name' => 'vendor_id'] pairs
+     *
+     * @param  array  $mappings  Array of ['extracted_name' => 'vendor_id'] pairs
      * @return int Number of mappings created
      */
     public function bulkImport(array $mappings): int
@@ -330,8 +321,8 @@ class VendorMappingService
 
     /**
      * Clear old unused mappings
-     * 
-     * @param int $daysOld Number of days since last use
+     *
+     * @param  int  $daysOld  Number of days since last use
      * @return int Number of mappings deleted
      */
     public function clearOldMappings(int $daysOld = 365): int

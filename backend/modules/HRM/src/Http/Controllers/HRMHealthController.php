@@ -10,10 +10,10 @@ class HRMHealthController extends Controller
     public function check(): JsonResponse
     {
         return response()->json([
-            'status'  => 'ok',
-            'module'  => 'HRM',
+            'status' => 'ok',
+            'module' => 'HRM',
             'version' => '1.0.0',
-            'tenant'  => tenant('id') ?? 'unknown',
+            'tenant' => tenant('id') ?? 'unknown',
         ]);
     }
 }

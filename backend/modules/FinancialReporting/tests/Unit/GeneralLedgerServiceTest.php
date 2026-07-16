@@ -2,19 +2,19 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Modules\FinancialReporting\Services\Reports\GeneralLedgerService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
 use App\Models\User;
 use Carbon\Carbon;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Reports\GeneralLedgerService;
+use Tests\TenantTestCase;
 
 class GeneralLedgerServiceTest extends TenantTestCase
 {
-
     protected GeneralLedgerService $service;
+
     protected User $testUser;
 
     protected function setUp(): void
@@ -36,7 +36,7 @@ class GeneralLedgerServiceTest extends TenantTestCase
     private function createJournalEntry(array $attrs = []): JournalEntry
     {
         return JournalEntry::create(array_merge([
-            'entry_number' => 'JE-TEST-' . uniqid(),
+            'entry_number' => 'JE-TEST-'.uniqid(),
             'entry_date' => Carbon::parse('2024-01-15'),
             'description' => 'Test Entry',
             'status' => 'posted',
@@ -48,7 +48,7 @@ class GeneralLedgerServiceTest extends TenantTestCase
     public function it_generates_general_ledger_report()
     {
         $account = ChartOfAccount::where('code', '1000')->first();
-        
+
         $filter = new ReportFilter(
             startDate: Carbon::parse('2024-01-01'),
             endDate: Carbon::parse('2024-01-31'),
@@ -67,7 +67,7 @@ class GeneralLedgerServiceTest extends TenantTestCase
     public function it_requires_account_id()
     {
         $this->expectException(\InvalidArgumentException::class);
-        
+
         $filter = new ReportFilter(
             startDate: Carbon::parse('2024-01-01'),
             endDate: Carbon::parse('2024-01-31')
@@ -80,7 +80,7 @@ class GeneralLedgerServiceTest extends TenantTestCase
     public function it_calculates_running_balance()
     {
         $account = ChartOfAccount::where('code', '1000')->first();
-        
+
         $entry1 = $this->createJournalEntry([
             'entry_date' => Carbon::parse('2024-01-10'),
             'description' => 'First Entry',
@@ -116,7 +116,7 @@ class GeneralLedgerServiceTest extends TenantTestCase
         // Data is a flat array of transaction rows
         $this->assertIsArray($report->data);
         $this->assertCount(2, $report->data);
-        
+
         // Check running balance
         $this->assertEquals(1000, $report->data[0]['balance']);
         $this->assertEquals(1500, $report->data[1]['balance']);
@@ -126,7 +126,7 @@ class GeneralLedgerServiceTest extends TenantTestCase
     public function it_filters_by_date_range()
     {
         $account = ChartOfAccount::where('code', '1000')->first();
-        
+
         $entry1 = $this->createJournalEntry([
             'entry_date' => Carbon::parse('2024-01-15'),
             'description' => 'January Entry',
@@ -167,7 +167,7 @@ class GeneralLedgerServiceTest extends TenantTestCase
     public function it_includes_opening_balance()
     {
         $account = ChartOfAccount::where('code', '1000')->first();
-        
+
         // Entry before the filter period
         $entry1 = $this->createJournalEntry([
             'entry_date' => Carbon::parse('2023-12-15'),

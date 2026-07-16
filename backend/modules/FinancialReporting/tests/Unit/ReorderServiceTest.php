@@ -2,26 +2,25 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Modules\FinancialReporting\Services\Inventory\ReorderService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\DTOs\ReportData;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Inventory\ReorderService;
+use Tests\TenantTestCase;
 
 class ReorderServiceTest extends TenantTestCase
 {
-
     protected ReorderService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new ReorderService();
+        $this->service = new ReorderService;
     }
 
     /** @test */
     public function it_returns_reorder_report_structure()
     {
-        $filter = new ReportFilter();
+        $filter = new ReportFilter;
 
         $result = $this->service->generate($filter);
 
@@ -34,7 +33,7 @@ class ReorderServiceTest extends TenantTestCase
     /** @test */
     public function it_includes_reorder_summary()
     {
-        $filter = new ReportFilter();
+        $filter = new ReportFilter;
 
         $result = $this->service->generate($filter);
 
@@ -46,7 +45,7 @@ class ReorderServiceTest extends TenantTestCase
     /** @test */
     public function it_handles_missing_products_table()
     {
-        $filter = new ReportFilter();
+        $filter = new ReportFilter;
 
         $result = $this->service->generate($filter);
 

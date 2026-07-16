@@ -34,8 +34,9 @@ class ClearExpiredCache extends Command
 
         if ($clearAll) {
             $this->warn('Clearing ALL report cache...');
-            if (!$this->confirm('Are you sure you want to clear all cache?')) {
+            if (! $this->confirm('Are you sure you want to clear all cache?')) {
                 $this->info('Operation cancelled.');
+
                 return Command::SUCCESS;
             }
         } else {

@@ -11,8 +11,7 @@ class APTransactionsController extends Controller
 {
     /**
      * List AP transactions with filtering and running balance
-     * 
-     * @param Request $request
+     *
      * @return \Illuminate\Http\JsonResponse
      */
     public function index(Request $request)
@@ -45,7 +44,7 @@ class APTransactionsController extends Controller
 
             // Order by date (oldest first for running balance calculation)
             $query->orderBy('transaction_date', 'asc')
-                  ->orderBy('created_at', 'asc');
+                ->orderBy('created_at', 'asc');
 
             // Get transactions
             $transactions = $query->get();
@@ -54,7 +53,7 @@ class APTransactionsController extends Controller
             $runningBalance = 0;
             $transactionsWithBalance = $transactions->map(function ($transaction) use (&$runningBalance) {
                 $runningBalance += $transaction->debit - $transaction->credit;
-                
+
                 return [
                     'transaction_type' => $transaction->transaction_type,
                     'transaction_id' => $transaction->transaction_id,
@@ -79,7 +78,7 @@ class APTransactionsController extends Controller
             $perPage = $request->get('per_page', 20);
             $page = $request->get('page', 1);
             $total = $transactionsWithBalance->count();
-            
+
             $paginatedTransactions = $transactionsWithBalance->slice(($page - 1) * $perPage, $perPage)->values();
 
             return response()->json([
@@ -93,18 +92,19 @@ class APTransactionsController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to fetch AP transactions: ' . $e->getMessage());
+            Log::error('Failed to fetch AP transactions: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to fetch AP transactions',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Get AP balance for a specific vendor
-     * 
-     * @param int $vendorId
+     *
+     * @param  int  $vendorId
      * @return \Illuminate\Http\JsonResponse
      */
     public function getBalance($vendorId)
@@ -135,9 +135,9 @@ class APTransactionsController extends Controller
                 ->where('id', $vendorId)
                 ->first();
 
-            if (!$vendor) {
+            if (! $vendor) {
                 return response()->json([
-                    'message' => 'Vendor not found'
+                    'message' => 'Vendor not found',
                 ], 404);
             }
 
@@ -151,18 +151,18 @@ class APTransactionsController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to calculate AP balance: ' . $e->getMessage());
+            Log::error('Failed to calculate AP balance: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to calculate AP balance',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Export AP transactions to CSV or Excel
-     * 
-     * @param Request $request
+     *
      * @return \Illuminate\Http\Response
      */
     public function export(Request $request)
@@ -190,7 +190,7 @@ class APTransactionsController extends Controller
             }
 
             $query->orderBy('transaction_date', 'asc')
-                  ->orderBy('created_at', 'asc');
+                ->orderBy('created_at', 'asc');
 
             $transactions = $query->get();
 
@@ -198,7 +198,7 @@ class APTransactionsController extends Controller
             $runningBalance = 0;
             $transactionsWithBalance = $transactions->map(function ($transaction) use (&$runningBalance) {
                 $runningBalance += $transaction->debit - $transaction->credit;
-                
+
                 return [
                     'Date' => $transaction->transaction_date,
                     'Type' => ucfirst($transaction->transaction_type),
@@ -221,45 +221,46 @@ class APTransactionsController extends Controller
             }
 
         } catch (\Exception $e) {
-            Log::error('Failed to export AP transactions: ' . $e->getMessage());
+            Log::error('Failed to export AP transactions: '.$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to export AP transactions',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * Export transactions to CSV format
-     * 
-     * @param \Illuminate\Support\Collection $transactions
+     *
+     * @param  \Illuminate\Support\Collection  $transactions
      * @return \Illuminate\Http\Response
      */
     private function exportToCsv($transactions)
     {
-        $filename = 'ap_transactions_' . date('Y-m-d_His') . '.csv';
-        
+        $filename = 'ap_transactions_'.date('Y-m-d_His').'.csv';
+
         $headers = [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ];
 
-        $callback = function() use ($transactions) {
+        $callback = function () use ($transactions) {
             $file = fopen('php://output', 'w');
-            
+
             // Add BOM for Excel UTF-8 support
             fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
-            
+
             // Add headers
             if ($transactions->isNotEmpty()) {
                 fputcsv($file, array_keys($transactions->first()));
             }
-            
+
             // Add data
             foreach ($transactions as $transaction) {
                 fputcsv($file, $transaction);
             }
-            
+
             fclose($file);
         };
 

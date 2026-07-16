@@ -1,20 +1,20 @@
 <?php
 
-require __DIR__ . '/../vendor/autoload.php';
-$app = require_once __DIR__ . '/../bootstrap/app.php';
+require __DIR__.'/../vendor/autoload.php';
+$app = require_once __DIR__.'/../bootstrap/app.php';
 $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 use App\Models\Tenant;
 use App\Models\User;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 // Check if tenant already exists
 $existing = Tenant::where('email', 'admin@asct.com')->first();
 if ($existing) {
     echo "ASCT tenant already exists: {$existing->id}\n";
-    
+
     // Ensure user_company_access exists
     DB::statement('SET search_path TO public');
     $publicUser = User::where('email', 'admin@asct.com')->first();
@@ -23,7 +23,7 @@ if ($existing) {
             ->where('user_id', $publicUser->id)
             ->where('tenant_id', $existing->id)
             ->exists();
-        if (!$hasAccess) {
+        if (! $hasAccess) {
             DB::table('user_company_access')->insert([
                 'user_id' => $publicUser->id,
                 'tenant_id' => $existing->id,
@@ -60,7 +60,7 @@ echo "Domain: asct.localhost\n";
 // Create user in public schema (for authentication/login)
 DB::statement('SET search_path TO public');
 $publicUser = User::where('email', 'admin@asct.com')->first();
-if (!$publicUser) {
+if (! $publicUser) {
     $publicUser = User::create([
         'name' => 'ASCT Admin',
         'email' => 'admin@asct.com',

@@ -4,8 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * Journal - Configuration for journal types
@@ -62,8 +62,8 @@ class Journal extends Model
     {
         $number = $this->sequence_number;
         $this->increment('sequence_number');
-        
-        return $this->sequence_prefix . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        return $this->sequence_prefix.'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 
     /**

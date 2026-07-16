@@ -7,12 +7,11 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\BankAccount;
 use App\Models\BankReconciliation;
-use App\Models\ReconciliationItem;
-use App\Models\JournalEntry;
-use App\Models\JournalEntryLine;
 use App\Models\ChartOfAccount;
-use Illuminate\Support\Facades\DB;
+use App\Models\JournalEntryLine;
+use App\Models\ReconciliationItem;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
@@ -24,11 +23,11 @@ class BankReconciliationService
     public function __construct(
         private PostingEngineInterface $postingEngine,
     ) {}
+
     /**
      * Get unreconciled transactions for a bank account
-     * 
-     * @param int $bankAccountId
-     * @param array $filters Optional filters (status, search)
+     *
+     * @param  array  $filters  Optional filters (status, search)
      * @return array Transactions with opening balance
      */
     public function getUnreconciledTransactions(int $bankAccountId, array $filters = []): array
@@ -36,27 +35,27 @@ class BankReconciliationService
         $bankAccount = BankAccount::with('glAccount')->findOrFail($bankAccountId);
         $glAccount = $bankAccount->glAccount;
 
-        if (!$glAccount) {
+        if (! $glAccount) {
             throw new \RuntimeException('Bank account is not linked to a GL account.');
         }
-        
+
         // Get the last reconciliation for this account
         $lastReconciliation = BankReconciliation::where('bank_account_id', $bankAccountId)
             ->where('status', 'completed')
             ->orderBy('statement_date', 'desc')
             ->first();
-        
+
         $openingBalance = $lastReconciliation
             ? (float) $lastReconciliation->statement_balance
             : (float) $glAccount->opening_balance;
-        
+
         // Query journal entry lines for this bank account
         $query = JournalEntryLine::with(['journalEntry', 'account'])
             ->where('account_id', $bankAccount->gl_account_id)
             ->whereHas('journalEntry', function ($q) {
                 $q->where('status', 'posted');
             });
-        
+
         // Filter by reconciliation status
         if (isset($filters['status'])) {
             if ($filters['status'] === 'reconciled') {
@@ -68,20 +67,20 @@ class BankReconciliationService
             // Default: show only unreconciled
             $query->whereNull('reconciliation_id');
         }
-        
+
         // Apply search filter
-        if (!empty($filters['search'])) {
+        if (! empty($filters['search'])) {
             $search = $filters['search'];
             $query->where(function ($q) use ($search) {
                 $q->where('description', 'ILIKE', "%{$search}%")
-                  ->orWhere('reference', 'ILIKE', "%{$search}%")
-                  ->orWhereHas('journalEntry', function ($jeQuery) use ($search) {
-                      $jeQuery->where('description', 'ILIKE', "%{$search}%")
-                              ->orWhere('reference', 'ILIKE', "%{$search}%");
-                  });
+                    ->orWhere('reference', 'ILIKE', "%{$search}%")
+                    ->orWhereHas('journalEntry', function ($jeQuery) use ($search) {
+                        $jeQuery->where('description', 'ILIKE', "%{$search}%")
+                            ->orWhere('reference', 'ILIKE', "%{$search}%");
+                    });
             });
         }
-        
+
         // Order by financial date (entry_date), then by line ID for stability.
         // Ordering by created_at was a bug — data entry order ≠ financial order.
         $lines = $query
@@ -90,7 +89,7 @@ class BankReconciliationService
             ->orderBy('journal_entry_lines.id', 'asc')
             ->select('journal_entry_lines.*')
             ->get();
-        
+
         // Format transactions
         $transactions = [];
         foreach ($lines as $line) {
@@ -101,13 +100,13 @@ class BankReconciliationService
                 'reference' => $line->reference ?: $line->journalEntry->reference,
                 'debit' => round((float) $line->debit, 2),
                 'credit' => round((float) $line->credit, 2),
-                'reconciled' => !is_null($line->reconciliation_id),
-                'reconciliation_date' => $line->reconciliation_id ? 
-                    ($line->reconciliation ? $line->reconciliation->statement_date->format('Y-m-d') : null) : 
+                'reconciled' => ! is_null($line->reconciliation_id),
+                'reconciliation_date' => $line->reconciliation_id ?
+                    ($line->reconciliation ? $line->reconciliation->statement_date->format('Y-m-d') : null) :
                     null,
             ];
         }
-        
+
         return [
             'data' => $transactions,
             'opening_balance' => round($openingBalance, 2),
@@ -115,12 +114,12 @@ class BankReconciliationService
             'gl_account_id' => $bankAccount->gl_account_id,
         ];
     }
-    
+
     /**
      * Complete reconciliation
-     * 
-     * @param array $data Reconciliation data
-     * @return BankReconciliation
+     *
+     * @param  array  $data  Reconciliation data
+     *
      * @throws \Exception
      */
     public function completeReconciliation(array $data): BankReconciliation
@@ -130,24 +129,24 @@ class BankReconciliationService
             $statementDate = Carbon::parse($data['statement_date']);
             $statementBalance = (float) $data['statement_balance'];
             $reconciledTransactionIds = $data['reconciled_transaction_ids'] ?? [];
-            
+
             \Log::info('Starting bank reconciliation', [
                 'bank_account_id' => $bankAccountId,
                 'statement_date' => $statementDate->toDateString(),
                 'statement_balance' => $statementBalance,
                 'transaction_count' => count($reconciledTransactionIds),
             ]);
-            
+
             // Get opening balance
             $lastReconciliation = BankReconciliation::where('bank_account_id', $bankAccountId)
                 ->where('status', 'completed')
                 ->orderBy('statement_date', 'desc')
                 ->first();
-            
+
             $bankAccount = BankAccount::with('glAccount')->findOrFail($bankAccountId);
             $glAccount = $bankAccount->glAccount;
 
-            if (!$glAccount) {
+            if (! $glAccount) {
                 throw new \RuntimeException('Bank account is not linked to a GL account.');
             }
 
@@ -156,33 +155,33 @@ class BankReconciliationService
                 : ($lastReconciliation
                     ? (float) $lastReconciliation->statement_balance
                     : (float) $glAccount->opening_balance);
-            
+
             // Workstream 2 (2026-04-15): Verify lines belong to this bank account's GL
             // BEFORE calculating balance or marking anything reconciled
-            if (!empty($reconciledTransactionIds)) {
+            if (! empty($reconciledTransactionIds)) {
                 $this->verifyLinesBelongToBankAccount(
                     $reconciledTransactionIds,
                     $bankAccount->gl_account_id
                 );
             }
-            
+
             // Calculate reconciled balance
             $reconciledBalance = $this->calculateReconciledBalance(
                 $openingBalance,
                 $reconciledTransactionIds
             );
-            
+
             // Calculate difference
             $difference = $reconciledBalance - $statementBalance;
-            
+
             // Workstream 2 (2026-04-15): Only mark lines reconciled if balanced
             // Check balance BEFORE marking any lines
             $isBalanced = abs($difference) < 0.01;
-            
-            if (!$isBalanced) {
+
+            if (! $isBalanced) {
                 throw new \RuntimeException(
                     sprintf(
-                        'Reconciliation is not balanced. Calculated balance: %.2f, Statement balance: %.2f, Difference: %.2f. ' .
+                        'Reconciliation is not balanced. Calculated balance: %.2f, Statement balance: %.2f, Difference: %.2f. '.
                         'Cannot mark lines as reconciled until reconciliation is balanced.',
                         $reconciledBalance,
                         $statementBalance,
@@ -190,7 +189,7 @@ class BankReconciliationService
                     )
                 );
             }
-            
+
             // Create reconciliation record
             $reconciliation = BankReconciliation::create([
                 'bank_account_id' => $bankAccount->id,
@@ -201,13 +200,13 @@ class BankReconciliationService
                 'difference' => $difference,
                 'status' => 'draft',
             ]);
-            
+
             \Log::info('Bank reconciliation record created', [
                 'reconciliation_id' => $reconciliation->id,
                 'bank_account_id' => $bankAccountId,
                 'status' => $reconciliation->status,
             ]);
-            
+
             // Create reconciliation items
             foreach ($reconciledTransactionIds as $transactionId) {
                 ReconciliationItem::create([
@@ -215,7 +214,7 @@ class BankReconciliationService
                     'journal_entry_line_id' => $transactionId,
                 ]);
             }
-            
+
             // Workstream 2 (2026-04-15): Only mark lines reconciled AFTER balance check passes
             // Update journal entry lines with reconciliation reference
             JournalEntryLine::whereIn('id', $reconciledTransactionIds)
@@ -223,7 +222,7 @@ class BankReconciliationService
                     'reconciliation_id' => $reconciliation->id,
                     'reconciliation_date' => $statementDate,
                 ]);
-            
+
             // Mark as completed since balanced
             $resolvedUserId = TenantUserHelper::resolveTenantUserId();
             \Log::info('Completing reconciliation', [
@@ -231,23 +230,23 @@ class BankReconciliationService
                 'resolved_user_id' => $resolvedUserId,
             ]);
             $reconciliation->complete($resolvedUserId);
-            
+
             $fresh = $reconciliation->fresh();
             \Log::info('Bank reconciliation completed', [
                 'reconciliation_id' => $fresh->id,
                 'status' => $fresh->status,
                 'bank_account_id' => $fresh->bank_account_id,
             ]);
-            
+
             return $fresh;
         });
     }
-    
+
     /**
      * Add adjusting entry during reconciliation
-     * 
-     * @param array $data Transaction data
-     * @return JournalEntryLine
+     *
+     * @param  array  $data  Transaction data
+     *
      * @throws \Exception
      */
     public function addAdjustingEntry(array $data): JournalEntryLine
@@ -258,30 +257,30 @@ class BankReconciliationService
             $description = $data['description'];
             $amount = (float) $data['amount'];
             $type = $data['type']; // 'debit' or 'credit'
-            
+
             // Get bank account
             $bankAccount = BankAccount::with('glAccount')->findOrFail($bankAccountId);
             $glAccount = $bankAccount->glAccount;
 
-            if (!$glAccount) {
+            if (! $glAccount) {
                 throw new \RuntimeException('Bank account is not linked to a GL account.');
             }
-            
+
             // contra_account_id is mandatory — heuristic name-based lookup was removed
             // because it could silently select the wrong account (e.g. any account
             // whose name contains 'bank' or 'miscellaneous').
             $contraAccountId = $data['contra_account_id'] ?? null;
 
-            if (!$contraAccountId) {
+            if (! $contraAccountId) {
                 throw new \InvalidArgumentException(
-                    'contra_account_id is required for adjusting entries. ' .
+                    'contra_account_id is required for adjusting entries. '.
                     'Specify the GL account to use as the offsetting entry (e.g. bank fees expense, interest income).'
                 );
             }
 
             // Validate the contra account exists
             $contraExists = ChartOfAccount::where('id', $contraAccountId)->exists();
-            if (!$contraExists) {
+            if (! $contraExists) {
                 throw new \InvalidArgumentException(
                     "contra_account_id {$contraAccountId} does not exist in the chart of accounts."
                 );
@@ -292,7 +291,7 @@ class BankReconciliationService
                     'contra_account_id cannot be the same as the bank account GL account.'
                 );
             }
-            
+
             // Build posting lines
             $lines = [];
 
@@ -338,11 +337,11 @@ class BankReconciliationService
                 postingDate: $date->format('Y-m-d'),
                 description: $description,
                 lines: $lines,
-                reference: $data['reference'] ?? 'ADJ-' . now()->format('YmdHis'),
+                reference: $data['reference'] ?? 'ADJ-'.now()->format('YmdHis'),
                 userId: TenantUserHelper::resolveTenantUserId(),
             ));
 
-            if (!$result->success) {
+            if (! $result->success) {
                 throw new \Exception($result->error);
             }
 
@@ -350,42 +349,39 @@ class BankReconciliationService
             $bankLine = $result->journalEntry->lines
                 ->where('account_id', $glAccount->id)
                 ->first();
-            
+
             return $bankLine;
         });
     }
-    
+
     /**
      * Calculate reconciled balance
-     * 
-     * @param float $openingBalance
-     * @param array $reconciledTransactionIds
-     * @return float
      */
     public function calculateReconciledBalance(float $openingBalance, array $reconciledTransactionIds): float
     {
         if (empty($reconciledTransactionIds)) {
             return $openingBalance;
         }
-        
+
         $transactions = JournalEntryLine::whereIn('id', $reconciledTransactionIds)->get();
-        
+
         $balance = $openingBalance;
         foreach ($transactions as $transaction) {
             $balance += (float) $transaction->debit - (float) $transaction->credit;
         }
-        
+
         return round($balance, 2);
     }
 
     /**
      * Verify that all journal entry lines belong to the specified bank account GL.
-     * 
+     *
      * Workstream 2 (2026-04-15): Security check to prevent reconciling lines
      * from wrong accounts.
-     * 
-     * @param array $lineIds Journal entry line IDs to verify
-     * @param int $expectedGlAccountId The GL account ID that lines must belong to
+     *
+     * @param  array  $lineIds  Journal entry line IDs to verify
+     * @param  int  $expectedGlAccountId  The GL account ID that lines must belong to
+     *
      * @throws \InvalidArgumentException If any line belongs to a different GL account
      */
     private function verifyLinesBelongToBankAccount(array $lineIds, int $expectedGlAccountId): void
@@ -410,7 +406,7 @@ class BankReconciliationService
 
             throw new \InvalidArgumentException(
                 sprintf(
-                    'Cannot reconcile: %d line(s) (IDs: %s) belong to GL account(s) [%s] instead of expected bank account GL (ID: %d). ' .
+                    'Cannot reconcile: %d line(s) (IDs: %s) belong to GL account(s) [%s] instead of expected bank account GL (ID: %d). '.
                     'All reconciled lines must belong to the same bank account GL.',
                     $wrongLines->count(),
                     $wrongIds,

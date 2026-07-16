@@ -19,7 +19,7 @@ final class ModuleManager
     public function __construct(
         private readonly Application $app,
     ) {
-        $this->onboardingService = new ModuleOnboardingService();
+        $this->onboardingService = new ModuleOnboardingService;
     }
 
     /**
@@ -33,9 +33,10 @@ final class ModuleManager
 
         $basePath = base_path('modules');
         Log::debug('[ModuleManager] Scanning for modules', ['base_path' => $basePath]);
-        
-        if (!is_dir($basePath)) {
+
+        if (! is_dir($basePath)) {
             Log::warning('[ModuleManager] Modules directory does not exist', ['base_path' => $basePath]);
+
             return $this->modulesCache = [];
         }
 
@@ -44,21 +45,23 @@ final class ModuleManager
 
         $modules = [];
         $skippedDirs = [];
-        
+
         foreach ($directories as $dir) {
             $dirName = basename($dir);
-            $manifestPath = $dir . '/module.json';
-            
-            if (!is_file($manifestPath)) {
+            $manifestPath = $dir.'/module.json';
+
+            if (! is_file($manifestPath)) {
                 $skippedDirs[] = ['dir' => $dirName, 'reason' => 'module.json not found'];
                 Log::debug('[ModuleManager] Skipping directory - no module.json', ['dir' => $dirName]);
+
                 continue;
             }
 
             $raw = json_decode(file_get_contents($manifestPath) ?: '', true);
-            if (!is_array($raw)) {
+            if (! is_array($raw)) {
                 $skippedDirs[] = ['dir' => $dirName, 'reason' => 'invalid JSON in module.json'];
                 Log::warning('[ModuleManager] Skipping directory - invalid JSON', ['dir' => $dirName, 'manifest_path' => $manifestPath]);
+
                 continue;
             }
 
@@ -75,6 +78,7 @@ final class ModuleManager
                     'key' => $key,
                     'name' => $name,
                 ]);
+
                 continue;
             }
 
@@ -86,7 +90,7 @@ final class ModuleManager
                 providers: is_array($providers) ? $providers : [],
                 dependencies: is_array($dependencies) ? $dependencies : [],
             );
-            
+
             $modules[] = $module;
             Log::debug('[ModuleManager] Successfully discovered module', [
                 'key' => $key,
@@ -97,7 +101,7 @@ final class ModuleManager
             ]);
         }
 
-        if (!empty($skippedDirs)) {
+        if (! empty($skippedDirs)) {
             Log::info('[ModuleManager] Skipped directories summary', ['skipped' => $skippedDirs]);
         }
 
@@ -107,7 +111,7 @@ final class ModuleManager
         Log::info('[ModuleManager] Module discovery complete', [
             'total_discovered' => count($modules),
             'total_skipped' => count($skippedDirs),
-            'module_keys' => array_map(fn($m) => $m->key, $modules),
+            'module_keys' => array_map(fn ($m) => $m->key, $modules),
         ]);
 
         return $this->modulesCache = $modules;
@@ -116,12 +120,12 @@ final class ModuleManager
     /**
      * Sort modules by dependency order (dependencies first)
      *
-     * @param array<int, Module> $modules
+     * @param  array<int, Module>  $modules
      * @return array<int, Module>
      */
     private function sortByDependencies(array $modules): array
     {
-        $moduleKeys = array_map(fn($m) => $m->key, $modules);
+        $moduleKeys = array_map(fn ($m) => $m->key, $modules);
         $sorted = [];
         $visited = [];
 
@@ -135,8 +139,9 @@ final class ModuleManager
             $visited[$key] = true;
 
             foreach ($module->dependencies as $depKey) {
-                if (!in_array($depKey, $moduleKeys, true)) {
+                if (! in_array($depKey, $moduleKeys, true)) {
                     Log::warning("[ModuleManager] Module '{$key}' depends on unknown module '{$depKey}'");
+
                     continue;
                 }
 
@@ -161,7 +166,7 @@ final class ModuleManager
 
         // Then, add non-core modules
         foreach ($modules as $module) {
-            if (!$module->isCore()) {
+            if (! $module->isCore()) {
                 $visit($module);
             }
         }
@@ -177,12 +182,12 @@ final class ModuleManager
     public function validateDependencies(): array
     {
         $modules = $this->all();
-        $moduleKeys = array_map(fn($m) => $m->key, $modules);
+        $moduleKeys = array_map(fn ($m) => $m->key, $modules);
         $errors = [];
 
         foreach ($modules as $module) {
             foreach ($module->dependencies as $depKey) {
-                if (!in_array($depKey, $moduleKeys, true)) {
+                if (! in_array($depKey, $moduleKeys, true)) {
                     $errors[] = "Module '{$module->key}' depends on '{$depKey}' which is not installed";
                 }
             }
@@ -190,9 +195,9 @@ final class ModuleManager
 
         // Check for circular dependencies
         $circularDeps = $this->detectCircularDependencies($modules);
-        if (!empty($circularDeps)) {
+        if (! empty($circularDeps)) {
             foreach ($circularDeps as $cycle) {
-                $errors[] = "Circular dependency detected: " . implode(' -> ', $cycle);
+                $errors[] = 'Circular dependency detected: '.implode(' -> ', $cycle);
             }
         }
 
@@ -205,7 +210,7 @@ final class ModuleManager
     /**
      * Detect circular dependencies using DFS
      *
-     * @param array<int, Module> $modules
+     * @param  array<int, Module>  $modules
      * @return array<int, array<int, string>>
      */
     private function detectCircularDependencies(array $modules): array
@@ -224,6 +229,7 @@ final class ModuleManager
                 // Found a cycle
                 $cycleStart = array_search($key, $path);
                 $cycles[] = array_slice($path, $cycleStart);
+
                 return;
             }
 
@@ -274,7 +280,7 @@ final class ModuleManager
     {
         return array_filter(
             $this->all(),
-            fn(Module $module) => $module->dependsOn($moduleKey)
+            fn (Module $module) => $module->dependsOn($moduleKey)
         );
     }
 
@@ -290,6 +296,7 @@ final class ModuleManager
                 $paths[] = $path;
             }
         }
+
         return $paths;
     }
 
@@ -305,6 +312,7 @@ final class ModuleManager
                 $paths[] = $path;
             }
         }
+
         return array_values(array_unique($paths));
     }
 
@@ -325,7 +333,7 @@ final class ModuleManager
     public function getOnboardingPack(string $moduleKey): ?array
     {
         $module = $this->get($moduleKey);
-        if (!$module) {
+        if (! $module) {
             return null;
         }
 

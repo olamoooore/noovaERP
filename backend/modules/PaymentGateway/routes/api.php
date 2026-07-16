@@ -1,12 +1,11 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Modules\PaymentGateway\Controllers\PaymentGatewayController;
-use Modules\PaymentGateway\Controllers\PaymentController;
-use Modules\PaymentGateway\Controllers\PaymentWebhookController;
-use Modules\PaymentGateway\Controllers\PaymentAnalyticsController;
-use Modules\PaymentGateway\Controllers\PosPaymentController;
 use Modules\PaymentGateway\Controllers\OfflinePaymentMethodController;
+use Modules\PaymentGateway\Controllers\PaymentAnalyticsController;
+use Modules\PaymentGateway\Controllers\PaymentController;
+use Modules\PaymentGateway\Controllers\PaymentGatewayController;
+use Modules\PaymentGateway\Controllers\PosPaymentController;
 
 // Protected routes - require authentication
 Route::middleware(['auth:sanctum', 'entitlement:payment_gateway'])->group(function () {
@@ -36,13 +35,13 @@ Route::middleware(['auth:sanctum', 'entitlement:payment_gateway'])->group(functi
 
     // Payment Analytics
     Route::get('/payment-analytics', [PaymentAnalyticsController::class, 'index']);
-    
+
     // POS Payment Integration
     Route::prefix('pos-payments')->group(function () {
         Route::get('/methods', [PosPaymentController::class, 'getPaymentMethods']);
         Route::post('/process', [PosPaymentController::class, 'processPayment']);
     });
-    
+
     // Offline Payment Methods (Bank Transfer, etc.)
     Route::apiResource('offline-payment-methods', OfflinePaymentMethodController::class);
 });

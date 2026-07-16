@@ -13,7 +13,7 @@ class StockValuationService extends BaseReportService
 {
     /**
      * Generate Stock Valuation report
-     * 
+     *
      * Shows current inventory value based on quantity × cost (WAC - Weighted Average Cost)
      */
     public function generate(ReportFilter $filter): ReportData
@@ -81,30 +81,30 @@ class StockValuationService extends BaseReportService
         }
 
         $products = $query->select([
-                'p.id',
-                'p.sku',
-                'p.name',
-                'p.cost',
-                'p.unit',
-                'p.reorder_level',
-                DB::raw($stockLevelsExists ? 'COALESCE(sl.total_quantity, 0) as current_quantity' : 'p.stock_quantity as current_quantity'),
-            ])
+            'p.id',
+            'p.sku',
+            'p.name',
+            'p.cost',
+            'p.unit',
+            'p.reorder_level',
+            DB::raw($stockLevelsExists ? 'COALESCE(sl.total_quantity, 0) as current_quantity' : 'p.stock_quantity as current_quantity'),
+        ])
             ->get();
 
         // Preserve historical behavior when a past as-of date is requested.
-        if ($stockLevelsExists && !$asOfDate->copy()->startOfDay()->equalTo(now()->startOfDay())) {
+        if ($stockLevelsExists && ! $asOfDate->copy()->startOfDay()->equalTo(now()->startOfDay())) {
             $stockLevelsExists = false;
         }
 
         // Calculate current stock from stock_levels when available
         $valuations = collect();
         $valuationMethod = $this->resolveValuationMethod();
-        
+
         foreach ($products as $product) {
             $quantity = $stockLevelsExists
                 ? (int) $product->current_quantity
                 : $this->getQuantityAsOfDate($product->id, $asOfDate);
-            
+
             // Only include products with stock
             if ($quantity > 0) {
                 $unitCost = $this->resolveCostForMethod(
@@ -113,7 +113,7 @@ class StockValuationService extends BaseReportService
                     valuationMethod: $valuationMethod,
                 );
                 $totalValue = $quantity * $unitCost;
-                
+
                 $valuations->push([
                     'id' => $product->id,
                     'sku' => $product->sku,
@@ -155,17 +155,17 @@ class StockValuationService extends BaseReportService
         }
 
         $products = $query->select([
-                'p.id',
-                'p.sku',
-                'p.name',
-                'p.cost',
-                'p.unit',
-                DB::raw($stockLevelsExists ? 'COALESCE(sl.total_quantity, 0) as current_quantity' : 'p.stock_quantity as current_quantity'),
-            ])
+            'p.id',
+            'p.sku',
+            'p.name',
+            'p.cost',
+            'p.unit',
+            DB::raw($stockLevelsExists ? 'COALESCE(sl.total_quantity, 0) as current_quantity' : 'p.stock_quantity as current_quantity'),
+        ])
             ->get();
 
         // Preserve historical behavior when a past as-of date is requested.
-        if ($stockLevelsExists && !$asOfDate->copy()->startOfDay()->equalTo(now()->startOfDay())) {
+        if ($stockLevelsExists && ! $asOfDate->copy()->startOfDay()->equalTo(now()->startOfDay())) {
             $stockLevelsExists = false;
         }
 
@@ -202,7 +202,7 @@ class StockValuationService extends BaseReportService
         }
 
         // Sort by value descending
-        usort($valuations, fn($a, $b) => $b['total_value'] <=> $a['total_value']);
+        usort($valuations, fn ($a, $b) => $b['total_value'] <=> $a['total_value']);
 
         return [
             'as_of_date' => $asOfDate->format('Y-m-d'),
@@ -226,7 +226,7 @@ class StockValuationService extends BaseReportService
 
     protected function resolveCostForMethod(int $productId, float $fallbackCost, string $valuationMethod): float
     {
-        if (!DB::getSchemaBuilder()->hasTable('product_batches')) {
+        if (! DB::getSchemaBuilder()->hasTable('product_batches')) {
             return $fallbackCost;
         }
 
@@ -305,18 +305,18 @@ class StockValuationService extends BaseReportService
                     '=',
                     'p.id'
                 )->whereRaw('COALESCE(sl.total_quantity, 0) < p.reorder_level')
-                  ->select([
-                      'p.id',
-                      'p.sku',
-                      'p.name',
-                      DB::raw('COALESCE(sl.total_quantity, 0) as stock_quantity'),
-                      'p.reorder_level',
-                      'p.cost',
-                      'p.unit',
-                      DB::raw('(p.reorder_level - COALESCE(sl.total_quantity, 0)) as shortage'),
-                      DB::raw('((p.reorder_level - COALESCE(sl.total_quantity, 0)) * p.cost) as reorder_value'),
-                  ])
-                  ->orderBy('shortage', 'desc');
+                    ->select([
+                        'p.id',
+                        'p.sku',
+                        'p.name',
+                        DB::raw('COALESCE(sl.total_quantity, 0) as stock_quantity'),
+                        'p.reorder_level',
+                        'p.cost',
+                        'p.unit',
+                        DB::raw('(p.reorder_level - COALESCE(sl.total_quantity, 0)) as shortage'),
+                        DB::raw('((p.reorder_level - COALESCE(sl.total_quantity, 0)) * p.cost) as reorder_value'),
+                    ])
+                    ->orderBy('shortage', 'desc');
             }, function ($query) {
                 $query->whereRaw('p.stock_quantity < p.reorder_level')
                     ->select([

@@ -2,39 +2,42 @@
 
 namespace Modules\EventManagement\Tests\Integration;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Modules\EventManagement\Models\Event;
-use Modules\EventManagement\Models\EventType;
-use Modules\EventManagement\Models\Bid;
-use Modules\EventManagement\Models\Booking;
-use App\Models\User;
 use App\Models\Customer;
 use App\Models\Tenant;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Modules\EventManagement\Models\Bid;
+use Modules\EventManagement\Models\Booking;
+use Modules\EventManagement\Models\Event;
+use Modules\EventManagement\Models\EventType;
 use Spatie\Permission\Models\Role;
+use Tests\TestCase;
 
 /**
  * Phase 4 Integration Test
- * 
+ *
  * Tests end-to-end flows for:
  * - Event creation with different types and acquisition modes
  * - Direct purchase flow
  * - Bidding flow
  * - Role-based access control
  * - Sale window enforcement
- * 
+ *
  * Task: 12. Checkpoint - Integration Testing
  */
-
 class Phase4IntegrationTest extends TestCase
 {
     protected $tenant;
+
     protected $staffUser;
+
     protected $customerUser;
+
     protected $customer;
+
     protected $concertType;
+
     protected $meetArtistType;
 
     protected function setUp(): void
@@ -60,10 +63,10 @@ class Phase4IntegrationTest extends TestCase
         tenancy()->initialize($this->tenant);
 
         // Create roles if they don't exist
-        if (!Role::where('name', 'staff')->exists()) {
+        if (! Role::where('name', 'staff')->exists()) {
             Role::create(['name' => 'staff', 'guard_name' => 'web']);
         }
-        if (!Role::where('name', 'customer')->exists()) {
+        if (! Role::where('name', 'customer')->exists()) {
             Role::create(['name' => 'customer', 'guard_name' => 'web']);
         }
 
@@ -108,7 +111,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: End-to-end event creation with Direct Purchase mode
-     * 
+     *
      * @test
      */
     public function test_create_event_with_direct_purchase_mode()
@@ -139,7 +142,7 @@ class Phase4IntegrationTest extends TestCase
                 'ticket_acquisition_mode',
                 'sale_start_date',
                 'sale_end_date',
-            ]
+            ],
         ]);
 
         $this->assertDatabaseHas('events', [
@@ -150,7 +153,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: End-to-end event creation with Bidding mode
-     * 
+     *
      * @test
      */
     public function test_create_event_with_bidding_mode()
@@ -183,7 +186,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: Direct purchase flow for buy-mode event
-     * 
+     *
      * @test
      */
     public function test_direct_purchase_flow_for_buy_mode_event()
@@ -214,7 +217,7 @@ class Phase4IntegrationTest extends TestCase
         $response = $this->postJson('/api/tenant/bookings', $purchaseData);
 
         $response->assertStatus(201);
-        
+
         // Verify booking was created
         $this->assertDatabaseHas('bookings', [
             'event_id' => $event->id,
@@ -229,7 +232,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: Bidding flow for bid-mode event
-     * 
+     *
      * @test
      */
     public function test_bidding_flow_for_bid_mode_event()
@@ -261,7 +264,7 @@ class Phase4IntegrationTest extends TestCase
         $response = $this->postJson('/api/tenant/bids', $bidData);
 
         $response->assertStatus(201);
-        
+
         // Verify bid was created
         $this->assertDatabaseHas('bids', [
             'event_id' => $event->id,
@@ -273,7 +276,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: Purchase prevented for bidding-only event
-     * 
+     *
      * @test
      */
     public function test_purchase_prevented_for_bidding_only_event()
@@ -308,7 +311,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: Bidding prevented for purchase-only event
-     * 
+     *
      * @test
      */
     public function test_bidding_prevented_for_purchase_only_event()
@@ -344,7 +347,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: Sale window enforcement - before start
-     * 
+     *
      * @test
      */
     public function test_purchase_prevented_before_sale_window()
@@ -379,7 +382,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: Sale window enforcement - after end
-     * 
+     *
      * @test
      */
     public function test_purchase_prevented_after_sale_window()
@@ -414,7 +417,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: Customer cannot see inventory data
-     * 
+     *
      * @test
      */
     public function test_customer_cannot_see_inventory_data()
@@ -445,7 +448,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: Staff can see inventory data
-     * 
+     *
      * @test
      */
     public function test_staff_can_see_inventory_data()
@@ -476,7 +479,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: Customer cannot access staff-only endpoints
-     * 
+     *
      * @test
      */
     public function test_customer_cannot_access_staff_endpoints()
@@ -505,7 +508,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: Staff can access bid management endpoints
-     * 
+     *
      * @test
      */
     public function test_staff_can_access_bid_management()
@@ -543,7 +546,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: Event validation - missing event type
-     * 
+     *
      * @test
      */
     public function test_event_creation_fails_without_event_type()
@@ -571,7 +574,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: Event validation - missing acquisition mode
-     * 
+     *
      * @test
      */
     public function test_event_creation_fails_without_acquisition_mode()
@@ -599,7 +602,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: Event validation - invalid sale window
-     * 
+     *
      * @test
      */
     public function test_event_creation_fails_with_invalid_sale_window()
@@ -627,7 +630,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: Complete purchase workflow with capacity reduction
-     * 
+     *
      * @test
      */
     public function test_complete_purchase_workflow_reduces_capacity()
@@ -671,7 +674,7 @@ class Phase4IntegrationTest extends TestCase
 
     /**
      * Test: Backward compatibility - existing events work
-     * 
+     *
      * @test
      */
     public function test_backward_compatibility_with_existing_events()
@@ -701,7 +704,7 @@ class Phase4IntegrationTest extends TestCase
         ]);
 
         $response->assertStatus(201);
-        
+
         $this->assertDatabaseHas('bookings', [
             'event_id' => $event->id,
             'quantity' => 2,

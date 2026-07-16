@@ -2,9 +2,9 @@
 
 namespace Modules\FinancialReporting\Database\Factories;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Modules\FinancialReporting\Models\ReportCache;
-use Carbon\Carbon;
 
 class ReportCacheFactory extends Factory
 {
@@ -13,7 +13,7 @@ class ReportCacheFactory extends Factory
     public function definition(): array
     {
         return [
-            'cache_key' => 'report_' . $this->faker->unique()->uuid(),
+            'cache_key' => 'report_'.$this->faker->unique()->uuid(),
             'report_type' => $this->faker->randomElement([
                 'profit_loss',
                 'balance_sheet',

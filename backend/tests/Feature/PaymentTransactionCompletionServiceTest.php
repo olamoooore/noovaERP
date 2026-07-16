@@ -9,8 +9,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\PaymentGateway\Services\PaymentTransactionCompletionService;
-use Modules\POS\Models\PosOrder;
-use Modules\POS\Models\PosTerminal;
 use Tests\TestCase;
 
 class PaymentTransactionCompletionServiceTest extends TestCase
@@ -47,7 +45,7 @@ class PaymentTransactionCompletionServiceTest extends TestCase
             'customer_id' => $customer->id,
             'amount' => 1000,
             'status' => 'completed',
-            'transaction_id' => 'TXN-' . uniqid(),
+            'transaction_id' => 'TXN-'.uniqid(),
         ]);
 
         $result = $this->service->complete($transaction, 'card');
@@ -89,7 +87,7 @@ class PaymentTransactionCompletionServiceTest extends TestCase
             'customer_id' => $customer->id,
             'amount' => 1000,
             'status' => 'completed',
-            'transaction_id' => 'TXN-DUP-' . uniqid(),
+            'transaction_id' => 'TXN-DUP-'.uniqid(),
         ]);
 
         // First completion
@@ -120,7 +118,7 @@ class PaymentTransactionCompletionServiceTest extends TestCase
             'invoice_id' => null,
             'amount' => 1000,
             'status' => 'completed',
-            'transaction_id' => 'TXN-' . uniqid(),
+            'transaction_id' => 'TXN-'.uniqid(),
             'metadata' => [], // No pos_order_id
         ]);
 
@@ -151,7 +149,7 @@ class PaymentTransactionCompletionServiceTest extends TestCase
             'customer_id' => $customer->id,
             'amount' => 1000,
             'status' => 'completed',
-            'transaction_id' => 'TXN-' . uniqid(),
+            'transaction_id' => 'TXN-'.uniqid(),
         ]);
 
         // Test with bank transfer method
@@ -183,7 +181,7 @@ class PaymentTransactionCompletionServiceTest extends TestCase
             'customer_id' => $customer->id,
             'amount' => 1000,
             'status' => 'completed',
-            'transaction_id' => 'TXN-' . uniqid(),
+            'transaction_id' => 'TXN-'.uniqid(),
             'processed_at' => null,
         ]);
 
@@ -217,7 +215,7 @@ class PaymentTransactionCompletionServiceTest extends TestCase
             'customer_id' => $customer->id,
             'amount' => 1000,
             'status' => 'completed',
-            'transaction_id' => 'TXN-' . uniqid(),
+            'transaction_id' => 'TXN-'.uniqid(),
             'processed_at' => $processedAt,
         ]);
 

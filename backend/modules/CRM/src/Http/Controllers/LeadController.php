@@ -3,9 +3,8 @@
 namespace Modules\CRM\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Modules\CRM\Models\Lead;
-use Modules\CRM\Models\Activity;
 use Illuminate\Http\Request;
+use Modules\CRM\Models\Lead;
 
 class LeadController extends Controller
 {
@@ -28,9 +27,9 @@ class LeadController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('first_name', 'ilike', "%{$search}%")
-                  ->orWhere('last_name', 'ilike', "%{$search}%")
-                  ->orWhere('email', 'ilike', "%{$search}%")
-                  ->orWhere('company', 'ilike', "%{$search}%");
+                    ->orWhere('last_name', 'ilike', "%{$search}%")
+                    ->orWhere('email', 'ilike', "%{$search}%")
+                    ->orWhere('company', 'ilike', "%{$search}%");
             });
         }
 
@@ -48,8 +47,8 @@ class LeadController extends Controller
             'phone' => 'nullable|string|max:50',
             'company' => 'nullable|string|max:255',
             'job_title' => 'nullable|string|max:255',
-            'status' => 'nullable|in:' . implode(',', Lead::STATUSES),
-            'source' => 'nullable|in:' . implode(',', Lead::SOURCES),
+            'status' => 'nullable|in:'.implode(',', Lead::STATUSES),
+            'source' => 'nullable|in:'.implode(',', Lead::SOURCES),
             'estimated_value' => 'nullable|numeric|min:0',
             'score' => 'nullable|integer|min:0|max:100',
             'assigned_to' => 'nullable|exists:users,id',
@@ -82,8 +81,8 @@ class LeadController extends Controller
             'phone' => 'nullable|string|max:50',
             'company' => 'nullable|string|max:255',
             'job_title' => 'nullable|string|max:255',
-            'status' => 'nullable|in:' . implode(',', Lead::STATUSES),
-            'source' => 'nullable|in:' . implode(',', Lead::SOURCES),
+            'status' => 'nullable|in:'.implode(',', Lead::STATUSES),
+            'source' => 'nullable|in:'.implode(',', Lead::SOURCES),
             'estimated_value' => 'nullable|numeric|min:0',
             'score' => 'nullable|integer|min:0|max:100',
             'assigned_to' => 'nullable|exists:users,id',
@@ -117,8 +116,8 @@ class LeadController extends Controller
             'won' => Lead::where('status', 'won')->count(),
             'lost' => Lead::where('status', 'lost')->count(),
             'total_value' => Lead::whereNotIn('status', ['lost'])->sum('estimated_value'),
-            'conversion_rate' => Lead::count() > 0 
-                ? round((Lead::where('status', 'won')->count() / Lead::count()) * 100, 1) 
+            'conversion_rate' => Lead::count() > 0
+                ? round((Lead::where('status', 'won')->count() / Lead::count()) * 100, 1)
                 : 0,
         ];
 

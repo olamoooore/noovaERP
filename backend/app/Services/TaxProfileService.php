@@ -35,7 +35,7 @@ class TaxProfileService
             ->where('effective_from', '<=', $date)
             ->where(function ($q) use ($date) {
                 $q->whereNull('effective_to')
-                  ->orWhere('effective_to', '>=', $date);
+                    ->orWhere('effective_to', '>=', $date);
             })
             ->orderByDesc('effective_from')
             ->first();
@@ -67,7 +67,7 @@ class TaxProfileService
             ->where('effective_from', '<=', $today)
             ->where(function ($q) use ($today) {
                 $q->whereNull('effective_to')
-                  ->orWhere('effective_to', '>=', $today);
+                    ->orWhere('effective_to', '>=', $today);
             })
             ->orderBy('tax_type')
             ->get();
@@ -90,7 +90,7 @@ class TaxProfileService
     public function seedFromCountryPack(int $countryPackId): int
     {
         $pack = DB::table('country_packs')->find($countryPackId);
-        if (!$pack) {
+        if (! $pack) {
             throw new \RuntimeException("Country pack {$countryPackId} not found.");
         }
 
@@ -100,14 +100,14 @@ class TaxProfileService
         foreach ($defaults as $taxRate) {
             DB::table('tax_profiles')->insert([
                 'country_pack_id' => $countryPackId,
-                'tax_type'        => $taxRate['type'],
-                'rate'            => $taxRate['rate'],
-                'effective_from'  => $taxRate['effective_from'],
-                'effective_to'    => null,
-                'is_default'      => true,
-                'config'          => null,
-                'created_at'      => now(),
-                'updated_at'      => now(),
+                'tax_type' => $taxRate['type'],
+                'rate' => $taxRate['rate'],
+                'effective_from' => $taxRate['effective_from'],
+                'effective_to' => null,
+                'is_default' => true,
+                'config' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
             $count++;
         }

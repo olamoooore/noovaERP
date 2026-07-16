@@ -22,7 +22,7 @@ return new class extends Migration
             $table->foreignId('conversation_id')->constrained('ai_conversations')->onDelete('cascade');
             $table->string('module_name', 50);
             $table->timestamp('switched_at')->useCurrent();
-            
+
             $table->index(['conversation_id', 'switched_at']);
         });
     }
@@ -33,7 +33,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('ai_conversation_modules');
-        
+
         Schema::table('ai_conversations', function (Blueprint $table) {
             $table->dropIndex(['active_module']);
             $table->dropColumn('active_module');

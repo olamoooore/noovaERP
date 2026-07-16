@@ -13,9 +13,9 @@ return new class extends Migration
 
             if (Schema::hasTable('journal_entries')) {
                 $table->foreign('journal_entry_id')
-                      ->references('id')
-                      ->on('journal_entries')
-                      ->nullOnDelete();
+                    ->references('id')
+                    ->on('journal_entries')
+                    ->nullOnDelete();
             }
         });
     }

@@ -28,7 +28,7 @@ return new class extends Migration
             $table->json('metadata')->nullable()->comment('Additional event metadata');
             $table->timestamp('created_at')->useCurrent();
             $table->timestamp('processed_at')->nullable()->comment('When event was successfully processed');
-            
+
             // Indexes for efficient processing
             $table->index(['status', 'next_retry_at'], 'idx_outbox_status_retry');
             $table->index(['aggregate_type', 'aggregate_id'], 'idx_outbox_aggregate');
@@ -51,15 +51,15 @@ return new class extends Migration
             $table->timestamp('started_at')->nullable();
             $table->timestamp('completed_at')->nullable();
             $table->timestamp('created_at')->useCurrent();
-            
+
             // Foreign key constraints
             $table->foreign('outbox_event_id')->references('id')->on('outbox_events')->onDelete('cascade');
-            
+
             // Indexes for consumer processing
             $table->index(['consumer_name', 'status'], 'idx_consumer_name_status');
             $table->index(['outbox_event_id', 'consumer_name'], 'idx_event_consumer');
             $table->index(['status', 'next_retry_at'], 'idx_consumer_status_retry');
-            
+
             // Ensure one record per event per consumer
             $table->unique(['outbox_event_id', 'consumer_name'], 'unique_event_consumer');
         });
@@ -73,10 +73,10 @@ return new class extends Migration
             $table->text('message')->nullable()->comment('Log message');
             $table->json('context')->nullable()->comment('Additional context data');
             $table->timestamp('logged_at')->useCurrent();
-            
+
             // Foreign key constraints
             $table->foreign('outbox_event_id')->references('id')->on('outbox_events')->onDelete('cascade');
-            
+
             // Indexes for log queries
             $table->index(['outbox_event_id', 'logged_at'], 'idx_log_event_time');
             $table->index(['consumer_name', 'action'], 'idx_log_consumer_action');
@@ -91,7 +91,7 @@ return new class extends Migration
             $table->timestamp('last_processed_at')->nullable();
             $table->json('consumer_metadata')->nullable()->comment('Consumer-specific metadata');
             $table->timestamp('updated_at')->useCurrent()->useCurrentOnUpdate();
-            
+
             // Indexes
             $table->index('consumer_name', 'idx_checkpoint_consumer');
             $table->index('last_processed_event_id', 'idx_checkpoint_last_event');

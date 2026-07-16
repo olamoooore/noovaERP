@@ -32,8 +32,11 @@ class BookingVelocityLog extends Model
 
     // Action type constants
     public const ACTION_BOOKING_ATTEMPT = 'booking_attempt';
+
     public const ACTION_BOOKING_SUCCESS = 'booking_success';
+
     public const ACTION_BOOKING_FAILED = 'booking_failed';
+
     public const ACTION_BOOKING_CANCELLED = 'booking_cancelled';
 
     /**
@@ -108,16 +111,17 @@ class BookingVelocityLog extends Model
         $parts = explode('.', $this->ip_address);
         if (count($parts) === 4) {
             // IPv4 - mask last octet
-            return $parts[0] . '.' . $parts[1] . '.' . $parts[2] . '.xxx';
+            return $parts[0].'.'.$parts[1].'.'.$parts[2].'.xxx';
         }
-        
+
         // IPv6 or other format - mask last part
         $parts = explode(':', $this->ip_address);
         if (count($parts) > 1) {
             $parts[count($parts) - 1] = 'xxxx';
+
             return implode(':', $parts);
         }
-        
+
         return 'xxx.xxx.xxx.xxx';
     }
 

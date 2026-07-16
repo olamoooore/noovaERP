@@ -7,10 +7,10 @@ use Illuminate\Validation\Rule;
 
 /**
  * Update Group Request
- * 
+ *
  * Validates data for updating existing K-POP groups.
  * All fields are optional for partial updates.
- * 
+ *
  * Requirements: 12.1, 12.2
  */
 class UpdateGroupRequest extends FormRequest
@@ -43,7 +43,7 @@ class UpdateGroupRequest extends FormRequest
             'genres' => ['nullable', 'array'],
             'genres.*' => ['string', Rule::in([
                 'k-pop', 'pop', 'dance', 'ballad', 'r&b', 'hip-hop', 'rock', 'electronic',
-                'trot', 'indie', 'folk', 'jazz', 'classical', 'experimental', 'other'
+                'trot', 'indie', 'folk', 'jazz', 'classical', 'experimental', 'other',
             ])],
             'official_colors' => ['nullable', 'array'],
             'official_colors.*' => ['string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
@@ -52,7 +52,7 @@ class UpdateGroupRequest extends FormRequest
             'profile_image_url' => ['nullable', 'url', 'max:500'],
             'social_media_links' => ['nullable', 'array'],
             'social_media_links.*.platform' => ['required_with:social_media_links', 'string', Rule::in([
-                'instagram', 'twitter', 'tiktok', 'youtube', 'weibo', 'facebook', 'vlive', 'other'
+                'instagram', 'twitter', 'tiktok', 'youtube', 'weibo', 'facebook', 'vlive', 'other',
             ])],
             'social_media_links.*.url' => ['required_with:social_media_links', 'url', 'max:500'],
             'social_media_links.*.handle' => ['nullable', 'string', 'max:100'],
@@ -117,37 +117,37 @@ class UpdateGroupRequest extends FormRequest
         // Ensure arrays are properly formatted
         if ($this->has('sub_labels') && is_string($this->sub_labels)) {
             $this->merge([
-                'sub_labels' => json_decode($this->sub_labels, true) ?: []
+                'sub_labels' => json_decode($this->sub_labels, true) ?: [],
             ]);
         }
 
         if ($this->has('genres') && is_string($this->genres)) {
             $this->merge([
-                'genres' => json_decode($this->genres, true) ?: []
+                'genres' => json_decode($this->genres, true) ?: [],
             ]);
         }
 
         if ($this->has('official_colors') && is_string($this->official_colors)) {
             $this->merge([
-                'official_colors' => json_decode($this->official_colors, true) ?: []
+                'official_colors' => json_decode($this->official_colors, true) ?: [],
             ]);
         }
 
         if ($this->has('social_media_links') && is_string($this->social_media_links)) {
             $this->merge([
-                'social_media_links' => json_decode($this->social_media_links, true) ?: []
+                'social_media_links' => json_decode($this->social_media_links, true) ?: [],
             ]);
         }
 
         if ($this->has('official_websites') && is_string($this->official_websites)) {
             $this->merge([
-                'official_websites' => json_decode($this->official_websites, true) ?: []
+                'official_websites' => json_decode($this->official_websites, true) ?: [],
             ]);
         }
 
         if ($this->has('metadata') && is_string($this->metadata)) {
             $this->merge([
-                'metadata' => json_decode($this->metadata, true) ?: []
+                'metadata' => json_decode($this->metadata, true) ?: [],
             ]);
         }
     }

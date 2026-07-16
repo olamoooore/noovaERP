@@ -2,25 +2,26 @@
 
 namespace Modules\EventManagement\Http\Controllers;
 
-use Modules\EventManagement\Services\StaffManagementService;
-use Modules\EventManagement\Services\AuditService;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Validator;
+use Modules\EventManagement\Services\AuditService;
+use Modules\EventManagement\Services\StaffManagementService;
 
 /**
  * StaffController
- * 
+ *
  * Handles staff assignment, monitoring, and performance tracking endpoints.
  * Provides staff management capabilities for event operations with
  * role-based access control and comprehensive audit logging.
- * 
+ *
  * Requirements: 15.2, 15.5
  */
 class StaffController extends Controller
 {
     private StaffManagementService $staffService;
+
     private AuditService $auditService;
 
     public function __construct(
@@ -35,16 +36,12 @@ class StaffController extends Controller
         $this->middleware('rate_limit:staff_management')->only([
             'assignStaff',
             'updateAssignment',
-            'removeAssignment'
+            'removeAssignment',
         ]);
     }
 
     /**
      * Assign staff member to an event
-     * 
-     * @param Request $request
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function assignStaff(Request $request, int $eventId): JsonResponse
     {
@@ -68,7 +65,7 @@ class StaffController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -78,24 +75,20 @@ class StaffController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => ['assignment_id' => $assignmentId],
-                'message' => 'Staff member assigned successfully'
+                'message' => 'Staff member assigned successfully',
             ], 201);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to assign staff member',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Update staff assignment
-     * 
-     * @param Request $request
-     * @param int $assignmentId
-     * @return JsonResponse
      */
     public function updateAssignment(Request $request, int $assignmentId): JsonResponse
     {
@@ -119,7 +112,7 @@ class StaffController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -129,12 +122,12 @@ class StaffController extends Controller
             if ($success) {
                 return response()->json([
                     'success' => true,
-                    'message' => 'Staff assignment updated successfully'
+                    'message' => 'Staff assignment updated successfully',
                 ]);
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Failed to update staff assignment'
+                    'message' => 'Failed to update staff assignment',
                 ], 500);
             }
 
@@ -142,17 +135,13 @@ class StaffController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update staff assignment',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Check staff member in/out
-     * 
-     * @param Request $request
-     * @param int $assignmentId
-     * @return JsonResponse
      */
     public function checkInOut(Request $request, int $assignmentId): JsonResponse
     {
@@ -165,7 +154,7 @@ class StaffController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -175,12 +164,12 @@ class StaffController extends Controller
             if ($success) {
                 return response()->json([
                     'success' => true,
-                    'message' => "Staff member {$action} successful"
+                    'message' => "Staff member {$action} successful",
                 ]);
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => "Failed to {$action} staff member"
+                    'message' => "Failed to {$action} staff member",
                 ], 500);
             }
 
@@ -188,17 +177,13 @@ class StaffController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to process check-in/out',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Update staff member status
-     * 
-     * @param Request $request
-     * @param int $assignmentId
-     * @return JsonResponse
      */
     public function updateStatus(Request $request, int $assignmentId): JsonResponse
     {
@@ -211,7 +196,7 @@ class StaffController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -221,12 +206,12 @@ class StaffController extends Controller
             if ($success) {
                 return response()->json([
                     'success' => true,
-                    'message' => 'Staff status updated successfully'
+                    'message' => 'Staff status updated successfully',
                 ]);
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Failed to update staff status'
+                    'message' => 'Failed to update staff status',
                 ], 500);
             }
 
@@ -234,17 +219,13 @@ class StaffController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update staff status',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get staff assignments for an event
-     * 
-     * @param int $eventId
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getEventStaffAssignments(int $eventId, Request $request): JsonResponse
     {
@@ -255,24 +236,20 @@ class StaffController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $assignments,
-                'message' => 'Staff assignments retrieved successfully'
+                'message' => 'Staff assignments retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve staff assignments',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get staff member's assignment history
-     * 
-     * @param string $staffUserId
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getStaffHistory(string $staffUserId, Request $request): JsonResponse
     {
@@ -283,24 +260,20 @@ class StaffController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $history,
-                'message' => 'Staff assignment history retrieved successfully'
+                'message' => 'Staff assignment history retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve staff assignment history',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get staff performance metrics
-     * 
-     * @param string $staffUserId
-     * @param Request $request
-     * @return JsonResponse
      */
     public function getStaffPerformance(string $staffUserId, Request $request): JsonResponse
     {
@@ -311,24 +284,20 @@ class StaffController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $performance,
-                'message' => 'Staff performance metrics retrieved successfully'
+                'message' => 'Staff performance metrics retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve staff performance metrics',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get staff zone access permissions
-     * 
-     * @param string $staffUserId
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function getStaffZoneAccess(string $staffUserId, int $eventId): JsonResponse
     {
@@ -338,23 +307,20 @@ class StaffController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $access,
-                'message' => 'Staff zone access retrieved successfully'
+                'message' => 'Staff zone access retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve staff zone access',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Generate staff scheduling report
-     * 
-     * @param int $eventId
-     * @return JsonResponse
      */
     public function generateSchedulingReport(int $eventId): JsonResponse
     {
@@ -370,24 +336,20 @@ class StaffController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $report,
-                'message' => 'Staff scheduling report generated successfully'
+                'message' => 'Staff scheduling report generated successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to generate staff scheduling report',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Remove staff assignment
-     * 
-     * @param Request $request
-     * @param int $assignmentId
-     * @return JsonResponse
      */
     public function removeAssignment(Request $request, int $assignmentId): JsonResponse
     {
@@ -400,7 +362,7 @@ class StaffController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -410,12 +372,12 @@ class StaffController extends Controller
             if ($success) {
                 return response()->json([
                     'success' => true,
-                    'message' => 'Staff assignment removed successfully'
+                    'message' => 'Staff assignment removed successfully',
                 ]);
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Failed to remove staff assignment'
+                    'message' => 'Failed to remove staff assignment',
                 ], 500);
             }
 
@@ -423,15 +385,13 @@ class StaffController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to remove staff assignment',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get available staff roles
-     * 
-     * @return JsonResponse
      */
     public function getAvailableRoles(): JsonResponse
     {
@@ -452,23 +412,20 @@ class StaffController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $roles,
-                'message' => 'Available staff roles retrieved successfully'
+                'message' => 'Available staff roles retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve available roles',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get staff assignment by ID
-     * 
-     * @param int $assignmentId
-     * @return JsonResponse
      */
     public function getAssignment(int $assignmentId): JsonResponse
     {
@@ -481,10 +438,10 @@ class StaffController extends Controller
                 ->whereNull('deleted_at')
                 ->first();
 
-            if (!$assignment) {
+            if (! $assignment) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Staff assignment not found'
+                    'message' => 'Staff assignment not found',
                 ], 404);
             }
 
@@ -495,30 +452,28 @@ class StaffController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $assignment,
-                'message' => 'Staff assignment retrieved successfully'
+                'message' => 'Staff assignment retrieved successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve staff assignment',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     /**
      * Get an aggregate performance report for all staff across all events.
-     *
-     * @return JsonResponse
      */
     public function getPerformanceReport(): JsonResponse
     {
         try {
-            if (!\Schema::hasTable('staff_assignments')) {
+            if (! \Schema::hasTable('staff_assignments')) {
                 return response()->json([
                     'success' => true,
-                    'data'    => [],
+                    'data' => [],
                     'message' => 'No staff performance data available yet.',
                 ]);
             }
@@ -526,8 +481,8 @@ class StaffController extends Controller
             $tenantId = tenant('id') ?? null;
 
             $hasPerfRating = \Schema::hasColumn('staff_assignments', 'performance_rating');
-            $hasStatus     = \Schema::hasColumn('staff_assignments', 'status');
-            $hasDeletedAt  = \Schema::hasColumn('staff_assignments', 'deleted_at');
+            $hasStatus = \Schema::hasColumn('staff_assignments', 'status');
+            $hasDeletedAt = \Schema::hasColumn('staff_assignments', 'deleted_at');
 
             $query = \DB::table('staff_assignments as sa')
                 ->select(array_filter([
@@ -551,7 +506,7 @@ class StaffController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data'    => $rows,
+                'data' => $rows,
                 'message' => 'Staff performance report retrieved successfully',
             ]);
 
@@ -559,7 +514,7 @@ class StaffController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve performance report',
-                'error'   => config('app.debug') ? $e->getMessage() : 'Internal server error',
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }

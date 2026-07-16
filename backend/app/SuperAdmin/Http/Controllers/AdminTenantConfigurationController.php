@@ -16,8 +16,8 @@ use Illuminate\Support\Facades\Auth;
 class AdminTenantConfigurationController
 {
     public function __construct(
-        private readonly EntitlementService          $entitlements,
-        private readonly TenantConfigurationService  $config,
+        private readonly EntitlementService $entitlements,
+        private readonly TenantConfigurationService $config,
     ) {}
 
     /**
@@ -54,8 +54,8 @@ class AdminTenantConfigurationController
 
         return response()->json([
             'data' => [
-                'tenant_id'   => $tenantId,
-                'key'         => $data['key'],
+                'tenant_id' => $tenantId,
+                'key' => $data['key'],
                 'is_entitled' => $this->entitlements->isEntitled($tenantId, $data['key']),
             ],
         ]);
@@ -69,8 +69,8 @@ class AdminTenantConfigurationController
     {
         $data = $request->validate([
             'catalog_item_id' => 'required|integer|exists:catalog_items,id',
-            'selection_type'  => 'required|in:' . implode(',', TenantSelectedItem::TYPES),
-            'notes'           => 'nullable|string|max:500',
+            'selection_type' => 'required|in:'.implode(',', TenantSelectedItem::TYPES),
+            'notes' => 'nullable|string|max:500',
         ]);
 
         $item = CatalogItem::findOrFail($data['catalog_item_id']);

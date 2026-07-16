@@ -2,8 +2,8 @@
 
 namespace Modules\IoT\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
 
 class DeviceTemplate extends Model
 {
@@ -53,8 +53,9 @@ class DeviceTemplate extends Model
     {
         if ($vendorId && $productId) {
             return $query->where('vendor_id', $vendorId)
-                        ->where('product_id', $productId);
+                ->where('product_id', $productId);
         }
+
         return $query;
     }
 
@@ -65,8 +66,9 @@ class DeviceTemplate extends Model
     {
         if ($manufacturer && $model) {
             return $query->where('manufacturer', $manufacturer)
-                        ->where('model', $model);
+                ->where('model', $model);
         }
+
         return $query;
     }
 

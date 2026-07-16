@@ -2,15 +2,14 @@
 
 namespace Modules\Communication\Services;
 
+use Modules\Communication\Models\CommunicationPreference;
+use Modules\Communication\Models\CommunicationSubscriber;
 use Modules\Communication\Services\Channels\ChannelInterface;
 use Modules\Communication\Services\Channels\EmailChannel;
 use Modules\Communication\Services\Channels\InAppChannel;
+use Modules\Communication\Services\Channels\PushChannel;
 use Modules\Communication\Services\Channels\SmsChannel;
 use Modules\Communication\Services\Channels\WhatsAppChannel;
-use Modules\Communication\Services\Channels\PushChannel;
-use Modules\Communication\Models\CommunicationOutbox;
-use Modules\Communication\Models\CommunicationPreference;
-use Modules\Communication\Models\CommunicationSubscriber;
 
 /**
  * ChannelRouter — Decides which channels to use for each subscriber.
@@ -45,8 +44,6 @@ class ChannelRouter
     /**
      * Resolve which channels a subscriber should receive a message on.
      *
-     * @param CommunicationSubscriber $subscriber
-     * @param string|null $subtype
      * @return string[] Active channel names
      */
     public function resolveChannels(CommunicationSubscriber $subscriber, ?string $subtype = null): array
@@ -55,7 +52,7 @@ class ChannelRouter
         $channels = $subscriber->getChannels();
 
         // 2. Filter by subtype subscription
-        if ($subtype && !$subscriber->shouldReceiveSubtype($subtype)) {
+        if ($subtype && ! $subscriber->shouldReceiveSubtype($subtype)) {
             return [];
         }
 
@@ -77,17 +74,17 @@ class ChannelRouter
             }
 
             // Filter by enabled channels in preferences
-            $channels = array_filter($channels, fn($ch) => $preferences->isChannelEnabled($ch));
+            $channels = array_filter($channels, fn ($ch) => $preferences->isChannelEnabled($ch));
 
             // Handle quiet hours: remove non-exempt channels
             if ($preferences->isInQuietHours()) {
                 $exemptChannels = config('communication.quiet_hours.except_channels', ['in_app']);
-                $channels = array_filter($channels, fn($ch) => in_array($ch, $exemptChannels));
+                $channels = array_filter($channels, fn ($ch) => in_array($ch, $exemptChannels));
             }
         }
 
         // 4. Filter by globally enabled channels
-        $channels = array_filter($channels, fn($ch) => $this->isChannelEnabled($ch));
+        $channels = array_filter($channels, fn ($ch) => $this->isChannelEnabled($ch));
 
         return array_values($channels);
     }
@@ -105,7 +102,7 @@ class ChannelRouter
      */
     public function getEnabledDrivers(): array
     {
-        return array_filter($this->channelDrivers, fn(ChannelInterface $driver) => $driver->isEnabled());
+        return array_filter($this->channelDrivers, fn (ChannelInterface $driver) => $driver->isEnabled());
     }
 
     /**
@@ -114,6 +111,7 @@ class ChannelRouter
     public function isChannelEnabled(string $channel): bool
     {
         $driver = $this->getDriver($channel);
+
         return $driver ? $driver->isEnabled() : false;
     }
 
@@ -140,7 +138,7 @@ class ChannelRouter
     {
         $preferences = $this->getPreferences($subscriber);
 
-        if (!$preferences) {
+        if (! $preferences) {
             return false;
         }
 

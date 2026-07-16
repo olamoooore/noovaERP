@@ -15,19 +15,21 @@ class CompanySettingsController extends Controller
     {
         try {
             $settings = DB::table('company_settings')->first();
-            if (!$settings) {
+            if (! $settings) {
                 DB::table('company_settings')->insert([
-                'base_currency' => 'SGD',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-            $settings = DB::table('company_settings')->first();
-        }
-        $settings = $this->hydrateStructuredFields($settings);
-        return response()->json(['success' => true, 'data' => $settings]);
+                    'base_currency' => 'SGD',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                $settings = DB::table('company_settings')->first();
+            }
+            $settings = $this->hydrateStructuredFields($settings);
+
+            return response()->json(['success' => true, 'data' => $settings]);
         } catch (\Exception $e) {
             \Log::error('Failed to fetch company settings', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Failed to fetch settings: ' . $e->getMessage()], 500);
+
+            return response()->json(['success' => false, 'message' => 'Failed to fetch settings: '.$e->getMessage()], 500);
         }
     }
 
@@ -78,7 +80,7 @@ class CompanySettingsController extends Controller
                     ->all();
 
                 $data['phone_numbers'] = empty($phones) ? null : json_encode($phones);
-                if (!isset($data['phone']) && !empty($phones)) {
+                if (! isset($data['phone']) && ! empty($phones)) {
                     $data['phone'] = $phones[0];
                 }
             }
@@ -91,7 +93,7 @@ class CompanySettingsController extends Controller
                     ->all();
 
                 $data['addresses'] = empty($addresses) ? null : json_encode($addresses);
-                if (!isset($data['address']) && !empty($addresses)) {
+                if (! isset($data['address']) && ! empty($addresses)) {
                     $data['address'] = $addresses[0];
                 }
             }
@@ -105,10 +107,10 @@ class CompanySettingsController extends Controller
                 $data['social_links'] = empty($socialLinks) ? null : json_encode($socialLinks);
             }
 
-            if (!isset($data['gst_registration_number']) && $request->has('tax_id')) {
+            if (! isset($data['gst_registration_number']) && $request->has('tax_id')) {
                 $data['gst_registration_number'] = $request->input('tax_id');
             }
-            if (!isset($data['tax_id']) && $request->has('gst_registration_number')) {
+            if (! isset($data['tax_id']) && $request->has('gst_registration_number')) {
                 $data['tax_id'] = $request->input('gst_registration_number');
             }
 
@@ -119,9 +121,11 @@ class CompanySettingsController extends Controller
                 DB::table('company_settings')->insert($data);
             }
             $updated = $this->hydrateStructuredFields(DB::table('company_settings')->first());
+
             return response()->json(['success' => true, 'message' => 'Settings updated successfully', 'data' => $updated]);
         } catch (\Exception $e) {
             \Log::error('Failed to update company settings', ['error' => $e->getMessage()]);
+
             return response()->json(['success' => false, 'message' => 'Failed to update settings'], 500);
         }
     }
@@ -139,6 +143,7 @@ class CompanySettingsController extends Controller
                 'fiscal_year_end' => $settings->fiscal_year_end ?? \Carbon\Carbon::parse($startDate)->addYear()->subDay()->format('Y-m-d'),
                 'lock_date' => $settings->lock_date ?? null,
             ];
+
             return response()->json(['success' => true, 'data' => $fiscalYear]);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => 'Failed to fetch fiscal year settings'], 500);
@@ -171,9 +176,11 @@ class CompanySettingsController extends Controller
                 $data['created_at'] = now();
                 DB::table('company_settings')->insert($data);
             }
+
             return response()->json(['success' => true, 'message' => 'Fiscal year settings updated successfully', 'data' => ['fiscal_year_start' => $request->fiscal_year_start, 'fiscal_year_end' => $request->fiscal_year_end, 'lock_date' => $request->lock_date]]);
         } catch (\Exception $e) {
             \Log::error('Failed to update fiscal year settings', ['error' => $e->getMessage()]);
+
             return response()->json(['success' => false, 'message' => 'Failed to update fiscal year settings'], 500);
         }
     }
@@ -183,17 +190,17 @@ class CompanySettingsController extends Controller
         try {
             $settings = DB::table('company_settings')->first();
 
-            if (!$settings) {
+            if (! $settings) {
                 DB::table('company_settings')->insert([
-                'base_currency' => 'SGD',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-            $settings = DB::table('company_settings')->first();
-        }
+                    'base_currency' => 'SGD',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                $settings = DB::table('company_settings')->first();
+            }
 
-        $currencies = [
-            'base_currency' => $settings->base_currency ?? 'SGD',
+            $currencies = [
+                'base_currency' => $settings->base_currency ?? 'SGD',
                 'date_format' => $settings->date_format ?? 'MM/DD/YYYY',
                 'number_format' => $settings->number_format ?? 'en-US',
                 'decimal_places' => $settings->decimal_places ?? 2,
@@ -225,7 +232,8 @@ class CompanySettingsController extends Controller
             ]);
         } catch (\Exception $e) {
             \Log::error('Failed to fetch currency settings', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Failed to fetch currency settings: ' . $e->getMessage()], 500);
+
+            return response()->json(['success' => false, 'message' => 'Failed to fetch currency settings: '.$e->getMessage()], 500);
         }
     }
 
@@ -259,10 +267,12 @@ class CompanySettingsController extends Controller
                 $data['created_at'] = now();
                 DB::table('company_settings')->insert($data);
             }
+
             return response()->json(['success' => true, 'message' => 'Currency settings updated successfully', 'data' => $data]);
         } catch (\Exception $e) {
             \Log::error('Failed to update currency settings', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Failed to update currency settings: ' . $e->getMessage()], 500);
+
+            return response()->json(['success' => false, 'message' => 'Failed to update currency settings: '.$e->getMessage()], 500);
         }
     }
 
@@ -271,17 +281,17 @@ class CompanySettingsController extends Controller
         try {
             $settings = DB::table('company_settings')->first();
 
-            if (!$settings) {
+            if (! $settings) {
                 // Auto-create a default row so the frontend has something to bind to
                 DB::table('company_settings')->insert([
-                'base_currency' => 'SGD',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-            $settings = DB::table('company_settings')->first();
-        }
+                    'base_currency' => 'SGD',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                $settings = DB::table('company_settings')->first();
+            }
 
-        $accounts = [
+            $accounts = [
                 'accounts_receivable' => $settings->default_receivable_account_id ?? null,
                 'accounts_payable' => $settings->default_payable_account_id ?? null,
                 'sales_revenue' => $settings->default_revenue_account_id ?? null,
@@ -306,14 +316,16 @@ class CompanySettingsController extends Controller
                     'retained_earnings' => 'default_retained_earnings_account_id',
                     'bank_charges' => 'default_bank_charges_account_id',
                 };
-                if (!Schema::hasColumn('company_settings', $dbColumn)) {
+                if (! Schema::hasColumn('company_settings', $dbColumn)) {
                     $accounts[$key] = null;
                 }
             }
+
             return response()->json(['success' => true, 'data' => $accounts]);
         } catch (\Exception $e) {
             \Log::error('Failed to fetch default accounts', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Failed to fetch default accounts: ' . $e->getMessage()], 500);
+
+            return response()->json(['success' => false, 'message' => 'Failed to fetch default accounts: '.$e->getMessage()], 500);
         }
     }
 
@@ -324,6 +336,7 @@ class CompanySettingsController extends Controller
             if ($value === '' || $value === '0' || $value === 0) {
                 return null;
             }
+
             return $value;
         };
 
@@ -412,7 +425,8 @@ class CompanySettingsController extends Controller
             ]);
         } catch (\Exception $e) {
             \Log::error('Failed to update default accounts', ['error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => 'Failed to update default accounts: ' . $e->getMessage()], 500);
+
+            return response()->json(['success' => false, 'message' => 'Failed to update default accounts: '.$e->getMessage()], 500);
         }
     }
 
@@ -459,12 +473,12 @@ class CompanySettingsController extends Controller
     {
         $settings->phone_numbers = $this->decodeJsonArray(
             $settings->phone_numbers ?? null,
-            !empty($settings->phone) ? [$settings->phone] : []
+            ! empty($settings->phone) ? [$settings->phone] : []
         );
 
         $settings->addresses = $this->decodeJsonArray(
             $settings->addresses ?? null,
-            !empty($settings->address) ? [$settings->address] : []
+            ! empty($settings->address) ? [$settings->address] : []
         );
 
         $settings->social_links = $this->decodeJsonObject($settings->social_links ?? null, []);

@@ -2,15 +2,14 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Queue;
 use Modules\FinancialReporting\Jobs\ClearReportCache;
 use Modules\FinancialReporting\Models\ReportCache;
-use Carbon\Carbon;
+use Tests\TenantTestCase;
 
 class ClearReportCacheJobTest extends TenantTestCase
 {
-
     /** @test */
     public function it_can_be_dispatched()
     {

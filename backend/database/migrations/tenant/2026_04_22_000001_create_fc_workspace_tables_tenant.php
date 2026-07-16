@@ -12,7 +12,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('fci_account_reviews')) {
+        if (! Schema::hasTable('fci_account_reviews')) {
             Schema::create('fci_account_reviews', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -32,7 +32,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fci_account_rollforwards')) {
+        if (! Schema::hasTable('fci_account_rollforwards')) {
             Schema::create('fci_account_rollforwards', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -51,7 +51,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fci_supporting_evidence')) {
+        if (! Schema::hasTable('fci_supporting_evidence')) {
             Schema::create('fci_supporting_evidence', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -69,7 +69,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fci_review_comments')) {
+        if (! Schema::hasTable('fci_review_comments')) {
             Schema::create('fci_review_comments', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -83,7 +83,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fci_signoffs')) {
+        if (! Schema::hasTable('fci_signoffs')) {
             Schema::create('fci_signoffs', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -100,7 +100,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fci_unreconciled_items')) {
+        if (! Schema::hasTable('fci_unreconciled_items')) {
             Schema::create('fci_unreconciled_items', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -121,7 +121,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fci_subledger_tieouts')) {
+        if (! Schema::hasTable('fci_subledger_tieouts')) {
             Schema::create('fci_subledger_tieouts', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -141,7 +141,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fci_evidence_packs')) {
+        if (! Schema::hasTable('fci_evidence_packs')) {
             Schema::create('fci_evidence_packs', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');

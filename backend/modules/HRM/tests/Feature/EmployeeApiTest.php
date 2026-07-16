@@ -8,7 +8,6 @@ use Modules\HRM\Tests\HrmTestCase;
 
 class EmployeeApiTest extends HrmTestCase
 {
-
     protected User $user;
 
     protected function setUp(): void
@@ -31,7 +30,7 @@ class EmployeeApiTest extends HrmTestCase
     public function test_can_create_employee(): void
     {
         $payload = [
-            'name'  => 'John Doe',
+            'name' => 'John Doe',
             'email' => 'john.doe@example.com',
         ];
 
@@ -46,7 +45,7 @@ class EmployeeApiTest extends HrmTestCase
     public function test_employee_number_is_auto_generated(): void
     {
         $response = $this->postJson('/api/v1/hrm/employees', [
-            'name'  => 'Auto Number',
+            'name' => 'Auto Number',
             'email' => 'auto@example.com',
         ]);
 
@@ -68,7 +67,7 @@ class EmployeeApiTest extends HrmTestCase
         Employee::factory()->create(['email' => 'taken@example.com']);
 
         $response = $this->postJson('/api/v1/hrm/employees', [
-            'name'  => 'New Employee',
+            'name' => 'New Employee',
             'email' => 'taken@example.com',
         ]);
 

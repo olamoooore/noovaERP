@@ -2,11 +2,11 @@
 
 namespace Modules\FinancialClose\Services;
 
+use App\Models\User;
 use Illuminate\Support\Facades\Log;
+use Modules\FinancialClose\Models\AuditLog;
 use Modules\FinancialClose\Models\CloseTask;
 use Modules\FinancialClose\Models\EscalationEvent;
-use Modules\FinancialClose\Models\AuditLog;
-use App\Models\User;
 
 class FinancialCloseEscalationService
 {
@@ -16,9 +16,9 @@ class FinancialCloseEscalationService
      * low/medium route to an Accountant. Admin/Owner are always valid fallbacks.
      */
     protected const LEVEL_ROLE_MAP = [
-        'low'      => ['Accountant', 'Admin', 'Owner'],
-        'medium'   => ['Accountant', 'Admin', 'Owner'],
-        'high'     => ['Manager', 'Admin', 'Owner'],
+        'low' => ['Accountant', 'Admin', 'Owner'],
+        'medium' => ['Accountant', 'Admin', 'Owner'],
+        'high' => ['Manager', 'Admin', 'Owner'],
         'critical' => ['Manager', 'Admin', 'Owner'],
     ];
 
@@ -73,7 +73,7 @@ class FinancialCloseEscalationService
             ->where('id', $taskId)
             ->first();
 
-        if (!$task) {
+        if (! $task) {
             return null;
         }
 
@@ -151,7 +151,7 @@ class FinancialCloseEscalationService
             ->where('id', $escalationId)
             ->first();
 
-        if (!$escalation || $escalation->status !== 'open') {
+        if (! $escalation || $escalation->status !== 'open') {
             return false;
         }
 
@@ -181,7 +181,7 @@ class FinancialCloseEscalationService
             ->where('id', $escalationId)
             ->first();
 
-        if (!$escalation || $escalation->status !== 'open') {
+        if (! $escalation || $escalation->status !== 'open') {
             return false;
         }
 
@@ -224,7 +224,7 @@ class FinancialCloseEscalationService
             ->where('id', $escalationId)
             ->first();
 
-        if (!$escalation || $escalation->status !== 'open') {
+        if (! $escalation || $escalation->status !== 'open') {
             return false;
         }
 
@@ -276,9 +276,9 @@ class FinancialCloseEscalationService
                 ->where('status', 'open')
                 ->first();
 
-            if (!$existing) {
+            if (! $existing) {
                 $daysOverdue = (int) now()->diffInDays($task->due_date);
-                $level       = $this->resolveEscalationLevel($daysOverdue, (bool) $task->is_critical);
+                $level = $this->resolveEscalationLevel($daysOverdue, (bool) $task->is_critical);
 
                 $this->createEscalation(
                     $tenantId,
@@ -292,7 +292,7 @@ class FinancialCloseEscalationService
 
         Log::info('FinancialClose: overdue task escalation scan complete', [
             'tenant_id' => $tenantId,
-            'cycle_id'  => $cycleId,
+            'cycle_id' => $cycleId,
             'escalated' => $escalated,
         ]);
 
@@ -310,19 +310,19 @@ class FinancialCloseEscalationService
      */
     protected function resolveEscalationLevel(int $daysOverdue, bool $isCritical): string
     {
-        $level = match(true) {
-            $daysOverdue < 1  => 'low',
+        $level = match (true) {
+            $daysOverdue < 1 => 'low',
             $daysOverdue <= 2 => 'medium',
             $daysOverdue <= 5 => 'high',
-            default           => 'critical',
+            default => 'critical',
         };
 
         if ($isCritical) {
-            $level = match($level) {
-                'low'    => 'medium',
+            $level = match ($level) {
+                'low' => 'medium',
                 'medium' => 'high',
-                'high'   => 'critical',
-                default  => 'critical',
+                'high' => 'critical',
+                default => 'critical',
             };
         }
 

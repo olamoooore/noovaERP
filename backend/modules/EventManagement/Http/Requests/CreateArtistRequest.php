@@ -7,10 +7,10 @@ use Illuminate\Validation\Rule;
 
 /**
  * Create Artist Request
- * 
+ *
  * Validates data for creating new K-POP artists with comprehensive
  * metadata and social media information.
- * 
+ *
  * Requirements: 12.1, 12.2
  */
 class CreateArtistRequest extends FormRequest
@@ -43,12 +43,12 @@ class CreateArtistRequest extends FormRequest
                 'leader', 'main_vocalist', 'lead_vocalist', 'vocalist',
                 'main_dancer', 'lead_dancer', 'dancer',
                 'main_rapper', 'lead_rapper', 'rapper',
-                'visual', 'center', 'face_of_group', 'maknae'
+                'visual', 'center', 'face_of_group', 'maknae',
             ])],
             'profile_image_url' => ['nullable', 'url', 'max:500'],
             'social_media_links' => ['nullable', 'array'],
             'social_media_links.*.platform' => ['required_with:social_media_links', 'string', Rule::in([
-                'instagram', 'twitter', 'tiktok', 'youtube', 'weibo', 'facebook', 'vlive', 'other'
+                'instagram', 'twitter', 'tiktok', 'youtube', 'weibo', 'facebook', 'vlive', 'other',
             ])],
             'social_media_links.*.url' => ['required_with:social_media_links', 'url', 'max:500'],
             'social_media_links.*.handle' => ['nullable', 'string', 'max:100'],
@@ -101,25 +101,25 @@ class CreateArtistRequest extends FormRequest
         // Ensure arrays are properly formatted
         if ($this->has('positions') && is_string($this->positions)) {
             $this->merge([
-                'positions' => json_decode($this->positions, true) ?: []
+                'positions' => json_decode($this->positions, true) ?: [],
             ]);
         }
 
         if ($this->has('social_media_links') && is_string($this->social_media_links)) {
             $this->merge([
-                'social_media_links' => json_decode($this->social_media_links, true) ?: []
+                'social_media_links' => json_decode($this->social_media_links, true) ?: [],
             ]);
         }
 
         if ($this->has('official_colors') && is_string($this->official_colors)) {
             $this->merge([
-                'official_colors' => json_decode($this->official_colors, true) ?: []
+                'official_colors' => json_decode($this->official_colors, true) ?: [],
             ]);
         }
 
         if ($this->has('metadata') && is_string($this->metadata)) {
             $this->merge([
-                'metadata' => json_decode($this->metadata, true) ?: []
+                'metadata' => json_decode($this->metadata, true) ?: [],
             ]);
         }
     }

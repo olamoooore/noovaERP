@@ -3,8 +3,8 @@
 namespace Modules\Communication\Services\Channels;
 
 use Illuminate\Support\Facades\Log;
-use Modules\Communication\Models\CommunicationOutbox;
 use Modules\Communication\Models\CommunicationMessage;
+use Modules\Communication\Models\CommunicationOutbox;
 
 /**
  * SmsChannel — Sends messages via SMS.
@@ -26,13 +26,13 @@ class SmsChannel implements ChannelInterface
 
     public function send(CommunicationOutbox $outbox, CommunicationMessage $message): array
     {
-        if (!$this->isEnabled()) {
+        if (! $this->isEnabled()) {
             return ['success' => false, 'error' => 'SMS channel is not enabled'];
         }
 
         try {
             $phone = $outbox->recipient_phone;
-            if (!$phone) {
+            if (! $phone) {
                 return ['success' => false, 'error' => 'No recipient phone number'];
             }
 
@@ -78,20 +78,23 @@ class SmsChannel implements ChannelInterface
         // $twilio = new \Twilio\Rest\Client($sid, $token);
         // $twilio->messages->create($phone, ['from' => $from, 'body' => $body]);
         Log::info('Communication: SMS via Twilio (stub)', compact('phone'));
-        return ['success' => true, 'external_id' => 'twilio_' . uniqid()];
+
+        return ['success' => true, 'external_id' => 'twilio_'.uniqid()];
     }
 
     protected function sendViaVonage(string $phone, string $body): array
     {
         // TODO: Implement Vonage integration
         Log::info('Communication: SMS via Vonage (stub)', compact('phone'));
-        return ['success' => true, 'external_id' => 'vonage_' . uniqid()];
+
+        return ['success' => true, 'external_id' => 'vonage_'.uniqid()];
     }
 
     protected function sendViaAfricasTalking(string $phone, string $body): array
     {
         // TODO: Implement Africa's Talking integration
         Log::info('Communication: SMS via AfricasTalking (stub)', compact('phone'));
-        return ['success' => true, 'external_id' => 'at_' . uniqid()];
+
+        return ['success' => true, 'external_id' => 'at_'.uniqid()];
     }
 }

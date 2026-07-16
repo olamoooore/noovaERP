@@ -3,8 +3,8 @@
 namespace Modules\FinancialReporting\Services\Reports;
 
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Modules\FinancialReporting\DTOs\ReportData;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\Services\BaseReportService;
@@ -13,7 +13,7 @@ class GeneralLedgerService extends BaseReportService
 {
     /**
      * Generate General Ledger report
-     * 
+     *
      * A General Ledger shows all transactions for selected accounts
      * with running balances, providing a complete audit trail
      */
@@ -26,14 +26,14 @@ class GeneralLedgerService extends BaseReportService
         $perPage = $filter->perPage;
 
         // Validate required parameters
-        if (!$accountId) {
+        if (! $accountId) {
             throw new \InvalidArgumentException('Account ID is required for General Ledger report');
         }
 
         // Get account information
         $account = $this->getAccountInfo($accountId);
-        
-        if (!$account) {
+
+        if (! $account) {
             throw new \InvalidArgumentException("Account with ID {$accountId} not found");
         }
 
@@ -101,7 +101,7 @@ class GeneralLedgerService extends BaseReportService
      */
     protected function getOpeningBalance(int $accountId, ?Carbon $startDate, ?ReportFilter $filter = null): float
     {
-        if (!$startDate) {
+        if (! $startDate) {
             return 0.0;
         }
 
@@ -119,9 +119,9 @@ class GeneralLedgerService extends BaseReportService
         }
 
         $result = $query->select([
-                DB::raw('SUM(jel.debit) as total_debit'),
-                DB::raw('SUM(jel.credit) as total_credit'),
-            ])
+            DB::raw('SUM(jel.debit) as total_debit'),
+            DB::raw('SUM(jel.credit) as total_credit'),
+        ])
             ->first();
 
         return ($result->total_debit ?? 0) - ($result->total_credit ?? 0);
@@ -149,9 +149,9 @@ class GeneralLedgerService extends BaseReportService
         }
 
         $result = $query->select([
-                DB::raw('SUM(jel.debit) as total_debit'),
-                DB::raw('SUM(jel.credit) as total_credit'),
-            ])
+            DB::raw('SUM(jel.debit) as total_debit'),
+            DB::raw('SUM(jel.credit) as total_credit'),
+        ])
             ->first();
 
         return ($result->total_debit ?? 0) - ($result->total_credit ?? 0);
@@ -190,16 +190,16 @@ class GeneralLedgerService extends BaseReportService
         }
 
         return $query->select([
-                'je.id as journal_entry_id',
-                'je.entry_date',
-                'je.reference',
-                'je.description as journal_description',
-                'jel.id as line_id',
-                'jel.description as line_description',
-                'jel.debit',
-                'jel.credit',
-                'jel.dimensions',
-            ])
+            'je.id as journal_entry_id',
+            'je.entry_date',
+            'je.reference',
+            'je.description as journal_description',
+            'jel.id as line_id',
+            'jel.description as line_description',
+            'jel.debit',
+            'jel.credit',
+            'jel.dimensions',
+        ])
             ->orderBy('je.entry_date', 'asc')
             ->orderBy('je.id', 'asc')
             ->orderBy('jel.id', 'asc')
@@ -267,15 +267,15 @@ class GeneralLedgerService extends BaseReportService
         }
 
         $accounts = $query->select([
-                'coa.id',
-                'coa.code',
-                'coa.name',
-                'coa.type',
-                DB::raw('COUNT(DISTINCT je.id) as transaction_count'),
-                DB::raw('SUM(jel.debit) as total_debit'),
-                DB::raw('SUM(jel.credit) as total_credit'),
-                DB::raw('SUM(jel.debit - jel.credit) as net_change'),
-            ])
+            'coa.id',
+            'coa.code',
+            'coa.name',
+            'coa.type',
+            DB::raw('COUNT(DISTINCT je.id) as transaction_count'),
+            DB::raw('SUM(jel.debit) as total_debit'),
+            DB::raw('SUM(jel.credit) as total_credit'),
+            DB::raw('SUM(jel.debit - jel.credit) as net_change'),
+        ])
             ->groupBy('coa.id', 'coa.code', 'coa.name', 'coa.type')
             ->orderBy('coa.code')
             ->get();

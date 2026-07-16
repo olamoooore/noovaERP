@@ -28,9 +28,13 @@ class ProductRelationship extends Model
     ];
 
     public const TYPE_CROSS_SELL = 'cross_sell';
+
     public const TYPE_UP_SELL = 'up_sell';
+
     public const TYPE_SUBSTITUTE = 'substitute';
+
     public const TYPE_ACCESSORY = 'accessory';
+
     public const TYPE_COMPLEMENTARY = 'complementary';
 
     public static function types(): array

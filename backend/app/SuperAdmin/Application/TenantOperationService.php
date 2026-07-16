@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\SuperAdmin\Application;
 
+use App\Services\SearchPathGuard;
 use App\SuperAdmin\Domain\PlanVersion;
 use App\SuperAdmin\Domain\Subscription;
 use App\SuperAdmin\Domain\TenantHealthSnapshot;
 use App\SuperAdmin\Domain\TenantOperation;
-use App\Services\SearchPathGuard;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -29,13 +29,13 @@ class TenantOperationService
         $tenant->update(['data' => array_merge($before, ['suspended' => true])]);
 
         $operation = TenantOperation::create([
-            'tenant_id'    => $tenantId,
-            'admin_user_id'=> Auth::id(),
-            'operation'    => 'suspend',
-            'payload'      => ['reason' => $reason],
-            'result'       => ['suspended' => true],
-            'status'       => 'success',
-            'created_at'   => now(),
+            'tenant_id' => $tenantId,
+            'admin_user_id' => Auth::id(),
+            'operation' => 'suspend',
+            'payload' => ['reason' => $reason],
+            'result' => ['suspended' => true],
+            'status' => 'success',
+            'created_at' => now(),
         ]);
 
         $this->auditLogger->log(
@@ -58,13 +58,13 @@ class TenantOperationService
         $tenant->update(['data' => array_merge($before, ['suspended' => false])]);
 
         $operation = TenantOperation::create([
-            'tenant_id'    => $tenantId,
-            'admin_user_id'=> Auth::id(),
-            'operation'    => 'reinstate',
-            'payload'      => ['reason' => $reason],
-            'result'       => ['suspended' => false],
-            'status'       => 'success',
-            'created_at'   => now(),
+            'tenant_id' => $tenantId,
+            'admin_user_id' => Auth::id(),
+            'operation' => 'reinstate',
+            'payload' => ['reason' => $reason],
+            'result' => ['suspended' => false],
+            'status' => 'success',
+            'created_at' => now(),
         ]);
 
         $this->auditLogger->log(
@@ -81,11 +81,11 @@ class TenantOperationService
 
     public function pingHealth(string $tenantId): TenantHealthSnapshot
     {
-        $tenant     = Tenant::findOrFail($tenantId);
+        $tenant = Tenant::findOrFail($tenantId);
         $schemaName = $tenant->id;
-        $dbConnected    = false;
+        $dbConnected = false;
         $storageUsageMb = null;
-        $lastLoginAt    = null;
+        $lastLoginAt = null;
 
         try {
             SearchPathGuard::setSearchPath($schemaName, "Tenant health check for tenant {$tenantId}");
@@ -108,7 +108,7 @@ class TenantOperationService
             }
 
             // Try to get last login from tenant's users table
-            $loginRow = DB::selectOne("SELECT MAX(last_login_at) as last_login FROM users LIMIT 1");
+            $loginRow = DB::selectOne('SELECT MAX(last_login_at) as last_login FROM users LIMIT 1');
             if ($loginRow && $loginRow->last_login) {
                 $lastLoginAt = $loginRow->last_login;
             }
@@ -119,14 +119,14 @@ class TenantOperationService
         }
 
         $snapshot = TenantHealthSnapshot::create([
-            'tenant_id'          => $tenantId,
-            'db_connected'       => $dbConnected,
-            'storage_usage_mb'   => $storageUsageMb,
-            'last_login_at'      => $lastLoginAt,
+            'tenant_id' => $tenantId,
+            'db_connected' => $dbConnected,
+            'storage_usage_mb' => $storageUsageMb,
+            'last_login_at' => $lastLoginAt,
             'error_rate_percent' => null,
-            'response_time_ms'   => null,
-            'metadata'           => null,
-            'created_at'         => now(),
+            'response_time_ms' => null,
+            'metadata' => null,
+            'created_at' => now(),
         ]);
 
         $this->auditLogger->log(
@@ -145,22 +145,22 @@ class TenantOperationService
         array $payload,
         ?string $reason = null,
     ): TenantOperation {
-        $planVersionId    = $payload['plan_version_id'] ?? null;
-        $billingInterval  = $payload['billing_interval'] ?? 'monthly';
+        $planVersionId = $payload['plan_version_id'] ?? null;
+        $billingInterval = $payload['billing_interval'] ?? 'monthly';
 
-        if (!$planVersionId) {
+        if (! $planVersionId) {
             throw ValidationException::withMessages([
                 'payload' => 'plan_version_id is required for migrate_plan.',
             ]);
         }
 
-        if (!in_array($billingInterval, ['monthly', 'yearly'], true)) {
+        if (! in_array($billingInterval, ['monthly', 'yearly'], true)) {
             throw ValidationException::withMessages([
                 'payload' => 'billing_interval must be monthly or yearly.',
             ]);
         }
 
-        $newVersion   = PlanVersion::findOrFail($planVersionId);
+        $newVersion = PlanVersion::findOrFail($planVersionId);
         $subscription = Subscription::where('tenant_id', $tenantId)->latest()->first();
 
         if ($subscription) {
@@ -181,13 +181,13 @@ class TenantOperationService
         }
 
         return TenantOperation::create([
-            'tenant_id'     => $tenantId,
+            'tenant_id' => $tenantId,
             'admin_user_id' => Auth::id(),
-            'operation'     => 'migrate_plan',
-            'payload'       => $payload,
-            'result'        => ['plan_version_id' => $newVersion->id, 'billing_interval' => $billingInterval],
-            'status'        => 'success',
-            'created_at'    => now(),
+            'operation' => 'migrate_plan',
+            'payload' => $payload,
+            'result' => ['plan_version_id' => $newVersion->id, 'billing_interval' => $billingInterval],
+            'status' => 'success',
+            'created_at' => now(),
         ]);
     }
 
@@ -206,16 +206,16 @@ class TenantOperationService
             ]);
         }
 
-        if (!in_array($operation, $allowed, true)) {
+        if (! in_array($operation, $allowed, true)) {
             throw ValidationException::withMessages([
                 'operation' => "Unknown operation [{$operation}].",
             ]);
         }
 
         return match ($operation) {
-            'suspend'      => $this->suspend($tenantId, $reason),
-            'reinstate'    => $this->reinstate($tenantId, $reason),
-            'ping_health'  => $this->wrapPingAsOperation($tenantId),
+            'suspend' => $this->suspend($tenantId, $reason),
+            'reinstate' => $this->reinstate($tenantId, $reason),
+            'ping_health' => $this->wrapPingAsOperation($tenantId),
             'migrate_plan' => $this->migratePlan($tenantId, $payload, $reason),
         };
     }
@@ -225,13 +225,13 @@ class TenantOperationService
         $snapshot = $this->pingHealth($tenantId);
 
         return TenantOperation::create([
-            'tenant_id'     => $tenantId,
+            'tenant_id' => $tenantId,
             'admin_user_id' => Auth::id(),
-            'operation'     => 'ping_health',
-            'payload'       => null,
-            'result'        => ['db_connected' => $snapshot->db_connected, 'snapshot_id' => $snapshot->id],
-            'status'        => 'success',
-            'created_at'    => now(),
+            'operation' => 'ping_health',
+            'payload' => null,
+            'result' => ['db_connected' => $snapshot->db_connected, 'snapshot_id' => $snapshot->id],
+            'status' => 'success',
+            'created_at' => now(),
         ]);
     }
 }

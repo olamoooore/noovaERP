@@ -2,11 +2,11 @@
 
 namespace Modules\IoT\Services;
 
-use Modules\IoT\Models\DeviceConfiguration;
+use Illuminate\Support\Collection;
 use Modules\IoT\Events\DeviceConfigUpdated;
 use Modules\IoT\Events\DeviceReloadRequested;
 use Modules\IoT\Events\DeviceStatusChanged;
-use Illuminate\Support\Collection;
+use Modules\IoT\Models\DeviceConfiguration;
 
 class DeviceManagementService
 {
@@ -88,20 +88,20 @@ class DeviceManagementService
     {
         // Call agent HTTP API to reload device
         $result = $this->agentClient->reloadDevice($config->agent_id, $config->id);
-        
+
         if ($result['success']) {
-            logger()->info("Device reloaded successfully", [
+            logger()->info('Device reloaded successfully', [
                 'device_id' => $config->id,
                 'agent_id' => $config->agent_id,
             ]);
         } else {
-            logger()->error("Failed to reload device", [
+            logger()->error('Failed to reload device', [
                 'device_id' => $config->id,
                 'agent_id' => $config->agent_id,
                 'error' => $result['error'] ?? 'Unknown error',
             ]);
         }
-        
+
         // Also broadcast reload command via WebSocket for real-time updates
         broadcast(new DeviceReloadRequested($config->agent_id, $config->id))->toOthers();
     }
@@ -113,7 +113,7 @@ class DeviceManagementService
     {
         $agentId = $configs->first()?->agent_id;
 
-        if (!$agentId) {
+        if (! $agentId) {
             return [
                 'success' => 0,
                 'failed' => 0,
@@ -122,26 +122,26 @@ class DeviceManagementService
 
         // Call agent HTTP API to reload all devices at once
         $result = $this->agentClient->reloadAllDevices($agentId);
-        
+
         if ($result['success']) {
-            logger()->info("All devices reloaded successfully", [
+            logger()->info('All devices reloaded successfully', [
                 'agent_id' => $agentId,
                 'reloaded' => $result['reloaded'] ?? 0,
             ]);
-            
+
             // Broadcast reload-all command via WebSocket for real-time updates
             broadcast(new DeviceReloadRequested($agentId))->toOthers();
-            
+
             return [
                 'success' => $result['reloaded'] ?? 0,
                 'failed' => 0,
             ];
         } else {
-            logger()->error("Failed to reload all devices", [
+            logger()->error('Failed to reload all devices', [
                 'agent_id' => $agentId,
                 'error' => $result['error'] ?? 'Unknown error',
             ]);
-            
+
             return [
                 'success' => 0,
                 'failed' => $configs->count(),

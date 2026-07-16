@@ -25,7 +25,7 @@ class PosMigrationSafetyTest extends TestCase
             AND column_name = 'session_id'
         ");
 
-        if (!empty($column)) {
+        if (! empty($column)) {
             $this->assertEquals('NO', $column[0]->is_nullable,
                 'pos_orders.session_id must be NOT NULL after migration');
         } else {
@@ -45,7 +45,7 @@ class PosMigrationSafetyTest extends TestCase
             AND index_name LIKE '%reference%'
         ");
 
-        if (!empty($indexes)) {
+        if (! empty($indexes)) {
             $this->assertNotEmpty($indexes, 'stock_movements must have a unique index on reference columns');
         } else {
             $this->markTestSkipped('stock_movements unique index not found in test DB');
@@ -55,7 +55,7 @@ class PosMigrationSafetyTest extends TestCase
     /** @test */
     public function audit_logs_table_exists_with_required_columns()
     {
-        if (!Schema::hasTable('audit_logs')) {
+        if (! Schema::hasTable('audit_logs')) {
             $this->markTestSkipped('audit_logs table not found — migration may not have run');
         }
 
@@ -76,7 +76,7 @@ class PosMigrationSafetyTest extends TestCase
     /** @test */
     public function tax_period_locks_table_exists_with_required_columns()
     {
-        if (!Schema::hasTable('tax_period_locks')) {
+        if (! Schema::hasTable('tax_period_locks')) {
             $this->markTestSkipped('tax_period_locks table not found — migration may not have run');
         }
 
@@ -93,7 +93,7 @@ class PosMigrationSafetyTest extends TestCase
     /** @test */
     public function pos_orders_table_has_void_tracking_columns()
     {
-        if (!Schema::hasTable('pos_orders')) {
+        if (! Schema::hasTable('pos_orders')) {
             $this->markTestSkipped('pos_orders table not found');
         }
 
@@ -110,7 +110,7 @@ class PosMigrationSafetyTest extends TestCase
     /** @test */
     public function journal_entry_lines_has_tax_code_column()
     {
-        if (!Schema::hasTable('journal_entry_lines')) {
+        if (! Schema::hasTable('journal_entry_lines')) {
             $this->markTestSkipped('journal_entry_lines table not found');
         }
 
@@ -126,11 +126,11 @@ class PosMigrationSafetyTest extends TestCase
         // Verify migration files in the POS module have down() methods
         $migrationPath = base_path('modules/POS/database/migrations/tenant');
 
-        if (!is_dir($migrationPath)) {
+        if (! is_dir($migrationPath)) {
             $this->markTestSkipped('POS migration directory not found');
         }
 
-        $files = glob($migrationPath . '/*.php');
+        $files = glob($migrationPath.'/*.php');
         $this->assertNotEmpty($files, 'No POS migration files found');
 
         foreach ($files as $file) {
@@ -138,7 +138,7 @@ class PosMigrationSafetyTest extends TestCase
             $this->assertStringContainsString(
                 'public function down()',
                 $content,
-                "Migration file missing down() method: " . basename($file)
+                'Migration file missing down() method: '.basename($file)
             );
         }
     }

@@ -2,11 +2,11 @@
 
 namespace Modules\Fulfillment\Services;
 
-use Modules\Fulfillment\Models\ShippingRule;
-use Modules\Fulfillment\Models\FulfillmentProvider;
+use Illuminate\Support\Collection;
 use Modules\Fulfillment\Contracts\RateRequest;
 use Modules\Fulfillment\Contracts\RateResponse;
-use Illuminate\Support\Collection;
+use Modules\Fulfillment\Models\FulfillmentProvider;
+use Modules\Fulfillment\Models\ShippingRule;
 
 class ShippingRuleEngine
 {
@@ -48,13 +48,13 @@ class ShippingRuleEngine
     ): ?RateResponse {
         $providerConfig = $this->resolveCarrier($tenantId, $context);
 
-        if (!$providerConfig) {
+        if (! $providerConfig) {
             return null;
         }
 
         $provider = FulfillmentProvider::find($providerConfig['provider_id']);
 
-        if (!$provider) {
+        if (! $provider) {
             return null;
         }
 
@@ -63,7 +63,7 @@ class ShippingRuleEngine
 
         $rates = $carrier->calculateRates($request);
 
-        if (!empty($providerConfig['service_type'])) {
+        if (! empty($providerConfig['service_type'])) {
             foreach ($rates as $rate) {
                 if ($rate->serviceCode === $providerConfig['service_type']) {
                     return $rate;
@@ -90,6 +90,7 @@ class ShippingRuleEngine
     {
         $rule = ShippingRule::findOrFail($ruleId);
         $rule->update($data);
+
         return $rule;
     }
 

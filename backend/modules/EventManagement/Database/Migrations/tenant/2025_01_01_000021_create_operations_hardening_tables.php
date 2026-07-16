@@ -3,16 +3,14 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Database\QueryException;
 
 /**
  * Migration: Create Operations Hardening Tables - Task 9.1
- * 
+ *
  * Creates comprehensive operations console hardening database schema with offline
  * check-in queue management, staff override tracking, conflict resolution, and
  * synchronization support for reliable event operations.
- * 
+ *
  * Requirements: 25.1, 25.2, 25.3
  */
 class CreateOperationsHardeningTables extends Migration
@@ -67,7 +65,7 @@ class CreateOperationsHardeningTables extends Migration
                 'system_error',
                 'policy_exception',
                 'security_concern',
-                'other'
+                'other',
             ])->index();
             $table->json('override_data'); // Original and new values
             $table->json('context_data'); // Additional context and metadata
@@ -152,7 +150,7 @@ class CreateOperationsHardeningTables extends Migration
                 'staff_permission_change',
                 'device_data_corruption',
                 'concurrent_modification',
-                'data_integrity_violation'
+                'data_integrity_violation',
             ])->index();
             $table->string('entity_type', 100)->index(); // ticket, booking, etc.
             $table->bigInteger('entity_id')->index();
@@ -168,7 +166,7 @@ class CreateOperationsHardeningTables extends Migration
                 'merge_data',
                 'manual_resolution',
                 'create_duplicate',
-                'reject_offline'
+                'reject_offline',
             ])->nullable()->index();
             $table->json('resolution_data')->nullable(); // Resolution details
             $table->enum('conflict_status', ['detected', 'analyzing', 'resolved', 'escalated'])->default('detected')->index();
@@ -285,7 +283,7 @@ class CreateOperationsHardeningTables extends Migration
      */
     private function createTableSafe($tableName, $callback)
     {
-        if (!Schema::hasTable($tableName)) {
+        if (! Schema::hasTable($tableName)) {
             try {
                 Schema::create($tableName, $callback);
             } catch (\Throwable $e) {
@@ -294,6 +292,7 @@ class CreateOperationsHardeningTables extends Migration
                 // If it's an "already exists" error, ignore it
                 if (str_contains($msg, 'already exists')) {
                     fwrite(STDERR, "IGNORING: Table $tableName exists.\n");
+
                     return;
                 }
                 throw $e;

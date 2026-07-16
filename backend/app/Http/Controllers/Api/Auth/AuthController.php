@@ -21,10 +21,10 @@ class AuthController extends Controller
         // Look up user in public schema (central user management)
         // Ensure we're querying the public schema
         \DB::statement('SET search_path TO public');
-        
+
         $user = User::where('email', $request->email)->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        if (! $user || ! Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
@@ -36,15 +36,15 @@ class AuthController extends Controller
             ->where('is_default', true)
             ->first();
 
-        if (!$defaultCompany) {
+        if (! $defaultCompany) {
             throw ValidationException::withMessages([
                 'email' => ['No tenant configured for this user. Please contact your administrator.'],
             ]);
         }
 
         $tenant = \App\Models\Tenant::find($defaultCompany->tenant_id);
-        
-        if (!$tenant) {
+
+        if (! $tenant) {
             throw ValidationException::withMessages([
                 'email' => ['No tenant configured for this user.'],
             ]);

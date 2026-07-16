@@ -2,8 +2,6 @@
 
 namespace App\Modules\Contracts;
 
-use Illuminate\Support\Collection;
-
 /**
  * Shared base implementing ModuleContract — each module extends this
  * and overrides the manifest/accessors relevant to it.
@@ -24,26 +22,26 @@ abstract class BaseModuleContract implements ModuleContract
     {
         return [
             'required_setup_steps' => [],
-            'default_settings'     => [],
-            'recommended_roles'    => [],
+            'default_settings' => [],
+            'recommended_roles' => [],
         ];
     }
 
     public function getActivationRules(): array
     {
         return [
-            'requires'  => $this->getDependencies(),
-            'settings'  => [],
-            'min_tier'  => null,
+            'requires' => $this->getDependencies(),
+            'settings' => [],
+            'min_tier' => null,
         ];
     }
 
     public function getDeactivationRules(): array
     {
         return [
-            'removes_data'       => false,
+            'removes_data' => false,
             'preserves_entities' => [],
-            'cleanup_jobs'       => [],
+            'cleanup_jobs' => [],
         ];
     }
 
@@ -55,10 +53,10 @@ abstract class BaseModuleContract implements ModuleContract
     public function getExternalModeConfig(): array
     {
         return [
-            'supports_coupled'        => true,
-            'supports_decoupled'      => false,
-            'supports_external'       => false,
-            'external_api_endpoints'  => [],
+            'supports_coupled' => true,
+            'supports_decoupled' => false,
+            'supports_external' => false,
+            'external_api_endpoints' => [],
         ];
     }
 
@@ -66,9 +64,9 @@ abstract class BaseModuleContract implements ModuleContract
     {
         return [
             'has_ai_assistant' => false,
-            'ai_suggestions'   => false,
-            'ai_automation'    => false,
-            'ai_data_access'   => [],
+            'ai_suggestions' => false,
+            'ai_automation' => false,
+            'ai_data_access' => [],
         ];
     }
 
@@ -78,5 +76,6 @@ abstract class BaseModuleContract implements ModuleContract
     }
 
     public function onActivate(): void {}
+
     public function onDeactivate(): void {}
 }

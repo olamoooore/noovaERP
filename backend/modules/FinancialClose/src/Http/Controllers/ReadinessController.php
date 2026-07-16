@@ -6,9 +6,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Log;
-use Modules\FinancialClose\Services\FinancialCloseReadinessService;
-use Modules\FinancialClose\Services\FinancialCloseAiAnalysisService;
 use Modules\FinancialClose\Http\Resources\ReadinessResource;
+use Modules\FinancialClose\Services\FinancialCloseAiAnalysisService;
+use Modules\FinancialClose\Services\FinancialCloseReadinessService;
 
 class ReadinessController extends Controller
 {
@@ -45,7 +45,7 @@ class ReadinessController extends Controller
             'data' => [
                 'entities' => $entities,
                 'periods' => $periods,
-            ]
+            ],
         ]);
     }
 
@@ -53,7 +53,7 @@ class ReadinessController extends Controller
     public function show(Request $request, string $entityId, string $periodId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $cycleId  = $request->query('cycle_id');
+        $cycleId = $request->query('cycle_id');
 
         $summary = $this->readinessService->getReadinessSummary($tenantId, $entityId, $periodId, $cycleId);
 
@@ -64,7 +64,7 @@ class ReadinessController extends Controller
     public function refresh(Request $request, string $entityId, string $periodId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $cycleId  = $request->input('cycle_id');
+        $cycleId = $request->input('cycle_id');
 
         $snapshot = $this->readinessService->generateSnapshot($tenantId, $entityId, $periodId, $cycleId);
 

@@ -6,11 +6,8 @@ use App\Accounting\DTOs\PostingResult;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLink;
 use App\Models\PostingAuditLog;
-use App\Services\FiscalPeriodValidator;
-use App\Services\LockDateValidationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * ManualJournalPostingService
@@ -31,11 +28,10 @@ class ManualJournalPostingService
     /**
      * Post a draft journal entry in-place.
      *
-     * @param  JournalEntry $entry          The draft entry to post (must be 'draft' status)
-     * @param  int          $userId         The actor performing the post
-     * @param  string|null  $overrideReason Non-null when posting to a locked period with approval
-     * @param  int|null     $approvedBy     Approver ID for lock-date overrides (must differ from $userId)
-     * @return PostingResult
+     * @param  JournalEntry  $entry  The draft entry to post (must be 'draft' status)
+     * @param  int  $userId  The actor performing the post
+     * @param  string|null  $overrideReason  Non-null when posting to a locked period with approval
+     * @param  int|null  $approvedBy  Approver ID for lock-date overrides (must differ from $userId)
      */
     public function post(
         JournalEntry $entry,
@@ -61,18 +57,18 @@ class ManualJournalPostingService
             // Workstream 2 (2026-04-15): Enforce real permission checks for lock overrides
             if ($overrideReason && $approvedBy) {
                 // Validate that the approver has permission to override lock dates
-                if (!$this->lockDateValidator->canOverrideLockDate($approvedBy)) {
+                if (! $this->lockDateValidator->canOverrideLockDate($approvedBy)) {
                     return PostingResult::failure(
-                        "Approver (ID: {$approvedBy}) does not have permission to override lock dates. " .
-                        "Required: accounting.lock_date_override permission or admin role."
+                        "Approver (ID: {$approvedBy}) does not have permission to override lock dates. ".
+                        'Required: accounting.lock_date_override permission or admin role.'
                     );
                 }
 
                 // Validate that the actor also has permission
-                if (!$this->lockDateValidator->canOverrideLockDate($userId)) {
+                if (! $this->lockDateValidator->canOverrideLockDate($userId)) {
                     return PostingResult::failure(
-                        "User (ID: {$userId}) does not have permission to post to locked periods. " .
-                        "Required: accounting.lock_date_override permission or admin role."
+                        "User (ID: {$userId}) does not have permission to post to locked periods. ".
+                        'Required: accounting.lock_date_override permission or admin role.'
                     );
                 }
 
@@ -96,7 +92,7 @@ class ManualJournalPostingService
 
         // ── 2. Fiscal-period validation ──────────────────────────────────────
         $fiscalResult = $this->fiscalValidator->validateDate($entry->entry_date);
-        if (!$fiscalResult['allowed']) {
+        if (! $fiscalResult['allowed']) {
             if ($overrideReason && $approvedBy) {
                 if ($fiscalResult['period'] ?? null) {
                     $actor = \App\Models\User::find($userId);
@@ -115,7 +111,7 @@ class ManualJournalPostingService
 
         // ── 3. Balance check ─────────────────────────────────────────────────
         $entry->loadMissing('lines');
-        $totalDebit  = (float) $entry->lines->sum('debit');
+        $totalDebit = (float) $entry->lines->sum('debit');
         $totalCredit = (float) $entry->lines->sum('credit');
 
         if (abs($totalDebit - $totalCredit) > 0.01) {
@@ -129,7 +125,7 @@ class ManualJournalPostingService
             return DB::transaction(function () use ($entry, $userId, $overrideReason) {
                 // Transition the EXISTING entry in-place — no delete, no new ID
                 $entry->update([
-                    'status'    => 'posted',
+                    'status' => 'posted',
                     'posted_at' => now(),
                     'posted_by' => $userId,
                 ]);
@@ -137,19 +133,19 @@ class ManualJournalPostingService
                 // Create the document → journal link (source_document_id points to the SAME entry)
                 JournalEntryLink::create([
                     'source_document_type' => 'manual',
-                    'source_document_id'   => $entry->id,
-                    'journal_entry_id'     => $entry->id,
-                    'relation_type'        => 'post',
+                    'source_document_id' => $entry->id,
+                    'journal_entry_id' => $entry->id,
+                    'relation_type' => 'post',
                 ]);
 
                 // Audit log
                 $auditLog = PostingAuditLog::create([
-                    'document_type'    => 'manual',
-                    'document_id'      => $entry->id,
+                    'document_type' => 'manual',
+                    'document_id' => $entry->id,
                     'journal_entry_id' => $entry->id,
-                    'action'           => 'post',
-                    'actor_user_id'    => $userId,
-                    'reason_code'      => $overrideReason,
+                    'action' => 'post',
+                    'actor_user_id' => $userId,
+                    'reason_code' => $overrideReason,
                 ]);
 
                 return PostingResult::success($entry->load('lines'), $auditLog->id);
@@ -157,10 +153,10 @@ class ManualJournalPostingService
         } catch (\Exception $e) {
             Log::error('ManualJournalPostingService::post failed', [
                 'entry_id' => $entry->id,
-                'error'    => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
 
-            return PostingResult::failure('Posting failed: ' . $e->getMessage());
+            return PostingResult::failure('Posting failed: '.$e->getMessage());
         }
     }
 }

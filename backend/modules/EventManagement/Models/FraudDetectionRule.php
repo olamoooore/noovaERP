@@ -33,17 +33,26 @@ class FraudDetectionRule extends Model
 
     // Rule type constants
     public const TYPE_VELOCITY = 'velocity';
+
     public const TYPE_PATTERN = 'pattern';
+
     public const TYPE_THRESHOLD = 'threshold';
+
     public const TYPE_ANOMALY = 'anomaly';
+
     public const TYPE_BLACKLIST = 'blacklist';
 
     // Action constants
     public const ACTION_BLOCK = 'block';
+
     public const ACTION_FLAG = 'flag';
+
     public const ACTION_RATE_LIMIT = 'rate_limit';
+
     public const ACTION_MANUAL_REVIEW = 'manual_review';
+
     public const ACTION_IDENTITY_VERIFICATION = 'identity_verification';
+
     public const ACTION_ALERT = 'alert';
 
     /**
@@ -91,21 +100,21 @@ class FraudDetectionRule extends Model
      */
     public function shouldEvaluate(array $context): bool
     {
-        if (!$this->is_active) {
+        if (! $this->is_active) {
             return false;
         }
 
         // Check if context matches rule conditions
         $conditions = $this->conditions;
-        
+
         if (isset($conditions['event_types']) && isset($context['event_type'])) {
-            if (!in_array($context['event_type'], $conditions['event_types'])) {
+            if (! in_array($context['event_type'], $conditions['event_types'])) {
                 return false;
             }
         }
 
         if (isset($conditions['customer_types']) && isset($context['customer_type'])) {
-            if (!in_array($context['customer_type'], $conditions['customer_types'])) {
+            if (! in_array($context['customer_type'], $conditions['customer_types'])) {
                 return false;
             }
         }
@@ -162,7 +171,7 @@ class FraudDetectionRule extends Model
         if (isset($conditions['max_bookings_per_customer']) && isset($data['customer_id'])) {
             $timeWindow = $conditions['time_window_minutes'] ?? 60;
             $maxBookings = $conditions['max_bookings_per_customer'];
-            
+
             $recentBookings = BookingVelocityLog::forTenant($data['tenant_id'])
                 ->forCustomer($data['customer_id'])
                 ->ofType(BookingVelocityLog::ACTION_BOOKING_ATTEMPT)
@@ -181,7 +190,7 @@ class FraudDetectionRule extends Model
         if (isset($conditions['max_bookings_per_ip']) && isset($data['ip_address'])) {
             $timeWindow = $conditions['time_window_minutes'] ?? 60;
             $maxBookings = $conditions['max_bookings_per_ip'];
-            
+
             $recentBookings = BookingVelocityLog::forTenant($data['tenant_id'])
                 ->forIpAddress($data['ip_address'])
                 ->ofType(BookingVelocityLog::ACTION_BOOKING_ATTEMPT)
@@ -216,7 +225,7 @@ class FraudDetectionRule extends Model
                     $result['evidence'][] = $pattern['description'] ?? 'Suspicious pattern detected';
                 }
             }
-            
+
             if ($result['triggered']) {
                 $result['recommended_actions'] = $this->actions;
                 $result['risk_score'] = min(100, $result['risk_score']);
@@ -237,7 +246,7 @@ class FraudDetectionRule extends Model
         // Check ticket quantity threshold
         if (isset($conditions['max_tickets_per_booking']) && isset($data['tickets_requested'])) {
             $maxTickets = $conditions['max_tickets_per_booking'];
-            
+
             if ($data['tickets_requested'] > $maxTickets) {
                 $result['triggered'] = true;
                 $result['risk_score'] = min(100, ($data['tickets_requested'] / $maxTickets) * 40);
@@ -271,18 +280,18 @@ class FraudDetectionRule extends Model
             if (in_array($data['ip_address'], $conditions['blacklisted_ips'])) {
                 $result['triggered'] = true;
                 $result['risk_score'] = 90;
-                $result['evidence'][] = "IP address is blacklisted";
+                $result['evidence'][] = 'IP address is blacklisted';
                 $result['recommended_actions'] = $this->actions;
             }
         }
 
         // Check email domain blacklist
         if (isset($conditions['blacklisted_domains']) && isset($data['email'])) {
-            $domain = substr(strrchr($data['email'], "@"), 1);
+            $domain = substr(strrchr($data['email'], '@'), 1);
             if (in_array($domain, $conditions['blacklisted_domains'])) {
                 $result['triggered'] = true;
                 $result['risk_score'] = max($result['risk_score'], 70);
-                $result['evidence'][] = "Email domain is blacklisted";
+                $result['evidence'][] = 'Email domain is blacklisted';
                 $result['recommended_actions'] = array_unique(array_merge($result['recommended_actions'], $this->actions));
             }
         }
@@ -297,10 +306,10 @@ class FraudDetectionRule extends Model
     {
         // Implement pattern matching logic based on pattern configuration
         // This is a simplified example
-        
+
         if (isset($pattern['field']) && isset($pattern['operator']) && isset($pattern['value'])) {
             $fieldValue = $data[$pattern['field']] ?? null;
-            
+
             switch ($pattern['operator']) {
                 case 'equals':
                     return $fieldValue === $pattern['value'];
@@ -350,6 +359,7 @@ class FraudDetectionRule extends Model
         }
 
         $accuracy = ($recentTriggers - $falsePositives) / $recentTriggers;
+
         return $accuracy * 100;
     }
 }

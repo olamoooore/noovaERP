@@ -19,12 +19,14 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
     private const SUBMISSION_BUILD_VERSION = '2026-04-06-retry-remap';
 
     protected Client $client;
+
     protected string $endpoint;
+
     protected bool $testMode;
 
     public function __construct(?Client $client = null, ?string $endpoint = null)
     {
-        $this->client = $client ?? new Client();
+        $this->client = $client ?? new Client;
         $this->testMode = (bool) $this->safeConfig('compliance.malaysia.myinvoice_test_mode', true);
 
         $defaultTestEndpoint = 'https://preprod-api.myinvois.hasil.gov.my';
@@ -74,7 +76,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             ]);
 
             $responseBody = json_decode($response->getBody()->getContents(), true);
-            if (!is_array($responseBody)) {
+            if (! is_array($responseBody)) {
                 $responseBody = [];
             }
 
@@ -89,7 +91,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
                     ? $acceptedDocuments[0]
                     : [];
 
-                if (empty($acceptedDocuments) && !empty($rejectedDocuments)) {
+                if (empty($acceptedDocuments) && ! empty($rejectedDocuments)) {
                     $firstRejectedDocument = is_array($rejectedDocuments[0] ?? null)
                         ? $rejectedDocuments[0]
                         : [];
@@ -137,7 +139,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             }
 
             $error = $this->extractErrorDetails($responseBody);
-            
+
             // Log error responses so they appear in logs for debugging
             try {
                 Log::error('MyInvoice API response error', [
@@ -149,6 +151,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             } catch (\Throwable) {
                 // Facade not available outside Laravel runtime
             }
+
             return [
                 'success' => false,
                 'message' => $error['message'],
@@ -193,7 +196,8 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
         } catch (\Exception $e) {
             $this->safeLog('error', 'MyInvoice submission error', ['error' => $e->getMessage()]);
-            return ['success' => false, 'message' => 'Submission error: ' . $e->getMessage()];
+
+            return ['success' => false, 'message' => 'Submission error: '.$e->getMessage()];
         }
     }
 
@@ -217,6 +221,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
     {
         $credentials['idempotency_key'] = $credentials['idempotency_key']
             ?? ($providerReference ?: hash('sha256', (string) json_encode($payload)));
+
         return $this->submit($payload, $credentials);
     }
 
@@ -238,7 +243,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             ]);
 
             $data = json_decode($response->getBody()->getContents(), true);
-            if (!is_array($data)) {
+            if (! is_array($data)) {
                 $data = [];
             }
 
@@ -270,7 +275,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
             $error = $this->extractErrorDetails($details);
             $validationErrors = $this->extractValidationErrors($details);
-            if (!empty($validationErrors)) {
+            if (! empty($validationErrors)) {
                 $details['validation_errors'] = $validationErrors;
                 $statusDetails['validation_errors'] = $validationErrors;
                 if ($error['code'] === null || $error['category'] === 'schema_validation_error') {
@@ -337,7 +342,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             $credentials = $this->withAccessToken($credentials);
             $details = $this->fetchDocumentDetails($documentUuid, $credentials);
 
-            if (!is_array($details)) {
+            if (! is_array($details)) {
                 return [
                     'success' => false,
                     'status' => 'error',
@@ -358,7 +363,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
                 'document_details' => $details,
             ];
 
-            if (!empty($validationErrors)) {
+            if (! empty($validationErrors)) {
                 $statusDetails['validation_errors'] = $validationErrors;
             }
 
@@ -408,7 +413,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             ]);
 
             $body = json_decode($response->getBody()->getContents(), true);
-            if (!is_array($body)) {
+            if (! is_array($body)) {
                 $body = [];
             }
 
@@ -453,7 +458,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         ];
 
         foreach ($required as $field) {
-            if (!isset($payload[$field])) {
+            if (! isset($payload[$field])) {
                 return "Missing required payload field: {$field}";
             }
         }
@@ -462,11 +467,11 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             return 'Supplier name and TIN are required';
         }
 
-        $supplierHasCompanyRegistration = !empty($payload['supplier']['company_registration']);
-        $supplierHasIdentityDocument = !empty($payload['supplier']['identity_type'])
-            && !empty($payload['supplier']['identity_number']);
+        $supplierHasCompanyRegistration = ! empty($payload['supplier']['company_registration']);
+        $supplierHasIdentityDocument = ! empty($payload['supplier']['identity_type'])
+            && ! empty($payload['supplier']['identity_number']);
 
-        if (!$supplierHasCompanyRegistration && !$supplierHasIdentityDocument) {
+        if (! $supplierHasCompanyRegistration && ! $supplierHasIdentityDocument) {
             return 'Supplier must have either company registration or identity document details';
         }
 
@@ -480,9 +485,9 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         $buyerTin = $this->resolveBuyerTinValue($buyer);
         $buyerCountry = $this->normalizeCountryCode($buyerAddress['country'] ?? null);
         $buyerState = $this->normalizeIdentifierValue($buyerAddress['state'] ?? null);
-        $buyerHasCompanyRegistration = !empty($buyer['company_registration']);
-        $buyerHasIdentityDocument = !empty($buyer['identity_type'])
-            && !empty($buyer['identity_number']);
+        $buyerHasCompanyRegistration = ! empty($buyer['company_registration']);
+        $buyerHasIdentityDocument = ! empty($buyer['identity_type'])
+            && ! empty($buyer['identity_number']);
 
         // LHDN rule: EI00000000010 is the end-consumer TIN and is only valid for
         // consolidated invoices (type 004). Auto-classify as consolidated when the
@@ -491,7 +496,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             $isConsolidatedInvoice = true;
         }
 
-        if (!$isConsolidatedInvoice) {
+        if (! $isConsolidatedInvoice) {
             if ($buyerTin === '') {
                 return 'Buyer TIN is required for non-consolidated invoices';
             }
@@ -532,7 +537,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         $lineTaxAmount = 0.0;
 
         foreach ($lineItems as $line) {
-            if (!is_array($line)) {
+            if (! is_array($line)) {
                 continue;
             }
 
@@ -541,6 +546,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
             if ($explicitTaxAmount !== null) {
                 $lineTaxAmount += (float) $explicitTaxAmount;
+
                 continue;
             }
 
@@ -607,6 +613,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             || str_contains(strtolower($message), 'registration')) {
             $isTinMismatch = str_contains(strtolower($message), 'not matching')
                 || str_contains(strtolower($message), 'mismatch');
+
             return [
                 'category' => 'party_identifier_error',
                 'finance_action' => $isTinMismatch
@@ -665,7 +672,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         $headers = [
             'Content-Type' => 'application/json',
             'Accept' => 'application/json',
-            'Authorization' => 'Bearer ' . $token,
+            'Authorization' => 'Bearer '.$token,
             'X-Idempotency-Key' => $idempotencyKey ?? ((string) ($credentials['idempotency_key'] ?? Str::uuid())),
         ];
 
@@ -690,12 +697,12 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
      */
     private function withAccessToken(array $credentials): array
     {
-        if (!empty($credentials['access_token']) || !empty($credentials['api_token'])) {
+        if (! empty($credentials['access_token']) || ! empty($credentials['api_token'])) {
             return $credentials;
         }
 
-        $dbClientId     = (string) ($credentials['myinvoice_client_id'] ?? $credentials['client_id'] ?? '');
-        $envClientId    = (string) $this->safeConfig('compliance.malaysia.myinvoice_client_id', '');
+        $dbClientId = (string) ($credentials['myinvoice_client_id'] ?? $credentials['client_id'] ?? '');
+        $envClientId = (string) $this->safeConfig('compliance.malaysia.myinvoice_client_id', '');
         $usingEnvFallback = $dbClientId === '' && $envClientId !== '';
 
         $clientId = $dbClientId !== '' ? $dbClientId : $envClientId;
@@ -716,7 +723,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
         if ($usingEnvFallback) {
             Log::warning('MyInvois: using .env credential fallback — tenant DB config may be missing', [
-                'client_id_hint' => substr($clientId, 0, 6) . '***',
+                'client_id_hint' => substr($clientId, 0, 6).'***',
             ]);
         }
 
@@ -728,13 +735,14 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         } catch (\Throwable) {
             // Outside tenant context (e.g. unit tests); proceed without tenant isolation.
         }
-        $cacheKey = 'myinvois_token_' . $tenantId . '_' . substr(hash('sha256', $clientId), 0, 24);
+        $cacheKey = 'myinvois_token_'.$tenantId.'_'.substr(hash('sha256', $clientId), 0, 24);
 
         try {
             $cached = Cache::get($cacheKey);
             if (is_string($cached) && $cached !== '') {
                 $credentials['access_token'] = $cached;
-                $credentials['api_token']    = $cached;
+                $credentials['api_token'] = $cached;
+
                 return $credentials;
             }
         } catch (\Throwable) {
@@ -746,24 +754,24 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         try {
             $response = $this->client->post("{$identityService}/connect/token", [
                 'form_params' => [
-                    'grant_type'    => 'client_credentials',
-                    'client_id'     => $clientId,
+                    'grant_type' => 'client_credentials',
+                    'client_id' => $clientId,
                     'client_secret' => $clientSecret,
-                    'scope'         => $scope,
+                    'scope' => $scope,
                 ],
                 'headers' => [
-                    'Accept'       => 'application/json',
+                    'Accept' => 'application/json',
                     'Content-Type' => 'application/x-www-form-urlencoded',
                 ],
                 'timeout' => 20,
             ]);
 
             $body = json_decode($response->getBody()->getContents(), true);
-            if (!is_array($body)) {
+            if (! is_array($body)) {
                 return $credentials;
             }
 
-            $token     = (string) ($body['access_token'] ?? '');
+            $token = (string) ($body['access_token'] ?? '');
             $expiresIn = max(120, (int) ($body['expires_in'] ?? 3600));
 
             if ($token === '') {
@@ -772,9 +780,9 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
             Log::debug('MyInvois OAuth token obtained', [
                 'token_endpoint' => "{$identityService}/connect/token",
-                'expires_in'     => $expiresIn,
-                'scope'          => $body['scope'] ?? $scope,
-                'tenant_id'      => $tenantId,
+                'expires_in' => $expiresIn,
+                'scope' => $body['scope'] ?? $scope,
+                'tenant_id' => $tenantId,
             ]);
 
             // Cache with a 60-second buffer so we never hand out a token that is
@@ -786,12 +794,12 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             }
 
             $credentials['access_token'] = $token;
-            $credentials['api_token']    = $token;
+            $credentials['api_token'] = $token;
 
         } catch (\Throwable $e) {
             Log::error('MyInvois OAuth token request failed', [
                 'token_endpoint' => "{$identityService}/connect/token",
-                'error'          => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
         }
 
@@ -800,11 +808,12 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
     private function decodeExceptionResponse(RequestException $e): array
     {
-        if (!$e->hasResponse()) {
+        if (! $e->hasResponse()) {
             return [];
         }
 
         $decoded = json_decode((string) $e->getResponse()->getBody(), true);
+
         return is_array($decoded) ? $decoded : [];
     }
 
@@ -854,12 +863,12 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         }
 
         $documentSource = $payload['_signed_document'] ?? null;
-        if (!is_array($documentSource) || !isset($documentSource['Invoice'])) {
+        if (! is_array($documentSource) || ! isset($documentSource['Invoice'])) {
             $documentSource = $this->buildUblDocumentFromMappedPayload($payload);
         }
 
         $documentJson = json_encode($documentSource, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if (!is_string($documentJson) || $documentJson === '') {
+        if (! is_string($documentJson) || $documentJson === '') {
             $documentJson = '{}';
         }
 
@@ -875,20 +884,20 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         // for the API client credentials on the LHDN portal.
         $invoiceNode = $documentSource['Invoice'][0] ?? [];
         $submittedSupplierTin = $invoiceNode['AccountingSupplierParty'][0]['Party'][0]['PartyIdentification'][0]['ID'][0]['_'] ?? null;
-        $submittedBuyerTin    = $invoiceNode['AccountingCustomerParty'][0]['Party'][0]['PartyIdentification'][0]['ID'][0]['_'] ?? null;
-        $submittedTypeCode    = $invoiceNode['InvoiceTypeCode'][0]['_'] ?? null;
+        $submittedBuyerTin = $invoiceNode['AccountingCustomerParty'][0]['Party'][0]['PartyIdentification'][0]['ID'][0]['_'] ?? null;
+        $submittedTypeCode = $invoiceNode['InvoiceTypeCode'][0]['_'] ?? null;
 
         $this->safeLog('info', 'myinvois:submitToMyInvois — Signed JSON minified', [
-            'invoice_id'           => $payload['invoice_id'] ?? null,
-            'invoice_number'       => $payload['invoice_number'] ?? $codeNumber,
-            'code_number'          => $codeNumber,
-            'payload_hash'         => hash('sha256', $documentJson),
+            'invoice_id' => $payload['invoice_id'] ?? null,
+            'invoice_number' => $payload['invoice_number'] ?? $codeNumber,
+            'code_number' => $codeNumber,
+            'payload_hash' => hash('sha256', $documentJson),
             'document_json_length' => strlen($documentJson),
-            'document_type_code'   => $submittedTypeCode,
-            'supplier_tin'         => $submittedSupplierTin,
-            'buyer_tin'            => $submittedBuyerTin,
-            'has_ubl_extensions'   => isset($documentSource['Invoice'][0]['UBLExtensions']),
-            'has_signature'        => isset($documentSource['Invoice'][0]['Signature']),
+            'document_type_code' => $submittedTypeCode,
+            'supplier_tin' => $submittedSupplierTin,
+            'buyer_tin' => $submittedBuyerTin,
+            'has_ubl_extensions' => isset($documentSource['Invoice'][0]['UBLExtensions']),
+            'has_signature' => isset($documentSource['Invoice'][0]['Signature']),
         ]);
 
         return [
@@ -918,7 +927,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
         $unitCodes = [];
         foreach ((array) ($invoice['InvoiceLine'] ?? []) as $line) {
-            if (!is_array($line)) {
+            if (! is_array($line)) {
                 continue;
             }
 
@@ -969,8 +978,8 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             $buyer['tin'] = $resolvedBuyerTin;
         }
 
-        $supplierTaxId = $this->resolveTaxTypeCode($supplier['identity_type'] ?? null, !empty($supplier['company_registration'] ?? null));
-        $buyerTaxId = $this->resolveTaxTypeCode($buyer['identity_type'] ?? null, !empty($buyer['company_registration'] ?? null));
+        $supplierTaxId = $this->resolveTaxTypeCode($supplier['identity_type'] ?? null, ! empty($supplier['company_registration'] ?? null));
+        $buyerTaxId = $this->resolveTaxTypeCode($buyer['identity_type'] ?? null, ! empty($buyer['company_registration'] ?? null));
         $buyerTinValue = strtoupper((string) ($buyer['tin'] ?? ''));
         $isGeneralBuyerTin = $buyerTinValue === '' || $buyerTinValue === 'EI00000000010';
         if ($isGeneralBuyerTin) {
@@ -982,7 +991,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
         $invoiceLines = [];
         foreach ($lineItems as $index => $line) {
-            if (!is_array($line)) {
+            if (! is_array($line)) {
                 continue;
             }
 
@@ -998,42 +1007,42 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             $discountAmount = (float) ($line['discount_amount'] ?? 0);
 
             $invoiceLine = [
-                'ID' => [['_'=> $lineNo]],
-                'InvoicedQuantity' => [['_'=> $this->formatQuantity($qty), 'unitCode' => $unitCode]],
-                'LineExtensionAmount' => [['_'=> $this->formatDecimal($lineAmount), 'currencyID' => $currency]],
+                'ID' => [['_' => $lineNo]],
+                'InvoicedQuantity' => [['_' => $this->formatQuantity($qty), 'unitCode' => $unitCode]],
+                'LineExtensionAmount' => [['_' => $this->formatDecimal($lineAmount), 'currencyID' => $currency]],
                 'TaxTotal' => [[
-                    'TaxAmount' => [['_'=> $this->formatDecimal($taxAmount), 'currencyID' => $currency]],
+                    'TaxAmount' => [['_' => $this->formatDecimal($taxAmount), 'currencyID' => $currency]],
                     'TaxSubtotal' => [[
-                        'TaxableAmount' => [['_'=> $this->formatDecimal($lineAmount), 'currencyID' => $currency]],
-                        'TaxAmount' => [['_'=> $this->formatDecimal($taxAmount), 'currencyID' => $currency]],
-                        'Percent' => [['_'=> $this->formatDecimal($taxRate)]],
+                        'TaxableAmount' => [['_' => $this->formatDecimal($lineAmount), 'currencyID' => $currency]],
+                        'TaxAmount' => [['_' => $this->formatDecimal($taxAmount), 'currencyID' => $currency]],
+                        'Percent' => [['_' => $this->formatDecimal($taxRate)]],
                         'TaxCategory' => [[
-                            'ID' => [['_'=> $taxTypeCode]],
+                            'ID' => [['_' => $taxTypeCode]],
                             'TaxScheme' => [[
-                                'ID' => [['_'=> 'OTH', 'schemeID' => 'UN/ECE 5153', 'schemeAgencyID' => '6']],
+                                'ID' => [['_' => 'OTH', 'schemeID' => 'UN/ECE 5153', 'schemeAgencyID' => '6']],
                             ]],
                         ]],
                     ]],
                 ]],
                 'Item' => [[
                     'CommodityClassification' => [[
-                        'ItemClassificationCode' => [['_'=> $classificationCode, 'listID' => 'CLASS']],
+                        'ItemClassificationCode' => [['_' => $classificationCode, 'listID' => 'CLASS']],
                     ]],
-                    'Description' => [['_'=> (string) ($line['description'] ?? 'Line Item')]],
+                    'Description' => [['_' => (string) ($line['description'] ?? 'Line Item')]],
                 ]],
                 'Price' => [[
-                    'PriceAmount' => [['_'=> $this->formatDecimal($unitPrice), 'currencyID' => $currency]],
+                    'PriceAmount' => [['_' => $this->formatDecimal($unitPrice), 'currencyID' => $currency]],
                 ]],
                 'ItemPriceExtension' => [[
-                    'Amount' => [['_'=> $this->formatDecimal($lineAmount), 'currencyID' => $currency]],
+                    'Amount' => [['_' => $this->formatDecimal($lineAmount), 'currencyID' => $currency]],
                 ]],
             ];
 
             if ($discountAmount > 0) {
                 $invoiceLine['AllowanceCharge'] = [[
-                    'ChargeIndicator' => [['_'=> false]],
-                    'AllowanceChargeReason' => [['_'=> 'Line discount']],
-                    'Amount' => [['_'=> $this->formatDecimal($discountAmount), 'currencyID' => $currency]],
+                    'ChargeIndicator' => [['_' => false]],
+                    'AllowanceChargeReason' => [['_' => 'Line discount']],
+                    'Amount' => [['_' => $this->formatDecimal($discountAmount), 'currencyID' => $currency]],
                 ]];
             }
 
@@ -1044,29 +1053,29 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         $totalTax = (float) ($totals['tax_amount'] ?? $totals['sst_amount'] ?? 0);
         $totalIncludingTax = (float) ($totals['gross_amount'] ?? ($totalExcludingTax + $totalTax));
         $totalDiscount = (float) ($totals['discount_total'] ?? 0);
-        $signatureId = (string) ($signatureMetadata['key_id'] ?? ('urn:uuid:' . (string) Str::uuid()));
+        $signatureId = (string) ($signatureMetadata['key_id'] ?? ('urn:uuid:'.(string) Str::uuid()));
         $signatureValue = (string) ($signatureMetadata['signature_value'] ?? '');
-        $digestValue = (string) ($signatureMetadata['digest_value'] ?? base64_encode(hash('sha256', $invoiceNumber . '|' . $invoiceDate, true)));
+        $digestValue = (string) ($signatureMetadata['digest_value'] ?? base64_encode(hash('sha256', $invoiceNumber.'|'.$invoiceDate, true)));
         $signedAt = (string) ($signatureMetadata['signed_at'] ?? gmdate('c'));
         $certificate = is_array($signatureMetadata['certificate'] ?? null) ? $signatureMetadata['certificate'] : [];
         $signatoryName = (string) ($signatureMetadata['signatory_name'] ?? $supplier['name'] ?? 'Supplier');
 
-        $shouldIncludeSignature = !empty($signatureMetadata['enabled'])
+        $shouldIncludeSignature = ! empty($signatureMetadata['enabled'])
             && $signatureValue !== '';
 
         $invoice = [
-            'ID' => [['_'=> $invoiceNumber]],
-            'IssueDate' => [['_'=> $invoiceDate]],
-            'IssueTime' => [['_'=> $formattedIssueTime]],
-            'InvoiceTypeCode' => [['_'=> $docTypeCode, 'listVersionID' => '1.0']],
-            'DocumentCurrencyCode' => [['_'=> $currency]],
-            'TaxCurrencyCode' => [['_'=> $currency]],
+            'ID' => [['_' => $invoiceNumber]],
+            'IssueDate' => [['_' => $invoiceDate]],
+            'IssueTime' => [['_' => $formattedIssueTime]],
+            'InvoiceTypeCode' => [['_' => $docTypeCode, 'listVersionID' => '1.0']],
+            'DocumentCurrencyCode' => [['_' => $currency]],
+            'TaxCurrencyCode' => [['_' => $currency]],
             // BillingPeriod is required by LHDN for consolidated invoices (type 04).
             // Use the invoice month as the consolidation period.
             ...($isGeneralBuyerTin ? [
                 'BillingPeriod' => [[
-                    'StartDate' => [['_'=> \Carbon\Carbon::parse($invoiceDate)->startOfMonth()->toDateString()]],
-                    'EndDate' => [['_'=> \Carbon\Carbon::parse($invoiceDate)->endOfMonth()->toDateString()]],
+                    'StartDate' => [['_' => \Carbon\Carbon::parse($invoiceDate)->startOfMonth()->toDateString()]],
+                    'EndDate' => [['_' => \Carbon\Carbon::parse($invoiceDate)->endOfMonth()->toDateString()]],
                 ]],
             ] : []),
             'AccountingSupplierParty' => [[
@@ -1078,15 +1087,15 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
                     'PartyIdentification' => $this->buildPartyIdentification($supplier, $supplierTaxId, true),
                     'PostalAddress' => [$this->buildPostalAddress($supplier['address'] ?? [])],
                     'PartyLegalEntity' => [[
-                        'RegistrationName' => [['_'=> (string) ($supplier['name'] ?? 'Supplier')]],
+                        'RegistrationName' => [['_' => (string) ($supplier['name'] ?? 'Supplier')]],
                     ]],
                     'Contact' => [[
-                        'Telephone' => [['_'=> $this->firstNonEmptyString(
+                        'Telephone' => [['_' => $this->firstNonEmptyString(
                             $supplier['contact']['phone'] ?? null,
                             $supplier['phone'] ?? null,
                             $this->safeConfig('compliance.malaysia.supplier_phone', '+60000000000')
                         )]],
-                        'ElectronicMail' => [['_'=> $this->firstNonEmptyString(
+                        'ElectronicMail' => [['_' => $this->firstNonEmptyString(
                             $supplier['contact']['email'] ?? null,
                             $supplier['email'] ?? null,
                             $this->safeConfig('compliance.malaysia.supplier_email', 'no-reply@example.com')
@@ -1098,18 +1107,18 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
                 'Party' => [[
                     'PostalAddress' => [$this->buildPostalAddress($buyer['address'] ?? [], $isConsolidatedInvoice)],
                     'PartyLegalEntity' => [[
-                        'RegistrationName' => [['_'=> (string) ($buyer['name'] ?? 'General Public')]],
+                        'RegistrationName' => [['_' => (string) ($buyer['name'] ?? 'General Public')]],
                     ]],
                     'PartyIdentification' => $this->buildPartyIdentification($buyer, $buyerTaxId, false, $isConsolidatedInvoice),
                     'Contact' => [[
-                        'Telephone' => [['_'=> $isGeneralBuyerTin
+                        'Telephone' => [['_' => $isGeneralBuyerTin
                             ? $this->safeConfig('compliance.malaysia.default_buyer_phone', '+60000000000')
                             : $this->normalizePhoneOrDefault(
                                 $buyer['contact']['phone'] ?? null,
                                 $buyer['phone'] ?? null,
                                 $this->safeConfig('compliance.malaysia.default_buyer_phone', '+60000000000')
                             )]],
-                        'ElectronicMail' => [['_'=> $isGeneralBuyerTin
+                        'ElectronicMail' => [['_' => $isGeneralBuyerTin
                             ? $this->safeConfig('compliance.malaysia.default_buyer_email', 'customer@example.com')
                             : ($this->normalizeBuyerEmail($buyer['contact']['email'] ?? null)
                                 ?? $this->normalizeBuyerEmail($buyer['email'] ?? null)
@@ -1118,52 +1127,52 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
                 ]],
             ]],
             'TaxTotal' => [[
-                'TaxAmount' => [['_'=> $this->formatDecimal($totalTax), 'currencyID' => $currency]],
+                'TaxAmount' => [['_' => $this->formatDecimal($totalTax), 'currencyID' => $currency]],
                 'TaxSubtotal' => [[
-                    'TaxableAmount' => [['_'=> $this->formatDecimal($totalExcludingTax), 'currencyID' => $currency]],
-                    'TaxAmount' => [['_'=> $this->formatDecimal($totalTax), 'currencyID' => $currency]],
+                    'TaxableAmount' => [['_' => $this->formatDecimal($totalExcludingTax), 'currencyID' => $currency]],
+                    'TaxAmount' => [['_' => $this->formatDecimal($totalTax), 'currencyID' => $currency]],
                     'TaxCategory' => [[
-                        'ID' => [['_'=> $totalTax > 0 ? '01' : 'E']],
+                        'ID' => [['_' => $totalTax > 0 ? '01' : 'E']],
                         'TaxScheme' => [[
-                            'ID' => [['_'=> 'OTH', 'schemeID' => 'UN/ECE 5153', 'schemeAgencyID' => '6']],
+                            'ID' => [['_' => 'OTH', 'schemeID' => 'UN/ECE 5153', 'schemeAgencyID' => '6']],
                         ]],
                     ]],
                 ]],
             ]],
             'LegalMonetaryTotal' => [[
-                'LineExtensionAmount' => [['_'=> $this->formatDecimal($totalExcludingTax), 'currencyID' => $currency]],
-                'TaxExclusiveAmount' => [['_'=> $this->formatDecimal($totalExcludingTax), 'currencyID' => $currency]],
-                'TaxInclusiveAmount' => [['_'=> $this->formatDecimal($totalIncludingTax), 'currencyID' => $currency]],
-                'PayableAmount' => [['_'=> $this->formatDecimal($totalIncludingTax), 'currencyID' => $currency]],
+                'LineExtensionAmount' => [['_' => $this->formatDecimal($totalExcludingTax), 'currencyID' => $currency]],
+                'TaxExclusiveAmount' => [['_' => $this->formatDecimal($totalExcludingTax), 'currencyID' => $currency]],
+                'TaxInclusiveAmount' => [['_' => $this->formatDecimal($totalIncludingTax), 'currencyID' => $currency]],
+                'PayableAmount' => [['_' => $this->formatDecimal($totalIncludingTax), 'currencyID' => $currency]],
             ]],
-            'InvoiceLine' => !empty($invoiceLines) ? $invoiceLines : [[
-                'ID' => [['_'=> '1']],
-                'InvoicedQuantity' => [['_'=> '1', 'unitCode' => 'C62']],
-                'LineExtensionAmount' => [['_'=> '0.00', 'currencyID' => $currency]],
+            'InvoiceLine' => ! empty($invoiceLines) ? $invoiceLines : [[
+                'ID' => [['_' => '1']],
+                'InvoicedQuantity' => [['_' => '1', 'unitCode' => 'C62']],
+                'LineExtensionAmount' => [['_' => '0.00', 'currencyID' => $currency]],
                 'TaxTotal' => [[
-                    'TaxAmount' => [['_'=> '0.00', 'currencyID' => $currency]],
+                    'TaxAmount' => [['_' => '0.00', 'currencyID' => $currency]],
                     'TaxSubtotal' => [[
-                        'TaxableAmount' => [['_'=> '0.00', 'currencyID' => $currency]],
-                        'TaxAmount' => [['_'=> '0.00', 'currencyID' => $currency]],
+                        'TaxableAmount' => [['_' => '0.00', 'currencyID' => $currency]],
+                        'TaxAmount' => [['_' => '0.00', 'currencyID' => $currency]],
                         'TaxCategory' => [[
-                            'ID' => [['_'=> 'E']],
+                            'ID' => [['_' => 'E']],
                             'TaxScheme' => [[
-                                'ID' => [['_'=> 'OTH', 'schemeID' => 'UN/ECE 5153', 'schemeAgencyID' => '6']],
+                                'ID' => [['_' => 'OTH', 'schemeID' => 'UN/ECE 5153', 'schemeAgencyID' => '6']],
                             ]],
                         ]],
                     ]],
                 ]],
                 'Item' => [[
                     'CommodityClassification' => [[
-                        'ItemClassificationCode' => [['_'=> '001', 'listID' => 'CLASS']],
+                        'ItemClassificationCode' => [['_' => '001', 'listID' => 'CLASS']],
                     ]],
-                    'Description' => [['_'=> 'Line Item']],
+                    'Description' => [['_' => 'Line Item']],
                 ]],
                 'Price' => [[
-                    'PriceAmount' => [['_'=> '0.00', 'currencyID' => $currency]],
+                    'PriceAmount' => [['_' => '0.00', 'currencyID' => $currency]],
                 ]],
                 'ItemPriceExtension' => [[
-                    'Amount' => [['_'=> '0.00', 'currencyID' => $currency]],
+                    'Amount' => [['_' => '0.00', 'currencyID' => $currency]],
                 ]],
             ]],
         ];
@@ -1171,46 +1180,46 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         if ($shouldIncludeSignature) {
             $invoice['UBLExtensions'] = [[
                 'UBLExtension' => [[
-                    'ExtensionURI' => [['_'=> 'urn:oasis:names:specification:ubl:dsig:enveloped:xades']],
+                    'ExtensionURI' => [['_' => 'urn:oasis:names:specification:ubl:dsig:enveloped:xades']],
                     'ExtensionContent' => [[
                         'Signature' => [[
-                            'ID' => [['_'=> $signatureId]],
-                            'SignatureMethod' => [['_'=> (string) ($signatureMetadata['signature_method'] ?? 'RSA-SHA256')]],
-                            'DigestMethod' => [['_'=> (string) ($signatureMetadata['digest_method'] ?? 'SHA-256')]],
-                            'DigestValue' => [['_'=> $digestValue]],
-                            'SignatureValue' => [['_'=> $signatureValue]],
-                            'SigningTime' => [['_'=> $signedAt]],
+                            'ID' => [['_' => $signatureId]],
+                            'SignatureMethod' => [['_' => (string) ($signatureMetadata['signature_method'] ?? 'RSA-SHA256')]],
+                            'DigestMethod' => [['_' => (string) ($signatureMetadata['digest_method'] ?? 'SHA-256')]],
+                            'DigestValue' => [['_' => $digestValue]],
+                            'SignatureValue' => [['_' => $signatureValue]],
+                            'SigningTime' => [['_' => $signedAt]],
                         ]],
                     ]],
                 ]],
             ]];
 
             $invoice['Signature'] = [[
-                'ID' => [['_'=> $signatureId]],
-                'Note' => [['_'=> 'Issuer digital signature']],
+                'ID' => [['_' => $signatureId]],
+                'Note' => [['_' => 'Issuer digital signature']],
                 'SignatoryParty' => [[
                     'PartyIdentification' => [[
-                        'ID' => [['_'=> (string) ($certificate['serial_number'] ?? $signatureId), 'schemeID' => 'X509_SERIAL']],
+                        'ID' => [['_' => (string) ($certificate['serial_number'] ?? $signatureId), 'schemeID' => 'X509_SERIAL']],
                     ]],
                     'PartyName' => [[
-                        'Name' => [['_'=> $signatoryName]],
+                        'Name' => [['_' => $signatoryName]],
                     ]],
                 ]],
                 'DigitalSignatureAttachment' => [[
                     'ExternalReference' => [[
-                        'URI' => [['_'=> '#' . $signatureId]],
+                        'URI' => [['_' => '#'.$signatureId]],
                     ]],
                 ]],
             ]];
         }
 
         if ($totalDiscount > 0) {
-            $invoice['LegalMonetaryTotal'][0]['AllowanceTotalAmount'] = [['_'=> $this->formatDecimal($totalDiscount), 'currencyID' => $currency]];
+            $invoice['LegalMonetaryTotal'][0]['AllowanceTotalAmount'] = [['_' => $this->formatDecimal($totalDiscount), 'currencyID' => $currency]];
         }
 
-        if (!empty($payload['payment_terms'])) {
+        if (! empty($payload['payment_terms'])) {
             $invoice['PaymentTerms'] = [[
-                'Note' => [['_'=> (string) $payload['payment_terms']]],
+                'Note' => [['_' => (string) $payload['payment_terms']]],
             ]];
         }
 
@@ -1218,16 +1227,16 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         // Accepts either 'original_invoice_references' (array of {invoice_number, uuid})
         // or the legacy scalar 'original_invoice_number' / 'original_invoice_uuid'.
         $originalRefs = [];
-        if (!empty($payload['original_invoice_references']) && is_array($payload['original_invoice_references'])) {
+        if (! empty($payload['original_invoice_references']) && is_array($payload['original_invoice_references'])) {
             $originalRefs = array_values(array_filter($payload['original_invoice_references'], 'is_array'));
-        } elseif (!empty($payload['original_invoice_number'])) {
+        } elseif (! empty($payload['original_invoice_number'])) {
             $originalRefs = [[
                 'invoice_number' => $payload['original_invoice_number'],
                 'uuid' => $payload['original_invoice_uuid'] ?? null,
             ]];
         }
 
-        if (!empty($originalRefs)) {
+        if (! empty($originalRefs)) {
             // Credit/Debit/Refund notes (02–04, 12–14) must reference the original invoice
             // via InvoiceDocumentReference, which supports the IRBM UUID.
             // Each original invoice gets its own BillingReference entry (LHDN allows multiple).
@@ -1235,9 +1244,10 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             if ($isNoteType) {
                 $invoice['BillingReference'] = array_values(array_map(static function (array $ref): array {
                     $docRef = ['ID' => [['_' => (string) ($ref['invoice_number'] ?? $ref['id'] ?? '')]]];
-                    if (!empty($ref['uuid'])) {
+                    if (! empty($ref['uuid'])) {
                         $docRef['UUID'] = [['_' => (string) $ref['uuid']]];
                     }
+
                     return ['InvoiceDocumentReference' => [$docRef]];
                 }, $originalRefs));
             } else {
@@ -1264,26 +1274,26 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         $tin = (string) ($party['tin'] ?? 'EI00000000010');
         $usesGeneralTin = strtoupper($tin) === 'EI00000000010';
         $identifications[] = [
-            'ID' => [['_'=> $tin, 'schemeID' => 'TIN']],
+            'ID' => [['_' => $tin, 'schemeID' => 'TIN']],
         ];
 
         $registrationValue = $this->normalizeIdentifierValue($party['company_registration'] ?? $party['identity_number'] ?? null);
-        if (!$isSupplier && $isConsolidatedBuyer && $usesGeneralTin && $registrationValue === null) {
+        if (! $isSupplier && $isConsolidatedBuyer && $usesGeneralTin && $registrationValue === null) {
             $registrationValue = '00000000000';
         }
 
         $identifications[] = [
-            'ID' => [['_'=> $registrationValue ?? 'NA', 'schemeID' => $registrationScheme]],
+            'ID' => [['_' => $registrationValue ?? 'NA', 'schemeID' => $registrationScheme]],
         ];
 
         $sst = $this->normalizeIdentifierValue($party['sst_registration'] ?? null) ?? 'NA';
         $identifications[] = [
-            'ID' => [['_'=> $sst, 'schemeID' => 'SST']],
+            'ID' => [['_' => $sst, 'schemeID' => 'SST']],
         ];
 
         $tourismTax = $this->normalizeIdentifierValue($party['tourism_tax_registration'] ?? null) ?? 'NA';
         $identifications[] = [
-            'ID' => [['_'=> $tourismTax, 'schemeID' => 'TTX']],
+            'ID' => [['_' => $tourismTax, 'schemeID' => 'TTX']],
         ];
 
         return $identifications;
@@ -1302,26 +1312,26 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             $address['street_2'] ?? null,
             $address['street_3'] ?? null,
         ] as $line) {
-            if (!is_string($line) || trim($line) === '') {
+            if (! is_string($line) || trim($line) === '') {
                 continue;
             }
 
             $addressLines[] = [
-                'Line' => [['_'=> trim($line)]],
+                'Line' => [['_' => trim($line)]],
             ];
         }
 
         if (empty($addressLines)) {
-            $addressLines[] = ['Line' => [['_'=> 'NA']]];
+            $addressLines[] = ['Line' => [['_' => 'NA']]];
         }
 
         $postalAddress = [
-            'CountrySubentityCode' => [['_'=> $state]],
+            'CountrySubentityCode' => [['_' => $state]],
             'AddressLine' => $addressLines,
-            'CityName' => [['_'=> $city]],
-            'PostalZone' => [['_'=> $postalCode]],
+            'CityName' => [['_' => $city]],
+            'PostalZone' => [['_' => $postalCode]],
             'Country' => [[
-                'IdentificationCode' => [['_'=> $country, 'listID' => 'ISO3166-1', 'listAgencyID' => '6']],
+                'IdentificationCode' => [['_' => $country, 'listID' => 'ISO3166-1', 'listAgencyID' => '6']],
             ]],
         ];
 
@@ -1330,7 +1340,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
     private function normalizeCountryCode(mixed $value): string
     {
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             return 'MYS';
         }
 
@@ -1431,14 +1441,14 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
     private function resolveDocumentTypeCode(string $documentType): string
     {
         return match ($documentType) {
-            'credit_note'             => '02',
-            'debit_note'              => '03',
-            'refund_note'             => '04',
-            'self_billed_invoice'     => '11',
+            'credit_note' => '02',
+            'debit_note' => '03',
+            'refund_note' => '04',
+            'self_billed_invoice' => '11',
             'self_billed_credit_note' => '12',
-            'self_billed_debit_note'  => '13',
+            'self_billed_debit_note' => '13',
             'self_billed_refund_note' => '14',
-            default                   => '01',
+            default => '01',
         };
     }
 
@@ -1458,18 +1468,19 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
     private function stringOrDefault(mixed $value, string $default): string
     {
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             return $default;
         }
 
         $trimmed = trim($value);
+
         return $trimmed !== '' ? $trimmed : $default;
     }
 
     private function firstNonEmptyString(mixed ...$values): string
     {
         foreach ($values as $value) {
-            if (!is_string($value)) {
+            if (! is_string($value)) {
                 continue;
             }
 
@@ -1484,7 +1495,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
     private function normalizeBuyerEmail(mixed $value): ?string
     {
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             return null;
         }
 
@@ -1508,7 +1519,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             $this->safeConfig('compliance.malaysia.default_buyer_tin', null),
             env('COMPLIANCE_MY_DEFAULT_BUYER_TIN'),
         ] as $candidate) {
-            if (!is_scalar($candidate)) {
+            if (! is_scalar($candidate)) {
                 continue;
             }
 
@@ -1524,7 +1535,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
     private function normalizePhoneOrDefault(mixed ...$values): string
     {
         $default = '+60000000000';
-        if (!empty($values)) {
+        if (! empty($values)) {
             $last = $values[count($values) - 1];
             if (is_string($last) && trim($last) !== '') {
                 $default = trim($last);
@@ -1532,7 +1543,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         }
 
         foreach ($values as $value) {
-            if (!is_string($value)) {
+            if (! is_string($value)) {
                 continue;
             }
 
@@ -1549,7 +1560,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
     private function normalizeIdentifierValue(mixed $value): ?string
     {
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             return null;
         }
 
@@ -1563,7 +1574,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
     private function normalizeUnitCode(mixed $value): string
     {
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             return 'C62';
         }
 
@@ -1588,11 +1599,11 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
     private function formatIssueTime(string $issueTime): string
     {
         if (preg_match('/T(\d{2}:\d{2}:\d{2})/', $issueTime, $matches) === 1) {
-            return $matches[1] . 'Z';
+            return $matches[1].'Z';
         }
 
         if (preg_match('/^\d{2}:\d{2}:\d{2}Z?$/', $issueTime) === 1) {
-            return rtrim($issueTime, 'Z') . 'Z';
+            return rtrim($issueTime, 'Z').'Z';
         }
 
         return '00:00:00Z';
@@ -1601,6 +1612,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
     private function resolveIssueDateTime(array $payload): array
     {
         $nowUtc = Carbon::now('UTC');
+
         return [
             // MyInvois SDK requires IssueDate and IssueTime to be current UTC values.
             'invoice_date' => $nowUtc->toDateString(),
@@ -1611,11 +1623,12 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
     private function resolvePrimaryDocumentSummary(array $submissionData): array
     {
         $documentSummary = $submissionData['documentSummary'] ?? $submissionData['documents'] ?? [];
-        if (!is_array($documentSummary)) {
+        if (! is_array($documentSummary)) {
             return [];
         }
 
         $firstDocument = $documentSummary[0] ?? [];
+
         return is_array($firstDocument) ? $firstDocument : [];
     }
 
@@ -1628,6 +1641,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             ]);
 
             $data = json_decode($response->getBody()->getContents(), true);
+
             return is_array($data) ? $data : null;
         } catch (RequestException $e) {
             Log::warning('MyInvois document details lookup failed', [
@@ -1647,24 +1661,25 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         }
 
         $portalBase = str_replace('://api.', '://', str_replace('://preprod-api.', '://preprod.', $this->endpoint));
-        return rtrim($portalBase, '/') . '/' . rawurlencode($documentUuid) . '/share/' . rawurlencode($longId);
+
+        return rtrim($portalBase, '/').'/'.rawurlencode($documentUuid).'/share/'.rawurlencode($longId);
     }
 
     private function extractValidationErrors(array $details): array
     {
         $validationResults = $details['validationResults'] ?? [];
-        if (!is_array($validationResults)) {
+        if (! is_array($validationResults)) {
             return [];
         }
 
         $steps = $validationResults['validationSteps'] ?? [];
-        if (!is_array($steps)) {
+        if (! is_array($steps)) {
             return [];
         }
 
         $errors = [];
         foreach ($steps as $step) {
-            if (!is_array($step)) {
+            if (! is_array($step)) {
                 continue;
             }
 
@@ -1684,7 +1699,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             }
 
             foreach ($nestedErrors as $error) {
-                if (!is_array($error)) {
+                if (! is_array($error)) {
                     continue;
                 }
 
@@ -1710,7 +1725,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         $detailMessages = [];
         if (isset($nestedError['details']) && is_array($nestedError['details'])) {
             foreach ($nestedError['details'] as $detail) {
-                if (!is_array($detail)) {
+                if (! is_array($detail)) {
                     continue;
                 }
 
@@ -1723,7 +1738,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             }
         }
 
-        $detailMessage = !empty($detailMessages) ? implode('; ', $detailMessages) : null;
+        $detailMessage = ! empty($detailMessages) ? implode('; ', $detailMessages) : null;
 
         $rawError = [
             'code' => $responseData['error_code']
@@ -1741,7 +1756,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
                 ?? null,
         ];
 
-        if (isset($responseData['errors']) && is_array($responseData['errors']) && !empty($responseData['errors'])) {
+        if (isset($responseData['errors']) && is_array($responseData['errors']) && ! empty($responseData['errors'])) {
             $firstError = $responseData['errors'][0];
             if (is_array($firstError)) {
                 $rawError = array_merge($rawError, $firstError);
@@ -1808,25 +1823,25 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         ];
 
         $this->safeLog('info', 'myinvois:signDocument — entry', [
-            'invoice_id'           => $payload['invoice_id'] ?? null,
-            'invoice_number'       => $payload['invoice_number'] ?? null,
-            'signature_enabled'    => $signingContext['signature_enabled'],
-            'use_for_submission'   => $signingContext['signature_use_for_submission'],
-            'has_private_key'      => $signingContext['signature_private_key'] !== '',
-            'has_certificate'      => $signingContext['signature_certificate'] !== '',
-            'payload_hash'         => hash('sha256', (string) json_encode($payload)),
+            'invoice_id' => $payload['invoice_id'] ?? null,
+            'invoice_number' => $payload['invoice_number'] ?? null,
+            'signature_enabled' => $signingContext['signature_enabled'],
+            'use_for_submission' => $signingContext['signature_use_for_submission'],
+            'has_private_key' => $signingContext['signature_private_key'] !== '',
+            'has_certificate' => $signingContext['signature_certificate'] !== '',
+            'payload_hash' => hash('sha256', (string) json_encode($payload)),
         ]);
 
         $ublDocument = $this->buildUblDocumentFromMappedPayload($payload);
-        $signatureService = new MyInvoiceDigitalSignatureService();
+        $signatureService = new MyInvoiceDigitalSignatureService;
         $result = $signatureService->sign($ublDocument, $signingContext);
 
         $this->safeLog('info', 'myinvois:signDocument — complete', [
-            'invoice_id'      => $payload['invoice_id'] ?? null,
-            'success'         => $result['success'],
+            'invoice_id' => $payload['invoice_id'] ?? null,
+            'success' => $result['success'],
             'used_for_submission' => $result['used_for_submission'] ?? false,
-            'signature_status'    => $result['signature_metadata']['status'] ?? null,
-            'error_message'       => $result['message'] ?? null,
+            'signature_status' => $result['signature_metadata']['status'] ?? null,
+            'error_message' => $result['message'] ?? null,
         ]);
 
         return $result;
@@ -1843,4 +1858,3 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         ];
     }
 }
-

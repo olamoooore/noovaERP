@@ -3,13 +3,13 @@
 namespace Modules\EventManagement\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Modules\EventManagement\Http\Requests\ValidateTicketRequest;
-use Modules\EventManagement\Http\Requests\ReissueTicketRequest;
-use Modules\EventManagement\Services\TicketService;
-use Modules\EventManagement\Exceptions\FeatureNotEnabledException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Modules\EventManagement\Exceptions\FeatureNotEnabledException;
+use Modules\EventManagement\Http\Requests\ReissueTicketRequest;
+use Modules\EventManagement\Http\Requests\ValidateTicketRequest;
+use Modules\EventManagement\Services\TicketService;
 
 class TicketController extends Controller
 {
@@ -39,14 +39,14 @@ class TicketController extends Controller
                     'error' => [
                         'code' => 'MISSING_PARAMETER',
                         'message' => 'Either booking_id or event_id parameter is required',
-                        'request_id' => $request->header('X-Request-ID', uniqid())
-                    ]
+                        'request_id' => $request->header('X-Request-ID', uniqid()),
+                    ],
                 ], Response::HTTP_BAD_REQUEST);
             }
 
             return response()->json([
                 'data' => $tickets,
-                'message' => 'Tickets retrieved successfully'
+                'message' => 'Tickets retrieved successfully',
             ]);
         } catch (\Exception $e) {
             return $this->handleException($e);
@@ -62,19 +62,19 @@ class TicketController extends Controller
         try {
             $ticket = $this->ticketService->getTicketByCode($ticketCode);
 
-            if (!$ticket) {
+            if (! $ticket) {
                 return response()->json([
                     'error' => [
                         'code' => 'TICKET_NOT_FOUND',
                         'message' => 'Ticket not found',
-                        'request_id' => request()->header('X-Request-ID', uniqid())
-                    ]
+                        'request_id' => request()->header('X-Request-ID', uniqid()),
+                    ],
                 ], Response::HTTP_NOT_FOUND);
             }
 
             return response()->json([
                 'data' => $ticket,
-                'message' => 'Ticket retrieved successfully'
+                'message' => 'Ticket retrieved successfully',
             ]);
         } catch (\Exception $e) {
             return $this->handleException($e);
@@ -101,18 +101,18 @@ class TicketController extends Controller
                         'ticket' => $result['ticket'],
                         'attendee' => $result['attendee'],
                         'event' => $result['event'],
-                        'validation_timestamp' => now()->toISOString()
+                        'validation_timestamp' => now()->toISOString(),
                     ],
-                    'message' => 'Ticket is valid'
+                    'message' => 'Ticket is valid',
                 ]);
             } else {
                 return response()->json([
                     'data' => [
                         'valid' => false,
                         'reason' => $result['reason'],
-                        'validation_timestamp' => now()->toISOString()
+                        'validation_timestamp' => now()->toISOString(),
                     ],
-                    'message' => 'Ticket validation failed'
+                    'message' => 'Ticket validation failed',
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
         } catch (\Exception $e) {
@@ -134,17 +134,17 @@ class TicketController extends Controller
                     'data' => [
                         'ticket_code' => $ticketCode,
                         'used_at' => $result['used_at'],
-                        'status' => 'used'
+                        'status' => 'used',
                     ],
-                    'message' => 'Ticket marked as used successfully'
+                    'message' => 'Ticket marked as used successfully',
                 ]);
             } else {
                 return response()->json([
                     'error' => [
                         'code' => 'TICKET_USAGE_FAILED',
                         'message' => $result['reason'],
-                        'request_id' => request()->header('X-Request-ID', uniqid())
-                    ]
+                        'request_id' => request()->header('X-Request-ID', uniqid()),
+                    ],
                 ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
         } catch (\Exception $e) {
@@ -170,9 +170,9 @@ class TicketController extends Controller
                     'original_ticket' => $result['original_ticket'],
                     'new_ticket' => $result['new_ticket'],
                     'reissue_reason' => $result['reason'],
-                    'reissued_at' => $result['reissued_at']
+                    'reissued_at' => $result['reissued_at'],
                 ],
-                'message' => 'Ticket reissued successfully'
+                'message' => 'Ticket reissued successfully',
             ], Response::HTTP_CREATED);
         } catch (\Exception $e) {
             return $this->handleException($e);
@@ -188,13 +188,13 @@ class TicketController extends Controller
         try {
             $qrData = $this->ticketService->generateQRCode($ticketCode);
 
-            if (!$qrData) {
+            if (! $qrData) {
                 return response()->json([
                     'error' => [
                         'code' => 'TICKET_NOT_FOUND',
                         'message' => 'Ticket not found or invalid',
-                        'request_id' => request()->header('X-Request-ID', uniqid())
-                    ]
+                        'request_id' => request()->header('X-Request-ID', uniqid()),
+                    ],
                 ], Response::HTTP_NOT_FOUND);
             }
 
@@ -203,9 +203,9 @@ class TicketController extends Controller
                     'ticket_code' => $ticketCode,
                     'qr_code_data' => $qrData['qr_data'],
                     'qr_code_svg' => $qrData['qr_svg'],
-                    'generated_at' => now()->toISOString()
+                    'generated_at' => now()->toISOString(),
                 ],
-                'message' => 'QR code generated successfully'
+                'message' => 'QR code generated successfully',
             ]);
         } catch (\Exception $e) {
             return $this->handleException($e);
@@ -223,7 +223,7 @@ class TicketController extends Controller
 
             return response()->json([
                 'data' => $stats,
-                'message' => 'Ticket statistics retrieved successfully'
+                'message' => 'Ticket statistics retrieved successfully',
             ]);
         } catch (\Exception $e) {
             return $this->handleException($e);
@@ -252,8 +252,8 @@ class TicketController extends Controller
                 'error' => [
                     'code' => 'FEATURE_NOT_ENABLED',
                     'message' => $e->getMessage(),
-                    'request_id' => request()->header('X-Request-ID', uniqid())
-                ]
+                    'request_id' => request()->header('X-Request-ID', uniqid()),
+                ],
             ], Response::HTTP_FORBIDDEN);
         }
 
@@ -261,15 +261,15 @@ class TicketController extends Controller
         \Log::error('TicketController error', [
             'message' => $e->getMessage(),
             'trace' => $e->getTraceAsString(),
-            'request_id' => request()->header('X-Request-ID', uniqid())
+            'request_id' => request()->header('X-Request-ID', uniqid()),
         ]);
 
         return response()->json([
             'error' => [
                 'code' => 'INTERNAL_ERROR',
                 'message' => 'An internal error occurred',
-                'request_id' => request()->header('X-Request-ID', uniqid())
-            ]
+                'request_id' => request()->header('X-Request-ID', uniqid()),
+            ],
         ], Response::HTTP_INTERNAL_SERVER_ERROR);
     }
 }

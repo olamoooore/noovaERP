@@ -5,7 +5,9 @@ namespace Modules\EventManagement\Exceptions;
 class InvalidStateTransitionException extends EventManagementException
 {
     protected $fromState;
+
     protected $toState;
+
     protected $bookingId;
 
     public function __construct(string $fromState, string $toState, ?int $bookingId = null, string $message = '', int $code = 0, ?\Throwable $previous = null)
@@ -38,7 +40,7 @@ class InvalidStateTransitionException extends EventManagementException
     {
         $details = [
             'from_state' => $this->fromState,
-            'to_state' => $this->toState
+            'to_state' => $this->toState,
         ];
 
         if ($this->bookingId) {

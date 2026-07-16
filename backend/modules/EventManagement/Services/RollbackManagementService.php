@@ -2,16 +2,13 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Collection;
 use Exception;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Rollback Management Service
- * 
+ *
  * Manages safe rollback procedures for Phase 3 components
  * including feature flag management, database rollbacks,
  * and service restoration procedures.
@@ -19,6 +16,7 @@ use Exception;
 class RollbackManagementService
 {
     private array $rollbackProcedures = [];
+
     private array $rollbackStatus = [];
 
     public function __construct()
@@ -38,14 +36,14 @@ class RollbackManagementService
                 'phase_3_3_rollback' => $this->rollbackPhase33(),
                 'phase_3_2_rollback' => $this->rollbackPhase32(),
                 'phase_3_1_rollback' => $this->rollbackPhase31(),
-                'validation' => $this->validateRollbackCompletion()
+                'validation' => $this->validateRollbackCompletion(),
             ];
 
             return [
                 'status' => 'SUCCESS',
                 'rollback_results' => $rollbackResults,
                 'system_restored' => $rollbackResults['validation']['system_stable'],
-                'rollback_time' => now()
+                'rollback_time' => now(),
             ];
 
         } catch (Exception $e) {
@@ -61,27 +59,27 @@ class RollbackManagementService
     {
         Log::warning("Rolling back component: {$component}");
 
-        if (!isset($this->rollbackProcedures[$component])) {
+        if (! isset($this->rollbackProcedures[$component])) {
             throw new Exception("No rollback procedure defined for component: {$component}");
         }
 
         try {
             $procedure = $this->rollbackProcedures[$component];
-            
+
             $rollbackSteps = [
                 'disable_feature_flag' => $this->disableFeatureFlag($component),
                 'stop_services' => $this->stopServices($procedure['services']),
                 'rollback_database' => $this->rollbackDatabase($procedure['migrations']),
                 'restore_integrations' => $this->restoreIntegrations($procedure['integrations']),
                 'cleanup_data' => $this->cleanupComponentData($component),
-                'validate_rollback' => $this->validateComponentRollback($component)
+                'validate_rollback' => $this->validateComponentRollback($component),
             ];
 
             return [
                 'component' => $component,
                 'status' => 'ROLLED_BACK',
                 'rollback_steps' => $rollbackSteps,
-                'rollback_time' => now()
+                'rollback_time' => now(),
             ];
 
         } catch (Exception $e) {
@@ -101,14 +99,14 @@ class RollbackManagementService
             'pii_vault' => $this->rollbackPIIVault(),
             'capacity_management' => $this->rollbackCapacityManagement(),
             'outbox_pattern' => $this->rollbackOutboxPattern(),
-            'immutable_facts' => $this->rollbackImmutableFacts()
+            'immutable_facts' => $this->rollbackImmutableFacts(),
         ];
 
         return [
             'phase' => 'Phase 3.1 Rollback',
             'status' => 'COMPLETED',
             'component_rollbacks' => $componentRollbacks,
-            'rollback_time' => now()
+            'rollback_time' => now(),
         ];
     }
 
@@ -123,14 +121,14 @@ class RollbackManagementService
             'fraud_prevention' => $this->rollbackFraudPrevention(),
             'loyalty_auditability' => $this->rollbackLoyaltyAuditability(),
             'artist_canonicalization' => $this->rollbackArtistCanonicalization(),
-            'analytics_governance' => $this->rollbackAnalyticsGovernance()
+            'analytics_governance' => $this->rollbackAnalyticsGovernance(),
         ];
 
         return [
             'phase' => 'Phase 3.2 Rollback',
             'status' => 'COMPLETED',
             'component_rollbacks' => $componentRollbacks,
-            'rollback_time' => now()
+            'rollback_time' => now(),
         ];
     }
 
@@ -145,14 +143,14 @@ class RollbackManagementService
             'api_governance' => $this->rollbackAPIGovernance(),
             'observability' => $this->rollbackObservability(),
             'customer_hub_consistency' => $this->rollbackCustomerHubConsistency(),
-            'operations_hardening' => $this->rollbackOperationsHardening()
+            'operations_hardening' => $this->rollbackOperationsHardening(),
         ];
 
         return [
             'phase' => 'Phase 3.3 Rollback',
             'status' => 'COMPLETED',
             'component_rollbacks' => $componentRollbacks,
-            'rollback_time' => now()
+            'rollback_time' => now(),
         ];
     }
 
@@ -171,10 +169,10 @@ class RollbackManagementService
                 'stop_retention_jobs' => $this->stopJob('PIIRetentionEnforcementJob'),
                 'rollback_database' => $this->rollbackDatabase(['pii_vault', 'pii_access_log']),
                 'restore_service_integrations' => $this->restoreServiceIntegrations('pii_vault'),
-                'validate_data_integrity' => $this->validatePIIDataIntegrity()
+                'validate_data_integrity' => $this->validatePIIDataIntegrity(),
             ],
             'status' => 'ROLLED_BACK',
-            'data_restored' => true
+            'data_restored' => true,
         ];
     }
 
@@ -192,10 +190,10 @@ class RollbackManagementService
                 'stop_cleanup_jobs' => $this->stopJob('CapacityReservationCleanupJob'),
                 'restore_booking_service' => $this->restoreOriginalBookingService(),
                 'rollback_database' => $this->rollbackDatabase(['capacity_reservations']),
-                'validate_capacity_integrity' => $this->validateCapacityIntegrity()
+                'validate_capacity_integrity' => $this->validateCapacityIntegrity(),
             ],
             'status' => 'ROLLED_BACK',
-            'booking_service_restored' => true
+            'booking_service_restored' => true,
         ];
     }
 
@@ -213,10 +211,10 @@ class RollbackManagementService
                 'stop_processor_jobs' => $this->stopJob('OutboxEventProcessorJob'),
                 'restore_direct_processing' => $this->restoreDirectSideEffectProcessing(),
                 'rollback_database' => $this->rollbackDatabase(['outbox_events']),
-                'validate_side_effects' => $this->validateSideEffectProcessing()
+                'validate_side_effects' => $this->validateSideEffectProcessing(),
             ],
             'status' => 'ROLLED_BACK',
-            'direct_processing_restored' => true
+            'direct_processing_restored' => true,
         ];
     }
 
@@ -233,10 +231,10 @@ class RollbackManagementService
                 'disable_feature_flag' => $this->disableFeatureFlag('immutable_facts'),
                 'restore_analytics_service' => $this->restoreOriginalAnalyticsService(),
                 'rollback_database' => $this->rollbackDatabase(['booking_facts', 'analytics_facts']),
-                'validate_analytics_integrity' => $this->validateAnalyticsIntegrity()
+                'validate_analytics_integrity' => $this->validateAnalyticsIntegrity(),
             ],
             'status' => 'ROLLED_BACK',
-            'analytics_service_restored' => true
+            'analytics_service_restored' => true,
         ];
     }
 
@@ -254,9 +252,9 @@ class RollbackManagementService
                 'stop_health_check_jobs' => $this->stopJob('DataHealthCheckJob'),
                 'remove_dashboards' => $this->removeDashboard('analytics_health'),
                 'rollback_database' => $this->rollbackDatabase(['kpi_definitions', 'data_health_checks']),
-                'restore_analytics_processing' => $this->restoreOriginalAnalyticsProcessing()
+                'restore_analytics_processing' => $this->restoreOriginalAnalyticsProcessing(),
             ],
-            'status' => 'ROLLED_BACK'
+            'status' => 'ROLLED_BACK',
         ];
     }
 
@@ -273,9 +271,9 @@ class RollbackManagementService
                 'disable_feature_flag' => $this->disableFeatureFlag('artist_canonicalization'),
                 'remove_management_ui' => $this->removeUI('artist_management'),
                 'rollback_database' => $this->rollbackDatabase(['artist_canonical', 'artist_aliases', 'artist_merge_log']),
-                'restore_artist_service' => $this->restoreOriginalArtistService()
+                'restore_artist_service' => $this->restoreOriginalArtistService(),
             ],
-            'status' => 'ROLLED_BACK'
+            'status' => 'ROLLED_BACK',
         ];
     }
 
@@ -292,9 +290,9 @@ class RollbackManagementService
                 'disable_feature_flag' => $this->disableFeatureFlag('loyalty_auditability'),
                 'rollback_database' => $this->rollbackDatabase(['eligibility_decisions', 'loyalty_ledger']),
                 'restore_loyalty_service' => $this->restoreOriginalLoyaltyService(),
-                'restore_fan_tier_service' => $this->restoreOriginalFanTierService()
+                'restore_fan_tier_service' => $this->restoreOriginalFanTierService(),
             ],
-            'status' => 'ROLLED_BACK'
+            'status' => 'ROLLED_BACK',
         ];
     }
 
@@ -311,9 +309,9 @@ class RollbackManagementService
                 'disable_feature_flag' => $this->disableFeatureFlag('fraud_prevention'),
                 'remove_dashboards' => $this->removeDashboard('fraud_analytics'),
                 'rollback_database' => $this->rollbackDatabase(['risk_scores', 'fraud_timeline']),
-                'restore_fraud_service' => $this->restoreOriginalFraudService()
+                'restore_fraud_service' => $this->restoreOriginalFraudService(),
             ],
-            'status' => 'ROLLED_BACK'
+            'status' => 'ROLLED_BACK',
         ];
     }
 
@@ -330,9 +328,9 @@ class RollbackManagementService
                 'disable_feature_flag' => $this->disableFeatureFlag('operations_hardening'),
                 'remove_console_ui' => $this->removeUI('operations_console'),
                 'rollback_database' => $this->rollbackDatabase(['offline_checkin_queue', 'staff_overrides']),
-                'restore_operations_service' => $this->restoreOriginalOperationsService()
+                'restore_operations_service' => $this->restoreOriginalOperationsService(),
             ],
-            'status' => 'ROLLED_BACK'
+            'status' => 'ROLLED_BACK',
         ];
     }
 
@@ -350,9 +348,9 @@ class RollbackManagementService
                 'remove_hub_ui' => $this->removeUI('customer_hub'),
                 'stop_sync_services' => $this->stopDataSynchronization('customer_hub'),
                 'rollback_database' => $this->rollbackDatabase(['ticket_status_log']),
-                'restore_customer_service' => $this->restoreOriginalCustomerService()
+                'restore_customer_service' => $this->restoreOriginalCustomerService(),
             ],
-            'status' => 'ROLLED_BACK'
+            'status' => 'ROLLED_BACK',
         ];
     }
 
@@ -370,9 +368,9 @@ class RollbackManagementService
                 'remove_dashboards' => $this->removeDashboard('tenant_observability'),
                 'remove_alerting' => $this->removeAlerting('tenant_observability'),
                 'rollback_database' => $this->rollbackDatabase(['tenant_health_metrics', 'api_performance_log']),
-                'restore_monitoring_service' => $this->restoreOriginalMonitoringService()
+                'restore_monitoring_service' => $this->restoreOriginalMonitoringService(),
             ],
-            'status' => 'ROLLED_BACK'
+            'status' => 'ROLLED_BACK',
         ];
     }
 
@@ -389,9 +387,9 @@ class RollbackManagementService
                 'disable_feature_flag' => $this->disableFeatureFlag('api_governance'),
                 'remove_contract_middleware' => $this->removeMiddleware('ApiContractValidationMiddleware'),
                 'restore_api_service' => $this->restoreOriginalAPIService(),
-                'remove_rbac_validation' => $this->removeRBACValidation()
+                'remove_rbac_validation' => $this->removeRBACValidation(),
             ],
-            'status' => 'ROLLED_BACK'
+            'status' => 'ROLLED_BACK',
         ];
     }
 
@@ -403,14 +401,14 @@ class RollbackManagementService
     private function disableFeatureFlag(string $feature): array
     {
         Log::info("Disabling feature flag: {$feature}");
-        
+
         Cache::put("feature_flag_{$feature}", false, now()->addDays(30));
-        
+
         return [
             'status' => 'SUCCESS',
             'feature' => $feature,
             'enabled' => false,
-            'disable_time' => now()
+            'disable_time' => now(),
         ];
     }
 
@@ -420,15 +418,15 @@ class RollbackManagementService
     private function stopServices(array $services): array
     {
         $results = [];
-        
+
         foreach ($services as $service) {
             Log::info("Stopping service: {$service}");
             $results[$service] = [
                 'status' => 'STOPPED',
-                'stop_time' => now()
+                'stop_time' => now(),
             ];
         }
-        
+
         return $results;
     }
 
@@ -438,12 +436,12 @@ class RollbackManagementService
     private function stopJob(string $jobName): array
     {
         Log::info("Stopping job: {$jobName}");
-        
+
         // Simulate job stopping
         return [
             'status' => 'STOPPED',
             'job' => $jobName,
-            'stop_time' => now()
+            'stop_time' => now(),
         ];
     }
 
@@ -453,23 +451,23 @@ class RollbackManagementService
     private function rollbackDatabase(array $tables): array
     {
         Log::info('Rolling back database changes', ['tables' => $tables]);
-        
+
         try {
             // Simulate database rollback
             foreach ($tables as $table) {
                 // In real implementation, this would run specific rollback migrations
                 Log::info("Rolling back table: {$table}");
             }
-            
+
             return [
                 'status' => 'SUCCESS',
                 'tables_rolled_back' => $tables,
-                'rollback_time' => now()
+                'rollback_time' => now(),
             ];
         } catch (Exception $e) {
             return [
                 'status' => 'FAILED',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
@@ -480,15 +478,15 @@ class RollbackManagementService
     private function restoreIntegrations(array $integrations): array
     {
         $results = [];
-        
+
         foreach ($integrations as $integration) {
             Log::info("Restoring integration: {$integration}");
             $results[$integration] = [
                 'status' => 'RESTORED',
-                'restore_time' => now()
+                'restore_time' => now(),
             ];
         }
-        
+
         return $results;
     }
 
@@ -498,12 +496,12 @@ class RollbackManagementService
     private function cleanupComponentData(string $component): array
     {
         Log::info("Cleaning up data for component: {$component}");
-        
+
         // Simulate data cleanup
         return [
             'status' => 'SUCCESS',
             'component' => $component,
-            'cleanup_time' => now()
+            'cleanup_time' => now(),
         ];
     }
 
@@ -513,12 +511,12 @@ class RollbackManagementService
     private function validateComponentRollback(string $component): array
     {
         Log::info("Validating rollback for component: {$component}");
-        
+
         // Simulate rollback validation
         return [
             'status' => 'VALIDATED',
             'component' => $component,
-            'validation_time' => now()
+            'validation_time' => now(),
         ];
     }
 
@@ -528,13 +526,13 @@ class RollbackManagementService
     private function validateRollbackCompletion(): array
     {
         Log::info('Validating complete rollback');
-        
+
         return [
             'system_stable' => true,
             'all_services_restored' => true,
             'data_integrity_verified' => true,
             'performance_restored' => true,
-            'validation_time' => now()
+            'validation_time' => now(),
         ];
     }
 
@@ -547,51 +545,146 @@ class RollbackManagementService
             'immutable_facts' => [
                 'services' => ['BookingFactsService', 'AnalyticsReconciliationService'],
                 'migrations' => ['booking_facts', 'analytics_facts'],
-                'integrations' => ['BookingService', 'EventAnalyticsService']
+                'integrations' => ['BookingService', 'EventAnalyticsService'],
             ],
             'outbox_pattern' => [
                 'services' => ['OutboxService'],
                 'migrations' => ['outbox_events'],
-                'integrations' => ['BookingService', 'NotificationService']
+                'integrations' => ['BookingService', 'NotificationService'],
             ],
             'capacity_management' => [
                 'services' => ['CapacityReservationService'],
                 'migrations' => ['capacity_reservations'],
-                'integrations' => ['BookingService', 'EventService']
+                'integrations' => ['BookingService', 'EventService'],
             ],
             'pii_vault' => [
                 'services' => ['PIIVaultService'],
                 'migrations' => ['pii_vault', 'pii_access_log'],
-                'integrations' => ['CustomerService', 'BookingService']
-            ]
+                'integrations' => ['CustomerService', 'BookingService'],
+            ],
         ];
     }
 
     // Placeholder restoration methods
-    private function restorePIIDataFromVault(): array { return ['status' => 'SUCCESS']; }
-    private function restoreOriginalBookingService(): array { return ['status' => 'SUCCESS']; }
-    private function restoreDirectSideEffectProcessing(): array { return ['status' => 'SUCCESS']; }
-    private function restoreOriginalAnalyticsService(): array { return ['status' => 'SUCCESS']; }
-    private function restoreOriginalAnalyticsProcessing(): array { return ['status' => 'SUCCESS']; }
-    private function restoreOriginalArtistService(): array { return ['status' => 'SUCCESS']; }
-    private function restoreOriginalLoyaltyService(): array { return ['status' => 'SUCCESS']; }
-    private function restoreOriginalFanTierService(): array { return ['status' => 'SUCCESS']; }
-    private function restoreOriginalFraudService(): array { return ['status' => 'SUCCESS']; }
-    private function restoreOriginalOperationsService(): array { return ['status' => 'SUCCESS']; }
-    private function restoreOriginalCustomerService(): array { return ['status' => 'SUCCESS']; }
-    private function restoreOriginalMonitoringService(): array { return ['status' => 'SUCCESS']; }
-    private function restoreOriginalAPIService(): array { return ['status' => 'SUCCESS']; }
-    private function restoreServiceIntegrations(string $component): array { return ['status' => 'SUCCESS']; }
-    private function removeDashboard(string $dashboard): array { return ['status' => 'SUCCESS']; }
-    private function removeUI(string $ui): array { return ['status' => 'SUCCESS']; }
-    private function removeAlerting(string $alerting): array { return ['status' => 'SUCCESS']; }
-    private function removeMiddleware(string $middleware): array { return ['status' => 'SUCCESS']; }
-    private function removeRBACValidation(): array { return ['status' => 'SUCCESS']; }
-    private function stopDataSynchronization(string $component): array { return ['status' => 'SUCCESS']; }
-    private function validatePIIDataIntegrity(): array { return ['status' => 'SUCCESS']; }
-    private function validateCapacityIntegrity(): array { return ['status' => 'SUCCESS']; }
-    private function validateSideEffectProcessing(): array { return ['status' => 'SUCCESS']; }
-    private function validateAnalyticsIntegrity(): array { return ['status' => 'SUCCESS']; }
+    private function restorePIIDataFromVault(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function restoreOriginalBookingService(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function restoreDirectSideEffectProcessing(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function restoreOriginalAnalyticsService(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function restoreOriginalAnalyticsProcessing(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function restoreOriginalArtistService(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function restoreOriginalLoyaltyService(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function restoreOriginalFanTierService(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function restoreOriginalFraudService(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function restoreOriginalOperationsService(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function restoreOriginalCustomerService(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function restoreOriginalMonitoringService(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function restoreOriginalAPIService(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function restoreServiceIntegrations(string $component): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function removeDashboard(string $dashboard): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function removeUI(string $ui): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function removeAlerting(string $alerting): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function removeMiddleware(string $middleware): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function removeRBACValidation(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function stopDataSynchronization(string $component): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function validatePIIDataIntegrity(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function validateCapacityIntegrity(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function validateSideEffectProcessing(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
+
+    private function validateAnalyticsIntegrity(): array
+    {
+        return ['status' => 'SUCCESS'];
+    }
 
     /**
      * Get rollback status
@@ -601,7 +694,7 @@ class RollbackManagementService
         return [
             'rollback_procedures' => array_keys($this->rollbackProcedures),
             'rollback_status' => $this->rollbackStatus,
-            'last_updated' => now()
+            'last_updated' => now(),
         ];
     }
 }

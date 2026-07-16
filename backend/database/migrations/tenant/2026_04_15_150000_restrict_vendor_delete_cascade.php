@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('bills')) {
+        if (! Schema::hasTable('bills')) {
             return;
         }
 
@@ -18,7 +18,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (!Schema::hasTable('bills')) {
+        if (! Schema::hasTable('bills')) {
             return;
         }
 

@@ -47,7 +47,7 @@ class BrandController extends Controller
     {
         $brand = $this->findBrandOrFail($brand_id);
 
-        return response()->json($brand->load(['products' => fn($q) => $q->limit(20)]));
+        return response()->json($brand->load(['products' => fn ($q) => $q->limit(20)]));
     }
 
     public function update(Request $request, int $brand_id)
@@ -56,7 +56,7 @@ class BrandController extends Controller
 
         $validated = $request->validate([
             'name' => 'string|max:255',
-            'slug' => 'nullable|string|max:255|unique:brands,slug,' . $brand->id,
+            'slug' => 'nullable|string|max:255|unique:brands,slug,'.$brand->id,
             'description' => 'nullable|string',
             'logo' => 'nullable|string',
             'website' => 'nullable|url|max:255',
@@ -74,7 +74,7 @@ class BrandController extends Controller
 
         if ($brand->products()->exists()) {
             return response()->json([
-                'message' => 'Cannot delete brand with existing products'
+                'message' => 'Cannot delete brand with existing products',
             ], 422);
         }
 
@@ -87,8 +87,8 @@ class BrandController extends Controller
     {
         $brand = Brand::query()->find($brandId);
 
-        if (!$brand) {
-            throw (new ModelNotFoundException())->setModel(Brand::class, [$brandId]);
+        if (! $brand) {
+            throw (new ModelNotFoundException)->setModel(Brand::class, [$brandId]);
         }
 
         return $brand;

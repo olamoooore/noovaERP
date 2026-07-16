@@ -29,7 +29,7 @@ class AccountingPolicy extends Model
     {
         $policy = static::first();
 
-        if (!$policy) {
+        if (! $policy) {
             $policy = static::create([
                 'depreciation_method' => 'straight_line',
                 'capitalization_threshold' => 1000.00,

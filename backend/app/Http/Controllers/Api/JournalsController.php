@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Journal;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class JournalsController extends Controller
 {
@@ -30,22 +30,22 @@ class JournalsController extends Controller
             // Search
             if ($request->has('search')) {
                 $search = $request->search;
-                $query->where(function($q) use ($search) {
+                $query->where(function ($q) use ($search) {
                     $q->where('code', 'ILIKE', "%{$search}%")
-                      ->orWhere('name', 'ILIKE', "%{$search}%");
+                        ->orWhere('name', 'ILIKE', "%{$search}%");
                 });
             }
 
             $journals = $query->orderBy('code')->get();
 
             return response()->json([
-                'data' => $journals
+                'data' => $journals,
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to fetch journals',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -59,13 +59,13 @@ class JournalsController extends Controller
             $journal = Journal::with(['defaultDebitAccount', 'defaultCreditAccount'])->findOrFail($id);
 
             return response()->json([
-                'data' => $journal
+                'data' => $journal,
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Journal not found',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 404);
         }
     }
@@ -93,19 +93,19 @@ class JournalsController extends Controller
 
             return response()->json([
                 'data' => $journal,
-                'message' => 'Journal created successfully'
+                'message' => 'Journal created successfully',
             ], 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
 
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to create journal',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -119,7 +119,7 @@ class JournalsController extends Controller
             $journal = Journal::findOrFail($id);
 
             $validated = $request->validate([
-                'code' => 'required|string|max:20|unique:journals,code,' . $id,
+                'code' => 'required|string|max:20|unique:journals,code,'.$id,
                 'name' => 'required|string|max:255',
                 'type' => 'required|in:general,sales,purchase,cash,bank',
                 'default_debit_account_id' => 'nullable|exists:chart_of_accounts,id',
@@ -132,19 +132,19 @@ class JournalsController extends Controller
 
             return response()->json([
                 'data' => $journal,
-                'message' => 'Journal updated successfully'
+                'message' => 'Journal updated successfully',
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'message' => 'Validation failed',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
 
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to update journal',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -160,20 +160,20 @@ class JournalsController extends Controller
             // Check if journal has entries
             if ($journal->journalEntries()->exists()) {
                 return response()->json([
-                    'message' => 'Cannot delete journal with entries'
+                    'message' => 'Cannot delete journal with entries',
                 ], 403);
             }
 
             $journal->delete();
 
             return response()->json([
-                'message' => 'Journal deleted successfully'
+                'message' => 'Journal deleted successfully',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to delete journal',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -191,12 +191,12 @@ class JournalsController extends Controller
                 'data' => [
                     'entry_number' => $nextNumber,
                     'journal_id' => $journal->id,
-                ]
+                ],
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to generate next entry number',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }

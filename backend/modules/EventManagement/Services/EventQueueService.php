@@ -2,10 +2,9 @@
 
 namespace Modules\EventManagement\Services;
 
+use Illuminate\Support\Str;
 use Modules\EventManagement\Models\QueueConfig;
 use Modules\EventManagement\Models\QueueSession;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class EventQueueService
 {
@@ -31,7 +30,7 @@ class EventQueueService
     ): array {
         $config = $this->getOrCreateConfig($campaignKey);
 
-        if (!$config->is_enabled) {
+        if (! $config->is_enabled) {
             return [
                 'status' => 'bypass',
                 'token' => null,
@@ -104,7 +103,7 @@ class EventQueueService
             ->where('campaign_key', $campaignKey)
             ->first();
 
-        if (!$session) {
+        if (! $session) {
             return null;
         }
 
@@ -113,6 +112,7 @@ class EventQueueService
         if ($session->status === QueueSession::STATUS_QUEUED) {
             if ($session->isExpired()) {
                 $session->markAsExpired();
+
                 return [
                     'status' => 'expired',
                     'token' => $token,
@@ -133,6 +133,7 @@ class EventQueueService
             if ($session->isExpired()) {
                 $session->markAsExpired();
                 $this->promoteNextQueued($campaignKey);
+
                 return [
                     'status' => 'expired',
                     'token' => $token,
@@ -161,7 +162,7 @@ class EventQueueService
             ->where('campaign_key', $campaignKey)
             ->first();
 
-        if (!$session) {
+        if (! $session) {
             return null;
         }
 
@@ -178,7 +179,7 @@ class EventQueueService
             ->where('campaign_key', $campaignKey)
             ->first();
 
-        if (!$session) {
+        if (! $session) {
             return false;
         }
 
@@ -198,7 +199,7 @@ class EventQueueService
             ->where('campaign_key', $campaignKey)
             ->first();
 
-        return $session && $session->status === QueueSession::STATUS_ACTIVE && !$session->isExpired();
+        return $session && $session->status === QueueSession::STATUS_ACTIVE && ! $session->isExpired();
     }
 
     public function updateConfig(
@@ -216,13 +217,14 @@ class EventQueueService
             'waiting_room_message' => $data['waiting_room_message'] ?? null,
             'settings' => $data['settings'] ?? null,
         ]));
+
         return $config->fresh();
     }
 
     public function getQueueStats(string $campaignKey): array
     {
         $config = QueueConfig::where('campaign_key', $campaignKey)->first();
-        if (!$config) {
+        if (! $config) {
             return [
                 'campaign_key' => $campaignKey,
                 'is_enabled' => false,
@@ -247,13 +249,14 @@ class EventQueueService
     private function getNextSequence(string $campaignKey): int
     {
         $max = QueueSession::where('campaign_key', $campaignKey)->max('sequence');
+
         return ($max ?? 0) + 1;
     }
 
     private function promoteNextQueued(string $campaignKey): void
     {
         $config = QueueConfig::where('campaign_key', $campaignKey)->first();
-        if (!$config || !$config->hasCapacity()) {
+        if (! $config || ! $config->hasCapacity()) {
             return;
         }
 
@@ -269,7 +272,7 @@ class EventQueueService
 
     private function estimateWaitTime(QueueSession $session, ?QueueConfig $config): int
     {
-        if (!$config) {
+        if (! $config) {
             return 60;
         }
 

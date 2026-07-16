@@ -4,7 +4,7 @@ namespace Modules\AI\SubModules;
 
 /**
  * Loyalty Module
- * 
+ *
  * Handles loyalty program queries:
  * - Points balance
  * - Rewards catalog
@@ -14,7 +14,7 @@ namespace Modules\AI\SubModules;
 class LoyaltyModule extends BaseModule
 {
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getName(): string
     {
@@ -22,7 +22,7 @@ class LoyaltyModule extends BaseModule
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getDisplayName(): string
     {
@@ -30,7 +30,7 @@ class LoyaltyModule extends BaseModule
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getIcon(): string
     {
@@ -38,7 +38,7 @@ class LoyaltyModule extends BaseModule
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getDescription(): string
     {
@@ -46,7 +46,7 @@ class LoyaltyModule extends BaseModule
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getFunctions(): array
     {
@@ -58,11 +58,11 @@ class LoyaltyModule extends BaseModule
     }
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function getSystemPrompt(): string
     {
-        return <<<PROMPT
+        return <<<'PROMPT'
 You are a loyalty program assistant for NoovaERP.
 
 Your role is to help customers with:

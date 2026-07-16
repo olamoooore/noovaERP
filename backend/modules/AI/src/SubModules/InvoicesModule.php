@@ -4,7 +4,7 @@ namespace Modules\AI\SubModules;
 
 /**
  * Invoices Module
- * 
+ *
  * Handles invoice queries and payment information
  */
 class InvoicesModule extends BaseModule
@@ -16,7 +16,7 @@ class InvoicesModule extends BaseModule
     {
         return 'invoices';
     }
-    
+
     /**
      * Get display name
      */
@@ -24,7 +24,7 @@ class InvoicesModule extends BaseModule
     {
         return 'Invoices & Payments';
     }
-    
+
     /**
      * Get module description
      */
@@ -32,7 +32,7 @@ class InvoicesModule extends BaseModule
     {
         return 'View invoices, check payment status, and get billing details';
     }
-    
+
     /**
      * Get module icon
      */
@@ -40,7 +40,7 @@ class InvoicesModule extends BaseModule
     {
         return '💰';
     }
-    
+
     /**
      * Get available functions for this module
      */
@@ -61,13 +61,13 @@ class InvoicesModule extends BaseModule
             'get_supplier_ledger',
         ];
     }
-    
+
     /**
      * Get module-specific system prompt
      */
     public function getSystemPrompt(): string
     {
-        return <<<PROMPT
+        return <<<'PROMPT'
 **INVOICES MODULE ACTIVE**
 
 You are now in Invoices mode. Focus on:
@@ -98,7 +98,7 @@ When displaying invoice results:
 Keep responses focused on invoices and payment information.
 PROMPT;
     }
-    
+
     /**
      * Get module metadata
      */

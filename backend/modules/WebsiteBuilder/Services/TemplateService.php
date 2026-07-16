@@ -2,9 +2,9 @@
 
 namespace Modules\WebsiteBuilder\Services;
 
+use Illuminate\Support\Str;
 use Modules\WebsiteBuilder\Models\Template;
 use Modules\WebsiteBuilder\Models\Website;
-use Illuminate\Support\Str;
 
 class TemplateService
 {
@@ -23,11 +23,11 @@ class TemplateService
         ]);
 
         // Create pages from template
-        if (!empty($schema['pages'])) {
+        if (! empty($schema['pages'])) {
             foreach ($schema['pages'] as $index => $pageData) {
                 $page = $website->pages()->create([
-                    'title' => $pageData['title'] ?? 'Page ' . ($index + 1),
-                    'slug' => $pageData['slug'] ?? 'page-' . ($index + 1),
+                    'title' => $pageData['title'] ?? 'Page '.($index + 1),
+                    'slug' => $pageData['slug'] ?? 'page-'.($index + 1),
                     'is_home' => $pageData['is_home'] ?? ($index === 0),
                     'seo_title' => $pageData['seo_title'] ?? null,
                     'seo_description' => $pageData['seo_description'] ?? null,

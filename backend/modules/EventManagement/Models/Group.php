@@ -7,20 +7,20 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Modules\EventManagement\Traits\HasTenantScope;
 use Modules\EventManagement\Traits\HasAuditTrail;
+use Modules\EventManagement\Traits\HasTenantScope;
 
 /**
  * Group Model
- * 
+ *
  * Represents K-POP groups and bands with comprehensive metadata,
  * member management, and performance tracking capabilities.
- * 
+ *
  * Requirements: 12.1, 12.5
  */
 class Group extends Model
 {
-    use HasFactory, SoftDeletes, HasTenantScope, HasAuditTrail;
+    use HasAuditTrail, HasFactory, HasTenantScope, SoftDeletes;
 
     protected $table = 'artist_groups';
 
@@ -81,7 +81,7 @@ class Group extends Model
                 'left_date',
                 'status',
                 'departure_reason',
-                'metadata'
+                'metadata',
             ])
             ->withTimestamps()
             ->wherePivot('deleted_at', null);
@@ -113,7 +113,7 @@ class Group extends Model
                 'status',
                 'confirmed_at',
                 'confirmed_by',
-                'metadata'
+                'metadata',
             ])
             ->withTimestamps()
             ->wherePivot('deleted_at', null);
@@ -154,7 +154,7 @@ class Group extends Model
     /**
      * Scope for groups by member count range
      */
-    public function scopeByMemberCount($query, int $min = null, int $max = null)
+    public function scopeByMemberCount($query, ?int $min = null, ?int $max = null)
     {
         if ($min !== null) {
             $query->where('member_count', '>=', $min);
@@ -162,6 +162,7 @@ class Group extends Model
         if ($max !== null) {
             $query->where('member_count', '<=', $max);
         }
+
         return $query;
     }
 
@@ -321,9 +322,9 @@ class Group extends Model
     {
         return $query->where(function ($q) use ($search) {
             $q->where('name', 'like', "%{$search}%")
-              ->orWhere('korean_name', 'like', "%{$search}%")
-              ->orWhere('english_name', 'like', "%{$search}%")
-              ->orWhere('fandom_name', 'like', "%{$search}%");
+                ->orWhere('korean_name', 'like', "%{$search}%")
+                ->orWhere('english_name', 'like', "%{$search}%")
+                ->orWhere('fandom_name', 'like', "%{$search}%");
         });
     }
 
@@ -377,7 +378,7 @@ class Group extends Model
     public function addGenre(string $genre): void
     {
         $genres = $this->genres ?? [];
-        if (!in_array($genre, $genres)) {
+        if (! in_array($genre, $genres)) {
             $genres[] = $genre;
             $this->genres = $genres;
         }
@@ -389,7 +390,7 @@ class Group extends Model
     public function removeGenre(string $genre): void
     {
         $genres = $this->genres ?? [];
-        $this->genres = array_values(array_filter($genres, fn($g) => $g !== $genre));
+        $this->genres = array_values(array_filter($genres, fn ($g) => $g !== $genre));
     }
 
     /**
@@ -422,7 +423,7 @@ class Group extends Model
     /**
      * Remove member from group
      */
-    public function removeMember(Artist $artist, string $reason = null): void
+    public function removeMember(Artist $artist, ?string $reason = null): void
     {
         $this->groupMemberships()
             ->where('artist_id', $artist->id)

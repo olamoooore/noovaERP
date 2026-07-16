@@ -9,10 +9,8 @@ class TenantCache
     /**
      * Store an item in the cache for the current tenant.
      *
-     * @param string $key
-     * @param mixed $value
-     * @param \DateTimeInterface|\DateInterval|int|null $ttl
-     * @return bool
+     * @param  mixed  $value
+     * @param  \DateTimeInterface|\DateInterval|int|null  $ttl
      */
     public static function put(string $key, $value, $ttl = null): bool
     {
@@ -22,8 +20,7 @@ class TenantCache
     /**
      * Retrieve an item from the cache for the current tenant.
      *
-     * @param string $key
-     * @param mixed $default
+     * @param  mixed  $default
      * @return mixed
      */
     public static function get(string $key, $default = null)
@@ -34,10 +31,8 @@ class TenantCache
     /**
      * Store an item in the cache for the current tenant if the key does not exist.
      *
-     * @param string $key
-     * @param mixed $value
-     * @param \DateTimeInterface|\DateInterval|int|null $ttl
-     * @return bool
+     * @param  mixed  $value
+     * @param  \DateTimeInterface|\DateInterval|int|null  $ttl
      */
     public static function add(string $key, $value, $ttl = null): bool
     {
@@ -46,9 +41,6 @@ class TenantCache
 
     /**
      * Remove an item from the cache for the current tenant.
-     *
-     * @param string $key
-     * @return bool
      */
     public static function forget(string $key): bool
     {
@@ -58,9 +50,7 @@ class TenantCache
     /**
      * Get an item from the cache for the current tenant, or execute the given Closure and store the result.
      *
-     * @param string $key
-     * @param \DateTimeInterface|\DateInterval|int|null $ttl
-     * @param \Closure $callback
+     * @param  \DateTimeInterface|\DateInterval|int|null  $ttl
      * @return mixed
      */
     public static function remember(string $key, $ttl, \Closure $callback)
@@ -70,13 +60,11 @@ class TenantCache
 
     /**
      * Generate a tenant-scoped cache key.
-     *
-     * @param string $key
-     * @return string
      */
     protected static function scopedKey(string $key): string
     {
         $tenantId = tenancy()->tenant?->id ?? 'global';
+
         return "tenant:{$tenantId}:{$key}";
     }
 }

@@ -6,10 +6,10 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Customer Experience Data Models Migration
- * 
+ *
  * Creates tables for customer event history, reminders, feedback, and personalization.
  * Implements customer journey tracking and notification preferences.
- * 
+ *
  * Requirements: 16.1, 16.3, 16.4, 16.5
  */
 return new class extends Migration
@@ -27,8 +27,8 @@ return new class extends Migration
             $table->unsignedBigInteger('event_id');
             $table->unsignedBigInteger('booking_id')->nullable();
             $table->enum('interaction_type', [
-                'viewed', 'bookmarked', 'booked', 'attended', 'cancelled', 
-                'shared', 'reviewed', 'recommended'
+                'viewed', 'bookmarked', 'booked', 'attended', 'cancelled',
+                'shared', 'reviewed', 'recommended',
             ]);
             $table->json('interaction_data')->nullable(); // Additional context data
             $table->timestamp('interaction_at');
@@ -59,7 +59,7 @@ return new class extends Migration
             $table->enum('reminder_type', [
                 'event_announcement', 'booking_confirmation', 'event_reminder',
                 'check_in_reminder', 'post_event_feedback', 'ticket_download',
-                'event_update', 'cancellation_notice', 'refund_notice'
+                'event_update', 'cancellation_notice', 'refund_notice',
             ]);
             $table->timestamp('scheduled_at');
             $table->timestamp('sent_at')->nullable();
@@ -137,7 +137,7 @@ return new class extends Migration
                 'event_announcements', 'booking_confirmations', 'event_reminders',
                 'check_in_reminders', 'event_updates', 'cancellation_notices',
                 'feedback_requests', 'promotional_offers', 'loyalty_updates',
-                'artist_announcements', 'early_access_notifications'
+                'artist_announcements', 'early_access_notifications',
             ]);
             $table->boolean('email_enabled')->default(true);
             $table->boolean('sms_enabled')->default(false);
@@ -151,7 +151,7 @@ return new class extends Migration
 
             // Unique constraint - one preference per customer per type
             $table->unique(['tenant_id', 'customer_id', 'notification_type'], 'unique_customer_notification_pref');
-            
+
             // Indexes
             $table->index(['tenant_id', 'customer_id']);
             $table->index(['tenant_id', 'notification_type']);
@@ -165,7 +165,7 @@ return new class extends Migration
             $table->unsignedBigInteger('event_id');
             $table->enum('recommendation_type', [
                 'similar_events', 'artist_based', 'location_based', 'price_based',
-                'collaborative_filtering', 'trending', 'seasonal', 'personalized'
+                'collaborative_filtering', 'trending', 'seasonal', 'personalized',
             ]);
             $table->decimal('confidence_score', 5, 4); // 0.0000 to 1.0000
             $table->json('recommendation_factors')->nullable(); // Why this was recommended
@@ -197,7 +197,7 @@ return new class extends Migration
                 'page_view', 'event_view', 'search', 'filter_applied', 'bookmark_added',
                 'booking_started', 'booking_abandoned', 'booking_completed',
                 'ticket_downloaded', 'check_in_completed', 'feedback_submitted',
-                'recommendation_clicked', 'share_action', 'support_contact'
+                'recommendation_clicked', 'share_action', 'support_contact',
             ]);
             $table->string('page_url')->nullable();
             $table->string('referrer_url')->nullable();
@@ -245,7 +245,7 @@ return new class extends Migration
 
             // Unique constraint
             $table->unique(['tenant_id', 'customer_id'], 'unique_customer_preferences');
-            
+
             // Indexes
             $table->index(['tenant_id', 'customer_id']);
         });

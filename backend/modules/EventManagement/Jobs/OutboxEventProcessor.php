@@ -2,17 +2,17 @@
 
 namespace Modules\EventManagement\Jobs;
 
-use Modules\EventManagement\Services\OutboxService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Modules\EventManagement\Services\OutboxService;
 
 /**
  * OutboxEventProcessor Job
- * 
+ *
  * Background job for processing outbox events with retry logic and monitoring.
  * Ensures exactly-once processing of side effects.
  */
@@ -55,31 +55,31 @@ class OutboxEventProcessor implements ShouldQueue
     public function handle(OutboxService $outboxService): void
     {
         $startTime = microtime(true);
-        
+
         Log::info('Starting outbox event processing', [
             'batch_size' => $this->batchSize,
-            'job_id' => $this->job->getJobId()
+            'job_id' => $this->job->getJobId(),
         ]);
 
         try {
             // Process pending events
             $result = $outboxService->processPendingEvents($this->batchSize);
-            
+
             $processingTime = round((microtime(true) - $startTime) * 1000, 2);
-            
+
             Log::info('Outbox event processing completed', [
                 'processed_count' => $result['processed_count'],
                 'failed_count' => $result['failed_count'],
                 'processing_time_ms' => $processingTime,
-                'job_id' => $this->job->getJobId()
+                'job_id' => $this->job->getJobId(),
             ]);
 
             // If there are more events to process, dispatch another job
             if ($result['processed_count'] > 0 && $result['processed_count'] >= $this->batchSize) {
                 Log::info('Dispatching next outbox processing job', [
-                    'reason' => 'batch_size_reached'
+                    'reason' => 'batch_size_reached',
                 ]);
-                
+
                 self::dispatch($this->batchSize)->delay(now()->addSeconds(5));
             }
 
@@ -87,7 +87,7 @@ class OutboxEventProcessor implements ShouldQueue
             if ($result['failed_count'] > 0) {
                 Log::warning('Some outbox events failed processing', [
                     'failed_count' => $result['failed_count'],
-                    'failed_events' => $result['failed_events']
+                    'failed_events' => $result['failed_events'],
                 ]);
             }
 
@@ -95,7 +95,7 @@ class OutboxEventProcessor implements ShouldQueue
             Log::error('Outbox event processing job failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
-                'job_id' => $this->job->getJobId()
+                'job_id' => $this->job->getJobId(),
             ]);
 
             // Re-throw to trigger job retry mechanism
@@ -112,7 +112,7 @@ class OutboxEventProcessor implements ShouldQueue
             'error' => $exception->getMessage(),
             'trace' => $exception->getTraceAsString(),
             'attempts' => $this->attempts(),
-            'job_id' => $this->job?->getJobId()
+            'job_id' => $this->job?->getJobId(),
         ]);
 
         // Could send alert to monitoring system here

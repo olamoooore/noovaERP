@@ -4,8 +4,8 @@ namespace Modules\HRM\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\HRM\Database\Factories\ContractFactory;
 
 class Contract extends Model
@@ -40,12 +40,12 @@ class Contract extends Model
 
     protected $casts = [
         'base_monthly_salary' => 'decimal:2',
-        'overtime_eligible'   => 'boolean',
-        'fixed_working_days'  => 'integer',
-        'paid_leaves'         => 'integer',
-        'start_date'          => 'date',
-        'end_date'            => 'date',
-        'deleted_at'          => 'datetime',
+        'overtime_eligible' => 'boolean',
+        'fixed_working_days' => 'integer',
+        'paid_leaves' => 'integer',
+        'start_date' => 'date',
+        'end_date' => 'date',
+        'deleted_at' => 'datetime',
     ];
 
     // Relations

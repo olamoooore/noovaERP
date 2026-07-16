@@ -16,6 +16,7 @@ class AdminTenantApiKeyController extends Controller
     public function __construct(
         private readonly AdminAuditLogger $auditLogger,
     ) {}
+
     /**
      * GET /tenants/{tenantId}/api-keys
      * List all API keys for a tenant (hashes never exposed).
@@ -36,7 +37,7 @@ class AdminTenantApiKeyController extends Controller
     public function store(Request $request, string $tenantId): JsonResponse
     {
         $data = $request->validate([
-            'name'       => ['required', 'string', 'max:100'],
+            'name' => ['required', 'string', 'max:100'],
             'expires_at' => ['nullable', 'date', 'after:today'],
         ]);
 
@@ -45,9 +46,9 @@ class AdminTenantApiKeyController extends Controller
             : null;
 
         ['model' => $model, 'raw_key' => $rawKey] = TenantApiKey::generate(
-            tenantId:  $tenantId,
-            name:      $data['name'],
-            adminId:   Auth::id(),
+            tenantId: $tenantId,
+            name: $data['name'],
+            adminId: Auth::id(),
             expiresAt: $expiresAt,
         );
 
@@ -55,11 +56,11 @@ class AdminTenantApiKeyController extends Controller
             action: 'tenant.api_key.created',
             target: $model,
             before: [],
-            after:  ['tenant_id' => $tenantId, 'name' => $data['name'], 'key_prefix' => $model->key_prefix],
+            after: ['tenant_id' => $tenantId, 'name' => $data['name'], 'key_prefix' => $model->key_prefix],
         );
 
         return response()->json([
-            'data'    => $model->only(['id', 'name', 'key_prefix', 'is_active', 'expires_at', 'created_at']),
+            'data' => $model->only(['id', 'name', 'key_prefix', 'is_active', 'expires_at', 'created_at']),
             // Raw key shown ONCE — the client must store it
             'raw_key' => $rawKey,
             'warning' => 'Store this key securely. It will not be shown again.',
@@ -75,7 +76,7 @@ class AdminTenantApiKeyController extends Controller
         abort_if($key->tenant_id !== $tenantId, 404);
 
         $data = $request->validate([
-            'name'      => ['sometimes', 'string', 'max:100'],
+            'name' => ['sometimes', 'string', 'max:100'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
@@ -86,7 +87,7 @@ class AdminTenantApiKeyController extends Controller
             action: 'tenant.api_key.updated',
             target: $key,
             before: $before,
-            after:  $key->only(['name', 'is_active']),
+            after: $key->only(['name', 'is_active']),
         );
 
         return response()->json(['data' => $key->only(['id', 'name', 'key_prefix', 'is_active', 'expires_at', 'last_used_at'])]);
@@ -107,7 +108,7 @@ class AdminTenantApiKeyController extends Controller
             action: 'tenant.api_key.revoked',
             target: null,
             before: $snapshot,
-            after:  [],
+            after: [],
         );
 
         return response()->json(['message' => 'API key revoked.']);

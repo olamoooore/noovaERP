@@ -12,7 +12,7 @@ import { deviceManagerConfig } from './config/devices'
 import { registerCustomBlocks } from './blocks'
 
 // Panels
-import { customizePanelIcons, addUploadButton, addPresetsPanel, addIconSearch } from './panels'
+import { customizePanelIcons, addUploadButton, addPresetsPanel, addIconSearch, resetPanelCustomization } from './panels'
 
 // Utils
 import { setupLucideListeners, setupContextMenu, setupKeyboardShortcuts, setupImageUpload, setupTabListeners } from './utils'
@@ -794,6 +794,9 @@ export function GrapesEditor({ initialContent, onSave, onLoad }: GrapesEditorPro
       cleanupTabListeners()
       editor.destroy()
       editorRef.current = null
+      // Allow the next editor instance (e.g. React StrictMode remount) to
+      // re-customize its panels.
+      resetPanelCustomization()
     }
   }, [])
 

@@ -3,15 +3,15 @@
 namespace Modules\EventManagement\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * IncidentLog Model
- * 
+ *
  * Represents operational incidents and administrative overrides
  * with full audit trails and escalation workflows.
- * 
+ *
  * @property int $id
  * @property string $tenant_id
  * @property int $event_id
@@ -259,16 +259,16 @@ class IncidentLog extends Model
     /**
      * Acknowledge the incident
      */
-    public function acknowledge(string $acknowledgedBy = null): void
+    public function acknowledge(?string $acknowledgedBy = null): void
     {
         $this->status = 'acknowledged';
         $this->acknowledged_at = now();
-        
+
         if ($acknowledgedBy) {
             $this->assigned_to = $acknowledgedBy;
             $this->assigned_at = now();
         }
-        
+
         $this->save();
     }
 
@@ -279,12 +279,12 @@ class IncidentLog extends Model
     {
         $this->assigned_to = $staffId;
         $this->assigned_at = now();
-        
+
         if ($this->status === 'open') {
             $this->status = 'acknowledged';
             $this->acknowledged_at = now();
         }
-        
+
         $this->save();
     }
 
@@ -300,17 +300,17 @@ class IncidentLog extends Model
     /**
      * Resolve the incident
      */
-    public function resolve(string $resolvedBy, string $resolutionNotes, string $actionsTaken = null): void
+    public function resolve(string $resolvedBy, string $resolutionNotes, ?string $actionsTaken = null): void
     {
         $this->status = 'resolved';
         $this->resolved_at = now();
         $this->resolved_by = $resolvedBy;
         $this->resolution_notes = $resolutionNotes;
-        
+
         if ($actionsTaken) {
             $this->actions_taken = $actionsTaken;
         }
-        
+
         $this->save();
     }
 
@@ -340,7 +340,7 @@ class IncidentLog extends Model
      */
     public function getResolutionTimeAttribute(): ?int
     {
-        if (!$this->resolved_at) {
+        if (! $this->resolved_at) {
             return null;
         }
 
@@ -352,7 +352,7 @@ class IncidentLog extends Model
      */
     public function getResponseTimeAttribute(): ?int
     {
-        if (!$this->acknowledged_at) {
+        if (! $this->acknowledged_at) {
             return null;
         }
 
@@ -365,6 +365,7 @@ class IncidentLog extends Model
     public function getAgeInMinutesAttribute(): int
     {
         $endTime = $this->resolved_at ?? now();
+
         return $this->reported_at->diffInMinutes($endTime);
     }
 

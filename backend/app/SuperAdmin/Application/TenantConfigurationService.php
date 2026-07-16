@@ -11,7 +11,7 @@ class TenantConfigurationService
 {
     public function __construct(
         private readonly EntitlementService $entitlements,
-        private readonly AdminAuditLogger   $audit,
+        private readonly AdminAuditLogger $audit,
     ) {}
 
     // =========================================================================
@@ -34,11 +34,11 @@ class TenantConfigurationService
      * Automatically rebuilds entitlements after the change.
      */
     public function addSelection(
-        string      $tenantId,
+        string $tenantId,
         CatalogItem $item,
-        string      $selectionType,
-        ?string     $notes    = null,
-        ?int        $adminId  = null,
+        string $selectionType,
+        ?string $notes = null,
+        ?int $adminId = null,
     ): TenantSelectedItem {
         $this->validateSelectionType($selectionType);
 
@@ -50,12 +50,12 @@ class TenantConfigurationService
         $selection = DB::transaction(function () use ($tenantId, $item, $selectionType, $notes, $adminId) {
             return TenantSelectedItem::updateOrCreate(
                 [
-                    'tenant_id'       => $tenantId,
+                    'tenant_id' => $tenantId,
                     'catalog_item_id' => $item->id,
                 ],
                 [
-                    'selection_type'       => $selectionType,
-                    'notes'                => $notes,
+                    'selection_type' => $selectionType,
+                    'notes' => $notes,
                     'selected_by_admin_id' => $adminId,
                 ],
             );
@@ -80,9 +80,9 @@ class TenantConfigurationService
      * Automatically rebuilds entitlements after the change.
      */
     public function removeSelection(
-        string      $tenantId,
+        string $tenantId,
         CatalogItem $item,
-        ?int        $adminId  = null,
+        ?int $adminId = null,
     ): void {
         $selection = TenantSelectedItem::where('tenant_id', $tenantId)
             ->where('catalog_item_id', $item->id)
@@ -124,7 +124,7 @@ class TenantConfigurationService
     {
         if (! in_array($type, TenantSelectedItem::TYPES, true)) {
             throw new \InvalidArgumentException(
-                "Invalid selection type \"{$type}\". Must be one of: " .
+                "Invalid selection type \"{$type}\". Must be one of: ".
                 implode(', ', TenantSelectedItem::TYPES),
             );
         }

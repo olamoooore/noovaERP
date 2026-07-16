@@ -2,7 +2,6 @@
 
 namespace Modules\FinancialReporting\Services;
 
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -75,29 +74,29 @@ class ReportMappingReader
      */
     public const LEGACY_RANGES = [
         // P&L
-        'PL_COGS'               => ['5000-5099'],
-        'PL_OPERATING_EXPENSES'  => ['5100-5199'],
-        'PL_OTHER_INCOME'        => ['4100-4999'],
-        'PL_OTHER_EXPENSES'      => ['5200-5999'],
-        'PL_REVENUE'             => null,           // uses coa.type = 'revenue' (no code filter)
+        'PL_COGS' => ['5000-5099'],
+        'PL_OPERATING_EXPENSES' => ['5100-5199'],
+        'PL_OTHER_INCOME' => ['4100-4999'],
+        'PL_OTHER_EXPENSES' => ['5200-5999'],
+        'PL_REVENUE' => null,           // uses coa.type = 'revenue' (no code filter)
 
         // Balance Sheet
-        'BS_CURRENT_ASSETS'      => ['1000-1299'],
-        'BS_NON_CURRENT_ASSETS'  => ['1300-1899'],
-        'BS_OTHER_ASSETS'        => ['1900-1999'],
+        'BS_CURRENT_ASSETS' => ['1000-1299'],
+        'BS_NON_CURRENT_ASSETS' => ['1300-1899'],
+        'BS_OTHER_ASSETS' => ['1900-1999'],
         'BS_CURRENT_LIABILITIES' => ['2000-2199'],
         'BS_NON_CURRENT_LIABILITIES' => ['2200-2999'],
-        'BS_EQUITY'              => ['3000-3099'],
+        'BS_EQUITY' => ['3000-3099'],
 
         // Cash Flow (finer grained)
-        'CF_CASH'                => ['1000-1099'],
-        'CF_AR'                  => ['1100-1199'],
-        'CF_INVENTORY'           => ['1200-1299'],
-        'CF_AP'                  => ['2000-2099'],
-        'CF_FIXED_ASSETS'        => ['1300-1899'],
+        'CF_CASH' => ['1000-1099'],
+        'CF_AR' => ['1100-1199'],
+        'CF_INVENTORY' => ['1200-1299'],
+        'CF_AP' => ['2000-2099'],
+        'CF_FIXED_ASSETS' => ['1300-1899'],
         'CF_LONG_TERM_LIABILITIES' => ['2100-2999'],
-        'CF_CAPITAL'             => ['3000-3099'],
-        'CF_DRAWINGS'            => ['3200-3299'],
+        'CF_CAPITAL' => ['3000-3099'],
+        'CF_DRAWINGS' => ['3200-3299'],
     ];
 
     // ─── Unified query helpers ──────────────────────────────────────────
@@ -105,9 +104,9 @@ class ReportMappingReader
     /**
      * Apply either tag-based or code-range WHERE clause to a query builder.
      *
-     * @param \Illuminate\Database\Query\Builder $query
-     * @param string $tagCode   Report tag code, e.g. 'PL_COGS'
-     * @param string $coaAlias  Table alias for chart_of_accounts (default 'coa')
+     * @param  \Illuminate\Database\Query\Builder  $query
+     * @param  string  $tagCode  Report tag code, e.g. 'PL_COGS'
+     * @param  string  $coaAlias  Table alias for chart_of_accounts (default 'coa')
      */
     public function applyFilter($query, string $tagCode, string $coaAlias = 'coa', ?int $legalEntityId = null): void
     {
@@ -118,6 +117,7 @@ class ReportMappingReader
             } else {
                 $query->whereIn("{$coaAlias}.id", $ids);
             }
+
             return;
         }
 
@@ -139,9 +139,7 @@ class ReportMappingReader
      * Apply filter for a balance-based query (code range with start/end codes).
      * Used by CashFlowService helpers that take explicit start/end codes.
      *
-     * @param \Illuminate\Database\Query\Builder $query
-     * @param string $tagCode
-     * @param string $coaAlias
+     * @param  \Illuminate\Database\Query\Builder  $query
      */
     public function applyBalanceFilter($query, string $tagCode, string $coaAlias = 'coa'): void
     {

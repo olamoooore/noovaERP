@@ -9,12 +9,35 @@ use App\Modules\Contracts\BaseModuleContract;
  */
 class FinancialCloseModuleContract extends BaseModuleContract
 {
-    public function getKey(): string { return 'financial-close'; }
-    public function getName(): string { return 'FinancialClose'; }
-    public function getType(): string { return 'feature'; }
-    public function getDescription(): string { return 'Financial Close & Period-End — close cycles, tasks, reconciliations, signoffs, evidence packs'; }
-    public function getVersion(): string { return '1.0.0'; }
-    public function getDependencies(): array { return ['core']; }
+    public function getKey(): string
+    {
+        return 'financial-close';
+    }
+
+    public function getName(): string
+    {
+        return 'FinancialClose';
+    }
+
+    public function getType(): string
+    {
+        return 'feature';
+    }
+
+    public function getDescription(): string
+    {
+        return 'Financial Close & Period-End — close cycles, tasks, reconciliations, signoffs, evidence packs';
+    }
+
+    public function getVersion(): string
+    {
+        return '1.0.0';
+    }
+
+    public function getDependencies(): array
+    {
+        return ['core'];
+    }
 
     public function getPermissions(): array
     {
@@ -33,26 +56,26 @@ class FinancialCloseModuleContract extends BaseModuleContract
     {
         return [
             'required_setup_steps' => ['period_end_setup'],
-            'default_settings'     => [],
-            'recommended_roles'    => ['admin'],
+            'default_settings' => [],
+            'recommended_roles' => ['admin'],
         ];
     }
 
     public function getActivationRules(): array
     {
         return [
-            'requires'  => ['core'],
-            'settings'  => [],
-            'min_tier'  => null,
+            'requires' => ['core'],
+            'settings' => [],
+            'min_tier' => null,
         ];
     }
 
     public function getDeactivationRules(): array
     {
         return [
-            'removes_data'       => false,
+            'removes_data' => false,
             'preserves_entities' => [],
-            'cleanup_jobs'       => [],
+            'cleanup_jobs' => [],
         ];
     }
 
@@ -71,9 +94,9 @@ class FinancialCloseModuleContract extends BaseModuleContract
     {
         return [
             'has_ai_assistant' => false,
-            'ai_suggestions'   => false,
-            'ai_automation'    => false,
-            'ai_data_access'   => [],
+            'ai_suggestions' => false,
+            'ai_automation' => false,
+            'ai_data_access' => [],
         ];
     }
 }

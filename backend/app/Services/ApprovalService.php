@@ -59,6 +59,7 @@ class ApprovalService
                     'request_id' => $existing->id,
                     'request_number' => $existing->request_number,
                 ]);
+
                 return $existing;
             }
 
@@ -94,24 +95,24 @@ class ApprovalService
         return DB::transaction(function () use ($requestId, $userId, $notes) {
             $request = ApprovalRequest::lockForUpdate()->findOrFail($requestId);
 
-            if (!$request->isPending()) {
+            if (! $request->isPending()) {
                 throw new \Exception("Request is {$request->status}, cannot approve");
             }
 
             if ($request->isExpired()) {
                 $request->update(['status' => 'expired']);
-                throw new \Exception("Request has expired");
+                throw new \Exception('Request has expired');
             }
 
             // Segregation of duties — requester cannot approve own request
             if ($request->requested_by === $userId) {
-                throw new \Exception("Self-approval is not permitted");
+                throw new \Exception('Self-approval is not permitted');
             }
 
             $user = User::findOrFail($userId);
 
             // Check entitlement
-            if (!$this->userCanApprove($user, $request->request_type, $request->amount)) {
+            if (! $this->userCanApprove($user, $request->request_type, $request->amount)) {
                 throw new \Exception("User does not have permission to approve {$request->request_type} requests");
             }
 
@@ -140,14 +141,14 @@ class ApprovalService
         return DB::transaction(function () use ($requestId, $userId, $reason) {
             $request = ApprovalRequest::lockForUpdate()->findOrFail($requestId);
 
-            if (!$request->isPending()) {
+            if (! $request->isPending()) {
                 throw new \Exception("Request is {$request->status}, cannot reject");
             }
 
             $user = User::findOrFail($userId);
 
             // Check entitlement
-            if (!$this->userCanApprove($user, $request->request_type, $request->amount)) {
+            if (! $this->userCanApprove($user, $request->request_type, $request->amount)) {
                 throw new \Exception("User does not have permission to reject {$request->request_type} requests");
             }
 
@@ -176,16 +177,17 @@ class ApprovalService
     {
         // Get required entitlement
         $requiredEntitlement = self::ENTITLEMENT_MAP[$requestType] ?? null;
-        
-        if (!$requiredEntitlement) {
+
+        if (! $requiredEntitlement) {
             Log::warning('Unknown request type for approval', ['request_type' => $requestType]);
+
             return false;
         }
 
         // Check if user has manager role (basic approval)
         $hasManagerRole = $user->hasRole('manager') || $user->hasRole('supervisor');
-        
-        if (!$hasManagerRole) {
+
+        if (! $hasManagerRole) {
             return false;
         }
 
@@ -205,7 +207,7 @@ class ApprovalService
         $query = ApprovalRequest::where('status', 'pending')
             ->where(function ($q) {
                 $q->whereNull('expires_at')
-                  ->orWhere('expires_at', '>', now());
+                    ->orWhere('expires_at', '>', now());
             })
             ->with(['requestedBy', 'subject'])
             ->orderBy('requested_at', 'asc');

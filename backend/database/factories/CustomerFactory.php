@@ -4,7 +4,6 @@ namespace Database\Factories;
 
 use App\Models\Customer;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Support\Str;
 
 class CustomerFactory extends Factory
 {
@@ -15,7 +14,7 @@ class CustomerFactory extends Factory
         return [
             'type' => 'individual',
             'name' => $this->faker->company(),
-            'code' => 'CUST-' . str_pad((string) (Customer::count() + 1), 4, '0', STR_PAD_LEFT),
+            'code' => 'CUST-'.str_pad((string) (Customer::count() + 1), 4, '0', STR_PAD_LEFT),
             'email' => $this->faker->unique()->companyEmail(),
             'phone' => $this->faker->optional()->phoneNumber(),
             'company' => $this->faker->optional()->company(),

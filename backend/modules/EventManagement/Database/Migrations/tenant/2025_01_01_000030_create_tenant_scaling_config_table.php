@@ -6,20 +6,21 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * Migration: Create Tenant Scaling Configuration Table - Task 11.4
- * 
+ *
  * Creates tenant scaling configuration table for automated scaling
  * triggers, alerts, and resource allocation management.
- * 
+ *
  * Requirements: 27.5
  */
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * Run the migrations.
      */
     public function up(): void
     {
         // Tenant Scaling Configuration table
-        if (!Schema::hasTable('tenant_scaling_config')) {
+        if (! Schema::hasTable('tenant_scaling_config')) {
             Schema::create('tenant_scaling_config', function (Blueprint $table) {
                 $table->id();
                 $table->string('tenant_id', 100)->unique();
@@ -43,7 +44,7 @@ return new class extends Migration {
         }
 
         // Tenant Scaling Events table for tracking scaling history
-        if (!Schema::hasTable('tenant_scaling_events')) {
+        if (! Schema::hasTable('tenant_scaling_events')) {
             Schema::create('tenant_scaling_events', function (Blueprint $table) {
                 $table->id();
                 $table->string('tenant_id', 100);
@@ -75,7 +76,7 @@ return new class extends Migration {
         }
 
         // Tenant Resource Usage Forecasts table
-        if (!Schema::hasTable('tenant_resource_forecasts')) {
+        if (! Schema::hasTable('tenant_resource_forecasts')) {
             Schema::create('tenant_resource_forecasts', function (Blueprint $table) {
                 $table->id();
                 $table->string('tenant_id', 100);
@@ -105,7 +106,7 @@ return new class extends Migration {
         }
 
         // Tenant Cost Optimization Recommendations table
-        if (!Schema::hasTable('tenant_cost_optimization_recommendations')) {
+        if (! Schema::hasTable('tenant_cost_optimization_recommendations')) {
             Schema::create('tenant_cost_optimization_recommendations', function (Blueprint $table) {
                 $table->id();
                 $table->string('tenant_id', 100);

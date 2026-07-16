@@ -17,26 +17,26 @@ class AuthenticateAgent
     public function handle(Request $request, Closure $next): Response
     {
         $token = $request->bearerToken();
-        
-        if (!$token) {
+
+        if (! $token) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthenticated. No bearer token provided.'
+                'message' => 'Unauthenticated. No bearer token provided.',
             ], 401);
         }
-        
+
         // Check if token exists in agents table
         $agent = DB::table('agents')
             ->where('api_token', $token)
             ->first();
-        
-        if (!$agent) {
+
+        if (! $agent) {
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthenticated. Invalid agent token.'
+                'message' => 'Unauthenticated. Invalid agent token.',
             ], 401);
         }
-        
+
         // Update last heartbeat
         DB::table('agents')
             ->where('id', $agent->id)
@@ -45,10 +45,10 @@ class AuthenticateAgent
                 'status' => 'online',
                 'updated_at' => now(),
             ]);
-        
+
         // Attach agent to request for use in controllers
         $request->attributes->set('authenticated_agent', $agent);
-        
+
         return $next($request);
     }
 }

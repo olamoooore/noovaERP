@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         // bank_reconciliations table already exists, only create items table
-        if (!Schema::hasTable('bank_reconciliation_items')) {
+        if (! Schema::hasTable('bank_reconciliation_items')) {
             Schema::create('bank_reconciliation_items', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('reconciliation_id')->constrained('bank_reconciliations')->onDelete('cascade');
@@ -20,7 +20,7 @@ return new class extends Migration
                 $table->boolean('is_reconciled')->default(false);
                 $table->timestamp('reconciled_at')->nullable();
                 $table->timestamps();
-                
+
                 $table->index('reconciliation_id');
                 $table->index('journal_entry_line_id');
                 $table->index('is_reconciled');

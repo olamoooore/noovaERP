@@ -2,10 +2,10 @@
 
 namespace Modules\POS\Models;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PosOrderItem extends Model
 {

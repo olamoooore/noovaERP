@@ -89,15 +89,15 @@ class IoTDeviceMetric extends Model
      */
     public function getFormattedAvgResponseTimeAttribute(): string
     {
-        if (!$this->avg_response_time_ms) {
+        if (! $this->avg_response_time_ms) {
             return 'N/A';
         }
 
         if ($this->avg_response_time_ms < 1000) {
-            return $this->avg_response_time_ms . 'ms';
+            return $this->avg_response_time_ms.'ms';
         }
 
-        return round($this->avg_response_time_ms / 1000, 2) . 's';
+        return round($this->avg_response_time_ms / 1000, 2).'s';
     }
 
     /**
@@ -105,7 +105,7 @@ class IoTDeviceMetric extends Model
      */
     public function isPerformanceGood(): bool
     {
-        return $this->uptime_percentage >= 95 && 
+        return $this->uptime_percentage >= 95 &&
                $this->health_success_rate >= 90 &&
                ($this->avg_response_time_ms === null || $this->avg_response_time_ms < 5000);
     }

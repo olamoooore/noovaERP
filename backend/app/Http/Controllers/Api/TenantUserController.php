@@ -202,13 +202,13 @@ class TenantUserController extends Controller
 
         $validated = $request->validate([
             'email' => ['required', 'email', 'max:255'],
-            'role'  => ['required', 'string', Rule::in(UserRole::values())],
-            'name'  => ['nullable', 'string', 'max:255'],
+            'role' => ['required', 'string', Rule::in(UserRole::values())],
+            'name' => ['nullable', 'string', 'max:255'],
         ]);
 
         $email = strtolower($validated['email']);
-        $role  = $validated['role'];
-        $name  = $validated['name'] ?? explode('@', $email)[0];
+        $role = $validated['role'];
+        $name = $validated['name'] ?? explode('@', $email)[0];
 
         // Look up existing user in public schema
         $existingUser = DB::table('public.users')->where('email', $email)->first();
@@ -227,9 +227,9 @@ class TenantUserController extends Controller
             }
 
             DB::table('public.user_company_access')->insert([
-                'user_id'    => $existingUser->id,
-                'tenant_id'  => $tenantId,
-                'role'       => $role,
+                'user_id' => $existingUser->id,
+                'tenant_id' => $tenantId,
+                'role' => $role,
                 'is_default' => false,
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -237,11 +237,11 @@ class TenantUserController extends Controller
 
             return response()->json([
                 'message' => 'User added to workspace successfully.',
-                'data'    => [
-                    'id'    => $existingUser->id,
-                    'name'  => $existingUser->name,
+                'data' => [
+                    'id' => $existingUser->id,
+                    'name' => $existingUser->name,
                     'email' => $existingUser->email,
-                    'role'  => $role,
+                    'role' => $role,
                 ],
             ], 201);
         }
@@ -249,20 +249,20 @@ class TenantUserController extends Controller
         // Create new central user
         $tempPassword = \Illuminate\Support\Str::random(16);
         $newUserId = DB::table('public.users')->insertGetId([
-            'name'              => $name,
-            'email'             => $email,
+            'name' => $name,
+            'email' => $email,
             'email_verified_at' => null,
-            'password'          => \Illuminate\Support\Facades\Hash::make($tempPassword),
-            'role'              => 'platform_super_admin',
-            'is_active'         => true,
-            'created_at'        => now(),
-            'updated_at'        => now(),
+            'password' => \Illuminate\Support\Facades\Hash::make($tempPassword),
+            'role' => 'platform_super_admin',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         DB::table('public.user_company_access')->insert([
-            'user_id'    => $newUserId,
-            'tenant_id'  => $tenantId,
-            'role'       => $role,
+            'user_id' => $newUserId,
+            'tenant_id' => $tenantId,
+            'role' => $role,
             'is_default' => true,
             'created_at' => now(),
             'updated_at' => now(),
@@ -270,11 +270,11 @@ class TenantUserController extends Controller
 
         return response()->json([
             'message' => 'Invitation sent. User created and added to workspace.',
-            'data'    => [
-                'id'    => $newUserId,
-                'name'  => $name,
+            'data' => [
+                'id' => $newUserId,
+                'name' => $name,
                 'email' => $email,
-                'role'  => $role,
+                'role' => $role,
             ],
         ], 201);
     }

@@ -3,13 +3,13 @@
 namespace Modules\IoT\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Modules\IoT\Jobs\CheckDeviceHealthJob;
 use Modules\IoT\Models\IoTDevice;
 use Modules\IoT\Models\IoTDeviceHealthLog;
 use Modules\IoT\Models\IoTDeviceMetric;
 use Modules\IoT\Services\HealthCheckService;
-use Modules\IoT\Jobs\CheckDeviceHealthJob;
 
 class IoTMonitoringController extends Controller
 {
@@ -23,7 +23,7 @@ class IoTMonitoringController extends Controller
     public function dashboard(): JsonResponse
     {
         $dashboardData = $this->healthCheckService->getHealthDashboard();
-        
+
         return response()->json($dashboardData);
     }
 
@@ -35,7 +35,7 @@ class IoTMonitoringController extends Controller
         $device = IoTDevice::findOrFail($device);
         $days = $request->input('days', 7);
         $healthSummary = $this->healthCheckService->getDeviceHealthSummary($device, $days);
-        
+
         return response()->json($healthSummary);
     }
 
@@ -51,7 +51,7 @@ class IoTMonitoringController extends Controller
         if ($request->has('start_date')) {
             $query->where('checked_at', '>=', $request->start_date);
         }
-        
+
         if ($request->has('end_date')) {
             $query->where('checked_at', '<=', $request->end_date);
         }
@@ -62,7 +62,7 @@ class IoTMonitoringController extends Controller
         }
 
         $logs = $query->orderBy('checked_at', 'desc')
-                     ->paginate($request->input('per_page', 50));
+            ->paginate($request->input('per_page', 50));
 
         return response()->json($logs);
     }
@@ -74,7 +74,7 @@ class IoTMonitoringController extends Controller
     {
         $device = IoTDevice::findOrFail($device);
         $days = $request->input('days', 30);
-        
+
         $metrics = IoTDeviceMetric::where('iot_device_id', $device->id)
             ->where('date', '>=', now()->subDays($days)->toDateString())
             ->orderBy('date', 'desc')
@@ -91,7 +91,7 @@ class IoTMonitoringController extends Controller
         $device = IoTDevice::findOrFail($device);
         try {
             $result = $this->healthCheckService->checkDevice($device);
-            
+
             return response()->json([
                 'message' => 'Health check completed',
                 'result' => $result,
@@ -110,10 +110,10 @@ class IoTMonitoringController extends Controller
     public function checkAllDevices(): JsonResponse
     {
         $activeDevices = IoTDevice::where('is_active', true)->count();
-        
+
         // Queue health check job for all devices
         CheckDeviceHealthJob::dispatch();
-        
+
         return response()->json([
             'message' => 'Health check queued for all devices',
             'device_count' => $activeDevices,
@@ -127,7 +127,7 @@ class IoTMonitoringController extends Controller
     {
         $totalDevices = IoTDevice::where('is_active', true)->count();
         $onlineDevices = IoTDevice::where('is_active', true)->where('status', 'online')->count();
-        
+
         // Get recent performance data
         $recentMetrics = IoTDeviceMetric::where('date', '>=', now()->subDays(7)->toDateString())
             ->selectRaw('
@@ -156,8 +156,8 @@ class IoTMonitoringController extends Controller
             'performance' => [
                 'avg_uptime' => $recentMetrics->avg_uptime ? round($recentMetrics->avg_uptime, 2) : null,
                 'avg_response_time' => $recentMetrics->avg_response_time ? (int) $recentMetrics->avg_response_time : null,
-                'operation_success_rate' => $recentMetrics->total_operations > 0 
-                    ? round(($recentMetrics->successful_operations / $recentMetrics->total_operations) * 100, 2) 
+                'operation_success_rate' => $recentMetrics->total_operations > 0
+                    ? round(($recentMetrics->successful_operations / $recentMetrics->total_operations) * 100, 2)
                     : null,
             ],
             'alerts' => [
@@ -173,7 +173,7 @@ class IoTMonitoringController extends Controller
     public function performanceTrends(Request $request): JsonResponse
     {
         $days = $request->input('days', 30);
-        
+
         $trends = IoTDeviceMetric::selectRaw('
                 date,
                 AVG(uptime_percentage) as avg_uptime,
@@ -191,8 +191,8 @@ class IoTMonitoringController extends Controller
                     'date' => $trend->date,
                     'avg_uptime' => $trend->avg_uptime ? round($trend->avg_uptime, 2) : 0,
                     'avg_response_time' => $trend->avg_response_time ? (int) $trend->avg_response_time : 0,
-                    'operation_success_rate' => $trend->total_operations > 0 
-                        ? round(($trend->successful_operations / $trend->total_operations) * 100, 2) 
+                    'operation_success_rate' => $trend->total_operations > 0
+                        ? round(($trend->successful_operations / $trend->total_operations) * 100, 2)
                         : 0,
                     'active_devices' => $trend->active_devices,
                 ];
@@ -207,7 +207,7 @@ class IoTMonitoringController extends Controller
     public function recentAlerts(Request $request): JsonResponse
     {
         $hours = $request->input('hours', 24);
-        
+
         $alerts = IoTDeviceHealthLog::with('device')
             ->whereIn('status', ['offline', 'error', 'timeout'])
             ->where('checked_at', '>=', now()->subHours($hours))

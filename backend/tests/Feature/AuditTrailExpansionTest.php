@@ -7,7 +7,6 @@ use Tests\TenantTestCase;
 
 class AuditTrailExpansionTest extends TenantTestCase
 {
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -43,7 +42,7 @@ class AuditTrailExpansionTest extends TenantTestCase
         // hasTable() guard skips it). Instead of seeding that fragile FK chain,
         // invoke the observer directly on a PosOrder instance to verify the
         // observer -> SystemLogService wiring and module resolution.
-        $order = new \Modules\POS\Models\PosOrder();
+        $order = new \Modules\POS\Models\PosOrder;
         $order->id = 999;
 
         $observer = app(\App\Observers\AuditTrailObserver::class);

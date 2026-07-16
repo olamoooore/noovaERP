@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -25,18 +25,18 @@ class MalaysiaCountrySeeder extends Seeder
      * Based on chart_of_accounts expanded subtypes migration.
      */
     private array $typeMap = [
-        'Fixed Assets'              => ['type' => 'asset',     'subtype' => 'fixed_asset'],
-        'Non-current Assets'        => ['type' => 'asset',     'subtype' => 'asset_non_current'],
-        'Current Assets'            => ['type' => 'asset',     'subtype' => 'asset_current'],
-        'Bank and Cash'             => ['type' => 'asset',     'subtype' => 'asset_cash'],
-        'Receivable'                => ['type' => 'asset',     'subtype' => 'asset_receivable'],
-        'Payable'                   => ['type' => 'liability', 'subtype' => 'liability_payable'],
-        'Non-current Liabilities'   => ['type' => 'liability', 'subtype' => 'liability_non_current'],
-        'Current Liabilities'       => ['type' => 'liability', 'subtype' => 'liability_current'],
-        'Income'                    => ['type' => 'revenue',   'subtype' => 'income'],
-        'Other Income'              => ['type' => 'revenue',   'subtype' => 'income_other'],
-        'Expenses'                  => ['type' => 'expense',   'subtype' => 'expense'],
-        'Current Year Earnings'     => ['type' => 'equity',    'subtype' => 'equity'],
+        'Fixed Assets' => ['type' => 'asset',     'subtype' => 'fixed_asset'],
+        'Non-current Assets' => ['type' => 'asset',     'subtype' => 'asset_non_current'],
+        'Current Assets' => ['type' => 'asset',     'subtype' => 'asset_current'],
+        'Bank and Cash' => ['type' => 'asset',     'subtype' => 'asset_cash'],
+        'Receivable' => ['type' => 'asset',     'subtype' => 'asset_receivable'],
+        'Payable' => ['type' => 'liability', 'subtype' => 'liability_payable'],
+        'Non-current Liabilities' => ['type' => 'liability', 'subtype' => 'liability_non_current'],
+        'Current Liabilities' => ['type' => 'liability', 'subtype' => 'liability_current'],
+        'Income' => ['type' => 'revenue',   'subtype' => 'income'],
+        'Other Income' => ['type' => 'revenue',   'subtype' => 'income_other'],
+        'Expenses' => ['type' => 'expense',   'subtype' => 'expense'],
+        'Current Year Earnings' => ['type' => 'equity',    'subtype' => 'equity'],
     ];
 
     public function run(): void
@@ -157,7 +157,7 @@ class MalaysiaCountrySeeder extends Seeder
         ];
 
         $inserted = 0;
-        $skipped  = 0;
+        $skipped = 0;
 
         foreach ($accounts as $account) {
             $mapping = $this->typeMap[$account['excel_type']] ?? ['type' => 'asset', 'subtype' => 'current_asset'];
@@ -165,20 +165,21 @@ class MalaysiaCountrySeeder extends Seeder
             // Skip if code already exists (idempotent)
             if (DB::table('chart_of_accounts')->where('code', $account['code'])->exists()) {
                 $skipped++;
+
                 continue;
             }
 
             DB::table('chart_of_accounts')->insert([
-                'code'         => $account['code'],
-                'name'         => $account['name'],
-                'type'         => $mapping['type'],
-                'subtype'      => $mapping['subtype'],
+                'code' => $account['code'],
+                'name' => $account['name'],
+                'type' => $mapping['type'],
+                'subtype' => $mapping['subtype'],
                 'country_code' => 'MY',
-                'is_active'    => true,
-                'is_system'    => false,
-                'description'  => 'Malaysia (MFRS) — ' . $account['excel_type'],
-                'created_at'   => now(),
-                'updated_at'   => now(),
+                'is_active' => true,
+                'is_system' => false,
+                'description' => 'Malaysia (MFRS) — '.$account['excel_type'],
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
             $inserted++;
         }
@@ -193,85 +194,87 @@ class MalaysiaCountrySeeder extends Seeder
             ->where('code', '221300') // SST Control Account
             ->first();
 
-        if (!$taxAccount) {
+        if (! $taxAccount) {
             // Fallback to any liability account
             $taxAccount = DB::table('chart_of_accounts')
                 ->where('type', 'liability')
                 ->first();
         }
 
-        if (!$taxAccount) {
+        if (! $taxAccount) {
             $this->command?->warn('MY Tax: No liability account found — skipping MY tax rate seeding.');
+
             return;
         }
 
         $myTaxRates = [
             [
-                'name'        => 'SST Sales Tax 10%',
-                'code'        => 'MY-SST10',
-                'rate'        => 10.00,
-                'type'        => 'sales',
+                'name' => 'SST Sales Tax 10%',
+                'code' => 'MY-SST10',
+                'rate' => 10.00,
+                'type' => 'sales',
                 'description' => 'Malaysia Sales Tax (SST) — standard 10% rate on taxable goods',
             ],
             [
-                'name'        => 'SST Sales Tax 5%',
-                'code'        => 'MY-SST5',
-                'rate'        => 5.00,
-                'type'        => 'sales',
+                'name' => 'SST Sales Tax 5%',
+                'code' => 'MY-SST5',
+                'rate' => 5.00,
+                'type' => 'sales',
                 'description' => 'Malaysia Sales Tax (SST) — reduced 5% rate on specified goods',
             ],
             [
-                'name'        => 'SST Service Tax 8%',
-                'code'        => 'MY-SVT8',
-                'rate'        => 8.00,
-                'type'        => 'sales',
+                'name' => 'SST Service Tax 8%',
+                'code' => 'MY-SVT8',
+                'rate' => 8.00,
+                'type' => 'sales',
                 'description' => 'Malaysia Service Tax (SST) — 8% on taxable services (effective 2024)',
             ],
             [
-                'name'        => 'SST Service Tax 6%',
-                'code'        => 'MY-SVT6',
-                'rate'        => 6.00,
-                'type'        => 'sales',
+                'name' => 'SST Service Tax 6%',
+                'code' => 'MY-SVT6',
+                'rate' => 6.00,
+                'type' => 'sales',
                 'description' => 'Malaysia Service Tax (SST) — 6% on standard services',
             ],
             [
-                'name'        => 'SST Exempt',
-                'code'        => 'MY-SST0',
-                'rate'        => 0.00,
-                'type'        => 'sales',
+                'name' => 'SST Exempt',
+                'code' => 'MY-SST0',
+                'rate' => 0.00,
+                'type' => 'sales',
                 'description' => 'Malaysia SST — zero-rated / exempt supply',
             ],
             [
-                'name'        => 'Withholding Tax 10% (MY)',
-                'code'        => 'MY-WHT10',
-                'rate'        => 10.00,
-                'type'        => 'withholding',
+                'name' => 'Withholding Tax 10% (MY)',
+                'code' => 'MY-WHT10',
+                'rate' => 10.00,
+                'type' => 'withholding',
                 'description' => 'Malaysia Withholding Tax — 10% on royalties, technical fees',
             ],
             [
-                'name'        => 'Withholding Tax 15% (MY)',
-                'code'        => 'MY-WHT15',
-                'rate'        => 15.00,
-                'type'        => 'withholding',
+                'name' => 'Withholding Tax 15% (MY)',
+                'code' => 'MY-WHT15',
+                'rate' => 15.00,
+                'type' => 'withholding',
                 'description' => 'Malaysia Withholding Tax — 15% on contract payments to non-residents',
             ],
         ];
 
         $inserted = 0;
-        $skipped  = 0;
+        $skipped = 0;
 
         foreach ($myTaxRates as $rate) {
             if (DB::table('tax_rates')->where('code', $rate['code'])->exists()) {
                 $skipped++;
+
                 continue;
             }
 
             DB::table('tax_rates')->insert(array_merge($rate, [
                 'tax_account_id' => $taxAccount->id,
-                'is_compound'    => false,
-                'is_active'      => true,
-                'created_at'     => now(),
-                'updated_at'     => now(),
+                'is_compound' => false,
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]));
             $inserted++;
         }

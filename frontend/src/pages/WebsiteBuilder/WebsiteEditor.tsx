@@ -144,7 +144,7 @@ export function WebsiteEditor() {
     queryKey: ['website', id],
     queryFn: async () => {
       const response = await api.get(`/website-builder/websites/${id}`)
-      return response.data
+      return response.data.data ?? response.data
     },
     enabled: !!id,
   })
@@ -154,7 +154,7 @@ export function WebsiteEditor() {
     queryKey: ['page', selectedPageId],
     queryFn: async () => {
       const response = await api.get(`/website-builder/pages/${selectedPageId}`)
-      return response.data
+      return response.data.data ?? response.data
     },
     enabled: !!selectedPageId,
     staleTime: 5 * 60 * 1000, // Keep cached for 5 min to avoid GrapesJS remount
@@ -248,11 +248,20 @@ export function WebsiteEditor() {
   // Publish mutation
   const publishMutation = useMutation({
     mutationFn: async () => {
-      await api.post(`/website-builder/websites/${id}/publish`)
+      const response = await api.post(`/website-builder/websites/${id}/publish`)
+      return response.data
     },
-    onSuccess: () => {
-      toast({ title: 'Publishing', description: 'Website is being published...' })
+    onSuccess: (data) => {
+      toast({ title: 'Published', description: data?.message || 'Website published successfully.' })
       queryClient.invalidateQueries({ queryKey: ['website', id] })
+      queryClient.invalidateQueries({ queryKey: ['websites'] })
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: 'Publish Failed', 
+        description: error?.response?.data?.message || 'Failed to publish website.',
+        variant: 'destructive' 
+      })
     },
   })
 
@@ -260,7 +269,7 @@ export function WebsiteEditor() {
   const addPageMutation = useMutation({
     mutationFn: async (data: { title: string; slug?: string }) => {
       const response = await api.post(`/website-builder/websites/${id}/pages`, data)
-      return response.data
+      return response.data.data ?? response.data
     },
     onSuccess: (newPage) => {
       toast({ title: 'Success', description: 'Page created successfully.' })
@@ -502,22 +511,12 @@ export function WebsiteEditor() {
     // First, save current content so the backend has the latest version
     triggerSave()
     
-    // Use the persistent /w/ URL that serves complete HTML from the backend
-    // This URL is bookmarkable and works on refresh (unlike blob URLs)
-    if (website?.slug) {
-      const basePath = import.meta.env.VITE_BASE_PATH || ''
-      const previewUrl = pageData?.is_home 
-        ? `${basePath}/w/${website.slug}` 
-        : `${basePath}/w/${website.slug}/${pageData?.slug || ''}`
-      window.open(previewUrl, '_blank')
-      return
-    }
-    
-    // Fallback to blob URL if no slug available
+    // Generate preview HTML directly from the editor content.
+    // This avoids tenant-mismatch issues with the /w/ route in local dev
+    // (the user's auth tenant may differ from the hardcoded proxy host).
     const html = editorInstance.getHtml()
     const css = editorInstance.getCss() || ''
     
-    // Use the shared utility to generate full HTML with all styles and scripts
     const previewHtml = generateFullHtml({
       title: `Preview - ${pageData?.title || 'Page'}`,
       html,
@@ -528,16 +527,12 @@ export function WebsiteEditor() {
       shopSettings: shopSettings.enabled ? shopSettings : undefined,
     })
     
-    // Create a blob URL for the preview
     const blob = new Blob([previewHtml], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
-    
-    // Open in new window
     const previewWindow = window.open(url, '_blank')
     
-    // Clean up the blob URL after a delay
     if (previewWindow) {
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
     }
   }
 

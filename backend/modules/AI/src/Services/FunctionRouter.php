@@ -3,30 +3,30 @@
 namespace Modules\AI\Services;
 
 use Illuminate\Support\Facades\Log;
-use Modules\AI\Functions\CustomerFunctions;
-use Modules\AI\Functions\OrderFunctions;
-use Modules\AI\Functions\LoyaltyFunctions;
-use Modules\AI\Functions\ProductFunctions;
-use Modules\AI\Functions\InvoiceFunctions;
-use Modules\AI\Functions\TicketFunctions;
-use Modules\AI\Functions\InventoryFunctions;
 use Modules\AI\Functions\AccountingFunctions;
 use Modules\AI\Functions\CopilotFunctions;
+use Modules\AI\Functions\CustomerFunctions;
+use Modules\AI\Functions\InventoryFunctions;
+use Modules\AI\Functions\InvoiceFunctions;
+use Modules\AI\Functions\LoyaltyFunctions;
+use Modules\AI\Functions\OrderFunctions;
+use Modules\AI\Functions\ProductFunctions;
+use Modules\AI\Functions\TicketFunctions;
 
 /**
  * Function Router Service
- * 
+ *
  * Routes AI function calls to appropriate ERP functions
  */
 class FunctionRouter
 {
     /**
      * Execute function by name
-     * 
-     * @param string $functionName Function name
-     * @param array $arguments Function arguments
-     * @param int|null $customerId Customer ID (for context)
-     * @param int|null $conversationId Conversation ID (for context)
+     *
+     * @param  string  $functionName  Function name
+     * @param  array  $arguments  Function arguments
+     * @param  int|null  $customerId  Customer ID (for context)
+     * @param  int|null  $conversationId  Conversation ID (for context)
      * @return array Execution result
      */
     public function execute(string $functionName, array $arguments, ?int $customerId = null, ?int $conversationId = null): array
@@ -35,9 +35,9 @@ class FunctionRouter
             'function' => $functionName,
             'arguments' => $arguments,
         ]);
-        
+
         try {
-            $result = match($functionName) {
+            $result = match ($functionName) {
                 'search_customers' => CustomerFunctions::search($arguments),
                 'check_order_status' => OrderFunctions::checkStatus($arguments),
                 'list_customer_orders' => OrderFunctions::listCustomerOrders($arguments, $customerId),
@@ -84,33 +84,34 @@ class FunctionRouter
                 'review_revenue' => CopilotFunctions::reviewRevenue($arguments),
                 default => [
                     'success' => false,
-                    'error' => 'Unknown function: ' . $functionName,
+                    'error' => 'Unknown function: '.$functionName,
                 ],
             };
-            
+
             Log::info('Function executed', ['function' => $functionName]);
+
             return $result;
-            
+
         } catch (\Exception $e) {
             Log::error('Function execution failed', [
                 'function' => $functionName,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return [
                 'success' => false,
-                'error' => 'Execution failed: ' . $e->getMessage(),
+                'error' => 'Execution failed: '.$e->getMessage(),
             ];
         }
     }
-    
+
     /**
      * Transfer to human agent
      */
     protected function transferToHuman(array $arguments): array
     {
         $reason = $arguments['reason'] ?? 'Customer requested assistance';
-        
+
         return [
             'success' => true,
             'message' => 'Transferring to human agent. Someone will assist you shortly.',

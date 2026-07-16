@@ -39,7 +39,7 @@ class DraftJournalLine
 class DraftJournalRequest
 {
     /**
-     * @param DraftJournalLine[] $lines
+     * @param  DraftJournalLine[]  $lines
      */
     public function __construct(
         public readonly ?int $journalId,
@@ -55,7 +55,7 @@ class DraftJournalRequest
     public static function fromArray(array $data): self
     {
         $lines = array_map(
-            fn($line) => DraftJournalLine::fromArray($line),
+            fn ($line) => DraftJournalLine::fromArray($line),
             $data['lines'] ?? []
         );
 

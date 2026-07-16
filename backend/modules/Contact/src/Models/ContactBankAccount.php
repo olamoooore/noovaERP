@@ -11,8 +11,11 @@ class ContactBankAccount extends Model
     use HasFactory, SoftDeletes;
 
     protected $table = 'contact_bank_accounts';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [

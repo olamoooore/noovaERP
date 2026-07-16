@@ -3,7 +3,6 @@
 namespace App\Modules\Services;
 
 use App\Modules\Contracts\ModuleContract;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Module Onboarding Service
@@ -18,9 +17,6 @@ class ModuleOnboardingService
 {
     /**
      * Get the onboarding pack for a module
-     *
-     * @param ModuleContract $module
-     * @return array
      */
     public function getOnboardingPack(ModuleContract $module): array
     {
@@ -42,8 +38,6 @@ class ModuleOnboardingService
     /**
      * Check if onboarding is complete for a tenant/module
      *
-     * @param string $tenantId
-     * @param string $moduleKey
      * @return array{complete: bool, progress: float, pending_steps: array}
      */
     public function checkOnboardingStatus(string $tenantId, string $moduleKey): array
@@ -53,7 +47,7 @@ class ModuleOnboardingService
             ->where('module_key', $moduleKey)
             ->first();
 
-        if (!$progress) {
+        if (! $progress) {
             return [
                 'complete' => false,
                 'progress' => 0,
@@ -74,11 +68,6 @@ class ModuleOnboardingService
 
     /**
      * Mark a setup step as complete
-     *
-     * @param string $tenantId
-     * @param string $moduleKey
-     * @param string $step
-     * @return bool
      */
     public function completeStep(string $tenantId, string $moduleKey, string $step): bool
     {
@@ -89,7 +78,7 @@ class ModuleOnboardingService
 
         $completedSteps = $progress ? (json_decode($progress->completed_steps, true) ?? []) : [];
 
-        if (!in_array($step, $completedSteps)) {
+        if (! in_array($step, $completedSteps)) {
             $completedSteps[] = $step;
         }
 
@@ -168,8 +157,8 @@ class ModuleOnboardingService
      */
     private function getWelcomeMessage(ModuleContract $module): string
     {
-        return "Welcome to {$module->getName()}! This module will help you manage " .
-               strtolower($module->getDescription()) . ". Let's get you set up in just a few steps.";
+        return "Welcome to {$module->getName()}! This module will help you manage ".
+               strtolower($module->getDescription()).". Let's get you set up in just a few steps.";
     }
 
     /**

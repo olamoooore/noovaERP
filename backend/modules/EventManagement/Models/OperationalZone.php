@@ -3,16 +3,16 @@
 namespace Modules\EventManagement\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * OperationalZone Model
- * 
+ *
  * Represents event venue zones and areas for operational management
  * with capacity monitoring and access control.
- * 
+ *
  * @property int $id
  * @property string $tenant_id
  * @property int $event_id
@@ -145,8 +145,8 @@ class OperationalZone extends Model
     public function staffAssignments(): HasMany
     {
         return $this->hasMany(StaffAssignment::class, 'zone', 'zone_code')
-                    ->where('event_id', $this->event_id)
-                    ->where('tenant_id', $this->tenant_id);
+            ->where('event_id', $this->event_id)
+            ->where('tenant_id', $this->tenant_id);
     }
 
     /**
@@ -202,7 +202,7 @@ class OperationalZone extends Model
      */
     public function canAccessByAge(int $age): bool
     {
-        if (!$this->has_age_restriction) {
+        if (! $this->has_age_restriction) {
             return true;
         }
 
@@ -215,7 +215,7 @@ class OperationalZone extends Model
     public function updateOccupancy(int $newOccupancy): void
     {
         $this->current_occupancy = max(0, $newOccupancy);
-        
+
         if ($this->max_capacity > 0) {
             $this->occupancy_percentage = ($this->current_occupancy / $this->max_capacity) * 100;
         } else {
@@ -258,7 +258,7 @@ class OperationalZone extends Model
      */
     public function getAvailableCapacityAttribute(): int
     {
-        if (!$this->max_capacity) {
+        if (! $this->max_capacity) {
             return 0;
         }
 

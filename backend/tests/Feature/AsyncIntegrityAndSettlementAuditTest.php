@@ -2,18 +2,13 @@
 
 namespace Tests\Feature;
 
-use App\Models\Invoice;
-use App\Models\ReconciliationException;
-use App\Models\ReconciliationControlResult;
 use App\Models\SettlementAuditLog;
-use App\Services\InvoiceService;
-use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
 
 /**
  * WS-10 Async Integrity and Settlement Audit Tests
- * 
+ *
  * Tests for:
  * - ProcessPaymentWebhook job queue deduplication (ShouldBeUnique)
  * - Settlement mutation audit trail (SettlementAuditLog)
@@ -56,9 +51,9 @@ class AsyncIntegrityAndSettlementAuditTest extends TestCase
     public function test_settlement_audit_log_has_expected_schema(): void
     {
         $this->assertTrue(\Illuminate\Support\Facades\Schema::hasTable('settlement_audit_logs'));
-        
+
         $columns = \Illuminate\Support\Facades\Schema::getColumnListing('settlement_audit_logs');
-        
+
         $this->assertContains('invoice_id', $columns);
         $this->assertContains('payment_id', $columns);
         $this->assertContains('payment_amount', $columns);
@@ -76,11 +71,11 @@ class AsyncIntegrityAndSettlementAuditTest extends TestCase
     {
         // Only test that the model can be instantiated and has the right attributes
         $this->assertTrue(class_exists(SettlementAuditLog::class));
-        
+
         // Test the model has expected fillable attributes via reflection
-        $model = new SettlementAuditLog();
+        $model = new SettlementAuditLog;
         $fillable = $model->getFillable();
-        
+
         $this->assertContains('invoice_id', $fillable);
         $this->assertContains('payment_amount', $fillable);
         $this->assertContains('before_paid_amount', $fillable);
@@ -95,7 +90,7 @@ class AsyncIntegrityAndSettlementAuditTest extends TestCase
     {
         $jobClass = new \ReflectionClass(\Modules\IoT\Jobs\ProcessPaymentWebhook::class);
         $interfaces = $jobClass->getInterfaceNames();
-        
+
         $this->assertContains('Illuminate\Contracts\Queue\ShouldBeUnique', $interfaces);
     }
 
@@ -107,7 +102,7 @@ class AsyncIntegrityAndSettlementAuditTest extends TestCase
             deviceId: 1,
             tenantId: 'testTenant'
         );
-        
+
         $this->assertTrue(method_exists($job, 'uniqueId'));
         $this->assertEquals('iot_payment_webhook_123_testTenant', $job->uniqueId());
     }
@@ -120,7 +115,7 @@ class AsyncIntegrityAndSettlementAuditTest extends TestCase
             deviceId: 1,
             tenantId: 'testTenant'
         );
-        
+
         $this->assertTrue(method_exists($job, 'uniqueFor'));
         $this->assertEquals(300, $job->uniqueFor()); // 5 minutes
     }
@@ -129,9 +124,9 @@ class AsyncIntegrityAndSettlementAuditTest extends TestCase
     {
         $service = new \ReflectionClass(\Modules\POS\Services\PosPaymentCompletionService::class);
         $method = $service->getMethod('complete');
-        
+
         $source = file_get_contents($method->getFileName());
-        
+
         $this->assertStringContainsString('lockForUpdate', $source);
     }
 }

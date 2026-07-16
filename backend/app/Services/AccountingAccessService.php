@@ -40,7 +40,7 @@ class AccountingAccessService
     public function isModuleEntitled(): bool
     {
         $tenantId = tenant('id');
-        if (!$tenantId) {
+        if (! $tenantId) {
             return true;
         }
 
@@ -147,7 +147,7 @@ class AccountingAccessService
 
     private function hasRole(User $user, array $roles): bool
     {
-        if (!method_exists($user, 'hasRole')) {
+        if (! method_exists($user, 'hasRole')) {
             return false;
         }
 
@@ -162,7 +162,7 @@ class AccountingAccessService
 
     private function hasPermission(User $user, string $permission): bool
     {
-        if (!method_exists($user, 'hasPermissionTo')) {
+        if (! method_exists($user, 'hasPermissionTo')) {
             return false;
         }
 
@@ -178,7 +178,7 @@ class AccountingAccessService
     {
         $tenantId = tenant('id');
 
-        if (!$tenantId) {
+        if (! $tenantId) {
             return false;
         }
 

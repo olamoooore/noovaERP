@@ -3,12 +3,12 @@
 namespace Modules\WebsiteBuilder\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\WebsiteBuilder\Models\Template;
 use Modules\WebsiteBuilder\Models\Website;
 use Modules\WebsiteBuilder\Services\TemplateService;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class TemplateController extends Controller
 {
@@ -38,6 +38,7 @@ class TemplateController extends Controller
     public function show($template): JsonResponse
     {
         $template = Template::findOrFail($template);
+
         return response()->json($template);
     }
 

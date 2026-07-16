@@ -3,10 +3,10 @@
 namespace Modules\FinancialClose\Services;
 
 use Illuminate\Support\Facades\Log;
-use Modules\FinancialClose\Models\UserCapacityProfile;
-use Modules\FinancialClose\Models\AssignmentWorkloadSnapshot;
 use Modules\FinancialClose\Models\AbsenceWindow;
+use Modules\FinancialClose\Models\AssignmentWorkloadSnapshot;
 use Modules\FinancialClose\Models\CloseTask;
+use Modules\FinancialClose\Models\UserCapacityProfile;
 
 class WorkloadBalancingService
 {
@@ -27,7 +27,7 @@ class WorkloadBalancingService
     {
         $profile = $this->getCapacityProfile($tenantId, $userId);
 
-        if (!$profile) {
+        if (! $profile) {
             return true;
         }
 

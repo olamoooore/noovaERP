@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Modules\POS\Models\PosOrder;
+use Illuminate\Http\Request;
 use Modules\Ecommerce\Models\WebOrder;
+use Modules\POS\Models\PosOrder;
 
 class SalesOrderController extends Controller
 {
@@ -94,9 +94,9 @@ class SalesOrderController extends Controller
             if ($search) {
                 $webQuery->where(function ($q) use ($search) {
                     $q->where('order_number', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%")
-                      ->orWhere('first_name', 'like', "%{$search}%")
-                      ->orWhere('last_name', 'like', "%{$search}%");
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhere('first_name', 'like', "%{$search}%")
+                        ->orWhere('last_name', 'like', "%{$search}%");
                 });
             }
             if ($status) {
@@ -194,7 +194,7 @@ class SalesOrderController extends Controller
                 'name' => $order->customer->name,
                 'email' => $order->customer->email,
             ] : [
-                'name' => trim($order->first_name . ' ' . $order->last_name),
+                'name' => trim($order->first_name.' '.$order->last_name),
                 'email' => $order->email,
             ],
             'cashier' => null,

@@ -3,11 +3,11 @@
 namespace Modules\WebsiteBuilder\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Modules\WebsiteBuilder\Models\Website;
-use Modules\WebsiteBuilder\Http\Resources\WebsiteResource;
+use Illuminate\Http\Request;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
+use Modules\WebsiteBuilder\Http\Resources\WebsiteResource;
+use Modules\WebsiteBuilder\Models\Website;
 
 class WebsiteController extends Controller
 {
@@ -24,7 +24,7 @@ class WebsiteController extends Controller
         }
 
         if ($request->has('search')) {
-            $query->where('name', 'like', '%' . $request->search . '%');
+            $query->where('name', 'like', '%'.$request->search.'%');
         }
 
         $perPage = $request->input('per_page', 20);
@@ -58,6 +58,7 @@ class WebsiteController extends Controller
     public function show($website): JsonResponse
     {
         $website = Website::findOrFail($website);
+
         return response()->json(
             new WebsiteResource($website->load(['pages', 'createdBy']))
         );
@@ -71,7 +72,7 @@ class WebsiteController extends Controller
         $website = Website::findOrFail($website);
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
-            'slug' => 'sometimes|string|max:100|unique:wb_websites,slug,' . $website->id,
+            'slug' => 'sometimes|string|max:100|unique:wb_websites,slug,'.$website->id,
             'status' => 'sometimes|in:draft,published,archived',
             'settings' => 'sometimes|array',
             'favicon' => 'nullable|string|max:500',

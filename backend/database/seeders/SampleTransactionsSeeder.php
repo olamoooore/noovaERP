@@ -2,16 +2,16 @@
 
 namespace Database\Seeders;
 
+use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class SampleTransactionsSeeder extends Seeder
 {
     public function run(): void
     {
         $this->command->info('Creating sample journal entries...');
-        
+
         $userId = DB::table('users')->first()->id;
         $cashAccount = DB::table('chart_of_accounts')->where('code', '1010')->first();
         $revenueAccount = DB::table('chart_of_accounts')->where('type', 'revenue')->first();
@@ -23,12 +23,12 @@ class SampleTransactionsSeeder extends Seeder
         // Create 10 sample journal entries
         for ($i = 1; $i <= 10; $i++) {
             $entryDate = Carbon::now()->subDays(rand(1, 60));
-            
+
             $entryId = DB::table('journal_entries')->insertGetId([
-                'entry_number' => 'JE-2026-' . str_pad($i, 4, '0', STR_PAD_LEFT),
+                'entry_number' => 'JE-2026-'.str_pad($i, 4, '0', STR_PAD_LEFT),
                 'journal_id' => $journalId,
                 'entry_date' => $entryDate,
-                'reference' => 'Sample Entry ' . $i,
+                'reference' => 'Sample Entry '.$i,
                 'description' => 'Sample transaction for testing reports',
                 'status' => 'posted',
                 'created_by' => $userId,
@@ -97,9 +97,9 @@ class SampleTransactionsSeeder extends Seeder
             foreach ($customers as $index => $customer) {
                 $invoiceDate = Carbon::now()->subDays(rand(1, 45));
                 $dueDate = $invoiceDate->copy()->addDays(30);
-                
+
                 $invoiceId = DB::table('invoices')->insertGetId([
-                    'invoice_number' => 'INV-2026-' . str_pad($index + 1, 4, '0', STR_PAD_LEFT),
+                    'invoice_number' => 'INV-2026-'.str_pad($index + 1, 4, '0', STR_PAD_LEFT),
                     'customer_id' => $customer->id,
                     'invoice_date' => $invoiceDate,
                     'due_date' => $dueDate,
@@ -144,7 +144,7 @@ class SampleTransactionsSeeder extends Seeder
                 ]);
             }
 
-            $this->command->info('✓ Created ' . $customers->count() . ' invoices');
+            $this->command->info('✓ Created '.$customers->count().' invoices');
         }
 
         // Create sample bills
@@ -155,9 +155,9 @@ class SampleTransactionsSeeder extends Seeder
             foreach ($vendors as $index => $vendor) {
                 $billDate = Carbon::now()->subDays(rand(1, 45));
                 $dueDate = $billDate->copy()->addDays(30);
-                
+
                 $billId = DB::table('bills')->insertGetId([
-                    'bill_number' => 'BILL-2026-' . str_pad($index + 1, 4, '0', STR_PAD_LEFT),
+                    'bill_number' => 'BILL-2026-'.str_pad($index + 1, 4, '0', STR_PAD_LEFT),
                     'vendor_id' => $vendor->id,
                     'bill_date' => $billDate,
                     'due_date' => $dueDate,
@@ -202,7 +202,7 @@ class SampleTransactionsSeeder extends Seeder
                 ]);
             }
 
-            $this->command->info('✓ Created ' . $vendors->count() . ' bills');
+            $this->command->info('✓ Created '.$vendors->count().' bills');
         }
 
         $this->command->info('Sample transactions seeded successfully!');

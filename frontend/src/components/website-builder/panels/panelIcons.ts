@@ -14,11 +14,29 @@ export const PANEL_ICONS = {
 // Track if panel icons have been customized
 let panelIconsCustomized = false
 
+/**
+ * Reset the one-shot panel-customization flags.
+ *
+ * Needed because React StrictMode (dev) mounts → unmounts → remounts the editor:
+ * the first editor sets these flags and is then destroyed, which would leave the
+ * real (second) editor without customized panels. Call this from the editor
+ * cleanup so each editor instance initializes its panels fully.
+ */
+export function resetPanelCustomization() {
+  panelIconsCustomized = false
+  uploadButtonAdded = false
+  iconSearchInitialized = false
+}
+
 export function customizePanelIcons(editor: Editor) {
   // Prevent multiple calls
   if (panelIconsCustomized) return
+  // Editor may have been destroyed (React StrictMode remount) by the time this
+  // delayed callback runs — bail without consuming the flag so a live editor
+  // can still be customized.
+  if (!editor?.Panels) return
   panelIconsCustomized = true
-  
+
   const pn = editor.Panels
   
   // Remove unwanted buttons from options panel
@@ -92,8 +110,9 @@ let uploadButtonAdded = false
 export function addUploadButton(editor: Editor) {
   // Prevent multiple calls
   if (uploadButtonAdded) return
+  if (!editor?.Panels) return
   uploadButtonAdded = true
-  
+
   const pn = editor.Panels
   editor.Commands.add('upload-file', {
     run: () => {
@@ -250,6 +269,7 @@ let iconSearchInitialized = false
 export function addIconSearch(editor: Editor) {
   // Prevent multiple initializations
   if (iconSearchInitialized) return
+  if (!editor?.getContainer) return
   iconSearchInitialized = true
   
   let isSetup = false

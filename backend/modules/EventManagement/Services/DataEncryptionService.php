@@ -3,9 +3,9 @@
 namespace Modules\EventManagement\Services;
 
 use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Config;
 
 class DataEncryptionService
 {
@@ -13,7 +13,7 @@ class DataEncryptionService
      * Encryption algorithm used for sensitive data
      */
     private const ENCRYPTION_ALGORITHM = 'AES-256-CBC';
-    
+
     /**
      * Get maximum data length from configuration
      */
@@ -21,7 +21,7 @@ class DataEncryptionService
     {
         return Config::get('event_management.encryption.max_data_length', 65535);
     }
-    
+
     /**
      * Get minimum ID length from configuration
      */
@@ -48,37 +48,38 @@ class DataEncryptionService
         }
 
         // Check if encryption is enabled
-        if (!$this->isEncryptionEnabled()) {
+        if (! $this->isEncryptionEnabled()) {
             Log::warning('Encryption is disabled in configuration, returning data as-is');
+
             return $data;
         }
 
         // Validate data length
         $maxLength = $this->getMaxDataLength();
         if (strlen($data) > $maxLength) {
-            throw new \InvalidArgumentException('Data too large for encryption (max ' . $maxLength . ' bytes)');
+            throw new \InvalidArgumentException('Data too large for encryption (max '.$maxLength.' bytes)');
         }
 
         try {
             // Use Laravel's encryption with additional metadata
             $encrypted = Crypt::encryptString($data);
-            
+
             // Log encryption activity (without sensitive data) if secure logging is enabled
             if (Config::get('event_management.encryption.secure_logging', true)) {
                 Log::info('Sensitive data encrypted', [
                     'data_length' => strlen($data),
                     'encrypted_length' => strlen($encrypted),
-                    'timestamp' => now()->toISOString()
+                    'timestamp' => now()->toISOString(),
                 ]);
             }
-            
+
             return $encrypted;
         } catch (\Exception $e) {
             Log::error('Failed to encrypt sensitive data', [
                 'error' => $e->getMessage(),
-                'data_length' => strlen($data)
+                'data_length' => strlen($data),
             ]);
-            throw new \RuntimeException('Failed to encrypt sensitive data: ' . $e->getMessage());
+            throw new \RuntimeException('Failed to encrypt sensitive data: '.$e->getMessage());
         }
     }
 
@@ -93,21 +94,22 @@ class DataEncryptionService
 
         try {
             $decrypted = Crypt::decryptString($encryptedData);
-            
+
             // Log successful decryption (without sensitive data)
             Log::debug('Sensitive data decrypted successfully', [
                 'encrypted_length' => strlen($encryptedData),
-                'decrypted_length' => strlen($decrypted)
+                'decrypted_length' => strlen($decrypted),
             ]);
-            
+
             return $decrypted;
         } catch (DecryptException $e) {
             // Log the error but don't expose it
             Log::warning('Failed to decrypt sensitive data', [
                 'error' => $e->getMessage(),
                 'encrypted_data_length' => strlen($encryptedData),
-                'error_code' => 'DECRYPTION_FAILED'
+                'error_code' => 'DECRYPTION_FAILED',
             ]);
+
             return null;
         }
     }
@@ -123,14 +125,14 @@ class DataEncryptionService
 
         // Sanitize and validate ID format
         $cleanedId = $this->sanitizeIdInformation($idInfo);
-        
+
         $minLength = $this->getMinIdLength();
         if (strlen($cleanedId) < $minLength) {
-            throw new \InvalidArgumentException('ID information must be at least ' . $minLength . ' characters long after sanitization');
+            throw new \InvalidArgumentException('ID information must be at least '.$minLength.' characters long after sanitization');
         }
 
         // Additional validation for common ID formats
-        if (!$this->validateIdFormat($cleanedId)) {
+        if (! $this->validateIdFormat($cleanedId)) {
             throw new \InvalidArgumentException('ID information format is not valid');
         }
 
@@ -143,17 +145,18 @@ class DataEncryptionService
     public function decryptIdInformation(?string $encryptedIdInfo): ?string
     {
         $decrypted = $this->decryptSensitiveData($encryptedIdInfo);
-        
+
         if ($decrypted !== null && Config::get('event_management.encryption.integrity_check', true)) {
             // Validate decrypted data integrity
-            if (!$this->validateDecryptedIdIntegrity($decrypted)) {
+            if (! $this->validateDecryptedIdIntegrity($decrypted)) {
                 Log::warning('Decrypted ID information failed integrity check', [
-                    'decrypted_length' => strlen($decrypted)
+                    'decrypted_length' => strlen($decrypted),
                 ]);
+
                 return null;
             }
         }
-        
+
         return $decrypted;
     }
 
@@ -172,7 +175,7 @@ class DataEncryptionService
     private function validateIdFormat(string $cleanedId): bool
     {
         $minLength = $this->getMinIdLength();
-        
+
         // Basic validation - at least minimum alphanumeric characters
         if (strlen($cleanedId) < $minLength) {
             return false;
@@ -206,7 +209,7 @@ class DataEncryptionService
         }
 
         // Check for printable characters only
-        if (!ctype_print($decrypted)) {
+        if (! ctype_print($decrypted)) {
             return false;
         }
 
@@ -228,14 +231,16 @@ class DataEncryptionService
             if ($encrypted === null) {
                 return false;
             }
-            
+
             $decrypted = $this->decryptSensitiveData($encrypted);
+
             return $decrypted === $testData;
         } catch (\Exception $e) {
             Log::error('Encryption validation failed', [
                 'error' => $e->getMessage(),
-                'test_data_length' => strlen($testData)
+                'test_data_length' => strlen($testData),
             ]);
+
             return false;
         }
     }
@@ -247,7 +252,8 @@ class DataEncryptionService
     {
         // Use SHA-256 with salt for secure hashing
         $salt = Config::get('app.key', 'default-salt');
-        return hash('sha256', $salt . $data);
+
+        return hash('sha256', $salt.$data);
     }
 
     /**
@@ -264,6 +270,7 @@ class DataEncryptionService
     public function verifyIntegrityHash(string $data, string $hash): bool
     {
         $expectedHash = $this->generateIntegrityHash($data);
+
         return hash_equals($expectedHash, $hash);
     }
 
@@ -274,12 +281,14 @@ class DataEncryptionService
     {
         try {
             // Test basic encryption functionality
-            $testData = 'encryption-test-' . time();
+            $testData = 'encryption-test-'.time();
+
             return $this->validateEncryption($testData);
         } catch (\Exception $e) {
             Log::error('Encryption configuration check failed', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -318,10 +327,10 @@ class DataEncryptionService
             }
         }
 
-        if (!empty($errors)) {
+        if (! empty($errors)) {
             Log::warning('Batch encryption had errors', [
                 'errors' => $errors,
-                'successful_count' => count($encrypted) - count($errors)
+                'successful_count' => count($encrypted) - count($errors),
             ]);
         }
 
@@ -345,10 +354,10 @@ class DataEncryptionService
             }
         }
 
-        if (!empty($errors)) {
+        if (! empty($errors)) {
             Log::warning('Batch decryption had errors', [
                 'errors' => $errors,
-                'successful_count' => count($decrypted) - count($errors)
+                'successful_count' => count($decrypted) - count($errors),
             ]);
         }
 
@@ -363,18 +372,19 @@ class DataEncryptionService
         try {
             // Decrypt with old key
             $plaintext = $this->decryptSensitiveData($encryptedData);
-            
+
             if ($plaintext === null) {
                 return null;
             }
-            
+
             // Re-encrypt with current key
             return $this->encryptSensitiveData($plaintext);
         } catch (\Exception $e) {
             Log::error('Encryption rotation failed', [
                 'error' => $e->getMessage(),
-                'encrypted_data_length' => strlen($encryptedData)
+                'encrypted_data_length' => strlen($encryptedData),
             ]);
+
             return null;
         }
     }

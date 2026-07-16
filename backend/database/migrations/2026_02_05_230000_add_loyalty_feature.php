@@ -1,14 +1,14 @@
 <?php
 
+use App\Models\Feature;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\Schema;
-use App\Models\Feature;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('features')) {
+        if (! Schema::hasTable('features')) {
             return;
         }
 

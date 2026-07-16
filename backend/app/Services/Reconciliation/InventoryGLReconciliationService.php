@@ -6,15 +6,15 @@ use App\Models\ChartOfAccount;
 use App\Models\JournalEntryLine;
 use App\Models\ReconciliationControlResult;
 use App\Models\ReconciliationException;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 use Modules\Inventory\Models\StockLevel;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * InventoryGLReconciliationService
- * 
+ *
  * Provides inventory-to-GL reconciliation to verify that stock value in the
  * stock_levels table matches the GL inventory account balance.
  */
@@ -22,40 +22,39 @@ class InventoryGLReconciliationService
 {
     /**
      * Run inventory to GL reconciliation control
-     * 
-     * @param string $asOfDate Date to reconcile as of (YYYY-MM-DD)
-     * @param int|null $controlAccountId Optional specific inventory control account
-     * @return ReconciliationControlResult
+     *
+     * @param  string  $asOfDate  Date to reconcile as of (YYYY-MM-DD)
+     * @param  int|null  $controlAccountId  Optional specific inventory control account
      */
     public function reconcile(string $asOfDate, ?int $controlAccountId = null): ReconciliationControlResult
     {
         $asOfDate = Carbon::parse($asOfDate);
-        
+
         // Get inventory control account if not specified
-        if (!$controlAccountId) {
+        if (! $controlAccountId) {
             $controlAccount = $this->getInventoryControlAccount();
             $controlAccountId = $controlAccount?->id;
         }
-        
-        if (!$controlAccountId) {
+
+        if (! $controlAccountId) {
             throw new \Exception('Inventory control account not found');
         }
-        
+
         // Get stock subledger value
         $subledgerValue = $this->getStockValue($asOfDate);
-        
+
         // Get GL inventory account balance
         $glBalance = $this->getGLBalance($controlAccountId, $asOfDate);
-        
+
         // Calculate difference
         $difference = round($subledgerValue - $glBalance, 2);
-        
+
         // Identify discrepancies if any
         $discrepancies = [];
         if (abs($difference) > 0.01) {
             $discrepancies = $this->identifyDiscrepancies($asOfDate, $controlAccountId);
         }
-        
+
         // Create control result record
         $result = ReconciliationControlResult::create([
             'control_name' => 'inventory_gl_reconciliation',
@@ -70,21 +69,21 @@ class InventoryGLReconciliationService
         ]);
 
         // Automatically create reconciliation exceptions for each discrepancy
-        if ($result->status === 'failed' && !empty($discrepancies)) {
+        if ($result->status === 'failed' && ! empty($discrepancies)) {
             $this->createExceptionsFromDiscrepancies($result, $discrepancies);
         }
-        
+
         Log::info('Inventory to GL reconciliation completed', [
             'as_of_date' => $asOfDate->toDateString(),
             'subledger_value' => $subledgerValue,
             'gl_balance' => $glBalance,
             'difference' => $difference,
-            'status' => $result->status
+            'status' => $result->status,
         ]);
-        
+
         return $result;
     }
-    
+
     /**
      * Get inventory control account from chart of accounts.
      *
@@ -108,10 +107,10 @@ class InventoryGLReconciliationService
             ->orWhere('name', 'like', '%Inventory%')
             ->first();
     }
-    
+
     /**
      * Get total stock value as of date
-     * 
+     *
      * Stock value = SUM(quantity * cost) across all products and warehouses
      */
     private function getStockValue(Carbon $asOfDate): float
@@ -121,7 +120,7 @@ class InventoryGLReconciliationService
             ->selectRaw('COALESCE(SUM(stock_levels.quantity * products.cost), 0) as value')
             ->value('value') ?? 0.0;
     }
-    
+
     /**
      * Get GL inventory account balance as of date
      */
@@ -130,22 +129,22 @@ class InventoryGLReconciliationService
         return JournalEntryLine::where('account_id', $controlAccountId)
             ->whereHas('journalEntry', function ($q) use ($asOfDate) {
                 $q->where('entry_date', '<=', $asOfDate)
-                  ->where('status', 'posted');
+                    ->where('status', 'posted');
             })
             ->selectRaw('SUM(debit - credit) as balance')
             ->value('balance') ?? 0.0;
     }
-    
+
     /**
      * Identify specific discrepancies between stock and GL
      */
     private function identifyDiscrepancies(Carbon $asOfDate, int $controlAccountId): array
     {
         $discrepancies = [];
-        
+
         // 1. Find products with stock but no GL movement
         $stockWithoutGL = $this->findStockWithoutGL($asOfDate);
-        if (!empty($stockWithoutGL)) {
+        if (! empty($stockWithoutGL)) {
             $totalValue = array_sum(array_column($stockWithoutGL, 'stock_value'));
             $discrepancies[] = [
                 'type' => 'stock_without_gl',
@@ -155,10 +154,10 @@ class InventoryGLReconciliationService
                 'items' => $stockWithoutGL,
             ];
         }
-        
+
         // 2. Find GL entries without stock record
         $glWithoutStock = $this->findGLEntriesWithoutStock($asOfDate, $controlAccountId);
-        if (!empty($glWithoutStock)) {
+        if (! empty($glWithoutStock)) {
             $discrepancies[] = [
                 'type' => 'gl_without_stock',
                 'description' => 'GL entries without corresponding stock record',
@@ -166,10 +165,10 @@ class InventoryGLReconciliationService
                 'items' => $glWithoutStock,
             ];
         }
-        
+
         // 3. Find value mismatches (stock value != GL value per product)
         $valueMismatches = $this->findValueMismatches($asOfDate, $controlAccountId);
-        if (!empty($valueMismatches)) {
+        if (! empty($valueMismatches)) {
             $discrepancies[] = [
                 'type' => 'value_mismatch',
                 'description' => 'Stock value differs from GL value per product',
@@ -177,10 +176,10 @@ class InventoryGLReconciliationService
                 'items' => $valueMismatches,
             ];
         }
-        
+
         return $discrepancies;
     }
-    
+
     /**
      * Find products with stock but no GL movement
      */
@@ -213,7 +212,7 @@ class InventoryGLReconciliationService
             ->get()
             ->toArray();
     }
-    
+
     /**
      * Find GL entries without stock record
      */
@@ -222,7 +221,7 @@ class InventoryGLReconciliationService
         return JournalEntryLine::where('account_id', $controlAccountId)
             ->whereHas('journalEntry', function ($q) use ($asOfDate) {
                 $q->where('entry_date', '<=', $asOfDate)
-                  ->where('status', 'posted');
+                    ->where('status', 'posted');
             })
             ->whereNotExists(function ($query) {
                 $query->select(DB::raw(1))
@@ -249,7 +248,7 @@ class InventoryGLReconciliationService
             ])
             ->toArray();
     }
-    
+
     /**
      * Find products where stock value differs from GL value
      */
@@ -273,7 +272,7 @@ class InventoryGLReconciliationService
             ->limit(100)
             ->get()
             ->toArray();
-        
+
         // Enrich with stock values
         $result = [];
         foreach ($glValues as $item) {
@@ -281,7 +280,7 @@ class InventoryGLReconciliationService
                 ->where('product_id', $item->id)
                 ->sum('quantity');
             $stockValue = $stockQty * $item->cost;
-            
+
             $result[] = [
                 'id' => $item->id,
                 'sku' => $item->sku,
@@ -293,10 +292,10 @@ class InventoryGLReconciliationService
                 'difference' => $stockValue - $item->gl_value,
             ];
         }
-        
+
         return $result;
     }
-    
+
     /**
      * Map discrepancy type to exception type
      */
@@ -312,31 +311,31 @@ class InventoryGLReconciliationService
 
     /**
      * Create reconciliation exceptions from discrepancies
-     * 
+     *
      * Idempotent: only creates exceptions for items that don't already have an open exception
      */
     private function createExceptionsFromDiscrepancies(ReconciliationControlResult $result, array $discrepancies): void
     {
         foreach ($discrepancies as $discrepancy) {
             $exceptionType = $this->mapDiscrepancyType($discrepancy['type']);
-            
+
             foreach ($discrepancy['items'] ?? [] as $item) {
                 $reference = $item['sku'] ?? $item['reference'] ?? null;
-                
+
                 // Skip if no reference to track
-                if (!$reference) {
+                if (! $reference) {
                     continue;
                 }
-                
+
                 // Idempotent: check if an open exception already exists for this reference
                 $existingException = ReconciliationException::where('reference', $reference)
                     ->whereIn('status', [ReconciliationException::STATUS_OPEN, ReconciliationException::STATUS_IN_PROGRESS])
                     ->first();
-                
+
                 if ($existingException) {
                     continue;
                 }
-                
+
                 ReconciliationException::create([
                     'exception_type' => $exceptionType,
                     'amount' => $item['stock_value'] ?? $item['total_value'] ?? $item['gl_value'] ?? null,
@@ -351,13 +350,13 @@ class InventoryGLReconciliationService
                 ]);
             }
         }
-        
+
         Log::info('Inventory reconciliation exceptions created', [
             'control_result_id' => $result->id,
             'discrepancy_count' => count($discrepancies),
         ]);
     }
-    
+
     /**
      * Get reconciliation history
      */

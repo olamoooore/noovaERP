@@ -102,11 +102,11 @@ class WS05SalesOrderConvergenceTest extends TestCase
         );
 
         // Overrides must be applied before synchronizeInvoiceBookkeeping() is called
-        $overridePos  = strpos($src, '$invoice->update($totalOverrides)');
-        $syncPos      = strpos($src, 'synchronizeInvoiceBookkeeping(');
+        $overridePos = strpos($src, '$invoice->update($totalOverrides)');
+        $syncPos = strpos($src, 'synchronizeInvoiceBookkeeping(');
 
         $this->assertNotFalse($overridePos, 'Override block must exist inside createInvoice()');
-        $this->assertNotFalse($syncPos,     'synchronizeInvoiceBookkeeping() must exist inside createInvoice()');
+        $this->assertNotFalse($syncPos, 'synchronizeInvoiceBookkeeping() must exist inside createInvoice()');
         $this->assertGreaterThan(
             $syncPos,
             $overridePos,
@@ -130,7 +130,7 @@ class WS05SalesOrderConvergenceTest extends TestCase
 
         // The post-return $inv->update([...]) block with pos totals must be gone
         $this->assertStringNotContainsString(
-            "\$inv->update([" . PHP_EOL . "                    'subtotal'",
+            '$inv->update(['.PHP_EOL."                    'subtotal'",
             $src,
             'PosOrderController must not have a post-return $inv->update() override block'
         );
@@ -152,7 +152,7 @@ class WS05SalesOrderConvergenceTest extends TestCase
 
         // The standalone $invoice->update([...]) with subtotal override must be gone
         $this->assertStringNotContainsString(
-            "\$invoice->update([" . PHP_EOL . "            'subtotal'",
+            '$invoice->update(['.PHP_EOL."            'subtotal'",
             $src,
             'WebOrder::convertToInvoice() must not have a post-return $invoice->update() override block'
         );
@@ -174,7 +174,7 @@ class WS05SalesOrderConvergenceTest extends TestCase
 
         // The standalone $invoice->update([...]) with subtotal must be gone
         $this->assertStringNotContainsString(
-            "\$invoice->update([" . PHP_EOL . "                    'subtotal'",
+            '$invoice->update(['.PHP_EOL."                    'subtotal'",
             $src,
             'GenerateMissingPosInvoices must not have a post-return $invoice->update() override block'
         );
@@ -277,7 +277,7 @@ class WS05SalesOrderConvergenceTest extends TestCase
             $this->assertStringNotContainsString(
                 'SalesInvoiceLink::create(',
                 $callerSrc,
-                basename($file) . ' must not create SalesInvoiceLink directly'
+                basename($file).' must not create SalesInvoiceLink directly'
             );
         }
     }

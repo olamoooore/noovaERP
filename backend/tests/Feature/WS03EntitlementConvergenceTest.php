@@ -37,6 +37,7 @@ use Tests\TestCase;
 class WS03EntitlementConvergenceTest extends TestCase
 {
     private FeatureGateService $featureGate;
+
     private string $tenantId;
 
     protected function setUp(): void
@@ -44,7 +45,7 @@ class WS03EntitlementConvergenceTest extends TestCase
         parent::setUp();
 
         $this->featureGate = app(FeatureGateService::class);
-        $this->tenantId    = (string) Str::uuid();
+        $this->tenantId = (string) Str::uuid();
 
         DB::statement('SET search_path TO public');
 
@@ -94,7 +95,7 @@ class WS03EntitlementConvergenceTest extends TestCase
         $this->activateTenantContext($this->tenantId);
         $middleware = app(EnsureEntitlementAccess::class);
 
-        $request  = Request::create('/api/v1/pos/orders', 'POST', [], [], [], ['HTTP_HOST' => 'ws03-block.local']);
+        $request = Request::create('/api/v1/pos/orders', 'POST', [], [], [], ['HTTP_HOST' => 'ws03-block.local']);
         $response = $middleware->handle($request, fn ($r) => new Response('ok', 200), $featureKey);
 
         $this->assertEquals(
@@ -123,7 +124,7 @@ class WS03EntitlementConvergenceTest extends TestCase
 
         $middleware = app(EnsureEntitlementAccess::class);
 
-        $request  = Request::create('/api/v1/pos/orders', 'POST', [], [], [], ['HTTP_HOST' => 'ws03-allow.local']);
+        $request = Request::create('/api/v1/pos/orders', 'POST', [], [], [], ['HTTP_HOST' => 'ws03-allow.local']);
         $response = $middleware->handle($request, fn ($r) => new Response('ok', 200), $featureKey);
 
         $this->assertEquals(
@@ -151,7 +152,7 @@ class WS03EntitlementConvergenceTest extends TestCase
 
         $this->assertFalse(
             $toggleRouteExists,
-            'POST /features/{id}/toggle must not be a registered route. ' .
+            'POST /features/{id}/toggle must not be a registered route. '.
             'The mutation surface must be structurally removed, not behaviourally suppressed.'
         );
     }
@@ -179,7 +180,7 @@ class WS03EntitlementConvergenceTest extends TestCase
         $this->activateTenantContext($this->tenantId);
         $middleware = app(EnsureEntitlementAccess::class);
 
-        $request  = Request::create('/api/v1/event-management/events', 'GET', [], [], [], ['HTTP_HOST' => 'ws03-legacy.local']);
+        $request = Request::create('/api/v1/event-management/events', 'GET', [], [], [], ['HTTP_HOST' => 'ws03-legacy.local']);
         $response = $middleware->handle($request, fn ($r) => new Response('ok', 200), $featureKey);
 
         $this->assertEquals(
@@ -253,16 +254,16 @@ class WS03EntitlementConvergenceTest extends TestCase
         // We need tenant('id') to return a non-null value so the check branch is entered.
         // Fake it by temporarily setting a tenant helper if the package is available,
         // otherwise use the source-code proof test below which is always reliable.
-        if (!function_exists('tenant') || tenant('id') === null) {
+        if (! function_exists('tenant') || tenant('id') === null) {
             // Without a live tenant, the middleware's $tenantId guard is null
             // and the check branch is skipped — fall back to source-code proof.
             $this->markTestSkipped(
-                'Tenancy context not available in this test environment — ' .
+                'Tenancy context not available in this test environment — '.
                 'see test_ensure_inventory_access_uses_feature_gate_service for structural proof.'
             );
         }
 
-        $user    = new \App\Models\User(['is_super_admin' => false]);
+        $user = new \App\Models\User(['is_super_admin' => false]);
         $request = Request::create('/api/v1/inventory/items', 'POST');
         $request->setUserResolver(fn () => $user);
 
@@ -289,11 +290,11 @@ class WS03EntitlementConvergenceTest extends TestCase
 
         $middleware = new EnsureInventoryAccess($mockGate);
 
-        if (!function_exists('tenant') || tenant('id') === null) {
+        if (! function_exists('tenant') || tenant('id') === null) {
             $this->markTestSkipped('Tenancy context not available in this test environment.');
         }
 
-        $user    = new \App\Models\User(['is_super_admin' => true]);
+        $user = new \App\Models\User(['is_super_admin' => true]);
         $request = Request::create('/api/v1/inventory/items', 'POST');
         $request->setUserResolver(fn () => $user);
 
@@ -366,7 +367,7 @@ class WS03EntitlementConvergenceTest extends TestCase
             ['tenant_id' => $tenantId, 'catalog_item_id' => $item->id],
             [
                 'is_entitled' => $entitled,
-                'source'      => $entitled
+                'source' => $entitled
                     ? TenantEntitlement::SOURCE_TIER_INCLUDED
                     : TenantEntitlement::SOURCE_OVERRIDE_EXCLUDE,
                 'resolved_at' => now(),
@@ -387,7 +388,8 @@ class WS03EntitlementConvergenceTest extends TestCase
         $testTenantId = $tenantId;
 
         $this->app->bind(EnsureEntitlementAccess::class, function () use ($featureGate, $tenancy, $testTenantId) {
-            return new class($featureGate, $tenancy, $testTenantId) extends EnsureEntitlementAccess {
+            return new class($featureGate, $tenancy, $testTenantId) extends EnsureEntitlementAccess
+            {
                 public function __construct(
                     FeatureGateService $featureGate,
                     Tenancy $tenancy,
@@ -409,7 +411,8 @@ class WS03EntitlementConvergenceTest extends TestCase
         $featureGate = $this->featureGate;
         $tenancy = app(Tenancy::class);
 
-        return new class($featureGate, $tenancy, $tenantId) extends EnsureEntitlementAccess {
+        return new class($featureGate, $tenancy, $tenantId) extends EnsureEntitlementAccess
+        {
             public function __construct(
                 FeatureGateService $featureGate,
                 Tenancy $tenancy,
@@ -431,7 +434,7 @@ class WS03EntitlementConvergenceTest extends TestCase
             ['id' => $tenantId],
             [
                 'name' => 'WS03 Test Tenant',
-                'email' => 'ws03+' . substr($tenantId, 0, 8) . '@noovaerp.local',
+                'email' => 'ws03+'.substr($tenantId, 0, 8).'@noovaerp.local',
                 'plan' => 'pro',
             ]
         );
@@ -454,7 +457,7 @@ class WS03EntitlementConvergenceTest extends TestCase
 
     private function ensureLegacyFeatureTablesExist(): void
     {
-        if (!Schema::hasTable('features')) {
+        if (! Schema::hasTable('features')) {
             Schema::create('features', function (Blueprint $table) {
                 $table->id();
                 $table->string('key')->unique();
@@ -466,7 +469,7 @@ class WS03EntitlementConvergenceTest extends TestCase
             });
         }
 
-        if (!Schema::hasTable('tenant_features')) {
+        if (! Schema::hasTable('tenant_features')) {
             Schema::create('tenant_features', function (Blueprint $table) {
                 $table->id();
                 $table->unsignedBigInteger('feature_id');
@@ -480,7 +483,7 @@ class WS03EntitlementConvergenceTest extends TestCase
 
     private function ensureCanonicalProjectionTableExists(): void
     {
-        if (!Schema::hasTable('tenant_entitlements')) {
+        if (! Schema::hasTable('tenant_entitlements')) {
             Schema::create('tenant_entitlements', function (Blueprint $table) {
                 $table->id();
                 $table->uuid('tenant_id');
@@ -497,7 +500,7 @@ class WS03EntitlementConvergenceTest extends TestCase
 
     private function forceNonCoreFeatures(array $keys): void
     {
-        if (!Schema::hasTable('features')) {
+        if (! Schema::hasTable('features')) {
             return;
         }
 

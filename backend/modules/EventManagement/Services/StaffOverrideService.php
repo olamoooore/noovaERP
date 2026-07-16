@@ -2,31 +2,34 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 use Exception;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * StaffOverrideService - Task 9.3
- * 
+ *
  * Manages mandatory override reason tracking, supervisor approval workflows,
  * override audit trails and pattern detection for operations console hardening.
- * 
+ *
  * Requirements: 25.3, 25.4
  */
 class StaffOverrideService
 {
     private const CACHE_PREFIX = 'staff_override:';
+
     private const PATTERN_DETECTION_WINDOW = 24; // hours
+
     private const MAX_OVERRIDES_PER_HOUR = 10;
+
     private const EMERGENCY_OVERRIDE_TIMEOUT = 300; // 5 minutes
 
     /**
      * Create staff override with mandatory reason tracking
-     * 
-     * @param array $overrideData Override operation data
+     *
+     * @param  array  $overrideData  Override operation data
      * @return array Override creation result
      */
     public function createOverride(array $overrideData): array
@@ -39,7 +42,7 @@ class StaffOverrideService
 
             // Check staff permissions
             $permissionCheck = $this->checkStaffOverridePermissions($overrideData['staff_id'], $overrideData);
-            if (!$permissionCheck['allowed']) {
+            if (! $permissionCheck['allowed']) {
                 throw new Exception($permissionCheck['reason']);
             }
 
@@ -64,7 +67,7 @@ class StaffOverrideService
                 'override_timestamp' => now(),
                 'is_emergency_override' => $overrideData['is_emergency'] ?? false,
                 'audit_metadata' => json_encode($this->generateAuditMetadata($overrideData)),
-                'created_at' => now()
+                'created_at' => now(),
             ];
 
             $overrideId = DB::table('staff_overrides')->insertGetId($overrideEntry);
@@ -81,7 +84,7 @@ class StaffOverrideService
                 'override_id' => $overrideId,
                 'staff_id' => $overrideData['staff_id'],
                 'override_type' => $overrideData['override_type'],
-                'requires_approval' => $requiresApproval
+                'requires_approval' => $requiresApproval,
             ]);
 
             return [
@@ -89,31 +92,31 @@ class StaffOverrideService
                 'override_id' => $overrideId,
                 'requires_approval' => $requiresApproval,
                 'approval_status' => $overrideEntry['approval_status'],
-                'message' => $requiresApproval ? 'Override created, awaiting supervisor approval' : 'Override approved automatically'
+                'message' => $requiresApproval ? 'Override created, awaiting supervisor approval' : 'Override approved automatically',
             ];
 
         } catch (Exception $e) {
             DB::rollBack();
             Log::error('Failed to create staff override', [
                 'error' => $e->getMessage(),
-                'override_data' => $overrideData
+                'override_data' => $overrideData,
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to create override',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Process supervisor approval for override
-     * 
-     * @param int $overrideId Override identifier
-     * @param int $supervisorId Supervisor staff ID
-     * @param string $decision Approval decision (approved/rejected)
-     * @param string $notes Approval notes
+     *
+     * @param  int  $overrideId  Override identifier
+     * @param  int  $supervisorId  Supervisor staff ID
+     * @param  string  $decision  Approval decision (approved/rejected)
+     * @param  string  $notes  Approval notes
      * @return array Approval result
      */
     public function processSupervisorApproval(int $overrideId, int $supervisorId, string $decision, string $notes = ''): array
@@ -127,18 +130,18 @@ class StaffOverrideService
                 ->where('approval_status', 'pending')
                 ->first();
 
-            if (!$override) {
+            if (! $override) {
                 throw new Exception('Override not found or not pending approval');
             }
 
             // Validate supervisor permissions
             $supervisorCheck = $this->validateSupervisorPermissions($supervisorId, $override);
-            if (!$supervisorCheck['valid']) {
+            if (! $supervisorCheck['valid']) {
                 throw new Exception($supervisorCheck['reason']);
             }
 
             // Validate decision
-            if (!in_array($decision, ['approved', 'rejected'])) {
+            if (! in_array($decision, ['approved', 'rejected'])) {
                 throw new Exception('Invalid approval decision');
             }
 
@@ -150,7 +153,7 @@ class StaffOverrideService
                     'approved_at' => now(),
                     'approval_notes' => $notes,
                     'approval_status' => $decision,
-                    'updated_at' => now()
+                    'updated_at' => now(),
                 ]);
 
             // Apply override if approved
@@ -167,7 +170,7 @@ class StaffOverrideService
             Log::info('Override approval processed', [
                 'override_id' => $overrideId,
                 'supervisor_id' => $supervisorId,
-                'decision' => $decision
+                'decision' => $decision,
             ]);
 
             return [
@@ -175,7 +178,7 @@ class StaffOverrideService
                 'override_id' => $overrideId,
                 'decision' => $decision,
                 'application_result' => $applicationResult,
-                'message' => "Override {$decision} successfully"
+                'message' => "Override {$decision} successfully",
             ];
 
         } catch (Exception $e) {
@@ -183,23 +186,23 @@ class StaffOverrideService
             Log::error('Failed to process supervisor approval', [
                 'override_id' => $overrideId,
                 'supervisor_id' => $supervisorId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to process approval',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Get override audit trail for entity
-     * 
-     * @param string $entityType Entity type
-     * @param int $entityId Entity ID
-     * @param array $options Query options
+     *
+     * @param  string  $entityType  Entity type
+     * @param  int  $entityId  Entity ID
+     * @param  array  $options  Query options
      * @return array Audit trail data
      */
     public function getOverrideAuditTrail(string $entityType, int $entityId, array $options = []): array
@@ -245,7 +248,7 @@ class StaffOverrideService
                     'approval_notes' => $override->approval_notes,
                     'is_emergency' => $override->is_emergency_override,
                     'override_data' => json_decode($override->override_data, true),
-                    'context_data' => json_decode($override->context_data, true)
+                    'context_data' => json_decode($override->context_data, true),
                 ];
             })->toArray();
 
@@ -254,29 +257,29 @@ class StaffOverrideService
                 'entity_type' => $entityType,
                 'entity_id' => $entityId,
                 'overrides' => $overrides,
-                'total_count' => count($overrides)
+                'total_count' => count($overrides),
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to get override audit trail', [
                 'entity_type' => $entityType,
                 'entity_id' => $entityId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'overrides' => [],
-                'error' => 'Failed to retrieve audit trail'
+                'error' => 'Failed to retrieve audit trail',
             ];
         }
     }
 
     /**
      * Detect override patterns and generate alerts
-     * 
-     * @param int $staffId Staff member ID
-     * @param array $options Detection options
+     *
+     * @param  int  $staffId  Staff member ID
+     * @param  array  $options  Detection options
      * @return array Pattern detection results
      */
     public function detectOverridePatterns(int $staffId, array $options = []): array
@@ -326,27 +329,28 @@ class StaffOverrideService
                 'staff_id' => $staffId,
                 'patterns_detected' => count($patterns),
                 'patterns' => $patterns,
-                'alert_level' => $this->calculateOverallAlertLevel($patterns)
+                'alert_level' => $this->calculateOverallAlertLevel($patterns),
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to detect override patterns', [
                 'staff_id' => $staffId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'patterns' => [],
-                'error' => 'Failed to detect patterns'
+                'error' => 'Failed to detect patterns',
             ];
         }
     }
+
     /**
      * Get pending approvals for supervisor
-     * 
-     * @param int $supervisorId Supervisor staff ID
-     * @param array $filters Optional filters
+     *
+     * @param  int  $supervisorId  Supervisor staff ID
+     * @param  array  $filters  Optional filters
      * @return array Pending approvals list
      */
     public function getPendingApprovals(int $supervisorId, array $filters = []): array
@@ -354,11 +358,11 @@ class StaffOverrideService
         try {
             // Validate supervisor permissions
             $supervisorCheck = $this->validateSupervisorRole($supervisorId);
-            if (!$supervisorCheck['valid']) {
+            if (! $supervisorCheck['valid']) {
                 return [
                     'success' => false,
                     'error' => 'Insufficient supervisor permissions',
-                    'pending_approvals' => []
+                    'pending_approvals' => [],
                 ];
             }
 
@@ -397,7 +401,7 @@ class StaffOverrideService
                     'is_emergency' => $override->is_emergency_override,
                     'time_pending' => now()->diffInMinutes($override->override_timestamp),
                     'override_data' => json_decode($override->override_data, true),
-                    'context_data' => json_decode($override->context_data, true)
+                    'context_data' => json_decode($override->context_data, true),
                 ];
             })->toArray();
 
@@ -406,27 +410,27 @@ class StaffOverrideService
                 'supervisor_id' => $supervisorId,
                 'pending_approvals' => $pendingApprovals,
                 'total_count' => count($pendingApprovals),
-                'emergency_count' => collect($pendingApprovals)->where('is_emergency', true)->count()
+                'emergency_count' => collect($pendingApprovals)->where('is_emergency', true)->count(),
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to get pending approvals', [
                 'supervisor_id' => $supervisorId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'pending_approvals' => [],
-                'error' => 'Failed to retrieve pending approvals'
+                'error' => 'Failed to retrieve pending approvals',
             ];
         }
     }
 
     /**
      * Generate override analytics and reporting
-     * 
-     * @param array $filters Analytics filters
+     *
+     * @param  array  $filters  Analytics filters
      * @return array Override analytics data
      */
     public function generateOverrideAnalytics(array $filters = []): array
@@ -456,7 +460,7 @@ class StaffOverrideService
                 'rejected_overrides' => $overrides->where('approval_status', 'rejected')->count(),
                 'pending_overrides' => $overrides->where('approval_status', 'pending')->count(),
                 'emergency_overrides' => $overrides->where('is_emergency_override', true)->count(),
-                'approval_rate' => $overrides->count() > 0 
+                'approval_rate' => $overrides->count() > 0
                     ? round(($overrides->where('approval_status', 'approved')->count() / $overrides->count()) * 100, 2)
                     : 0,
                 'avg_approval_time' => $this->calculateAverageApprovalTime($overrides),
@@ -464,28 +468,28 @@ class StaffOverrideService
                 'overrides_by_category' => $this->groupOverridesByCategory($overrides),
                 'overrides_by_staff' => $this->groupOverridesByStaff($overrides),
                 'overrides_by_hour' => $this->groupOverridesByHour($overrides),
-                'pattern_alerts' => $this->getPatternAlerts($dateFrom, $dateTo)
+                'pattern_alerts' => $this->getPatternAlerts($dateFrom, $dateTo),
             ];
 
             return [
                 'success' => true,
                 'period' => [
                     'from' => $dateFrom,
-                    'to' => $dateTo
+                    'to' => $dateTo,
                 ],
-                'analytics' => $analytics
+                'analytics' => $analytics,
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to generate override analytics', [
                 'filters' => $filters,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'analytics' => [],
-                'error' => 'Failed to generate analytics'
+                'error' => 'Failed to generate analytics',
             ];
         }
     }
@@ -495,16 +499,16 @@ class StaffOverrideService
     private function validateOverrideData(array $data): void
     {
         $required = ['staff_id', 'override_type', 'target_entity_type', 'target_entity_id', 'override_reason', 'override_category'];
-        
+
         foreach ($required as $field) {
-            if (!isset($data[$field]) || empty($data[$field])) {
+            if (! isset($data[$field]) || empty($data[$field])) {
                 throw new Exception("Missing required field: {$field}");
             }
         }
 
         // Validate override category
         $validCategories = ['technical_issue', 'customer_service', 'emergency_situation', 'system_error', 'policy_exception', 'security_concern', 'other'];
-        if (!in_array($data['override_category'], $validCategories)) {
+        if (! in_array($data['override_category'], $validCategories)) {
             throw new Exception("Invalid override category: {$data['override_category']}");
         }
     }
@@ -518,10 +522,10 @@ class StaffOverrideService
             ->where('can_override', true)
             ->first();
 
-        if (!$staffAssignment) {
+        if (! $staffAssignment) {
             return [
                 'allowed' => false,
-                'reason' => 'Staff member does not have override permissions'
+                'reason' => 'Staff member does not have override permissions',
             ];
         }
 
@@ -534,7 +538,7 @@ class StaffOverrideService
         if ($recentOverrides >= self::MAX_OVERRIDES_PER_HOUR) {
             return [
                 'allowed' => false,
-                'reason' => 'Override rate limit exceeded'
+                'reason' => 'Override rate limit exceeded',
             ];
         }
 
@@ -569,20 +573,20 @@ class StaffOverrideService
             'session_id' => session()->getId(),
             'request_id' => request()->header('X-Request-ID'),
             'timestamp' => now()->toISOString(),
-            'source' => 'operations_console'
+            'source' => 'operations_console',
         ];
     }
 
     private function updateOverridePatterns(int $staffId, array $overrideData): void
     {
         // Update pattern tracking in cache
-        $patternKey = self::CACHE_PREFIX . "patterns:{$staffId}";
+        $patternKey = self::CACHE_PREFIX."patterns:{$staffId}";
         $patterns = Cache::get($patternKey, []);
-        
+
         $patterns[] = [
             'timestamp' => now(),
             'type' => $overrideData['override_type'],
-            'category' => $overrideData['override_category']
+            'category' => $overrideData['override_category'],
         ];
 
         // Keep only last 24 hours of patterns
@@ -595,7 +599,7 @@ class StaffOverrideService
 
     private function cacheOverride(int $overrideId, array $overrideData): void
     {
-        $cacheKey = self::CACHE_PREFIX . "override:{$overrideId}";
+        $cacheKey = self::CACHE_PREFIX."override:{$overrideId}";
         Cache::put($cacheKey, $overrideData, 3600); // 1 hour
     }
 
@@ -607,10 +611,10 @@ class StaffOverrideService
             ->where('can_approve_overrides', true)
             ->first();
 
-        if (!$supervisor) {
+        if (! $supervisor) {
             return [
                 'valid' => false,
-                'reason' => 'Staff member does not have supervisor approval permissions'
+                'reason' => 'Staff member does not have supervisor approval permissions',
             ];
         }
 
@@ -618,7 +622,7 @@ class StaffOverrideService
         if ($override->event_id && $supervisor->event_id !== $override->event_id) {
             return [
                 'valid' => false,
-                'reason' => 'Supervisor not assigned to this event'
+                'reason' => 'Supervisor not assigned to this event',
             ];
         }
 
@@ -635,7 +639,7 @@ class StaffOverrideService
 
         return [
             'valid' => $supervisor !== null,
-            'reason' => $supervisor ? null : 'Staff member is not a supervisor'
+            'reason' => $supervisor ? null : 'Staff member is not a supervisor',
         ];
     }
 
@@ -643,30 +647,30 @@ class StaffOverrideService
     {
         // Apply the approved override to the target entity
         // This would integrate with the specific system being overridden
-        
+
         Log::info('Override applied', [
             'override_id' => $override->id,
             'target_entity_type' => $override->target_entity_type,
-            'target_entity_id' => $override->target_entity_id
+            'target_entity_id' => $override->target_entity_id,
         ]);
 
         return [
             'applied' => true,
             'timestamp' => now(),
-            'result' => 'Override successfully applied'
+            'result' => 'Override successfully applied',
         ];
     }
 
     private function updateApprovalPatterns(int $supervisorId, string $decision, object $override): void
     {
-        $patternKey = self::CACHE_PREFIX . "approval_patterns:{$supervisorId}";
+        $patternKey = self::CACHE_PREFIX."approval_patterns:{$supervisorId}";
         $patterns = Cache::get($patternKey, []);
-        
+
         $patterns[] = [
             'timestamp' => now(),
             'decision' => $decision,
             'override_type' => $override->override_type,
-            'staff_id' => $override->staff_id
+            'staff_id' => $override->staff_id,
         ];
 
         Cache::put($patternKey, $patterns, 1440); // 24 hours
@@ -676,14 +680,14 @@ class StaffOverrideService
     {
         $count = $overrides->count();
         $threshold = self::MAX_OVERRIDES_PER_HOUR * ($timeWindow / 1); // Scale threshold by time window
-        
+
         return [
             'type' => 'frequency',
             'alert' => $count > $threshold,
             'severity' => $count > $threshold * 2 ? 'critical' : 'warning',
             'description' => "Staff member has {$count} overrides in {$timeWindow} hours (threshold: {$threshold})",
             'count' => $count,
-            'threshold' => $threshold
+            'threshold' => $threshold,
         ];
     }
 
@@ -704,7 +708,7 @@ class StaffOverrideService
             'severity' => $maxHourCount > 10 ? 'critical' : 'warning',
             'description' => "Peak hour has {$maxHourCount} overrides",
             'hour_distribution' => $hourCounts,
-            'peak_count' => $maxHourCount
+            'peak_count' => $maxHourCount,
         ];
     }
 
@@ -714,7 +718,7 @@ class StaffOverrideService
         $dominantCategory = $categories->keys()->first();
         $dominantCount = $categories->first();
         $totalCount = $overrides->count();
-        
+
         $dominancePercentage = $totalCount > 0 ? ($dominantCount / $totalCount) * 100 : 0;
         $alert = $dominancePercentage > 80; // More than 80% of overrides in one category
 
@@ -725,7 +729,7 @@ class StaffOverrideService
             'description' => "Category '{$dominantCategory}' represents {$dominancePercentage}% of overrides",
             'dominant_category' => $dominantCategory,
             'dominance_percentage' => round($dominancePercentage, 2),
-            'category_distribution' => $categories->toArray()
+            'category_distribution' => $categories->toArray(),
         ];
     }
 
@@ -733,7 +737,7 @@ class StaffOverrideService
     {
         $emergencyCount = $overrides->where('is_emergency_override', true)->count();
         $totalCount = $overrides->count();
-        
+
         $emergencyPercentage = $totalCount > 0 ? ($emergencyCount / $totalCount) * 100 : 0;
         $alert = $emergencyPercentage > 30; // More than 30% emergency overrides
 
@@ -743,7 +747,7 @@ class StaffOverrideService
             'severity' => $emergencyPercentage > 50 ? 'critical' : 'warning',
             'description' => "Emergency overrides represent {$emergencyPercentage}% of total overrides",
             'emergency_count' => $emergencyCount,
-            'emergency_percentage' => round($emergencyPercentage, 2)
+            'emergency_percentage' => round($emergencyPercentage, 2),
         ];
     }
 
@@ -753,7 +757,7 @@ class StaffOverrideService
         DB::table('override_patterns')->updateOrInsert(
             [
                 'pattern_name' => "staff_{$staffId}_{$pattern['type']}",
-                'pattern_type' => $pattern['type']
+                'pattern_type' => $pattern['type'],
             ],
             [
                 'pattern_description' => $pattern['description'],
@@ -763,7 +767,7 @@ class StaffOverrideService
                 'last_detected_at' => now(),
                 'alert_level' => $pattern['severity'],
                 'alert_configuration' => json_encode(['notify_supervisors' => true]),
-                'updated_at' => now()
+                'updated_at' => now(),
             ]
         );
     }
@@ -775,7 +779,7 @@ class StaffOverrideService
         }
 
         $severities = collect($patterns)->pluck('severity');
-        
+
         if ($severities->contains('critical')) {
             return 'critical';
         } elseif ($severities->contains('warning')) {
@@ -788,7 +792,7 @@ class StaffOverrideService
     private function calculateAverageApprovalTime(object $overrides): float
     {
         $approvedOverrides = $overrides->whereNotNull('approved_at');
-        
+
         if ($approvedOverrides->isEmpty()) {
             return 0;
         }
@@ -835,7 +839,7 @@ class StaffOverrideService
                     'description' => $pattern->pattern_description,
                     'detection_count' => $pattern->detection_count,
                     'last_detected' => $pattern->last_detected_at,
-                    'alert_level' => $pattern->alert_level
+                    'alert_level' => $pattern->alert_level,
                 ];
             })
             ->toArray();

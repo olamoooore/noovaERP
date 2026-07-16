@@ -1,11 +1,11 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Modules\Loyalty\Http\Controllers\LoyaltyProgramController;
 use Modules\Loyalty\Http\Controllers\CustomerLoyaltyController;
+use Modules\Loyalty\Http\Controllers\LoyaltyDashboardController;
+use Modules\Loyalty\Http\Controllers\LoyaltyProgramController;
 use Modules\Loyalty\Http\Controllers\LoyaltyRedemptionController;
 use Modules\Loyalty\Http\Controllers\LoyaltyRewardController;
-use Modules\Loyalty\Http\Controllers\LoyaltyDashboardController;
 
 Route::middleware(['auth:sanctum', 'entitlement:loyalty'])->group(function () {
     // Health check

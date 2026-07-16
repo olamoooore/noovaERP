@@ -35,18 +35,26 @@ class PrintJob extends Model
      * Job types
      */
     const TYPE_PRODUCT_LABEL = 'product_label';
+
     const TYPE_BARCODE_LABEL = 'barcode_label';
+
     const TYPE_RECEIPT = 'receipt';
+
     const TYPE_RAW_TSPL = 'raw_tspl';
+
     const TYPE_RAW_ESCPOS = 'raw_escpos';
 
     /**
      * Job statuses
      */
     const STATUS_PENDING = 'pending';
+
     const STATUS_SENT = 'sent';
+
     const STATUS_PRINTING = 'printing';
+
     const STATUS_COMPLETED = 'completed';
+
     const STATUS_FAILED = 'failed';
 
     /**

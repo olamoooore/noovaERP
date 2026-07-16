@@ -4,7 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * Run the migrations.
      */
@@ -64,25 +65,25 @@ return new class extends Migration {
         // Enhanced artist_events table to support many-to-many with roles
         if (Schema::hasTable('artist_events')) {
             Schema::table('artist_events', function (Blueprint $table) {
-                if (!Schema::hasColumn('artist_events', 'performance_role')) {
+                if (! Schema::hasColumn('artist_events', 'performance_role')) {
                     $table->enum('performance_role', ['headliner', 'supporting', 'guest', 'collaboration'])->default('headliner');
                     $table->index('performance_role', 'idx_performance_role');
                 }
-                if (!Schema::hasColumn('artist_events', 'performance_order')) {
+                if (! Schema::hasColumn('artist_events', 'performance_order')) {
                     $table->integer('performance_order')->nullable();
                     $table->index('performance_order', 'idx_performance_order');
                 }
-                if (!Schema::hasColumn('artist_events', 'collaboration_type')) {
+                if (! Schema::hasColumn('artist_events', 'collaboration_type')) {
                     $table->enum('collaboration_type', ['solo', 'duet', 'group', 'band'])->nullable();
                 }
-                if (!Schema::hasColumn('artist_events', 'performance_metadata')) {
+                if (! Schema::hasColumn('artist_events', 'performance_metadata')) {
                     $table->json('performance_metadata')->nullable();
                 }
-                if (!Schema::hasColumn('artist_events', 'is_confirmed')) {
+                if (! Schema::hasColumn('artist_events', 'is_confirmed')) {
                     $table->boolean('is_confirmed')->default(true);
                     $table->index('is_confirmed', 'idx_is_confirmed');
                 }
-                if (!Schema::hasColumn('artist_events', 'confirmed_at')) {
+                if (! Schema::hasColumn('artist_events', 'confirmed_at')) {
                     $table->timestamp('confirmed_at')->nullable();
                 }
             });
@@ -148,7 +149,7 @@ return new class extends Migration {
                 'collaboration_type',
                 'performance_metadata',
                 'is_confirmed',
-                'confirmed_at'
+                'confirmed_at',
             ]);
         });
 

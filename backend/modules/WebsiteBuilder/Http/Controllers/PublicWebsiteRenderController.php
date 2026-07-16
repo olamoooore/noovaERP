@@ -5,14 +5,14 @@ namespace Modules\WebsiteBuilder\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Modules\WebsiteBuilder\Models\Website;
 use Modules\WebsiteBuilder\Models\Page;
+use Modules\WebsiteBuilder\Models\Website;
 
 /**
  * Serves published websites as complete HTML pages.
  * This provides persistent, bookmarkable URLs for published sites
  * (similar to Odoo's website module).
- * 
+ *
  * URLs: /w/{websiteSlug}, /w/{websiteSlug}/{pageSlug}
  */
 class PublicWebsiteRenderController extends Controller
@@ -24,9 +24,9 @@ class PublicWebsiteRenderController extends Controller
     {
         // Find website by slug in current tenant
         $website = Website::where('slug', $websiteSlug)->first();
-        
+
         // Cross-tenant fallback removed for strict isolation.
-        if (!$website) {
+        if (! $website) {
             return response($this->generateErrorPage('Website Not Found', "The website you're looking for doesn't exist."), 404);
         }
 
@@ -36,8 +36,8 @@ class PublicWebsiteRenderController extends Controller
                 ->where('is_home', true)
                 ->with('currentVersion')
                 ->first();
-            
-            if (!$page) {
+
+            if (! $page) {
                 $page = $website->pages()
                     ->orderBy('sort_order')
                     ->with('currentVersion')
@@ -50,7 +50,7 @@ class PublicWebsiteRenderController extends Controller
                 ->first();
         }
 
-        if (!$page) {
+        if (! $page) {
             return response($this->generateErrorPage('Page Not Found', "The page you're looking for doesn't exist."), 404);
         }
 
@@ -67,7 +67,7 @@ class PublicWebsiteRenderController extends Controller
 
         // Get shop settings from website
         $shopSettings = $website->settings['shop'] ?? null;
-        
+
         // API base URL for e-commerce (relative so it works through any proxy/port)
         $apiBaseUrl = '/api/v1/website-public';
 
@@ -226,13 +226,16 @@ HTML;
      */
     private function generateNavigation(Website $website, $pages, ?string $currentSlug): string
     {
-        if ($pages->count() <= 1) return '';
+        if ($pages->count() <= 1) {
+            return '';
+        }
 
-        $baseUrl = '/w/' . $website->slug;
+        $baseUrl = '/w/'.$website->slug;
         $links = $pages->map(function ($page) use ($baseUrl, $currentSlug) {
-            $url = $page->is_home ? $baseUrl : $baseUrl . '/' . $page->slug;
+            $url = $page->is_home ? $baseUrl : $baseUrl.'/'.$page->slug;
             $active = ($page->slug === $currentSlug) || ($currentSlug === null && $page->is_home);
             $activeClass = $active ? 'font-bold' : '';
+
             return "<a href=\"{$url}\" class=\"{$activeClass}\" style=\"text-decoration:none;color:inherit;\">{$page->title}</a>";
         })->join("\n");
 

@@ -31,7 +31,7 @@ class WorkflowEngine
         string $tenantId,
         ?string $description = null,
     ): WorkflowSchema {
-        $transitionData = array_map(fn(StatusTransitionContract $t) => [
+        $transitionData = array_map(fn (StatusTransitionContract $t) => [
             'from' => $t->getFromStatus(),
             'to' => $t->getToStatus(),
             'action' => $t->getAction(),
@@ -69,21 +69,21 @@ class WorkflowEngine
         ?array $entityData = null,
     ): array {
         $schema = $this->getSchema($entityType, $tenantId);
-        if (!$schema) {
+        if (! $schema) {
             return ['allowed' => false, 'reason' => "No workflow schema for entity type '{$entityType}'"];
         }
 
-        if (!$currentStatus) {
+        if (! $currentStatus) {
             return ['allowed' => false, 'reason' => 'Current status is required'];
         }
 
         $transition = $this->findTransition($schema, $currentStatus, $action);
-        if (!$transition) {
+        if (! $transition) {
             return ['allowed' => false, 'reason' => "Transition '{$action}' not available from status '{$currentStatus}'"];
         }
 
         // Check conditions
-        if (!empty($transition['conditions']) && $entityData) {
+        if (! empty($transition['conditions']) && $entityData) {
             foreach ($transition['conditions'] as $condition => $expectedValue) {
                 $actualValue = $entityData[$condition] ?? null;
                 if ($actualValue != $expectedValue) {
@@ -111,8 +111,9 @@ class WorkflowEngine
         array $metadata = [],
     ): array {
         $check = $this->canTransition($entityType, $entityId, $action, $tenantId, $userId, $currentStatus, $entityData);
-        if (!$check['allowed']) {
+        if (! $check['allowed']) {
             $this->logTransition($tenantId, $entityType, $entityId, $currentStatus, $currentStatus, $action, 'rejected', $userId, $check['reason'], $metadata);
+
             return ['success' => false, 'new_status' => null, 'reason' => $check['reason']];
         }
 
@@ -147,7 +148,9 @@ class WorkflowEngine
         ?string $userId = null,
     ): array {
         $schema = $this->getSchema($entityType, $tenantId);
-        if (!$schema) return [];
+        if (! $schema) {
+            return [];
+        }
 
         $actions = [];
         foreach ($schema->transitions as $transition) {
@@ -198,6 +201,7 @@ class WorkflowEngine
                 return $transition;
             }
         }
+
         return null;
     }
 

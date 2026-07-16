@@ -10,36 +10,36 @@ class PdfExportService
 {
     private function tenantExportDirectory(): string
     {
-        if (!function_exists('tenant') || !tenant()) {
+        if (! function_exists('tenant') || ! tenant()) {
             throw new \RuntimeException('Report exports require an active tenant context.');
         }
 
-        return 'reports/' . tenant('id');
+        return 'reports/'.tenant('id');
     }
 
     private function exportFilename(?string $filename, string $extension): string
     {
-        $name = $filename ? pathinfo($filename, PATHINFO_FILENAME) : 'report_' . now()->format('Y-m-d_His');
+        $name = $filename ? pathinfo($filename, PATHINFO_FILENAME) : 'report_'.now()->format('Y-m-d_His');
         $safeName = Str::of($name)->ascii()->replaceMatches('/[^A-Za-z0-9._-]+/', '_')->trim('_')->value();
         $safeName = $safeName !== '' ? $safeName : 'report';
 
-        return $safeName . '_' . Str::lower(Str::random(16)) . '.' . $extension;
+        return $safeName.'_'.Str::lower(Str::random(16)).'.'.$extension;
     }
 
     /**
      * Export report data to PDF
-     * 
+     *
      * Note: This requires DomPDF library
      * Install with: composer require barryvdh/laravel-dompdf
      */
-    public function exportReport(array $reportData, string $template = 'default', string $filename = null): string
+    public function exportReport(array $reportData, string $template = 'default', ?string $filename = null): string
     {
-        if (!class_exists('\Barryvdh\DomPDF\Facade\Pdf')) {
+        if (! class_exists('\Barryvdh\DomPDF\Facade\Pdf')) {
             throw new \Exception('DomPDF library is not installed. Run: composer require barryvdh/laravel-dompdf');
         }
 
         $filename = $this->exportFilename($filename, 'pdf');
-        $path = $this->tenantExportDirectory() . '/' . $filename;
+        $path = $this->tenantExportDirectory().'/'.$filename;
 
         // Generate HTML content
         $html = $this->generateHtmlContent($reportData, $template);
@@ -49,14 +49,14 @@ class PdfExportService
         $pdf->setPaper('a4', 'portrait');
 
         // Save file
-        $fullPath = storage_path('app/' . $path);
-        
+        $fullPath = storage_path('app/'.$path);
+
         // Ensure directory exists
         $directory = dirname($fullPath);
-        if (!file_exists($directory)) {
+        if (! file_exists($directory)) {
             mkdir($directory, 0755, true);
         }
-        
+
         $pdf->save($fullPath);
 
         return $fullPath;
@@ -69,7 +69,7 @@ class PdfExportService
     {
         // Check if custom template exists
         $viewPath = "financial-reporting::reports.{$template}";
-        
+
         if (View::exists($viewPath)) {
             return View::make($viewPath, ['report' => $reportData])->render();
         }
@@ -87,7 +87,7 @@ class PdfExportService
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>' . ($reportData['title'] ?? 'Report') . '</title>
+    <title>'.($reportData['title'] ?? 'Report').'</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -170,39 +170,39 @@ class PdfExportService
 
         // Header
         $html .= '<div class="header">';
-        $html .= '<h1>' . ($reportData['title'] ?? 'Report') . '</h1>';
+        $html .= '<h1>'.($reportData['title'] ?? 'Report').'</h1>';
         $html .= '</div>';
 
         // Period
         if (isset($reportData['period'])) {
             $html .= '<div class="period">';
-            $html .= 'Period: ' . ($reportData['period']['start_date'] ?? '') . ' to ' . ($reportData['period']['end_date'] ?? '');
+            $html .= 'Period: '.($reportData['period']['start_date'] ?? '').' to '.($reportData['period']['end_date'] ?? '');
             $html .= '</div>';
         }
 
         // Data table
-        if (isset($reportData['data']) && is_array($reportData['data']) && !empty($reportData['data'])) {
+        if (isset($reportData['data']) && is_array($reportData['data']) && ! empty($reportData['data'])) {
             $html .= '<table>';
-            
+
             // Headers
             $html .= '<thead><tr>';
             foreach (array_keys($reportData['data'][0]) as $header) {
-                $html .= '<th>' . ucwords(str_replace('_', ' ', $header)) . '</th>';
+                $html .= '<th>'.ucwords(str_replace('_', ' ', $header)).'</th>';
             }
             $html .= '</tr></thead>';
-            
+
             // Data rows
             $html .= '<tbody>';
             foreach ($reportData['data'] as $row) {
                 $html .= '<tr>';
                 foreach ($row as $value) {
                     $class = is_numeric($value) ? 'number' : '';
-                    $html .= '<td class="' . $class . '">' . htmlspecialchars($value) . '</td>';
+                    $html .= '<td class="'.$class.'">'.htmlspecialchars($value).'</td>';
                 }
                 $html .= '</tr>';
             }
             $html .= '</tbody>';
-            
+
             $html .= '</table>';
         }
 
@@ -210,21 +210,21 @@ class PdfExportService
         if (isset($reportData['summary']) && is_array($reportData['summary'])) {
             $html .= '<div class="summary">';
             $html .= '<h2>Summary</h2>';
-            
+
             foreach ($reportData['summary'] as $key => $value) {
                 $label = ucwords(str_replace('_', ' ', $key));
                 $html .= '<div class="summary-item">';
-                $html .= '<span class="summary-label">' . $label . ':</span>';
-                $html .= '<span>' . htmlspecialchars($value) . '</span>';
+                $html .= '<span class="summary-label">'.$label.':</span>';
+                $html .= '<span>'.htmlspecialchars($value).'</span>';
                 $html .= '</div>';
             }
-            
+
             $html .= '</div>';
         }
 
         // Footer
         $html .= '<div class="footer">';
-        $html .= 'Generated on ' . now()->format('Y-m-d H:i:s');
+        $html .= 'Generated on '.now()->format('Y-m-d H:i:s');
         $html .= '</div>';
 
         $html .= '</body></html>';
@@ -235,25 +235,25 @@ class PdfExportService
     /**
      * Export with landscape orientation
      */
-    public function exportLandscape(array $reportData, string $template = 'default', string $filename = null): string
+    public function exportLandscape(array $reportData, string $template = 'default', ?string $filename = null): string
     {
-        if (!class_exists('\Barryvdh\DomPDF\Facade\Pdf')) {
+        if (! class_exists('\Barryvdh\DomPDF\Facade\Pdf')) {
             throw new \Exception('DomPDF library is not installed.');
         }
 
         $filename = $this->exportFilename($filename, 'pdf');
-        $path = $this->tenantExportDirectory() . '/' . $filename;
+        $path = $this->tenantExportDirectory().'/'.$filename;
 
         $html = $this->generateHtmlContent($reportData, $template);
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html);
         $pdf->setPaper('a4', 'landscape');
 
-        $fullPath = storage_path('app/' . $path);
+        $fullPath = storage_path('app/'.$path);
         $directory = dirname($fullPath);
-        if (!file_exists($directory)) {
+        if (! file_exists($directory)) {
             mkdir($directory, 0755, true);
         }
-        
+
         $pdf->save($fullPath);
 
         return $fullPath;

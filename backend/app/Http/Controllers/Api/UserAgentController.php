@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 
@@ -78,7 +78,7 @@ class UserAgentController extends Controller
         $user = Auth::user();
         $meta = $user->meta ?? [];
 
-        if (!isset($meta['ump_agent_id'])) {
+        if (! isset($meta['ump_agent_id'])) {
             return response()->json([
                 'success' => false,
                 'message' => 'No agent linked',

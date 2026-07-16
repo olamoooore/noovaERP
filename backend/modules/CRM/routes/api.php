@@ -1,8 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Modules\CRM\Http\Controllers\LeadController;
 use Modules\CRM\Http\Controllers\ActivityController;
+use Modules\CRM\Http\Controllers\LeadController;
 
 /*
 |--------------------------------------------------------------------------
@@ -14,10 +14,10 @@ use Modules\CRM\Http\Controllers\ActivityController;
 Route::middleware(['auth:sanctum', 'feature:crm'])->prefix('crm')->group(function () {
     // Lead stats (dashboard)
     Route::get('/stats', [LeadController::class, 'stats']);
-    
+
     // Leads CRUD
     Route::apiResource('leads', LeadController::class);
-    
+
     // Activities for leads
     Route::get('/leads/{lead}/activities', [ActivityController::class, 'index']);
     Route::post('/leads/{lead}/activities', [ActivityController::class, 'store']);

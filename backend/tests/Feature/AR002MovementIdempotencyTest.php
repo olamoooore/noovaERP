@@ -37,7 +37,7 @@ class AR002MovementIdempotencyTest extends TestCase
 
     public function test_stock_movement_model_has_idempotency_key_in_fillable(): void
     {
-        $model = new \App\Models\StockMovement();
+        $model = new \App\Models\StockMovement;
         $this->assertContains('idempotency_key', $model->getFillable(),
             'StockMovement::$fillable must include idempotency_key.');
     }
@@ -86,13 +86,13 @@ class AR002MovementIdempotencyTest extends TestCase
         );
 
         // Locate transaction opening and idempotency guard, confirm guard is inside
-        $txPos   = strpos($source, 'DB::transaction(');
-            $keyPos  = strpos($source, '$idempotencyKey !== null');
+        $txPos = strpos($source, 'DB::transaction(');
+        $keyPos = strpos($source, '$idempotencyKey !== null');
         $guardPos = strpos($source, "StockMovement::where('idempotency_key'");
 
-        $this->assertNotFalse($txPos,   'DB::transaction must be present.');
-        $this->assertNotFalse($keyPos,  'Idempotency key null-check must be present.');
-        $this->assertNotFalse($guardPos,'Idempotency DB lookup must be present.');
+        $this->assertNotFalse($txPos, 'DB::transaction must be present.');
+        $this->assertNotFalse($keyPos, 'Idempotency key null-check must be present.');
+        $this->assertNotFalse($guardPos, 'Idempotency DB lookup must be present.');
 
         $this->assertGreaterThan($txPos, $keyPos,
             'Idempotency check must be inside the DB::transaction closure.');

@@ -9,14 +9,14 @@ use Modules\HRM\Tests\HrmTestCase;
 
 class ContractApiTest extends HrmTestCase
 {
-
     protected User $user;
+
     protected Employee $employee;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user     = User::factory()->create();
+        $this->user = User::factory()->create();
         $this->employee = Employee::factory()->create();
         $this->actingAs($this->user, 'sanctum');
     }
@@ -34,10 +34,10 @@ class ContractApiTest extends HrmTestCase
     public function test_can_create_contract(): void
     {
         $payload = [
-            'employee_id'         => $this->employee->id,
-            'employment_type'     => 'full_time',
+            'employee_id' => $this->employee->id,
+            'employment_type' => 'full_time',
             'base_monthly_salary' => 5000,
-            'start_date'          => '2026-01-01',
+            'start_date' => '2026-01-01',
         ];
 
         $response = $this->postJson('/api/v1/hrm/contracts', $payload);
@@ -59,7 +59,7 @@ class ContractApiTest extends HrmTestCase
     {
         $contract = Contract::factory()->create([
             'employee_id' => $this->employee->id,
-            'status'      => 'draft',
+            'status' => 'draft',
         ]);
 
         $response = $this->putJson("/api/v1/hrm/contracts/{$contract->id}", [
@@ -74,7 +74,7 @@ class ContractApiTest extends HrmTestCase
     {
         $contract = Contract::factory()->create([
             'employee_id' => $this->employee->id,
-            'status'      => 'draft',
+            'status' => 'draft',
         ]);
 
         // Cannot jump from draft directly to terminated
@@ -90,7 +90,7 @@ class ContractApiTest extends HrmTestCase
     {
         $contract = Contract::factory()->create([
             'employee_id' => $this->employee->id,
-            'status'      => 'terminated',
+            'status' => 'terminated',
         ]);
 
         $response = $this->putJson("/api/v1/hrm/contracts/{$contract->id}", [

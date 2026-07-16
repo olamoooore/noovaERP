@@ -31,6 +31,7 @@ class FixProductCostBasisCommand extends Command
 
         if ($ratio <= 0 || $ratio > 1) {
             $this->error('Ratio must be between 0.0 and 1.0');
+
             return 1;
         }
 
@@ -38,6 +39,7 @@ class FixProductCostBasisCommand extends Command
 
         if ($tenants->isEmpty()) {
             $this->error('No tenants found.');
+
             return 1;
         }
 
@@ -49,13 +51,14 @@ class FixProductCostBasisCommand extends Command
 
             if (! $this->schemaExists($schema)) {
                 $this->warn("Schema {$schema} does not exist. Skipping.");
+
                 continue;
             }
 
             $stats = $this->fixTenant($schema, $ratio, $minCost, $dryRun);
 
             $this->info(sprintf(
-                "Tenant: %s (%s) | Fixed: %d | Skipped (zero price): %d",
+                'Tenant: %s (%s) | Fixed: %d | Skipped (zero price): %d',
                 $tenant->name,
                 substr($tenant->id, 0, 8),
                 $stats['fixed'],
@@ -94,7 +97,7 @@ class FixProductCostBasisCommand extends Command
     private function schemaExists(string $schema): bool
     {
         $result = DB::select(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = ?) as e",
+            'SELECT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = ?) as e',
             [$schema]
         );
 

@@ -2,8 +2,8 @@
 
 namespace Modules\EventManagement\Exceptions;
 
-use Exception;
 use Carbon\Carbon;
+use Exception;
 
 class SaleNotStartedException extends Exception
 {

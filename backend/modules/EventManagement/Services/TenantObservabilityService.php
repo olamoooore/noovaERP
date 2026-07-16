@@ -2,35 +2,38 @@
 
 namespace Modules\EventManagement\Services;
 
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Queue;
 use Carbon\Carbon;
 use Exception;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 
 /**
  * TenantObservabilityService - Task 11.2
- * 
+ *
  * Comprehensive tenant-aware metrics collection, API performance monitoring,
  * queue health tracking, and automated alerting for multi-tenant observability.
- * 
+ *
  * Requirements: 27.1, 27.2, 27.4
  */
 class TenantObservabilityService
 {
     private const CACHE_PREFIX = 'observability:';
+
     private const METRICS_BATCH_SIZE = 100;
+
     private const ALERT_COOLDOWN_SECONDS = 300; // 5 minutes
+
     private const DEFAULT_RETENTION_DAYS = 90;
 
     /**
      * Collect and store tenant-aware metrics
-     * 
-     * @param string $tenantId Tenant identifier
-     * @param string $metricName Metric name
-     * @param float $value Metric value
-     * @param array $context Additional metric context
+     *
+     * @param  string  $tenantId  Tenant identifier
+     * @param  string  $metricName  Metric name
+     * @param  float  $value  Metric value
+     * @param  array  $context  Additional metric context
      * @return array Collection result
      */
     public function collectMetric(string $tenantId, string $metricName, float $value, array $context = []): array
@@ -65,7 +68,7 @@ class TenantObservabilityService
                 'alert_context' => json_encode($context['alert_context'] ?? []),
                 'aggregation_period' => $context['aggregation_period'] ?? '1m',
                 'is_aggregated' => $context['is_aggregated'] ?? false,
-                'created_at' => now()
+                'created_at' => now(),
             ]);
 
             // Process alerts if needed
@@ -80,7 +83,7 @@ class TenantObservabilityService
                 'success' => true,
                 'metric_id' => $metricId,
                 'alert_status' => $alertStatus,
-                'message' => 'Metric collected successfully'
+                'message' => 'Metric collected successfully',
             ];
 
         } catch (Exception $e) {
@@ -88,22 +91,22 @@ class TenantObservabilityService
                 'tenant_id' => $tenantId,
                 'metric_name' => $metricName,
                 'value' => $value,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to collect metric',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Log API performance metrics
-     * 
-     * @param string $tenantId Tenant identifier
-     * @param array $performanceData API performance data
+     *
+     * @param  string  $tenantId  Tenant identifier
+     * @param  array  $performanceData  API performance data
      * @return array Logging result
      */
     public function logApiPerformance(string $tenantId, array $performanceData): array
@@ -144,7 +147,7 @@ class TenantObservabilityService
                 'span_id' => $performanceData['span_id'] ?? null,
                 'request_started_at' => $performanceData['started_at'],
                 'request_completed_at' => $performanceData['completed_at'] ?? now(),
-                'created_at' => now()
+                'created_at' => now(),
             ]);
 
             // Update API performance metrics
@@ -156,29 +159,29 @@ class TenantObservabilityService
             return [
                 'success' => true,
                 'log_id' => $logId,
-                'message' => 'API performance logged successfully'
+                'message' => 'API performance logged successfully',
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to log API performance', [
                 'tenant_id' => $tenantId,
                 'performance_data' => $performanceData,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to log API performance',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Monitor queue health and job performance
-     * 
-     * @param string $tenantId Tenant identifier
-     * @param array $options Monitoring options
+     *
+     * @param  string  $tenantId  Tenant identifier
+     * @param  array  $options  Monitoring options
      * @return array Queue health data
      */
     public function monitorQueueHealth(string $tenantId, array $options = []): array
@@ -203,28 +206,28 @@ class TenantObservabilityService
                 'tenant_id' => $tenantId,
                 'queue_health' => $healthData,
                 'overall_health' => $this->calculateOverallQueueHealth($healthData),
-                'measured_at' => now()
+                'measured_at' => now(),
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to monitor queue health', [
                 'tenant_id' => $tenantId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to monitor queue health',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Create or update alert rules for tenant
-     * 
-     * @param string $tenantId Tenant identifier
-     * @param array $ruleData Alert rule configuration
+     *
+     * @param  string  $tenantId  Tenant identifier
+     * @param  array  $ruleData  Alert rule configuration
      * @return array Rule creation result
      */
     public function createAlertRule(string $tenantId, array $ruleData): array
@@ -257,7 +260,7 @@ class TenantObservabilityService
                         'alert_cooldown_seconds' => $ruleData['cooldown_seconds'] ?? self::ALERT_COOLDOWN_SECONDS,
                         'notification_channels' => json_encode($ruleData['notification_channels'] ?? []),
                         'notification_templates' => json_encode($ruleData['notification_templates'] ?? []),
-                        'updated_at' => now()
+                        'updated_at' => now(),
                     ]);
 
                 $ruleId = $existingRule->id;
@@ -280,7 +283,7 @@ class TenantObservabilityService
                     'trigger_count' => 0,
                     'is_currently_alerting' => false,
                     'created_by_staff_id' => $ruleData['created_by'] ?? null,
-                    'created_at' => now()
+                    'created_at' => now(),
                 ]);
             }
 
@@ -289,13 +292,13 @@ class TenantObservabilityService
             Log::info('Alert rule created/updated', [
                 'tenant_id' => $tenantId,
                 'rule_id' => $ruleId,
-                'rule_name' => $ruleData['rule_name']
+                'rule_name' => $ruleData['rule_name'],
             ]);
 
             return [
                 'success' => true,
                 'rule_id' => $ruleId,
-                'message' => 'Alert rule created/updated successfully'
+                'message' => 'Alert rule created/updated successfully',
             ];
 
         } catch (Exception $e) {
@@ -303,22 +306,22 @@ class TenantObservabilityService
             Log::error('Failed to create alert rule', [
                 'tenant_id' => $tenantId,
                 'rule_data' => $ruleData,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to create alert rule',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Get tenant observability dashboard data
-     * 
-     * @param string $tenantId Tenant identifier
-     * @param array $options Dashboard options
+     *
+     * @param  string  $tenantId  Tenant identifier
+     * @param  array  $options  Dashboard options
      * @return array Dashboard data
      */
     public function getTenantDashboard(string $tenantId, array $options = []): array
@@ -356,20 +359,20 @@ class TenantObservabilityService
                     'active_alerts' => $activeAlerts,
                     'resource_usage' => $resourceUsage,
                     'sla_compliance' => $slaCompliance,
-                    'last_updated' => now()
-                ]
+                    'last_updated' => now(),
+                ],
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to get tenant dashboard', [
                 'tenant_id' => $tenantId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
                 'error' => 'Failed to load dashboard',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
@@ -387,7 +390,7 @@ class TenantObservabilityService
             throw new Exception('Metric name is required');
         }
 
-        if (!is_numeric($value)) {
+        if (! is_numeric($value)) {
             throw new Exception('Metric value must be numeric');
         }
     }
@@ -406,7 +409,7 @@ class TenantObservabilityService
             'memory_usage' => 'capacity',
             'disk_usage' => 'capacity',
             'queue_lag' => 'performance',
-            'job_failure_rate' => 'errors'
+            'job_failure_rate' => 'errors',
         ];
 
         foreach ($categoryMap as $pattern => $category) {
@@ -423,8 +426,8 @@ class TenantObservabilityService
      */
     private function getMetricThresholds(string $tenantId, string $metricName): array
     {
-        $cacheKey = self::CACHE_PREFIX . "thresholds:{$tenantId}:{$metricName}";
-        
+        $cacheKey = self::CACHE_PREFIX."thresholds:{$tenantId}:{$metricName}";
+
         return Cache::remember($cacheKey, 300, function () use ($tenantId, $metricName) {
             $rule = DB::table('tenant_alert_rules')
                 ->where('tenant_id', $tenantId)
@@ -432,14 +435,15 @@ class TenantObservabilityService
                 ->where('is_enabled', true)
                 ->first();
 
-            if (!$rule) {
+            if (! $rule) {
                 return $this->getDefaultThresholds($metricName);
             }
 
             $conditions = json_decode($rule->rule_conditions, true);
+
             return [
                 'warning' => $conditions['warning_threshold'] ?? null,
-                'critical' => $conditions['critical_threshold'] ?? null
+                'critical' => $conditions['critical_threshold'] ?? null,
             ];
         });
     }
@@ -455,7 +459,7 @@ class TenantObservabilityService
             'cpu_usage_percent' => ['warning' => 80, 'critical' => 95],
             'memory_usage_percent' => ['warning' => 85, 'critical' => 95],
             'queue_lag_seconds' => ['warning' => 60, 'critical' => 300],
-            'availability_percent' => ['warning' => 99, 'critical' => 95]
+            'availability_percent' => ['warning' => 99, 'critical' => 95],
         ];
 
         return $defaults[$metricName] ?? ['warning' => null, 'critical' => null];
@@ -488,19 +492,19 @@ class TenantObservabilityService
             ->where('is_enabled', true)
             ->first();
 
-        if (!$rule) {
+        if (! $rule) {
             return;
         }
 
         // Check cooldown period
-        if ($rule->last_triggered_at && 
+        if ($rule->last_triggered_at &&
             Carbon::parse($rule->last_triggered_at)->addSeconds($rule->alert_cooldown_seconds)->isFuture()) {
             return;
         }
 
         // Create incident
-        $incidentId = 'INC-' . strtoupper(uniqid());
-        
+        $incidentId = 'INC-'.strtoupper(uniqid());
+
         DB::table('alert_incidents')->insert([
             'incident_id' => $incidentId,
             'tenant_id' => $tenantId,
@@ -514,10 +518,10 @@ class TenantObservabilityService
                 'metric_name' => $metricName,
                 'metric_value' => $value,
                 'threshold_type' => $alertStatus,
-                'context' => $context
+                'context' => $context,
             ]),
             'escalation_level' => 0,
-            'created_at' => now()
+            'created_at' => now(),
         ]);
 
         // Update rule status
@@ -526,7 +530,7 @@ class TenantObservabilityService
             ->update([
                 'last_triggered_at' => now(),
                 'trigger_count' => $rule->trigger_count + 1,
-                'is_currently_alerting' => true
+                'is_currently_alerting' => true,
             ]);
 
         Log::warning('Alert triggered', [
@@ -534,7 +538,7 @@ class TenantObservabilityService
             'tenant_id' => $tenantId,
             'metric_name' => $metricName,
             'value' => $value,
-            'alert_status' => $alertStatus
+            'alert_status' => $alertStatus,
         ]);
     }
 
@@ -543,12 +547,12 @@ class TenantObservabilityService
      */
     private function updateMetricCache(string $tenantId, string $metricName, float $value, array $context): void
     {
-        $cacheKey = self::CACHE_PREFIX . "metric:{$tenantId}:{$metricName}";
-        
+        $cacheKey = self::CACHE_PREFIX."metric:{$tenantId}:{$metricName}";
+
         Cache::put($cacheKey, [
             'value' => $value,
             'timestamp' => now(),
-            'context' => $context
+            'context' => $context,
         ], 300);
     }
 
@@ -558,9 +562,9 @@ class TenantObservabilityService
     private function validateApiPerformanceData(array $data): void
     {
         $required = ['request_id', 'endpoint', 'method', 'status', 'response_time', 'started_at'];
-        
+
         foreach ($required as $field) {
-            if (!isset($data[$field])) {
+            if (! isset($data[$field])) {
                 throw new Exception("Required field {$field} is missing");
             }
         }
@@ -587,8 +591,8 @@ class TenantObservabilityService
                 'application' => $totalTime > 0 ? round(($applicationTime / $totalTime) * 100, 2) : 0,
                 'database' => $totalTime > 0 ? round(($dbTime / $totalTime) * 100, 2) : 0,
                 'cache' => $totalTime > 0 ? round(($cacheTime / $totalTime) * 100, 2) : 0,
-                'external_api' => $totalTime > 0 ? round(($externalTime / $totalTime) * 100, 2) : 0
-            ]
+                'external_api' => $totalTime > 0 ? round(($externalTime / $totalTime) * 100, 2) : 0,
+            ],
         ];
     }
 
@@ -604,14 +608,14 @@ class TenantObservabilityService
         // Update average response time
         $this->collectMetric($tenantId, 'api_response_time_ms', $responseTime, [
             'tags' => ['endpoint' => $endpoint],
-            'source' => 'api_monitor'
+            'source' => 'api_monitor',
         ]);
 
         // Update error rate if error status
         if ($status >= 400) {
             $this->collectMetric($tenantId, 'api_error_rate', 1, [
                 'tags' => ['endpoint' => $endpoint, 'status' => $status],
-                'source' => 'api_monitor'
+                'source' => 'api_monitor',
             ]);
         }
     }
@@ -627,14 +631,14 @@ class TenantObservabilityService
         // Check response time thresholds
         $this->collectMetric($tenantId, 'api_response_time_ms', $responseTime, [
             'tags' => ['endpoint' => $performanceData['endpoint']],
-            'source' => 'api_monitor'
+            'source' => 'api_monitor',
         ]);
 
         // Check error rate for 5xx errors
         if ($status >= 500) {
             $this->collectMetric($tenantId, 'api_server_error_rate', 1, [
                 'tags' => ['endpoint' => $performanceData['endpoint']],
-                'source' => 'api_monitor'
+                'source' => 'api_monitor',
             ]);
         }
     }
@@ -648,7 +652,7 @@ class TenantObservabilityService
             "tenant_{$tenantId}_default",
             "tenant_{$tenantId}_notifications",
             "tenant_{$tenantId}_analytics",
-            "tenant_{$tenantId}_exports"
+            "tenant_{$tenantId}_exports",
         ];
     }
 
@@ -660,7 +664,7 @@ class TenantObservabilityService
         try {
             // Get queue size and job counts
             $pendingJobs = Queue::size($queueName);
-            
+
             // Get recent job performance from database
             $recentJobs = DB::table('jobs')
                 ->where('queue', $queueName)
@@ -676,7 +680,7 @@ class TenantObservabilityService
             $totalJobs = $recentJobs->count();
             $avgProcessingTime = $totalJobs > 0 ? $recentJobs->avg('attempts') * 1000 : 0; // Approximate
             $errorRate = $totalJobs > 0 ? ($failedJobs / ($totalJobs + $failedJobs)) * 100 : 0;
-            
+
             // Calculate queue lag
             $oldestJob = $recentJobs->sortBy('created_at')->first();
             $queueLag = $oldestJob ? now()->diffInSeconds($oldestJob->created_at) : 0;
@@ -689,13 +693,13 @@ class TenantObservabilityService
                 'avg_processing_time_ms' => $avgProcessingTime,
                 'queue_lag_seconds' => $queueLag,
                 'error_rate_percent' => $errorRate,
-                'throughput_per_minute' => $totalJobs > 0 ? $totalJobs / 60 : 0
+                'throughput_per_minute' => $totalJobs > 0 ? $totalJobs / 60 : 0,
             ];
 
         } catch (Exception $e) {
             Log::error('Failed to collect queue metrics', [
                 'queue_name' => $queueName,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
@@ -706,7 +710,7 @@ class TenantObservabilityService
                 'avg_processing_time_ms' => 0,
                 'queue_lag_seconds' => 0,
                 'error_rate_percent' => 0,
-                'throughput_per_minute' => 0
+                'throughput_per_minute' => 0,
             ];
         }
     }
@@ -728,7 +732,7 @@ class TenantObservabilityService
             'error_rate_percent' => $healthData['error_rate_percent'],
             'throughput_per_minute' => $healthData['throughput_per_minute'],
             'measured_at' => now(),
-            'created_at' => now()
+            'created_at' => now(),
         ]);
     }
 
@@ -741,7 +745,7 @@ class TenantObservabilityService
         if ($healthData['queue_lag_seconds'] > 0) {
             $this->collectMetric($tenantId, 'queue_lag_seconds', $healthData['queue_lag_seconds'], [
                 'tags' => ['queue' => $queueName],
-                'source' => 'queue_monitor'
+                'source' => 'queue_monitor',
             ]);
         }
 
@@ -749,7 +753,7 @@ class TenantObservabilityService
         if ($healthData['error_rate_percent'] > 0) {
             $this->collectMetric($tenantId, 'queue_error_rate_percent', $healthData['error_rate_percent'], [
                 'tags' => ['queue' => $queueName],
-                'source' => 'queue_monitor'
+                'source' => 'queue_monitor',
             ]);
         }
 
@@ -757,7 +761,7 @@ class TenantObservabilityService
         if ($healthData['pending_jobs'] > 100) {
             $this->collectMetric($tenantId, 'queue_backlog_count', $healthData['pending_jobs'], [
                 'tags' => ['queue' => $queueName],
-                'source' => 'queue_monitor'
+                'source' => 'queue_monitor',
             ]);
         }
     }
@@ -786,10 +790,18 @@ class TenantObservabilityService
 
         // Calculate health score (0-100)
         $healthScore = 100;
-        if ($maxLag > 300) $healthScore -= 30; // High lag penalty
-        if ($avgErrorRate > 5) $healthScore -= 20; // High error rate penalty
-        if ($totalPending > 1000) $healthScore -= 25; // High backlog penalty
-        if ($totalFailed > 50) $healthScore -= 25; // High failure count penalty
+        if ($maxLag > 300) {
+            $healthScore -= 30;
+        } // High lag penalty
+        if ($avgErrorRate > 5) {
+            $healthScore -= 20;
+        } // High error rate penalty
+        if ($totalPending > 1000) {
+            $healthScore -= 25;
+        } // High backlog penalty
+        if ($totalFailed > 50) {
+            $healthScore -= 25;
+        } // High failure count penalty
 
         return [
             'health_score' => max(0, $healthScore),
@@ -798,7 +810,7 @@ class TenantObservabilityService
             'total_completed' => $totalCompleted,
             'max_queue_lag' => $maxLag,
             'avg_error_rate' => $avgErrorRate,
-            'status' => $healthScore >= 80 ? 'healthy' : ($healthScore >= 60 ? 'warning' : 'critical')
+            'status' => $healthScore >= 80 ? 'healthy' : ($healthScore >= 60 ? 'warning' : 'critical'),
         ];
     }
 
@@ -808,20 +820,20 @@ class TenantObservabilityService
     private function validateAlertRuleData(array $ruleData): void
     {
         $required = ['rule_name', 'rule_type', 'metric_name', 'metric_category', 'conditions', 'severity_level'];
-        
+
         foreach ($required as $field) {
-            if (!isset($ruleData[$field])) {
+            if (! isset($ruleData[$field])) {
                 throw new Exception("Required field {$field} is missing");
             }
         }
 
         $validSeverities = ['info', 'warning', 'critical'];
-        if (!in_array($ruleData['severity_level'], $validSeverities)) {
+        if (! in_array($ruleData['severity_level'], $validSeverities)) {
             throw new Exception('Invalid severity level');
         }
 
         $validRuleTypes = ['threshold', 'anomaly', 'trend', 'composite'];
-        if (!in_array($ruleData['rule_type'], $validRuleTypes)) {
+        if (! in_array($ruleData['rule_type'], $validRuleTypes)) {
             throw new Exception('Invalid rule type');
         }
     }
@@ -831,7 +843,7 @@ class TenantObservabilityService
      */
     private function calculateStartTime(string $timeRange): Carbon
     {
-        return match($timeRange) {
+        return match ($timeRange) {
             '15m' => now()->subMinutes(15),
             '1h' => now()->subHour(),
             '6h' => now()->subHours(6),
@@ -855,7 +867,7 @@ class TenantObservabilityService
                 'api_error_rate_percent',
                 'queue_lag_seconds',
                 'cpu_usage_percent',
-                'memory_usage_percent'
+                'memory_usage_percent',
             ])
             ->selectRaw('
                 metric_name,
@@ -948,7 +960,7 @@ class TenantObservabilityService
      */
     private function getSlaCompliance(string $tenantId, string $timeRange): array
     {
-        $period = match($timeRange) {
+        $period = match ($timeRange) {
             '24h' => 'daily',
             '7d' => 'weekly',
             '30d' => 'monthly',

@@ -26,15 +26,15 @@ class ChecklistTemplateController extends Controller
     public function store(Request $request): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         $validated = $request->validate([
-            'name'             => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255'],
             'task_definitions' => ['required', 'array'],
-            'task_definitions.*.title'       => ['required', 'string'],
-            'task_definitions.*.priority'    => ['nullable', 'string', 'in:low,medium,high,critical'],
+            'task_definitions.*.title' => ['required', 'string'],
+            'task_definitions.*.priority' => ['nullable', 'string', 'in:low,medium,high,critical'],
             'task_definitions.*.is_critical' => ['nullable', 'boolean'],
-            'metadata'         => ['nullable', 'array'],
+            'metadata' => ['nullable', 'array'],
         ]);
 
         $template = $this->checklistService->createTemplate($tenantId, $userId, $validated);
@@ -48,7 +48,7 @@ class ChecklistTemplateController extends Controller
         $tenantId = tenant()->getTenantKey();
         $template = $this->checklistService->getTemplate($tenantId, $templateId);
 
-        if (!$template) {
+        if (! $template) {
             return response()->json(['message' => 'Template not found.'], 404);
         }
 
@@ -61,15 +61,15 @@ class ChecklistTemplateController extends Controller
         $tenantId = tenant()->getTenantKey();
         $template = $this->checklistService->getTemplate($tenantId, $templateId);
 
-        if (!$template) {
+        if (! $template) {
             return response()->json(['message' => 'Template not found.'], 404);
         }
 
         $validated = $request->validate([
-            'name'             => ['sometimes', 'string', 'max:255'],
-            'status'           => ['sometimes', 'string', 'in:draft,active,archived'],
+            'name' => ['sometimes', 'string', 'max:255'],
+            'status' => ['sometimes', 'string', 'in:draft,active,archived'],
             'task_definitions' => ['sometimes', 'array'],
-            'metadata'         => ['nullable', 'array'],
+            'metadata' => ['nullable', 'array'],
         ]);
 
         $template->update($validated);
@@ -83,7 +83,7 @@ class ChecklistTemplateController extends Controller
         $tenantId = tenant()->getTenantKey();
         $template = $this->checklistService->getTemplate($tenantId, $templateId);
 
-        if (!$template) {
+        if (! $template) {
             return response()->json(['message' => 'Template not found.'], 404);
         }
 
@@ -98,7 +98,7 @@ class ChecklistTemplateController extends Controller
         $tenantId = tenant()->getTenantKey();
         $template = $this->checklistService->getTemplate($tenantId, $templateId);
 
-        if (!$template) {
+        if (! $template) {
             return response()->json(['message' => 'Template not found.'], 404);
         }
 

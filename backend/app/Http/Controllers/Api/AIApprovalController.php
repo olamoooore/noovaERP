@@ -31,20 +31,20 @@ class AIApprovalController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'action'             => ['required', 'string', 'max:120'],
-            'module'             => ['nullable', 'string', 'max:120'],
-            'entity_type'        => ['nullable', 'string', 'max:120'],
-            'entity_id'          => ['nullable', 'string', 'max:120'],
-            'reason'             => ['nullable', 'string', 'max:1000'],
+            'action' => ['required', 'string', 'max:120'],
+            'module' => ['nullable', 'string', 'max:120'],
+            'entity_type' => ['nullable', 'string', 'max:120'],
+            'entity_id' => ['nullable', 'string', 'max:120'],
+            'reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $result = $this->approvals->requestApproval(
             $validated['action'],
             $request->user(),
             [
-                'module'      => $validated['module'] ?? null,
+                'module' => $validated['module'] ?? null,
                 'entity_type' => $validated['entity_type'] ?? null,
-                'entity_id'   => $validated['entity_id'] ?? null,
+                'entity_id' => $validated['entity_id'] ?? null,
             ],
             $validated['reason'] ?? null,
         );
@@ -63,7 +63,7 @@ class AIApprovalController extends Controller
     public function show(int $id): JsonResponse
     {
         $status = $this->approvals->checkApprovalStatus($id);
-        if (!$status['exists']) {
+        if (! $status['exists']) {
             return $this->notFound('AI approval request not found.');
         }
 

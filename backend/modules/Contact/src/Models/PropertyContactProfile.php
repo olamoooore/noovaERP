@@ -10,8 +10,11 @@ class PropertyContactProfile extends Model
     use HasFactory;
 
     protected $table = 'property_contact_profiles';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
 
     protected $fillable = [

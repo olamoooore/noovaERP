@@ -3,22 +3,22 @@
 namespace Modules\AI\Functions;
 
 use Illuminate\Support\Facades\Log;
-use Modules\AI\Services\TicketService;
 use Modules\AI\Models\AIConversation;
+use Modules\AI\Services\TicketService;
 
 /**
  * Ticket Functions
- * 
+ *
  * AI-callable functions for ticket creation
  */
 class TicketFunctions
 {
     /**
      * Create a support ticket
-     * 
-     * @param array $args Arguments with subject, description, priority, category
-     * @param int $customerId Customer ID from context
-     * @param int $conversationId Conversation ID from context
+     *
+     * @param  array  $args  Arguments with subject, description, priority, category
+     * @param  int  $customerId  Customer ID from context
+     * @param  int  $conversationId  Conversation ID from context
      * @return array Ticket creation result
      */
     public static function create(array $args, int $customerId, int $conversationId): array
@@ -31,7 +31,7 @@ class TicketFunctions
 
             // Get conversation for context
             $conversation = AIConversation::with('messages')->find($conversationId);
-            
+
             // Prepare conversation history (last 10 messages)
             $conversationHistory = [];
             if ($conversation && $conversation->messages) {
@@ -40,7 +40,7 @@ class TicketFunctions
                     ->limit(10)
                     ->get()
                     ->reverse();
-                
+
                 foreach ($recentMessages as $message) {
                     $conversationHistory[] = [
                         'role' => $message->role,
@@ -68,7 +68,7 @@ class TicketFunctions
 
             // Create ticket via TicketService
             $ticketService = app(TicketService::class);
-            
+
             $ticketData = $ticketService->prepareTicketData(
                 $customerId,
                 $conversationId,
@@ -113,19 +113,14 @@ class TicketFunctions
 
             return [
                 'success' => false,
-                'error' => 'Failed to create ticket: ' . $e->getMessage(),
+                'error' => 'Failed to create ticket: '.$e->getMessage(),
             ];
         }
     }
 
     /**
      * Generate AI summary for admin
-     * 
-     * @param AIConversation $conversation
-     * @param array $conversationHistory
-     * @param string $subject
-     * @param string $description
-     * @param string $category
+     *
      * @return array AI-generated summary
      */
     protected static function generateAISummary(
@@ -137,20 +132,20 @@ class TicketFunctions
     ): array {
         try {
             $customer = $conversation->customer;
-            
+
             // Analyze conversation to extract key information
-            $userMessages = array_filter($conversationHistory, fn($msg) => $msg['role'] === 'user');
-            $assistantMessages = array_filter($conversationHistory, fn($msg) => $msg['role'] === 'assistant');
-            
+            $userMessages = array_filter($conversationHistory, fn ($msg) => $msg['role'] === 'user');
+            $assistantMessages = array_filter($conversationHistory, fn ($msg) => $msg['role'] === 'assistant');
+
             // Extract attempted actions from conversation
             $attemptedActions = self::extractAttemptedActions($conversationHistory);
-            
+
             // Determine why AI couldn't help
             $failureReason = self::determineFailureReason($conversationHistory, $description);
-            
+
             // Generate recommendation
             $recommendation = self::generateRecommendation($category, $failureReason, $description);
-            
+
             // Build structured summary
             return [
                 'customer_info' => [
@@ -183,12 +178,12 @@ class TicketFunctions
                     $recommendation
                 ),
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Failed to generate AI summary', [
                 'error' => $e->getMessage(),
             ]);
-            
+
             // Return basic summary if AI generation fails
             return [
                 'customer_info' => [
@@ -210,11 +205,11 @@ class TicketFunctions
     protected static function extractAttemptedActions(array $conversationHistory): array
     {
         $actions = [];
-        
+
         foreach ($conversationHistory as $message) {
             if ($message['role'] === 'assistant') {
                 $content = strtolower($message['content']);
-                
+
                 // Detect function calls or attempts
                 if (str_contains($content, 'check') || str_contains($content, 'search') || str_contains($content, 'find')) {
                     if (str_contains($content, 'order')) {
@@ -227,13 +222,13 @@ class TicketFunctions
                         $actions[] = 'Looked up invoice details';
                     }
                 }
-                
+
                 if (str_contains($content, 'couldn\'t find') || str_contains($content, 'not found') || str_contains($content, 'no results')) {
                     $actions[] = 'Search returned no results';
                 }
             }
         }
-        
+
         return array_unique($actions);
     }
 
@@ -243,24 +238,24 @@ class TicketFunctions
     protected static function determineFailureReason(array $conversationHistory, string $description): string
     {
         $description = strtolower($description);
-        
+
         // Check for common failure patterns
         if (str_contains($description, 'not found') || str_contains($description, 'cannot find')) {
             return 'Data not found in system';
         }
-        
+
         if (str_contains($description, 'complex') || str_contains($description, 'multiple')) {
             return 'Issue too complex for AI';
         }
-        
+
         if (str_contains($description, 'human') || str_contains($description, 'agent')) {
             return 'Customer requested human support';
         }
-        
+
         if (str_contains($description, 'error') || str_contains($description, 'failed')) {
             return 'System error or data issue';
         }
-        
+
         return 'AI unable to resolve issue';
     }
 
@@ -290,9 +285,9 @@ class TicketFunctions
                 'default' => 'Review customer account settings and permissions.',
             ],
         ];
-        
+
         $categoryRecs = $recommendations[$category] ?? ['default' => 'Review issue and contact customer.'];
-        
+
         return $categoryRecs[$failureReason] ?? $categoryRecs['default'];
     }
 
@@ -304,11 +299,11 @@ class TicketFunctions
         if (str_contains($failureReason, 'error') || str_contains($failureReason, 'System')) {
             return 'high';
         }
-        
+
         if ($category === 'invoices' || $category === 'orders') {
             return 'medium';
         }
-        
+
         return 'medium';
     }
 
@@ -326,27 +321,27 @@ class TicketFunctions
     ): string {
         $summary = "📋 TICKET SUMMARY FOR ADMIN\n\n";
         $summary .= "Customer: {$customer->name} (ID: {$customer->id})\n";
-        $summary .= "Email: " . ($customer->email ?? 'N/A') . "\n";
+        $summary .= 'Email: '.($customer->email ?? 'N/A')."\n";
         $summary .= "Issue: {$subject}\n";
-        $summary .= "Category: " . ucfirst($category) . "\n\n";
-        
+        $summary .= 'Category: '.ucfirst($category)."\n\n";
+
         $summary .= "Problem Description:\n";
-        $summary .= $description . "\n\n";
-        
-        if (!empty($attemptedActions)) {
+        $summary .= $description."\n\n";
+
+        if (! empty($attemptedActions)) {
             $summary .= "AI Actions Taken:\n";
             foreach ($attemptedActions as $action) {
                 $summary .= "- {$action}\n";
             }
             $summary .= "\n";
         }
-        
+
         $summary .= "Why AI Couldn't Help:\n";
-        $summary .= $failureReason . "\n\n";
-        
+        $summary .= $failureReason."\n\n";
+
         $summary .= "Recommended Action:\n";
-        $summary .= $recommendation . "\n";
-        
+        $summary .= $recommendation."\n";
+
         return $summary;
     }
 }

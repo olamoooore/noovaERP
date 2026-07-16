@@ -59,8 +59,7 @@ class MFRSReportExporter implements StatutoryReportExporterContract
         \DateTime $startDate,
         \DateTime $endDate,
         array $options = []
-    ): array
-    {
+    ): array {
         return [
             'type' => 'income_statement',
             'period' => [
@@ -137,7 +136,7 @@ class MFRSReportExporter implements StatutoryReportExporterContract
         $xml = '<?xml version="1.0" encoding="UTF-8"?>';
         $xml .= '<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance">';
         $xml .= '<link:schemaRef xmlns:link="http://www.w3.org/1999/xlink" xlink:href="my-mfrs-2024.xsd"/>';
-        $xml .= '<!-- Reporting date: ' . $asOfDate->format('Y-m-d') . ' -->';
+        $xml .= '<!-- Reporting date: '.$asOfDate->format('Y-m-d').' -->';
         $xml .= '<!-- MFRS GL data would be added here -->';
         $xml .= '</xbrli:xbrl>';
 
@@ -151,12 +150,12 @@ class MFRSReportExporter implements StatutoryReportExporterContract
     {
         $errors = [];
 
-        if (!isset($report['type'])) {
+        if (! isset($report['type'])) {
             $errors[] = 'Report type is required';
         }
 
         if ($report['type'] === 'trial_balance') {
-            if (!($report['totals']['balanced'] ?? false)) {
+            if (! ($report['totals']['balanced'] ?? false)) {
                 $errors[] = 'Trial balance does not balance';
             }
         }

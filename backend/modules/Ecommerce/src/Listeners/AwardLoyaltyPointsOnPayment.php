@@ -2,9 +2,9 @@
 
 namespace Modules\Ecommerce\Listeners;
 
-use Modules\PaymentGateway\Events\PaymentSuccessful;
-use Modules\Loyalty\Services\PointsEarningService;
 use Modules\Ecommerce\Models\WebOrder;
+use Modules\Loyalty\Services\PointsEarningService;
+use Modules\PaymentGateway\Events\PaymentSuccessful;
 
 class AwardLoyaltyPointsOnPayment
 {
@@ -22,8 +22,8 @@ class AwardLoyaltyPointsOnPayment
         }
 
         $order = WebOrder::find($metadata['order_id'] ?? null);
-        
-        if (!$order || !$order->customer_id) {
+
+        if (! $order || ! $order->customer_id) {
             return; // Skip guest orders
         }
 

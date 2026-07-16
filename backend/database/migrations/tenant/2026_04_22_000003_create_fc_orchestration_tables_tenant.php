@@ -12,7 +12,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('fco_close_cycles')) {
+        if (! Schema::hasTable('fco_close_cycles')) {
             Schema::create('fco_close_cycles', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -30,7 +30,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fco_checklist_templates')) {
+        if (! Schema::hasTable('fco_checklist_templates')) {
             Schema::create('fco_checklist_templates', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -45,7 +45,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fco_tasks')) {
+        if (! Schema::hasTable('fco_tasks')) {
             Schema::create('fco_tasks', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -66,7 +66,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fco_task_dependencies')) {
+        if (! Schema::hasTable('fco_task_dependencies')) {
             Schema::create('fco_task_dependencies', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -81,7 +81,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fco_task_assignments')) {
+        if (! Schema::hasTable('fco_task_assignments')) {
             Schema::create('fco_task_assignments', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -96,7 +96,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fco_escalation_events')) {
+        if (! Schema::hasTable('fco_escalation_events')) {
             Schema::create('fco_escalation_events', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -115,7 +115,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fco_task_comments')) {
+        if (! Schema::hasTable('fco_task_comments')) {
             Schema::create('fco_task_comments', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -129,7 +129,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fco_task_evidence_links')) {
+        if (! Schema::hasTable('fco_task_evidence_links')) {
             Schema::create('fco_task_evidence_links', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -142,7 +142,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fco_completion_snapshots')) {
+        if (! Schema::hasTable('fco_completion_snapshots')) {
             Schema::create('fco_completion_snapshots', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');
@@ -161,7 +161,7 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('fco_audit_log')) {
+        if (! Schema::hasTable('fco_audit_log')) {
             Schema::create('fco_audit_log', function (Blueprint $table) {
                 $table->uuid('id')->primary();
                 $table->string('tenant_id');

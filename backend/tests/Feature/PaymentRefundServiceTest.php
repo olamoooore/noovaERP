@@ -51,7 +51,7 @@ class PaymentRefundServiceTest extends TestCase
             'customer_id' => $customer->id,
             'amount' => 1000,
             'status' => 'completed',
-            'transaction_id' => 'TXN-' . uniqid(),
+            'transaction_id' => 'TXN-'.uniqid(),
             'refunded_amount' => 0,
         ]);
 
@@ -99,7 +99,7 @@ class PaymentRefundServiceTest extends TestCase
             'customer_id' => $customer->id,
             'amount' => 1000,
             'status' => 'completed',
-            'transaction_id' => 'TXN-' . uniqid(),
+            'transaction_id' => 'TXN-'.uniqid(),
             'refunded_amount' => 600, // Already refunded 600
         ]);
 
@@ -133,7 +133,7 @@ class PaymentRefundServiceTest extends TestCase
             'customer_id' => $customer->id,
             'amount' => 1000,
             'status' => 'pending', // Not completed
-            'transaction_id' => 'TXN-' . uniqid(),
+            'transaction_id' => 'TXN-'.uniqid(),
         ]);
 
         $this->expectException(\InvalidArgumentException::class);
@@ -175,7 +175,7 @@ class PaymentRefundServiceTest extends TestCase
             'customer_id' => $customer->id,
             'amount' => 1000,
             'status' => 'completed',
-            'transaction_id' => 'TXN-' . uniqid(),
+            'transaction_id' => 'TXN-'.uniqid(),
             'refunded_amount' => 0,
         ]);
 
@@ -191,7 +191,7 @@ class PaymentRefundServiceTest extends TestCase
     }
 
     /** @test */
-    public function canRefund_returns_true_for_valid_refund(): void
+    public function can_refund_returns_true_for_valid_refund(): void
     {
         $customer = Customer::factory()->create();
         $invoice = Invoice::factory()->create([
@@ -209,7 +209,7 @@ class PaymentRefundServiceTest extends TestCase
             'customer_id' => $customer->id,
             'amount' => 1000,
             'status' => 'completed',
-            'transaction_id' => 'TXN-' . uniqid(),
+            'transaction_id' => 'TXN-'.uniqid(),
             'refunded_amount' => 0,
         ]);
 
@@ -219,7 +219,7 @@ class PaymentRefundServiceTest extends TestCase
     }
 
     /** @test */
-    public function getAvailableRefundAmount_returns_correct_value(): void
+    public function get_available_refund_amount_returns_correct_value(): void
     {
         $customer = Customer::factory()->create();
         $invoice = Invoice::factory()->create([
@@ -237,7 +237,7 @@ class PaymentRefundServiceTest extends TestCase
             'customer_id' => $customer->id,
             'amount' => 1000,
             'status' => 'completed',
-            'transaction_id' => 'TXN-' . uniqid(),
+            'transaction_id' => 'TXN-'.uniqid(),
             'refunded_amount' => 300,
         ]);
 
@@ -272,7 +272,7 @@ class PaymentRefundServiceTest extends TestCase
             'customer_id' => $customer->id,
             'amount' => 1000,
             'status' => 'completed',
-            'transaction_id' => 'TXN-' . uniqid(),
+            'transaction_id' => 'TXN-'.uniqid(),
             'refunded_amount' => 0,
         ]);
 

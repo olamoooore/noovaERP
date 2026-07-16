@@ -6,7 +6,6 @@ use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\CustomerCreditNote;
-use App\Models\CustomerCreditNoteLine;
 use App\Models\Invoice;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +27,7 @@ class CustomerCreditNoteService
     public function createCreditNote(array $data): CustomerCreditNote
     {
         DB::beginTransaction();
-        
+
         try {
             $lines = $data['lines'] ?? [];
             unset($data['lines']);
@@ -72,9 +71,9 @@ class CustomerCreditNoteService
             }
 
             DB::commit();
-            
+
             return $creditNote->load(['customer', 'invoice', 'lines.product']);
-            
+
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -99,19 +98,19 @@ class CustomerCreditNoteService
             ->where('status', 'posted')
             ->where('id', '!=', $creditNote->id)
             ->sum('total_amount');
-        
+
         $totalCredited = $existingCreditNotes + $creditNote->total_amount;
-        
+
         if ($totalCredited > $invoice->total) {
             throw new \Exception(
-                "Credit note amount exceeds invoice amount. " .
-                "Invoice: {$invoice->total}, Already credited: {$existingCreditNotes}, " .
+                'Credit note amount exceeds invoice amount. '.
+                "Invoice: {$invoice->total}, Already credited: {$existingCreditNotes}, ".
                 "This credit note: {$creditNote->total_amount}"
             );
         }
 
         DB::beginTransaction();
-        
+
         try {
             $lines = [];
 
@@ -154,10 +153,10 @@ class CustomerCreditNoteService
                 userId: TenantUserHelper::requireTenantUserId($creditNote->created_by),
             ));
 
-            if (!$result->success) {
+            if (! $result->success) {
                 throw new \Exception($result->error);
             }
-            
+
             $creditNote->update([
                 'status' => 'posted',
                 'posted_at' => now(),
@@ -169,9 +168,9 @@ class CustomerCreditNoteService
             app(InvoiceService::class)->applyRefundToInvoice($invoice, (float) $creditNote->total_amount);
 
             DB::commit();
-            
+
             return $creditNote->fresh(['journalEntry', 'lines', 'customer', 'invoice']);
-            
+
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -184,13 +183,13 @@ class CustomerCreditNoteService
     public function validateCreditNote(int $invoiceId, float $amount): array
     {
         $invoice = \App\Models\Invoice::findOrFail($invoiceId);
-        
+
         $existingCreditNotes = CustomerCreditNote::where('invoice_id', $invoiceId)
             ->where('status', 'posted')
             ->sum('total_amount');
-        
+
         $remainingAmount = $invoice->total - $existingCreditNotes;
-        
+
         return [
             'valid' => $amount <= $remainingAmount,
             'invoice_amount' => $invoice->total,

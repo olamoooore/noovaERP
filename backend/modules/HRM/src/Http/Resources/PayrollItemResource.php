@@ -10,10 +10,10 @@ class PayrollItemResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id'          => $this->id,
-            'type'        => $this->type,
-            'category'    => $this->category,
-            'amount'      => $this->amount,
+            'id' => $this->id,
+            'type' => $this->type,
+            'category' => $this->category,
+            'amount' => $this->amount,
             'description' => $this->description,
         ];
     }

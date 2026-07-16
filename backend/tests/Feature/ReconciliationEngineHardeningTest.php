@@ -4,20 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\AccountMapping;
 use App\Models\ChartOfAccount;
-use App\Models\Customer;
-use App\Models\JournalEntry;
-use App\Models\JournalEntryLine;
-use App\Models\Product;
 use App\Models\ReconciliationControlResult;
 use App\Models\ReconciliationException;
 use App\Models\User;
-use App\Models\Vendor;
-use App\Models\Warehouse;
 use App\Services\Reconciliation\APGLReconciliationService;
 use App\Services\Reconciliation\ARGLReconciliationService;
 use App\Services\Reconciliation\InventoryGLReconciliationService;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class ReconciliationEngineHardeningTest extends TestCase
@@ -75,7 +68,7 @@ class ReconciliationEngineHardeningTest extends TestCase
     {
         $service = app(ARGLReconciliationService::class);
         $this->assertNotNull($service);
-        
+
         // Test the service has the expected methods
         $this->assertTrue(method_exists($service, 'reconcile'));
         $this->assertTrue(method_exists($service, 'getHistory'));
@@ -121,7 +114,7 @@ class ReconciliationEngineHardeningTest extends TestCase
     {
         $service = app(InventoryGLReconciliationService::class);
         $this->assertNotNull($service);
-        
+
         // Test the service has the expected methods
         $this->assertTrue(method_exists($service, 'reconcile'));
         $this->assertTrue(method_exists($service, 'getHistory'));
@@ -167,7 +160,7 @@ class ReconciliationEngineHardeningTest extends TestCase
     {
         $service = app(APGLReconciliationService::class);
         $this->assertNotNull($service);
-        
+
         $this->assertTrue(method_exists($service, 'reconcile'));
         $this->assertTrue(method_exists($service, 'generateReport'));
     }

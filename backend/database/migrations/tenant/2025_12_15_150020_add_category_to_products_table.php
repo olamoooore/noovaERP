@@ -8,13 +8,13 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasColumn('products', 'category_id')) {
+        if (! Schema::hasColumn('products', 'category_id')) {
             Schema::table('products', function (Blueprint $table) {
                 $table->foreignId('category_id')->nullable()->after('description')->constrained('product_categories')->onDelete('set null');
             });
         }
 
-        if (!Schema::hasColumn('products', 'category_id')) {
+        if (! Schema::hasColumn('products', 'category_id')) {
             return;
         }
 

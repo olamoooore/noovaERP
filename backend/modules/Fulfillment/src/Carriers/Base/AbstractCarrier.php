@@ -4,7 +4,6 @@ namespace Modules\Fulfillment\Carriers\Base;
 
 use Modules\Fulfillment\Contracts\CarrierInterface;
 use Modules\Fulfillment\Contracts\RateRequest;
-use Modules\Fulfillment\Contracts\RateResponse;
 use Modules\Fulfillment\Contracts\ShipmentRequest;
 use Modules\Fulfillment\Contracts\ShipmentResponse;
 use Modules\Fulfillment\Contracts\TrackingResponse;
@@ -56,22 +55,22 @@ abstract class AbstractCarrier implements CarrierInterface
 
     public function createShipment(ShipmentRequest $request): ShipmentResponse
     {
-        throw new \RuntimeException('Shipment creation not implemented for ' . $this->name);
+        throw new \RuntimeException('Shipment creation not implemented for '.$this->name);
     }
 
     public function getTracking(string $trackingNumber): TrackingResponse
     {
-        throw new \RuntimeException('Tracking not implemented for ' . $this->name);
+        throw new \RuntimeException('Tracking not implemented for '.$this->name);
     }
 
     public function cancelShipment(string $shipmentId): bool
     {
-        throw new \RuntimeException('Cancel shipment not implemented for ' . $this->name);
+        throw new \RuntimeException('Cancel shipment not implemented for '.$this->name);
     }
 
     public function validateCredentials(array $config): bool
     {
-        return !empty($config['api_key'] ?? $config['account_id'] ?? $config['customer_code']);
+        return ! empty($config['api_key'] ?? $config['account_id'] ?? $config['customer_code']);
     }
 
     public function getAvailableServices(): array

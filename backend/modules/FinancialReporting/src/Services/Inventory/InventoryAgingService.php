@@ -22,14 +22,14 @@ class InventoryAgingService extends BaseReportService
 
     /**
      * Generate Inventory Aging Report
-     * 
+     *
      * Analyzes how long inventory items have been in stock
      * and identifies slow-moving items
      */
     public function generate(ReportFilter $filter): ReportData
     {
         $asOfDate = $filter->endDate ?? now();
-        
+
         // Get aged inventory items
         $agedInventory = $this->getAgedInventory($asOfDate, $filter);
 
@@ -60,7 +60,7 @@ class InventoryAgingService extends BaseReportService
     {
         // Check if stock_movements table exists
         $stockMovementsExists = DB::select("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'stock_movements')")[0]->exists;
-        
+
         // Check if categories table exists
         $categoriesExists = DB::select("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'categories')")[0]->exists;
 
@@ -83,52 +83,52 @@ class InventoryAgingService extends BaseReportService
         }
 
         $products = $query->select([
-                'p.id',
-                'p.sku',
-                'p.name',
-                'p.cost as unit_cost',
-                'p.price as unit_price',
-                $categorySelect,
-                'p.created_at',
-            ])
+            'p.id',
+            'p.sku',
+            'p.name',
+            'p.cost as unit_cost',
+            'p.price as unit_price',
+            $categorySelect,
+            'p.created_at',
+        ])
             ->get();
 
         // Calculate age and additional metrics for each product
         $agedInventory = collect();
-        
+
         foreach ($products as $product) {
             // Get current quantity from stock movements
             $quantity = $this->getQuantityAsOfDate($product->id, $asOfDate, $stockMovementsExists);
-            
+
             // Only include products with stock
             if ($quantity > 0) {
                 // Get the date of the oldest stock still on hand
                 $oldestStockDate = $this->getOldestStockDate($product->id, $stockMovementsExists);
-                
+
                 // If we can't determine oldest stock date, use product creation date
                 $referenceDate = $oldestStockDate ?? Carbon::parse($product->created_at);
-                
+
                 // Calculate age in days
                 $ageInDays = $referenceDate->diffInDays($asOfDate);
-                
+
                 // Determine age bucket
                 $ageBucket = $this->determineAgeBucket($ageInDays);
-                
+
                 // Calculate inventory value
                 $inventoryValue = $quantity * $product->unit_cost;
-                
+
                 // Calculate carrying cost (estimated at 25% annual rate)
                 $carryingCostRate = 0.25; // 25% per year
                 $carryingCost = ($inventoryValue * $carryingCostRate * $ageInDays) / 365;
-                
+
                 // Get sales velocity
                 $salesVelocity = $this->getSalesVelocity($product->id);
-                
+
                 // Determine if slow-moving (less than 1 sale per month on average)
                 $isSlowMoving = $salesVelocity < (1 / 30); // Less than 1 per month
-                
+
                 // Calculate turnover rate
-                $turnoverRate = $salesVelocity > 0 ? 
+                $turnoverRate = $salesVelocity > 0 ?
                     ($quantity / $salesVelocity) : null;
 
                 $agedInventory->push([
@@ -153,7 +153,7 @@ class InventoryAgingService extends BaseReportService
 
         return $agedInventory->sortByDesc('age_in_days')->values();
     }
-    
+
     /**
      * Get current quantity as of date
      */
@@ -168,15 +168,15 @@ class InventoryAgingService extends BaseReportService
                 ->sum('quantity');
         }
 
-        if (!$stockMovementsExists) {
+        if (! $stockMovementsExists) {
             // Fallback to products table
             $product = DB::table('products')
                 ->where('id', $productId)
                 ->first(['stock_quantity']);
-            
+
             return $product ? $product->stock_quantity : 0;
         }
-        
+
         // Get the last stock movement before or on the date
         $lastMovement = DB::table('stock_movements')
             ->where('product_id', $productId)
@@ -193,7 +193,7 @@ class InventoryAgingService extends BaseReportService
      */
     protected function getOldestStockDate(int $productId, bool $stockMovementsExists): ?Carbon
     {
-        if (!$stockMovementsExists) {
+        if (! $stockMovementsExists) {
             return null;
         }
 
@@ -223,8 +223,8 @@ class InventoryAgingService extends BaseReportService
         try {
             // Check if invoice_items table exists
             $tableExists = DB::select("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'invoice_items')")[0]->exists;
-            
-            if (!$tableExists) {
+
+            if (! $tableExists) {
                 return 0;
             }
 
@@ -281,7 +281,7 @@ class InventoryAgingService extends BaseReportService
 
         foreach ($this->ageBuckets as $bucket => $range) {
             $items = $agedInventory->where('age_bucket', $bucket);
-            
+
             $grouped[$bucket] = [
                 'bucket' => $bucket,
                 'item_count' => $items->count(),
@@ -302,7 +302,7 @@ class InventoryAgingService extends BaseReportService
     {
         $asOfDate = $filter->endDate ?? now();
         $agedInventory = $this->getAgedInventory($asOfDate, $filter);
-        
+
         $slowMoving = $agedInventory->where('is_slow_moving', true)->values();
 
         return new ReportData(
@@ -328,7 +328,7 @@ class InventoryAgingService extends BaseReportService
     {
         $asOfDate = $filter->endDate ?? now();
         $agedInventory = $this->getAgedInventory($asOfDate, $filter);
-        
+
         $bucketItems = $agedInventory->where('age_bucket', $bucket)->values();
 
         return new ReportData(
@@ -355,7 +355,7 @@ class InventoryAgingService extends BaseReportService
     {
         $asOfDate = $filter->endDate ?? now();
         $agedInventory = $this->getAgedInventory($asOfDate, $filter);
-        
+
         $oldItems = $agedInventory->where('age_in_days', '>', $days)->values();
 
         return [

@@ -2,14 +2,14 @@
 
 namespace Modules\IoT\Services;
 
-use Modules\IoT\Contracts\DeviceClientInterface;
-use Modules\IoT\Models\DeviceConfiguration;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Modules\IoT\Contracts\DeviceClientInterface;
+use Modules\IoT\Models\DeviceConfiguration;
 
 /**
  * HTTP Device Client
- * 
+ *
  * Communicates directly with HTTP/REST API enabled devices
  * without requiring a local agent.
  */
@@ -24,13 +24,13 @@ class HttpDeviceClient implements DeviceClientInterface
         array $payload = []
     ): array {
         $config = $device->connection_info;
-        
-        if (!isset($config['base_url'])) {
+
+        if (! isset($config['base_url'])) {
             throw new \InvalidArgumentException('Invalid HTTP configuration: base_url required');
         }
 
-        $url = rtrim($config['base_url'], '/') . '/' . ltrim($command, '/');
-        
+        $url = rtrim($config['base_url'], '/').'/'.ltrim($command, '/');
+
         $http = Http::timeout($config['timeout'] ?? 30)
             ->retry($config['retry_attempts'] ?? 3, $config['retry_delay'] ?? 1000);
 
@@ -43,7 +43,7 @@ class HttpDeviceClient implements DeviceClientInterface
         }
 
         // SSL verification
-        if (isset($config['verify_ssl']) && !$config['verify_ssl']) {
+        if (isset($config['verify_ssl']) && ! $config['verify_ssl']) {
             $http = $http->withoutVerifying();
         }
 
@@ -59,7 +59,7 @@ class HttpDeviceClient implements DeviceClientInterface
 
             if ($response->failed()) {
                 throw new \RuntimeException(
-                    "HTTP device request failed: " . $response->body()
+                    'HTTP device request failed: '.$response->body()
                 );
             }
 
@@ -70,7 +70,7 @@ class HttpDeviceClient implements DeviceClientInterface
                 'url' => $url,
                 'error' => $e->getMessage(),
             ]);
-            
+
             throw $e;
         }
     }
@@ -90,30 +90,32 @@ class HttpDeviceClient implements DeviceClientInterface
     {
         try {
             $config = $device->connection_info;
-            
-            if (!isset($config['base_url'])) {
+
+            if (! isset($config['base_url'])) {
                 return false;
             }
-            
-            $url = rtrim($config['base_url'], '/') . '/health';
-            
+
+            $url = rtrim($config['base_url'], '/').'/health';
+
             $http = Http::timeout(5);
-            
+
             // Add authentication
             $http = $this->addAuthentication($http, $config);
-            
+
             // SSL verification
-            if (isset($config['verify_ssl']) && !$config['verify_ssl']) {
+            if (isset($config['verify_ssl']) && ! $config['verify_ssl']) {
                 $http = $http->withoutVerifying();
             }
-            
+
             $response = $http->get($url);
+
             return $response->successful();
         } catch (\Exception $e) {
             Log::error('HTTP connection test failed', [
                 'device_id' => $device->id,
                 'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -140,7 +142,7 @@ class HttpDeviceClient implements DeviceClientInterface
         $authType = $config['auth_type'] ?? null;
         $authConfig = $config['auth_config'] ?? [];
 
-        return match($authType) {
+        return match ($authType) {
             'bearer' => $http->withToken($authConfig['token'] ?? ''),
             'basic' => $http->withBasicAuth(
                 $authConfig['username'] ?? '',

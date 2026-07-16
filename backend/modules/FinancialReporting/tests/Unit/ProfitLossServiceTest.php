@@ -2,19 +2,19 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Modules\FinancialReporting\Services\Reports\ProfitLossService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
 use App\Models\User;
 use Carbon\Carbon;
+use Modules\FinancialReporting\DTOs\ReportFilter;
+use Modules\FinancialReporting\Services\Reports\ProfitLossService;
+use Tests\TenantTestCase;
 
 class ProfitLossServiceTest extends TenantTestCase
 {
-
     protected ProfitLossService $service;
+
     protected User $testUser;
 
     protected function setUp(): void
@@ -50,7 +50,7 @@ class ProfitLossServiceTest extends TenantTestCase
     private function createJournalEntry(array $attrs = []): JournalEntry
     {
         return JournalEntry::create(array_merge([
-            'entry_number' => 'JE-TEST-' . uniqid(),
+            'entry_number' => 'JE-TEST-'.uniqid(),
             'entry_date' => Carbon::parse('2024-01-15'),
             'description' => 'Test Entry',
             'status' => 'posted',
@@ -79,8 +79,8 @@ class ProfitLossServiceTest extends TenantTestCase
     public function it_throws_exception_when_dates_missing()
     {
         $this->expectException(\InvalidArgumentException::class);
-        
-        $filter = new ReportFilter();
+
+        $filter = new ReportFilter;
         $this->service->generate($filter);
     }
 
@@ -88,7 +88,7 @@ class ProfitLossServiceTest extends TenantTestCase
     public function it_calculates_revenue_correctly()
     {
         $revenueAccount = ChartOfAccount::where('code', '4000')->first();
-        
+
         $entry = $this->createJournalEntry([
             'description' => 'Test Revenue',
         ]);
@@ -115,7 +115,7 @@ class ProfitLossServiceTest extends TenantTestCase
     {
         $revenueAccount = ChartOfAccount::where('code', '4000')->first();
         $cogsAccount = ChartOfAccount::where('code', '5000')->first();
-        
+
         $entry = $this->createJournalEntry([
             'description' => 'Test Transaction',
         ]);
@@ -166,7 +166,7 @@ class ProfitLossServiceTest extends TenantTestCase
     public function it_filters_by_date_range()
     {
         $revenueAccount = ChartOfAccount::where('code', '4000')->first();
-        
+
         // Entry in January
         $entry1 = $this->createJournalEntry([
             'entry_date' => Carbon::parse('2024-01-15'),
@@ -207,7 +207,7 @@ class ProfitLossServiceTest extends TenantTestCase
     public function it_excludes_draft_entries()
     {
         $revenueAccount = ChartOfAccount::where('code', '4000')->first();
-        
+
         $entry = $this->createJournalEntry([
             'description' => 'Draft Revenue',
             'status' => 'draft',

@@ -9,10 +9,10 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('events', function (Blueprint $table) {
-            if (!Schema::hasColumn('events', 'price')) {
+            if (! Schema::hasColumn('events', 'price')) {
                 $table->decimal('price', 10, 2)->default(0)->after('available_capacity');
             }
-            if (!Schema::hasColumn('events', 'image_url')) {
+            if (! Schema::hasColumn('events', 'image_url')) {
                 $table->string('image_url', 500)->nullable()->after('price');
             }
         });

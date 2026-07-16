@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductBundle;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -28,7 +28,7 @@ class ProductBundleController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('sku', 'like', "%{$search}%");
+                    ->orWhere('sku', 'like', "%{$search}%");
             });
         }
 
@@ -55,9 +55,9 @@ class ProductBundleController extends Controller
     public function components($product): JsonResponse
     {
         $product = Product::findOrFail($product);
-        if (!$product->is_bundle) {
+        if (! $product->is_bundle) {
             return response()->json([
-                'message' => 'This product is not a bundle'
+                'message' => 'This product is not a bundle',
             ], 422);
         }
 
@@ -86,7 +86,7 @@ class ProductBundleController extends Controller
                 'bundle_price' => $product->price,
                 'savings' => round($totalPrice - $product->price, 2),
                 'savings_percentage' => $totalPrice > 0 ? round((($totalPrice - $product->price) / $totalPrice) * 100, 2) : 0,
-            ]
+            ],
         ]);
     }
 
@@ -96,9 +96,9 @@ class ProductBundleController extends Controller
     public function addComponent(Request $request, $bundle): JsonResponse
     {
         $bundle = Product::findOrFail($bundle);
-        if (!$bundle->is_bundle) {
+        if (! $bundle->is_bundle) {
             return response()->json([
-                'message' => 'This product is not a bundle'
+                'message' => 'This product is not a bundle',
             ], 422);
         }
 
@@ -114,14 +114,14 @@ class ProductBundleController extends Controller
         // Check for circular reference
         if ($validated['component_product_id'] == $bundle->id) {
             return response()->json([
-                'message' => 'A bundle cannot contain itself'
+                'message' => 'A bundle cannot contain itself',
             ], 422);
         }
 
         // Check if component is already in bundle
         if ($bundle->bundleComponents()->where('component_product_id', $validated['component_product_id'])->exists()) {
             return response()->json([
-                'message' => 'This product is already a component of this bundle'
+                'message' => 'This product is already a component of this bundle',
             ], 422);
         }
 
@@ -129,7 +129,7 @@ class ProductBundleController extends Controller
         $component = Product::find($validated['component_product_id']);
         if ($component->is_bundle) {
             return response()->json([
-                'message' => 'Cannot add another bundle as a component. Nested bundles are not supported.'
+                'message' => 'Cannot add another bundle as a component. Nested bundles are not supported.',
             ], 422);
         }
 
@@ -147,7 +147,7 @@ class ProductBundleController extends Controller
 
         return response()->json([
             'message' => 'Component added to bundle successfully',
-            'component' => $bundleComponent
+            'component' => $bundleComponent,
         ], 201);
     }
 
@@ -160,7 +160,7 @@ class ProductBundleController extends Controller
         $component = ProductBundle::findOrFail($component);
         if ($component->bundle_product_id !== $bundle->id) {
             return response()->json([
-                'message' => 'Component does not belong to this bundle'
+                'message' => 'Component does not belong to this bundle',
             ], 404);
         }
 
@@ -177,7 +177,7 @@ class ProductBundleController extends Controller
 
         return response()->json([
             'message' => 'Component updated successfully',
-            'component' => $component
+            'component' => $component,
         ]);
     }
 
@@ -190,14 +190,14 @@ class ProductBundleController extends Controller
         $component = ProductBundle::findOrFail($component);
         if ($component->bundle_product_id !== $bundle->id) {
             return response()->json([
-                'message' => 'Component does not belong to this bundle'
+                'message' => 'Component does not belong to this bundle',
             ], 404);
         }
 
         $component->delete();
 
         return response()->json([
-            'message' => 'Component removed from bundle successfully'
+            'message' => 'Component removed from bundle successfully',
         ]);
     }
 
@@ -207,9 +207,9 @@ class ProductBundleController extends Controller
     public function reorderComponents(Request $request, $bundle): JsonResponse
     {
         $bundle = Product::findOrFail($bundle);
-        if (!$bundle->is_bundle) {
+        if (! $bundle->is_bundle) {
             return response()->json([
-                'message' => 'This product is not a bundle'
+                'message' => 'This product is not a bundle',
             ], 422);
         }
 
@@ -228,7 +228,7 @@ class ProductBundleController extends Controller
         });
 
         return response()->json([
-            'message' => 'Components reordered successfully'
+            'message' => 'Components reordered successfully',
         ]);
     }
 
@@ -238,9 +238,9 @@ class ProductBundleController extends Controller
     public function checkAvailability($bundle, Request $request): JsonResponse
     {
         $bundle = Product::findOrFail($bundle);
-        if (!$bundle->is_bundle) {
+        if (! $bundle->is_bundle) {
             return response()->json([
-                'message' => 'This product is not a bundle'
+                'message' => 'This product is not a bundle',
             ], 422);
         }
 
@@ -257,14 +257,14 @@ class ProductBundleController extends Controller
         foreach ($components as $component) {
             $product = $component->componentProduct;
             $needed = $component->quantity * $quantity;
-            
-            $available = $warehouseId 
+
+            $available = $warehouseId
                 ? $product->getAvailableStockInWarehouse((int) $warehouseId)
                 : $product->getTotalAvailableStock();
 
             $componentCanFulfill = $component->is_optional || $available >= $needed;
-            
-            if (!$componentCanFulfill) {
+
+            if (! $componentCanFulfill) {
                 $canFulfill = false;
             }
 
@@ -321,7 +321,7 @@ class ProductBundleController extends Controller
         $product = Product::findOrFail($product);
         if ($product->is_bundle) {
             return response()->json([
-                'message' => 'This product is already a bundle'
+                'message' => 'This product is already a bundle',
             ], 422);
         }
 
@@ -336,7 +336,7 @@ class ProductBundleController extends Controller
 
         return response()->json([
             'message' => 'Product converted to bundle successfully',
-            'product' => $product
+            'product' => $product,
         ]);
     }
 
@@ -346,9 +346,9 @@ class ProductBundleController extends Controller
     public function removeBundle($product): JsonResponse
     {
         $product = Product::findOrFail($product);
-        if (!$product->is_bundle) {
+        if (! $product->is_bundle) {
             return response()->json([
-                'message' => 'This product is not a bundle'
+                'message' => 'This product is not a bundle',
             ], 422);
         }
 
@@ -361,7 +361,7 @@ class ProductBundleController extends Controller
         ]);
 
         return response()->json([
-            'message' => 'Bundle removed successfully. Product is now a regular product.'
+            'message' => 'Bundle removed successfully. Product is now a regular product.',
         ]);
     }
 }

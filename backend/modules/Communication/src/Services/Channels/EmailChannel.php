@@ -2,10 +2,10 @@
 
 namespace Modules\Communication\Services\Channels;
 
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
-use Modules\Communication\Models\CommunicationOutbox;
+use Illuminate\Support\Facades\Mail;
 use Modules\Communication\Models\CommunicationMessage;
+use Modules\Communication\Models\CommunicationOutbox;
 
 /**
  * EmailChannel — Sends messages via email (SMTP, SES, Mailgun, SendGrid).
@@ -28,7 +28,7 @@ class EmailChannel implements ChannelInterface
     {
         try {
             $to = $outbox->recipient_email;
-            if (!$to) {
+            if (! $to) {
                 return ['success' => false, 'error' => 'No recipient email address'];
             }
 
@@ -38,19 +38,19 @@ class EmailChannel implements ChannelInterface
 
             Mail::html($htmlBody, function ($mail) use ($to, $subject, $message) {
                 $mail->to($to)
-                     ->subject($subject);
+                    ->subject($subject);
 
                 // CC / BCC from message
                 if ($message->email_cc) {
                     $ccAddresses = array_filter(array_map('trim', explode(',', $message->email_cc)));
-                    if (!empty($ccAddresses)) {
+                    if (! empty($ccAddresses)) {
                         $mail->cc($ccAddresses);
                     }
                 }
 
                 if ($message->email_bcc) {
                     $bccAddresses = array_filter(array_map('trim', explode(',', $message->email_bcc)));
-                    if (!empty($bccAddresses)) {
+                    if (! empty($bccAddresses)) {
                         $mail->bcc($bccAddresses);
                     }
                 }

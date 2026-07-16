@@ -31,12 +31,12 @@ class DeliveryOrderService
      */
     public function createDeliveryOrder(SalesOrder $order, array $data): DeliveryOrder
     {
-        if (!$order->isConfirmed() && !$order->isAllocated() && !$order->isFulfilled()) {
+        if (! $order->isConfirmed() && ! $order->isAllocated() && ! $order->isFulfilled()) {
             throw new \Exception('Only confirmed, allocated, or fulfilled orders can have delivery orders.');
         }
 
         $warehouseId = $data['warehouse_id'] ?? $order->warehouse_id;
-        if (!$warehouseId) {
+        if (! $warehouseId) {
             throw new \Exception('Warehouse is required for delivery orders.');
         }
 
@@ -54,7 +54,7 @@ class DeliveryOrderService
                 'carrier' => $data['carrier'] ?? null,
                 'tracking_number' => $data['tracking_number'] ?? null,
                 'shipping_address' => $data['shipping_address'] ?? null,
-                'shipping_address_overridden' => !empty($data['shipping_address']),
+                'shipping_address_overridden' => ! empty($data['shipping_address']),
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $actorId,
             ]);
@@ -76,7 +76,7 @@ class DeliveryOrderService
                 if ($quantityDelivered > $remainingForThisLine + 0.0001) {
                     throw new \Exception(
                         "Cannot deliver {$quantityDelivered} of line #{$soLineId}. "
-                        . "Only {$remainingForThisLine} remaining to deliver."
+                        ."Only {$remainingForThisLine} remaining to deliver."
                     );
                 }
 
@@ -104,7 +104,7 @@ class DeliveryOrderService
     public function createStandaloneDeliveryOrder(array $data): DeliveryOrder
     {
         $customerId = $data['customer_id'] ?? null;
-        if (!$customerId) {
+        if (! $customerId) {
             throw new \Exception('customer_id is required for standalone delivery orders.');
         }
 
@@ -114,7 +114,7 @@ class DeliveryOrderService
         }
 
         $warehouseId = $data['warehouse_id'] ?? null;
-        if (!$warehouseId) {
+        if (! $warehouseId) {
             throw new \Exception('Warehouse is required for delivery orders.');
         }
 
@@ -133,7 +133,7 @@ class DeliveryOrderService
                 'carrier' => $data['carrier'] ?? null,
                 'tracking_number' => $data['tracking_number'] ?? null,
                 'shipping_address' => $data['shipping_address'] ?? null,
-                'shipping_address_overridden' => !empty($data['shipping_address']),
+                'shipping_address_overridden' => ! empty($data['shipping_address']),
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $actorId,
             ]);
@@ -172,11 +172,11 @@ class DeliveryOrderService
      */
     public function confirmDeliveryOrder(DeliveryOrder $deliveryOrder): DeliveryOrder
     {
-        if (!$deliveryOrder->isDraft()) {
+        if (! $deliveryOrder->isDraft()) {
             throw new \Exception('Only draft delivery orders can be confirmed.');
         }
 
-        if (!$deliveryOrder->warehouse_id) {
+        if (! $deliveryOrder->warehouse_id) {
             throw new \Exception('Warehouse is required before this delivery order can be confirmed.');
         }
 
@@ -202,7 +202,7 @@ class DeliveryOrderService
             $deliveryOrder = $this->confirmDeliveryOrder($deliveryOrder);
         }
 
-        if (!$deliveryOrder->isConfirmed()) {
+        if (! $deliveryOrder->isConfirmed()) {
             // Idempotency: if already DONE, return as-is
             if ($deliveryOrder->isDone()) {
                 return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder']);
@@ -210,7 +210,7 @@ class DeliveryOrderService
             throw new \Exception('Only confirmed delivery orders can be completed.');
         }
 
-        if (!$deliveryOrder->warehouse_id) {
+        if (! $deliveryOrder->warehouse_id) {
             throw new \Exception('Cannot complete a delivery order without a warehouse.');
         }
 
@@ -233,12 +233,12 @@ class DeliveryOrderService
 
             // Deduct stock for each stock-tracked line
             foreach ($deliveryOrder->lines as $line) {
-                if (!$line->product_id) {
+                if (! $line->product_id) {
                     continue;
                 }
 
                 $product = $line->product;
-                if (!$product || !(bool) ($product->track_inventory ?? false)) {
+                if (! $product || ! (bool) ($product->track_inventory ?? false)) {
                     continue;
                 }
 
@@ -292,7 +292,7 @@ class DeliveryOrderService
      */
     public function reverseDeliveryOrder(DeliveryOrder $deliveryOrder, string $reason): DeliveryOrder
     {
-        if (!$deliveryOrder->isDone()) {
+        if (! $deliveryOrder->isDone()) {
             throw new \Exception('Only completed delivery orders can be reversed.');
         }
 
@@ -303,7 +303,7 @@ class DeliveryOrderService
             $deliveryOrder->load(['lines.product', 'lines.salesOrderLine']);
 
             foreach ($deliveryOrder->lines as $line) {
-                if (!$line->product_id) {
+                if (! $line->product_id) {
                     continue;
                 }
 
@@ -341,7 +341,7 @@ class DeliveryOrderService
             $deliveryOrder->update([
                 'status' => 'cancelled',
                 'notes' => $deliveryOrder->notes
-                    ? $deliveryOrder->notes . "\n[REVERSED] {$reason}"
+                    ? $deliveryOrder->notes."\n[REVERSED] {$reason}"
                     : "[REVERSED] {$reason}",
             ]);
 
@@ -372,7 +372,7 @@ class DeliveryOrderService
         $deliveryOrder->update([
             'status' => 'cancelled',
             'notes' => $reason
-                ? ($deliveryOrder->notes ? $deliveryOrder->notes . "\n[CANCELLED] {$reason}" : "[CANCELLED] {$reason}")
+                ? ($deliveryOrder->notes ? $deliveryOrder->notes."\n[CANCELLED] {$reason}" : "[CANCELLED] {$reason}")
                 : $deliveryOrder->notes,
         ]);
 

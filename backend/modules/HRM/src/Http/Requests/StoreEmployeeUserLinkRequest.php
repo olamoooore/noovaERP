@@ -15,7 +15,7 @@ class StoreEmployeeUserLinkRequest extends FormRequest
     {
         return [
             'user_id' => ['required', 'integer', 'exists:users,id'],
-            'type'    => ['nullable', 'string', 'in:primary,delegate'],
+            'type' => ['nullable', 'string', 'in:primary,delegate'],
         ];
     }
 }

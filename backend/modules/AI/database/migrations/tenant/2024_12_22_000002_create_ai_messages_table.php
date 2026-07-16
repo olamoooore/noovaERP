@@ -18,7 +18,7 @@ return new class extends Migration
             $table->integer('tokens_used')->default(0);
             $table->decimal('cost', 10, 6)->default(0);
             $table->timestamps();
-            
+
             $table->index('conversation_id');
             $table->index('role');
             $table->index('created_at');

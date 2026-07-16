@@ -131,9 +131,9 @@ class AIRawAccessGuard
     /**
      * Check if a raw table query is allowed.
      *
-     * @param string $tableName The table being queried
-     * @param string $userId The user/AI service account making the request
-     * @param array $context Additional context (module, action, etc.)
+     * @param  string  $tableName  The table being queried
+     * @param  string  $userId  The user/AI service account making the request
+     * @param  array  $context  Additional context (module, action, etc.)
      * @return array{allowed: bool, reason: string|null, code: string|null}
      */
     public function checkRawAccess(string $tableName, string $userId, array $context = []): array
@@ -167,7 +167,7 @@ class AIRawAccessGuard
     /**
      * Check if a field is restricted and should be excluded from AI context.
      *
-     * @param string $fieldName The field being accessed
+     * @param  string  $fieldName  The field being accessed
      * @return bool True if the field is restricted
      */
     public function isFieldRestricted(string $fieldName): bool
@@ -186,24 +186,23 @@ class AIRawAccessGuard
     /**
      * Filter an array of data to remove restricted fields.
      *
-     * @param array $data The raw data
+     * @param  array  $data  The raw data
      * @return array Filtered data with restricted fields removed
      */
     public function filterRestrictedFields(array $data): array
     {
         $filtered = [];
         foreach ($data as $key => $value) {
-            if (!$this->isFieldRestricted($key)) {
+            if (! $this->isFieldRestricted($key)) {
                 $filtered[$key] = $value;
             }
         }
+
         return $filtered;
     }
 
     /**
      * Get list of all blocked tables.
-     *
-     * @return array
      */
     public function getBlockedTables(): array
     {
@@ -212,8 +211,6 @@ class AIRawAccessGuard
 
     /**
      * Get list of all restricted fields.
-     *
-     * @return array
      */
     public function getRestrictedFields(): array
     {

@@ -8,9 +8,9 @@ use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\PostingResult;
 use App\Models\JournalEntryLine;
 use App\Services\ExchangeRateService;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
  * Period-end FX revaluation for open monetary balances.
@@ -30,10 +30,10 @@ class FxRevaluationService
     /**
      * Run FX revaluation for a given date.
      *
-     * @param string     $revaluationDate  Y-m-d
-     * @param string     $baseCurrency     Functional / base currency code
-     * @param array|null $accountIds       Limit to specific GL account IDs (null = all monetary)
-     * @return PostingResult[]             One result per currency revalued
+     * @param  string  $revaluationDate  Y-m-d
+     * @param  string  $baseCurrency  Functional / base currency code
+     * @param  array|null  $accountIds  Limit to specific GL account IDs (null = all monetary)
+     * @return PostingResult[] One result per currency revalued
      */
     public function revalue(string $revaluationDate, string $baseCurrency, ?array $accountIds = null): array
     {
@@ -59,6 +59,7 @@ class FxRevaluationService
 
         if ($balances->isEmpty()) {
             Log::info('FX revaluation: no foreign-currency balances found');
+
             return [];
         }
 
@@ -72,11 +73,12 @@ class FxRevaluationService
                 $revaluationDate,
             );
 
-            if (!$rate) {
+            if (! $rate) {
                 Log::warning('FX revaluation: no rate found', [
                     'currency' => $row->currency_code,
                     'date' => $revaluationDate,
                 ]);
+
                 continue;
             }
 
@@ -120,7 +122,7 @@ class FxRevaluationService
                     accountId: null,
                     debit: $adj['difference'] < 0 ? abs($adj['difference']) : 0,
                     credit: $adj['difference'] > 0 ? $adj['difference'] : 0,
-                    description: "Unrealised FX " . ($adj['difference'] > 0 ? 'gain' : 'loss') . " {$currencyCode}",
+                    description: 'Unrealised FX '.($adj['difference'] > 0 ? 'gain' : 'loss')." {$currencyCode}",
                 );
             }
 

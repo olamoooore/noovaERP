@@ -2,12 +2,12 @@
 
 namespace Modules\EventManagement\Services;
 
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\EventManagement\Models\EligibilityDecision;
 use Modules\EventManagement\Models\EligibilityDecisionAppeal;
 use Modules\EventManagement\Models\LoyaltyRuleVersion;
-use Carbon\Carbon;
 
 class EligibilityAuditService
 {
@@ -21,11 +21,11 @@ class EligibilityAuditService
         string $decisionResult,
         string $decisionReason,
         array $decisionData,
-        string $ruleVersion = null
+        ?string $ruleVersion = null
     ): EligibilityDecision {
         try {
             // Get current rule version if not provided
-            if (!$ruleVersion) {
+            if (! $ruleVersion) {
                 $ruleVersion = $this->getCurrentRuleVersion($decisionType);
             }
 
@@ -38,7 +38,7 @@ class EligibilityAuditService
                 'decision_reason' => $decisionReason,
                 'rule_version_applied' => $ruleVersion,
                 'decision_data' => $decisionData,
-                'decided_at' => Carbon::now()
+                'decided_at' => Carbon::now(),
             ]);
 
             Log::info('Eligibility decision logged', [
@@ -47,7 +47,7 @@ class EligibilityAuditService
                 'event_id' => $eventId,
                 'decision_type' => $decisionType,
                 'decision_result' => $decisionResult,
-                'rule_version' => $ruleVersion
+                'rule_version' => $ruleVersion,
             ]);
 
             return $decision;
@@ -57,7 +57,7 @@ class EligibilityAuditService
                 'customer_id' => $customerId,
                 'event_id' => $eventId,
                 'decision_type' => $decisionType,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
             throw $e;
         }
@@ -74,16 +74,16 @@ class EligibilityAuditService
         array $tierData,
         array $customerData
     ): EligibilityDecision {
-        $decisionReason = $accessGranted 
+        $decisionReason = $accessGranted
             ? "Tier access granted for level: {$tierLevel}"
-            : "Tier access denied - insufficient tier level or requirements not met";
+            : 'Tier access denied - insufficient tier level or requirements not met';
 
         $decisionData = [
             'tier_level_required' => $tierLevel,
             'customer_tier_data' => $customerData,
             'tier_requirements' => $tierData,
             'access_timestamp' => Carbon::now()->toISOString(),
-            'decision_factors' => $this->analyzeTierEligibility($customerData, $tierData)
+            'decision_factors' => $this->analyzeTierEligibility($customerData, $tierData),
         ];
 
         return $this->logEligibilityDecision(
@@ -107,17 +107,17 @@ class EligibilityAuditService
         array $customerProfile
     ): EligibilityDecision {
         $decisionReason = $accessGranted
-            ? "Early access granted based on eligibility criteria"
-            : "Early access denied - criteria not met or capacity exhausted";
+            ? 'Early access granted based on eligibility criteria'
+            : 'Early access denied - criteria not met or capacity exhausted';
 
         $decisionData = [
             'early_access_rules' => $earlyAccessRules,
             'customer_profile' => $customerProfile,
             'access_window' => [
                 'start' => $earlyAccessRules['start_time'] ?? null,
-                'end' => $earlyAccessRules['end_time'] ?? null
+                'end' => $earlyAccessRules['end_time'] ?? null,
             ],
-            'eligibility_factors' => $this->analyzeEarlyAccessEligibility($customerProfile, $earlyAccessRules)
+            'eligibility_factors' => $this->analyzeEarlyAccessEligibility($customerProfile, $earlyAccessRules),
         ];
 
         return $this->logEligibilityDecision(
@@ -143,13 +143,13 @@ class EligibilityAuditService
     ): EligibilityDecision {
         $decisionReason = $eligible
             ? "Discount eligibility confirmed for: {$discountType}"
-            : "Discount eligibility denied - requirements not satisfied";
+            : 'Discount eligibility denied - requirements not satisfied';
 
         $decisionData = [
             'discount_type' => $discountType,
             'discount_rules' => $discountRules,
             'customer_history' => $customerHistory,
-            'eligibility_calculation' => $this->calculateDiscountEligibility($customerHistory, $discountRules)
+            'eligibility_calculation' => $this->calculateDiscountEligibility($customerHistory, $discountRules),
         ];
 
         return $this->logEligibilityDecision(
@@ -175,13 +175,13 @@ class EligibilityAuditService
     ): EligibilityDecision {
         $decisionReason = $redemptionAllowed
             ? "Points redemption approved for {$pointsRequested} points"
-            : "Points redemption denied - insufficient balance or restrictions apply";
+            : 'Points redemption denied - insufficient balance or restrictions apply';
 
         $decisionData = [
             'points_requested' => $pointsRequested,
             'points_balance' => $pointsBalance,
             'redemption_rules' => $redemptionRules,
-            'balance_verification' => $this->verifyPointsBalance($customerId, $pointsRequested)
+            'balance_verification' => $this->verifyPointsBalance($customerId, $pointsRequested),
         ];
 
         return $this->logEligibilityDecision(
@@ -211,7 +211,7 @@ class EligibilityAuditService
             'appeal_reason' => $appealReason,
             'appeal_status' => 'pending',
             'appeal_data' => $appealData,
-            'appealed_at' => Carbon::now()
+            'appealed_at' => Carbon::now(),
         ]);
     }
 
@@ -225,18 +225,18 @@ class EligibilityAuditService
         string $reviewNotes
     ): EligibilityDecisionAppeal {
         $appeal = EligibilityDecisionAppeal::findOrFail($appealId);
-        
+
         $appeal->update([
             'appeal_status' => $appealStatus,
             'reviewed_by_staff_id' => $reviewerStaffId,
             'review_notes' => $reviewNotes,
-            'reviewed_at' => Carbon::now()
+            'reviewed_at' => Carbon::now(),
         ]);
 
         Log::info('Appeal reviewed', [
             'appeal_id' => $appealId,
             'reviewer_id' => $reviewerStaffId,
-            'status' => $appealStatus
+            'status' => $appealStatus,
         ]);
 
         return $appeal;
@@ -272,9 +272,9 @@ class EligibilityAuditService
         }
 
         return $query->orderBy('decided_at', 'desc')
-                    ->with(['event', 'customer'])
-                    ->get()
-                    ->toArray();
+            ->with(['event', 'customer'])
+            ->get()
+            ->toArray();
     }
 
     /**
@@ -303,27 +303,27 @@ class EligibilityAuditService
 
         // Get summary statistics
         $summary = $query->select([
-                'decision_type',
-                'decision_result',
-                DB::raw('COUNT(*) as decision_count'),
-                DB::raw('COUNT(DISTINCT customer_id) as unique_customers')
-            ])
+            'decision_type',
+            'decision_result',
+            DB::raw('COUNT(*) as decision_count'),
+            DB::raw('COUNT(DISTINCT customer_id) as unique_customers'),
+        ])
             ->groupBy(['decision_type', 'decision_result'])
             ->get()
             ->toArray();
 
         // Get detailed decisions
         $decisions = $query->with(['event', 'customer'])
-                          ->orderBy('decided_at', 'desc')
-                          ->limit(1000)
-                          ->get()
-                          ->toArray();
+            ->orderBy('decided_at', 'desc')
+            ->limit(1000)
+            ->get()
+            ->toArray();
 
         return [
             'summary' => $summary,
             'decisions' => $decisions,
             'total_decisions' => $query->count(),
-            'report_generated_at' => Carbon::now()->toISOString()
+            'report_generated_at' => Carbon::now()->toISOString(),
         ];
     }
 
@@ -335,9 +335,9 @@ class EligibilityAuditService
         $ruleVersion = LoyaltyRuleVersion::where('rule_name', $decisionType)
             ->where('is_active', true)
             ->where('effective_from', '<=', Carbon::now())
-            ->where(function($query) {
+            ->where(function ($query) {
                 $query->whereNull('effective_until')
-                      ->orWhere('effective_until', '>', Carbon::now());
+                    ->orWhere('effective_until', '>', Carbon::now());
             })
             ->orderBy('effective_from', 'desc')
             ->first();
@@ -354,18 +354,18 @@ class EligibilityAuditService
             'tier_level_check' => [
                 'required' => $tierData['level'] ?? 'unknown',
                 'customer_level' => $customerData['tier_level'] ?? 'none',
-                'meets_requirement' => ($customerData['tier_level'] ?? 0) >= ($tierData['level'] ?? 999)
+                'meets_requirement' => ($customerData['tier_level'] ?? 0) >= ($tierData['level'] ?? 999),
             ],
             'spending_check' => [
                 'required' => $tierData['min_spending'] ?? 0,
                 'customer_spending' => $customerData['total_spending'] ?? 0,
-                'meets_requirement' => ($customerData['total_spending'] ?? 0) >= ($tierData['min_spending'] ?? 0)
+                'meets_requirement' => ($customerData['total_spending'] ?? 0) >= ($tierData['min_spending'] ?? 0),
             ],
             'loyalty_points_check' => [
                 'required' => $tierData['min_points'] ?? 0,
                 'customer_points' => $customerData['loyalty_points'] ?? 0,
-                'meets_requirement' => ($customerData['loyalty_points'] ?? 0) >= ($tierData['min_points'] ?? 0)
-            ]
+                'meets_requirement' => ($customerData['loyalty_points'] ?? 0) >= ($tierData['min_points'] ?? 0),
+            ],
         ];
     }
 
@@ -378,19 +378,19 @@ class EligibilityAuditService
             'tier_requirement' => [
                 'required_tier' => $earlyAccessRules['min_tier'] ?? null,
                 'customer_tier' => $customerProfile['tier_level'] ?? null,
-                'meets_requirement' => ($customerProfile['tier_level'] ?? 0) >= ($earlyAccessRules['min_tier'] ?? 999)
+                'meets_requirement' => ($customerProfile['tier_level'] ?? 0) >= ($earlyAccessRules['min_tier'] ?? 999),
             ],
             'purchase_history' => [
                 'required_purchases' => $earlyAccessRules['min_purchases'] ?? 0,
                 'customer_purchases' => $customerProfile['purchase_count'] ?? 0,
-                'meets_requirement' => ($customerProfile['purchase_count'] ?? 0) >= ($earlyAccessRules['min_purchases'] ?? 0)
+                'meets_requirement' => ($customerProfile['purchase_count'] ?? 0) >= ($earlyAccessRules['min_purchases'] ?? 0),
             ],
             'timing_check' => [
                 'access_window_open' => Carbon::now()->between(
                     Carbon::parse($earlyAccessRules['start_time'] ?? '1970-01-01'),
                     Carbon::parse($earlyAccessRules['end_time'] ?? '2099-12-31')
-                )
-            ]
+                ),
+            ],
         ];
     }
 
@@ -402,16 +402,16 @@ class EligibilityAuditService
         return [
             'loyalty_discount' => [
                 'eligible' => ($customerHistory['loyalty_points'] ?? 0) >= ($discountRules['min_points'] ?? 0),
-                'discount_percentage' => $discountRules['loyalty_discount_percentage'] ?? 0
+                'discount_percentage' => $discountRules['loyalty_discount_percentage'] ?? 0,
             ],
             'volume_discount' => [
                 'eligible' => ($customerHistory['total_purchases'] ?? 0) >= ($discountRules['min_purchases'] ?? 0),
-                'discount_percentage' => $discountRules['volume_discount_percentage'] ?? 0
+                'discount_percentage' => $discountRules['volume_discount_percentage'] ?? 0,
             ],
             'tier_discount' => [
                 'eligible' => ($customerHistory['tier_level'] ?? 0) >= ($discountRules['min_tier'] ?? 0),
-                'discount_percentage' => $discountRules['tier_discount_percentage'] ?? 0
-            ]
+                'discount_percentage' => $discountRules['tier_discount_percentage'] ?? 0,
+            ],
         ];
     }
 
@@ -425,7 +425,7 @@ class EligibilityAuditService
             'balance_sufficient' => true, // Placeholder - would be actual verification
             'available_points' => 1000, // Placeholder - would be actual balance
             'pending_points' => 0,
-            'verification_timestamp' => Carbon::now()->toISOString()
+            'verification_timestamp' => Carbon::now()->toISOString(),
         ];
     }
 }

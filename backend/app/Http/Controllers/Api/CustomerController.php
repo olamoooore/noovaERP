@@ -5,11 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\CustomerCategory;
-use App\Models\CustomerContact;
-use App\Models\CustomerAddress;
 use App\Models\CustomerLoyaltyProgram;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
 class CustomerController extends Controller
@@ -20,12 +18,12 @@ class CustomerController extends Controller
     {
         $query = Customer::withCount(['invoices'])
             ->with([
-                'categories', 
-                'priceList', 
+                'categories',
+                'priceList',
                 'salesperson',
                 'loyaltyBalances.program',
                 'customerLoyalty.tier',
-                'customerLoyalty.program'
+                'customerLoyalty.program',
             ]);
 
         // Filters
@@ -33,10 +31,10 @@ class CustomerController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('phone', 'like', "%{$search}%")
-                  ->orWhere('company', 'like', "%{$search}%")
-                  ->orWhere('code', 'like', "%{$search}%");
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('company', 'like', "%{$search}%")
+                    ->orWhere('code', 'like', "%{$search}%");
             });
         }
 
@@ -61,7 +59,7 @@ class CustomerController extends Controller
         if ($request->boolean('has_balance')) {
             $query->whereHas('invoices', function ($q) {
                 $q->where('status', '!=', 'paid')
-                  ->where('status', '!=', 'draft');
+                    ->where('status', '!=', 'draft');
             });
         }
 
@@ -78,6 +76,7 @@ class CustomerController extends Controller
             $customer->current_points = $loyalty?->current_points ?? 0;
             $customer->loyalty_tier_name = $loyalty?->tier?->name;
             $customer->is_enrolled = $loyalty !== null;
+
             return $customer;
         });
 
@@ -99,36 +98,36 @@ class CustomerController extends Controller
             'company_registration_number' => 'nullable|string|max:100',
             'website' => 'nullable|url|max:255',
             'language' => 'nullable|string|max:10',
-            
+
             // Addresses (legacy)
             'billing_address' => 'nullable|string',
             'shipping_address' => 'nullable|string',
-            
+
             // Financial
             'credit_limit' => 'nullable|numeric|min:0',
             'payment_terms' => 'nullable|integer|min:0',
             'price_list_id' => 'nullable|exists:customer_price_lists,id',
-            
+
             // Personal
             'date_of_birth' => 'nullable|date',
             'gender' => 'nullable|in:male,female,other',
-            
+
             // Relationships
             'parent_id' => 'nullable|exists:customers,id',
             'salesperson_id' => 'nullable|exists:users,id',
-            
+
             // Preferences
             'preferred_contact' => 'nullable|in:email,phone,sms,whatsapp',
             'marketing_opt_in' => 'boolean',
-            
+
             // Status
             'is_active' => 'boolean',
             'notes' => 'nullable|string',
-            
+
             // Relations
             'category_ids' => 'nullable|array',
             'category_ids.*' => 'exists:customer_categories,id',
-            
+
             // Addresses array
             'addresses' => 'nullable|array',
             'addresses.*.type' => 'required|in:billing,shipping,other',
@@ -140,7 +139,7 @@ class CustomerController extends Controller
             'addresses.*.zip' => 'nullable|string|max:20',
             'addresses.*.country' => 'nullable|string|max:100',
             'addresses.*.is_default' => 'boolean',
-            
+
             // Contacts array
             'contacts' => 'nullable|array',
             'contacts.*.name' => 'required|string|max:255',
@@ -164,7 +163,7 @@ class CustomerController extends Controller
         $customer = Customer::create($validated);
 
         // Attach categories
-        if (!empty($categoryIds)) {
+        if (! empty($categoryIds)) {
             $customer->categories()->attach($categoryIds);
         }
 
@@ -196,7 +195,7 @@ class CustomerController extends Controller
     public function show($id): JsonResponse
     {
         $customer = Customer::findOrFail($id);
-        
+
         return response()->json(
             $customer->load([
                 'categories',
@@ -207,9 +206,9 @@ class CustomerController extends Controller
                 'loyaltyBalances.program',
                 'parent',
                 'contacts',
-                'invoices' => fn($q) => $q->latest()->limit(10),
-                'posOrders' => fn($q) => $q->with('items.product:id,name')->latest()->limit(10),
-                'webOrders' => fn($q) => $q->with('items.product')->latest()->limit(10),
+                'invoices' => fn ($q) => $q->latest()->limit(10),
+                'posOrders' => fn ($q) => $q->with('items.product:id,name')->latest()->limit(10),
+                'webOrders' => fn ($q) => $q->with('items.product')->latest()->limit(10),
             ])
         );
     }
@@ -219,7 +218,7 @@ class CustomerController extends Controller
         $customer = Customer::findOrFail($id);
         $validated = $request->validate([
             // Basic
-            'code' => 'nullable|string|max:50|unique:customers,code,' . $id,
+            'code' => 'nullable|string|max:50|unique:customers,code,'.$id,
             'type' => 'in:individual,company',
             'name' => 'string|max:255',
             'email' => 'nullable|email',
@@ -230,32 +229,32 @@ class CustomerController extends Controller
             'company_registration_number' => 'nullable|string|max:100',
             'website' => 'nullable|url|max:255',
             'language' => 'nullable|string|max:10',
-            
+
             // Addresses (legacy)
             'billing_address' => 'nullable|string',
             'shipping_address' => 'nullable|string',
-            
+
             // Financial
             'credit_limit' => 'nullable|numeric|min:0',
             'payment_terms' => 'nullable|integer|min:0',
             'price_list_id' => 'nullable|exists:customer_price_lists,id',
-            
+
             // Personal
             'date_of_birth' => 'nullable|date',
             'gender' => 'nullable|in:male,female,other',
-            
+
             // Relationships
             'parent_id' => 'nullable|exists:customers,id',
             'salesperson_id' => 'nullable|exists:users,id',
-            
+
             // Preferences
             'preferred_contact' => 'nullable|in:email,phone,sms,whatsapp',
             'marketing_opt_in' => 'boolean',
-            
+
             // Status
             'is_active' => 'boolean',
             'notes' => 'nullable|string',
-            
+
             // Relations
             'category_ids' => 'nullable|array',
             'category_ids.*' => 'exists:customer_categories,id',
@@ -295,7 +294,7 @@ class CustomerController extends Controller
     public function addAddress(Request $request, $id): JsonResponse
     {
         $customer = Customer::findOrFail($id);
-        
+
         $validated = $request->validate([
             'type' => 'required|in:billing,shipping,other',
             'label' => 'nullable|string|max:100',
@@ -339,7 +338,7 @@ class CustomerController extends Controller
     {
         $customer = Customer::findOrFail($customerId);
         $address = $customer->addresses()->findOrFail($addressId);
-        
+
         $address->delete();
 
         return response()->json(['message' => 'Address deleted']);
@@ -352,7 +351,7 @@ class CustomerController extends Controller
     public function addContact(Request $request, $id): JsonResponse
     {
         $customer = Customer::findOrFail($id);
-        
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'job_title' => 'nullable|string|max:100',
@@ -392,7 +391,7 @@ class CustomerController extends Controller
     {
         $customer = Customer::findOrFail($customerId);
         $contact = $customer->customerContacts()->findOrFail($contactId);
-        
+
         $contact->delete();
 
         return response()->json(['message' => 'Contact deleted']);
@@ -408,7 +407,7 @@ class CustomerController extends Controller
 
         // Try to fetch from Loyalty Module first
         $moduleLoyalty = $customer->customerLoyalty;
-        
+
         if ($moduleLoyalty) {
             $transactions = $moduleLoyalty->transactions()
                 ->orderBy('created_at', 'desc')
@@ -417,6 +416,7 @@ class CustomerController extends Controller
             // Map fields for frontend compatibility
             $transactions->getCollection()->transform(function ($tx) {
                 $tx->notes = $tx->description; // detailed description
+
                 // If type is adjust, maybe map it?
                 // Module types: earn, redeem, expire, adjust (seems compatible)
                 return $tx;
@@ -505,7 +505,7 @@ class CustomerController extends Controller
         }
 
         $incomingPhones = collect(['phone', 'mobile'])
-            ->filter(fn (string $field) => !empty($validated[$field]))
+            ->filter(fn (string $field) => ! empty($validated[$field]))
             ->mapWithKeys(fn (string $field) => [$field => $validated[$field]]);
 
         if ($incomingPhones->isNotEmpty()) {
@@ -529,7 +529,7 @@ class CustomerController extends Controller
             }
         }
 
-        if (!empty($messages)) {
+        if (! empty($messages)) {
             throw ValidationException::withMessages($messages);
         }
     }
@@ -537,16 +537,18 @@ class CustomerController extends Controller
     private function normalizeEmail(?string $value): ?string
     {
         $normalized = is_string($value) ? mb_strtolower(trim($value)) : null;
+
         return $normalized !== '' ? $normalized : null;
     }
 
     private function normalizePhone(?string $value): ?string
     {
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             return null;
         }
 
         $normalized = preg_replace('/\D+/', '', $value);
+
         return $normalized !== '' ? $normalized : null;
     }
 
@@ -570,18 +572,18 @@ class CustomerController extends Controller
     public function search(Request $request): JsonResponse
     {
         $search = $request->q;
-        
+
         $customers = Customer::where(function ($q) use ($search) {
             $q->where('name', 'like', "%{$search}%")
-              ->orWhere('email', 'like', "%{$search}%")
-              ->orWhere('phone', 'like', "%{$search}%")
-              ->orWhere('mobile', 'like', "%{$search}%")
-              ->orWhere('company', 'like', "%{$search}%")
-              ->orWhere('code', 'like', "%{$search}%");
+                ->orWhere('email', 'like', "%{$search}%")
+                ->orWhere('phone', 'like', "%{$search}%")
+                ->orWhere('mobile', 'like', "%{$search}%")
+                ->orWhere('company', 'like', "%{$search}%")
+                ->orWhere('code', 'like', "%{$search}%");
         })
-        ->where('is_active', true)
-        ->limit(20)
-        ->get(['id', 'code', 'name', 'email', 'phone', 'company', 'type']);
+            ->where('is_active', true)
+            ->limit(20)
+            ->get(['id', 'code', 'name', 'email', 'phone', 'company', 'type']);
 
         return response()->json(['customers' => $customers]);
     }
@@ -599,14 +601,14 @@ class CustomerController extends Controller
         $activeCustomers = Customer::where('is_active', true)->count();
         $companies = Customer::where('type', 'company')->count();
         $individuals = Customer::where('type', 'individual')->count();
-        
+
         $totalOutstanding = Customer::sum('total_outstanding');
         $totalPurchases = Customer::sum('total_purchases');
-        
+
         $newThisMonth = Customer::whereMonth('created_at', now()->month)
             ->whereYear('created_at', now()->year)
             ->count();
-        
+
         $topCustomers = Customer::where('is_active', true)
             ->orderBy('total_purchases', 'desc')
             ->limit(5)
@@ -693,7 +695,7 @@ class CustomerController extends Controller
     public function activity($id, Request $request): JsonResponse
     {
         $customer = Customer::findOrFail($id);
-        
+
         $limit = $request->limit ?? 20;
         $activities = collect();
 
@@ -743,7 +745,7 @@ class CustomerController extends Controller
                     'type' => 'payment',
                     'id' => $payment->id,
                     'title' => "Payment #{$payment->payment_number}",
-                    'description' => ucfirst($payment->method) . ' payment',
+                    'description' => ucfirst($payment->method).' payment',
                     'amount' => $payment->amount,
                     'status' => 'completed',
                     'date' => $payment->payment_date,
@@ -789,7 +791,7 @@ class CustomerController extends Controller
     public function recalculateStats($id): JsonResponse
     {
         $customer = Customer::findOrFail($id);
-        
+
         $customer->updatePurchaseStats();
         $customer->updateOutstanding();
 
@@ -812,7 +814,7 @@ class CustomerController extends Controller
 
         ]);
 
-        if (!$customer->email) {
+        if (! $customer->email) {
             return response()->json([
                 'message' => 'Customer does not have an email address',
             ], 422);

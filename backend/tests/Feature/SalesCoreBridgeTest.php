@@ -30,7 +30,7 @@ class SalesCoreBridgeTest extends TestCase
     {
         $source = file_get_contents(base_path('modules/Sales/src/Services/SalesOrderService.php'));
 
-        $this->assertStringContainsString("sales_order_id", $source,
+        $this->assertStringContainsString('sales_order_id', $source,
             'createFromWorkOrder must write sales_order_id back on the WorkOrder.');
     }
 
@@ -48,7 +48,7 @@ class SalesCoreBridgeTest extends TestCase
     {
         $source = file_get_contents(base_path('modules/Sales/src/Services/SalesOrderService.php'));
 
-        $this->assertStringContainsString("source_document_type", $source,
+        $this->assertStringContainsString('source_document_type', $source,
             'createFromWorkOrder must check for existing SalesOrder before creating a new one.');
         $this->assertStringContainsString("'WorkOrder'", $source,
             'The idempotency check must use WorkOrder as the source_document_type.');
@@ -168,7 +168,7 @@ class SalesCoreBridgeTest extends TestCase
         );
     }
 
-public function test_tenant_user_helper_resolve_orders_tenant_user_first(): void
+    public function test_tenant_user_helper_resolve_orders_tenant_user_first(): void
     {
         $source = file_get_contents(base_path('modules/OCRBookkeeping/src/Helpers/TenantUserHelper.php'));
 

@@ -5,8 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
-use Modules\POS\Models\PosTerminal;
 use Modules\POS\Models\PosSession;
+use Modules\POS\Models\PosTerminal;
 
 class AuditLog extends Model
 {

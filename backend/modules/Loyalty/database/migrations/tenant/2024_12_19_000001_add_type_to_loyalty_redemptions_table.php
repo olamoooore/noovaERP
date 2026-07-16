@@ -20,7 +20,7 @@ return new class extends Migration
         DB::table('loyalty_redemptions')
             ->whereNull('type')
             ->update([
-                'type' => DB::raw("CASE WHEN loyalty_reward_id IS NOT NULL THEN 'reward' ELSE 'discount' END")
+                'type' => DB::raw("CASE WHEN loyalty_reward_id IS NOT NULL THEN 'reward' ELSE 'discount' END"),
             ]);
     }
 

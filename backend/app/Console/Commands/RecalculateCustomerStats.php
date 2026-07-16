@@ -2,11 +2,10 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
-use Stancl\Tenancy\Facades\Tenancy;
-use App\Models\Tenant;
 use App\Models\Customer;
+use App\Models\Tenant;
+use Illuminate\Console\Command;
+use Stancl\Tenancy\Facades\Tenancy;
 
 class RecalculateCustomerStats extends Command
 {
@@ -31,21 +30,24 @@ class RecalculateCustomerStats extends Command
     {
         $tenantId = $this->option('tenant');
 
-        if (!$tenantId) {
+        if (! $tenantId) {
             $this->error('The --tenant flag is required for this command.');
             $this->info('Usage: php artisan customers:recalculate-stats --tenant=<tenant-id>');
+
             return Command::FAILURE;
         }
 
         $tenant = Tenant::find($tenantId);
-        if (!$tenant) {
+        if (! $tenant) {
             $this->error("Tenant not found: {$tenantId}");
+
             return Command::FAILURE;
         }
 
         $this->processTenant($tenant);
 
         $this->info('Customer stats recalculation completed!');
+
         return Command::SUCCESS;
     }
 

@@ -8,8 +8,8 @@ use Illuminate\Routing\Controller;
 use Modules\HRM\Http\Requests\StorePayrollRunRequest;
 use Modules\HRM\Http\Resources\PayrollRunResource;
 use Modules\HRM\Models\PayrollRun;
-use Modules\HRM\Services\PayrollService;
 use Modules\HRM\Services\PayrollJournalService;
+use Modules\HRM\Services\PayrollService;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PayrollController extends Controller
@@ -45,14 +45,14 @@ class PayrollController extends Controller
         }
 
         // Auto-generate a unique reference: PAY-YYYY-MM
-        $data['reference']  = 'PAY-' . Carbon::parse($data['period_start'])->format('Y-m');
+        $data['reference'] = 'PAY-'.Carbon::parse($data['period_start'])->format('Y-m');
         $data['created_by'] = TenantUserHelper::resolveTenantUserId();
 
         // If reference already taken (e.g. two runs in same month), append a counter
         $base = $data['reference'];
-        $n    = 1;
+        $n = 1;
         while (PayrollRun::where('reference', $data['reference'])->exists()) {
-            $data['reference'] = $base . '-' . ++$n;
+            $data['reference'] = $base.'-'.++$n;
         }
 
         $run = PayrollRun::create($data);
@@ -96,7 +96,7 @@ class PayrollController extends Controller
         }
 
         $payrollRun->update([
-            'status'      => 'approved',
+            'status' => 'approved',
             'approved_by' => TenantUserHelper::resolveTenantUserId(),
             'approved_at' => now(),
         ]);
@@ -135,10 +135,11 @@ class PayrollController extends Controller
 
         $response = (new PayrollRunResource($run))->response();
 
-        if (!$postingResult->success) {
+        if (! $postingResult->success) {
             // Payroll is marked paid but journal posting failed — include warning
             $data = $response->getData(true);
             $data['accounting_warning'] = $postingResult->error;
+
             return response()->json($data);
         }
 

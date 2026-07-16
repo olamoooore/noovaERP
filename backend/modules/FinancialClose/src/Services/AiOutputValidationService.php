@@ -14,7 +14,7 @@ class AiOutputValidationService implements AiOutputContract
     public function validate(array $output, array $requiredFields): array
     {
         foreach ($requiredFields as $field) {
-            if (!array_key_exists($field, $output)) {
+            if (! array_key_exists($field, $output)) {
                 Log::warning('FinancialClose: AI output missing required field', [
                     'field' => $field,
                     'output_keys' => array_keys($output),

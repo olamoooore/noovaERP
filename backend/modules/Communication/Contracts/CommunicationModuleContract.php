@@ -9,12 +9,35 @@ use App\Modules\Contracts\BaseModuleContract;
  */
 class CommunicationModuleContract extends BaseModuleContract
 {
-    public function getKey(): string { return 'communication'; }
-    public function getName(): string { return 'Communication'; }
-    public function getType(): string { return 'core'; }
-    public function getDescription(): string { return 'Multi-channel communication engine — messages, templates, outbox, subscribers, preferences'; }
-    public function getVersion(): string { return '1.0.0'; }
-    public function getDependencies(): array { return []; }
+    public function getKey(): string
+    {
+        return 'communication';
+    }
+
+    public function getName(): string
+    {
+        return 'Communication';
+    }
+
+    public function getType(): string
+    {
+        return 'core';
+    }
+
+    public function getDescription(): string
+    {
+        return 'Multi-channel communication engine — messages, templates, outbox, subscribers, preferences';
+    }
+
+    public function getVersion(): string
+    {
+        return '1.0.0';
+    }
+
+    public function getDependencies(): array
+    {
+        return [];
+    }
 
     public function getPermissions(): array
     {
@@ -33,26 +56,26 @@ class CommunicationModuleContract extends BaseModuleContract
     {
         return [
             'required_setup_steps' => ['channel_configuration'],
-            'default_settings'     => [],
-            'recommended_roles'    => ['admin'],
+            'default_settings' => [],
+            'recommended_roles' => ['admin'],
         ];
     }
 
     public function getActivationRules(): array
     {
         return [
-            'requires'  => [],
-            'settings'  => [],
-            'min_tier'  => null,
+            'requires' => [],
+            'settings' => [],
+            'min_tier' => null,
         ];
     }
 
     public function getDeactivationRules(): array
     {
         return [
-            'removes_data'       => false,
+            'removes_data' => false,
             'preserves_entities' => [],
-            'cleanup_jobs'       => [],
+            'cleanup_jobs' => [],
         ];
     }
 
@@ -72,9 +95,9 @@ class CommunicationModuleContract extends BaseModuleContract
     {
         return [
             'has_ai_assistant' => false,
-            'ai_suggestions'   => false,
-            'ai_automation'    => false,
-            'ai_data_access'   => [],
+            'ai_suggestions' => false,
+            'ai_automation' => false,
+            'ai_data_access' => [],
         ];
     }
 }

@@ -39,6 +39,7 @@ class LoyaltyRewardController extends Controller
         }
 
         $perPage = $request->input('per_page', 20);
+
         return $query->paginate($perPage);
     }
 
@@ -48,6 +49,7 @@ class LoyaltyRewardController extends Controller
     public function show(int $rewardId)
     {
         $reward = LoyaltyReward::with('program')->findOrFail($rewardId);
+
         return response()->json($reward);
     }
 
@@ -121,6 +123,7 @@ class LoyaltyRewardController extends Controller
             ->get()
             ->map(function ($reward) use ($customerLoyalty) {
                 $reward->can_afford = $customerLoyalty->current_points >= $reward->points_cost;
+
                 return $reward;
             });
 

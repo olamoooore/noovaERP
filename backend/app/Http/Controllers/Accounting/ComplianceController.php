@@ -2,23 +2,22 @@
 
 namespace App\Http\Controllers\Accounting;
 
+use App\Accounting\Services\ComplianceService;
 use App\Exports\ComplianceReportExport;
 use App\Http\Controllers\Controller;
-use App\Accounting\Services\ComplianceService;
 use App\Models\Accounting\ComplianceDocument;
 use App\Models\Accounting\ComplianceSubmission;
 use App\Models\Accounting\CountryConfiguration;
-use App\Models\Invoice;
-use App\Models\CustomerCreditNote;
 use App\Models\Bill;
+use App\Models\CustomerCreditNote;
+use App\Models\Invoice;
 use App\Models\VendorDebitNote;
 use Illuminate\Contracts\Auth\Access\Gate as GateContract;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Maatwebsite\Excel\Facades\Excel;
 use Maatwebsite\Excel\Excel as ExcelFormat;
-use PhpOffice\PhpSpreadsheet\IOFactory;
+use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\Response;
 
 class ComplianceController extends Controller
@@ -57,7 +56,7 @@ class ComplianceController extends Controller
             }
         }
 
-        throw (new ModelNotFoundException())->setModel(ComplianceDocument::class, [$id]);
+        throw (new ModelNotFoundException)->setModel(ComplianceDocument::class, [$id]);
     }
 
     /**
@@ -71,10 +70,11 @@ class ComplianceController extends Controller
 
         if ($gate->has($ability) || $gate->getPolicyFor($modelClass)) {
             $this->authorize($ability, $modelClass);
+
             return;
         }
 
-        if (!Auth::check()) {
+        if (! Auth::check()) {
             abort(Response::HTTP_UNAUTHORIZED, 'Unauthenticated.');
         }
     }
@@ -120,7 +120,7 @@ class ComplianceController extends Controller
                 'per_page' => $documents->perPage(),
                 'current_page' => $documents->currentPage(),
                 'last_page' => $documents->lastPage(),
-            ]
+            ],
         ]);
     }
 
@@ -130,7 +130,7 @@ class ComplianceController extends Controller
     private function seedMissingMyComplianceDocuments(): void
     {
         $tenantId = $this->currentTenantId();
-        if (!$tenantId) {
+        if (! $tenantId) {
             return;
         }
 
@@ -144,7 +144,7 @@ class ComplianceController extends Controller
             ->all();
 
         $candidateInvoices = Invoice::query()
-            ->when(!empty($existingInvoiceIds), fn ($q) => $q->whereNotIn('id', $existingInvoiceIds))
+            ->when(! empty($existingInvoiceIds), fn ($q) => $q->whereNotIn('id', $existingInvoiceIds))
             ->orderByDesc('id')
             ->limit(200)
             ->get();
@@ -176,7 +176,7 @@ class ComplianceController extends Controller
     private function seedMissingMyCreditNotes(): void
     {
         $tenantId = $this->currentTenantId();
-        if (!$tenantId) {
+        if (! $tenantId) {
             return;
         }
 
@@ -190,7 +190,7 @@ class ComplianceController extends Controller
             ->all();
 
         $candidates = CustomerCreditNote::query()
-            ->when(!empty($existingIds), fn ($q) => $q->whereNotIn('id', $existingIds))
+            ->when(! empty($existingIds), fn ($q) => $q->whereNotIn('id', $existingIds))
             ->orderByDesc('id')
             ->limit(200)
             ->get();
@@ -198,19 +198,19 @@ class ComplianceController extends Controller
         foreach ($candidates as $cn) {
             ComplianceDocument::firstOrCreate(
                 [
-                    'tenant_id'     => $tenantId,
-                    'country_code'  => 'MY',
+                    'tenant_id' => $tenantId,
+                    'country_code' => 'MY',
                     'document_type' => 'credit_note',
-                    'document_id'   => $cn->id,
+                    'document_id' => $cn->id,
                 ],
                 [
-                    'document_number'   => $cn->credit_note_number,
-                    'issued_date'       => $cn->credit_note_date,
-                    'total_amount'      => $cn->total_amount,
-                    'currency_code'     => $cn->currency_code ?? 'MYR',
-                    'mapped_payload'    => null,
+                    'document_number' => $cn->credit_note_number,
+                    'issued_date' => $cn->credit_note_date,
+                    'total_amount' => $cn->total_amount,
+                    'currency_code' => $cn->currency_code ?? 'MYR',
+                    'mapped_payload' => null,
                     'compliance_status' => 'pending',
-                    'created_by'        => Auth::id(),
+                    'created_by' => Auth::id(),
                 ]
             );
         }
@@ -222,7 +222,7 @@ class ComplianceController extends Controller
     private function seedMissingMyBills(): void
     {
         $tenantId = $this->currentTenantId();
-        if (!$tenantId) {
+        if (! $tenantId) {
             return;
         }
 
@@ -236,7 +236,7 @@ class ComplianceController extends Controller
             ->all();
 
         $candidates = Bill::query()
-            ->when(!empty($existingIds), fn ($q) => $q->whereNotIn('id', $existingIds))
+            ->when(! empty($existingIds), fn ($q) => $q->whereNotIn('id', $existingIds))
             ->orderByDesc('id')
             ->limit(200)
             ->get();
@@ -244,19 +244,19 @@ class ComplianceController extends Controller
         foreach ($candidates as $bill) {
             ComplianceDocument::firstOrCreate(
                 [
-                    'tenant_id'     => $tenantId,
-                    'country_code'  => 'MY',
+                    'tenant_id' => $tenantId,
+                    'country_code' => 'MY',
                     'document_type' => 'bill',
-                    'document_id'   => $bill->id,
+                    'document_id' => $bill->id,
                 ],
                 [
-                    'document_number'   => $bill->bill_number,
-                    'issued_date'       => $bill->bill_date,
-                    'total_amount'      => $bill->total,
-                    'currency_code'     => $bill->currency_code ?? 'MYR',
-                    'mapped_payload'    => null,
+                    'document_number' => $bill->bill_number,
+                    'issued_date' => $bill->bill_date,
+                    'total_amount' => $bill->total,
+                    'currency_code' => $bill->currency_code ?? 'MYR',
+                    'mapped_payload' => null,
                     'compliance_status' => 'pending',
-                    'created_by'        => Auth::id(),
+                    'created_by' => Auth::id(),
                 ]
             );
         }
@@ -268,7 +268,7 @@ class ComplianceController extends Controller
     private function seedMissingMyVendorDebitNotes(): void
     {
         $tenantId = $this->currentTenantId();
-        if (!$tenantId) {
+        if (! $tenantId) {
             return;
         }
 
@@ -282,7 +282,7 @@ class ComplianceController extends Controller
             ->all();
 
         $candidates = VendorDebitNote::query()
-            ->when(!empty($existingIds), fn ($q) => $q->whereNotIn('id', $existingIds))
+            ->when(! empty($existingIds), fn ($q) => $q->whereNotIn('id', $existingIds))
             ->orderByDesc('id')
             ->limit(200)
             ->get();
@@ -290,19 +290,19 @@ class ComplianceController extends Controller
         foreach ($candidates as $vdn) {
             ComplianceDocument::firstOrCreate(
                 [
-                    'tenant_id'     => $tenantId,
-                    'country_code'  => 'MY',
+                    'tenant_id' => $tenantId,
+                    'country_code' => 'MY',
                     'document_type' => 'vendor_debit_note',
-                    'document_id'   => $vdn->id,
+                    'document_id' => $vdn->id,
                 ],
                 [
-                    'document_number'   => $vdn->debit_note_number,
-                    'issued_date'       => $vdn->debit_note_date,
-                    'total_amount'      => $vdn->total_amount,
-                    'currency_code'     => $vdn->currency_code ?? 'MYR',
-                    'mapped_payload'    => null,
+                    'document_number' => $vdn->debit_note_number,
+                    'issued_date' => $vdn->debit_note_date,
+                    'total_amount' => $vdn->total_amount,
+                    'currency_code' => $vdn->currency_code ?? 'MYR',
+                    'mapped_payload' => null,
                     'compliance_status' => 'pending',
-                    'created_by'        => Auth::id(),
+                    'created_by' => Auth::id(),
                 ]
             );
         }
@@ -315,7 +315,7 @@ class ComplianceController extends Controller
     private function seedMissingMyJournalEntries(): void
     {
         $tenantId = $this->currentTenantId();
-        if (!$tenantId) {
+        if (! $tenantId) {
             return;
         }
 
@@ -324,9 +324,9 @@ class ComplianceController extends Controller
             ->where('status', 'posted')
             ->whereHas('lines', function ($q) {
                 $q->where('debit', '>', 0)
-                  ->whereHas('account', function ($q2) {
-                      $q2->where('type', 'expense');
-                  });
+                    ->whereHas('account', function ($q2) {
+                        $q2->where('type', 'expense');
+                    });
             })
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
@@ -338,7 +338,7 @@ class ComplianceController extends Controller
             ->where('country_code', 'MY')
             ->where('document_type', 'journal_entry')
             ->where('compliance_status', 'pending')
-            ->when(!empty($qualifyingJeIds), fn ($q) => $q->whereNotIn('document_id', $qualifyingJeIds))
+            ->when(! empty($qualifyingJeIds), fn ($q) => $q->whereNotIn('document_id', $qualifyingJeIds))
             ->delete();
 
         $existingIds = ComplianceDocument::query()
@@ -352,7 +352,7 @@ class ComplianceController extends Controller
 
         $candidates = \App\Models\JournalEntry::query()
             ->whereIn('id', $qualifyingJeIds)
-            ->when(!empty($existingIds), fn ($q) => $q->whereNotIn('id', $existingIds))
+            ->when(! empty($existingIds), fn ($q) => $q->whereNotIn('id', $existingIds))
             ->orderByDesc('id')
             ->limit(200)
             ->get();
@@ -360,19 +360,19 @@ class ComplianceController extends Controller
         foreach ($candidates as $je) {
             ComplianceDocument::firstOrCreate(
                 [
-                    'tenant_id'     => $tenantId,
-                    'country_code'  => 'MY',
+                    'tenant_id' => $tenantId,
+                    'country_code' => 'MY',
                     'document_type' => 'journal_entry',
-                    'document_id'   => $je->id,
+                    'document_id' => $je->id,
                 ],
                 [
-                    'document_number'   => $je->entry_number,
-                    'issued_date'       => $je->entry_date,
-                    'total_amount'      => $je->getTotalDebit(),
-                    'currency_code'     => 'MYR',
-                    'mapped_payload'    => null,
+                    'document_number' => $je->entry_number,
+                    'issued_date' => $je->entry_date,
+                    'total_amount' => $je->getTotalDebit(),
+                    'currency_code' => 'MYR',
+                    'mapped_payload' => null,
                     'compliance_status' => 'pending',
-                    'created_by'        => Auth::id(),
+                    'created_by' => Auth::id(),
                 ]
             );
         }
@@ -403,19 +403,19 @@ class ComplianceController extends Controller
 
         $document = ComplianceDocument::firstOrCreate(
             [
-                'tenant_id'     => $tenantId,
-                'country_code'  => strtoupper($validated['country_code']),
+                'tenant_id' => $tenantId,
+                'country_code' => strtoupper($validated['country_code']),
                 'document_type' => 'journal_entry',
-                'document_id'   => $je->id,
+                'document_id' => $je->id,
             ],
             [
-                'document_number'   => $je->entry_number,
-                'issued_date'       => $je->entry_date,
-                'total_amount'      => $je->getTotalDebit(),
-                'currency_code'     => 'MYR',
-                'mapped_payload'    => null,
+                'document_number' => $je->entry_number,
+                'issued_date' => $je->entry_date,
+                'total_amount' => $je->getTotalDebit(),
+                'currency_code' => 'MYR',
+                'mapped_payload' => null,
                 'compliance_status' => 'pending',
-                'created_by'        => Auth::id(),
+                'created_by' => Auth::id(),
             ]
         );
 
@@ -440,23 +440,23 @@ class ComplianceController extends Controller
             'country_code' => 'required|string|size:2|uppercase',
         ]);
 
-        $bill     = Bill::with(['vendor', 'lines'])->findOrFail($billId);
+        $bill = Bill::with(['vendor', 'lines'])->findOrFail($billId);
         $tenantId = $this->currentTenantId();
 
         $document = ComplianceDocument::firstOrCreate(
             [
-                'tenant_id'     => $tenantId,
-                'country_code'  => strtoupper($validated['country_code']),
+                'tenant_id' => $tenantId,
+                'country_code' => strtoupper($validated['country_code']),
                 'document_type' => 'bill',
-                'document_id'   => $bill->id,
+                'document_id' => $bill->id,
             ],
             [
-                'document_number'   => $bill->bill_number,
-                'issued_date'       => $bill->bill_date,
-                'total_amount'      => $bill->total,
-                'currency_code'     => $bill->currency_code ?? 'MYR',
+                'document_number' => $bill->bill_number,
+                'issued_date' => $bill->bill_date,
+                'total_amount' => $bill->total,
+                'currency_code' => $bill->currency_code ?? 'MYR',
                 'compliance_status' => 'pending',
-                'created_by'        => Auth::id(),
+                'created_by' => Auth::id(),
             ]
         );
 
@@ -470,8 +470,8 @@ class ComplianceController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'document_id'        => $result['document_id'],
-                    'submission_id'      => $result['submission_id'],
+                    'document_id' => $result['document_id'],
+                    'submission_id' => $result['submission_id'],
                     'provider_reference' => $result['provider_reference'],
                 ],
                 'message' => $result['message'],
@@ -493,23 +493,23 @@ class ComplianceController extends Controller
             'country_code' => 'required|string|size:2|uppercase',
         ]);
 
-        $vdn      = VendorDebitNote::with(['vendor', 'bill', 'lines'])->findOrFail($debitNoteId);
+        $vdn = VendorDebitNote::with(['vendor', 'bill', 'lines'])->findOrFail($debitNoteId);
         $tenantId = $this->currentTenantId();
 
         $document = ComplianceDocument::firstOrCreate(
             [
-                'tenant_id'     => $tenantId,
-                'country_code'  => strtoupper($validated['country_code']),
+                'tenant_id' => $tenantId,
+                'country_code' => strtoupper($validated['country_code']),
                 'document_type' => 'vendor_debit_note',
-                'document_id'   => $vdn->id,
+                'document_id' => $vdn->id,
             ],
             [
-                'document_number'   => $vdn->debit_note_number,
-                'issued_date'       => $vdn->debit_note_date,
-                'total_amount'      => $vdn->total_amount,
-                'currency_code'     => $vdn->currency_code ?? 'MYR',
+                'document_number' => $vdn->debit_note_number,
+                'issued_date' => $vdn->debit_note_date,
+                'total_amount' => $vdn->total_amount,
+                'currency_code' => $vdn->currency_code ?? 'MYR',
                 'compliance_status' => 'pending',
-                'created_by'        => Auth::id(),
+                'created_by' => Auth::id(),
             ]
         );
 
@@ -523,8 +523,8 @@ class ComplianceController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'document_id'        => $result['document_id'],
-                    'submission_id'      => $result['submission_id'],
+                    'document_id' => $result['document_id'],
+                    'submission_id' => $result['submission_id'],
                     'provider_reference' => $result['provider_reference'],
                 ],
                 'message' => $result['message'],
@@ -547,22 +547,22 @@ class ComplianceController extends Controller
         ]);
 
         $creditNote = CustomerCreditNote::with(['customer', 'invoice', 'lines'])->findOrFail($creditNoteId);
-        $tenantId   = $this->currentTenantId();
+        $tenantId = $this->currentTenantId();
 
         $document = ComplianceDocument::firstOrCreate(
             [
-                'tenant_id'     => $tenantId,
-                'country_code'  => strtoupper($validated['country_code']),
+                'tenant_id' => $tenantId,
+                'country_code' => strtoupper($validated['country_code']),
                 'document_type' => 'credit_note',
-                'document_id'   => $creditNote->id,
+                'document_id' => $creditNote->id,
             ],
             [
-                'document_number'   => $creditNote->credit_note_number,
-                'issued_date'       => $creditNote->credit_note_date,
-                'total_amount'      => $creditNote->total_amount,
-                'currency_code'     => $creditNote->currency_code ?? 'MYR',
+                'document_number' => $creditNote->credit_note_number,
+                'issued_date' => $creditNote->credit_note_date,
+                'total_amount' => $creditNote->total_amount,
+                'currency_code' => $creditNote->currency_code ?? 'MYR',
                 'compliance_status' => 'pending',
-                'created_by'        => Auth::id(),
+                'created_by' => Auth::id(),
             ]
         );
 
@@ -576,8 +576,8 @@ class ComplianceController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'document_id'        => $result['document_id'],
-                    'submission_id'      => $result['submission_id'],
+                    'document_id' => $result['document_id'],
+                    'submission_id' => $result['submission_id'],
                     'provider_reference' => $result['provider_reference'],
                 ],
                 'message' => $result['message'],
@@ -618,7 +618,7 @@ class ComplianceController extends Controller
         if ($document->document_type === 'invoice') {
             $sourceDocument = $document->invoice
                 ?? ($document->document_id ? Invoice::find($document->document_id) : null);
-            if (!$sourceDocument) {
+            if (! $sourceDocument) {
                 return response()->json(['success' => false, 'message' => 'Associated invoice not found'], 404);
             }
         }
@@ -661,7 +661,7 @@ class ComplianceController extends Controller
         }
 
         $invoice = $document->invoice;
-        if (!$invoice && $document->document_type === 'invoice' && $document->document_id) {
+        if (! $invoice && $document->document_type === 'invoice' && $document->document_id) {
             $invoice = Invoice::find($document->document_id);
         }
 
@@ -683,10 +683,11 @@ class ComplianceController extends Controller
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-            return response()->json(['success' => false, 'message' => 'Signature generation failed: ' . $e->getMessage()], 500);
+
+            return response()->json(['success' => false, 'message' => 'Signature generation failed: '.$e->getMessage()], 500);
         }
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             return response()->json(['success' => false, 'message' => $result['message'] ?? 'Unable to generate signature artifacts.'], 400);
         }
 
@@ -818,7 +819,7 @@ class ComplianceController extends Controller
         // Reload submission with updated status
         $submission->refresh();
 
-        if (!($result['success'] ?? false)) {
+        if (! ($result['success'] ?? false)) {
             return response()->json([
                 'success' => false,
                 'data' => $submission,
@@ -866,30 +867,30 @@ class ComplianceController extends Controller
     {
         $config = $this->complianceService->getCountryConfig($countryCode);
 
-        if (!$config) {
+        if (! $config) {
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'country_code'         => strtoupper($countryCode),
-                    'is_enabled'           => false,
-                    'test_mode'            => true,
-                    'credentials'          => [],
+                    'country_code' => strtoupper($countryCode),
+                    'is_enabled' => false,
+                    'test_mode' => true,
+                    'credentials' => [],
                     'credentials_complete' => false,
-                    'missing_credentials'  => ['LHDN API Client ID', 'LHDN API Client Secret', 'Supplier TIN', 'Supplier Name'],
+                    'missing_credentials' => ['LHDN API Client ID', 'LHDN API Client Secret', 'Supplier TIN', 'Supplier Name'],
                 ],
             ]);
         }
 
-        $creds    = $config->api_credentials ?? [];
+        $creds = $config->api_credentials ?? [];
         $settings = $config->settings ?? [];
-        $merged   = array_merge($settings, $creds);
+        $merged = array_merge($settings, $creds);
 
         // Check completeness before masking so we can inspect raw secret presence.
         $requiredForSubmission = [
-            'myinvoice_client_id'     => 'LHDN API Client ID',
+            'myinvoice_client_id' => 'LHDN API Client ID',
             'myinvoice_client_secret' => 'LHDN API Client Secret',
-            'supplier_tin'            => 'Supplier TIN',
-            'supplier_name'           => 'Supplier Name',
+            'supplier_tin' => 'Supplier TIN',
+            'supplier_name' => 'Supplier Name',
         ];
         $missingCredentials = [];
         foreach ($requiredForSubmission as $key => $label) {
@@ -909,21 +910,21 @@ class ComplianceController extends Controller
             'signature_certificate',
         ];
         foreach ($sensitiveKeys as $key) {
-            $merged[$key . '_set'] = !empty($merged[$key]);
+            $merged[$key.'_set'] = ! empty($merged[$key]);
             unset($merged[$key]);
         }
 
         return response()->json([
             'success' => true,
             'data' => [
-                'id'                   => $config->id,
-                'country_code'         => $config->country_code,
-                'provider_name'        => $config->provider_name,
-                'is_enabled'           => $config->is_enabled,
-                'test_mode'            => $config->test_mode,
-                'credentials'          => $merged,
+                'id' => $config->id,
+                'country_code' => $config->country_code,
+                'provider_name' => $config->provider_name,
+                'is_enabled' => $config->is_enabled,
+                'test_mode' => $config->test_mode,
+                'credentials' => $merged,
                 'credentials_complete' => $credentialsComplete,
-                'missing_credentials'  => $missingCredentials,
+                'missing_credentials' => $missingCredentials,
             ],
         ]);
     }
@@ -943,42 +944,42 @@ class ComplianceController extends Controller
         $this->authorizeWhenConfigured('manageCompliance', ComplianceDocument::class);
 
         $validated = $request->validate([
-            'is_enabled'   => 'required|boolean',
-            'test_mode'    => 'boolean',
-            'provider_name'=> 'required|string',
-            'credentials'  => 'nullable|array',
+            'is_enabled' => 'required|boolean',
+            'test_mode' => 'boolean',
+            'provider_name' => 'required|string',
+            'credentials' => 'nullable|array',
             // MY-specific credential fields (all optional so callers can do partial updates)
-            'credentials.myinvoice_client_id'                   => 'nullable|string|max:500',
-            'credentials.myinvoice_client_secret'               => 'nullable|string|max:500',
-            'credentials.myinvoice_scope'                       => 'nullable|string|max:100',
-            'credentials.supplier_tin'                          => 'nullable|string|max:20',
-            'credentials.supplier_name'                         => 'nullable|string|max:300',
-            'credentials.supplier_registration_number'          => 'nullable|string|max:100',
-            'credentials.supplier_id_type'                      => 'nullable|string|in:BRN,NRIC,PASSPORT,ARMY,TIN',
-            'credentials.supplier_id_number'                    => 'nullable|string|max:100',
-            'credentials.supplier_is_individual'                => 'nullable|boolean',
-            'credentials.supplier_msic_code'                    => 'nullable|string|max:10',
-            'credentials.supplier_business_activity_description'=> 'nullable|string|max:300',
-            'credentials.supplier_phone'                        => 'nullable|string|max:30',
-            'credentials.supplier_email'                        => 'nullable|email|max:200',
-            'credentials.supplier_address'                      => 'nullable|string|max:300',
-            'credentials.supplier_city'                         => 'nullable|string|max:100',
-            'credentials.supplier_state'                        => 'nullable|string|max:10',
-            'credentials.supplier_postal_code'                  => 'nullable|string|max:10',
-            'credentials.signature_enabled'                     => 'nullable|boolean',
-            'credentials.signature_use_for_submission'          => 'nullable|boolean',
-            'credentials.signature_key_id'                      => 'nullable|string|max:200',
-            'credentials.signature_name'                        => 'nullable|string|max:200',
-            'credentials.signature_private_key'                 => 'nullable|string',
-            'credentials.signature_private_key_passphrase'      => 'nullable|string|max:500',
-            'credentials.signature_certificate'                 => 'nullable|string',
+            'credentials.myinvoice_client_id' => 'nullable|string|max:500',
+            'credentials.myinvoice_client_secret' => 'nullable|string|max:500',
+            'credentials.myinvoice_scope' => 'nullable|string|max:100',
+            'credentials.supplier_tin' => 'nullable|string|max:20',
+            'credentials.supplier_name' => 'nullable|string|max:300',
+            'credentials.supplier_registration_number' => 'nullable|string|max:100',
+            'credentials.supplier_id_type' => 'nullable|string|in:BRN,NRIC,PASSPORT,ARMY,TIN',
+            'credentials.supplier_id_number' => 'nullable|string|max:100',
+            'credentials.supplier_is_individual' => 'nullable|boolean',
+            'credentials.supplier_msic_code' => 'nullable|string|max:10',
+            'credentials.supplier_business_activity_description' => 'nullable|string|max:300',
+            'credentials.supplier_phone' => 'nullable|string|max:30',
+            'credentials.supplier_email' => 'nullable|email|max:200',
+            'credentials.supplier_address' => 'nullable|string|max:300',
+            'credentials.supplier_city' => 'nullable|string|max:100',
+            'credentials.supplier_state' => 'nullable|string|max:10',
+            'credentials.supplier_postal_code' => 'nullable|string|max:10',
+            'credentials.signature_enabled' => 'nullable|boolean',
+            'credentials.signature_use_for_submission' => 'nullable|boolean',
+            'credentials.signature_key_id' => 'nullable|string|max:200',
+            'credentials.signature_name' => 'nullable|string|max:200',
+            'credentials.signature_private_key' => 'nullable|string',
+            'credentials.signature_private_key_passphrase' => 'nullable|string|max:500',
+            'credentials.signature_certificate' => 'nullable|string',
         ]);
 
         $incoming = $validated['credentials'] ?? [];
 
         // Merge with existing credentials: blank/missing secrets keep the old value.
         $existing = [];
-        $current  = $this->complianceService->getCountryConfig($countryCode);
+        $current = $this->complianceService->getCountryConfig($countryCode);
         if ($current) {
             $existing = array_merge($current->settings ?? [], $current->api_credentials ?? []);
         }
@@ -992,19 +993,19 @@ class ComplianceController extends Controller
         foreach ($secretKeys as $key) {
             if (empty($incoming[$key])) {
                 // Frontend did not send a new value — keep what is already stored.
-                if (!empty($existing[$key])) {
+                if (! empty($existing[$key])) {
                     $incoming[$key] = $existing[$key];
                 }
-                unset($incoming[$key . '_set']); // strip any accidentally forwarded indicator
+                unset($incoming[$key.'_set']); // strip any accidentally forwarded indicator
             }
         }
 
         $config = $this->complianceService->updateCountryConfig($countryCode, [
-            'is_enabled'     => $validated['is_enabled'],
-            'test_mode'      => $validated['test_mode'] ?? false,
-            'provider_name'  => $validated['provider_name'],
-            'api_credentials'=> $incoming,
-            'settings'       => [],
+            'is_enabled' => $validated['is_enabled'],
+            'test_mode' => $validated['test_mode'] ?? false,
+            'provider_name' => $validated['provider_name'],
+            'api_credentials' => $incoming,
+            'settings' => [],
         ]);
 
         // Return the masked representation (same as getConfig).
@@ -1078,7 +1079,7 @@ class ComplianceController extends Controller
             ])
         );
 
-        if (!($result['success'] ?? false)) {
+        if (! ($result['success'] ?? false)) {
             return response()->json([
                 'success' => false,
                 'errors' => $result['errors'] ?? $result['message'] ?? 'Failed to generate report',
@@ -1101,7 +1102,7 @@ class ComplianceController extends Controller
         }
 
         $xml = $result['xbrl_xml'] ?? null;
-        if (!$xml) {
+        if (! $xml) {
             return response()->json([
                 'success' => false,
                 'errors' => ['XBRL XML was not generated by exporter'],
@@ -1109,7 +1110,7 @@ class ComplianceController extends Controller
         }
 
         $xbrlValidation = $result['xbrl_validation'] ?? null;
-        if ($strict && (!is_array($xbrlValidation) || !($xbrlValidation['valid'] ?? false))) {
+        if ($strict && (! is_array($xbrlValidation) || ! ($xbrlValidation['valid'] ?? false))) {
             return response()->json([
                 'success' => false,
                 'errors' => is_array($xbrlValidation)
@@ -1126,7 +1127,7 @@ class ComplianceController extends Controller
 
         $headers = [
             'Content-Type' => 'application/xml; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
             'X-Compliance-Country' => $country,
             'X-XBRL-Taxonomy-Validated' => is_array($xbrlValidation) ? (($xbrlValidation['validated'] ?? false) ? 'true' : 'false') : 'false',
             'X-XBRL-Taxonomy-Valid' => is_array($xbrlValidation) ? (($xbrlValidation['valid'] ?? false) ? 'true' : 'false') : 'false',
@@ -1201,7 +1202,7 @@ class ComplianceController extends Controller
             [$prefix, $element] = self::splitTaxonomyElement($taxonomyElement);
             $rows[] = [
                 '',
-                '    ' . ($item['account_name'] ?? $item['mapping']['label'] ?? ''),
+                '    '.($item['account_name'] ?? $item['mapping']['label'] ?? ''),
                 $prefix,
                 $element,
                 $balance,
@@ -1218,7 +1219,7 @@ class ComplianceController extends Controller
             [$prefix, $element] = self::splitTaxonomyElement($taxonomyElement);
             $rows[] = [
                 '',
-                '    ' . ($item['account_name'] ?? $item['mapping']['label'] ?? ''),
+                '    '.($item['account_name'] ?? $item['mapping']['label'] ?? ''),
                 $prefix,
                 $element,
                 $balance,
@@ -1240,7 +1241,7 @@ class ComplianceController extends Controller
             [$prefix, $element] = self::splitTaxonomyElement($taxonomyElement);
             $rows[] = [
                 '',
-                '    ' . ($item['account_name'] ?? $item['mapping']['label'] ?? ''),
+                '    '.($item['account_name'] ?? $item['mapping']['label'] ?? ''),
                 $prefix,
                 $element,
                 $balance,
@@ -1257,7 +1258,7 @@ class ComplianceController extends Controller
             [$prefix, $element] = self::splitTaxonomyElement($taxonomyElement);
             $rows[] = [
                 '',
-                '    ' . ($item['account_name'] ?? $item['mapping']['label'] ?? ''),
+                '    '.($item['account_name'] ?? $item['mapping']['label'] ?? ''),
                 $prefix,
                 $element,
                 $balance,
@@ -1281,14 +1282,14 @@ class ComplianceController extends Controller
                 [$prefix, $element] = self::splitTaxonomyElement($taxonomyElement);
                 $rows[] = [
                     '',
-                    '    ' . ($item['account_name'] ?? $item['mapping']['label'] ?? ''),
+                    '    '.($item['account_name'] ?? $item['mapping']['label'] ?? ''),
                     $prefix,
                     $element,
                     $balance,
                 ];
             }
         }
-        if ($shareCapital > 0 || !empty($report['equity']['capital_and_reserves']['items'] ?? [])) {
+        if ($shareCapital > 0 || ! empty($report['equity']['capital_and_reserves']['items'] ?? [])) {
             $rows[] = ['', '  Total Share Capital', '', '', $shareCapital];
         }
 
@@ -1299,21 +1300,21 @@ class ComplianceController extends Controller
                  str_contains(strtolower($item['mapping']['label'] ?? ''), 'accum') ||
                  str_contains(strtolower($item['account_name'] ?? ''), 'retain') ||
                  str_contains(strtolower($item['mapping']['label'] ?? ''), 'retain')) &&
-                !str_contains(strtolower($item['account_name'] ?? ''), 'share')) {
+                ! str_contains(strtolower($item['account_name'] ?? ''), 'share')) {
                 $balance = $item['net_balance'] ?? ($item['signed_balance'] ?? 0);
                 $accumulatedProfits += $balance;
                 $taxonomyElement = (string) ($item['mapping']['element'] ?? ($item['taxonomy_element'] ?? ''));
                 [$prefix, $element] = self::splitTaxonomyElement($taxonomyElement);
                 $rows[] = [
                     '',
-                    '    ' . ($item['account_name'] ?? $item['mapping']['label'] ?? ''),
+                    '    '.($item['account_name'] ?? $item['mapping']['label'] ?? ''),
                     $prefix,
                     $element,
                     $balance,
                 ];
             }
         }
-        if ($accumulatedProfits > 0 || !empty($report['equity']['capital_and_reserves']['items'] ?? [])) {
+        if ($accumulatedProfits > 0 || ! empty($report['equity']['capital_and_reserves']['items'] ?? [])) {
             $rows[] = ['', '  Total Accumulated Profits', '', '', $accumulatedProfits];
         }
 
@@ -1346,7 +1347,7 @@ class ComplianceController extends Controller
             [$prefix, $element] = self::splitTaxonomyElement($taxonomyElement);
             $rows[] = [
                 '',
-                '  ' . ($item['account_name'] ?? $item['mapping']['label'] ?? ''),
+                '  '.($item['account_name'] ?? $item['mapping']['label'] ?? ''),
                 $prefix,
                 $element,
                 $balance,
@@ -1364,7 +1365,7 @@ class ComplianceController extends Controller
             [$prefix, $element] = self::splitTaxonomyElement($taxonomyElement);
             $rows[] = [
                 '',
-                '  ' . ($item['account_name'] ?? $item['mapping']['label'] ?? ''),
+                '  '.($item['account_name'] ?? $item['mapping']['label'] ?? ''),
                 $prefix,
                 $element,
                 $balance,
@@ -1384,7 +1385,7 @@ class ComplianceController extends Controller
             [$prefix, $element] = self::splitTaxonomyElement($taxonomyElement);
             $rows[] = [
                 '',
-                '  ' . ($item['account_name'] ?? $item['mapping']['label'] ?? ''),
+                '  '.($item['account_name'] ?? $item['mapping']['label'] ?? ''),
                 $prefix,
                 $element,
                 $balance,
@@ -1404,13 +1405,13 @@ class ComplianceController extends Controller
             [$prefix, $element] = self::splitTaxonomyElement($taxonomyElement);
             $rows[] = [
                 '',
-                '  ' . ($item['account_name'] ?? $item['mapping']['label'] ?? ''),
+                '  '.($item['account_name'] ?? $item['mapping']['label'] ?? ''),
                 $prefix,
                 $element,
                 $balance,
             ];
         }
-        if ($otherIncomeTotal > 0 || !empty($report['other_income']['items'] ?? [])) {
+        if ($otherIncomeTotal > 0 || ! empty($report['other_income']['items'] ?? [])) {
             $rows[] = ['', 'Total Other Income', '', '', $otherIncomeTotal];
         }
 
@@ -1424,13 +1425,13 @@ class ComplianceController extends Controller
             [$prefix, $element] = self::splitTaxonomyElement($taxonomyElement);
             $rows[] = [
                 '',
-                '  ' . ($item['account_name'] ?? $item['mapping']['label'] ?? ''),
+                '  '.($item['account_name'] ?? $item['mapping']['label'] ?? ''),
                 $prefix,
                 $element,
                 $balance,
             ];
         }
-        if ($otherExpenseTotal > 0 || !empty($report['other_expenses']['items'] ?? [])) {
+        if ($otherExpenseTotal > 0 || ! empty($report['other_expenses']['items'] ?? [])) {
             $rows[] = ['', 'Total Other Expenses', '', '', $otherExpenseTotal];
         }
 
@@ -1446,7 +1447,7 @@ class ComplianceController extends Controller
             return ['', ''];
         }
 
-        if (!str_contains($taxonomyElement, ':')) {
+        if (! str_contains($taxonomyElement, ':')) {
             return ['sg-sfrs', $taxonomyElement];
         }
 

@@ -2,8 +2,8 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -15,7 +15,7 @@ return new class extends Migration
         Schema::table('device_configurations', function (Blueprint $table) {
             // Add connection_type column with default 'agent' for backward compatibility
             $table->string('connection_type', 20)->default('agent')->after('agent_id');
-            
+
             // Add index for performance
             $table->index('connection_type');
         });
@@ -48,9 +48,9 @@ return new class extends Migration
     public function down(): void
     {
         // Drop constraints
-        DB::statement("ALTER TABLE device_configurations DROP CONSTRAINT IF EXISTS chk_agent_id_required");
-        DB::statement("ALTER TABLE device_configurations DROP CONSTRAINT IF EXISTS chk_connection_type");
-        
+        DB::statement('ALTER TABLE device_configurations DROP CONSTRAINT IF EXISTS chk_agent_id_required');
+        DB::statement('ALTER TABLE device_configurations DROP CONSTRAINT IF EXISTS chk_connection_type');
+
         // Drop column and index
         Schema::table('device_configurations', function (Blueprint $table) {
             $table->dropIndex(['connection_type']);

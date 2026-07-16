@@ -23,9 +23,9 @@ class WorkOrderActivity extends Model
     ];
 
     protected $casts = [
-        'metadata'    => 'array',
+        'metadata' => 'array',
         'attachments' => 'array',
-        'created_at'  => 'datetime',
+        'created_at' => 'datetime',
     ];
 
     public function workOrder(): BelongsTo

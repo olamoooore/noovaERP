@@ -2,16 +2,12 @@
 
 namespace Tests\Feature;
 
-use Modules\POS\Models\PosOrder;
-use Modules\POS\Models\PosPayment;
-use Modules\POS\Models\PosSession;
-use Modules\POS\Models\PosTerminal;
-use Modules\POS\Services\PosPaymentCompletionService;
-use Tests\TestCase;
-use App\Models\Product;
 use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
+use Modules\POS\Models\PosOrder;
+use Modules\POS\Models\PosSession;
+use Modules\POS\Models\PosTerminal;
+use Tests\TestCase;
 
 class PosSessionEnforcementTest extends TestCase
 {
@@ -63,7 +59,7 @@ class PosSessionEnforcementTest extends TestCase
     private function createDraftOrder(PosTerminal $terminal, ?PosSession $session = null): PosOrder
     {
         return PosOrder::create([
-            'order_number' => 'POS-TEST-' . uniqid(),
+            'order_number' => 'POS-TEST-'.uniqid(),
             'status' => 'draft',
             'terminal_id' => $terminal->id,
             'session_id' => $session?->id,

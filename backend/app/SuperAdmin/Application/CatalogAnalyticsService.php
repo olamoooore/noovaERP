@@ -47,17 +47,17 @@ class CatalogAnalyticsService
             ->where('selection_type', 'add_on_purchased')->count();
 
         return [
-            'total_active_items'          => $totalItems,
-            'total_prices'                => $totalPrices,
-            'total_active_rules'          => $totalRules,
-            'tenants_with_entitlements'   => $tenantsWithEntitlements,
-            'total_quote_snapshots'       => $totalQuotes,
-            'total_discount_cents'        => $totalDiscountCents,
-            'total_revenue_cents'         => $totalRevenueCents,
-            'pending_plan_changes'        => $pendingPlanChanges,
-            'plan_changes_this_month'     => $planChangesThisMonth,
-            'total_selections'            => $totalSelections,
-            'add_on_selections'           => $addOnSelections,
+            'total_active_items' => $totalItems,
+            'total_prices' => $totalPrices,
+            'total_active_rules' => $totalRules,
+            'tenants_with_entitlements' => $tenantsWithEntitlements,
+            'total_quote_snapshots' => $totalQuotes,
+            'total_discount_cents' => $totalDiscountCents,
+            'total_revenue_cents' => $totalRevenueCents,
+            'pending_plan_changes' => $pendingPlanChanges,
+            'plan_changes_this_month' => $planChangesThisMonth,
+            'total_selections' => $totalSelections,
+            'add_on_selections' => $addOnSelections,
         ];
     }
 
@@ -91,16 +91,16 @@ class CatalogAnalyticsService
 
         return $rows->map(function ($row) use ($totalTenants) {
             return [
-                'item_id'               => $row->id,
-                'item_key'              => $row->item_key,
-                'item_name'             => $row->item_name,
-                'entitled_count'        => (int) $row->entitled_count,
-                'blocked_count'         => (int) $row->blocked_count,
-                'entitlement_pct'       => round(($row->entitled_count / $totalTenants) * 100, 1),
-                'tier_included_count'   => (int) $row->tier_included_count,
-                'add_on_count'          => (int) $row->add_on_count,
-                'override_include_count'=> (int) $row->override_include_count,
-                'override_exclude_count'=> (int) $row->override_exclude_count,
+                'item_id' => $row->id,
+                'item_key' => $row->item_key,
+                'item_name' => $row->item_name,
+                'entitled_count' => (int) $row->entitled_count,
+                'blocked_count' => (int) $row->blocked_count,
+                'entitlement_pct' => round(($row->entitled_count / $totalTenants) * 100, 1),
+                'tier_included_count' => (int) $row->tier_included_count,
+                'add_on_count' => (int) $row->add_on_count,
+                'override_include_count' => (int) $row->override_include_count,
+                'override_exclude_count' => (int) $row->override_exclude_count,
             ];
         })->values()->all();
     }
@@ -129,11 +129,11 @@ class CatalogAnalyticsService
         $max = $rows->max('adoption_count') ?: 1;
 
         return $rows->map(fn ($r) => [
-            'item_id'        => $r->id,
-            'item_key'       => $r->item_key,
-            'item_name'      => $r->item_name,
+            'item_id' => $r->id,
+            'item_key' => $r->item_key,
+            'item_name' => $r->item_name,
             'adoption_count' => (int) $r->adoption_count,
-            'pct_of_max'     => round(($r->adoption_count / $max) * 100, 1),
+            'pct_of_max' => round(($r->adoption_count / $max) * 100, 1),
         ])->values()->all();
     }
 
@@ -167,13 +167,13 @@ class CatalogAnalyticsService
         $max = collect($rows)->max('total_revenue_cents') ?: 1;
 
         return collect($rows)->map(fn ($r) => [
-            'item_id'              => (int) $r->item_id,
-            'item_key'             => $r->item_key,
-            'item_name'            => $r->item_name,
-            'total_revenue_cents'  => (int) $r->total_revenue_cents,
+            'item_id' => (int) $r->item_id,
+            'item_key' => $r->item_key,
+            'item_name' => $r->item_name,
+            'total_revenue_cents' => (int) $r->total_revenue_cents,
             'total_discount_cents' => (int) $r->total_discount_cents,
-            'appearance_count'     => (int) $r->appearance_count,
-            'pct_of_max'           => round(($r->total_revenue_cents / $max) * 100, 1),
+            'appearance_count' => (int) $r->appearance_count,
+            'pct_of_max' => round(($r->total_revenue_cents / $max) * 100, 1),
         ])->values()->all();
     }
 
@@ -203,13 +203,13 @@ class CatalogAnalyticsService
         $total = max(1, $rows->sum('tenant_count'));
 
         return $rows->map(fn ($r) => [
-            'family_id'     => $r->id,
-            'family_key'    => $r->family_key,
-            'family_name'   => $r->family_name,
-            'tenant_count'  => (int) $r->tenant_count,
-            'trialing_count'=> (int) $r->trialing_count,
-            'active_count'  => (int) $r->active_count,
-            'pct'           => round(($r->tenant_count / $total) * 100, 1),
+            'family_id' => $r->id,
+            'family_key' => $r->family_key,
+            'family_name' => $r->family_name,
+            'tenant_count' => (int) $r->tenant_count,
+            'trialing_count' => (int) $r->trialing_count,
+            'active_count' => (int) $r->active_count,
+            'pct' => round(($r->tenant_count / $total) * 100, 1),
         ])->values()->all();
     }
 
@@ -252,13 +252,13 @@ class CatalogAnalyticsService
             ->get();
 
         return [
-            'by_status'      => [
-                'pending'   => (int) ($byStatus['pending']   ?? 0),
-                'applied'   => (int) ($byStatus['applied']   ?? 0),
+            'by_status' => [
+                'pending' => (int) ($byStatus['pending'] ?? 0),
+                'applied' => (int) ($byStatus['applied'] ?? 0),
                 'cancelled' => (int) ($byStatus['cancelled'] ?? 0),
             ],
-            'this_month'     => $thisMonth,
-            'last_month'     => $lastMonth,
+            'this_month' => $thisMonth,
+            'last_month' => $lastMonth,
             'recent_changes' => $recentChanges,
         ];
     }
@@ -289,10 +289,10 @@ class CatalogAnalyticsService
         $max = collect($rows)->max('total_discount_cents') ?: 1;
 
         return collect($rows)->map(fn ($r) => [
-            'rule_name'            => $r->rule_name,
-            'application_count'    => (int) $r->application_count,
+            'rule_name' => $r->rule_name,
+            'application_count' => (int) $r->application_count,
             'total_discount_cents' => (int) $r->total_discount_cents,
-            'pct_of_max'           => round(($r->total_discount_cents / $max) * 100, 1),
+            'pct_of_max' => round(($r->total_discount_cents / $max) * 100, 1),
         ])->values()->all();
     }
 }

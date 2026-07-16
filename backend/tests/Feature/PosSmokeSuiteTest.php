@@ -2,23 +2,23 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use App\Models\User;
-use App\Models\Product;
 use App\Models\Customer;
-use Modules\POS\Models\PosOrder;
-use Modules\POS\Models\PosSession;
-use Modules\POS\Models\PosTerminal;
-use Modules\POS\Models\PosPayment;
 use App\Models\JournalEntry;
+use App\Models\Product;
 use App\Models\StockMovement;
-use Spatie\Permission\Models\Role;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Modules\POS\Models\PosOrder;
+use Modules\POS\Models\PosPayment;
+use Modules\POS\Models\PosSession;
+use Modules\POS\Models\PosTerminal;
+use Spatie\Permission\Models\Role;
+use Tests\TestCase;
 
 /**
  * POS Smoke Test Suite
- * 
+ *
  * Critical end-to-end tests that verify core POS functionality
  * after deployment. These tests should be run in staging before
  * production go-live.
@@ -28,9 +28,13 @@ class PosSmokeSuiteTest extends TestCase
     use RefreshDatabase;
 
     protected User $cashier;
+
     protected User $manager;
+
     protected Product $product;
+
     protected Customer $customer;
+
     protected PosTerminal $terminal;
 
     protected function setUp(): void

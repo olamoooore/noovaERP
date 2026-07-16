@@ -4,9 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Invoice extends Model
 {
@@ -17,19 +17,19 @@ class Invoice extends Model
         parent::boot();
 
         static::creating(function ($invoice) {
-            if (!$invoice->invoice_number) {
+            if (! $invoice->invoice_number) {
                 $invoice->invoice_number = static::generateInvoiceNumber();
             }
-            if (!$invoice->lifecycle_status) {
+            if (! $invoice->lifecycle_status) {
                 $invoice->lifecycle_status = 'draft';
             }
-            if (!$invoice->settlement_status) {
+            if (! $invoice->settlement_status) {
                 $invoice->settlement_status = 'unpaid';
             }
-            if (!$invoice->reconciliation_status) {
+            if (! $invoice->reconciliation_status) {
                 $invoice->reconciliation_status = 'unreconciled';
             }
-            if (!$invoice->version_number) {
+            if (! $invoice->version_number) {
                 $invoice->version_number = 1;
             }
             if ($invoice->is_active_version === null) {
@@ -40,17 +40,17 @@ class Invoice extends Model
         static::deleting(function ($invoice) {
             if ($invoice->journal_entry_id !== null) {
                 throw new \RuntimeException(
-                    "Cannot delete posted invoice #{$invoice->invoice_number}. " .
-                    "Posted invoices must be reversed or credited, not deleted. " .
-                    "Create a credit note to cancel this invoice."
+                    "Cannot delete posted invoice #{$invoice->invoice_number}. ".
+                    'Posted invoices must be reversed or credited, not deleted. '.
+                    'Create a credit note to cancel this invoice.'
                 );
             }
 
             if ($invoice->payments()->exists()) {
                 $paymentCount = $invoice->payments()->count();
                 throw new \RuntimeException(
-                    "Cannot delete invoice #{$invoice->invoice_number} because {$paymentCount} payment(s) exist. " .
-                    "Posted invoices must be reversed or credited, not deleted."
+                    "Cannot delete invoice #{$invoice->invoice_number} because {$paymentCount} payment(s) exist. ".
+                    'Posted invoices must be reversed or credited, not deleted.'
                 );
             }
         });
@@ -191,7 +191,7 @@ class Invoice extends Model
         $prefix = "INV-{$year}-";
 
         try {
-            \Illuminate\Support\Facades\DB::statement("CREATE SEQUENCE IF NOT EXISTS invoice_number_seq START 1");
+            \Illuminate\Support\Facades\DB::statement('CREATE SEQUENCE IF NOT EXISTS invoice_number_seq START 1');
 
             $maxNum = (int) (\Illuminate\Support\Facades\DB::selectOne("
                 SELECT MAX(CAST(SUBSTRING(invoice_number FROM '\d{4}$') AS INTEGER)) as m
@@ -205,7 +205,8 @@ class Invoice extends Model
             }
 
             $seqVal = (int) \Illuminate\Support\Facades\DB::selectOne("SELECT nextval('invoice_number_seq') AS val")->val;
-            return $prefix . str_pad($seqVal, 4, '0', STR_PAD_LEFT);
+
+            return $prefix.str_pad($seqVal, 4, '0', STR_PAD_LEFT);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('Invoice number sequence unavailable, using fallback', [
                 'error' => $e->getMessage(),
@@ -213,11 +214,12 @@ class Invoice extends Model
         }
 
         $latest = static::withTrashed()
-            ->where('invoice_number', 'like', $prefix . '%')
+            ->where('invoice_number', 'like', $prefix.'%')
             ->orderBy('id', 'desc')
             ->first();
         $number = $latest ? (int) substr($latest->invoice_number, -4) + 1 : 1;
-        return $prefix . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        return $prefix.str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 
     public function calculateTotals(): void

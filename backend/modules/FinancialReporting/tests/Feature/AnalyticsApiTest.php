@@ -2,9 +2,9 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TenantTestCase;
-use Illuminate\Support\Facades\Artisan;
 use App\Models\User;
+use Illuminate\Support\Facades\Artisan;
+use Tests\TenantTestCase;
 
 class AnalyticsApiTest extends TenantTestCase
 {
@@ -34,7 +34,7 @@ class AnalyticsApiTest extends TenantTestCase
     public function it_can_get_sales_by_product()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/analytics/sales/by-product?' . http_build_query([
+            ->getJson('/api/v1/analytics/sales/by-product?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
@@ -46,7 +46,7 @@ class AnalyticsApiTest extends TenantTestCase
     public function it_can_get_sales_by_customer()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/analytics/sales/by-customer?' . http_build_query([
+            ->getJson('/api/v1/analytics/sales/by-customer?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
@@ -58,7 +58,7 @@ class AnalyticsApiTest extends TenantTestCase
     public function it_can_get_sales_trends()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/analytics/sales/trends?' . http_build_query([
+            ->getJson('/api/v1/analytics/sales/trends?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
                 'interval' => 'day',
@@ -71,7 +71,7 @@ class AnalyticsApiTest extends TenantTestCase
     public function it_can_get_sales_by_category()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/analytics/sales/by-category?' . http_build_query([
+            ->getJson('/api/v1/analytics/sales/by-category?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
@@ -83,7 +83,7 @@ class AnalyticsApiTest extends TenantTestCase
     public function it_can_get_expenses_by_category()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/analytics/expenses/by-category?' . http_build_query([
+            ->getJson('/api/v1/analytics/expenses/by-category?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
@@ -95,7 +95,7 @@ class AnalyticsApiTest extends TenantTestCase
     public function it_can_get_expenses_by_vendor()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/analytics/expenses/by-vendor?' . http_build_query([
+            ->getJson('/api/v1/analytics/expenses/by-vendor?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
@@ -107,7 +107,7 @@ class AnalyticsApiTest extends TenantTestCase
     public function it_can_get_customer_lifetime_value()
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/v1/analytics/customers/lifetime-value?' . http_build_query([
+            ->getJson('/api/v1/analytics/customers/lifetime-value?'.http_build_query([
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
             ]));
@@ -130,7 +130,7 @@ class AnalyticsApiTest extends TenantTestCase
 
         foreach ($intervals as $interval) {
             $response = $this->actingAs($this->user)
-                ->getJson('/api/v1/analytics/sales/trends?' . http_build_query([
+                ->getJson('/api/v1/analytics/sales/trends?'.http_build_query([
                     'start_date' => '2024-01-01',
                     'end_date' => '2024-12-31',
                     'interval' => $interval,

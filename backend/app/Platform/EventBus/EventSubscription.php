@@ -16,9 +16,13 @@ class EventSubscription extends Model
     use HasFactory;
 
     protected $table = 'domain_event_subscriptions';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
+
     protected $guarded = [];
 
     protected $casts = [

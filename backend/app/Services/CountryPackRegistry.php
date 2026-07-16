@@ -38,6 +38,7 @@ class CountryPackRegistry
     public function getCoaTemplate(string $countryCode): ?array
     {
         $pack = $this->get($countryCode);
+
         return $pack ? json_decode($pack->statutory_coa_template, true) : null;
     }
 
@@ -47,6 +48,7 @@ class CountryPackRegistry
     public function getDefaultTaxRates(string $countryCode): array
     {
         $pack = $this->get($countryCode);
+
         return $pack ? json_decode($pack->default_tax_rates, true) : [];
     }
 
@@ -56,6 +58,7 @@ class CountryPackRegistry
     public function getMandatoryTaxTypes(string $countryCode): array
     {
         $pack = $this->get($countryCode);
+
         return $pack ? json_decode($pack->mandatory_tax_types, true) : [];
     }
 
@@ -65,6 +68,7 @@ class CountryPackRegistry
     public function getRegulatoryReports(string $countryCode): array
     {
         $pack = $this->get($countryCode);
+
         return $pack ? json_decode($pack->regulatory_report_mappings, true) : [];
     }
 
@@ -74,6 +78,7 @@ class CountryPackRegistry
     public function getEInvoicingRequirements(string $countryCode): ?array
     {
         $pack = $this->get($countryCode);
+
         return $pack ? json_decode($pack->e_invoicing_requirements, true) : null;
     }
 
@@ -83,6 +88,7 @@ class CountryPackRegistry
     public function getNumberingConventions(string $countryCode): ?array
     {
         $pack = $this->get($countryCode);
+
         return $pack ? json_decode($pack->numbering_conventions, true) : null;
     }
 
@@ -92,6 +98,7 @@ class CountryPackRegistry
     public function isEInvoicingRequired(string $countryCode): bool
     {
         $requirements = $this->getEInvoicingRequirements($countryCode);
+
         return $requirements['required'] ?? false;
     }
 

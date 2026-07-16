@@ -2,10 +2,10 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Setting;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Config;
-use App\Models\Setting;
 use Symfony\Component\HttpFoundation\Response;
 
 class LoadMailConfig
@@ -39,10 +39,10 @@ class LoadMailConfig
                 }
 
                 // Global "From" Address
-                if (!empty($mail['from_address'])) {
+                if (! empty($mail['from_address'])) {
                     Config::set('mail.from.address', $mail['from_address']);
                 }
-                if (!empty($mail['from_name'])) {
+                if (! empty($mail['from_name'])) {
                     Config::set('mail.from.name', $mail['from_name']);
                 }
             }

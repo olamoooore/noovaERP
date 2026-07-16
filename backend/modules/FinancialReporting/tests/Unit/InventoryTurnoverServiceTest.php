@@ -2,20 +2,18 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
-use Tests\TenantTestCase;
-use Modules\FinancialReporting\Services\Inventory\InventoryTurnoverService;
-use Modules\FinancialReporting\DTOs\ReportFilter;
 use Carbon\Carbon;
+use Modules\FinancialReporting\Services\Inventory\InventoryTurnoverService;
+use Tests\TenantTestCase;
 
 class InventoryTurnoverServiceTest extends TenantTestCase
 {
-
     protected InventoryTurnoverService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new InventoryTurnoverService();
+        $this->service = new InventoryTurnoverService;
     }
 
     /** @test */

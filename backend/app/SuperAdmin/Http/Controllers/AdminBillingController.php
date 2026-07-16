@@ -20,13 +20,13 @@ class AdminBillingController extends Controller
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'status'     => ['nullable', 'string', 'in:draft,open,paid,void,uncollectible'],
-            'tenant_id'  => ['nullable', 'string', 'uuid'],
-            'from'       => ['nullable', 'date'],
-            'to'         => ['nullable', 'date', 'after_or_equal:from'],
-            'search'     => ['nullable', 'string', 'max:100'],
-            'page'       => ['nullable', 'integer', 'min:1'],
-            'per_page'   => ['nullable', 'integer', 'min:5', 'max:100'],
+            'status' => ['nullable', 'string', 'in:draft,open,paid,void,uncollectible'],
+            'tenant_id' => ['nullable', 'string', 'uuid'],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date', 'after_or_equal:from'],
+            'search' => ['nullable', 'string', 'max:100'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:5', 'max:100'],
         ]);
 
         $perPage = (int) ($validated['per_page'] ?? 20);
@@ -34,30 +34,30 @@ class AdminBillingController extends Controller
         $query = SubscriptionInvoice::with(['subscription.planVersion.family'])
             ->orderByDesc('created_at');
 
-        if (!empty($validated['status'])) {
+        if (! empty($validated['status'])) {
             $query->where('status', $validated['status']);
         }
 
-        if (!empty($validated['tenant_id'])) {
+        if (! empty($validated['tenant_id'])) {
             $query->where('tenant_id', $validated['tenant_id']);
         }
 
-        if (!empty($validated['from'])) {
+        if (! empty($validated['from'])) {
             $query->whereDate('created_at', '>=', $validated['from']);
         }
 
-        if (!empty($validated['to'])) {
+        if (! empty($validated['to'])) {
             $query->whereDate('created_at', '<=', $validated['to']);
         }
 
-        if (!empty($validated['search'])) {
+        if (! empty($validated['search'])) {
             $search = $validated['search'];
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_number', 'ILIKE', "%{$search}%")
-                  ->orWhereIn('tenant_id', function ($sub) use ($search) {
-                      $sub->select('id')->from('tenants')
-                          ->where('name', 'ILIKE', "%{$search}%");
-                  });
+                    ->orWhereIn('tenant_id', function ($sub) use ($search) {
+                        $sub->select('id')->from('tenants')
+                            ->where('name', 'ILIKE', "%{$search}%");
+                    });
             });
         }
 
@@ -73,11 +73,11 @@ class AdminBillingController extends Controller
         return response()->json([
             'data' => $paginator->items(),
             'meta' => [
-                'total'           => $paginator->total(),
-                'page'            => $paginator->currentPage(),
-                'per_page'        => $paginator->perPage(),
-                'last_page'       => $paginator->lastPage(),
-                'open_total'      => $openTotal,
+                'total' => $paginator->total(),
+                'page' => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'last_page' => $paginator->lastPage(),
+                'open_total' => $openTotal,
                 'paid_this_month' => $paidThisMonth,
             ],
         ]);
@@ -127,7 +127,7 @@ class AdminBillingController extends Controller
     public function generate(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'subscription_id'  => ['required', 'integer', 'exists:subscriptions,id'],
+            'subscription_id' => ['required', 'integer', 'exists:subscriptions,id'],
             'billing_interval' => ['required', 'string', 'in:monthly,yearly'],
         ]);
 

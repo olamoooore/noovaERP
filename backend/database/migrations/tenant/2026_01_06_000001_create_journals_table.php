@@ -19,17 +19,17 @@ return new class extends Migration
             $table->integer('sequence_number')->default(1);
             $table->boolean('is_active')->default(true);
             $table->timestamps();
-            
+
             $table->index('type');
             $table->index('is_active');
         });
-        
+
         // Add journal_id to journal_entries table
         Schema::table('journal_entries', function (Blueprint $table) {
             $table->foreignId('journal_id')->nullable()->after('id')->constrained('journals');
             $table->foreignId('reversed_entry_id')->nullable()->after('journal_id')->constrained('journal_entries');
             $table->boolean('is_reversal')->default(false)->after('reversed_entry_id');
-            
+
             $table->index('journal_id');
             $table->index('reversed_entry_id');
             $table->index('is_reversal');
@@ -43,7 +43,7 @@ return new class extends Migration
             $table->dropForeign(['reversed_entry_id']);
             $table->dropColumn(['journal_id', 'reversed_entry_id', 'is_reversal']);
         });
-        
+
         Schema::dropIfExists('journals');
     }
 };

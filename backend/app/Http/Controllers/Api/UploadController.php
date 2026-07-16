@@ -23,13 +23,13 @@ class UploadController extends Controller
             if ($folder === '') {
                 $folder = 'uploads';
             }
-            
+
             // Generate a unique filename
-            $filename = Str::random(40) . '.' . $file->getClientOriginalExtension();
-            
+            $filename = Str::random(40).'.'.$file->getClientOriginalExtension();
+
             // Store the file in the public disk
             $path = $file->storeAs($folder, $filename, 'public');
-            
+
             // Return the full URL
             return response()->json([
                 'path' => $path,

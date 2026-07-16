@@ -63,8 +63,8 @@ class CoreModuleContract extends BaseModuleContract
     {
         return [
             'required_setup_steps' => ['group_setup', 'entity_selection', 'country_compliance'],
-            'default_settings'     => ['date_format' => 'Y-m-d', 'timezone' => 'UTC'],
-            'recommended_roles'    => ['admin', 'accountant'],
+            'default_settings' => ['date_format' => 'Y-m-d', 'timezone' => 'UTC'],
+            'recommended_roles' => ['admin', 'accountant'],
         ];
     }
 

@@ -91,7 +91,7 @@ class PosSyncController extends Controller
 
         foreach ($pendingItems as $item) {
             $result = $this->syncService->syncOperation($item->id);
-            
+
             if ($result['success']) {
                 $results['synced']++;
             } elseif ($result['is_conflict'] ?? false) {

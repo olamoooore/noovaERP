@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Department;
 use App\Models\Location;
+use Illuminate\Database\Seeder;
 
 /**
  * Seeds common departments and SG/MY office locations.
@@ -61,45 +61,45 @@ class DepartmentLocationSeeder extends Seeder
         $locations = [
             // Singapore
             [
-                'code'        => 'SG-ALJ',
-                'name'        => 'Singapore — Aljunied',
-                'city'        => 'Singapore',
-                'state'       => 'East Region',
-                'country'     => 'Singapore',
+                'code' => 'SG-ALJ',
+                'name' => 'Singapore — Aljunied',
+                'city' => 'Singapore',
+                'state' => 'East Region',
+                'country' => 'Singapore',
                 'postal_code' => '389836',
-                'address'     => '625 Aljunied Road, #05-08, Aljunied Industrial Complex',
+                'address' => '625 Aljunied Road, #05-08, Aljunied Industrial Complex',
                 'description' => 'Singapore office at Aljunied Industrial Complex',
             ],
             [
-                'code'        => 'SG-HSC',
-                'name'        => 'Singapore — High Street Centre',
-                'city'        => 'Singapore',
-                'state'       => 'Central Region',
-                'country'     => 'Singapore',
+                'code' => 'SG-HSC',
+                'name' => 'Singapore — High Street Centre',
+                'city' => 'Singapore',
+                'state' => 'Central Region',
+                'country' => 'Singapore',
                 'postal_code' => '179094',
-                'address'     => '1 North Bridge Road, #03-41A, High Street Centre',
+                'address' => '1 North Bridge Road, #03-41A, High Street Centre',
                 'description' => 'Singapore office at High Street Centre',
             ],
             // Malaysia
             [
-                'code'        => 'MY-JB',
-                'name'        => 'Johor Bahru Office',
-                'city'        => 'Johor Bahru',
-                'state'       => 'Johor',
-                'country'     => 'Malaysia',
+                'code' => 'MY-JB',
+                'name' => 'Johor Bahru Office',
+                'city' => 'Johor Bahru',
+                'state' => 'Johor',
+                'country' => 'Malaysia',
                 'postal_code' => '80300',
-                'address'     => 'Johor Bahru',
+                'address' => 'Johor Bahru',
                 'description' => 'Malaysia office — Johor Bahru',
             ],
             // Remote / Virtual
             [
-                'code'        => 'REMOTE',
-                'name'        => 'Remote / Work From Home',
-                'city'        => null,
-                'state'       => null,
-                'country'     => null,
+                'code' => 'REMOTE',
+                'name' => 'Remote / Work From Home',
+                'city' => null,
+                'state' => null,
+                'country' => null,
                 'postal_code' => null,
-                'address'     => null,
+                'address' => null,
                 'description' => 'Fully remote employees not assigned to a physical office',
             ],
         ];
@@ -112,7 +112,7 @@ class DepartmentLocationSeeder extends Seeder
         }
 
         if ($this->command) {
-            $this->command->info('Seeded ' . count($departments) . ' departments and ' . count($locations) . ' locations.');
+            $this->command->info('Seeded '.count($departments).' departments and '.count($locations).' locations.');
         }
     }
 }

@@ -52,6 +52,7 @@ class ModuleContractConformanceTest extends TestCase
         $directory = $parts[1] ?? $parts[0];
         $path = base_path("modules/{$directory}/module.json");
         $this->assertFileExists($path, "module.json missing for directory '{$directory}' (class: {$class})");
+
         return json_decode(file_get_contents($path));
     }
 
@@ -60,7 +61,7 @@ class ModuleContractConformanceTest extends TestCase
      */
     public function test_implements_module_contract_interface(string $class): void
     {
-        $instance = new $class();
+        $instance = new $class;
         $this->assertInstanceOf(ModuleContract::class, $instance);
     }
 
@@ -69,7 +70,7 @@ class ModuleContractConformanceTest extends TestCase
      */
     public function test_contract_matches_module_json(string $class): void
     {
-        $instance = new $class();
+        $instance = new $class;
         $json = $this->loadModuleJson($class);
 
         $this->assertSame($json->key, $instance->getKey());
@@ -83,7 +84,7 @@ class ModuleContractConformanceTest extends TestCase
      */
     public function test_contract_returns_valid_metadata(string $class): void
     {
-        $instance = new $class();
+        $instance = new $class;
 
         $this->assertNotEmpty($instance->getDescription());
         $this->assertNotEmpty($instance->getVersion());
@@ -97,7 +98,7 @@ class ModuleContractConformanceTest extends TestCase
      */
     public function test_onboarding_config_shape(string $class): void
     {
-        $config = (new $class())->getOnboardingConfig();
+        $config = (new $class)->getOnboardingConfig();
 
         $this->assertArrayHasKey('required_setup_steps', $config);
         $this->assertArrayHasKey('default_settings', $config);
@@ -110,7 +111,7 @@ class ModuleContractConformanceTest extends TestCase
      */
     public function test_activation_rules_shape(string $class): void
     {
-        $rules = (new $class())->getActivationRules();
+        $rules = (new $class)->getActivationRules();
 
         $this->assertArrayHasKey('requires', $rules);
         $this->assertArrayHasKey('settings', $rules);
@@ -122,7 +123,7 @@ class ModuleContractConformanceTest extends TestCase
      */
     public function test_deactivation_rules_shape(string $class): void
     {
-        $rules = (new $class())->getDeactivationRules();
+        $rules = (new $class)->getDeactivationRules();
 
         $this->assertArrayHasKey('removes_data', $rules);
         $this->assertArrayHasKey('preserves_entities', $rules);
@@ -135,7 +136,7 @@ class ModuleContractConformanceTest extends TestCase
      */
     public function test_ai_capabilities_shape(string $class): void
     {
-        $caps = (new $class())->getAICapabilities();
+        $caps = (new $class)->getAICapabilities();
 
         $this->assertArrayHasKey('has_ai_assistant', $caps);
         $this->assertArrayHasKey('ai_suggestions', $caps);
@@ -149,7 +150,7 @@ class ModuleContractConformanceTest extends TestCase
      */
     public function test_external_mode_config_shape(string $class): void
     {
-        $config = (new $class())->getExternalModeConfig();
+        $config = (new $class)->getExternalModeConfig();
 
         $this->assertArrayHasKey('supports_coupled', $config);
         $this->assertArrayHasKey('supports_decoupled', $config);
@@ -162,7 +163,7 @@ class ModuleContractConformanceTest extends TestCase
      */
     public function test_can_activate_returns_bool_in_ready(string $class): void
     {
-        $result = (new $class())->canActivate();
+        $result = (new $class)->canActivate();
 
         $this->assertArrayHasKey('ready', $result);
         $this->assertArrayHasKey('reasons', $result);
@@ -178,8 +179,8 @@ class ModuleContractConformanceTest extends TestCase
     public static function contractProvider(): array
     {
         return array_combine(
-            array_map(fn($c) => class_basename($c), self::CONTRACTS),
-            array_map(fn($c) => [$c], self::CONTRACTS),
+            array_map(fn ($c) => class_basename($c), self::CONTRACTS),
+            array_map(fn ($c) => [$c], self::CONTRACTS),
         );
     }
 }

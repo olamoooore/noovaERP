@@ -2,10 +2,10 @@
 
 namespace Modules\Fulfillment\Services;
 
+use Illuminate\Support\Facades\DB;
+use Modules\Fulfillment\Contracts\TrackingResponse;
 use Modules\Fulfillment\Models\Shipment;
 use Modules\Fulfillment\Models\TrackingEvent;
-use Modules\Fulfillment\Contracts\TrackingResponse;
-use Illuminate\Support\Facades\DB;
 
 class TrackingService
 {
@@ -30,7 +30,7 @@ class TrackingService
                 'actual_delivery' => $response->actualDelivery,
             ]);
 
-            if (!empty($response->events)) {
+            if (! empty($response->events)) {
                 foreach ($response->events as $eventData) {
                     $event = is_array($eventData) ? (object) $eventData : $eventData;
 
@@ -70,7 +70,7 @@ class TrackingService
                 $this->syncTracking($shipment);
                 $synced++;
             } catch (\Exception $e) {
-                \Log::warning("Failed to sync tracking for shipment {$shipment->shipment_number}: " . $e->getMessage());
+                \Log::warning("Failed to sync tracking for shipment {$shipment->shipment_number}: ".$e->getMessage());
             }
         }
 

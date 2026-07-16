@@ -2,8 +2,8 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -40,7 +40,7 @@ return new class extends Migration
             ['module_code' => 'ecommerce',    'depends_on_module_code' => 'accounting', 'is_hard_dependency' => true],
             ['module_code' => 'ocr',          'depends_on_module_code' => 'accounting', 'is_hard_dependency' => true],
             ['module_code' => 'payroll',      'depends_on_module_code' => 'accounting', 'is_hard_dependency' => true],
-            ['module_code' => 'field_service','depends_on_module_code' => 'accounting', 'is_hard_dependency' => false],
+            ['module_code' => 'field_service', 'depends_on_module_code' => 'accounting', 'is_hard_dependency' => false],
         ];
 
         foreach ($rules as $rule) {

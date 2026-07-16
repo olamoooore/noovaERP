@@ -3,7 +3,6 @@
 namespace App\Platform\Archive;
 
 use App\Platform\Archive\Contracts\ArchiveServiceContract;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ArchiveService implements ArchiveServiceContract

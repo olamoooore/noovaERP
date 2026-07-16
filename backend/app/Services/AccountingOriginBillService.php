@@ -37,59 +37,59 @@ class AccountingOriginBillService
             $actorId = TenantUserHelper::requireTenantUserId(Auth::id());
 
             $bill = Bill::create([
-                'vendor_id'        => $data->vendorId,
-                'bill_type'        => $data->billType,
-                'bill_date'        => $data->billDate ?? now()->toDateString(),
-                'due_date'         => $data->dueDate,
-                'notes'            => $data->notes,
-                'terms'            => $data->terms,
+                'vendor_id' => $data->vendorId,
+                'bill_type' => $data->billType,
+                'bill_date' => $data->billDate ?? now()->toDateString(),
+                'due_date' => $data->dueDate,
+                'notes' => $data->notes,
+                'terms' => $data->terms,
                 'vendor_reference' => $data->vendorReference,
                 'internal_reference' => $data->internalReference,
-                'discount_amount'  => $data->discountAmount,
-                'status'           => 'draft',
-                'subtotal'         => 0,
-                'tax_amount'       => 0,
-                'total'            => 0,
-                'paid_amount'      => 0,
-                'balance'          => 0,
-                'created_by'       => $actorId,
-                'origin_type'      => 'accounting_origin',
-                'origin_context'   => $data->originContext ?: null,
+                'discount_amount' => $data->discountAmount,
+                'status' => 'draft',
+                'subtotal' => 0,
+                'tax_amount' => 0,
+                'total' => 0,
+                'paid_amount' => 0,
+                'balance' => 0,
+                'created_by' => $actorId,
+                'origin_type' => 'accounting_origin',
+                'origin_context' => $data->originContext ?: null,
                 'created_via_module' => 'accounting',
                 'created_via_role' => $data->createdViaRole,
             ]);
 
             foreach ($data->lines as $line) {
-                $quantity  = (float) $line->quantity;
+                $quantity = (float) $line->quantity;
                 $unitPrice = (float) $line->unitPrice;
-                $taxRate   = (float) $line->taxRate;
+                $taxRate = (float) $line->taxRate;
                 $lineTotal = $quantity * $unitPrice;
                 $taxAmount = $lineTotal * ($taxRate / 100);
 
                 BillLine::create([
-                    'bill_id'       => $bill->id,
-                    'line_type'     => $line->lineType,
-                    'product_id'    => $line->productId,
-                    'account_id'    => $line->glAccountId,
-                    'description'   => $line->description,
-                    'quantity'      => $quantity,
-                    'unit_price'    => $unitPrice,
-                    'tax_rate'      => $taxRate,
-                    'tax_amount'    => $taxAmount,
-                    'line_total'    => $lineTotal,
+                    'bill_id' => $bill->id,
+                    'line_type' => $line->lineType,
+                    'product_id' => $line->productId,
+                    'account_id' => $line->glAccountId,
+                    'description' => $line->description,
+                    'quantity' => $quantity,
+                    'unit_price' => $unitPrice,
+                    'tax_rate' => $taxRate,
+                    'tax_amount' => $taxAmount,
+                    'line_total' => $lineTotal,
                     'cost_center_id' => $line->costCenterId,
-                    'project_id'   => $line->projectId,
+                    'project_id' => $line->projectId,
                     'department_id' => $line->departmentId,
-                    'branch_id'    => $line->branchId,
+                    'branch_id' => $line->branchId,
                 ]);
             }
 
             // Calculate totals
             $bill->load('lines');
-            $bill->subtotal   = $bill->lines->sum('line_total');
+            $bill->subtotal = $bill->lines->sum('line_total');
             $bill->tax_amount = $bill->lines->sum('tax_amount');
-            $bill->total      = $bill->subtotal + $bill->tax_amount - $bill->discount_amount;
-            $bill->balance    = $bill->total - $bill->paid_amount;
+            $bill->total = $bill->subtotal + $bill->tax_amount - $bill->discount_amount;
+            $bill->balance = $bill->total - $bill->paid_amount;
             $bill->save();
 
             // Auto-post if requested
@@ -159,12 +159,12 @@ class AccountingOriginBillService
             userId: TenantUserHelper::requireTenantUserId($bill->created_by),
         ));
 
-        if (!$result->success) {
+        if (! $result->success) {
             throw new \RuntimeException("Bill posting failed: {$result->error}");
         }
 
         $bill->update([
-            'status'           => 'posted',
+            'status' => 'posted',
             'journal_entry_id' => $result->journalEntryId,
         ]);
 

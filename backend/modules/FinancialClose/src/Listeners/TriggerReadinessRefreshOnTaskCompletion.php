@@ -3,10 +3,10 @@
 namespace Modules\FinancialClose\Listeners;
 
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Support\Facades\Log;
 use Modules\FinancialClose\Events\FinancialCloseTaskCompleted;
 use Modules\FinancialClose\Jobs\RefreshReadinessSnapshotJob;
 use Modules\FinancialClose\Models\CloseTask;
-use Illuminate\Support\Facades\Log;
 
 /**
  * On task completion, dispatch an async readiness refresh for the affected entity/period.
@@ -23,10 +23,11 @@ class TriggerReadinessRefreshOnTaskCompletion implements ShouldQueue
             ->with('cycle:id,entity_id,period_id')
             ->first();
 
-        if (!$task || !$task->cycle) {
+        if (! $task || ! $task->cycle) {
             Log::warning('FinancialClose: TriggerReadinessRefreshOnTaskCompletion — task or cycle not found', [
                 'task_id' => $event->taskId,
             ]);
+
             return;
         }
 

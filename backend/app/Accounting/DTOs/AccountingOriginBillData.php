@@ -10,19 +10,11 @@ namespace App\Accounting\DTOs;
 class AccountingOriginBillData
 {
     /**
-     * @param int $vendorId
-     * @param string $billType expense|procurement
-     * @param AccountingDocumentLineData[] $lines
-     * @param string|null $billDate
-     * @param string|null $dueDate
-     * @param string|null $notes
-     * @param string|null $terms
-     * @param string|null $vendorReference
-     * @param string|null $internalReference
-     * @param float $discountAmount
-     * @param bool $autoPost Whether to auto-post after creation
-     * @param array $originContext Freeform metadata bag
-     * @param string|null $createdViaRole Role of the creating user
+     * @param  string  $billType  expense|procurement
+     * @param  AccountingDocumentLineData[]  $lines
+     * @param  bool  $autoPost  Whether to auto-post after creation
+     * @param  array  $originContext  Freeform metadata bag
+     * @param  string|null  $createdViaRole  Role of the creating user
      */
     public function __construct(
         public readonly int $vendorId,

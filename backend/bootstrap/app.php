@@ -28,7 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // Tenant routes (with tenancy middleware)
             Route::middleware('api')
                 ->group(base_path('routes/tenant.php'));
-            
+
             // Webhook routes (NO tenancy - works on any domain including ngrok)
             Route::middleware('api')
                 ->group(base_path('routes/webhooks.php'));
@@ -39,15 +39,15 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
-            'entitlement'              => \App\Http\Middleware\EnsureEntitlementAccess::class,
+            'entitlement' => \App\Http\Middleware\EnsureEntitlementAccess::class,
             // Legacy alias kept for backwards-compatible route middleware strings like feature:pos
-            'feature'                  => \App\Http\Middleware\EnsureEntitlementAccess::class,
-            'auth.tenant_key'          => \App\Http\Middleware\AuthenticateTenantApiKey::class,
-            'auth.agent'               => \App\Http\Middleware\AuthenticateAgent::class,
-            'auth.agent_or_user'       => \App\Http\Middleware\AuthenticateAgentOrUser::class,
+            'feature' => \App\Http\Middleware\EnsureEntitlementAccess::class,
+            'auth.tenant_key' => \App\Http\Middleware\AuthenticateTenantApiKey::class,
+            'auth.agent' => \App\Http\Middleware\AuthenticateAgent::class,
+            'auth.agent_or_user' => \App\Http\Middleware\AuthenticateAgentOrUser::class,
             'ensure.tenant.search_path' => \App\Http\Middleware\EnsureTenantSearchPath::class,
-            'inventory.access'         => \App\Http\Middleware\EnsureInventoryAccess::class,
-            'correlation.id'           => \App\Http\Middleware\CorrelationIdMiddleware::class,
+            'inventory.access' => \App\Http\Middleware\EnsureInventoryAccess::class,
+            'correlation.id' => \App\Http\Middleware\CorrelationIdMiddleware::class,
         ]);
 
         // Ensure auth.agent_or_user runs before SetTenantFromUserPreference

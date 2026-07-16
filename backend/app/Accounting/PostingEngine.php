@@ -9,7 +9,6 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\PostingResult;
 use App\Accounting\DTOs\ReversalRequest;
-use App\Services\CorrectionRequest;
 use App\Accounting\Services\AccountMappingService;
 use App\Accounting\Services\AccountRoleResolver;
 use App\Models\Journal;
@@ -18,6 +17,7 @@ use App\Models\JournalEntryLink;
 use App\Models\PostingAuditLog;
 use App\Models\User;
 use App\Services\ApprovalPolicyService;
+use App\Services\CorrectionRequest;
 use App\Services\FiscalPeriodValidator;
 use App\Services\LockDateValidationService;
 use Illuminate\Support\Facades\DB;
@@ -51,8 +51,8 @@ class PostingEngine implements PostingEngineInterface
             if ($existingLink) {
                 Log::info('PostingEngine::post — duplicate posting prevented', [
                     'document_type' => $request->documentType,
-                    'document_id'   => $request->documentId,
-                    'entry_id'      => $existingLink->journal_entry_id,
+                    'document_id' => $request->documentId,
+                    'entry_id' => $existingLink->journal_entry_id,
                     'request_id' => $request->requestId,
                     'correlation_id' => $request->correlationId,
                 ]);
@@ -75,15 +75,15 @@ class PostingEngine implements PostingEngineInterface
         try {
             $resolvedLines = $this->resolveLines($request->lines, $request->documentType);
         } catch (\Exception $e) {
-            return PostingResult::failure("Account resolution failed: " . $e->getMessage());
+            return PostingResult::failure('Account resolution failed: '.$e->getMessage());
         }
 
         // ── 3. Balance check ──────────────────────────────────────────
-        $totalDebit  = '0.00';
+        $totalDebit = '0.00';
         $totalCredit = '0.00';
 
         foreach ($resolvedLines as $line) {
-            $totalDebit  = bcadd($totalDebit, (string) $line['debit'], 2);
+            $totalDebit = bcadd($totalDebit, (string) $line['debit'], 2);
             $totalCredit = bcadd($totalCredit, (string) $line['credit'], 2);
         }
 
@@ -113,7 +113,7 @@ class PostingEngine implements PostingEngineInterface
                 ]);
 
                 return PostingResult::failure(
-                    "Approval required: {$approvalCheck['reason']}. Required roles: " .
+                    "Approval required: {$approvalCheck['reason']}. Required roles: ".
                     implode(', ', $approvalCheck['approver_roles'])
                 );
             }
@@ -138,18 +138,18 @@ class PostingEngine implements PostingEngineInterface
                 $userId = TenantUserHelper::requireTenantUserId($request->userId);
 
                 $entry = JournalEntry::create([
-                    'journal_id'   => $request->journalId,
+                    'journal_id' => $request->journalId,
                     'entry_number' => $this->generateEntryNumber($request->journalId),
-                    'entry_date'   => $request->postingDate,
-                    'type'         => $request->documentType,
-                    'reference'    => $request->reference,
-                    'description'  => $request->description,
-                    'status'       => 'posted',
-                    'posted_at'    => now(),
-                    'posted_by'    => $userId,
-                    'created_by'   => $userId,
+                    'entry_date' => $request->postingDate,
+                    'type' => $request->documentType,
+                    'reference' => $request->reference,
+                    'description' => $request->description,
+                    'status' => 'posted',
+                    'posted_at' => now(),
+                    'posted_by' => $userId,
+                    'created_by' => $userId,
                     'legal_entity_id' => $request->legalEntityId,
-                    'entity_book_id'  => $request->entityBookId,
+                    'entity_book_id' => $request->entityBookId,
                 ]);
 
                 foreach ($resolvedLines as $line) {
@@ -166,9 +166,9 @@ class PostingEngine implements PostingEngineInterface
                     try {
                         JournalEntryLink::create([
                             'source_document_type' => $request->documentType,
-                            'source_document_id'   => $request->documentId,
-                            'journal_entry_id'     => $entry->id,
-                            'relation_type'        => 'post',
+                            'source_document_id' => $request->documentId,
+                            'journal_entry_id' => $entry->id,
+                            'relation_type' => 'post',
                         ]);
                     } catch (\Throwable $e) {
                         // If a race condition caused a unique constraint violation (two posts with
@@ -189,13 +189,13 @@ class PostingEngine implements PostingEngineInterface
 
                 // ── audit log with correlation tracking ──
                 $auditLog = PostingAuditLog::create([
-                    'document_type'    => $request->documentType,
-                    'document_id'      => $request->documentId,
+                    'document_type' => $request->documentType,
+                    'document_id' => $request->documentId,
                     'journal_entry_id' => $entry->id,
-                    'action'           => 'post',
-                    'actor_user_id'    => $userId,
+                    'action' => 'post',
+                    'actor_user_id' => $userId,
                     'approval_user_id' => $request->approvedBy,
-                    'reason_code'      => $request->overrideReason,
+                    'reason_code' => $request->overrideReason,
                     'payload_snapshot' => [
                         'description' => $request->description,
                         'posting_date' => $request->postingDate,
@@ -211,13 +211,13 @@ class PostingEngine implements PostingEngineInterface
                 return PostingResult::success($entry->load('lines'), $auditLog->id);
             });
         } catch (\Exception $e) {
-            Log::error("PostingEngine::post failed", [
+            Log::error('PostingEngine::post failed', [
                 'document_type' => $request->documentType,
-                'document_id'   => $request->documentId,
-                'error'         => $e->getMessage(),
+                'document_id' => $request->documentId,
+                'error' => $e->getMessage(),
             ]);
 
-            return PostingResult::failure("Posting failed: " . $e->getMessage());
+            return PostingResult::failure('Posting failed: '.$e->getMessage());
         }
     }
 
@@ -248,7 +248,7 @@ class PostingEngine implements PostingEngineInterface
         }
 
         // ── Self-approval guard ──────────────────────────────────────────────
-        $actorId    = TenantUserHelper::requireTenantUserId($request->actorUserId);
+        $actorId = TenantUserHelper::requireTenantUserId($request->actorUserId);
         $approvedBy = $request->approvalUserId;
 
         if ($approvedBy !== null && $approvedBy === $actorId) {
@@ -267,18 +267,18 @@ class PostingEngine implements PostingEngineInterface
             // Workstream 2 (2026-04-15): Enforce real permission checks for lock overrides
             if ($request->approvalUserId) {
                 // Validate that the approver has permission to override lock dates
-                if (!$this->lockDateValidator->canOverrideLockDate($request->approvalUserId)) {
+                if (! $this->lockDateValidator->canOverrideLockDate($request->approvalUserId)) {
                     return PostingResult::failure(
-                        "Approver (ID: {$request->approvalUserId}) does not have permission to override lock dates. " .
-                        "Required: accounting.lock_date_override permission or admin role."
+                        "Approver (ID: {$request->approvalUserId}) does not have permission to override lock dates. ".
+                        'Required: accounting.lock_date_override permission or admin role.'
                     );
                 }
 
                 // Validate that the actor also has permission
-                if (!$this->lockDateValidator->canOverrideLockDate($actorId)) {
+                if (! $this->lockDateValidator->canOverrideLockDate($actorId)) {
                     return PostingResult::failure(
-                        "User (ID: {$actorId}) does not have permission to reverse in locked periods. " .
-                        "Required: accounting.lock_date_override permission or admin role."
+                        "User (ID: {$actorId}) does not have permission to reverse in locked periods. ".
+                        'Required: accounting.lock_date_override permission or admin role.'
                     );
                 }
 
@@ -297,7 +297,7 @@ class PostingEngine implements PostingEngineInterface
 
         // ── Reversal date: fiscal-period validation ──────────────────────────
         $fiscalResult = $this->fiscalValidator->validateDate($request->reversalDate);
-        if (!$fiscalResult['allowed']) {
+        if (! $fiscalResult['allowed']) {
             return PostingResult::failure($fiscalResult['reason']);
         }
 
@@ -320,36 +320,36 @@ class PostingEngine implements PostingEngineInterface
 
                 // Perform reversal inline (JournalEntry::reverse() is deprecated)
                 $reversalEntry = JournalEntry::create([
-                    'journal_id'        => $original->journal_id,
-                    'entry_number'    => JournalEntry::generateEntryNumber(),
-                    'entry_date'       => $request->reversalDate,
-                    'type'             => $original->type,
-                    'reference'        => $original->reference,
-                    'description'     => 'REVERSAL: ' . ($request->reason ?? $original->description),
-                    'status'           => 'posted',
-                    'posted_at'        => now(),
-                    'posted_by'        => $actorId,
-                    'created_by'       => $actorId,
+                    'journal_id' => $original->journal_id,
+                    'entry_number' => JournalEntry::generateEntryNumber(),
+                    'entry_date' => $request->reversalDate,
+                    'type' => $original->type,
+                    'reference' => $original->reference,
+                    'description' => 'REVERSAL: '.($request->reason ?? $original->description),
+                    'status' => 'posted',
+                    'posted_at' => now(),
+                    'posted_by' => $actorId,
+                    'created_by' => $actorId,
                     'reversed_entry_id' => $original->id,
-                    'is_reversal'       => true,
-                    'legal_entity_id'  => $original->legal_entity_id,
-                    'entity_book_id'   => $original->entity_book_id,
+                    'is_reversal' => true,
+                    'legal_entity_id' => $original->legal_entity_id,
+                    'entity_book_id' => $original->entity_book_id,
                 ]);
 
                 // Create reversed lines (swap debits and credits)
                 foreach ($original->lines as $line) {
                     $reversalEntry->lines()->create([
-                        'account_id'      => $line->account_id,
-                        'debit'           => $line->credit,
-                        'credit'          => $line->debit,
-                        'description'    => 'REVERSAL: ' . $line->description,
-                        'reference'      => $line->reference,
-                        'currency_code'  => $line->currency_code,
+                        'account_id' => $line->account_id,
+                        'debit' => $line->credit,
+                        'credit' => $line->debit,
+                        'description' => 'REVERSAL: '.$line->description,
+                        'reference' => $line->reference,
+                        'currency_code' => $line->currency_code,
                         'original_amount' => $line->original_amount ? -$line->original_amount : null,
-                        'exchange_rate'   => $line->exchange_rate,
-                        'department_id'  => $line->department_id,
-                        'project_id'     => $line->project_id,
-                        'location_id'    => $line->location_id,
+                        'exchange_rate' => $line->exchange_rate,
+                        'department_id' => $line->department_id,
+                        'project_id' => $line->project_id,
+                        'location_id' => $line->location_id,
                     ]);
                 }
 
@@ -364,27 +364,27 @@ class PostingEngine implements PostingEngineInterface
                     ]);
 
                     JournalEntryLink::create([
-                        'source_document_type'      => $originalLink->source_document_type,
-                        'source_document_id'        => $originalLink->source_document_id,
-                        'journal_entry_id'          => $reversalEntry->id,
+                        'source_document_type' => $originalLink->source_document_type,
+                        'source_document_id' => $originalLink->source_document_id,
+                        'journal_entry_id' => $reversalEntry->id,
                         'original_journal_entry_id' => $original->id,
-                        'relation_type'             => 'reversal',
+                        'relation_type' => 'reversal',
                     ]);
                 }
 
                 // Audit log
                 $auditLog = PostingAuditLog::create([
-                    'document_type'    => $originalLink?->source_document_type ?? 'journal_entry',
-                    'document_id'      => $originalLink?->source_document_id ?? $original->id,
+                    'document_type' => $originalLink?->source_document_type ?? 'journal_entry',
+                    'document_id' => $originalLink?->source_document_id ?? $original->id,
                     'journal_entry_id' => $reversalEntry->id,
-                    'action'           => 'reverse',
-                    'actor_user_id'    => $actorId,
+                    'action' => 'reverse',
+                    'actor_user_id' => $actorId,
                     'approval_user_id' => $approvedBy,
-                    'reason_code'      => $request->reasonCode ?? $request->reason,
+                    'reason_code' => $request->reasonCode ?? $request->reason,
                     'payload_snapshot' => [
-                        'original_entry_id'     => $original->id,
+                        'original_entry_id' => $original->id,
                         'original_entry_number' => $original->entry_number,
-                        'reversal_date'         => $request->reversalDate,
+                        'reversal_date' => $request->reversalDate,
                     ],
                 ]);
 
@@ -393,10 +393,10 @@ class PostingEngine implements PostingEngineInterface
         } catch (\Exception $e) {
             Log::error('PostingEngine::reverse failed', [
                 'journal_entry_id' => $request->journalEntryId,
-                'error'            => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
 
-            return PostingResult::failure('Reversal failed: ' . $e->getMessage());
+            return PostingResult::failure('Reversal failed: '.$e->getMessage());
         }
     }
 
@@ -407,16 +407,16 @@ class PostingEngine implements PostingEngineInterface
     {
         $resolvedLines = $this->resolveLines($request->lines, $request->documentType);
 
-        $totalDebit  = array_sum(array_column($resolvedLines, 'debit'));
+        $totalDebit = array_sum(array_column($resolvedLines, 'debit'));
         $totalCredit = array_sum(array_column($resolvedLines, 'credit'));
 
         return [
-            'lines'        => $resolvedLines,
-            'total_debit'  => $totalDebit,
+            'lines' => $resolvedLines,
+            'total_debit' => $totalDebit,
             'total_credit' => $totalCredit,
-            'is_balanced'  => abs($totalDebit - $totalCredit) < 0.01,
+            'is_balanced' => abs($totalDebit - $totalCredit) < 0.01,
             'posting_date' => $request->postingDate,
-            'description'  => $request->description,
+            'description' => $request->description,
         ];
     }
 
@@ -443,18 +443,18 @@ class PostingEngine implements PostingEngineInterface
 
             if ($request->overrideReason && $request->approvedBy) {
                 // Validate that the approver has permission to override lock dates
-                if (!$this->lockDateValidator->canOverrideLockDate($request->approvedBy)) {
+                if (! $this->lockDateValidator->canOverrideLockDate($request->approvedBy)) {
                     throw new \Exception(
-                        "Approver (ID: {$request->approvedBy}) does not have permission to override lock dates. " .
-                        "Required: accounting.lock_date_override permission or admin role."
+                        "Approver (ID: {$request->approvedBy}) does not have permission to override lock dates. ".
+                        'Required: accounting.lock_date_override permission or admin role.'
                     );
                 }
 
                 // Validate that the actor also has permission (can't post to locked period without permission)
-                if (!$this->lockDateValidator->canOverrideLockDate($actorId)) {
+                if (! $this->lockDateValidator->canOverrideLockDate($actorId)) {
                     throw new \Exception(
-                        "User (ID: {$actorId}) does not have permission to post to locked periods. " .
-                        "Required: accounting.lock_date_override permission or admin role."
+                        "User (ID: {$actorId}) does not have permission to post to locked periods. ".
+                        'Required: accounting.lock_date_override permission or admin role.'
                     );
                 }
 
@@ -485,7 +485,7 @@ class PostingEngine implements PostingEngineInterface
     /**
      * Resolve each PostingRequestLine to an array ready for JournalEntryLine::create().
      *
-     * @param PostingRequestLine[] $lines
+     * @param  PostingRequestLine[]  $lines
      */
     private function resolveLines(array $lines, string $documentType): array
     {
@@ -504,26 +504,26 @@ class PostingEngine implements PostingEngineInterface
                     : $this->accountMapper->resolveId($line->accountMappingKey, $documentType));
 
             // Validation: every GL line must have a valid account
-            if (!$accountId) {
-                throw new \InvalidArgumentException("Unable to resolve account for line #" . ($idx + 1));
+            if (! $accountId) {
+                throw new \InvalidArgumentException('Unable to resolve account for line #'.($idx + 1));
             }
 
             // TASK ACC-002: Store tax identity on GL lines
             // ⚠️ RISK: null account_id possible
             $resolved[] = [
-                'account_id'      => $accountId,
-                'debit'           => round($line->debit, 2),
-                'credit'          => round($line->credit, 2),
-                'description'     => $line->description,
-                'tax_code'        => $line->taxCode,
-                'tax_id'          => $line->taxId,
-                'reference'       => $line->reference,
-                'department_id'   => $line->departmentId,
-                'project_id'     => $line->projectId,
-                'location_id'    => $line->locationId,
-                'currency_code'  => $line->currencyCode ?? 'USD',
+                'account_id' => $accountId,
+                'debit' => round($line->debit, 2),
+                'credit' => round($line->credit, 2),
+                'description' => $line->description,
+                'tax_code' => $line->taxCode,
+                'tax_id' => $line->taxId,
+                'reference' => $line->reference,
+                'department_id' => $line->departmentId,
+                'project_id' => $line->projectId,
+                'location_id' => $line->locationId,
+                'currency_code' => $line->currencyCode ?? 'USD',
                 'original_amount' => $line->originalAmount,
-                'exchange_rate'  => $line->exchangeRate ?? 1.0,
+                'exchange_rate' => $line->exchangeRate ?? 1.0,
             ];
         }
 
@@ -536,14 +536,14 @@ class PostingEngine implements PostingEngineInterface
     private function mapDocumentTypeToLockType(string $documentType): string
     {
         return match ($documentType) {
-            'invoice', 'credit_note'       => 'sales',
-            'bill', 'vendor_credit_note'   => 'purchases',
+            'invoice', 'credit_note' => 'sales',
+            'bill', 'vendor_credit_note' => 'purchases',
             'payment', 'receipt', 'bill_payment' => 'payments',
-            'pos_order'                    => 'sales',
-            'ocr_document'                 => 'purchases',
-            'web_order'                    => 'sales',
+            'pos_order' => 'sales',
+            'ocr_document' => 'purchases',
+            'web_order' => 'sales',
             'fx_revaluation', 'depreciation', 'asset_disposal', 'bank_adjustment' => 'journal_entries',
-            default                        => 'journal_entries',
+            default => 'journal_entries',
         };
     }
 
@@ -594,12 +594,12 @@ class PostingEngine implements PostingEngineInterface
         }
 
         $fiscalResult = $this->fiscalValidator->validateDate($request->entryDate);
-        if (!$fiscalResult['allowed']) {
+        if (! $fiscalResult['allowed']) {
             return DraftJournalResult::failure($fiscalResult['reason']);
         }
 
         // ── 2. Validate balance ────────────────────────────────
-        $totalDebit  = array_sum(array_column($request->lines, 'debit'));
+        $totalDebit = array_sum(array_column($request->lines, 'debit'));
         $totalCredit = array_sum(array_column($request->lines, 'credit'));
 
         if (abs($totalDebit - $totalCredit) > 0.01) {
@@ -611,7 +611,7 @@ class PostingEngine implements PostingEngineInterface
         // ── 3. Create draft entry ─────────────────────────────
         try {
             // ✅ ATOMIC
-            return DB::transaction(function () use ($request, $totalDebit) {
+            return DB::transaction(function () use ($request) {
                 $userId = TenantUserHelper::resolveTenantUserId($request->userId);
 
                 // Generate entry number
@@ -663,7 +663,8 @@ class PostingEngine implements PostingEngineInterface
             Log::error('PostingEngine::createDraft failed', [
                 'error' => $e->getMessage(),
             ]);
-            return DraftJournalResult::failure('Failed to create draft: ' . $e->getMessage());
+
+            return DraftJournalResult::failure('Failed to create draft: '.$e->getMessage());
         }
     }
 
@@ -697,7 +698,7 @@ class PostingEngine implements PostingEngineInterface
         $draftRequest = DraftJournalRequest::fromArray([
             'entry_date' => $original->entry_date->toDateString(),
             'description' => $original->description,
-            'lines' => array_map(fn($line) => [
+            'lines' => array_map(fn ($line) => [
                 'account_id' => $line->accountId,
                 'debit' => $line->debit,
                 'credit' => $line->credit,
@@ -714,7 +715,7 @@ class PostingEngine implements PostingEngineInterface
 
         if ($result->success && $result->journalEntry) {
             $result->journalEntry->update([
-                'entry_number' => $original->entry_number . '-R' . str_pad($nextVersion, 2, '0', STR_PAD_LEFT),
+                'entry_number' => $original->entry_number.'-R'.str_pad($nextVersion, 2, '0', STR_PAD_LEFT),
                 'type' => $original->type,
                 'origin_type' => $original->origin_type,
                 'origin_reference_type' => 'journal_entry',
@@ -742,13 +743,13 @@ class PostingEngine implements PostingEngineInterface
 
     /**
      * TASK TAX-002: Write tax_transaction_details for tax-bearing GL lines
-     * 
+     *
      * Creates durable tax audit records atomically for every tax-bearing GL posting.
      * Links GL lines to tax reporting and enables tax reconciliation.
-     * 
-     * @param JournalEntry $entry The journal entry that was just created
-     * @param PostingRequest $request The original posting request
-     * @param array $resolvedLines The resolved GL lines
+     *
+     * @param  JournalEntry  $entry  The journal entry that was just created
+     * @param  PostingRequest  $request  The original posting request
+     * @param  array  $resolvedLines  The resolved GL lines
      */
     private function writeTaxTransactionDetails(
         JournalEntry $entry,
@@ -768,7 +769,7 @@ class PostingEngine implements PostingEngineInterface
             // For sales tax payable (credit), the credit is the tax amount
             // For tax receivable (debit), the debit is the tax amount
             $taxAmount = max($line['debit'], $line['credit']);
-            
+
             // Taxable amount is typically the revenue/expense line, not the tax line
             // For simplicity, we'll use the tax amount as a proxy
             // In a full implementation, this would be calculated from related lines

@@ -14,7 +14,7 @@ return new class extends Migration
         foreach ($settings as $setting) {
             $rawValue = $setting->value;
 
-            if (!is_string($rawValue)) {
+            if (! is_string($rawValue)) {
                 continue;
             }
 

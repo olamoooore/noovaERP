@@ -5,10 +5,9 @@ namespace Modules\FinancialClose\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Modules\FinancialClose\Services\FinancialCloseCycleService;
-use Modules\FinancialClose\Services\FinancialCloseChecklistService;
 use Modules\FinancialClose\Http\Resources\CloseCycleResource;
-use Modules\FinancialClose\Jobs\GenerateTasksFromChecklistJob;
+use Modules\FinancialClose\Services\FinancialCloseChecklistService;
+use Modules\FinancialClose\Services\FinancialCloseCycleService;
 
 class CloseCycleController extends Controller
 {
@@ -32,13 +31,13 @@ class CloseCycleController extends Controller
     public function store(Request $request): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         $validated = $request->validate([
-            'entity_id'          => ['required', 'string'],
-            'period_id'          => ['required', 'string'],
-            'template_id'        => ['nullable', 'string'],
-            'name'               => ['nullable', 'string', 'max:255'],
+            'entity_id' => ['required', 'string'],
+            'period_id' => ['required', 'string'],
+            'template_id' => ['nullable', 'string'],
+            'name' => ['nullable', 'string', 'max:255'],
             'accounting_book_id' => ['nullable', 'string'],
         ]);
 
@@ -52,7 +51,7 @@ class CloseCycleController extends Controller
             $validated['accounting_book_id'] ?? null,
         );
 
-        if (!$cycle) {
+        if (! $cycle) {
             return response()->json(['message' => 'An active cycle already exists for this period.'], 409);
         }
 
@@ -63,11 +62,11 @@ class CloseCycleController extends Controller
     public function open(Request $request, string $cycleId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         $success = $this->cycleService->openCycle($tenantId, $cycleId, $userId);
 
-        if (!$success) {
+        if (! $success) {
             return response()->json(['message' => 'Cycle cannot be opened. It must be in draft status.'], 422);
         }
 
@@ -78,21 +77,21 @@ class CloseCycleController extends Controller
     public function close(Request $request, string $cycleId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         // Evaluate readiness before attempting close
         $evaluation = $this->cycleService->evaluateReadiness($tenantId, $cycleId);
 
-        if (!$evaluation['ready_to_close']) {
+        if (! $evaluation['ready_to_close']) {
             return response()->json([
-                'message'    => 'Cycle is not ready to close.',
+                'message' => 'Cycle is not ready to close.',
                 'evaluation' => $evaluation,
             ], 422);
         }
 
         $success = $this->cycleService->closeCycle($tenantId, $cycleId, $userId);
 
-        if (!$success) {
+        if (! $success) {
             return response()->json(['message' => 'Cycle cannot be closed.'], 422);
         }
 
@@ -103,7 +102,7 @@ class CloseCycleController extends Controller
     public function signoff(Request $request, string $cycleId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         $result = $this->cycleService->signoffCycle(
             $tenantId,
@@ -113,7 +112,7 @@ class CloseCycleController extends Controller
             $request->input('notes'),
         );
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             return response()->json([
                 'message' => $result['reason'],
                 'incomplete_tasks' => $result['incomplete_tasks'] ?? null,
@@ -122,10 +121,10 @@ class CloseCycleController extends Controller
         }
 
         return response()->json([
-            'message'       => 'Cycle sign-off recorded.',
+            'message' => 'Cycle sign-off recorded.',
             'signoff_count' => $result['signoff_count'],
-            'ready_to_close'=> $result['ready_to_close'],
-            'evaluation'    => $result['evaluation'],
+            'ready_to_close' => $result['ready_to_close'],
+            'evaluation' => $result['evaluation'],
         ], 201);
     }
 
@@ -139,7 +138,7 @@ class CloseCycleController extends Controller
             'data' => [
                 'can_signoff' => $evaluation['incomplete_tasks'] === 0 && $evaluation['open_escalations'] === 0,
                 'evaluation' => $evaluation,
-            ]
+            ],
         ]);
     }
 
@@ -147,11 +146,11 @@ class CloseCycleController extends Controller
     public function revokeSignoff(Request $request, string $cycleId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         $result = $this->cycleService->revokeCycleSignoff($tenantId, $cycleId, $userId);
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             return response()->json(['message' => $result['reason']], 422);
         }
 
@@ -172,15 +171,15 @@ class CloseCycleController extends Controller
     public function generateTasks(Request $request, string $cycleId): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $cycle    = $this->cycleService->getCycle($tenantId, $cycleId);
+        $cycle = $this->cycleService->getCycle($tenantId, $cycleId);
 
-        if (!$cycle) {
+        if (! $cycle) {
             return response()->json(['message' => 'Cycle not found.'], 404);
         }
 
         $templateId = $cycle->template_id;
 
-        if (!$templateId) {
+        if (! $templateId) {
             $validated = $request->validate([
                 'template_id' => ['required', 'string'],
             ]);
@@ -190,7 +189,7 @@ class CloseCycleController extends Controller
 
         $result = $this->checklistService->expandTemplateIntoTasks($tenantId, $cycleId, $templateId, auth()->id());
 
-        if (!$result) {
+        if (! $result) {
             return response()->json(['message' => 'Task generation failed. Ensure the template is active.'], 422);
         }
 
@@ -205,7 +204,7 @@ class CloseCycleController extends Controller
     public function reopenPeriod(Request $request): JsonResponse
     {
         $tenantId = tenant()->getTenantKey();
-        $userId   = $request->user()->id;
+        $userId = $request->user()->id;
 
         $validated = $request->validate([
             'period_code' => ['required', 'string'],
@@ -216,10 +215,10 @@ class CloseCycleController extends Controller
         $user = $request->user();
         if (method_exists($user, 'getRoleNames')) {
             $roles = $user->getRoleNames();
-            $role  = is_array($roles) ? ($roles[0] ?? null) : $roles->first() ?? null;
+            $role = is_array($roles) ? ($roles[0] ?? null) : $roles->first() ?? null;
         }
         // Fallback: check the 'role' string column on the users table
-        if (!$role && $user) {
+        if (! $role && $user) {
             $role = $user->role ?? null;
         }
 
@@ -230,7 +229,7 @@ class CloseCycleController extends Controller
             $role,
         );
 
-        if (!$result['success']) {
+        if (! $result['success']) {
             return response()->json(['message' => $result['reason']], 422);
         }
 

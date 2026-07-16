@@ -74,12 +74,12 @@ class SalesOrderLine extends Model
 
     public function getRemainingQuantityAttribute(): string
     {
-        return (string)($this->quantity - $this->quantity_fulfilled - $this->quantity_cancelled);
+        return (string) ($this->quantity - $this->quantity_fulfilled - $this->quantity_cancelled);
     }
 
     public function getUnallocatedQuantityAttribute(): string
     {
-        return (string)($this->quantity - $this->quantity_allocated - $this->quantity_cancelled);
+        return (string) ($this->quantity - $this->quantity_allocated - $this->quantity_cancelled);
     }
 
     public function calculateLineTotal(): void

@@ -4,31 +4,28 @@ namespace App\Services;
 
 use App\Models\Product;
 use App\Models\ProductVariant;
-use App\Models\Tax;
 use App\Models\Setting;
-use Illuminate\Support\Facades\Log;
+use App\Models\Tax;
 
 /**
  * TASK TAX-004: Canonical Tax Resolution Service
- * 
+ *
  * This service is the ONLY authorized source for runtime tax rate resolution
  * across all transaction flows (POS, Ecommerce, Invoicing).
- * 
+ *
  * DO NOT read Product.tax_rate or Product.effective_tax_rate directly in transaction flows.
  * DO NOT implement divergent tax logic in POS vs Ecommerce.
- * 
+ *
  * See: backend/docs/modules/Tax/CANONICAL_TAX_SOURCE.md
  */
 class TaxResolutionService
 {
     /**
      * Resolve tax information for a product/variant
-     * 
+     *
      * This is the canonical method for all transaction flows.
      * Returns tax rate, inclusive/exclusive mode, and tax code for GL/audit.
-     * 
-     * @param Product $product
-     * @param ProductVariant|null $variant
+     *
      * @return array{rate: float, is_inclusive: bool, tax_code: string, tax_id: int|null, tax_name: string|null}
      */
     public function resolveTaxForProduct(Product $product, ?ProductVariant $variant = null): array
@@ -75,7 +72,7 @@ class TaxResolutionService
             'default_tax_id' => null,
         ]);
 
-        if (!empty($taxSetting['enabled']) && !empty($taxSetting['default_tax_id'])) {
+        if (! empty($taxSetting['enabled']) && ! empty($taxSetting['default_tax_id'])) {
             $defaultTax = Tax::query()->whereKey($taxSetting['default_tax_id'])->first();
             if ($defaultTax && $defaultTax->is_active && $defaultTax->rate > 0) {
                 return [
@@ -100,10 +97,10 @@ class TaxResolutionService
 
     /**
      * Calculate tax amount for a given subtotal
-     * 
-     * @param float $subtotal Net amount (before tax for exclusive, gross for inclusive)
-     * @param float $taxRate Tax rate percentage (e.g., 10.00 for 10%)
-     * @param bool $isInclusive Whether tax is included in the subtotal
+     *
+     * @param  float  $subtotal  Net amount (before tax for exclusive, gross for inclusive)
+     * @param  float  $taxRate  Tax rate percentage (e.g., 10.00 for 10%)
+     * @param  bool  $isInclusive  Whether tax is included in the subtotal
      * @return array{net: float, tax: float, gross: float}
      */
     public function calculateTax(float $subtotal, float $taxRate, bool $isInclusive): array
@@ -144,10 +141,6 @@ class TaxResolutionService
 
     /**
      * Resolve whether tax is inclusive for a product/variant
-     * 
-     * @param Product $product
-     * @param ProductVariant|null $variant
-     * @return bool
      */
     private function resolveIsInclusive(Product $product, ?ProductVariant $variant = null): bool
     {
@@ -170,7 +163,7 @@ class TaxResolutionService
             'default_tax_id' => null,
         ]);
 
-        if (!empty($taxSetting['enabled']) && !empty($taxSetting['default_tax_id'])) {
+        if (! empty($taxSetting['enabled']) && ! empty($taxSetting['default_tax_id'])) {
             $defaultTax = Tax::query()->whereKey($taxSetting['default_tax_id'])->first();
             if ($defaultTax) {
                 return (bool) $defaultTax->is_inclusive;
@@ -183,21 +176,19 @@ class TaxResolutionService
 
     /**
      * Generate a tax code for audit trail when Tax model doesn't have a code
-     * 
-     * @param string $source Source of tax (PRODUCT, VARIANT, TAX, DEFAULT)
-     * @param float $rate Tax rate
-     * @return string
+     *
+     * @param  string  $source  Source of tax (PRODUCT, VARIANT, TAX, DEFAULT)
+     * @param  float  $rate  Tax rate
      */
     private function generateTaxCode(string $source, float $rate): string
     {
         $rateFormatted = number_format($rate, 2, '', '');
+
         return "{$source}-{$rateFormatted}";
     }
 
     /**
      * Check if tax is enabled system-wide
-     * 
-     * @return bool
      */
     public function isTaxEnabled(): bool
     {

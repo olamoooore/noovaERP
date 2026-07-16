@@ -2,8 +2,8 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -26,10 +26,10 @@ return new class extends Migration
         // Seed Singapore
         DB::table('country_packs')->insert([
             'country_code' => 'SG',
-            'name'         => 'Singapore',
+            'name' => 'Singapore',
             'statutory_coa_template' => json_encode([
                 'standard' => 'SFRS',
-                'groups'   => [
+                'groups' => [
                     ['code' => '1000', 'name' => 'Assets'],
                     ['code' => '2000', 'name' => 'Liabilities'],
                     ['code' => '3000', 'name' => 'Equity'],
@@ -46,22 +46,22 @@ return new class extends Migration
             ]),
             'mandatory_tax_types' => json_encode(['GST']),
             'regulatory_report_mappings' => json_encode([
-                'gst_f5'  => 'GST Return (F5)',
-                'gst_f7'  => 'GST Return (F7)',
+                'gst_f5' => 'GST Return (F5)',
+                'gst_f7' => 'GST Return (F7)',
                 'iras_ci' => 'Corporate Income Tax (Form C-S/C)',
             ]),
             'e_invoicing_requirements' => json_encode([
-                'required'     => false,
-                'framework'    => 'Peppol',
+                'required' => false,
+                'framework' => 'Peppol',
                 'mandate_date' => null,
             ]),
             'numbering_conventions' => json_encode([
                 'invoice_prefix' => 'INV-',
-                'bill_prefix'    => 'BILL-',
+                'bill_prefix' => 'BILL-',
                 'journal_prefix' => 'JE-',
                 'fiscal_year_start' => '01-01',
             ]),
-            'is_active'  => true,
+            'is_active' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -69,10 +69,10 @@ return new class extends Migration
         // Seed Malaysia
         DB::table('country_packs')->insert([
             'country_code' => 'MY',
-            'name'         => 'Malaysia',
+            'name' => 'Malaysia',
             'statutory_coa_template' => json_encode([
                 'standard' => 'MFRS',
-                'groups'   => [
+                'groups' => [
                     ['code' => '1000', 'name' => 'Assets'],
                     ['code' => '2000', 'name' => 'Liabilities'],
                     ['code' => '3000', 'name' => 'Equity'],
@@ -91,21 +91,21 @@ return new class extends Migration
             'mandatory_tax_types' => json_encode(['SST_SALES', 'SST_SERVICE']),
             'regulatory_report_mappings' => json_encode([
                 'sst_02' => 'SST Return (SST-02)',
-                'cp204'  => 'Estimated Tax Payable (CP204)',
+                'cp204' => 'Estimated Tax Payable (CP204)',
                 'form_e' => 'Employer Return (Form E)',
             ]),
             'e_invoicing_requirements' => json_encode([
-                'required'     => true,
-                'framework'    => 'MyInvois',
+                'required' => true,
+                'framework' => 'MyInvois',
                 'mandate_date' => '2024-08-01',
             ]),
             'numbering_conventions' => json_encode([
                 'invoice_prefix' => 'INV-',
-                'bill_prefix'    => 'BILL-',
+                'bill_prefix' => 'BILL-',
                 'journal_prefix' => 'JE-',
                 'fiscal_year_start' => '01-01',
             ]),
-            'is_active'  => true,
+            'is_active' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

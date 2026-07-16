@@ -34,7 +34,7 @@ class ModuleServiceProvider extends ServiceProvider
 
         // Ensure module migrations are discoverable by stancl/tenancy's tenants:migrate command.
         $existing = config('tenancy.migration_parameters.--path', []);
-        if (!is_array($existing)) {
+        if (! is_array($existing)) {
             $existing = [];
         }
 

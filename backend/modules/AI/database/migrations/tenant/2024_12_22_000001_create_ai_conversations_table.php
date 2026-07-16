@@ -20,7 +20,7 @@ return new class extends Migration
             $table->timestamp('started_at')->useCurrent();
             $table->timestamp('closed_at')->nullable();
             $table->timestamps();
-            
+
             $table->index('customer_id');
             $table->index('status');
             $table->index('channel');

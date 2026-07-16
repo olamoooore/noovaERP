@@ -3,7 +3,6 @@
 namespace App\Platform\Exceptions;
 
 use App\Platform\Exceptions\Contracts\ExceptionServiceContract;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ExceptionService implements ExceptionServiceContract
@@ -75,9 +74,9 @@ class ExceptionService implements ExceptionServiceContract
 
         return [
             'total' => $records->count(),
-            'by_module' => $records->groupBy('module')->map(fn($items) => $items->count())->toArray(),
-            'by_severity' => $records->groupBy('severity')->map(fn($items) => $items->count())->toArray(),
-            'by_status' => $records->groupBy('status')->map(fn($items) => $items->count())->toArray(),
+            'by_module' => $records->groupBy('module')->map(fn ($items) => $items->count())->toArray(),
+            'by_severity' => $records->groupBy('severity')->map(fn ($items) => $items->count())->toArray(),
+            'by_status' => $records->groupBy('status')->map(fn ($items) => $items->count())->toArray(),
         ];
     }
 }

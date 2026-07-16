@@ -2,26 +2,27 @@
 
 namespace Modules\EventManagement\Services;
 
-use Modules\EventManagement\Models\Event;
-use Modules\EventManagement\Models\Booking;
-use Modules\EventManagement\Models\Ticket;
-use Modules\EventManagement\Models\EventTicketType;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Modules\EventManagement\Models\Booking;
+use Modules\EventManagement\Models\Event;
+use Modules\EventManagement\Models\EventTicketType;
+use Modules\EventManagement\Models\Ticket;
 
 /**
  * EventAnalyticsService
- * 
+ *
  * Handles event performance analytics and intelligence calculations.
  * Provides KPI calculations, ticket type performance metrics, sales velocity tracking,
  * and repeat attendee identification for business intelligence.
- * 
+ *
  * Requirements: 11.1, 11.2, 11.3, 11.4
  */
 class EventAnalyticsService
 {
     private AuditService $auditService;
+
     private TenantSchemaManager $tenantManager;
 
     public function __construct(
@@ -34,16 +35,15 @@ class EventAnalyticsService
 
     /**
      * Calculate comprehensive KPIs for an event
-     * 
-     * @param int $eventId
+     *
      * @return array Event KPI data
      */
     public function calculateEventKPIs(int $eventId): array
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         $event = Event::where('tenant_id', $tenantId)->findOrFail($eventId);
-        
+
         // Get all confirmed bookings for this event
         $confirmedBookings = Booking::where('event_id', $eventId)
             ->where('tenant_id', $tenantId)
@@ -57,16 +57,16 @@ class EventAnalyticsService
         });
 
         $totalRevenue = $confirmedBookings->sum('total_amount');
-        
-        $capacityUtilization = $event->capacity > 0 
-            ? ($ticketsSold / $event->capacity) * 100 
+
+        $capacityUtilization = $event->capacity > 0
+            ? ($ticketsSold / $event->capacity) * 100
             : 0;
 
         // Calculate no-show metrics (tickets issued but not checked in)
         $totalTickets = Ticket::whereIn('booking_id', $confirmedBookings->pluck('id'))
             ->where('tenant_id', $tenantId)
             ->count();
-            
+
         $checkedInTickets = Ticket::whereIn('booking_id', $confirmedBookings->pluck('id'))
             ->where('tenant_id', $tenantId)
             ->where('status', 'checked_in')
@@ -78,14 +78,14 @@ class EventAnalyticsService
         // Calculate customer metrics
         $uniqueCustomers = $confirmedBookings->unique('customer_id')->count();
         $repeatCustomers = $this->calculateRepeatCustomers($eventId, $tenantId);
-        $repeatCustomerRate = $uniqueCustomers > 0 
-            ? ($repeatCustomers / $uniqueCustomers) * 100 
+        $repeatCustomerRate = $uniqueCustomers > 0
+            ? ($repeatCustomers / $uniqueCustomers) * 100
             : 0;
 
         // Calculate time-based metrics
         $firstSale = $confirmedBookings->min('created_at');
         $lastSale = $confirmedBookings->max('created_at');
-        $salesDurationHours = $firstSale && $lastSale 
+        $salesDurationHours = $firstSale && $lastSale
             ? Carbon::parse($firstSale)->diffInHours(Carbon::parse($lastSale))
             : 0;
 
@@ -129,14 +129,13 @@ class EventAnalyticsService
 
     /**
      * Get ticket type performance metrics for an event
-     * 
-     * @param int $eventId
+     *
      * @return Collection Ticket type performance data
      */
     public function getTicketTypePerformance(int $eventId): Collection
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         $ticketTypes = EventTicketType::where('event_id', $eventId)
             ->where('tenant_id', $tenantId)
             ->get();
@@ -146,13 +145,13 @@ class EventAnalyticsService
         foreach ($ticketTypes as $ticketType) {
             $performance = $this->calculateTicketTypeMetrics($ticketType);
             $performanceData->push($performance);
-            
+
             // Store in analytics table
             DB::table('ticket_type_analytics')->updateOrInsert(
                 [
                     'event_id' => $eventId,
                     'ticket_type_id' => $ticketType->id,
-                    'tenant_id' => $tenantId
+                    'tenant_id' => $tenantId,
                 ],
                 $performance
             );
@@ -166,14 +165,13 @@ class EventAnalyticsService
 
     /**
      * Analyze sales velocity patterns for an event
-     * 
-     * @param int $eventId
+     *
      * @return array Sales velocity analysis
      */
     public function analyzeSalesVelocity(int $eventId): array
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         // Get hourly sales data
         $hourlySales = DB::table('bookings')
             ->where('event_id', $eventId)
@@ -207,14 +205,13 @@ class EventAnalyticsService
 
     /**
      * Identify repeat attendees across events
-     * 
-     * @param int $eventId
+     *
      * @return Collection Repeat attendee data
      */
     public function identifyRepeatAttendees(int $eventId): Collection
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         // Get customers who booked this event
         $currentEventCustomers = Booking::where('event_id', $eventId)
             ->where('tenant_id', $tenantId)
@@ -224,7 +221,7 @@ class EventAnalyticsService
 
         // Find their booking history
         $repeatAttendees = collect();
-        
+
         foreach ($currentEventCustomers as $customerId) {
             $customerBookings = Booking::where('customer_id', $customerId)
                 ->where('tenant_id', $tenantId)
@@ -250,14 +247,13 @@ class EventAnalyticsService
 
     /**
      * Generate comprehensive analytics report with filters
-     * 
-     * @param array $filters
+     *
      * @return array Analytics report data
      */
     public function generateAnalyticsReport(array $filters = []): array
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         $query = DB::table('event_analytics')
             ->join('events', 'event_analytics.event_id', '=', 'events.id')
             ->where('event_analytics.tenant_id', $tenantId);
@@ -266,11 +262,11 @@ class EventAnalyticsService
         if (isset($filters['date_from'])) {
             $query->where('events.start_date', '>=', $filters['date_from']);
         }
-        
+
         if (isset($filters['date_to'])) {
             $query->where('events.start_date', '<=', $filters['date_to']);
         }
-        
+
         if (isset($filters['event_ids'])) {
             $query->whereIn('event_analytics.event_id', $filters['event_ids']);
         }
@@ -321,7 +317,7 @@ class EventAnalyticsService
                 ->where('status', 'confirmed')
                 ->where('event_id', '!=', $eventId)
                 ->count();
-                
+
             if ($previousBookings > 0) {
                 $repeatCount++;
             }
@@ -356,7 +352,7 @@ class EventAnalyticsService
     private function calculateTicketTypeMetrics(EventTicketType $ticketType): array
     {
         $tenantId = $this->tenantManager->getCurrentTenantId();
-        
+
         // Get bookings for this ticket type
         $bookings = Booking::where('event_id', $ticketType->event_id)
             ->where('tenant_id', $tenantId)
@@ -372,13 +368,13 @@ class EventAnalyticsService
         });
 
         $revenueGenerated = $ticketsSold * $ticketType->price;
-        $sellThroughRate = $ticketType->capacity > 0 
-            ? ($ticketsSold / $ticketType->capacity) * 100 
+        $sellThroughRate = $ticketType->capacity > 0
+            ? ($ticketsSold / $ticketType->capacity) * 100
             : 0;
 
         $firstSale = $bookings->min('created_at');
         $soldOutAt = $sellThroughRate >= 100 ? $bookings->max('created_at') : null;
-        $timeToSellOut = $firstSale && $soldOutAt 
+        $timeToSellOut = $firstSale && $soldOutAt
             ? Carbon::parse($firstSale)->diffInHours(Carbon::parse($soldOutAt))
             : null;
 

@@ -4,15 +4,15 @@ namespace App\Observers;
 
 use App\Models\JournalEntry;
 use App\Models\Tenant;
-use Modules\FinancialClose\Jobs\RefreshJournalEntryTaskLinksJob;
-use Modules\OCRBookkeeping\Jobs\UpdateDailyLedgerSummary;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Modules\FinancialClose\Jobs\RefreshJournalEntryTaskLinksJob;
+use Modules\OCRBookkeeping\Jobs\UpdateDailyLedgerSummary;
 
 /**
  * Journal Entry Observer
- * 
+ *
  * Listens to journal entry events and triggers BI updates
  * and Financial Close task refresh when status changes.
  */
@@ -47,7 +47,7 @@ class JournalEntryObserver
     {
         try {
             $tenantId = $this->resolveTenantId($journalEntry);
-            if (!$tenantId) {
+            if (! $tenantId) {
                 return;
             }
 
@@ -111,35 +111,35 @@ class JournalEntryObserver
             $date = Carbon::parse($journalEntry->entry_date);
             $tenantId = function_exists('tenant') && tenant() ? (string) tenant()->getTenantKey() : null;
 
-            if (!$tenantId && $journalEntry->tenant_id ?? null) {
+            if (! $tenantId && $journalEntry->tenant_id ?? null) {
                 $tenantId = (string) $journalEntry->tenant_id;
             }
 
-            if (!$tenantId && $journalEntry->tenant?->id) {
+            if (! $tenantId && $journalEntry->tenant?->id) {
                 $tenantId = (string) $journalEntry->tenant->id;
             }
 
             // Use tenancy context directly instead of parsing search_path
-            if (!$tenantId && tenancy()->initialized) {
+            if (! $tenantId && tenancy()->initialized) {
                 $tenantId = (string) tenant()->id;
             }
 
-            if (!$tenantId) {
+            if (! $tenantId) {
                 throw new \RuntimeException('Unable to resolve tenant context for daily ledger summary dispatch.');
             }
-            
+
             UpdateDailyLedgerSummary::dispatch($date, $tenantId)
                 ->onQueue('bi-updates')
                 ->delay(now()->addSeconds(30)); // Delay to batch multiple updates
-            
-            Log::info("BI update job dispatched", [
+
+            Log::info('BI update job dispatched', [
                 'journal_entry_id' => $journalEntry->id,
                 'entry_date' => $date->format('Y-m-d'),
                 'tenant_id' => $tenantId,
             ]);
-            
+
         } catch (\Exception $e) {
-            Log::error("Failed to dispatch BI update job", [
+            Log::error('Failed to dispatch BI update job', [
                 'journal_entry_id' => $journalEntry->id,
                 'error' => $e->getMessage(),
             ]);

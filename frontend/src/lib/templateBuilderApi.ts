@@ -2,9 +2,14 @@ import api from './api'
 import type {
   DocumentTemplate,
   DocumentType,
+  EligibilityResult,
+  FormSubmission,
   LayoutConfig,
   MergeFieldGroup,
   Starter,
+  SurveyResponse,
+  TemplateChannel,
+  TemplateRegistration,
   TemplateVersion,
 } from '@/types/template-builder'
 
@@ -103,5 +108,91 @@ export const templateBuilderApi = {
     if (opts?.as) params.set('as', opts.as)
     const qs = params.toString()
     return `${base}/${documentId}/pdf${qs ? `?${qs}` : ''}`
+  },
+
+  // ─── ADR-004 §9 — Editorial lifecycle ────────────────────────────────────
+  lifecycle: {
+    submitForReview: (id: string) =>
+      api.post<{ data: DocumentTemplate }>(`${BASE}/templates/${id}/submit-for-review`).then((r) => r.data.data),
+    approve: (id: string, reviewerId: number, changeNote?: string, notes?: string) =>
+      api
+        .post<{ data: DocumentTemplate }>(`${BASE}/templates/${id}/approve`, {
+          reviewer_id: reviewerId,
+          change_note: changeNote,
+          notes,
+        })
+        .then((r) => r.data.data),
+    reject: (id: string, reviewerId: number, notes?: string) =>
+      api.post<{ data: DocumentTemplate }>(`${BASE}/templates/${id}/reject`, { reviewer_id: reviewerId, notes }).then((r) => r.data.data),
+    archive: (id: string) => api.post<{ data: DocumentTemplate }>(`${BASE}/templates/${id}/archive`).then((r) => r.data.data),
+    restore: (id: string) => api.post<{ data: DocumentTemplate }>(`${BASE}/templates/${id}/restore`).then((r) => r.data.data),
+  },
+
+  // ─── ADR-004 §7 — Universal Registry ─────────────────────────────────────
+  registry: {
+    list: (params?: { domain?: string; interaction_type?: string }) =>
+      api.get<{ data: TemplateRegistration[] }>(`${BASE}/registry`, { params }).then((r) => r.data.data),
+    get: (typeCode: string) =>
+      api.get<{ data: TemplateRegistration }>(`${BASE}/registry/${typeCode}`).then((r) => r.data.data),
+    register: (payload: Partial<TemplateRegistration>) =>
+      api.post<{ data: TemplateRegistration }>(`${BASE}/registry`, payload).then((r) => r.data.data),
+    seed: () => api.post<{ message: string; seeded: number }>(`${BASE}/registry/seed`).then((r) => r.data),
+    activate: (typeCode: string) =>
+      api.post<{ data: TemplateRegistration }>(`${BASE}/registry/${typeCode}/activate`).then((r) => r.data.data),
+    deactivate: (typeCode: string) =>
+      api.post<{ data: TemplateRegistration }>(`${BASE}/registry/${typeCode}/deactivate`).then((r) => r.data.data),
+  },
+
+  // ─── ADR-004 §10 — Eligibility evaluation ────────────────────────────────
+  evaluateEligibility: (payload: {
+    template_type_code: string
+    interaction_type?: string
+    entity_id?: string
+    branch_id?: string
+    language?: string
+    currency?: string
+    country?: string
+    jurisdiction?: string
+    customer_group?: string
+    channel?: TemplateChannel | string
+  }) => api.post<{ data: EligibilityResult }>(`${BASE}/eligibility`, payload).then((r) => r.data.data),
+
+  // ─── ADR-004 §8.2 / §12 — Forms runtime ──────────────────────────────────
+  forms: {
+    submit: (templateId: string, answers: Record<string, unknown>, extra?: Record<string, unknown>) =>
+      api.post<{ data: FormSubmission }>(`${BASE}/forms/${templateId}/submit`, { answers, ...extra }).then((r) => r.data.data),
+    submissions: (templateId: string, page = 1) =>
+      api
+        .get<{ data: FormSubmission[] }>(`${BASE}/forms/${templateId}/submissions`, { params: { page } })
+        .then((r) => r.data.data),
+    submission: (templateId: string, submissionId: string) =>
+      api.get<{ data: FormSubmission }>(`${BASE}/forms/${templateId}/submissions/${submissionId}`).then((r) => r.data.data),
+  },
+
+  // ─── ADR-004 §12 / §13 — Survey runtime ──────────────────────────────────
+  surveys: {
+    respond: (templateId: string, answers: Record<string, unknown>, extra?: Record<string, unknown>) =>
+      api.post<{ data: SurveyResponse }>(`${BASE}/surveys/${templateId}/respond`, { answers, ...extra }).then((r) => r.data.data),
+    responses: (templateId: string, page = 1) =>
+      api
+        .get<{ data: SurveyResponse[] }>(`${BASE}/surveys/${templateId}/responses`, { params: { page } })
+        .then((r) => r.data.data),
+    response: (templateId: string, responseId: string) =>
+      api.get<{ data: SurveyResponse }>(`${BASE}/surveys/${templateId}/responses/${responseId}`).then((r) => r.data.data),
+  },
+
+  // ─── ADR-000 #169 / #176 — Public signed tokens ──────────────────────────
+  publicTokens: {
+    issue: (payload: {
+      template_id?: string
+      interaction_type: 'DATA_ENTRY_FORM' | 'SURVEY_ASSESSMENT'
+      capability?: 'respond' | 'view'
+      expires_in_minutes?: number
+      issued_to_email?: string
+      rate_limit_per_hour?: number
+      max_uses?: number
+    }) => api.post<{ data: { token: string; token_id: string; expires_at: string; capability: string } }>(`${BASE}/public-tokens`, payload).then((r) => r.data.data),
+    revoke: (tokenId: string, reason?: string) =>
+      api.post<{ data: unknown }>(`${BASE}/public-tokens/revoke`, { token_id: tokenId, reason }).then((r) => r.data.data),
   },
 }

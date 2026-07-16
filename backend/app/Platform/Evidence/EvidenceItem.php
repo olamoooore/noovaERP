@@ -7,9 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 class EvidenceItem extends Model
 {
     protected $table = 'platform_evidence_items';
+
     protected $keyType = 'string';
+
     public $incrementing = false;
+
     protected $primaryKey = 'id';
+
     protected $guarded = [];
 
     protected $casts = [

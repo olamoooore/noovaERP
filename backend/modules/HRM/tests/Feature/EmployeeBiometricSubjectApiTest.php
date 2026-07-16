@@ -10,12 +10,13 @@ use Modules\HRM\Tests\HrmTestCase;
 class EmployeeBiometricSubjectApiTest extends HrmTestCase
 {
     private User $user;
+
     private Employee $employee;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user     = User::factory()->create();
+        $this->user = User::factory()->create();
         $this->employee = Employee::factory()->create(['status' => 'active']);
         $this->actingAs($this->user, 'sanctum');
     }
@@ -23,10 +24,10 @@ class EmployeeBiometricSubjectApiTest extends HrmTestCase
     public function test_can_list_biometric_subjects_for_employee(): void
     {
         EmployeeBiometricSubject::create([
-            'employee_id'  => $this->employee->id,
+            'employee_id' => $this->employee->id,
             'subject_code' => 'PV-001',
-            'type'         => 'palm_vein',
-            'status'       => 'active',
+            'type' => 'palm_vein',
+            'status' => 'active',
         ]);
 
         $response = $this->getJson("/api/v1/hrm/employees/{$this->employee->id}/biometric-subjects");
@@ -41,8 +42,8 @@ class EmployeeBiometricSubjectApiTest extends HrmTestCase
     {
         $response = $this->postJson("/api/v1/hrm/employees/{$this->employee->id}/biometric-subjects", [
             'subject_code' => 'PV-XYZ-001',
-            'type'         => 'palm_vein',
-            'status'       => 'pending',
+            'type' => 'palm_vein',
+            'status' => 'pending',
         ]);
 
         $response->assertStatus(201);
@@ -51,9 +52,9 @@ class EmployeeBiometricSubjectApiTest extends HrmTestCase
         $response->assertJsonPath('data.status', 'pending');
 
         $this->assertDatabaseHas('hrm_employee_biometric_subjects', [
-            'employee_id'  => $this->employee->id,
+            'employee_id' => $this->employee->id,
             'subject_code' => 'PV-XYZ-001',
-            'type'         => 'palm_vein',
+            'type' => 'palm_vein',
         ]);
     }
 
@@ -61,16 +62,16 @@ class EmployeeBiometricSubjectApiTest extends HrmTestCase
     {
         // Create first palm_vein subject
         EmployeeBiometricSubject::create([
-            'employee_id'  => $this->employee->id,
+            'employee_id' => $this->employee->id,
             'subject_code' => 'PV-001',
-            'type'         => 'palm_vein',
-            'status'       => 'active',
+            'type' => 'palm_vein',
+            'status' => 'active',
         ]);
 
         // Try to create another palm_vein for same employee
         $response = $this->postJson("/api/v1/hrm/employees/{$this->employee->id}/biometric-subjects", [
             'subject_code' => 'PV-002',
-            'type'         => 'palm_vein',
+            'type' => 'palm_vein',
         ]);
 
         $response->assertStatus(422);
@@ -80,16 +81,16 @@ class EmployeeBiometricSubjectApiTest extends HrmTestCase
     public function test_different_modalities_are_allowed_for_same_employee(): void
     {
         EmployeeBiometricSubject::create([
-            'employee_id'  => $this->employee->id,
+            'employee_id' => $this->employee->id,
             'subject_code' => 'PV-001',
-            'type'         => 'palm_vein',
-            'status'       => 'active',
+            'type' => 'palm_vein',
+            'status' => 'active',
         ]);
 
         // Adding a different modality (face) should succeed
         $response = $this->postJson("/api/v1/hrm/employees/{$this->employee->id}/biometric-subjects", [
             'subject_code' => 'FACE-001',
-            'type'         => 'face',
+            'type' => 'face',
         ]);
 
         $response->assertStatus(201);
@@ -99,10 +100,10 @@ class EmployeeBiometricSubjectApiTest extends HrmTestCase
     public function test_can_deactivate_biometric_subject(): void
     {
         $subject = EmployeeBiometricSubject::create([
-            'employee_id'  => $this->employee->id,
+            'employee_id' => $this->employee->id,
             'subject_code' => 'PV-001',
-            'type'         => 'palm_vein',
-            'status'       => 'active',
+            'type' => 'palm_vein',
+            'status' => 'active',
         ]);
 
         $response = $this->deleteJson(

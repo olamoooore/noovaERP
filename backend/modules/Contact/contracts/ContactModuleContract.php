@@ -89,28 +89,28 @@ class ContactModuleContract extends BaseModuleContract
     {
         return [
             'required_setup_steps' => ['contact_import_or_create'],
-            'default_settings'     => ['default_currency' => 'USD'],
-            'recommended_roles'    => ['admin', 'sales_rep'],
+            'default_settings' => ['default_currency' => 'USD'],
+            'recommended_roles' => ['admin', 'sales_rep'],
         ];
     }
 
     public function getActivationRules(): array
     {
         return [
-            'requires'  => [],
-            'settings'  => [],
-            'min_tier'  => null,
+            'requires' => [],
+            'settings' => [],
+            'min_tier' => null,
         ];
     }
 
     public function getDeactivationRules(): array
     {
         return [
-            'removes_data'       => false,
+            'removes_data' => false,
             'preserves_entities' => [
                 \Modules\Contact\src\Models\CoreContact::class,
             ],
-            'cleanup_jobs'       => [],
+            'cleanup_jobs' => [],
         ];
     }
 
@@ -145,10 +145,10 @@ class ContactModuleContract extends BaseModuleContract
     public function getExternalModeConfig(): array
     {
         return [
-            'supports_coupled'        => true,
-            'supports_decoupled'      => true,
-            'supports_external'       => false,
-            'external_api_endpoints'  => [],
+            'supports_coupled' => true,
+            'supports_decoupled' => true,
+            'supports_external' => false,
+            'external_api_endpoints' => [],
         ];
     }
 
@@ -156,9 +156,9 @@ class ContactModuleContract extends BaseModuleContract
     {
         return [
             'has_ai_assistant' => false,
-            'ai_suggestions'   => true,
-            'ai_automation'    => false,
-            'ai_data_access'   => ['summary'],
+            'ai_suggestions' => true,
+            'ai_automation' => false,
+            'ai_data_access' => ['summary'],
         ];
     }
 }

@@ -2,8 +2,8 @@
 
 namespace Modules\EventManagement\Jobs;
 
-use Modules\EventManagement\Services\PIIVaultService;
 use App\Models\Tenant;
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -11,15 +11,15 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
+use Modules\EventManagement\Services\PIIVaultService;
 use Stancl\Tenancy\Facades\Tenancy;
 
 /**
  * PIIRetentionJob - Task 4.3
- * 
+ *
  * Scheduled job for PII retention policy enforcement with automated anonymization
  * for expired data and GDPR compliance workflows.
- * 
+ *
  * Requirements: 20.2, 20.5
  */
 class PIIRetentionJob implements ShouldQueue
@@ -27,16 +27,19 @@ class PIIRetentionJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     protected int $batchSize;
+
     protected bool $dryRun;
+
     protected array $retentionPolicies;
+
     protected ?string $tenantId;
 
     /**
      * Create a new job instance.
      *
-     * @param int $batchSize Number of records to process per batch
-     * @param bool $dryRun Whether to perform a dry run (no actual changes)
-     * @param array $retentionPolicies Specific policies to process (empty for all)
+     * @param  int  $batchSize  Number of records to process per batch
+     * @param  bool  $dryRun  Whether to perform a dry run (no actual changes)
+     * @param  array  $retentionPolicies  Specific policies to process (empty for all)
      */
     public function __construct(
         int $batchSize = 100,
@@ -48,7 +51,7 @@ class PIIRetentionJob implements ShouldQueue
         $this->dryRun = $dryRun;
         $this->retentionPolicies = $retentionPolicies;
         $this->tenantId = $tenantId;
-        
+
         // Set queue and connection
         $this->onQueue('pii-retention');
         $this->onConnection('redis');
@@ -57,9 +60,8 @@ class PIIRetentionJob implements ShouldQueue
     /**
      * Execute the job.
      *
-     * @param PIIVaultService $piiVaultService
      * @return void
-     * 
+     *
      * Requirements: 20.2, 20.5
      */
     public function handle(PIIVaultService $piiVaultService): void
@@ -73,8 +75,9 @@ class PIIRetentionJob implements ShouldQueue
 
         $tenants = collect();
 
-        if (!$this->tenantId) {
+        if (! $this->tenantId) {
             Log::info('PII retention job: no tenant specified, nothing to process');
+
             return;
         }
 
@@ -82,7 +85,7 @@ class PIIRetentionJob implements ShouldQueue
         if ($tenant) {
             $tenants = collect([$tenant]);
         }
-        
+
         $totalSummary = [
             'processed_records' => 0,
             'anonymized_records' => 0,
@@ -96,14 +99,14 @@ class PIIRetentionJob implements ShouldQueue
         foreach ($tenants as $tenant) {
             try {
                 Tenancy::initialize($tenant);
-                
+
                 Log::info('Processing PII retention for tenant', [
                     'tenant_id' => $tenant->id,
                     'tenant_name' => $tenant->name,
                 ]);
-                
+
                 $tenantSummary = $this->processTenantPII($piiVaultService, $tenant->id);
-                
+
                 $totalSummary['processed_records'] += $tenantSummary['processed_records'];
                 $totalSummary['anonymized_records'] += $tenantSummary['anonymized_records'];
                 $totalSummary['skipped_records'] += $tenantSummary['skipped_records'];
@@ -111,16 +114,16 @@ class PIIRetentionJob implements ShouldQueue
                 $totalSummary['expired_consent_processed'] += $tenantSummary['expired_consent_processed'];
                 $totalSummary['cleaned_export_requests'] += $tenantSummary['cleaned_export_requests'];
                 $totalSummary['tenants_processed']++;
-                
+
                 Tenancy::end();
-                
+
             } catch (\Exception $e) {
                 Log::error('Failed to process PII retention for tenant', [
                     'tenant_id' => $tenant->id,
                     'error' => $e->getMessage(),
                 ]);
                 $totalSummary['error_count']++;
-                
+
                 try {
                     Tenancy::end();
                 } catch (\Exception $endEx) {
@@ -151,46 +154,48 @@ class PIIRetentionJob implements ShouldQueue
             // Step 1: Process expired PII records in batches
             do {
                 $expiredRecords = $this->getExpiredPIIRecords();
-                
+
                 if (empty($expiredRecords)) {
                     break;
                 }
-                
+
                 foreach ($expiredRecords as $record) {
                     try {
                         $processedCount++;
-                        
+
                         // Check if record should be processed based on policy filter
-                        if (!empty($this->retentionPolicies) && 
-                            !in_array($record->retention_policy, $this->retentionPolicies)) {
+                        if (! empty($this->retentionPolicies) &&
+                            ! in_array($record->retention_policy, $this->retentionPolicies)) {
                             $skippedCount++;
+
                             continue;
                         }
-                        
+
                         // Get retention policy details
                         $policyDetails = $this->getRetentionPolicyDetails($record->retention_policy);
-                        
-                        if (!$policyDetails) {
+
+                        if (! $policyDetails) {
                             Log::warning('Unknown retention policy', [
                                 'vault_id' => $record->id,
                                 'retention_policy' => $record->retention_policy,
                                 'tenant_id' => $tenantId,
                             ]);
                             $errorCount++;
+
                             continue;
                         }
-                        
+
                         // Perform anonymization if not dry run
-                        if (!$this->dryRun) {
+                        if (! $this->dryRun) {
                             $result = $piiVaultService->anonymizePII(
                                 $record->id,
                                 $policyDetails['anonymization_method'],
                                 "Retention policy: {$record->retention_policy}"
                             );
-                            
+
                             if ($result['success']) {
                                 $anonymizedCount++;
-                                
+
                                 Log::debug('PII record anonymized', [
                                     'vault_id' => $record->id,
                                     'entity_type' => $record->entity_type,
@@ -222,7 +227,7 @@ class PIIRetentionJob implements ShouldQueue
                             ]);
                             $anonymizedCount++;
                         }
-                        
+
                     } catch (\Exception $e) {
                         $errorCount++;
                         Log::error('Error processing PII record for retention', [
@@ -232,12 +237,12 @@ class PIIRetentionJob implements ShouldQueue
                         ]);
                     }
                 }
-                
+
                 // Brief pause between batches to reduce system load
                 if (count($expiredRecords) === $this->batchSize) {
                     usleep(100000); // 100ms pause
                 }
-                
+
             } while (count($expiredRecords) === $this->batchSize);
 
             // Step 2: Process expired consent records
@@ -263,14 +268,14 @@ class PIIRetentionJob implements ShouldQueue
                 'error' => $e->getMessage(),
                 'tenant_id' => $tenantId,
             ]);
-            
+
             throw $e;
         }
     }
 
     /**
      * Get expired PII records that need anonymization.
-     * 
+     *
      * @return array List of expired PII records
      */
     private function getExpiredPIIRecords(): array
@@ -285,8 +290,8 @@ class PIIRetentionJob implements ShouldQueue
 
     /**
      * Get retention policy details.
-     * 
-     * @param string $policyName Policy name
+     *
+     * @param  string  $policyName  Policy name
      * @return array|null Policy details or null if not found
      */
     private function getRetentionPolicyDetails(string $policyName): ?array
@@ -295,8 +300,8 @@ class PIIRetentionJob implements ShouldQueue
             ->where('policy_name', $policyName)
             ->where('is_active', true)
             ->first();
-        
-        if (!$policy) {
+
+        if (! $policy) {
             // Return default policy for unknown policies
             return [
                 'anonymization_method' => 'hash',
@@ -304,7 +309,7 @@ class PIIRetentionJob implements ShouldQueue
                 'legal_basis' => 'Data retention policy',
             ];
         }
-        
+
         return [
             'anonymization_method' => $policy->anonymization_method,
             'retention_days' => $policy->retention_days,
@@ -315,7 +320,7 @@ class PIIRetentionJob implements ShouldQueue
 
     /**
      * Process expired consent records.
-     * 
+     *
      * @return int Number of expired consent records processed
      */
     private function processExpiredConsent(): int
@@ -327,7 +332,7 @@ class PIIRetentionJob implements ShouldQueue
                 ->where('consent_expires_at', '<', Carbon::now())
                 ->count();
         }
-        
+
         // Mark expired consent as withdrawn
         $expiredCount = DB::table('pii_consent_tracking')
             ->whereNull('consent_withdrawn_at')
@@ -336,19 +341,19 @@ class PIIRetentionJob implements ShouldQueue
                 'consent_withdrawn_at' => Carbon::now(),
                 'withdrawal_reason' => 'Consent expired automatically',
             ]);
-        
+
         if ($expiredCount > 0) {
             Log::info('Processed expired consent records', [
                 'expired_count' => $expiredCount,
             ]);
         }
-        
+
         return $expiredCount;
     }
 
     /**
      * Clean up expired export requests and their files.
-     * 
+     *
      * @return int Number of export requests cleaned up
      */
     private function cleanupExpiredExportRequests(): int
@@ -359,17 +364,17 @@ class PIIRetentionJob implements ShouldQueue
             ->where('file_expires_at', '<', Carbon::now())
             ->whereNotNull('export_file_path')
             ->get();
-        
+
         $cleanedCount = 0;
-        
+
         foreach ($expiredRequests as $request) {
             try {
-                if (!$this->dryRun) {
+                if (! $this->dryRun) {
                     // Delete the export file if it exists
                     if (file_exists($request->export_file_path)) {
                         unlink($request->export_file_path);
                     }
-                    
+
                     // Update the request record
                     DB::table('pii_export_requests')
                         ->where('id', $request->id)
@@ -378,16 +383,16 @@ class PIIRetentionJob implements ShouldQueue
                             'file_expires_at' => null,
                         ]);
                 }
-                
+
                 $cleanedCount++;
-                
+
                 Log::debug('Cleaned up expired export request', [
                     'request_id' => $request->id,
                     'request_reference' => $request->request_reference,
                     'file_path' => $request->export_file_path,
                     'dry_run' => $this->dryRun,
                 ]);
-                
+
             } catch (\Exception $e) {
                 Log::error('Failed to clean up export request', [
                     'request_id' => $request->id,
@@ -396,23 +401,23 @@ class PIIRetentionJob implements ShouldQueue
                 ]);
             }
         }
-        
+
         return $cleanedCount;
     }
 
     /**
      * Check for critical issues and send alerts if necessary.
-     * 
-     * @param array $summary Job execution summary
+     *
+     * @param  array  $summary  Job execution summary
      */
     private function checkForCriticalIssues(array $summary): void
     {
         $criticalIssues = [];
-        
+
         // Check for high error rate
         if ($summary['processed_records'] > 0) {
             $errorRate = ($summary['error_count'] / $summary['processed_records']) * 100;
-            
+
             if ($errorRate > 10) { // More than 10% error rate
                 $criticalIssues[] = [
                     'type' => 'high_error_rate',
@@ -425,7 +430,7 @@ class PIIRetentionJob implements ShouldQueue
                 ];
             }
         }
-        
+
         // Check for long execution time
         if (isset($summary['execution_time_ms']) && $summary['execution_time_ms'] > 60000) { // More than 60 seconds
             $criticalIssues[] = [
@@ -437,7 +442,7 @@ class PIIRetentionJob implements ShouldQueue
                 ],
             ];
         }
-        
+
         // Check for large number of records to process (potential backlog)
         if (isset($summary['processed_records']) && $summary['processed_records'] >= $this->batchSize * 10) {
             $criticalIssues[] = [
@@ -449,18 +454,18 @@ class PIIRetentionJob implements ShouldQueue
                 ],
             ];
         }
-        
+
         // Send alerts for critical issues
-        if (!empty($criticalIssues)) {
+        if (! empty($criticalIssues)) {
             $this->sendCriticalIssueAlerts($criticalIssues, $summary);
         }
     }
 
     /**
      * Send alerts for critical issues.
-     * 
-     * @param array $criticalIssues List of critical issues
-     * @param array $summary Job summary
+     *
+     * @param  array  $criticalIssues  List of critical issues
+     * @param  array  $summary  Job summary
      */
     private function sendCriticalIssueAlerts(array $criticalIssues, array $summary): void
     {
@@ -472,7 +477,7 @@ class PIIRetentionJob implements ShouldQueue
                 'job_summary' => $summary,
                 'timestamp' => Carbon::now()->toISOString(),
             ]);
-            
+
             // Here you would integrate with your alerting system
             // Examples: Slack notifications, email alerts, PagerDuty, etc.
             $this->sendAlert($issue, $summary);
@@ -481,9 +486,9 @@ class PIIRetentionJob implements ShouldQueue
 
     /**
      * Send alert to monitoring/alerting system.
-     * 
-     * @param array $issue Critical issue details
-     * @param array $summary Job summary
+     *
+     * @param  array  $issue  Critical issue details
+     * @param  array  $summary  Job summary
      */
     private function sendAlert(array $issue, array $summary): void
     {
@@ -497,9 +502,9 @@ class PIIRetentionJob implements ShouldQueue
             'summary' => $summary,
             'timestamp' => Carbon::now()->toISOString(),
         ];
-        
+
         Log::info('Critical alert would be sent', $alertData);
-        
+
         // Integration points for alerting systems:
         // - Slack webhook notification
         // - Email alert to operations team
@@ -509,8 +514,6 @@ class PIIRetentionJob implements ShouldQueue
 
     /**
      * Handle job failure.
-     * 
-     * @param \Throwable $exception
      */
     public function failed(\Throwable $exception): void
     {
@@ -524,7 +527,7 @@ class PIIRetentionJob implements ShouldQueue
             ],
             'timestamp' => Carbon::now()->toISOString(),
         ]);
-        
+
         // Send failure alert
         $this->sendAlert([
             'type' => 'job_failure',
@@ -541,8 +544,6 @@ class PIIRetentionJob implements ShouldQueue
 
     /**
      * Get the tags that should be assigned to the job.
-     *
-     * @return array
      */
     public function tags(): array
     {
@@ -550,7 +551,7 @@ class PIIRetentionJob implements ShouldQueue
             'pii-retention',
             'privacy',
             'gdpr',
-            'batch-size:' . $this->batchSize,
+            'batch-size:'.$this->batchSize,
         ];
     }
 }

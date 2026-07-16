@@ -9,27 +9,25 @@ use Modules\AI\Services\OllamaService;
 
 /**
  * AI Status Controller
- * 
+ *
  * Handles AI service status and health checks
  */
 class AIStatusController extends Controller
 {
     protected OllamaService $ollamaService;
-    
+
     public function __construct(OllamaService $ollamaService)
     {
         $this->ollamaService = $ollamaService;
     }
-    
+
     /**
      * Check AI service health
-     * 
-     * @return JsonResponse
      */
     public function health(): JsonResponse
     {
         $isHealthy = $this->ollamaService->healthCheck();
-        
+
         return response()->json([
             'success' => true,
             'status' => $isHealthy ? 'healthy' : 'unhealthy',
@@ -37,11 +35,9 @@ class AIStatusController extends Controller
             'timestamp' => now()->toIso8601String(),
         ], $isHealthy ? 200 : 503);
     }
-    
+
     /**
      * Get AI service information
-     * 
-     * @return JsonResponse
      */
     public function info(): JsonResponse
     {

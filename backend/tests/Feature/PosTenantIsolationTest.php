@@ -2,31 +2,37 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use App\Models\User;
 use App\Models\Product;
-use App\Models\Customer;
 use App\Models\Tenant;
-use Modules\POS\Models\PosOrder;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\POS\Models\PosOfflineQueue;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
-use Modules\POS\Models\PosOfflineQueue;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
+use Tests\TestCase;
 
 class PosTenantIsolationTest extends TestCase
 {
     use RefreshDatabase;
 
     protected Tenant $tenantA;
+
     protected Tenant $tenantB;
+
     protected User $userA;
+
     protected User $userB;
+
     protected Product $productA;
+
     protected Product $productB;
+
     protected PosTerminal $terminalA;
+
     protected PosTerminal $terminalB;
+
     protected PosSession $sessionA;
+
     protected PosSession $sessionB;
 
     protected function setUp(): void
@@ -78,11 +84,11 @@ class PosTenantIsolationTest extends TestCase
         // Tenant A tries to read Tenant B's queue
         $this->tenantA->run(function () {
             $response = $this->actingAs($this->userA)->getJson('/api/pos/sync/pending');
-            
+
             // Should return empty or only Tenant A's items
             $items = $response->json();
             $this->assertIsArray($items);
-            
+
             // Verify no Tenant B data is returned
             foreach ($items as $item) {
                 $this->assertNotEquals('tenant-b', $item['tenant_id'] ?? null);
@@ -151,7 +157,7 @@ class PosTenantIsolationTest extends TestCase
         // Tenant A tries to access Tenant B's order
         $this->tenantA->run(function () use ($orderB) {
             $response = $this->actingAs($this->userA)->getJson("/api/pos/orders/{$orderB}");
-            
+
             // Should return 403 or 404
             $this->assertContains($response->status(), [403, 404]);
         });
@@ -186,7 +192,7 @@ class PosTenantIsolationTest extends TestCase
         // Tenant A tries to access Tenant B's order (which has payments)
         $this->tenantA->run(function () use ($orderB) {
             $response = $this->actingAs($this->userA)->getJson("/api/pos/orders/{$orderB}");
-            
+
             // Should return 403 or 404
             $this->assertContains($response->status(), [403, 404]);
         });
@@ -200,7 +206,7 @@ class PosTenantIsolationTest extends TestCase
         // Tenant A tries to access Tenant B's session
         $this->tenantA->run(function () {
             $response = $this->actingAs($this->userA)->getJson("/api/pos/sessions/{$this->sessionB->id}");
-            
+
             // Should return 403 or 404
             $this->assertContains($response->status(), [403, 404]);
         });
@@ -214,7 +220,7 @@ class PosTenantIsolationTest extends TestCase
         // Tenant A tries to access Tenant B's display
         $this->tenantA->run(function () {
             $response = $this->actingAs($this->userA)->getJson("/api/pos/display/{$this->terminalB->id}");
-            
+
             // Should return 403 or 404
             $this->assertContains($response->status(), [403, 404]);
         });
@@ -260,14 +266,14 @@ class PosTenantIsolationTest extends TestCase
         // Tenant A fetches order list
         $this->tenantA->run(function () use ($orderA, $orderB) {
             $response = $this->actingAs($this->userA)->getJson('/api/pos/orders');
-            
+
             $response->assertStatus(200);
             $orders = $response->json('data') ?? $response->json();
-            
+
             // Verify Tenant A's order is in the list
             $orderIds = collect($orders)->pluck('id')->toArray();
             $this->assertContains($orderA, $orderIds);
-            
+
             // Verify Tenant B's order is NOT in the list
             $this->assertNotContains($orderB, $orderIds);
         });
@@ -304,7 +310,7 @@ class PosTenantIsolationTest extends TestCase
             $response = $this->actingAs($this->userA)->postJson("/api/pos/orders/{$orderB}/void", [
                 'void_reason' => 'Test void',
             ]);
-            
+
             // Should return 403 or 404
             $this->assertContains($response->status(), [403, 404]);
         });
@@ -342,7 +348,7 @@ class PosTenantIsolationTest extends TestCase
                 'notes' => 'Test refund',
                 'refund_method' => 'cash',
             ]);
-            
+
             // Should return 403 or 404
             $this->assertContains($response->status(), [403, 404]);
         });
@@ -355,30 +361,30 @@ class PosTenantIsolationTest extends TestCase
     {
         // This test verifies route configuration
         $routes = \Route::getRoutes();
-        
+
         $syncRoutes = collect($routes)->filter(function ($route) {
             return str_contains($route->uri(), 'pos/sync');
         });
 
         foreach ($syncRoutes as $route) {
             $middleware = $route->middleware();
-            
+
             // Verify auth middleware
-            $this->assertContains('auth:sanctum', $middleware, 
+            $this->assertContains('auth:sanctum', $middleware,
                 "Route {$route->uri()} must have auth:sanctum middleware");
-            
+
             // Verify tenant middleware
             $this->assertTrue(
-                in_array('ensure.tenant.search_path', $middleware) || 
+                in_array('ensure.tenant.search_path', $middleware) ||
                 in_array('tenant', $middleware),
                 "Route {$route->uri()} must have tenant middleware"
             );
-            
+
             // Verify entitlement middleware
             $hasEntitlement = collect($middleware)->contains(function ($m) {
                 return str_contains($m, 'entitlement');
             });
-            $this->assertTrue($hasEntitlement, 
+            $this->assertTrue($hasEntitlement,
                 "Route {$route->uri()} must have entitlement middleware");
         }
     }

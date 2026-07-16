@@ -1,16 +1,14 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Modules\WebsiteBuilder\Http\Controllers\WebsiteController;
-use Modules\WebsiteBuilder\Http\Controllers\PageController;
-use Modules\WebsiteBuilder\Http\Controllers\TemplateController;
 use Modules\WebsiteBuilder\Http\Controllers\AssetController;
-use Modules\WebsiteBuilder\Http\Controllers\PublishController;
-use Modules\WebsiteBuilder\Http\Controllers\UploadController;
-use Modules\WebsiteBuilder\Http\Controllers\ImportController;
 use Modules\WebsiteBuilder\Http\Controllers\EditorApiController;
-use Modules\WebsiteBuilder\Http\Controllers\WebsiteProductController;
-use Modules\WebsiteBuilder\Http\Controllers\PublicSiteController;
+use Modules\WebsiteBuilder\Http\Controllers\ImportController;
+use Modules\WebsiteBuilder\Http\Controllers\PageController;
+use Modules\WebsiteBuilder\Http\Controllers\PublishController;
+use Modules\WebsiteBuilder\Http\Controllers\TemplateController;
+use Modules\WebsiteBuilder\Http\Controllers\UploadController;
+use Modules\WebsiteBuilder\Http\Controllers\WebsiteController;
 
 // NOTE: Public API routes (website-public/*) are registered in routes/tenant.php
 // inside the PUBLIC middleware group (no auth). Do NOT duplicate them here,

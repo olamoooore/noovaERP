@@ -3,8 +3,8 @@
 namespace Modules\POS\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Modules\POS\Models\PosHeldOrder;
 use Modules\POS\Models\PosSession;
@@ -20,7 +20,7 @@ class PosHeldOrderController extends Controller
             ->where('status', 'open')
             ->first();
 
-        if (!$session) {
+        if (! $session) {
             return response()->json([
                 'error' => 'No active session',
                 'held_orders' => [],
@@ -52,12 +52,12 @@ class PosHeldOrderController extends Controller
             ->where('status', 'open')
             ->first();
 
-        if (!$session) {
+        if (! $session) {
             return response()->json(['error' => 'No active session'], 400);
         }
 
         $cartData = $request->cart_data;
-        
+
         // Calculate totals from cart
         $subtotal = collect($cartData['items'])->sum(function ($item) {
             return ($item['unit_price'] ?? $item['price'] ?? 0) * ($item['quantity'] ?? 1);
@@ -88,6 +88,7 @@ class PosHeldOrderController extends Controller
     public function show($heldOrder): JsonResponse
     {
         $heldOrder = PosHeldOrder::findOrFail($heldOrder);
+
         return response()->json([
             'held_order' => $heldOrder->load('customer'),
         ]);
@@ -103,7 +104,7 @@ class PosHeldOrderController extends Controller
             ->where('status', 'open')
             ->first();
 
-        if (!$session || $heldOrder->session_id !== $session->id) {
+        if (! $session || $heldOrder->session_id !== $session->id) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 

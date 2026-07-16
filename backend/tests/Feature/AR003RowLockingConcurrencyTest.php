@@ -41,10 +41,10 @@ class AR003RowLockingConcurrencyTest extends TestCase
             base_path('modules/Inventory/src/Services/InventoryService.php')
         );
 
-        $txPos   = strpos($source, 'DB::transaction(');
+        $txPos = strpos($source, 'DB::transaction(');
         $lockPos = strpos($source, 'lockForUpdate()');
 
-        $this->assertNotFalse($txPos,   'DB::transaction must be present in adjustStock.');
+        $this->assertNotFalse($txPos, 'DB::transaction must be present in adjustStock.');
         $this->assertNotFalse($lockPos, 'lockForUpdate() must be present in adjustStock.');
         $this->assertGreaterThan($txPos, $lockPos,
             'lockForUpdate() must be called inside the DB::transaction closure, not outside it.');
@@ -102,7 +102,7 @@ class AR003RowLockingConcurrencyTest extends TestCase
 
     public function test_stock_movement_model_includes_balance_tracking_fields(): void
     {
-        $model = new \App\Models\StockMovement();
+        $model = new \App\Models\StockMovement;
         $fillable = $model->getFillable();
 
         $this->assertContains('old_quantity', $fillable,
@@ -129,7 +129,7 @@ class AR003RowLockingConcurrencyTest extends TestCase
             base_path('database/migrations/tenant/2026_05_09_000001_add_idempotency_key_to_stock_movements.php')
         );
 
-        $this->assertStringContainsString("->unique()", $migration,
+        $this->assertStringContainsString('->unique()', $migration,
             'idempotency_key unique constraint must exist as second dedup layer (AR-002/AR-003 intersection).');
     }
 
@@ -142,7 +142,7 @@ class AR003RowLockingConcurrencyTest extends TestCase
         );
 
         // The function body is one DB::transaction that covers lock, mutation, movement create
-        $txOpen  = strpos($source, 'DB::transaction(');
+        $txOpen = strpos($source, 'DB::transaction(');
         $savePos = strpos($source, '$stockLevel->save()');
         $createPos = strpos($source, 'StockMovement::create(');
 

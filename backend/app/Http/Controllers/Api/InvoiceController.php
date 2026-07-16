@@ -10,8 +10,6 @@ use App\Models\Warehouse;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Modules\Sales\Services\SalesOrderService;
 
 class InvoiceController extends Controller
@@ -45,9 +43,9 @@ class InvoiceController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_number', 'ILIKE', "%{$search}%")
-                  ->orWhereHas('customer', function ($cq) use ($search) {
-                      $cq->where('name', 'ILIKE', "%{$search}%");
-                  });
+                    ->orWhereHas('customer', function ($cq) use ($search) {
+                        $cq->where('name', 'ILIKE', "%{$search}%");
+                    });
             });
         }
 
@@ -140,24 +138,24 @@ class InvoiceController extends Controller
         }
 
         $salesLines = array_map(fn ($line) => [
-            'product_id'      => $line['product_id'] ?? null,
-            'description'     => $line['description'],
-            'quantity'        => $line['quantity'],
-            'unit_price'      => $line['unit_price'],
-            'tax_rate'        => $line['tax_rate'] ?? 0,
+            'product_id' => $line['product_id'] ?? null,
+            'description' => $line['description'],
+            'quantity' => $line['quantity'],
+            'unit_price' => $line['unit_price'],
+            'tax_rate' => $line['tax_rate'] ?? 0,
             'discount_amount' => $line['discount_amount'] ?? 0,
         ], $data['lines']);
 
         // Resolve warehouse if any line references a stock-tracked product
         $warehouseId = null;
         $productIds = array_filter(array_column($salesLines, 'product_id'));
-        if (!empty($productIds)) {
+        if (! empty($productIds)) {
             $hasStockTracked = Product::whereIn('id', $productIds)
                 ->where('track_inventory', true)
                 ->exists();
             if ($hasStockTracked) {
                 $warehouse = Warehouse::getDefault() ?? Warehouse::first();
-                if (!$warehouse) {
+                if (! $warehouse) {
                     throw new \RuntimeException(
                         'Cannot create invoice for stock-tracked products: no warehouse configured.'
                     );
@@ -167,10 +165,10 @@ class InvoiceController extends Controller
         }
 
         $salesOrder = $this->salesOrderService->createOrder([
-            'customer_id'  => $data['customer_id'],
-            'channel'      => 'admin',
-            'notes'        => $data['notes'] ?? null,
-            'lines'        => $salesLines,
+            'customer_id' => $data['customer_id'],
+            'channel' => 'admin',
+            'notes' => $data['notes'] ?? null,
+            'lines' => $salesLines,
             'warehouse_id' => $warehouseId,
         ]);
 
@@ -180,26 +178,26 @@ class InvoiceController extends Controller
         $salesOrder = $this->salesOrderService->fulfilOrder($salesOrder);
 
         $invoiceOverrides = array_filter([
-            'invoice_number'              => $importedNumber !== '' ? $importedNumber : null,
-            'invoice_date'                => $data['invoice_date'] ?? null,
-            'due_date'                    => $data['due_date'] ?? null,
-            'date_of_case'                => $data['date_of_case'] ?? null,
-            'case_location'               => $data['case_location'] ?? null,
-            'patient_name'                => $data['patient_name'] ?? null,
-            'cost_center_id'              => $data['cost_center_id'] ?? null,
-            'delivery_date'               => $data['delivery_date'] ?? null,
-            'customer_reference'          => $data['customer_reference'] ?? null,
-            'internal_reference'          => $data['internal_reference'] ?? null,
-            'attention_to'                => $data['attention_to'] ?? null,
-            'contact_email'               => $data['contact_email'] ?? null,
-            'contact_phone'               => $data['contact_phone'] ?? null,
-            'billing_address_snapshot'    => $data['billing_address_snapshot'] ?? null,
-            'shipping_address_snapshot'   => $data['shipping_address_snapshot'] ?? null,
+            'invoice_number' => $importedNumber !== '' ? $importedNumber : null,
+            'invoice_date' => $data['invoice_date'] ?? null,
+            'due_date' => $data['due_date'] ?? null,
+            'date_of_case' => $data['date_of_case'] ?? null,
+            'case_location' => $data['case_location'] ?? null,
+            'patient_name' => $data['patient_name'] ?? null,
+            'cost_center_id' => $data['cost_center_id'] ?? null,
+            'delivery_date' => $data['delivery_date'] ?? null,
+            'customer_reference' => $data['customer_reference'] ?? null,
+            'internal_reference' => $data['internal_reference'] ?? null,
+            'attention_to' => $data['attention_to'] ?? null,
+            'contact_email' => $data['contact_email'] ?? null,
+            'contact_phone' => $data['contact_phone'] ?? null,
+            'billing_address_snapshot' => $data['billing_address_snapshot'] ?? null,
+            'shipping_address_snapshot' => $data['shipping_address_snapshot'] ?? null,
             'company_registration_number' => $data['company_registration_number'] ?? null,
-            'tax_registration_number'     => $data['tax_registration_number'] ?? null,
-            'notes'                       => $data['notes'] ?? null,
-            'terms'                       => $data['terms'] ?? null,
-            'discount_amount'             => $data['discount_amount'] ?? null,
+            'tax_registration_number' => $data['tax_registration_number'] ?? null,
+            'notes' => $data['notes'] ?? null,
+            'terms' => $data['terms'] ?? null,
+            'discount_amount' => $data['discount_amount'] ?? null,
         ], fn ($v) => $v !== null);
 
         return $this->salesOrderService->createInvoice(
@@ -212,7 +210,7 @@ class InvoiceController extends Controller
     {
         $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments'])->find($id);
 
-        if (!$invoice) {
+        if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
         }
 
@@ -223,7 +221,7 @@ class InvoiceController extends Controller
     {
         $invoice = Invoice::find($id);
 
-        if (!$invoice) {
+        if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
         }
 
@@ -264,7 +262,7 @@ class InvoiceController extends Controller
     {
         $invoice = Invoice::find($id);
 
-        if (!$invoice) {
+        if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
         }
 
@@ -299,7 +297,7 @@ class InvoiceController extends Controller
 
             // Surface account-mapping errors with actionable guidance
             if (str_contains($message, 'Cannot resolve GL account')) {
-                $message = 'Default accounts not configured. ' .
+                $message = 'Default accounts not configured. '.
                     'Please go to Company Settings > Default Accounts and map the required GL accounts before posting invoices.';
             }
 
@@ -329,7 +327,7 @@ class InvoiceController extends Controller
     {
         $invoice = Invoice::find($id);
 
-        if (!$invoice) {
+        if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
         }
 
@@ -374,7 +372,7 @@ class InvoiceController extends Controller
         }
 
         return response()->json([
-            'message' => count($deletedIds) . ' invoice(s) deleted.',
+            'message' => count($deletedIds).' invoice(s) deleted.',
             'deleted' => $deletedIds,
             'skipped' => $skipped,
         ]);
@@ -400,55 +398,57 @@ class InvoiceController extends Controller
         }
 
         $rawHeader = fgetcsv($handle);
-        if (!is_array($rawHeader) || count($rawHeader) === 0) {
+        if (! is_array($rawHeader) || count($rawHeader) === 0) {
             fclose($handle);
+
             return response()->json(['message' => 'CSV header missing'], 422);
         }
 
         $header = array_map(function ($h) {
             $h = strtolower(trim((string) $h));
             $h = preg_replace('/[^a-z0-9]+/', '_', $h);
+
             return trim($h, '_');
         }, $rawHeader);
 
         $columnAliases = [
-            'invoice_no'           => 'invoice_number',
-            'quote_number'         => 'invoice_number',
-            'quote_no'             => 'invoice_number',
-            'number'               => 'invoice_number',
-            'customer'             => 'customer_name',
-            'customer_code'        => 'customer_code',
-            'customer_name'        => 'customer_name',
-            'date'                 => 'invoice_date',
-            'issue_date'           => 'invoice_date',
-            'valid_until'          => 'due_date',
-            'expiry_date'          => 'due_date',
-            'reference'            => 'customer_reference',
-            'po_number'            => 'customer_reference',
-            'sku'                  => 'product_sku',
-            'product_sku'          => 'product_sku',
-            'item'                 => 'description',
-            'item_description'     => 'description',
-            'qty'                  => 'quantity',
-            'price'                => 'unit_price',
-            'unit_price'           => 'unit_price',
-            'rate'                 => 'unit_price',
-            'tax'                  => 'tax_rate',
-            'line_discount'        => 'line_discount_amount',
+            'invoice_no' => 'invoice_number',
+            'quote_number' => 'invoice_number',
+            'quote_no' => 'invoice_number',
+            'number' => 'invoice_number',
+            'customer' => 'customer_name',
+            'customer_code' => 'customer_code',
+            'customer_name' => 'customer_name',
+            'date' => 'invoice_date',
+            'issue_date' => 'invoice_date',
+            'valid_until' => 'due_date',
+            'expiry_date' => 'due_date',
+            'reference' => 'customer_reference',
+            'po_number' => 'customer_reference',
+            'sku' => 'product_sku',
+            'product_sku' => 'product_sku',
+            'item' => 'description',
+            'item_description' => 'description',
+            'qty' => 'quantity',
+            'price' => 'unit_price',
+            'unit_price' => 'unit_price',
+            'rate' => 'unit_price',
+            'tax' => 'tax_rate',
+            'line_discount' => 'line_discount_amount',
             'line_discount_amount' => 'line_discount_amount',
-            'discount'             => 'discount_amount',
-            'billing_address'      => 'billing_address_snapshot',
-            'shipping_address'     => 'shipping_address_snapshot',
-            'company_reg_no'       => 'company_registration_number',
-            'tax_reg_no'           => 'tax_registration_number',
-            'email'                => 'contact_email',
-            'phone'                => 'contact_phone',
+            'discount' => 'discount_amount',
+            'billing_address' => 'billing_address_snapshot',
+            'shipping_address' => 'shipping_address_snapshot',
+            'company_reg_no' => 'company_registration_number',
+            'tax_reg_no' => 'tax_registration_number',
+            'email' => 'contact_email',
+            'phone' => 'contact_phone',
         ];
         $header = array_map(fn ($key) => $columnAliases[$key] ?? $key, $header);
 
         $rows = [];
         while (($data = fgetcsv($handle)) !== false) {
-            if (!is_array($data) || count(array_filter($data, fn ($v) => (string) $v !== '')) === 0) {
+            if (! is_array($data) || count(array_filter($data, fn ($v) => (string) $v !== '')) === 0) {
                 continue;
             }
             $row = [];
@@ -470,8 +470,8 @@ class InvoiceController extends Controller
         $order = [];
         foreach ($rows as $idx => $row) {
             $num = trim((string) ($row['invoice_number'] ?? ''));
-            $key = $num !== '' ? 'num:' . $num : 'row:' . $idx;
-            if (!isset($groups[$key])) {
+            $key = $num !== '' ? 'num:'.$num : 'row:'.$idx;
+            if (! isset($groups[$key])) {
                 $groups[$key] = ['first_index' => $idx, 'header' => $row, 'lines' => []];
                 $order[] = $key;
             }
@@ -490,7 +490,7 @@ class InvoiceController extends Controller
 
             try {
                 $customer = $this->resolveImportCustomer($headerRow, $customerCache);
-                if (!$customer) {
+                if (! $customer) {
                     $identifier = trim((string) ($headerRow['customer_code'] ?? $headerRow['customer_name'] ?? $headerRow['customer_id'] ?? ''));
                     throw new \RuntimeException("Customer not found: {$identifier}");
                 }
@@ -507,10 +507,10 @@ class InvoiceController extends Controller
                     $lineDiscount = $this->parseNumericValue($lineRow['line_discount_amount'] ?? null);
 
                     $line = [
-                        'description'     => $description !== '' ? $description : 'Imported line',
-                        'quantity'        => $quantity,
-                        'unit_price'      => $unitPrice,
-                        'tax_rate'        => $taxRate,
+                        'description' => $description !== '' ? $description : 'Imported line',
+                        'quantity' => $quantity,
+                        'unit_price' => $unitPrice,
+                        'tax_rate' => $taxRate,
                         'discount_amount' => $lineDiscount,
                     ];
 
@@ -537,7 +537,7 @@ class InvoiceController extends Controller
 
                 $data = [
                     'customer_id' => $customer->id,
-                    'lines'       => $lines,
+                    'lines' => $lines,
                 ];
 
                 // Preserve the imported invoice/quote number when provided.
@@ -584,7 +584,7 @@ class InvoiceController extends Controller
                         // Keep as draft (quote) but warn — posting may need GL accounts configured
                         $errors[] = [
                             'row' => $firstIndex + 2,
-                            'message' => 'Invoice ' . $invoice->invoice_number . ' created as draft (posting failed: ' . $postException->getMessage() . ')',
+                            'message' => 'Invoice '.$invoice->invoice_number.' created as draft (posting failed: '.$postException->getMessage().')',
                         ];
                     }
                 }
@@ -594,14 +594,14 @@ class InvoiceController extends Controller
                 $msg = $e->getMessage();
                 $errors[] = [
                     'row' => $firstIndex + 2,
-                    'message' => 'Invoice ' . trim((string) ($headerRow['invoice_number'] ?? ('row ' . ($firstIndex + 2)))) . ': ' . $msg,
+                    'message' => 'Invoice '.trim((string) ($headerRow['invoice_number'] ?? ('row '.($firstIndex + 2)))).': '.$msg,
                 ];
             }
         }
 
         return response()->json([
             'created' => $created,
-            'errors'  => $errors,
+            'errors' => $errors,
         ], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
     }
 
@@ -611,7 +611,7 @@ class InvoiceController extends Controller
         $name = trim((string) ($row['customer_name'] ?? ''));
         $id = trim((string) ($row['customer_id'] ?? ''));
 
-        $cacheKey = $code . '|' . $name . '|' . $id;
+        $cacheKey = $code.'|'.$name.'|'.$id;
         if (isset($cache[$cacheKey])) {
             return $cache[$cacheKey];
         }
@@ -620,10 +620,10 @@ class InvoiceController extends Controller
         if ($code !== '' && $code !== '-') {
             $customer = Customer::whereRaw('LOWER(code) = ?', [strtolower($code)])->first();
         }
-        if (!$customer && $name !== '' && $name !== '-') {
+        if (! $customer && $name !== '' && $name !== '-') {
             $customer = Customer::whereRaw('LOWER(name) = ?', [strtolower($name)])->first();
         }
-        if (!$customer && $id !== '' && filter_var($id, FILTER_VALIDATE_INT) !== false) {
+        if (! $customer && $id !== '' && filter_var($id, FILTER_VALIDATE_INT) !== false) {
             $customer = Customer::find((int) $id);
         }
 
@@ -635,6 +635,7 @@ class InvoiceController extends Controller
         if (isset($cache[$sku])) {
             return $cache[$sku];
         }
+
         return $cache[$sku] = Product::where('sku', $sku)->first();
     }
 
@@ -644,6 +645,7 @@ class InvoiceController extends Controller
             return null;
         }
         $value = trim((string) $value);
+
         return ($value === '' || $value === '-') ? null : $value;
     }
 
@@ -653,6 +655,7 @@ class InvoiceController extends Controller
             return 0;
         }
         $cleaned = preg_replace('/[^0-9.]/', '', trim((string) $value));
+
         return $cleaned !== '' ? (float) $cleaned : 0;
     }
 

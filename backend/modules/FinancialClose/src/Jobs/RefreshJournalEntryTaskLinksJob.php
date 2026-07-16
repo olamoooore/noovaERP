@@ -35,10 +35,11 @@ class RefreshJournalEntryTaskLinksJob implements ShouldQueue
             ->where('id', $this->journalEntryId)
             ->first();
 
-        if (!$JE) {
+        if (! $JE) {
             Log::warning('RefreshJournalEntryTaskLinksJob: JE not found', [
                 'journal_entry_id' => $this->journalEntryId,
             ]);
+
             return;
         }
 
@@ -51,10 +52,11 @@ class RefreshJournalEntryTaskLinksJob implements ShouldQueue
             ->keyBy(fn ($t) => $t->metadata['type'] ?? null)
             ->get($taskType);
 
-        if (!$task) {
+        if (! $task) {
             Log::info('RefreshJournalEntryTaskLinksJob: No active unposted_journal_entries task found', [
                 'cycle_id' => $this->cycleId,
             ]);
+
             return;
         }
 

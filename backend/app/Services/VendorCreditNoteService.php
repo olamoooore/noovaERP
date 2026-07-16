@@ -6,7 +6,6 @@ use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\VendorCreditNote;
-use App\Models\VendorCreditNoteLine;
 use Illuminate\Support\Facades\DB;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
@@ -26,7 +25,7 @@ class VendorCreditNoteService
     public function createCreditNote(array $data): VendorCreditNote
     {
         DB::beginTransaction();
-        
+
         try {
             $lines = $data['lines'] ?? [];
             unset($data['lines']);
@@ -65,9 +64,9 @@ class VendorCreditNoteService
             }
 
             DB::commit();
-            
+
             return $creditNote->load(['vendor', 'bill', 'lines.product']);
-            
+
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -101,19 +100,19 @@ class VendorCreditNoteService
             ->where('status', 'posted')
             ->where('id', '!=', $creditNote->id)
             ->sum('total_amount');
-        
+
         $totalCredited = $existingCreditNotes + $creditNote->total_amount;
-        
+
         if ($totalCredited > $bill->total) {
             throw new \Exception(
-                "Credit note amount exceeds bill amount. " .
-                "Bill: {$bill->total}, Already credited: {$existingCreditNotes}, " .
+                'Credit note amount exceeds bill amount. '.
+                "Bill: {$bill->total}, Already credited: {$existingCreditNotes}, ".
                 "This credit note: {$creditNote->total_amount}"
             );
         }
 
         DB::beginTransaction();
-        
+
         try {
             $lines = [];
 
@@ -156,10 +155,10 @@ class VendorCreditNoteService
                 userId: TenantUserHelper::resolveTenantUserId(),
             ));
 
-            if (!$result->success) {
+            if (! $result->success) {
                 throw new \Exception($result->error);
             }
-            
+
             $creditNote->update([
                 'status' => 'posted',
                 'posted_at' => now(),
@@ -172,9 +171,9 @@ class VendorCreditNoteService
                 ->decrement('balance', (float) $creditNote->total_amount);
 
             DB::commit();
-            
+
             return $creditNote->fresh(['journalEntry', 'lines', 'vendor', 'bill']);
-            
+
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -187,13 +186,13 @@ class VendorCreditNoteService
     public function validateCreditNote(int $billId, float $amount): array
     {
         $bill = \App\Models\Bill::findOrFail($billId);
-        
+
         $existingCreditNotes = VendorCreditNote::where('bill_id', $billId)
             ->where('status', 'posted')
             ->sum('total_amount');
-        
+
         $remainingAmount = $bill->total - $existingCreditNotes;
-        
+
         return [
             'valid' => $amount <= $remainingAmount,
             'bill_amount' => $bill->total,

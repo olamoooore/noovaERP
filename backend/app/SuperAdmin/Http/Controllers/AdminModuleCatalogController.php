@@ -40,17 +40,17 @@ class AdminModuleCatalogController extends Controller
 
         return response()->json([
             'message' => "Synced {$result['synced']} modules from manifests.",
-            'data'    => $result,
+            'data' => $result,
         ]);
     }
 
     public function update(Request $request, ModuleCatalogEntry $module): JsonResponse
     {
         $data = $request->validate([
-            'name'        => 'sometimes|string|max:120',
+            'name' => 'sometimes|string|max:120',
             'description' => 'nullable|string|max:500',
-            'is_active'   => 'boolean',
-            'sort_order'  => 'integer|min:0',
+            'is_active' => 'boolean',
+            'sort_order' => 'integer|min:0',
             // module_key is intentionally excluded — it is the identity and must not change
         ]);
 

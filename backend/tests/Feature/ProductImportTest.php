@@ -5,9 +5,9 @@ namespace Tests\Feature;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\Warehouse;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 use Modules\Inventory\Services\InventoryService;
@@ -41,7 +41,7 @@ class ProductImportTest extends TestCase
             ]);
         }
 
-        if (!Schema::hasColumn('products', 'manufacturer')) {
+        if (! Schema::hasColumn('products', 'manufacturer')) {
             Schema::table('products', function (Blueprint $table) {
                 $table->string('manufacturer')->nullable();
             });

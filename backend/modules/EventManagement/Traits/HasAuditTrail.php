@@ -34,10 +34,10 @@ trait HasAuditTrail
         try {
             $userId = Auth::id();
             $context = [
-                'model'   => class_basename($model),
-                'id'      => $model->getKey(),
+                'model' => class_basename($model),
+                'id' => $model->getKey(),
                 'user_id' => $userId,
-                'event'   => $event,
+                'event' => $event,
             ];
 
             // Include changed attributes for updates

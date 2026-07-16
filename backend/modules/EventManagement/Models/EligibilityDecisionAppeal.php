@@ -17,13 +17,13 @@ class EligibilityDecisionAppeal extends Model
         'review_notes',
         'appeal_data',
         'appealed_at',
-        'reviewed_at'
+        'reviewed_at',
     ];
 
     protected $casts = [
         'appeal_data' => 'array',
         'appealed_at' => 'datetime',
-        'reviewed_at' => 'datetime'
+        'reviewed_at' => 'datetime',
     ];
 
     /**

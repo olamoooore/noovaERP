@@ -7,14 +7,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
-use Spatie\Activitylog\Facades\LogActivity;
 
 /**
  * Consolidated Authentication Service for EventManagement Module
- * 
+ *
  * This service isolates all authentication-related logic for the EventManagement module,
  * providing a clear boundary around auth operations while preserving existing behavior.
- * 
+ *
  * Requirements: 6.1 - Isolate authentication flows in EventManagement
  */
 class AuthenticationService
@@ -22,22 +21,19 @@ class AuthenticationService
     /**
      * Authenticate user with email and password
      *
-     * @param string $email
-     * @param string $password
-     * @return array
      * @throws ValidationException
      */
     public function authenticate(string $email, string $password): array
     {
         $user = User::where('email', $email)->first();
 
-        if (!$user || !Hash::check($password, $user->password)) {
+        if (! $user || ! Hash::check($password, $user->password)) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
         }
 
-        if (!$user->is_active) {
+        if (! $user->is_active) {
             throw ValidationException::withMessages([
                 'account' => ['Account is inactive'],
             ]);
@@ -59,14 +55,11 @@ class AuthenticationService
 
     /**
      * Logout user by revoking current access token
-     *
-     * @param Request $request
-     * @return void
      */
     public function logout(Request $request): void
     {
         $user = $request->user();
-        
+
         if ($user) {
             // Log logout event
             $this->logAuthenticationEvent($user, 'logout', [
@@ -81,14 +74,11 @@ class AuthenticationService
 
     /**
      * Get authenticated user with roles and permissions
-     *
-     * @param Request $request
-     * @return User|null
      */
     public function getAuthenticatedUser(Request $request): ?User
     {
         $user = $request->user();
-        
+
         if ($user) {
             return $user->load('roles.permissions');
         }
@@ -98,14 +88,10 @@ class AuthenticationService
 
     /**
      * Check if user has specific permission
-     *
-     * @param User|null $user
-     * @param string $permission
-     * @return bool
      */
     public function hasPermission(?User $user, string $permission): bool
     {
-        if (!$user) {
+        if (! $user) {
             return false;
         }
 
@@ -114,14 +100,10 @@ class AuthenticationService
 
     /**
      * Check if user has any of the specified roles
-     *
-     * @param User|null $user
-     * @param array $roles
-     * @return bool
      */
     public function hasAnyRole(?User $user, array $roles): bool
     {
-        if (!$user) {
+        if (! $user) {
             return false;
         }
 
@@ -130,14 +112,10 @@ class AuthenticationService
 
     /**
      * Check if user has specific role
-     *
-     * @param User|null $user
-     * @param string $role
-     * @return bool
      */
     public function hasRole(?User $user, string $role): bool
     {
-        if (!$user) {
+        if (! $user) {
             return false;
         }
 
@@ -146,13 +124,10 @@ class AuthenticationService
 
     /**
      * Get user's roles
-     *
-     * @param User|null $user
-     * @return array
      */
     public function getUserRoles(?User $user): array
     {
-        if (!$user) {
+        if (! $user) {
             return [];
         }
 
@@ -161,13 +136,10 @@ class AuthenticationService
 
     /**
      * Get user's permissions
-     *
-     * @param User|null $user
-     * @return array
      */
     public function getUserPermissions(?User $user): array
     {
-        if (!$user) {
+        if (! $user) {
             return [];
         }
 
@@ -176,13 +148,10 @@ class AuthenticationService
 
     /**
      * Check if user can access EventManagement module
-     *
-     * @param User|null $user
-     * @return bool
      */
     public function canAccessEventManagement(?User $user): bool
     {
-        if (!$user) {
+        if (! $user) {
             return false;
         }
 
@@ -213,9 +182,6 @@ class AuthenticationService
 
     /**
      * Check if user is staff member
-     *
-     * @param User|null $user
-     * @return bool
      */
     public function isStaff(?User $user): bool
     {
@@ -224,9 +190,6 @@ class AuthenticationService
 
     /**
      * Check if user is admin
-     *
-     * @param User|null $user
-     * @return bool
      */
     public function isAdmin(?User $user): bool
     {
@@ -235,34 +198,24 @@ class AuthenticationService
 
     /**
      * Check if user can configure events
-     *
-     * @param User|null $user
-     * @return bool
      */
     public function canConfigureEvents(?User $user): bool
     {
-        return $this->hasPermission($user, 'events.configure') || 
+        return $this->hasPermission($user, 'events.configure') ||
                $this->hasAnyRole($user, ['admin', 'super-admin']);
     }
 
     /**
      * Check if user can view inventory
-     *
-     * @param User|null $user
-     * @return bool
      */
     public function canViewInventory(?User $user): bool
     {
-        return $this->hasPermission($user, 'inventory.view') || 
+        return $this->hasPermission($user, 'inventory.view') ||
                $this->isStaff($user);
     }
 
     /**
      * Get feature flags for user based on their roles
-     *
-     * @param User|null $user
-     * @param string $appType
-     * @return array
      */
     public function getFeatureFlagsForUser(?User $user, string $appType = 'customer'): array
     {
@@ -271,7 +224,7 @@ class AuthenticationService
             'basic_booking' => true,
         ];
 
-        if (!$user) {
+        if (! $user) {
             return $baseFeatures;
         }
 
@@ -306,11 +259,6 @@ class AuthenticationService
 
     /**
      * Log authentication-related events
-     *
-     * @param User $user
-     * @param string $action
-     * @param array $properties
-     * @return void
      */
     private function logAuthenticationEvent(User $user, string $action, array $properties = []): void
     {
@@ -326,9 +274,6 @@ class AuthenticationService
 
     /**
      * Validate token and return user
-     *
-     * @param string $token
-     * @return User|null
      */
     public function validateToken(string $token): ?User
     {
@@ -343,8 +288,6 @@ class AuthenticationService
 
     /**
      * Check if current request is authenticated
-     *
-     * @return bool
      */
     public function isAuthenticated(): bool
     {
@@ -353,8 +296,6 @@ class AuthenticationService
 
     /**
      * Get current authenticated user
-     *
-     * @return User|null
      */
     public function getCurrentUser(): ?User
     {

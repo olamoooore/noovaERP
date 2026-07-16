@@ -2,12 +2,12 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TenantTestCase;
+use App\Models\User;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Bus;
-use Modules\FinancialReporting\Models\ReportSchedule;
 use Modules\FinancialReporting\Jobs\GenerateScheduledReport;
-use App\Models\User;
+use Modules\FinancialReporting\Models\ReportSchedule;
+use Tests\TenantTestCase;
 
 class ReportScheduleTest extends TenantTestCase
 {
@@ -56,8 +56,8 @@ class ReportScheduleTest extends TenantTestCase
                         'frequency',
                         'recipients',
                         'is_active',
-                    ]
-                ]
+                    ],
+                ],
             ]);
     }
 
@@ -85,7 +85,7 @@ class ReportScheduleTest extends TenantTestCase
                     'name',
                     'report_type',
                     'frequency',
-                ]
+                ],
             ]);
 
         $this->assertDatabaseHas('report_schedules', [
@@ -177,7 +177,7 @@ class ReportScheduleTest extends TenantTestCase
                 'data' => [
                     'name' => 'Updated Schedule Name',
                     'frequency' => 'weekly',
-                ]
+                ],
             ]);
 
         $this->assertDatabaseHas('report_schedules', [
@@ -258,7 +258,7 @@ class ReportScheduleTest extends TenantTestCase
 
         $response->assertStatus(200);
         $data = $response->json('data');
-        
+
         $this->assertCount(1, $data);
         $this->assertTrue($data[0]['is_active']);
     }
@@ -274,7 +274,7 @@ class ReportScheduleTest extends TenantTestCase
 
         $response->assertStatus(200);
         $data = $response->json('data');
-        
+
         $this->assertCount(1, $data);
         $this->assertEquals('profit_loss', $data[0]['report_type']);
     }

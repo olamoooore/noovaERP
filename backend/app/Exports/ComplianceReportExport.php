@@ -6,7 +6,7 @@ use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 
-class ComplianceReportExport implements FromArray, WithHeadings, ShouldAutoSize
+class ComplianceReportExport implements FromArray, ShouldAutoSize, WithHeadings
 {
     private array $headings;
 

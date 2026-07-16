@@ -15,6 +15,7 @@ class Attendance extends Model
     {
         return AttendanceFactory::new();
     }
+
     protected $table = 'hrm_attendances';
 
     protected $fillable = [

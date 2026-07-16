@@ -1,6 +1,6 @@
 <?php
 
 return [
-    'name'    => 'NoovaERP HRM',
+    'name' => 'NoovaERP HRM',
     'version' => '1.0.0',
 ];

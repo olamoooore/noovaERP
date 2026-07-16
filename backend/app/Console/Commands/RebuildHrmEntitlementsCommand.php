@@ -6,7 +6,6 @@ namespace App\Console\Commands;
 
 use App\Models\Tenant;
 use App\SuperAdmin\Application\EntitlementService;
-use App\SuperAdmin\Domain\CatalogItem;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -45,6 +44,7 @@ class RebuildHrmEntitlementsCommand extends Command
 
         if (! $hrmCatalogItem) {
             $this->error('HRM not found in catalog_items. Please run ModuleCatalogSyncService::sync() first.');
+
             return self::FAILURE;
         }
 
@@ -56,6 +56,7 @@ class RebuildHrmEntitlementsCommand extends Command
 
         if ($tenants->isEmpty()) {
             $this->warn('No tenants found to rebuild.');
+
             return self::SUCCESS;
         }
 
@@ -65,8 +66,9 @@ class RebuildHrmEntitlementsCommand extends Command
             $this->warn('DRY RUN MODE - No changes will be made');
             $this->table(
                 ['Tenant ID', 'Name', 'Email'],
-                $tenants->map(fn($t) => [$t->id, $t->name, $t->email])->toArray()
+                $tenants->map(fn ($t) => [$t->id, $t->name, $t->email])->toArray()
             );
+
             return self::SUCCESS;
         }
 

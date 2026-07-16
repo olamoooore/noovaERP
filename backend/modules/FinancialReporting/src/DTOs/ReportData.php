@@ -10,8 +10,7 @@ class ReportData
         public array $summary = [],
         public array $metadata = [],
         public ?array $comparison = null,
-    ) {
-    }
+    ) {}
 
     /**
      * Convert to array for JSON response
@@ -33,6 +32,7 @@ class ReportData
     public function addMetadata(string $key, mixed $value): self
     {
         $this->metadata[$key] = $value;
+
         return $this;
     }
 
@@ -42,6 +42,7 @@ class ReportData
     public function addSummary(string $key, mixed $value): self
     {
         $this->summary[$key] = $value;
+
         return $this;
     }
 }

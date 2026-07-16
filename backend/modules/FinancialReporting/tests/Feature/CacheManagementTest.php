@@ -2,12 +2,11 @@
 
 namespace Modules\FinancialReporting\Tests\Feature;
 
-use Tests\TenantTestCase;
+use App\Models\User;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Modules\FinancialReporting\Models\ReportCache;
-use App\Models\User;
-use Carbon\Carbon;
+use Tests\TenantTestCase;
 
 class CacheManagementTest extends TenantTestCase
 {
@@ -57,7 +56,7 @@ class CacheManagementTest extends TenantTestCase
                     'by_type',
                     'oldest_entry',
                     'newest_entry',
-                ]
+                ],
             ]);
 
         $data = $response->json('data');
@@ -152,7 +151,7 @@ class CacheManagementTest extends TenantTestCase
                 'success' => true,
                 'data' => [
                     'cache_key' => 'test_cache_key_123',
-                ]
+                ],
             ]);
     }
 

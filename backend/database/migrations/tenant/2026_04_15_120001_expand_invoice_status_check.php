@@ -12,7 +12,7 @@ return new class extends Migration
             return;
         }
 
-        DB::statement("ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_status_check");
+        DB::statement('ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_status_check');
         DB::statement("ALTER TABLE invoices ALTER COLUMN status SET DEFAULT 'draft'");
         DB::statement("ALTER TABLE invoices ADD CONSTRAINT invoices_status_check CHECK (status IN ('draft', 'sent', 'posted', 'partial', 'paid', 'overdue', 'cancelled'))");
     }
@@ -24,9 +24,8 @@ return new class extends Migration
         }
 
         DB::statement("UPDATE invoices SET status = 'sent' WHERE status IN ('posted', 'partial')");
-        DB::statement("ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_status_check");
+        DB::statement('ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_status_check');
         DB::statement("ALTER TABLE invoices ALTER COLUMN status SET DEFAULT 'draft'");
         DB::statement("ALTER TABLE invoices ADD CONSTRAINT invoices_status_check CHECK (status IN ('draft', 'sent', 'paid', 'overdue', 'cancelled'))");
     }
 };
-

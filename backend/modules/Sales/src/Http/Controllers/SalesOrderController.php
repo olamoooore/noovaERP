@@ -5,10 +5,9 @@ namespace Modules\Sales\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\Sales\Models\SalesOrder;
-use Modules\Sales\Models\SalesChannelReference;
-use Modules\Sales\Services\SalesOrderService;
-use Modules\Sales\Services\OrderLifecycleService;
 use Modules\Sales\Services\CreditCheckService;
+use Modules\Sales\Services\OrderLifecycleService;
+use Modules\Sales\Services\SalesOrderService;
 
 class SalesOrderController extends Controller
 {
@@ -39,9 +38,9 @@ class SalesOrderController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('sales_order_number', 'ILIKE', "%{$search}%")
-                  ->orWhereHas('customer', function ($cq) use ($search) {
-                      $cq->where('name', 'ILIKE', "%{$search}%");
-                  });
+                    ->orWhereHas('customer', function ($cq) use ($search) {
+                        $cq->where('name', 'ILIKE', "%{$search}%");
+                    });
             });
         }
 
@@ -93,6 +92,7 @@ class SalesOrderController extends Controller
 
         try {
             $order = $this->orderService->createOrder($validated);
+
             return response()->json($order->load(['customer', 'lines.product', 'statusHistory', 'channelReferences']), 201);
         } catch (\Exception $e) {
             return response()->json(['message' => 'Failed to create sales order', 'error' => $e->getMessage()], 500);
@@ -104,7 +104,7 @@ class SalesOrderController extends Controller
         $order = SalesOrder::with(['customer', 'lines.product', 'statusHistory.actor', 'channelReferences', 'invoiceLinks.invoice', 'deliveryOrders.lines'])
             ->find($id);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
@@ -115,11 +115,11 @@ class SalesOrderController extends Controller
     {
         $order = SalesOrder::find($id);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
-        if (!$order->isDraft()) {
+        if (! $order->isDraft()) {
             return response()->json(['message' => 'Only draft orders can be edited'], 403);
         }
 
@@ -142,7 +142,7 @@ class SalesOrderController extends Controller
     {
         $order = SalesOrder::find($id);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
@@ -150,6 +150,7 @@ class SalesOrderController extends Controller
 
         try {
             $order = $this->orderService->confirmOrder($order);
+
             return response()->json([
                 'message' => 'Order confirmed',
                 'order' => $order,
@@ -164,12 +165,13 @@ class SalesOrderController extends Controller
     {
         $order = SalesOrder::find($id);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
         try {
             $order = $this->orderService->allocateOrder($order);
+
             return response()->json(['message' => 'Order allocated', 'order' => $order]);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -180,12 +182,13 @@ class SalesOrderController extends Controller
     {
         $order = SalesOrder::find($id);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
         try {
             $order = $this->orderService->fulfilOrder($order);
+
             return response()->json(['message' => 'Order fulfilled', 'order' => $order]);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -196,12 +199,13 @@ class SalesOrderController extends Controller
     {
         $order = SalesOrder::find($id);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
         try {
             $invoice = $this->orderService->createInvoice($order);
+
             return response()->json(['message' => 'Invoice created', 'invoice' => $invoice], 201);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -212,7 +216,7 @@ class SalesOrderController extends Controller
     {
         $order = SalesOrder::find($id);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
@@ -222,6 +226,7 @@ class SalesOrderController extends Controller
 
         try {
             $order = $this->orderService->cancelOrder($order, $validated['reason']);
+
             return response()->json(['message' => 'Order cancelled', 'order' => $order]);
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -232,7 +237,7 @@ class SalesOrderController extends Controller
     {
         $order = SalesOrder::find($id);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
@@ -243,7 +248,7 @@ class SalesOrderController extends Controller
     {
         $order = SalesOrder::find($id);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
@@ -254,7 +259,7 @@ class SalesOrderController extends Controller
     {
         $order = SalesOrder::find($id);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
@@ -265,7 +270,7 @@ class SalesOrderController extends Controller
     {
         $order = SalesOrder::find($id);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
@@ -278,11 +283,11 @@ class SalesOrderController extends Controller
     {
         $order = SalesOrder::find($id);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
-        if (!$order->isDraft()) {
+        if (! $order->isDraft()) {
             return response()->json(['message' => 'Only draft orders can be deleted'], 403);
         }
 
@@ -295,7 +300,7 @@ class SalesOrderController extends Controller
     {
         $order = SalesOrder::find($id);
 
-        if (!$order) {
+        if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 

@@ -41,7 +41,7 @@ abstract class TenantTestCase extends TestCase
      */
     protected function refreshTestDatabase()
     {
-        if (!RefreshDatabaseState::$migrated || !$this->tenantSchemaExists()) {
+        if (! RefreshDatabaseState::$migrated || ! $this->tenantSchemaExists()) {
             $this->runTenantMigrations();
             RefreshDatabaseState::$migrated = true;
         }
@@ -80,14 +80,14 @@ abstract class TenantTestCase extends TestCase
         // considers it already-ran for subsequent paths).
         $tenantDir = database_path('migrations/tenant');
         $tenantFileNames = is_dir($tenantDir)
-            ? array_map('basename', glob($tenantDir . '/*.php'))
+            ? array_map('basename', glob($tenantDir.'/*.php'))
             : [];
 
         // Collect only central-only migration files (not duplicated in tenant/).
         $centralDir = database_path('migrations');
         $centralFiles = array_values(array_filter(
-            glob($centralDir . '/*.php'),
-            fn(string $f) => !in_array(basename($f), $tenantFileNames, true),
+            glob($centralDir.'/*.php'),
+            fn (string $f) => ! in_array(basename($f), $tenantFileNames, true),
         ));
 
         // Run central migrations (users, tenants, etc.) using individual file
@@ -151,7 +151,7 @@ abstract class TenantTestCase extends TestCase
     protected function assertTenantSchemaReady(array $requiredTables = []): void
     {
         $defaults = ['chart_of_accounts', 'journal_entries', 'journal_entry_lines', 'vendors', 'invoices'];
-        $tables = !empty($requiredTables) ? $requiredTables : $defaults;
+        $tables = ! empty($requiredTables) ? $requiredTables : $defaults;
 
         foreach ($tables as $table) {
             $this->assertTrue(
@@ -194,11 +194,11 @@ abstract class TenantTestCase extends TestCase
 
     protected function tenantScopedPath(string $path): string
     {
-        if (!$this->boundTestTenant) {
+        if (! $this->boundTestTenant) {
             throw new \RuntimeException('No test tenant context has been bound.');
         }
 
-        return 'reports/' . $this->boundTestTenant->getTenantKey() . '/' . ltrim($path, '/');
+        return 'reports/'.$this->boundTestTenant->getTenantKey().'/'.ltrim($path, '/');
     }
 
     protected function tearDown(): void

@@ -38,9 +38,9 @@ class TaxRatesController extends Controller
         // Search by name or code
         if ($request->has('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('tax_rates.name', 'LIKE', "%{$search}%")
-                  ->orWhere('tax_rates.code', 'LIKE', "%{$search}%");
+                    ->orWhere('tax_rates.code', 'LIKE', "%{$search}%");
             });
         }
 
@@ -63,7 +63,7 @@ class TaxRatesController extends Controller
             )
             ->first();
 
-        if (!$taxRate) {
+        if (! $taxRate) {
             return response()->json(['error' => 'Tax rate not found'], 404);
         }
 
@@ -96,7 +96,7 @@ class TaxRatesController extends Controller
 
         if ($exists) {
             return response()->json([
-                'error' => 'Tax rate code already exists'
+                'error' => 'Tax rate code already exists',
             ], 422);
         }
 
@@ -117,7 +117,7 @@ class TaxRatesController extends Controller
 
         return response()->json([
             'message' => 'Tax rate created successfully',
-            'tax_rate' => $taxRate
+            'tax_rate' => $taxRate,
         ], 201);
     }
 
@@ -130,7 +130,7 @@ class TaxRatesController extends Controller
             ->where('id', $id)
             ->first();
 
-        if (!$taxRate) {
+        if (! $taxRate) {
             return response()->json(['error' => 'Tax rate not found'], 404);
         }
 
@@ -158,7 +158,7 @@ class TaxRatesController extends Controller
 
             if ($exists) {
                 return response()->json([
-                    'error' => 'Tax rate code already exists'
+                    'error' => 'Tax rate code already exists',
                 ], 422);
             }
         }
@@ -173,7 +173,7 @@ class TaxRatesController extends Controller
             'is_active' => $request->is_active,
             'description' => $request->description,
             'updated_at' => now(),
-        ], function($value) {
+        ], function ($value) {
             return $value !== null;
         });
 
@@ -185,7 +185,7 @@ class TaxRatesController extends Controller
 
         return response()->json([
             'message' => 'Tax rate updated successfully',
-            'tax_rate' => $updatedTaxRate
+            'tax_rate' => $updatedTaxRate,
         ]);
     }
 
@@ -198,16 +198,16 @@ class TaxRatesController extends Controller
             ->where('id', $id)
             ->first();
 
-        if (!$taxRate) {
+        if (! $taxRate) {
             return response()->json(['error' => 'Tax rate not found'], 404);
         }
 
         // Check if tax rate is in use
         $inUse = $this->isTaxRateInUse($id);
-        
+
         if ($inUse) {
             return response()->json([
-                'error' => 'Cannot delete tax rate that is in use by transactions'
+                'error' => 'Cannot delete tax rate that is in use by transactions',
             ], 422);
         }
 
@@ -216,11 +216,11 @@ class TaxRatesController extends Controller
             ->where('id', $id)
             ->update([
                 'is_active' => false,
-                'updated_at' => now()
+                'updated_at' => now(),
             ]);
 
         return response()->json([
-            'message' => 'Tax rate deactivated successfully'
+            'message' => 'Tax rate deactivated successfully',
         ]);
     }
 
@@ -242,7 +242,7 @@ class TaxRatesController extends Controller
             ->where('id', $request->tax_rate_id)
             ->first();
 
-        if (!$taxRate) {
+        if (! $taxRate) {
             return response()->json(['error' => 'Tax rate not found'], 404);
         }
 

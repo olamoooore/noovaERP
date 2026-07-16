@@ -25,7 +25,7 @@ class AdminUserController extends Controller
 
         return response()->json([
             'data' => [
-                'admins'      => $this->userService->listAdmins(),
+                'admins' => $this->userService->listAdmins(),
                 'invitations' => $this->userService->listPendingInvitations(),
             ],
         ]);
@@ -38,7 +38,7 @@ class AdminUserController extends Controller
 
         $validated = $request->validate([
             'email' => ['required', 'email', 'max:255'],
-            'role'  => ['required', 'string', Rule::in(AdminUserService::ROLES)],
+            'role' => ['required', 'string', Rule::in(AdminUserService::ROLES)],
         ]);
 
         $result = $this->userService->invite($validated['email'], $validated['role']);
@@ -56,14 +56,14 @@ class AdminUserController extends Controller
     public function acceptInvite(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'token'    => ['required', 'string', 'size:64'],
+            'token' => ['required', 'string', 'size:64'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
         $user = $this->userService->acceptInvite($validated['token'], $validated['password']);
 
         return response()->json([
-            'data'    => ['id' => $user->id, 'email' => $user->email, 'role' => $user->role],
+            'data' => ['id' => $user->id, 'email' => $user->email, 'role' => $user->role],
             'message' => 'Account created. You can now log in.',
         ], 201);
     }

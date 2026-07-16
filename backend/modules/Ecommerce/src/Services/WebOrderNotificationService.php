@@ -19,7 +19,7 @@ class WebOrderNotificationService
         try {
             $customerEmail = $order->email;
 
-            if (!$customerEmail && $order->customer_id) {
+            if (! $customerEmail && $order->customer_id) {
                 $customerEmail = Customer::find($order->customer_id)?->email;
             }
 

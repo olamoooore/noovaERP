@@ -11,7 +11,7 @@ return new class extends Migration
             return;
         }
 
-        if (!Schema::hasColumn('pos_payments', 'journal_entry_id')) {
+        if (! Schema::hasColumn('pos_payments', 'journal_entry_id')) {
             Schema::table('pos_payments', function ($table) {
                 $table->unsignedBigInteger('journal_entry_id')->nullable()->after('notes');
                 $table->foreign('journal_entry_id')->references('id')->on('journal_entries')->onDelete('set null');

@@ -3,8 +3,6 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
-use Stancl\Tenancy\Middleware\InitializeTenancyByDomain;
-use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
 
 /*
 |--------------------------------------------------------------------------
@@ -84,7 +82,7 @@ Route::middleware([
         Route::post('/orders/{id}/retry-payment', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'retryPayment']);
         Route::get('/orders/{id}/invoice', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'getInvoice']);
         Route::get('/tickets', [\Modules\EventManagement\Http\Controllers\WebCustomerTicketController::class, 'index']);
-        
+
         // Loyalty routes for web shop customers
         Route::get('/loyalty/balance', [\Modules\Loyalty\Http\Controllers\WebLoyaltyController::class, 'balance']);
         Route::get('/loyalty/history', [\Modules\Loyalty\Http\Controllers\WebLoyaltyController::class, 'history']);
@@ -105,7 +103,7 @@ Route::middleware([
     \Illuminate\Routing\Middleware\SubstituteBindings::class,
 ])->prefix('api/v1')->group(function () {
     // Document correction endpoints
-    Route::prefix('corrections')->middleware(\App\Http\Middleware\RequirePermission::class . ':accounting.post')->group(function () {
+    Route::prefix('corrections')->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.post')->group(function () {
         // Invoice corrections
         Route::post('/invoices/{id}/void', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'voidInvoice']);
         Route::post('/invoices/{id}/reverse', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'reverseInvoice']);
@@ -121,13 +119,13 @@ Route::middleware([
     });
 
     // Journal corrections require accounting.reverse
-    Route::prefix('corrections')->middleware(\App\Http\Middleware\RequirePermission::class . ':accounting.reverse')->group(function () {
+    Route::prefix('corrections')->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.reverse')->group(function () {
         Route::post('/journals/{id}/reverse', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'reverseJournal']);
         Route::post('/journals/{id}/replacement', [\App\Http\Controllers\Api\DocumentCorrectionsController::class, 'createJournalReplacement']);
     });
 
     // Payment corrections require accounting.post
-    Route::prefix('corrections')->middleware(\App\Http\Middleware\RequirePermission::class . ':accounting.post')->group(function () {
+    Route::prefix('corrections')->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.post')->group(function () {
         Route::post('/payments/{id}/refund', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'refundPayment']);
         Route::post('/payments/{id}/reverse', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'reversePayment']);
         Route::post('/payments/{id}/unapply', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'unapplyPayment']);
@@ -141,9 +139,9 @@ Route::middleware([
     // Tenant user management
     Route::prefix('tenant-users')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\TenantUserController::class, 'index']);
-        Route::post('/', [\App\Http\Controllers\Api\TenantUserController::class, 'invite'])->middleware(\App\Http\Middleware\RequirePermission::class . ':users.write');
-        Route::put('/{id}/role', [\App\Http\Controllers\Api\TenantUserController::class, 'updateRole'])->middleware(\App\Http\Middleware\RequirePermission::class . ':users.write');
-        Route::delete('/{id}', [\App\Http\Controllers\Api\TenantUserController::class, 'destroy'])->middleware(\App\Http\Middleware\RequirePermission::class . ':users.delete');
+        Route::post('/', [\App\Http\Controllers\Api\TenantUserController::class, 'invite'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
+        Route::put('/{id}/role', [\App\Http\Controllers\Api\TenantUserController::class, 'updateRole'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.write');
+        Route::delete('/{id}', [\App\Http\Controllers\Api\TenantUserController::class, 'destroy'])->middleware(\App\Http\Middleware\RequirePermission::class.':users.delete');
     });
 
     // Version/correction chain endpoints
@@ -165,18 +163,16 @@ Route::middleware([
         require $routesFile;
     }
 
-
-
     // ─── Approval Workflow ────────────────────────────────────────────────────
     // Tenant-scoped approval requests for POS void/refund/return/discount.
     // Requires auth:sanctum (inherited from outer middleware group).
     Route::prefix('approvals')->group(function () {
-        Route::post('/',                [\App\Http\Controllers\ApprovalController::class, 'store']);
-        Route::get('/',                 [\App\Http\Controllers\ApprovalController::class, 'index']);
-        Route::get('/my-requests',      [\App\Http\Controllers\ApprovalController::class, 'myRequests']);
-        Route::get('/{id}',             [\App\Http\Controllers\ApprovalController::class, 'show']);
-        Route::post('/{id}/approve',    [\App\Http\Controllers\ApprovalController::class, 'approve']);
-        Route::post('/{id}/reject',     [\App\Http\Controllers\ApprovalController::class, 'reject']);
+        Route::post('/', [\App\Http\Controllers\ApprovalController::class, 'store']);
+        Route::get('/', [\App\Http\Controllers\ApprovalController::class, 'index']);
+        Route::get('/my-requests', [\App\Http\Controllers\ApprovalController::class, 'myRequests']);
+        Route::get('/{id}', [\App\Http\Controllers\ApprovalController::class, 'show']);
+        Route::post('/{id}/approve', [\App\Http\Controllers\ApprovalController::class, 'approve']);
+        Route::post('/{id}/reject', [\App\Http\Controllers\ApprovalController::class, 'reject']);
     });
 });
 

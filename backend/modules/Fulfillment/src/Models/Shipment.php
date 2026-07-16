@@ -2,8 +2,8 @@
 
 namespace Modules\Fulfillment\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -60,13 +60,21 @@ class Shipment extends Model
     ];
 
     public const STATUS_DRAFT = 'draft';
+
     public const STATUS_CREATED = 'created';
+
     public const STATUS_PICKED_UP = 'picked_up';
+
     public const STATUS_IN_TRANSIT = 'in_transit';
+
     public const STATUS_OUT_FOR_DELIVERY = 'out_for_delivery';
+
     public const STATUS_DELIVERED = 'delivered';
+
     public const STATUS_EXCEPTION = 'exception';
+
     public const STATUS_RETURNED = 'returned';
+
     public const STATUS_CANCELLED = 'cancelled';
 
     protected static function boot()
@@ -83,13 +91,13 @@ class Shipment extends Model
     public static function generateShipmentNumber(): string
     {
         $latest = static::withTrashed()
-            ->where('shipment_number', 'like', 'SHP-' . date('Y') . '-%')
+            ->where('shipment_number', 'like', 'SHP-'.date('Y').'-%')
             ->orderBy('id', 'desc')
             ->first();
 
         $number = $latest ? (int) substr($latest->shipment_number, -5) + 1 : 1;
 
-        return 'SHP-' . date('Y') . '-' . str_pad($number, 5, '0', STR_PAD_LEFT);
+        return 'SHP-'.date('Y').'-'.str_pad($number, 5, '0', STR_PAD_LEFT);
     }
 
     public function provider(): BelongsTo

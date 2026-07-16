@@ -9,9 +9,7 @@ use Modules\Ecommerce\Services\CheckoutQueueAdmissionService;
 
 class CheckoutQueueController extends Controller
 {
-    public function __construct(private CheckoutQueueAdmissionService $queueService)
-    {
-    }
+    public function __construct(private CheckoutQueueAdmissionService $queueService) {}
 
     public function join(Request $request): JsonResponse
     {
@@ -45,7 +43,7 @@ class CheckoutQueueController extends Controller
             (string) $validated['queue_token'],
         );
 
-        if (!$status) {
+        if (! $status) {
             return response()->json([
                 'success' => false,
                 'error' => 'QUEUE_TOKEN_NOT_FOUND',
@@ -70,7 +68,7 @@ class CheckoutQueueController extends Controller
             (string) $validated['queue_token'],
         );
 
-        if (!$status) {
+        if (! $status) {
             return response()->json([
                 'success' => false,
                 'error' => 'QUEUE_TOKEN_NOT_FOUND',

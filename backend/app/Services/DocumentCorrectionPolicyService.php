@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
-use App\Models\Invoice;
 use App\Models\Bill;
+use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\Payment;
 use App\Models\User;
@@ -15,11 +15,11 @@ class DocumentCorrectionPolicyService
     {
         $user = $user ?? Auth::user();
 
-        if (!$user) {
+        if (! $user) {
             return PolicyResult::deny('No user authenticated');
         }
 
-        if (!in_array($document->lifecycle_status ?? 'draft', ['posted'])) {
+        if (! in_array($document->lifecycle_status ?? 'draft', ['posted'])) {
             return PolicyResult::deny('Document must be posted to void');
         }
 
@@ -42,7 +42,7 @@ class DocumentCorrectionPolicyService
         }
 
         $hasPermission = $this->checkPermission($document, 'void', $user);
-        if (!$hasPermission) {
+        if (! $hasPermission) {
             return PolicyResult::deny('User lacks permission to void this document');
         }
 
@@ -53,24 +53,24 @@ class DocumentCorrectionPolicyService
     {
         $user = $user ?? Auth::user();
 
-        if (!$user) {
+        if (! $user) {
             return PolicyResult::deny('No user authenticated');
         }
 
-        if (!in_array($document->lifecycle_status ?? 'draft', ['posted'])) {
+        if (! in_array($document->lifecycle_status ?? 'draft', ['posted'])) {
             return PolicyResult::deny('Document must be posted to reverse');
         }
 
         if ($document instanceof Invoice || $document instanceof Bill) {
             if ($document->settlement_status === 'paid' || $document->settlement_status === 'partially_paid') {
                 return PolicyResult::allow([
-                    'warning' => 'Document has payments. Payment reversal may be required.'
+                    'warning' => 'Document has payments. Payment reversal may be required.',
                 ]);
             }
         }
 
         $hasPermission = $this->checkPermission($document, 'reverse', $user);
-        if (!$hasPermission) {
+        if (! $hasPermission) {
             return PolicyResult::deny('User lacks permission to reverse this document');
         }
 
@@ -81,11 +81,11 @@ class DocumentCorrectionPolicyService
     {
         $user = $user ?? Auth::user();
 
-        if (!$user) {
+        if (! $user) {
             return PolicyResult::deny('No user authenticated');
         }
 
-        if (!in_array($document->lifecycle_status ?? 'draft', ['posted'])) {
+        if (! in_array($document->lifecycle_status ?? 'draft', ['posted'])) {
             return PolicyResult::deny('Document must be posted to create replacement');
         }
 
@@ -100,13 +100,13 @@ class DocumentCorrectionPolicyService
         if ($document instanceof Invoice || $document instanceof Bill) {
             if ($document->settlement_status === 'paid') {
                 return PolicyResult::deny('Document is fully paid. Use credit note or refund workflow instead.', [
-                    'suggested_actions' => ['credit_note', 'reverse_and_refund']
+                    'suggested_actions' => ['credit_note', 'reverse_and_refund'],
                 ]);
             }
 
             if ($document->settlement_status === 'partially_paid') {
                 return PolicyResult::deny('Document has partial payments. Resolve payment issue first.', [
-                    'suggested_actions' => ['reverse_and_refund']
+                    'suggested_actions' => ['reverse_and_refund'],
                 ]);
             }
 
@@ -116,7 +116,7 @@ class DocumentCorrectionPolicyService
         }
 
         $hasPermission = $this->checkPermission($document, 'replace', $user);
-        if (!$hasPermission) {
+        if (! $hasPermission) {
             return PolicyResult::deny('User lacks permission to replace this document');
         }
 
@@ -127,7 +127,7 @@ class DocumentCorrectionPolicyService
     {
         $user = $user ?? Auth::user();
 
-        if (!$user) {
+        if (! $user) {
             return PolicyResult::deny('No user authenticated');
         }
 
@@ -136,7 +136,7 @@ class DocumentCorrectionPolicyService
         }
 
         $hasPermission = $this->checkPermission($document, 'refund', $user);
-        if (!$hasPermission) {
+        if (! $hasPermission) {
             return PolicyResult::deny('User lacks permission to refund this document');
         }
 
@@ -147,16 +147,16 @@ class DocumentCorrectionPolicyService
     {
         $user = $user ?? Auth::user();
 
-        if (!$user) {
+        if (! $user) {
             return PolicyResult::deny('No user authenticated');
         }
 
-        if (!in_array($document->lifecycle_status ?? 'draft', ['posted'])) {
+        if (! in_array($document->lifecycle_status ?? 'draft', ['posted'])) {
             return PolicyResult::deny('Document must be posted to create credit note');
         }
 
         $hasPermission = $this->checkPermission($document, 'credit_note', $user);
-        if (!$hasPermission) {
+        if (! $hasPermission) {
             return PolicyResult::deny('User lacks permission to create credit note');
         }
 
@@ -167,7 +167,7 @@ class DocumentCorrectionPolicyService
     {
         $user = $user ?? Auth::user();
 
-        if (!$user) {
+        if (! $user) {
             return PolicyResult::deny('No user authenticated');
         }
 
@@ -176,7 +176,7 @@ class DocumentCorrectionPolicyService
         }
 
         $hasPermission = $this->checkPermission($payment, 'unapply', $user);
-        if (!$hasPermission) {
+        if (! $hasPermission) {
             return PolicyResult::deny('User lacks permission to unapply payment');
         }
 
@@ -187,16 +187,16 @@ class DocumentCorrectionPolicyService
     {
         $user = $user ?? Auth::user();
 
-        if (!$user) {
+        if (! $user) {
             return PolicyResult::deny('No user authenticated');
         }
 
-        if (!in_array($payment->payment_status, ['applied', 'recorded'])) {
+        if (! in_array($payment->payment_status, ['applied', 'recorded'])) {
             return PolicyResult::deny('Payment cannot be reversed in current status');
         }
 
         $hasPermission = $this->checkPermission($payment, 'reverse', $user);
-        if (!$hasPermission) {
+        if (! $hasPermission) {
             return PolicyResult::deny('User lacks permission to reverse payment');
         }
 
@@ -207,7 +207,7 @@ class DocumentCorrectionPolicyService
     {
         $user = $user ?? Auth::user();
 
-        if (!$user) {
+        if (! $user) {
             return PolicyResult::deny('No user authenticated');
         }
 
@@ -216,7 +216,7 @@ class DocumentCorrectionPolicyService
         }
 
         $hasPermission = $this->checkPermission($payment, 'refund', $user);
-        if (!$hasPermission) {
+        if (! $hasPermission) {
             return PolicyResult::deny('User lacks permission to refund payment');
         }
 
@@ -233,7 +233,7 @@ class DocumentCorrectionPolicyService
             default => null,
         };
 
-        if (!$permission) {
+        if (! $permission) {
             return false;
         }
 
