@@ -535,7 +535,9 @@ export function GrapesEditor({ initialContent, onSave, onLoad }: GrapesEditorPro
     const cleanupTabListeners = setupTabListeners(editor)
 
     // Customize panel icons after editor is fully loaded
+    let editorReady = false
     editor.on('load', () => {
+      editorReady = true
       customizePanelIcons(editor)
       addUploadButton(editor)
       addIconSearch(editor)
@@ -572,9 +574,15 @@ export function GrapesEditor({ initialContent, onSave, onLoad }: GrapesEditorPro
       // For every other block, surface the Style Manager so color, typography,
       // background image, borders, spacing, etc. are immediately editable.
       // Without this the right panel keeps showing the Blocks/Presets panel and
-      // styling controls appear unavailable. Skip the root wrapper.
-      if (componentType !== 'wrapper' && tagName !== 'BODY') {
-        editor.runCommand('open-sm')
+      // styling controls appear unavailable. Skip the root wrapper, and only do
+      // this once the editor (and its canvas iframe) has finished loading so we
+      // never interfere with the initial canvas render.
+      if (editorReady && componentType !== 'wrapper' && tagName !== 'BODY') {
+        try {
+          editor.runCommand('open-sm')
+        } catch (_e) {
+          // Opening the Style Manager should never break selection/editing.
+        }
       }
     })
 

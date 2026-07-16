@@ -122,8 +122,11 @@ export default defineConfig({
         target: backendTarget,
         changeOrigin: true,
       },
-      // Proxy published website routes to backend (serves complete HTML)
-      '/w': {
+      // Proxy published website routes to backend (serves complete HTML).
+      // NOTE: must be '/w/' (trailing slash) so it only matches published-site
+      // URLs (/w/{slug}/...) and does NOT greedily swallow /website-builder,
+      // /warehouse, /widgets, etc., which are client-side SPA routes.
+      '/w/': {
         target: backendTarget,
         changeOrigin: true,
         configure: (proxy, _options) => {
