@@ -151,13 +151,13 @@ export function WebsitesIndex() {
                     </div>
                     <p className="text-sm text-muted-foreground mb-3">
                       <a 
-                        href={`${(import.meta.env.VITE_BASE_PATH || '').replace(/\/+$/, '')}/w/${website.slug}`} 
+                        href={`${window.location.origin}${(import.meta.env.VITE_BASE_PATH || '').replace(/\/+$/, '')}/w/${website.slug}`} 
                         target="_blank" 
                         rel="noopener noreferrer"
                         className="hover:text-primary hover:underline"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {(import.meta.env.VITE_BASE_PATH || '').replace(/\/+$/, '')}/w/{website.slug}
+                        {window.location.origin}{(import.meta.env.VITE_BASE_PATH || '').replace(/\/+$/, '')}/w/{website.slug}
                       </a>
                     </p>
                     
@@ -173,7 +173,7 @@ export function WebsitesIndex() {
                           title="View Live Site"
                           onClick={(e) => {
                             e.stopPropagation()
-                            window.open(`${(import.meta.env.VITE_BASE_PATH || '').replace(/\/+$/, '')}/w/${website.slug}`, '_blank')
+                            window.open(`${window.location.origin}${(import.meta.env.VITE_BASE_PATH || '').replace(/\/+$/, '')}/w/${website.slug}`, '_blank')
                           }}
                         >
                           <Icon icon="solar:eye-bold" className="h-3.5 w-3.5" />

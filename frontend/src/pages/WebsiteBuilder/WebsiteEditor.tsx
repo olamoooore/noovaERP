@@ -520,8 +520,8 @@ export function WebsiteEditor() {
       // Published site — use the persistent server-rendered URL
       const pageSlug = pageData?.slug
       const url = pageSlug && !pageData?.is_home
-        ? `${basePath}/w/${website.slug}/${pageSlug}`
-        : `${basePath}/w/${website.slug}`
+        ? `${window.location.origin}${basePath}/w/${website.slug}/${pageSlug}`
+        : `${window.location.origin}${basePath}/w/${website.slug}`
       window.open(url, '_blank')
     } else {
       // Draft / never-published — render client-side and open directly
