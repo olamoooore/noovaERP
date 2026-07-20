@@ -158,9 +158,10 @@ export function PageManagement() {
 
   const handleCopyUrl = (page: Page) => {
     const baseUrl = window.location.origin
+    const basePath = import.meta.env.VITE_BASE_PATH || ''
     const pageUrl = page.is_home 
-      ? `${baseUrl}/sites/${website?.slug}` 
-      : `${baseUrl}/sites/${website?.slug}/${page.slug}`
+      ? `${baseUrl}${basePath}/w/${website?.slug}` 
+      : `${baseUrl}${basePath}/w/${website?.slug}/${page.slug}`
     
     navigator.clipboard.writeText(pageUrl)
     toast({ title: 'Copied!', description: 'Page URL copied to clipboard.' })
@@ -178,9 +179,10 @@ export function PageManagement() {
 
   const getPageUrl = (page: Page) => {
     if (!website) return ''
+    const basePath = import.meta.env.VITE_BASE_PATH || ''
     return page.is_home 
-      ? `/sites/${website.slug}` 
-      : `/sites/${website.slug}/${page.slug}`
+      ? `${basePath}/w/${website.slug}` 
+      : `${basePath}/w/${website.slug}/${page.slug}`
   }
 
   if (isLoading) {

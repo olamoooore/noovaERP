@@ -30,6 +30,12 @@ class PublicWebsiteRenderController extends Controller
             return response($this->generateErrorPage('Website Not Found', "The website you're looking for doesn't exist."), 404);
         }
 
+        // Only serve published websites via the public /w/ route.
+        // Draft/archived sites should use the editor preview instead.
+        if ($website->status !== 'published') {
+            return response($this->generateErrorPage('Website Not Published', "This website hasn't been published yet. Please publish it from the editor to make it publicly accessible."), 404);
+        }
+
         // Find the page
         if ($pageSlug === null || $pageSlug === '') {
             $page = $website->pages()

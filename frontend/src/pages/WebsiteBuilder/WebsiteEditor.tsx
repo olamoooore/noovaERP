@@ -504,35 +504,44 @@ export function WebsiteEditor() {
     setIsDirty(false)
   }
 
-  // Preview in new tab
+  // Preview in new tab — opens the server-rendered /w/ URL so it persists
+  // on refresh and is shareable.  Falls back to client-side render for
+  // unpublished content that has never been pushed to the server.
   const handlePreview = () => {
     if (!editorInstance) return
-    
+
     // First, save current content so the backend has the latest version
     triggerSave()
-    
-    // Generate preview HTML directly from the editor content.
-    // This avoids tenant-mismatch issues with the /w/ route in local dev
-    // (the user's auth tenant may differ from the hardcoded proxy host).
-    const html = editorInstance.getHtml()
-    const css = editorInstance.getCss() || ''
-    
-    const previewHtml = generateFullHtml({
-      title: `Preview - ${pageData?.title || 'Page'}`,
-      html,
-      css,
-      headerJs,
-      bodyJs,
-      apiBaseUrl: `${window.location.origin}${import.meta.env.VITE_BASE_PATH || ''}/api/v1/website-public`,
-      shopSettings: shopSettings.enabled ? shopSettings : undefined,
-    })
-    
-    const blob = new Blob([previewHtml], { type: 'text/html' })
-    const url = URL.createObjectURL(blob)
-    const previewWindow = window.open(url, '_blank')
-    
-    if (previewWindow) {
-      setTimeout(() => URL.revokeObjectURL(url), 5000)
+
+    const basePath = import.meta.env.VITE_BASE_PATH || ''
+
+    if (website?.status === 'published' && website?.slug) {
+      // Published site — use the persistent server-rendered URL
+      const pageSlug = pageData?.slug
+      const url = pageSlug && !pageData?.is_home
+        ? `${basePath}/w/${website.slug}/${pageSlug}`
+        : `${basePath}/w/${website.slug}`
+      window.open(url, '_blank')
+    } else {
+      // Draft / never-published — render client-side and open directly
+      const html = editorInstance.getHtml()
+      const css = editorInstance.getCss() || ''
+
+      const previewHtml = generateFullHtml({
+        title: `Preview - ${pageData?.title || 'Page'}`,
+        html,
+        css,
+        headerJs,
+        bodyJs,
+        apiBaseUrl: `${window.location.origin}${basePath}/api/v1/website-public`,
+        shopSettings: shopSettings.enabled ? shopSettings : undefined,
+      })
+
+      const blob = new Blob([previewHtml], { type: 'text/html' })
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank')
+      // Revoke after a longer delay so the user has time to load
+      setTimeout(() => URL.revokeObjectURL(url), 30000)
     }
   }
 

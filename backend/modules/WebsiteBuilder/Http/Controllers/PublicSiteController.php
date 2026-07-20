@@ -34,6 +34,16 @@ class PublicSiteController extends Controller
                 ], 404);
             }
 
+            // Only serve published websites via the public API.
+            if ($website->status !== 'published') {
+                Log::warning('Website not published', ['slug' => $websiteSlug, 'status' => $website->status]);
+
+                return response()->json([
+                    'error' => 'Website not published',
+                    'message' => 'This website has not been published yet.',
+                ], 404);
+            }
+
             Log::info('Website found', ['id' => $website->id, 'name' => $website->name]);
 
             // If no page slug, get home page
