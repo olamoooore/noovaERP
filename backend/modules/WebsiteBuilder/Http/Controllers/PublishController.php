@@ -22,22 +22,18 @@ class PublishController extends Controller
     {
         $website = Website::findOrFail($website);
 
-        if (app()->environment('local')) {
-            // Run synchronously in dev so we don't need a queue worker
-            try {
-                $this->publishingService->publish(
-                    $website,
-                    TenantUserHelper::resolveTenantUserId()
-                );
-            } catch (\Exception $e) {
-                return response()->json([
-                    'message' => 'Publish failed: ' . $e->getMessage(),
-                    'status' => 'failed',
-                ], 500);
-            }
-        } else {
-            // Dispatch async job in production
-            PublishWebsiteJob::dispatch($website, TenantUserHelper::resolveTenantUserId());
+        // Always run synchronously so the UI reflects the true state.
+        // Async dispatch caused silent failures when the queue worker was down.
+        try {
+            $this->publishingService->publish(
+                $website,
+                TenantUserHelper::resolveTenantUserId()
+            );
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Publish failed: ' . $e->getMessage(),
+                'status' => 'failed',
+            ], 500);
         }
 
         return response()->json([

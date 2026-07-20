@@ -96,9 +96,22 @@ class InitializeTenantForPublicAccess
             return $next($request);
         }
 
-        // 2. No tenant resolved — fail closed
+        // 2. For /w/{slug} routes, resolve tenant by finding which tenant owns the website
+        $path = $request->path();
+        if (preg_match('#^w/([^/]+)#', $path, $m)) {
+            $websiteSlug = $m[1];
+            $tenant = $this->resolveTenantFromWebsiteSlug($websiteSlug);
+            if ($tenant) {
+                $this->tenancy->initialize($tenant);
+
+                return $next($request);
+            }
+        }
+
+        // 3. No tenant resolved — fail closed
         Log::warning('InitializeTenantForPublicAccess: No tenant could be resolved, rejecting request', [
             'host' => $request->getHost(),
+            'path' => $path,
         ]);
 
         return response()->json([
@@ -205,6 +218,41 @@ class InitializeTenantForPublicAccess
         } catch (\Exception $e) {
             Log::warning('InitializeTenantForPublicAccess: Tenant resolution query failed', [
                 'host' => $host,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve tenant by finding which tenant owns a website with the given slug.
+     * Iterates through all tenants and checks their website table.
+     */
+    private function resolveTenantFromWebsiteSlug(string $websiteSlug): ?\App\Models\Tenant
+    {
+        try {
+            $tenants = \App\Models\Tenant::all();
+            foreach ($tenants as $tenant) {
+                try {
+                    $this->tenancy->initialize($tenant);
+                    $website = \Modules\WebsiteBuilder\Models\Website::where('slug', $websiteSlug)->first();
+                    if ($website) {
+                        Log::info('InitializeTenantForPublicAccess: Tenant from website slug', [
+                            'website_slug' => $websiteSlug,
+                            'tenant_id' => $tenant->id,
+                        ]);
+
+                        return $tenant;
+                    }
+                } catch (\Exception $e) {
+                    // This tenant doesn't have the website builder tables — skip
+                    continue;
+                }
+            }
+        } catch (\Exception $e) {
+            Log::warning('InitializeTenantForPublicAccess: Website slug tenant resolution failed', [
+                'website_slug' => $websiteSlug,
                 'error' => $e->getMessage(),
             ]);
         }
