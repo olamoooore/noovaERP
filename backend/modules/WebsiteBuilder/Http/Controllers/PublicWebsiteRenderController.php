@@ -182,7 +182,11 @@ class PublicWebsiteRenderController extends Controller
     window.__WEBSITE_SLUG__ = '{$websiteSlug}';
   </script>
   
+  <?php if (!empty(trim($headerJs))): ?>
+  <script>
   {$headerJs}
+  </script>
+  <?php endif; ?>
 </head>
 <body>
   {$html}
@@ -194,7 +198,11 @@ class PublicWebsiteRenderController extends Controller
     if (typeof lucide !== 'undefined') { lucide.createIcons(); }
   </script>
   
+  <?php if (!empty(trim($bodyJs))): ?>
+  <script>
   {$bodyJs}
+  </script>
+  <?php endif; ?>
   
   <!-- Override any stale demoProducts embedded in old page versions -->
   <script>
