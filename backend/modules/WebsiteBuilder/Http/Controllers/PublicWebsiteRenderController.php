@@ -71,6 +71,13 @@ class PublicWebsiteRenderController extends Controller
         $headerJs = $content['header_js'] ?? '';
         $bodyJs = $content['body_js'] ?? '';
 
+        // Fix broken /sites/ URLs in saved content → rewrite to /w/
+        $html = str_replace('/sites/' . $website->slug, '/w/' . $website->slug, $html);
+        // Also fix absolute domain URLs like https://domain.com/sites/slug
+        $html = preg_replace('#https?://[^/]+/sites/' . preg_quote($website->slug, '#') . '#', '/w/' . $website->slug, $html);
+        // Fix relative logo path — rewrite noovaerplogo.png to /storage/noovaerplogo.png
+        $html = str_replace('noovaerplogo.png', '/storage/noovaerplogo.png', $html);
+
         // Get shop settings from website
         $shopSettings = $website->settings['shop'] ?? null;
 
