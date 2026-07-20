@@ -88,15 +88,9 @@ class InitializeTenantForPublicAccess
             return $next($request);
         }
 
-        // 1. Try domain-based resolution from Host header
-        $tenant = $this->resolveTenantFromHost($request->getHost());
-        if ($tenant) {
-            $this->tenancy->initialize($tenant);
-
-            return $next($request);
-        }
-
-        // 2. For /w/{slug} routes, resolve tenant by finding which tenant owns the website
+        // 1. For /w/{slug} routes, resolve tenant by finding which tenant owns the website.
+        //    This takes priority over domain resolution because the website's tenant
+        //    may differ from the domain's tenant (e.g. shared domain in multi-tenant setup).
         $path = $request->path();
         if (preg_match('#^w/([^/]+)#', $path, $m)) {
             $websiteSlug = $m[1];
@@ -106,6 +100,14 @@ class InitializeTenantForPublicAccess
 
                 return $next($request);
             }
+        }
+
+        // 2. Try domain-based resolution from Host header
+        $tenant = $this->resolveTenantFromHost($request->getHost());
+        if ($tenant) {
+            $this->tenancy->initialize($tenant);
+
+            return $next($request);
         }
 
         // 3. No tenant resolved — fail closed
