@@ -126,6 +126,15 @@ class PublicWebsiteRenderController extends Controller
         $shopSettingsJson = $shopSettings ? json_encode($shopSettings) : 'null';
         $escapedDescription = htmlspecialchars($description, ENT_QUOTES, 'UTF-8');
 
+        // Wrap headerJs and bodyJs in <script> tags if they don't already have them.
+        // GrapesJS custom-code editor stores raw JS without <script> wrappers.
+        $headerJsWrapped = $headerJs !== ''
+            ? (str_contains($headerJs, '<script') ? $headerJs : "<script>\n{$headerJs}\n</script>")
+            : '';
+        $bodyJsWrapped = $bodyJs !== ''
+            ? (str_contains($bodyJs, '<script') ? $bodyJs : "<script>\n{$bodyJs}\n</script>")
+            : '';
+
         // Use a unique heredoc delimiter that won't appear in page content.
         // The old 'HTML' delimiter broke when page JS contained the string "HTML".
         return <<<RENDER_OUTPUT
@@ -182,11 +191,8 @@ class PublicWebsiteRenderController extends Controller
     window.__WEBSITE_SLUG__ = '{$websiteSlug}';
   </script>
   
-  <?php if (!empty(trim($headerJs))): ?>
-  <script>
-  {$headerJs}
-  </script>
-  <?php endif; ?>
+  {$headerJsWrapped}
+</head>
 </head>
 <body>
   {$html}
@@ -198,11 +204,7 @@ class PublicWebsiteRenderController extends Controller
     if (typeof lucide !== 'undefined') { lucide.createIcons(); }
   </script>
   
-  <?php if (!empty(trim($bodyJs))): ?>
-  <script>
-  {$bodyJs}
-  </script>
-  <?php endif; ?>
+  {$bodyJsWrapped}
   
   <!-- Override any stale demoProducts embedded in old page versions -->
   <script>
