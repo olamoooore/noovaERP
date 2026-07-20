@@ -12,7 +12,7 @@ import { faqPresets } from '../faqPresets'
 import { ctaPresets } from '../ctaPresets'
 import { tabPresets } from '../tabPresets'
 import { bannerPresets } from '../bannerPresets'
-// Shop presets removed - using React EcommerceStorefront at /shop instead
+import { productPresets } from '../productPresets'
 import { initLucideIcons } from '../utils/lucide'
 import { Preset } from '../types'
 
@@ -118,6 +118,15 @@ const CATEGORY_ICONS = {
     floating: '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style="opacity: 0.7"><rect x="4" y="4" width="5" height="5" rx="2"/><rect x="10" y="4" width="5" height="5" rx="2"/><rect x="16" y="4" width="5" height="5" rx="2"/><rect x="3" y="12" width="18" height="9" rx="2" opacity="0.5"/></svg>',
     mesh: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.7"><path d="M4 12h16" stroke="url(#grad)"/><defs><linearGradient id="grad"><stop offset="0%" stop-color="#ec4899"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient></defs></svg>',
   },
+  products: {
+    default: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.7"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>',
+    hero: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.7"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>',
+    feature: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.7"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>',
+    carousel: '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style="opacity: 0.7"><rect x="2" y="6" width="8" height="12" rx="1" opacity="0.3"/><rect x="6" y="4" width="12" height="14" rx="1" opacity="0.6"/><rect x="10" y="2" width="8" height="16" rx="1"/></svg>',
+    gallery: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.7"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',
+    specs: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.7"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>',
+    cta: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.7"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M8 12h8M12 9v6"/></svg>',
+  },
   banners: {
     default: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.7"><rect x="2" y="4" width="20" height="16" rx="2"/><polygon points="10 9 15 12 10 15 10 9" fill="currentColor"/></svg>',
     cinematic: '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style="opacity: 0.7"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 8h20M2 16h20" stroke="currentColor" stroke-width="1" opacity="0.3"/><polygon points="10 10 15 12 10 14 10 10" fill="white"/></svg>',
@@ -148,7 +157,7 @@ const CATEGORY_ICONS = {
   },
 }
 
-function getIconForPreset(presetId: string, category: 'header' | 'footer' | 'hero' | 'pricing' | 'cards'): string {
+function getIconForPreset(presetId: string, category: 'header' | 'footer' | 'hero' | 'pricing' | 'cards' | 'products'): string {
   if (category === 'header') {
     const icons = CATEGORY_ICONS.header
     if (presetId.includes('search')) return icons.search
@@ -188,6 +197,8 @@ function getIconForPreset(presetId: string, category: 'header' | 'footer' | 'her
     if (presetId.includes('weather') || presetId.includes('widget')) return icons.widget
     if (presetId.includes('pricing')) return CATEGORY_ICONS.pricing.default
     return icons.default
+  } else if (category === 'products') {
+    return getProductsIcon(presetId)
   } else {
     const icons = CATEGORY_ICONS.hero
     if (presetId.includes('saas') || presetId.includes('product')) return icons.saas
@@ -326,7 +337,7 @@ export function addPresetsPanel(editor: Editor) {
   })
   
   // Define categories - ordered logically: Headers first, Footers last
-  const categories = ['Headers', 'Hero', 'Sections', 'Banners', 'CTAs', 'Tabs', 'FAQs', 'Testimonials', 'Cards', 'Pricing', 'Themes', 'Footers']
+  const categories = ['Headers', 'Hero', 'Sections', 'Products', 'Banners', 'CTAs', 'Tabs', 'FAQs', 'Testimonials', 'Cards', 'Pricing', 'Themes', 'Footers']
   
   categories.forEach((category) => {
     const categoryEl = document.createElement('div')
@@ -520,6 +531,20 @@ export function addPresetsPanel(editor: Editor) {
       
       heroPresets.forEach(preset => {
         const itemEl = createPresetItem(preset, 'hero', editor, initCanvasLucide)
+        contentEl.appendChild(itemEl)
+      })
+    } else if (category === 'Products') {
+      contentEl.innerHTML = ''
+      contentEl.style.cssText = `
+        display: none;
+        flex-wrap: wrap;
+        padding: 10px;
+      `
+      
+      productPresets.forEach((preset: Preset) => {
+        const itemEl = createPresetItem(preset, 'products', editor, initCanvasLucide)
+        const mediaEl = itemEl.querySelector('.gjs-block__media')
+        if (mediaEl) mediaEl.innerHTML = getProductsIcon(preset.id)
         contentEl.appendChild(itemEl)
       })
     } else {
@@ -815,9 +840,20 @@ function createThemePresetItem(
   return itemEl
 }
 
+function getProductsIcon(presetId: string): string {
+  const icons = CATEGORY_ICONS.products
+  if (presetId.includes('hero')) return icons.hero
+  if (presetId.includes('feature') || presetId.includes('single')) return icons.feature
+  if (presetId.includes('carousel')) return icons.carousel
+  if (presetId.includes('gallery')) return icons.gallery
+  if (presetId.includes('specs') || presetId.includes('table')) return icons.specs
+  if (presetId.includes('cta')) return icons.cta
+  return icons.default
+}
+
 function createPresetItem(
   preset: Preset,
-  category: 'header' | 'footer' | 'hero' | 'pricing',
+  category: 'header' | 'footer' | 'hero' | 'pricing' | 'products' | 'cards',
   editor: Editor,
   initCanvasLucide: () => void
 ): HTMLElement {
