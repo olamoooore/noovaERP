@@ -23,7 +23,8 @@ Route::middleware([
     \App\Http\Middleware\InitializeTenantForPublicAccess::class,
 ])->group(function () {
     Route::get('/w/{websiteSlug}', [\Modules\WebsiteBuilder\Http\Controllers\PublicWebsiteRenderController::class, 'render']);
-    Route::get('/w/{websiteSlug}/{pageSlug}', [\Modules\WebsiteBuilder\Http\Controllers\PublicWebsiteRenderController::class, 'render']);
+    Route::get('/w/{websiteSlug}/{pageSlug}', [\Modules\WebsiteBuilder\Http\Controllers\PublicWebsiteRenderController::class, 'render'])
+        ->where('pageSlug', '.*');
 
     // Redirect /sites/ URLs to /w/ so existing links in page content don't break
     Route::get('/sites/{websiteSlug}', function (string $websiteSlug) {
