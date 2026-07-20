@@ -31,11 +31,12 @@ class PublishingService
                 'published_at' => now(),
             ]);
 
-            // Mark all page versions as published
+            // Mark all page versions as published AND update page status
             foreach ($website->pages as $page) {
                 if ($page->currentVersion) {
                     $page->currentVersion->update(['is_published' => true]);
                 }
+                $page->update(['status' => 'published']);
             }
 
             // Generate static files (optional — failure here should not

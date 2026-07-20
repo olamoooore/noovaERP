@@ -513,7 +513,8 @@ export function WebsiteEditor() {
     // First, save current content so the backend has the latest version
     triggerSave()
 
-    const basePath = import.meta.env.VITE_BASE_PATH || ''
+    // Normalize: strip trailing slash to avoid //w/ double-slash
+    const basePath = (import.meta.env.VITE_BASE_PATH || '').replace(/\/+$/, '')
 
     if (website?.status === 'published' && website?.slug) {
       // Published site — use the persistent server-rendered URL
