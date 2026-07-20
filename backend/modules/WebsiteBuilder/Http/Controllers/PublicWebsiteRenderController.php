@@ -126,7 +126,9 @@ class PublicWebsiteRenderController extends Controller
         $shopSettingsJson = $shopSettings ? json_encode($shopSettings) : 'null';
         $escapedDescription = htmlspecialchars($description, ENT_QUOTES, 'UTF-8');
 
-        return <<<HTML
+        // Use a unique heredoc delimiter that won't appear in page content.
+        // The old 'HTML' delimiter broke when page JS contained the string "HTML".
+        return <<<RENDER_OUTPUT
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -231,7 +233,7 @@ class PublicWebsiteRenderController extends Controller
   </script>
 </body>
 </html>
-HTML;
+RENDER_OUTPUT;
     }
 
     /**
