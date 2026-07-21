@@ -373,4 +373,58 @@ class InventoryIntegrationTest extends TenantTestCase
         // No stock movement for zero quantity
         $this->assertEquals($initialStockMovements, StockMovement::count());
     }
+
+    /**
+     * Test: Unpost reverses inventory stock movements
+     *
+     * After posting, stock increases. After unposting, stock should return
+     * to its pre-posting state via reversal OUT movements.
+     */
+    public function test_unpost_reverses_inventory_stock_movements()
+    {
+        $initialQty = $this->product->stock_quantity;
+        $initialWAC = $this->product->cost;
+
+        $document = OcrDocument::factory()->create([
+            'status' => 'NEEDS_REVIEW',
+            'vendor_id' => $this->vendor->id,
+            'document_date' => Carbon::today(),
+            'total_amount' => 100.00,
+            'line_items' => [
+                [
+                    'description' => 'Test Product',
+                    'amount' => 100.00,
+                    'quantity' => 2,
+                    'sku' => 'PROD-001',
+                    'account_id' => $this->inventoryAccount->id,
+                ],
+            ],
+            'subtotal' => 100.00,
+            'tax_amount' => 0,
+        ]);
+
+        // Post — stock should increase by 2
+        $this->service->postDocument($document);
+        $this->product->refresh();
+        $this->assertEquals($initialQty + 2, $this->product->stock_quantity);
+
+        // Count movements after posting
+        $movementsAfterPost = StockMovement::count();
+
+        // Unpost — stock should return to initial
+        $this->service->unpostDocument($document, $this->user->id);
+        $this->product->refresh();
+
+        $this->assertEquals($initialQty, $this->product->stock_quantity);
+
+        // A reversal movement should have been created
+        $this->assertGreaterThan($movementsAfterPost, StockMovement::count());
+
+        // Verify the reversal movement is an OUT (transfer_out type)
+        $reversal = StockMovement::latest('id')->first();
+        $this->assertEquals('transfer_out', $reversal->type);
+        $this->assertEquals(2, $reversal->quantity);
+        $this->assertEquals($initialQty, $reversal->balance_after);
+        $this->assertStringContainsString('OCR-UNPOST', $reversal->reference);
+    }
 }

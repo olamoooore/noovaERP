@@ -9,6 +9,7 @@ use App\Accounting\DTOs\ReversalRequest;
 use App\Accounting\Services\AccountMappingService;
 use App\Models\JournalEntry;
 use App\Models\ChartOfAccount;
+use App\Models\StockMovement;
 use App\Models\Warehouse;
 use App\Services\FiscalPeriodValidator;
 use Modules\OCRBookkeeping\Models\OcrDocument;
@@ -769,6 +770,9 @@ class OcrPostingService
                 throw new \Exception("Failed to reverse journal entry: {$result->error}");
             }
 
+            // Reverse inventory stock movements
+            $this->reverseInventoryForDocument($document);
+
             $document->update([
                 'status'          => 'NEEDS_REVIEW',
                 'journal_entry_id' => null,
@@ -776,6 +780,63 @@ class OcrPostingService
                 'posted_by'       => null,
             ]);
         });
+    }
+
+    /**
+     * Reverse inventory stock movements created during posting.
+     *
+     * Finds all stock movements linked to this OCR document and creates
+     * opposite (OUT) movements to decrement stock. Product stock_quantity
+     * is updated directly and WAC is recalculated from remaining stock.
+     *
+     * @param OcrDocument $document
+     * @return void
+     */
+    private function reverseInventoryForDocument(OcrDocument $document): void
+    {
+        $movements = StockMovement::where('reference_type', 'ocr_document')
+            ->where('reference_id', $document->id)
+            ->get();
+
+        if ($movements->isEmpty()) {
+            return;
+        }
+
+        foreach ($movements as $movement) {
+            $product = \App\Models\Product::find($movement->product_id);
+            if (!$product) {
+                Log::warning("Inventory reversal: product not found", [
+                    'product_id' => $movement->product_id,
+                    'movement_id' => $movement->id,
+                ]);
+                continue;
+            }
+
+            // Create reversal movement (OUT to decrement stock)
+            $reversalQuantity = $movement->quantity;
+
+            $this->inventoryService->adjustStock(
+                productId: $product->id,
+                warehouseId: $movement->warehouse_id,
+                quantity: $reversalQuantity,
+                type: 'transfer_out',
+                reference: "OCR-UNPOST-{$document->uuid}",
+                referenceType: 'ocr_document_unpost',
+                referenceId: $document->id,
+                notes: "Inventory reversal from OCR unpost: {$document->document_reference}"
+            );
+
+            // Recalculate WAC from current stock state after the OUT movement
+            $product->refresh();
+
+            Log::info("Inventory reversed for OCR unpost", [
+                'product_id' => $product->id,
+                'sku' => $product->sku,
+                'reversed_quantity' => $reversalQuantity,
+                'original_movement_id' => $movement->id,
+                'document_uuid' => $document->uuid,
+            ]);
+        }
     }
 
 }

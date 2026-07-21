@@ -421,7 +421,7 @@ class FiscalPeriodTest extends TenantTestCase
      */
     public function test_date_with_no_fiscal_period_is_rejected()
     {
-        // Only create a period for December 2024 — January 2025 has no period
+        // Create a period for December 2024
         FiscalPeriod::create([
             'name' => 'December 2024',
             'code' => '2024-12',
@@ -434,10 +434,25 @@ class FiscalPeriodTest extends TenantTestCase
             'created_by' => $this->adminUser->id,
         ]);
 
+        // Create a Feb 2025 period so hasAnyPeriodForYear(2025) returns true
+        // and the validator does NOT auto-provision Jan 2025.
+        // Jan 15 falls outside Feb → blocked.
+        FiscalPeriod::create([
+            'name' => 'February 2025',
+            'code' => '2025-02',
+            'period_start' => '2025-02-01',
+            'period_end' => '2025-02-28',
+            'period_type' => 'monthly',
+            'fiscal_year' => 2025,
+            'is_locked' => false,
+            'status' => 'open',
+            'created_by' => $this->adminUser->id,
+        ]);
+
         $document = OcrDocument::factory()->create([
             'status' => 'NEEDS_REVIEW',
             'vendor_id' => $this->vendor->id,
-            'document_date' => Carbon::parse('2025-01-15'), // No period defined
+            'document_date' => Carbon::parse('2025-01-15'), // No period covers this date
             'total_amount' => 100.00,
             'line_items' => [
                 [
