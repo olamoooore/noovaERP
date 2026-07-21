@@ -128,11 +128,13 @@ class PublicWebsiteRenderController extends Controller
 
         // Wrap headerJs and bodyJs in <script> tags if they don't already have them.
         // GrapesJS custom-code editor stores raw JS without <script> wrappers.
+        // Note: str_contains is not enough — "<script" might appear inside a JS comment.
+        // Check if the trimmed content actually starts with a <script tag.
         $headerJsWrapped = $headerJs !== ''
-            ? (str_contains($headerJs, '<script') ? $headerJs : "<script>\n{$headerJs}\n</script>")
+            ? (preg_match('/^\s*<script/i', $headerJs) ? $headerJs : "<script>\n{$headerJs}\n</script>")
             : '';
         $bodyJsWrapped = $bodyJs !== ''
-            ? (str_contains($bodyJs, '<script') ? $bodyJs : "<script>\n{$bodyJs}\n</script>")
+            ? (preg_match('/^\s*<script/i', $bodyJs) ? $bodyJs : "<script>\n{$bodyJs}\n</script>")
             : '';
 
         // Use a unique heredoc delimiter that won't appear in page content.
