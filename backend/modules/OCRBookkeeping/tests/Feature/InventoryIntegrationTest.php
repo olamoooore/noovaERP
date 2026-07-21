@@ -2,37 +2,33 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use App\Models\ChartOfAccount;
-use App\Models\FiscalPeriod;
-use App\Models\Product;
-use App\Models\StockMovement;
-use App\Models\User;
-use App\Models\Vendor;
-use App\Models\Warehouse;
-use Carbon\Carbon;
+use Tests\TenantTestCase;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Services\OcrPostingService;
-use Tests\TenantTestCase;
+use App\Models\Product;
+use App\Models\StockMovement;
+use App\Models\ChartOfAccount;
+use App\Models\Vendor;
+use App\Models\FiscalPeriod;
+use App\Models\User;
+use App\Models\Warehouse;
+use Carbon\Carbon;
 
 class InventoryIntegrationTest extends TenantTestCase
 {
     protected User $user;
-
     protected OcrPostingService $service;
-
     protected Vendor $vendor;
-
     protected Product $product;
-
     protected ChartOfAccount $inventoryAccount;
-
     protected ChartOfAccount $payableAccount;
-
     protected Warehouse $warehouse;
 
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->bindTenantContext('00000000-0000-0000-0000-000000000001');
 
         $this->user = User::factory()->create();
         $this->actingAs($this->user);

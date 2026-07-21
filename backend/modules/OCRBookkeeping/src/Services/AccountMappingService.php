@@ -2,14 +2,14 @@
 
 namespace Modules\OCRBookkeeping\Services;
 
-use App\Models\ChartOfAccount;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Models\ChartOfAccount;
 use Modules\OCRBookkeeping\Models\OcrAccountMapping;
 
 /**
  * Account Mapping Service
- *
+ * 
  * Suggests Chart of Accounts based on vendor history and description patterns
  * Uses keyword matching and machine learning from historical data
  */
@@ -22,9 +22,9 @@ class AccountMappingService
 
     /**
      * Suggest account for vendor and description
-     *
-     * @param  int|null  $vendorId  The vendor ID (optional)
-     * @param  string  $description  The line item description
+     * 
+     * @param int|null $vendorId The vendor ID (optional)
+     * @param string $description The line item description
      * @return int|null Suggested account ID or null if no good match
      */
     public function suggestAccount(?int $vendorId, string $description): ?int
@@ -33,7 +33,7 @@ class AccountMappingService
             return null;
         }
 
-        Log::info('Suggesting account', [
+        Log::info("Suggesting account", [
             'vendor_id' => $vendorId,
             'description' => $description,
         ]);
@@ -42,11 +42,10 @@ class AccountMappingService
         if ($vendorId) {
             $vendorMapping = $this->findVendorSpecificMapping($vendorId, $description);
             if ($vendorMapping) {
-                Log::info('Found vendor-specific mapping', [
+                Log::info("Found vendor-specific mapping", [
                     'account_id' => $vendorMapping['account_id'],
                     'confidence' => $vendorMapping['confidence'],
                 ]);
-
                 return $vendorMapping['account_id'];
             }
         }
@@ -54,21 +53,19 @@ class AccountMappingService
         // Step 2: Check keyword-based mappings
         $keywordMapping = $this->findKeywordMapping($description);
         if ($keywordMapping) {
-            Log::info('Found keyword-based mapping', [
+            Log::info("Found keyword-based mapping", [
                 'account_id' => $keywordMapping['account_id'],
                 'confidence' => $keywordMapping['confidence'],
             ]);
-
             return $keywordMapping['account_id'];
         }
 
         // Step 3: Fallback to default expense account
         $defaultAccount = $this->getDefaultExpenseAccount();
         if ($defaultAccount) {
-            Log::info('Using default expense account', [
+            Log::info("Using default expense account", [
                 'account_id' => $defaultAccount->id,
             ]);
-
             return $defaultAccount->id;
         }
 
@@ -77,7 +74,9 @@ class AccountMappingService
 
     /**
      * Find vendor-specific account mapping
-     *
+     * 
+     * @param int $vendorId
+     * @param string $description
      * @return array|null ['account_id' => int, 'confidence' => float]
      */
     private function findVendorSpecificMapping(int $vendorId, string $description): ?array
@@ -114,7 +113,8 @@ class AccountMappingService
 
     /**
      * Find keyword-based account mapping
-     *
+     * 
+     * @param string $description
      * @return array|null ['account_id' => int, 'confidence' => float]
      */
     private function findKeywordMapping(string $description): ?array
@@ -135,7 +135,7 @@ class AccountMappingService
 
         foreach ($mappings as $mapping) {
             $matchCount = $mapping->countMatchingKeywords($description);
-
+            
             if ($matchCount > 0) {
                 // Calculate confidence based on keyword matches and usage
                 $keywordScore = $matchCount / max(1, count($keywords));
@@ -159,7 +159,9 @@ class AccountMappingService
 
     /**
      * Calculate mapping score for a specific mapping and description
-     *
+     * 
+     * @param OcrAccountMapping $mapping
+     * @param string $description
      * @return float Score between 0 and 1
      */
     private function calculateMappingScore(OcrAccountMapping $mapping, string $description): float
@@ -188,6 +190,8 @@ class AccountMappingService
 
     /**
      * Get default expense account
+     * 
+     * @return ChartOfAccount|null
      */
     private function getDefaultExpenseAccount(): ?ChartOfAccount
     {
@@ -200,16 +204,17 @@ class AccountMappingService
 
     /**
      * Store confirmed account mapping for learning
-     *
-     * @param  int|null  $vendorId  The vendor ID (null for generic mapping)
-     * @param  string  $description  The description
-     * @param  int  $accountId  The confirmed account ID
+     * 
+     * @param int|null $vendorId The vendor ID (null for generic mapping)
+     * @param string $description The description
+     * @param int $accountId The confirmed account ID
+     * @return OcrAccountMapping
      */
     public function storeMapping(?int $vendorId, string $description, int $accountId): OcrAccountMapping
     {
         $keywords = OcrAccountMapping::extractKeywords($description);
 
-        Log::info('Storing account mapping', [
+        Log::info("Storing account mapping", [
             'vendor_id' => $vendorId,
             'description' => substr($description, 0, 50),
             'account_id' => $accountId,
@@ -218,7 +223,7 @@ class AccountMappingService
 
         // Check if similar mapping exists
         $query = OcrAccountMapping::byAccount($accountId);
-
+        
         if ($vendorId) {
             $query->byVendor($vendorId);
         } else {
@@ -236,7 +241,7 @@ class AccountMappingService
             $mergedKeywords = array_unique(array_merge($existingKeywords, $keywords));
             $existingMapping->update(['keywords' => $mergedKeywords]);
 
-            Log::info('Updated existing account mapping', [
+            Log::info("Updated existing account mapping", [
                 'mapping_id' => $existingMapping->id,
                 'usage_count' => $existingMapping->usage_count,
             ]);
@@ -254,7 +259,7 @@ class AccountMappingService
             'usage_count' => 1,
         ]);
 
-        Log::info('Created new account mapping', [
+        Log::info("Created new account mapping", [
             'mapping_id' => $mapping->id,
         ]);
 
@@ -263,8 +268,9 @@ class AccountMappingService
 
     /**
      * Suggest accounts for multiple line items
-     *
-     * @param  array  $lineItems  Array of line items with 'description' field
+     * 
+     * @param int|null $vendorId
+     * @param array $lineItems Array of line items with 'description' field
      * @return array Array of suggestions indexed by line item index
      */
     public function suggestAccountsForLineItems(?int $vendorId, array $lineItems): array
@@ -273,13 +279,13 @@ class AccountMappingService
 
         foreach ($lineItems as $index => $item) {
             $description = $item['description'] ?? '';
-
-            if (! empty($description)) {
+            
+            if (!empty($description)) {
                 $accountId = $this->suggestAccount($vendorId, $description);
-
+                
                 if ($accountId) {
                     $account = ChartOfAccount::find($accountId);
-
+                    
                     $suggestions[$index] = [
                         'account_id' => $accountId,
                         'account_code' => $account->code ?? null,
@@ -294,6 +300,8 @@ class AccountMappingService
 
     /**
      * Get account mapping statistics
+     * 
+     * @return array
      */
     public function getStatistics(): array
     {
@@ -308,7 +316,8 @@ class AccountMappingService
 
     /**
      * Get all mappings for a specific vendor
-     *
+     * 
+     * @param int $vendorId
      * @return \Illuminate\Database\Eloquent\Collection
      */
     public function getVendorMappings(int $vendorId)
@@ -321,8 +330,8 @@ class AccountMappingService
 
     /**
      * Bulk import account mappings from array
-     *
-     * @param  array  $mappings  Array of mapping data
+     * 
+     * @param array $mappings Array of mapping data
      * @return int Number of mappings created
      */
     public function bulkImport(array $mappings): int
@@ -354,8 +363,8 @@ class AccountMappingService
 
     /**
      * Clear old unused mappings
-     *
-     * @param  int  $daysOld  Number of days since last use
+     * 
+     * @param int $daysOld Number of days since last use
      * @return int Number of mappings deleted
      */
     public function clearOldMappings(int $daysOld = 365): int
@@ -374,8 +383,8 @@ class AccountMappingService
     /**
      * Train mappings from historical journal entries
      * This can be run periodically to improve suggestions
-     *
-     * @param  int  $limit  Number of recent entries to analyze
+     * 
+     * @param int $limit Number of recent entries to analyze
      * @return int Number of mappings created/updated
      */
     public function trainFromHistory(int $limit = 1000): int
@@ -383,9 +392,8 @@ class AccountMappingService
         // TODO: Implement training from historical journal entries
         // This would analyze past journal entries and create mappings
         // based on patterns in descriptions and account usage
-
-        Log::info('Training from history not yet implemented');
-
+        
+        Log::info("Training from history not yet implemented");
         return 0;
     }
 }

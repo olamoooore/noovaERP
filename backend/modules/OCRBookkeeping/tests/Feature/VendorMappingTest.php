@@ -2,16 +2,15 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use App\Models\Customer;
-use App\Models\User;
+use Tests\TenantTestCase;
 use Modules\OCRBookkeeping\Models\OcrVendorMapping;
 use Modules\OCRBookkeeping\Services\VendorMappingService;
-use Tests\TenantTestCase;
+use App\Models\Vendor;
+use App\Models\User;
 
 class VendorMappingTest extends TenantTestCase
 {
     protected User $user;
-
     protected VendorMappingService $service;
 
     protected function setUp(): void
@@ -28,7 +27,7 @@ class VendorMappingTest extends TenantTestCase
      */
     public function test_vendor_search_is_always_performed()
     {
-        $vendor = Customer::factory()->create([
+        $vendor = Vendor::factory()->create([
             'name' => 'ABC Supplies Ltd',
         ]);
 
@@ -45,7 +44,7 @@ class VendorMappingTest extends TenantTestCase
      */
     public function test_high_confidence_vendor_matches_are_automatic()
     {
-        $vendor = Customer::factory()->create([
+        $vendor = Vendor::factory()->create([
             'name' => 'ABC Supplies Ltd',
         ]);
 
@@ -70,12 +69,12 @@ class VendorMappingTest extends TenantTestCase
      */
     public function test_multiple_matches_return_top_3()
     {
-        // Create similar vendors (Customer records for fuzzy search)
-        Customer::factory()->create(['name' => 'ABC Supplies Ltd']);
-        Customer::factory()->create(['name' => 'ABC Supply Company']);
-        Customer::factory()->create(['name' => 'ABC Supplies Inc']);
-        Customer::factory()->create(['name' => 'ABC Trading Ltd']);
-        Customer::factory()->create(['name' => 'XYZ Supplies Ltd']);
+        // Create similar vendors for fuzzy search
+        Vendor::factory()->create(['name' => 'ABC Supplies Ltd']);
+        Vendor::factory()->create(['name' => 'ABC Supply Company']);
+        Vendor::factory()->create(['name' => 'ABC Supplies Inc']);
+        Vendor::factory()->create(['name' => 'ABC Trading Ltd']);
+        Vendor::factory()->create(['name' => 'XYZ Supplies Ltd']);
 
         $matches = $this->service->findVendorMatch('ABC Supplies');
 
@@ -96,7 +95,7 @@ class VendorMappingTest extends TenantTestCase
      */
     public function test_vendor_confirmations_are_stored()
     {
-        $vendor = Customer::factory()->create([
+        $vendor = Vendor::factory()->create([
             'name' => 'ABC Supplies Ltd',
         ]);
 
@@ -119,7 +118,7 @@ class VendorMappingTest extends TenantTestCase
      */
     public function test_fuzzy_matching_works_with_typos()
     {
-        $vendor = Customer::factory()->create([
+        $vendor = Vendor::factory()->create([
             'name' => 'ABC Supplies Ltd',
         ]);
 
@@ -144,7 +143,7 @@ class VendorMappingTest extends TenantTestCase
      */
     public function test_case_insensitive_matching()
     {
-        $vendor = Customer::factory()->create([
+        $vendor = Vendor::factory()->create([
             'name' => 'ABC Supplies Ltd',
         ]);
 
@@ -176,7 +175,7 @@ class VendorMappingTest extends TenantTestCase
      */
     public function test_mapping_frequency_increases_with_confirmations()
     {
-        $vendor = Customer::factory()->create([
+        $vendor = Vendor::factory()->create([
             'name' => 'ABC Supplies Ltd',
         ]);
 
@@ -207,7 +206,7 @@ class VendorMappingTest extends TenantTestCase
      */
     public function test_special_characters_are_handled()
     {
-        $vendor = Customer::factory()->create([
+        $vendor = Vendor::factory()->create([
             'name' => "O'Reilly's Supplies & Co.",
         ]);
 
@@ -219,7 +218,7 @@ class VendorMappingTest extends TenantTestCase
             'usage_count' => 1,
         ]);
 
-        $matches = $this->service->findVendorMatch('OReillys Supplies and Co');
+        $matches = $this->service->findVendorMatch("OReillys Supplies and Co");
 
         $this->assertNotEmpty($matches);
     }
@@ -229,11 +228,11 @@ class VendorMappingTest extends TenantTestCase
      */
     public function test_vendor_with_no_mappings_can_still_be_found()
     {
-        Customer::factory()->create([
+        Vendor::factory()->create([
             'name' => 'New Vendor Ltd',
         ]);
 
-        // No mappings exist yet — should find via fuzzy search on customers table
+        // No mappings exist yet — should find via fuzzy search on vendors table
         $matches = $this->service->findVendorMatch('New Vendor');
 
         $this->assertNotEmpty($matches);

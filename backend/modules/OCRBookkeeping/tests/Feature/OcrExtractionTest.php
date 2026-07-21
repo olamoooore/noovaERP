@@ -2,23 +2,22 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use App\Models\User;
+use Tests\TenantTestCase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 use Modules\OCRBookkeeping\Services\OcrProcessingService;
-use Tests\TenantTestCase;
+use App\Models\User;
 
 class OcrExtractionTest extends TenantTestCase
 {
     protected User $user;
-
     protected OcrProcessingService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-
+        
         $this->user = User::factory()->create();
         $this->service = app(OcrProcessingService::class);
 
@@ -43,7 +42,7 @@ class OcrExtractionTest extends TenantTestCase
     private function fakeOcrResponse(array $payload, int $status = 200): void
     {
         Http::fake([
-            config('ocr.service.url').'/api/bookkeeping/upload' => Http::response($payload, $status),
+            config('ocr.service.url') . '/api/bookkeeping/upload' => Http::response($payload, $status),
         ]);
     }
 
@@ -164,7 +163,7 @@ class OcrExtractionTest extends TenantTestCase
         $this->service->processDocument($document);
 
         $document->refresh();
-
+        
         // Verify raw data stored
         $this->assertNotNull($document->ocr_raw_data);
         $this->assertEquals('success', $document->ocr_raw_data['status']);
@@ -193,14 +192,14 @@ class OcrExtractionTest extends TenantTestCase
         $this->service->processDocument($document);
 
         $document->refresh();
-
+        
         // Verify confidence scores stored
         $this->assertNotNull($document->ocr_confidence_scores);
         // vendor_name is present -> gets full OCR confidence (0.95)
         $this->assertEquals(0.95, $document->ocr_confidence_scores['vendor_name']);
         // document_date is missing (invoice_date not in extracted_data) -> confidence 0.0
         $this->assertEquals(0.0, $document->ocr_confidence_scores['document_date']);
-
+        
         // Test confidence methods: high vs low
         $this->assertTrue($document->getConfidenceScore('vendor_name') > 0.7);
         $this->assertFalse($document->getConfidenceScore('document_date') > 0.7);
@@ -214,13 +213,13 @@ class OcrExtractionTest extends TenantTestCase
         $document = $this->createStoredDocument();
 
         Http::fake([
-            config('ocr.service.url').'/api/bookkeeping/upload' => function () {
+            config('ocr.service.url') . '/api/bookkeeping/upload' => function () {
                 throw new \Illuminate\Http\Client\ConnectionException('Connection timeout');
             },
         ]);
 
         $this->expectException(\Exception::class);
-
+        
         $this->service->processDocument($document);
 
         $document->refresh();
@@ -249,7 +248,7 @@ class OcrExtractionTest extends TenantTestCase
         $this->service->processDocument($document);
 
         $document->refresh();
-
+        
         // Should still succeed with partial data (vendor_name satisfies identifying data check)
         $this->assertEquals('NEEDS_REVIEW', $document->status);
         $this->assertEquals('Test Vendor', $document->vendor_name);
@@ -321,7 +320,7 @@ class OcrExtractionTest extends TenantTestCase
 
         $this->service->processDocument($document);
         $document->refresh();
-
+        
         // Should update, not duplicate
         $this->assertNotEquals($firstExtractedAt, $document->extracted_at);
         $this->assertEquals(1, OcrDocument::where('uuid', $document->uuid)->count());

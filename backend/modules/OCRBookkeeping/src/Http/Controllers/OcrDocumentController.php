@@ -3,13 +3,14 @@
 namespace Modules\OCRBookkeeping\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
-use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
-use Modules\OCRBookkeeping\Jobs\ProcessOcrDocument;
+use Illuminate\Support\Facades\DB;
 use Modules\OCRBookkeeping\Models\OcrDocument;
+use Modules\OCRBookkeeping\Jobs\ProcessOcrDocument;
+use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 use Modules\OCRBookkeeping\Services\OcrProcessingService;
 
 class OcrDocumentController extends Controller
@@ -24,7 +25,7 @@ class OcrDocumentController extends Controller
             'file' => [
                 'required',
                 'file',
-                'max:10240', // 10MB max
+                'max:10240',
                 'mimes:jpg,jpeg,png,pdf',
             ],
         ]);
@@ -47,7 +48,6 @@ class OcrDocumentController extends Controller
             $file = $request->file('file');
             $fileName = $file->getClientOriginalName();
 
-            // Duplicate upload detection
             $fileHash = hash_file('sha256', $file->getRealPath());
 
             $duplicate = OcrDocument::where('file_hash', $fileHash)
@@ -69,15 +69,19 @@ class OcrDocumentController extends Controller
                 ], 409);
             }
 
-            // Generate unique file path
             $fileExtension = $file->getClientOriginalExtension();
-            $uniqueName = time().'_'.uniqid().'.'.$fileExtension;
-            $filePath = date('Y/m/d').'/'.$uniqueName;
+            $uniqueName = time() . '_' . uniqid() . '.' . $fileExtension;
+            $filePath = date('Y/m/d') . '/' . $uniqueName;
 
-            // Store file (use local storage for now)
             $stored = Storage::disk($storageDisk)->put($filePath, file_get_contents($file->getRealPath()));
 
-            if (! $stored) {
+            if (!$stored) {
+                $this->logOcrAction('upload_failed', null, [
+                    'file_name' => $fileName,
+                    'result' => 'failed',
+                    'reason' => 'Failed to store file',
+                ]);
+
                 return response()->json([
                     'message' => 'Failed to store file',
                 ], 500);
@@ -85,7 +89,6 @@ class OcrDocumentController extends Controller
 
             $storedFilePath = $filePath;
 
-            // Create document record
             $document = OcrDocument::create([
                 'file_path' => $filePath,
                 'file_name' => $fileName,
@@ -95,20 +98,17 @@ class OcrDocumentController extends Controller
                 'status' => 'PENDING',
                 'legal_entity_id' => $legalEntityId,
                 'entity_book_id' => $entityBookId,
-
                 'created_by' => TenantUserHelper::getTenantUserId(),
             ]);
 
             $documentCreated = true;
             $storedFilePath = null;
 
-            // Process OCR synchronously so it runs with tenant context
             try {
                 ProcessOcrDocument::dispatchSync($document->id);
                 $document->refresh();
             } catch (\Exception $e) {
-                \Log::warning("OCR processing failed for document {$document->uuid}: ".$e->getMessage());
-                // Document will be marked as EXTRACTION_FAILED by the job's failed() handler
+                \Log::warning("OCR processing failed for document {$document->uuid}: " . $e->getMessage());
                 $document->refresh();
             }
 
@@ -136,9 +136,14 @@ class OcrDocumentController extends Controller
             ], 201);
 
         } catch (\Exception $e) {
-            if ($storedFilePath && ! $documentCreated && Storage::disk($storageDisk)->exists($storedFilePath)) {
+            if ($storedFilePath && !$documentCreated && Storage::disk($storageDisk)->exists($storedFilePath)) {
                 Storage::disk($storageDisk)->delete($storedFilePath);
             }
+
+            $this->logOcrAction('upload_failed', null, [
+                'result' => 'failed',
+                'error_message' => $e->getMessage(),
+            ]);
 
             \Log::error('OCR document upload failed', [
                 'error' => $e->getMessage(),
@@ -161,11 +166,11 @@ class OcrDocumentController extends Controller
     public function batchUpload(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'files' => 'required|array|min:1|max:20', // Max 20 files at once
+            'files' => 'required|array|min:1|max:20',
             'files.*' => [
                 'required',
                 'file',
-                'max:10240', // 10MB max per file
+                'max:10240',
                 'mimes:jpg,jpeg,png,pdf',
             ],
         ]);
@@ -182,13 +187,15 @@ class OcrDocumentController extends Controller
 
         $uploadedDocuments = [];
         $failedUploads = [];
-        $storageDisk = 'ocr-documents-local'; // Use local storage for now
+        $storageDisk = 'ocr-documents-local';
 
         foreach ($request->file('files') as $index => $file) {
+            $storedFilePath = null;
+            $documentCreated = false;
+
             try {
                 $fileName = $file->getClientOriginalName();
 
-                // Duplicate upload detection
                 $fileHash = hash_file('sha256', $file->getRealPath());
 
                 $duplicate = OcrDocument::where('file_hash', $fileHash)
@@ -205,28 +212,31 @@ class OcrDocumentController extends Controller
                         'error' => 'Duplicate OCR document upload detected.',
                         'existing_uuid' => $duplicate->uuid,
                     ];
-
                     continue;
                 }
 
-                // Generate unique file path
                 $fileExtension = $file->getClientOriginalExtension();
-                $uniqueName = time().'_'.uniqid().'.'.$fileExtension;
-                $filePath = date('Y/m/d').'/'.$uniqueName;
+                $uniqueName = time() . '_' . uniqid() . '.' . $fileExtension;
+                $filePath = date('Y/m/d') . '/' . $uniqueName;
 
-                // Store file
                 $stored = Storage::disk($storageDisk)->put($filePath, file_get_contents($file->getRealPath()));
 
-                if (! $stored) {
+                if (!$stored) {
+                    $this->logOcrAction('batch_upload_failed', null, [
+                        'file_name' => $fileName,
+                        'result' => 'failed',
+                        'reason' => 'Failed to store file',
+                    ]);
+
                     $failedUploads[] = [
                         'file_name' => $fileName,
                         'error' => 'Failed to store file',
                     ];
-
                     continue;
                 }
 
-                // Create document record
+                $storedFilePath = $filePath;
+
                 $document = OcrDocument::create([
                     'file_path' => $filePath,
                     'file_name' => $fileName,
@@ -239,12 +249,14 @@ class OcrDocumentController extends Controller
                     'created_by' => TenantUserHelper::getTenantUserId(),
                 ]);
 
-                // Process OCR synchronously
+                $documentCreated = true;
+                $storedFilePath = null;
+
                 try {
                     ProcessOcrDocument::dispatchSync($document->id);
                     $document->refresh();
                 } catch (\Exception $jobError) {
-                    \Log::warning("OCR processing failed for document {$document->uuid}: ".$jobError->getMessage());
+                    \Log::warning("OCR processing failed for document {$document->uuid}: " . $jobError->getMessage());
                     $document->refresh();
                 }
 
@@ -259,7 +271,6 @@ class OcrDocumentController extends Controller
                         'status' => $document->status,
                         'error' => $document->error_message ?: 'OCR extraction failed',
                     ];
-
                     continue;
                 }
 
@@ -274,6 +285,16 @@ class OcrDocumentController extends Controller
                 ];
 
             } catch (\Exception $e) {
+                if ($storedFilePath && !$documentCreated && Storage::disk($storageDisk)->exists($storedFilePath)) {
+                    Storage::disk($storageDisk)->delete($storedFilePath);
+                }
+
+                $this->logOcrAction('batch_upload_failed', null, [
+                    'file_name' => $file->getClientOriginalName(),
+                    'result' => 'failed',
+                    'error_message' => $e->getMessage(),
+                ]);
+
                 $failedUploads[] = [
                     'file_name' => $file->getClientOriginalName(),
                     'error' => $e->getMessage(),
@@ -289,7 +310,7 @@ class OcrDocumentController extends Controller
                 'total_uploaded' => count($uploadedDocuments),
                 'total_failed' => count($failedUploads),
             ],
-        ], count($failedUploads) > 0 ? 207 : 201); // 207 Multi-Status if some failed
+        ], count($failedUploads) > 0 ? 207 : 201);
     }
 
     /**
@@ -302,23 +323,20 @@ class OcrDocumentController extends Controller
             ->whereNull('deleted_at')
             ->orderBy('created_at', 'desc');
 
-        // Search filter
         if ($request->has('search') && $request->search) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('file_name', 'like', "%{$search}%")
-                    ->orWhere('vendor_name', 'like', "%{$search}%")
-                    ->orWhere('document_reference', 'like', "%{$search}%")
-                    ->orWhere('total_amount', 'like', "%{$search}%");
+                  ->orWhere('vendor_name', 'like', "%{$search}%")
+                  ->orWhere('document_reference', 'like', "%{$search}%")
+                  ->orWhere('total_amount', 'like', "%{$search}%");
             });
         }
 
-        // Status filter
         if ($request->has('status') && $request->status) {
             $query->where('status', $request->status);
         }
 
-        // Date range filter
         if ($request->has('start_date') && $request->start_date) {
             $query->whereDate('document_date', '>=', $request->start_date);
         }
@@ -326,12 +344,10 @@ class OcrDocumentController extends Controller
             $query->whereDate('document_date', '<=', $request->end_date);
         }
 
-        // Vendor filter
         if ($request->has('vendor_id') && $request->vendor_id) {
             $query->where('vendor_id', $request->vendor_id);
         }
 
-        // Amount range filter
         if ($request->has('min_amount') && $request->min_amount) {
             $query->where('total_amount', '>=', $request->min_amount);
         }
@@ -368,7 +384,6 @@ class OcrDocumentController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-
             return response()->json([
                 'message' => 'Failed to load document',
                 'error' => $e->getMessage(),
@@ -384,7 +399,7 @@ class OcrDocumentController extends Controller
     {
         $document = OcrDocument::where('uuid', $uuid)->firstOrFail();
 
-        if (! $document->canBeEdited()) {
+        if (!$document->canBeEdited()) {
             return response()->json([
                 'message' => 'Document cannot be edited in current status',
             ], 422);
@@ -406,7 +421,7 @@ class OcrDocumentController extends Controller
             'dimensions.department_id' => 'nullable|exists:departments,id',
             'dimensions.project_id' => 'nullable|exists:projects,id',
             'dimensions.location_id' => 'nullable|exists:locations,id',
-            'updated_at' => 'nullable|string', // For optimistic locking
+            'updated_at' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -416,12 +431,11 @@ class OcrDocumentController extends Controller
             ], 422);
         }
 
-        // Validate dimensions are active
         $dimensionService = app(\Modules\OCRBookkeeping\Services\DimensionValidationService::class);
 
         if ($request->has('dimensions')) {
             $dimensionValidation = $dimensionService->validate($request->dimensions);
-            if (! $dimensionValidation['valid']) {
+            if (!$dimensionValidation['valid']) {
                 return response()->json([
                     'message' => 'Dimension validation failed',
                     'errors' => $dimensionValidation['errors'],
@@ -429,10 +443,9 @@ class OcrDocumentController extends Controller
             }
         }
 
-        // Validate line item dimensions
         if ($request->has('line_items')) {
             $lineItemValidation = $dimensionService->validateLineItemDimensions($request->line_items);
-            if (! $lineItemValidation['valid']) {
+            if (!$lineItemValidation['valid']) {
                 return response()->json([
                     'message' => 'Line item dimension validation failed',
                     'errors' => $lineItemValidation['errors'],
@@ -441,7 +454,6 @@ class OcrDocumentController extends Controller
         }
 
         try {
-            // Use optimistic locking if updated_at provided
             if ($request->has('updated_at')) {
                 $document->updateWithLock($validator->validated(), $request->updated_at);
             } else {
@@ -451,6 +463,10 @@ class OcrDocumentController extends Controller
             $document->update([
                 'reviewed_by' => TenantUserHelper::getTenantUserId(),
                 'reviewed_at' => now(),
+            ]);
+
+            $this->logOcrAction('update', $document->fresh(), [
+                'result' => 'success',
             ]);
 
             return response()->json([
@@ -476,26 +492,30 @@ class OcrDocumentController extends Controller
         $document = OcrDocument::where('uuid', $uuid)->firstOrFail();
 
         try {
-            // If document is posted, automatically unpost (reverse) it first
-            if ($document->isPosted()) {
-                \Log::info("Document {$uuid} is posted. Reversing journal entry before deletion.");
-                $document->unpost();
+            if (!$document->canBeDeleted()) {
+                $this->logOcrAction('delete_blocked', $document, [
+                    'result' => 'blocked',
+                    'reason' => 'Document cannot be deleted in current status or while linked to a journal entry',
+                ]);
+
+                return response()->json([
+                    'message' => 'Document cannot be deleted in current status or while linked to a journal entry',
+                ], 422);
             }
 
-            // Soft-delete the document
             $document->delete();
 
             $this->logOcrAction('delete', $document, [
                 'deleted_at' => now()->toDateTimeString(),
             ]);
 
-            \Log::info('OCR document soft-deleted', ['uuid' => $uuid, 'deleted_at' => now()->toDateTimeString()]);
+            \Log::info("OCR document soft-deleted", ['uuid' => $uuid, 'deleted_at' => now()->toDateTimeString()]);
 
             return response()->json([
                 'message' => 'Document deleted successfully',
             ]);
         } catch (\Exception $e) {
-            \Log::error("Failed to delete document {$uuid}: ".$e->getMessage());
+            \Log::error("Failed to delete document {$uuid}: " . $e->getMessage());
 
             return response()->json([
                 'message' => 'Failed to delete document',
@@ -512,7 +532,7 @@ class OcrDocumentController extends Controller
     {
         $document = OcrDocument::where('uuid', $uuid)->firstOrFail();
 
-        if (! $document->isPosted()) {
+        if (!$document->isPosted()) {
             return response()->json([
                 'message' => 'Only posted documents can be unposted',
             ], 422);
@@ -521,15 +541,22 @@ class OcrDocumentController extends Controller
         try {
             $document->unpost();
 
-            $this->logOcrAction('unpost', $document->fresh());
+            $this->logOcrAction('unpost', $document->fresh(), [
+                'result' => 'success',
+            ]);
 
             return response()->json([
                 'message' => 'Document unposted successfully',
                 'data' => $document->fresh(),
             ]);
         } catch (\Exception $e) {
+            $this->logOcrAction('unpost_failed', $document, [
+                'result' => 'failed',
+                'error_message' => $e->getMessage(),
+            ]);
+
             return response()->json([
-                'message' => 'Failed to unpost document: '.$e->getMessage(),
+                'message' => 'Failed to unpost document: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -542,7 +569,6 @@ class OcrDocumentController extends Controller
     {
         $document = OcrDocument::where('uuid', $uuid)->firstOrFail();
 
-        // Return empty suggestions for now (services not fully implemented)
         return response()->json([
             'data' => [
                 'vendor_suggestions' => [],
@@ -562,30 +588,39 @@ class OcrDocumentController extends Controller
 
             $storageDisk = 'ocr-documents-local';
 
-            if (! Storage::disk($storageDisk)->exists($document->file_path)) {
-                \Log::error("File not found: {$document->file_path}");
+            if (!Storage::disk($storageDisk)->exists($document->file_path)) {
+                $this->logOcrAction('file_download_blocked', $document, [
+                    'result' => 'blocked',
+                    'reason' => 'stored_file_missing',
+                ]);
+
+                \Log::error('OCR file not found', [
+                    'document_uuid' => $document->uuid,
+                ]);
 
                 return response()->json([
                     'message' => 'File not found',
-                    'path' => $document->file_path,
                 ], 404);
             }
 
             $file = Storage::disk($storageDisk)->get($document->file_path);
             $mimeType = $document->mime_type ?? 'application/octet-stream';
 
-            $this->logOcrAction('file_view', $document);
+            $this->logOcrAction('file_view', $document, [
+                'result' => 'success',
+            ]);
 
             return response($file, 200)
                 ->header('Content-Type', $mimeType)
-                ->header('Content-Disposition', 'inline; filename="'.$document->file_name.'"');
+                ->header('Content-Disposition', 'inline; filename="' . $document->file_name . '"');
 
         } catch (\Exception $e) {
-            \Log::error('Error serving file: '.$e->getMessage());
+            \Log::error('Error serving OCR file', [
+                'error' => $e->getMessage(),
+            ]);
 
             return response()->json([
                 'message' => 'Error serving file',
-                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -599,7 +634,7 @@ class OcrDocumentController extends Controller
         try {
             $document = OcrDocument::where('uuid', $uuid)->firstOrFail();
 
-            \Log::info('Attempting to post document', [
+            \Log::info("Attempting to post document", [
                 'uuid' => $uuid,
                 'status' => $document->status,
                 'total_amount' => $document->total_amount,
@@ -607,8 +642,8 @@ class OcrDocumentController extends Controller
                 'line_items' => $document->line_items,
             ]);
 
-            if (! $document->canBePosted()) {
-                \Log::warning('Document cannot be posted', [
+            if (!$document->canBePosted()) {
+                \Log::warning("Document cannot be posted", [
                     'uuid' => $uuid,
                     'status' => $document->status,
                     'has_total' => $document->total_amount !== null,
@@ -647,7 +682,12 @@ class OcrDocumentController extends Controller
             ], 201);
 
         } catch (\Exception $e) {
-            \Log::error('Post endpoint error', [
+            $this->logOcrAction('post_failed', isset($document) ? $document : null, [
+                'result' => 'failed',
+                'error_message' => $e->getMessage(),
+            ]);
+
+            \Log::error("Post endpoint error", [
                 'uuid' => $uuid ?? 'unknown',
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
@@ -682,7 +722,7 @@ class OcrDocumentController extends Controller
             $postingService = app(\Modules\OCRBookkeeping\Services\OcrPostingService::class);
             $result = $postingService->batchPost($request->document_uuids);
 
-            $statusCode = $result['total_failed'] > 0 ? 207 : 201; // 207 Multi-Status if some failed
+            $statusCode = $result['total_failed'] > 0 ? 207 : 201;
 
             return response()->json([
                 'message' => 'Batch posting completed',
@@ -735,10 +775,11 @@ class OcrDocumentController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::warning("OCR retry failed for document {$uuid}: ".$e->getMessage());
+            \Log::warning("OCR retry failed for document {$uuid}: " . $e->getMessage());
             $document->refresh();
 
             $this->logOcrAction('retry_failed', $document, [
+                'result' => 'failed',
                 'error' => $e->getMessage(),
             ]);
 
@@ -771,15 +812,16 @@ class OcrDocumentController extends Controller
 
             return response()->json([
                 'message' => 'Document promoted to bill draft.',
-                'data' => $result,
+                'data'    => $result,
             ], 201);
         } catch (\Exception $e) {
             $this->logOcrAction('promote_to_bill_failed', $document, [
+                'result' => 'failed',
                 'error' => $e->getMessage(),
             ]);
 
             return response()->json([
-                'message' => 'Promotion failed: '.$e->getMessage(),
+                'message' => 'Promotion failed: ' . $e->getMessage(),
             ], 422);
         }
     }
@@ -802,28 +844,73 @@ class OcrDocumentController extends Controller
 
             return response()->json([
                 'message' => 'Document promoted to invoice draft.',
-                'data' => $result,
+                'data'    => $result,
             ], 201);
         } catch (\Exception $e) {
             $this->logOcrAction('promote_to_invoice_failed', $document, [
+                'result' => 'failed',
                 'error' => $e->getMessage(),
             ]);
 
             return response()->json([
-                'message' => 'Promotion failed: '.$e->getMessage(),
+                'message' => 'Promotion failed: ' . $e->getMessage(),
             ], 422);
         }
     }
 
     private function logOcrAction(string $action, ?OcrDocument $document = null, array $extra = []): void
     {
-        \Log::info('OCR action audit', array_merge([
-            'action' => $action,
-            'document_uuid' => $document?->uuid,
+        $auditAction = match ($action) {
+            'upload', 'batch_upload' => 'ocr_upload_succeeded',
+            'upload_failed', 'batch_upload_failed',
+            'upload_extraction_failed', 'batch_upload_extraction_failed' => 'ocr_upload_failed',
+            'duplicate_upload_blocked', 'batch_duplicate_upload_blocked' => 'ocr_duplicate_blocked',
+            'file_view' => 'ocr_file_viewed',
+            'file_download_blocked' => 'ocr_file_download_blocked',
+            'update' => 'ocr_update_succeeded',
+            'delete' => 'ocr_delete_succeeded',
+            'delete_blocked' => 'ocr_delete_blocked',
+            'unpost' => 'ocr_unpost_succeeded',
+            'unpost_failed' => 'ocr_unpost_failed',
+            'post' => 'ocr_post_succeeded',
+            'post_failed' => 'ocr_post_failed',
+            'promote_to_bill', 'promote_to_invoice' => 'ocr_promote_succeeded',
+            'promote_to_bill_failed', 'promote_to_invoice_failed' => 'ocr_promote_failed',
+            'retry' => 'ocr_retry_succeeded',
+            'retry_failed' => 'ocr_retry_failed',
+            default => 'ocr_' . $action,
+        };
+
+        $result = $extra['result']
+            ?? (str_contains($auditAction, '_blocked') ? 'blocked'
+            : (str_contains($auditAction, '_failed') ? 'failed' : 'success'));
+
+        $metadata = array_merge([
+            'original_action' => $action,
             'file_name' => $document?->file_name,
             'status' => $document?->status,
-            'user_id' => TenantUserHelper::resolveTenantUserId(),
-        ], $extra));
+        ], $extra);
+
+        try {
+            DB::table('ocr_audit_logs')->insert([
+                'tenant_identity_id' => $document?->tenant_identity_id,
+                'legal_entity_id' => $document?->legal_entity_id,
+                'entity_book_id' => $document?->entity_book_id,
+                'ocr_document_id' => $document?->id,
+                'document_uuid' => $document?->uuid,
+                'action' => $auditAction,
+                'actor_user_id' => TenantUserHelper::resolveTenantUserId(),
+                'result' => $result,
+                'metadata_json' => json_encode($metadata),
+                'created_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Failed to write OCR audit log', [
+                'action' => $auditAction,
+                'document_uuid' => $document?->uuid,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function ensureOcrServiceAvailable(): ?JsonResponse

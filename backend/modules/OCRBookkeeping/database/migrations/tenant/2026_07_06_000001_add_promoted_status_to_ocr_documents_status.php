@@ -8,14 +8,14 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (! Schema::hasTable('ocr_documents')) {
+        if (!Schema::hasTable('ocr_documents')) {
             return;
         }
 
-        DB::statement('
+        DB::statement("
             ALTER TABLE ocr_documents
             DROP CONSTRAINT IF EXISTS ocr_documents_status_check
-        ');
+        ");
 
         DB::statement("
             ALTER TABLE ocr_documents
@@ -33,14 +33,14 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (! Schema::hasTable('ocr_documents')) {
+        if (!Schema::hasTable('ocr_documents')) {
             return;
         }
 
-        DB::statement('
+        DB::statement("
             ALTER TABLE ocr_documents
             DROP CONSTRAINT IF EXISTS ocr_documents_status_check
-        ');
+        ");
 
         DB::statement("
             ALTER TABLE ocr_documents

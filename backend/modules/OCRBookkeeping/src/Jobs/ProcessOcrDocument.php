@@ -13,7 +13,7 @@ use Modules\OCRBookkeeping\Services\OcrProcessingService;
 
 /**
  * Process OCR Document Job
- *
+ * 
  * Asynchronous job to process uploaded documents through OCR
  * Implements retry logic with exponential backoff
  */
@@ -60,7 +60,7 @@ class ProcessOcrDocument implements ShouldQueue
         try {
             $document = OcrDocument::findOrFail($this->documentId);
 
-            Log::info('Processing OCR document job', [
+            Log::info("Processing OCR document job", [
                 'document_id' => $this->documentId,
                 'document_uuid' => $document->uuid,
                 'attempt' => $this->attempts(),
@@ -69,19 +69,19 @@ class ProcessOcrDocument implements ShouldQueue
             // Process the document
             $service->processDocument($document);
 
-            Log::info('OCR document processed successfully', [
+            Log::info("OCR document processed successfully", [
                 'document_id' => $this->documentId,
                 'document_uuid' => $document->uuid,
             ]);
 
         } catch (\Exception $e) {
             $document = OcrDocument::find($this->documentId);
-
+            
             if ($document) {
                 // Increment retry count
                 $document->increment('retry_count');
 
-                Log::error('OCR processing failed', [
+                Log::error("OCR processing failed", [
                     'document_id' => $this->documentId,
                     'document_uuid' => $document->uuid ?? 'unknown',
                     'attempt' => $this->attempts(),
@@ -92,7 +92,6 @@ class ProcessOcrDocument implements ShouldQueue
                 // and don't re-throw — the upload should still succeed
                 if ($this->job === null) {
                     $document->markAsExtractionFailed($e->getMessage());
-
                     return;
                 }
 
@@ -115,16 +114,16 @@ class ProcessOcrDocument implements ShouldQueue
         $document = OcrDocument::find($this->documentId);
 
         if ($document) {
-            Log::critical('OCR job failed permanently', [
+            Log::critical("OCR job failed permanently", [
                 'document_id' => $this->documentId,
                 'document_uuid' => $document->uuid,
                 'error' => $exception->getMessage(),
             ]);
 
             // Ensure document is marked as failed
-            if (! $document->hasFailed()) {
+            if (!$document->hasFailed()) {
                 $document->markAsExtractionFailed(
-                    "Processing failed after {$this->tries} attempts: ".$exception->getMessage()
+                    "Processing failed after {$this->tries} attempts: " . $exception->getMessage()
                 );
             }
 

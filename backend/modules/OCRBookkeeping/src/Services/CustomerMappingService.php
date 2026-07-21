@@ -8,7 +8,7 @@ class CustomerMappingService
 {
     public function getBestMatch(?string $customerName): ?array
     {
-        if (! $customerName) {
+        if (!$customerName) {
             return null;
         }
 
@@ -28,7 +28,7 @@ class CustomerMappingService
             }
         }
 
-        if (! $bestMatch || $bestScore < 0.7) {
+        if (!$bestMatch || $bestScore < 0.7) {
             return null;
         }
 

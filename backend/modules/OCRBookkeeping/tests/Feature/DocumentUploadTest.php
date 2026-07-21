@@ -2,14 +2,21 @@
 
 namespace Modules\OCRBookkeeping\Tests\Feature;
 
-use App\Models\User;
+use Tests\TenantTestCase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
-use Modules\OCRBookkeeping\Jobs\ProcessOcrDocument;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Schema\Blueprint;
 use Modules\OCRBookkeeping\Models\OcrDocument;
+use Modules\OCRBookkeeping\Jobs\ProcessOcrDocument;
+use App\Models\User;
+use App\SuperAdmin\Application\FeatureGateService;
+use App\SuperAdmin\Domain\CatalogItem;
+use App\SuperAdmin\Domain\CatalogItemType;
+use App\SuperAdmin\Domain\TenantEntitlement;
 use Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains;
-use Tests\TenantTestCase;
 
 /**
  * Document Upload Tests
@@ -26,15 +33,99 @@ class DocumentUploadTest extends TenantTestCase
             PreventAccessFromCentralDomains::class,
         ]);
 
+        $this->ensureLegacyFeatureTablesExist();
+
+        $tenantId = '00000000-0000-0000-0000-000000000001';
+
+        DB::table('tenants')->updateOrInsert(
+            ['id' => $tenantId],
+            [
+                'name' => 'Test Tenant',
+                'email' => 'test-tenant@example.com',
+                'data' => json_encode([]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]
+        );
+
+        $this->bindTenantContext($tenantId);
+
         $this->user = User::factory()->create();
 
+        $this->setOcrBookkeepingEntitlement(true);
+
         Storage::fake('ocr-documents-local');
+    }
+
+    private function ensureLegacyFeatureTablesExist(): void
+    {
+        if (!Schema::hasTable('features')) {
+            Schema::create('features', function (Blueprint $table) {
+                $table->id();
+                $table->string('key')->unique();
+                $table->string('name');
+                $table->text('description')->nullable();
+                $table->boolean('is_core')->default(false);
+                $table->decimal('price', 10, 2)->default(0);
+                $table->timestamps();
+            });
+        }
+
+        if (!Schema::hasTable('tenant_features')) {
+            Schema::create('tenant_features', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('feature_id');
+                $table->boolean('is_enabled')->default(true);
+                $table->timestamp('enabled_at')->nullable();
+                $table->timestamp('expires_at')->nullable();
+                $table->timestamps();
+            });
+        }
+    }
+
+    private function setOcrBookkeepingEntitlement(bool $entitled): void
+    {
+        $tenantId = $this->boundTestTenant->getTenantKey();
+
+        $catalogType = CatalogItemType::firstOrCreate(
+            ['key' => 'module'],
+            [
+                'name' => 'Module',
+                'is_active' => true,
+            ]
+        );
+
+        $item = CatalogItem::firstOrCreate(
+            ['key' => 'ocr-bookkeeping'],
+            [
+                'name' => 'OCR Bookkeeping',
+                'type_id' => $catalogType->id,
+                'is_active' => true,
+                'effective_from' => now()->toDateString(),
+            ]
+        );
+
+        TenantEntitlement::updateOrCreate(
+            [
+                'tenant_id' => $tenantId,
+                'catalog_item_id' => $item->id,
+            ],
+            [
+                'is_entitled' => $entitled,
+                'source' => $entitled
+                    ? TenantEntitlement::SOURCE_TIER_INCLUDED
+                    : TenantEntitlement::SOURCE_OVERRIDE_EXCLUDE,
+                'resolved_at' => now(),
+            ]
+        );
+
+        app(FeatureGateService::class)->invalidate($tenantId);
     }
 
     private function fakeSuccessfulOcrResponse(array $overrides = []): void
     {
         Http::fake([
-            config('ocr.service.url').'/api/bookkeeping/upload' => Http::response([
+            config('ocr.service.url') . '/api/bookkeeping/upload' => Http::response([
                 'status' => 'success',
                 'extracted_data' => array_merge([
                     'vendor_customer_name' => 'Upload Test Vendor',
@@ -56,6 +147,14 @@ class DocumentUploadTest extends TenantTestCase
                 ],
             ], 200),
         ]);
+    }
+
+    private function fakePdf(string $name): UploadedFile
+    {
+        return UploadedFile::fake()->createWithContent(
+            $name,
+            "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<<>>\n%%EOF"
+        );
     }
 
     private function uploadDocument(UploadedFile $file)
@@ -103,7 +202,9 @@ class DocumentUploadTest extends TenantTestCase
      */
     public function test_upload_triggers_ocr_job()
     {
-        $response = $this->uploadDocument(UploadedFile::fake()->create('invoice.pdf', 256, 'application/pdf'));
+        $this->fakeSuccessfulOcrResponse();
+
+        $response = $this->uploadDocument($this->fakePdf('invoice.pdf'));
 
         $response->assertCreated();
 
@@ -161,7 +262,7 @@ class DocumentUploadTest extends TenantTestCase
         $files = [
             UploadedFile::fake()->image('receipt.jpg'),
             UploadedFile::fake()->image('receipt.png'),
-            UploadedFile::fake()->create('invoice.pdf', 256, 'application/pdf'),
+            $this->fakePdf('invoice.pdf'),
         ];
 
         foreach ($files as $file) {
@@ -200,7 +301,7 @@ class DocumentUploadTest extends TenantTestCase
 
         $response = $this->batchUploadDocuments([
             UploadedFile::fake()->image('first.jpg'),
-            UploadedFile::fake()->create('second.pdf', 256, 'application/pdf'),
+            $this->fakePdf('second.pdf'),
         ]);
 
         $response->assertCreated()
@@ -245,17 +346,19 @@ class DocumentUploadTest extends TenantTestCase
     }
 
     /**
-     * Test: Upload only requires authentication
+     * Test: Upload requires OCR bookkeeping entitlement
      */
-    public function test_upload_does_not_require_additional_permission_middleware()
+    public function test_upload_requires_ocr_bookkeeping_entitlement()
     {
+        $this->setOcrBookkeepingEntitlement(false);
+
         $this->fakeSuccessfulOcrResponse();
 
-        $response = $this->uploadDocument(UploadedFile::fake()->image('no-extra-permission.jpg'));
+        $response = $this->uploadDocument(UploadedFile::fake()->image('no-entitlement.jpg'));
 
-        $response->assertCreated();
+        $response->assertStatus(403);
 
-        $this->assertEquals(1, OcrDocument::count());
+        $this->assertEquals(0, OcrDocument::count());
     }
 
     /**

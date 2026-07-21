@@ -9,16 +9,16 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (! Schema::hasTable('ocr_documents')) {
+        if (!Schema::hasTable('ocr_documents')) {
             return;
         }
 
         Schema::table('ocr_documents', function (Blueprint $table) {
-            if (! Schema::hasColumn('ocr_documents', 'customer_id')) {
+            if (!Schema::hasColumn('ocr_documents', 'customer_id')) {
                 $table->unsignedBigInteger('customer_id')->nullable()->after('vendor_name');
             }
 
-            if (! Schema::hasColumn('ocr_documents', 'customer_name')) {
+            if (!Schema::hasColumn('ocr_documents', 'customer_name')) {
                 $table->string('customer_name')->nullable()->after('customer_id');
             }
         });
@@ -36,7 +36,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (! Schema::hasTable('ocr_documents')) {
+        if (!Schema::hasTable('ocr_documents')) {
             return;
         }
 

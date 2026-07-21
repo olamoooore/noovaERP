@@ -2,14 +2,14 @@
 
 namespace Modules\OCRBookkeeping\Models;
 
-use App\Models\Customer;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\Vendor;
 
 /**
  * OCR Vendor Mapping Model
- *
+ * 
  * Stores learned vendor name mappings for intelligent suggestions
  * Improves accuracy over time through usage tracking
  */
@@ -55,9 +55,10 @@ class OcrVendorMapping extends Model
     /**
      * Relationships
      */
+
     public function vendor(): BelongsTo
     {
-        return $this->belongsTo(Customer::class, 'vendor_id');
+        return $this->belongsTo(Vendor::class, 'vendor_id');
     }
 
     /**
@@ -102,6 +103,8 @@ class OcrVendorMapping extends Model
 
     /**
      * Increment usage count and update last used timestamp
+     * 
+     * @return bool
      */
     public function recordUsage(): bool
     {
@@ -113,8 +116,9 @@ class OcrVendorMapping extends Model
 
     /**
      * Update confidence score
-     *
-     * @param  float  $score  The new confidence score (0-1)
+     * 
+     * @param float $score The new confidence score (0-1)
+     * @return bool
      */
     public function updateConfidence(float $score): bool
     {
@@ -129,6 +133,8 @@ class OcrVendorMapping extends Model
 
     /**
      * Check if this mapping has high confidence
+     * 
+     * @return bool
      */
     public function isHighConfidence(): bool
     {
@@ -137,15 +143,15 @@ class OcrVendorMapping extends Model
 
     /**
      * Static helper to normalize vendor name
-     *
-     * @param  string  $name  The vendor name to normalize
+     * 
+     * @param string $name The vendor name to normalize
      * @return string The normalized name
      */
     public static function normalizeName(string $name): string
     {
         // Convert to lowercase
         $normalized = strtolower($name);
-
+        
         // Remove common business suffixes
         $suffixes = [
             ' inc', ' inc.', ' incorporated',
@@ -156,23 +162,23 @@ class OcrVendorMapping extends Model
             ' pte', ' pte.', ' pte ltd', ' pte. ltd.',
             ' sdn bhd', ' sdn. bhd.',
         ];
-
+        
         foreach ($suffixes as $suffix) {
             if (str_ends_with($normalized, $suffix)) {
                 $normalized = substr($normalized, 0, -strlen($suffix));
                 break;
             }
         }
-
+        
         // Remove special characters except spaces
         $normalized = preg_replace('/[^a-z0-9\s]/', '', $normalized);
-
+        
         // Remove extra spaces
         $normalized = preg_replace('/\s+/', ' ', $normalized);
-
+        
         // Trim
         $normalized = trim($normalized);
-
+        
         return $normalized;
     }
 }

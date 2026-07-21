@@ -3,12 +3,12 @@
 namespace Modules\OCRBookkeeping\Services;
 
 use App\Models\Department;
-use App\Models\Location;
 use App\Models\Project;
+use App\Models\Location;
 
 /**
  * Dimension Validation Service
- *
+ * 
  * Validates dimension tags (departments, projects, locations)
  * Ensures dimensions exist and are active
  */
@@ -16,12 +16,13 @@ class DimensionValidationService
 {
     /**
      * Validate dimensions array
-     *
+     * 
+     * @param array|null $dimensions
      * @return array ['valid' => bool, 'errors' => array]
      */
     public function validate(?array $dimensions): array
     {
-        if (! $dimensions) {
+        if (!$dimensions) {
             return ['valid' => true, 'errors' => []];
         }
 
@@ -30,7 +31,7 @@ class DimensionValidationService
         // Validate department
         if (isset($dimensions['department_id'])) {
             $department = Department::active()->find($dimensions['department_id']);
-            if (! $department) {
+            if (!$department) {
                 $errors['department_id'] = 'Invalid or inactive department';
             }
         }
@@ -38,7 +39,7 @@ class DimensionValidationService
         // Validate project
         if (isset($dimensions['project_id'])) {
             $project = Project::active()->find($dimensions['project_id']);
-            if (! $project) {
+            if (!$project) {
                 $errors['project_id'] = 'Invalid or inactive project';
             }
         }
@@ -46,7 +47,7 @@ class DimensionValidationService
         // Validate location
         if (isset($dimensions['location_id'])) {
             $location = Location::active()->find($dimensions['location_id']);
-            if (! $location) {
+            if (!$location) {
                 $errors['location_id'] = 'Invalid or inactive location';
             }
         }
@@ -59,14 +60,16 @@ class DimensionValidationService
 
     /**
      * Validate and throw exception if invalid
-     *
+     * 
+     * @param array|null $dimensions
+     * @return void
      * @throws \Exception
      */
     public function validateOrFail(?array $dimensions): void
     {
         $result = $this->validate($dimensions);
 
-        if (! $result['valid']) {
+        if (!$result['valid']) {
             $errorMessages = implode(', ', $result['errors']);
             throw new \Exception("Dimension validation failed: {$errorMessages}");
         }
@@ -74,10 +77,13 @@ class DimensionValidationService
 
     /**
      * Enrich dimensions with names for display
+     * 
+     * @param array|null $dimensions
+     * @return array|null
      */
     public function enrichDimensions(?array $dimensions): ?array
     {
-        if (! $dimensions) {
+        if (!$dimensions) {
             return null;
         }
 
@@ -112,7 +118,8 @@ class DimensionValidationService
 
     /**
      * Validate line item dimensions
-     *
+     * 
+     * @param array $lineItems
      * @return array ['valid' => bool, 'errors' => array]
      */
     public function validateLineItemDimensions(array $lineItems): array
@@ -122,7 +129,7 @@ class DimensionValidationService
         foreach ($lineItems as $index => $item) {
             if (isset($item['dimensions']) && is_array($item['dimensions'])) {
                 $result = $this->validate($item['dimensions']);
-                if (! $result['valid']) {
+                if (!$result['valid']) {
                     $errors["line_items.{$index}.dimensions"] = $result['errors'];
                 }
             }

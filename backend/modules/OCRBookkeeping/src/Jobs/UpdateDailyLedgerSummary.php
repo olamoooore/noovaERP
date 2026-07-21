@@ -15,7 +15,7 @@ use Stancl\Tenancy\Facades\Tenancy;
 
 /**
  * Update Daily Ledger Summary Job
- *
+ * 
  * Calculates and stores daily ledger summaries for BI/reporting
  * Runs after journal entries are posted
  */
@@ -50,12 +50,12 @@ class UpdateDailyLedgerSummary implements ShouldQueue
     {
         try {
             $tenant = Tenant::find($this->tenantId);
-            if (! $tenant) {
+            if (!$tenant) {
                 throw new \RuntimeException("Tenant {$this->tenantId} not found for daily ledger summary update.");
             }
 
             Tenancy::run($tenant, function () {
-                Log::info('Updating daily ledger summary', [
+                Log::info("Updating daily ledger summary", [
                     'date' => $this->date->format('Y-m-d'),
                     'tenant_id' => $this->tenantId,
                 ]);
@@ -66,14 +66,14 @@ class UpdateDailyLedgerSummary implements ShouldQueue
                 // Calculate summaries by dimensions
                 $this->calculateDimensionSummaries();
 
-                Log::info('Daily ledger summary updated successfully', [
+                Log::info("Daily ledger summary updated successfully", [
                     'date' => $this->date->format('Y-m-d'),
                     'tenant_id' => $this->tenantId,
                 ]);
             });
 
         } catch (\Exception $e) {
-            Log::error('Failed to update daily ledger summary', [
+            Log::error("Failed to update daily ledger summary", [
                 'date' => $this->date->format('Y-m-d'),
                 'tenant_id' => $this->tenantId,
                 'error' => $e->getMessage(),
@@ -150,19 +150,19 @@ class UpdateDailyLedgerSummary implements ShouldQueue
 
         // Group by account and dimensions
         $dimensionGroups = [];
-
+        
         foreach ($entries as $entry) {
             $dimensions = json_decode($entry->dimensions, true);
-
-            if (! $dimensions || empty($dimensions)) {
+            
+            if (!$dimensions || empty($dimensions)) {
                 continue;
             }
 
             // Create a unique key for this account + dimensions combination
             $dimensionsJson = json_encode($dimensions);
-            $key = $entry->account_id.'_'.md5($dimensionsJson);
+            $key = $entry->account_id . '_' . md5($dimensionsJson);
 
-            if (! isset($dimensionGroups[$key])) {
+            if (!isset($dimensionGroups[$key])) {
                 $dimensionGroups[$key] = [
                     'account_id' => $entry->account_id,
                     'account_type' => $entry->account_type,

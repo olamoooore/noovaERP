@@ -2,15 +2,15 @@
 
 namespace Modules\OCRBookkeeping\Models;
 
-use App\Models\ChartOfAccount;
-use App\Models\Customer;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\Customer;
+use App\Models\ChartOfAccount;
 
 /**
  * OCR Account Mapping Model
- *
+ * 
  * Stores learned account mappings based on vendor and description patterns
  * Enables intelligent Chart of Accounts suggestions
  */
@@ -58,6 +58,7 @@ class OcrAccountMapping extends Model
     /**
      * Relationships
      */
+
     public function vendor(): BelongsTo
     {
         return $this->belongsTo(Customer::class, 'vendor_id');
@@ -80,7 +81,7 @@ class OcrAccountMapping extends Model
         if ($vendorId === null) {
             return $query->whereNull('vendor_id');
         }
-
+        
         return $query->where('vendor_id', $vendorId);
     }
 
@@ -130,6 +131,8 @@ class OcrAccountMapping extends Model
 
     /**
      * Increment usage count and update last used timestamp
+     * 
+     * @return bool
      */
     public function recordUsage(): bool
     {
@@ -141,8 +144,9 @@ class OcrAccountMapping extends Model
 
     /**
      * Update confidence score
-     *
-     * @param  float  $score  The new confidence score (0-1)
+     * 
+     * @param float $score The new confidence score (0-1)
+     * @return bool
      */
     public function updateConfidence(float $score): bool
     {
@@ -157,6 +161,8 @@ class OcrAccountMapping extends Model
 
     /**
      * Check if this mapping has high confidence
+     * 
+     * @return bool
      */
     public function isHighConfidence(): bool
     {
@@ -165,12 +171,13 @@ class OcrAccountMapping extends Model
 
     /**
      * Check if description matches this mapping's pattern
-     *
-     * @param  string  $description  The description to check
+     * 
+     * @param string $description The description to check
+     * @return bool
      */
     public function matchesDescription(string $description): bool
     {
-        if (! $this->description_pattern) {
+        if (!$this->description_pattern) {
             return false;
         }
 
@@ -180,13 +187,13 @@ class OcrAccountMapping extends Model
 
     /**
      * Check if description contains any of the mapping's keywords
-     *
-     * @param  string  $description  The description to check
+     * 
+     * @param string $description The description to check
      * @return int Number of matching keywords
      */
     public function countMatchingKeywords(string $description): int
     {
-        if (! $this->keywords || ! is_array($this->keywords)) {
+        if (!$this->keywords || !is_array($this->keywords)) {
             return 0;
         }
 
@@ -204,21 +211,21 @@ class OcrAccountMapping extends Model
 
     /**
      * Static helper to extract keywords from description
-     *
-     * @param  string  $description  The description text
+     * 
+     * @param string $description The description text
      * @return array Array of extracted keywords
      */
     public static function extractKeywords(string $description): array
     {
         // Convert to lowercase
         $text = strtolower($description);
-
+        
         // Remove special characters
         $text = preg_replace('/[^a-z0-9\s]/', ' ', $text);
-
+        
         // Split into words
         $words = preg_split('/\s+/', $text, -1, PREG_SPLIT_NO_EMPTY);
-
+        
         // Common stop words to exclude
         $stopWords = [
             'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
@@ -227,12 +234,12 @@ class OcrAccountMapping extends Model
             'what', 'when', 'where', 'who', 'which', 'why', 'how', 'all', 'each',
             'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such',
         ];
-
+        
         // Filter out stop words and short words
-        $keywords = array_filter($words, function ($word) use ($stopWords) {
-            return strlen($word) > 2 && ! in_array($word, $stopWords);
+        $keywords = array_filter($words, function($word) use ($stopWords) {
+            return strlen($word) > 2 && !in_array($word, $stopWords);
         });
-
+        
         // Remove duplicates and return
         return array_values(array_unique($keywords));
     }
