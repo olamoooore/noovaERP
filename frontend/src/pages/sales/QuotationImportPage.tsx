@@ -29,6 +29,7 @@ const TEMPLATE_COLUMNS = [
   { name: 'quotation_date', required: false, description: 'Quote date (M/D/YYYY or YYYY-MM-DD). Default: today.' },
   { name: 'valid_until', required: false, description: 'Expiration / valid-until date.' },
   { name: 'customer_reference', required: false, description: 'Customer PO / reference number.' },
+  { name: 'invoice_number', required: false, description: 'Link this quotation to an existing invoice by its invoice number.' },
   { name: 'notes', required: false, description: 'Quotation notes (shown on document).' },
   { name: 'terms', required: false, description: 'Payment terms (e.g. Net 30).' },
   { name: 'discount_amount', required: false, description: 'Header-level discount amount. Default: 0' },
@@ -133,8 +134,8 @@ export function QuotationImportPage() {
     const sampleCustomerName = customers?.[0]?.name || 'Your Customer Name'
 
     const sampleRows = [
-      ['QUO-2026-0001', sampleCustomerCode, sampleCustomerName, '7/10/2026', '8/9/2026', 'PO-123', 'Please deliver by end of month', 'Net 30', '0', 'SKU-001', 'Widget A', '10', '50.00', '10', '0'],
-      ['QUO-2026-0001', '', '', '', '', '', '', '', '', 'SKU-002', 'Widget B', '5', '20.00', '10', '0'],
+      ['QUO-2026-0001', sampleCustomerCode, sampleCustomerName, '7/10/2026', '8/9/2026', 'PO-123', 'INV-2026-0001', 'Please deliver by end of month', 'Net 30', '0', 'SKU-001', 'Widget A', '10', '50.00', '10', '0'],
+      ['QUO-2026-0001', '', '', '', '', '', '', '', '', '', 'SKU-002', 'Widget B', '5', '20.00', '10', '0'],
     ].map((row) => row.map(csvValue).join(','))
 
     const csvContent = `${headers}\n${sampleRows.join('\n')}`

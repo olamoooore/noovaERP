@@ -413,6 +413,9 @@ class QuotationController extends Controller
             'expiry_date' => 'valid_until',
             'reference' => 'customer_reference',
             'po_number' => 'customer_reference',
+            'invoice_no' => 'invoice_number',
+            'inv_number' => 'invoice_number',
+            'linked_invoice' => 'invoice_number',
             'sku' => 'product_sku',
             'product_sku' => 'product_sku',
             'item' => 'description',
@@ -560,6 +563,19 @@ class QuotationController extends Controller
 
                 $quotation->refresh();
                 $quotation->calculateTotals();
+
+                // Link to existing invoice if invoice_number is provided
+                $invoiceNumber = trim((string) ($headerRow['invoice_number'] ?? ''));
+                if ($invoiceNumber !== '') {
+                    $invoice = Invoice::where('invoice_number', $invoiceNumber)->first();
+                    if ($invoice) {
+                        $invoice->update(['quotation_id' => $quotation->id]);
+                    } else {
+                        throw new \RuntimeException(
+                            "Invoice number {$invoiceNumber} not found. The quotation was created but not linked to any invoice."
+                        );
+                    }
+                }
 
                 $created++;
             } catch (\Throwable $e) {
