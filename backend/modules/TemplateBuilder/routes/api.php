@@ -38,6 +38,10 @@ Route::get('/purchase-orders/{id}/html', [DocumentRenderController::class, 'purc
     ->middleware($perm('document.view'));
 Route::get('/payments/{id}/pdf', [DocumentRenderController::class, 'paymentReceiptPdf'])
     ->middleware($perm('document.view'));
+Route::get('/delivery-orders/{id}/pdf', [DocumentRenderController::class, 'deliveryOrderPdf'])
+    ->middleware($perm('document.view'));
+Route::get('/customer-statements/{id}/pdf', [DocumentRenderController::class, 'customerStatementPdf'])
+    ->middleware($perm('document.view'));
 
 // ─── Template management (ADR-004 §14) ─────────────────────────────────────
 Route::prefix('template-builder')->group(function () use ($perm) {

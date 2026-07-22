@@ -77,6 +77,8 @@ class TemplateBuilderServiceProvider extends ServiceProvider
             \Modules\TemplateBuilder\Services\DataSource\QuotationDataSource::class,
             \Modules\TemplateBuilder\Services\DataSource\PurchaseOrderDataSource::class,
             \Modules\TemplateBuilder\Services\DataSource\PaymentReceiptDataSource::class,
+            \Modules\TemplateBuilder\Services\DataSource\DeliveryOrderDataSource::class,
+            \Modules\TemplateBuilder\Services\DataSource\CustomerStatementDataSource::class,
         ];
 
         foreach ($sources as $sourceClass) {

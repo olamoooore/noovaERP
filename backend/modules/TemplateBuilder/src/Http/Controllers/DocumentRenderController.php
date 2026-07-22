@@ -46,6 +46,16 @@ class DocumentRenderController extends Controller
         return $this->renderDocument('receipt', $id, $request, 'receipt-'.$id.'.pdf');
     }
 
+    public function deliveryOrderPdf(Request $request, string $id): Response
+    {
+        return $this->renderDocument('delivery_order', $id, $request, 'do-'.$id.'.pdf');
+    }
+
+    public function customerStatementPdf(Request $request, string $id): Response
+    {
+        return $this->renderDocument('customer_statement', $id, $request, 'statement-'.$id.'.pdf');
+    }
+
     private function renderDocument(string $type, string $id, Request $request, ?string $filename, string $format = 'pdf'): Response
     {
         $options = ['format' => $format];

@@ -22,6 +22,8 @@ final class DefaultTemplates
             self::quotation(),
             self::purchaseOrder(),
             self::receipt(),
+            self::deliveryOrder(),
+            self::customerStatement(),
         ];
     }
 
@@ -173,6 +175,110 @@ final class DefaultTemplates
                     ]],
                     ['type' => 'spacer', 'height' => 12],
                     ['type' => 'text', 'size' => 9, 'color' => '#6b7280', 'content' => 'Applied to invoice {{ receipt.invoice_no }}. Thank you for your payment.'],
+                ],
+            ],
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public static function deliveryOrder(): array
+    {
+        return [
+            'document_type' => 'delivery_order',
+            'code' => 'DO-TPL-DEFAULT',
+            'name' => 'Default Delivery Order',
+            'mode' => 'block',
+            'format' => 'A4',
+            'orientation' => 'portrait',
+            'default_font' => 'DejaVu Sans',
+            'status' => 'published',
+            'is_system_default' => true,
+            'layout_config' => [
+                'blocks' => [
+                    ['type' => 'columns', 'gap' => 8, 'children' => [
+                        ['type' => 'text', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div>'],
+                        ['type' => 'text', 'align' => 'right', 'content' => '<div style="font-size:24px;font-weight:bold;color:#111827;">DELIVERY ORDER</div>'],
+                    ]],
+                    ['type' => 'divider'],
+                    ['type' => 'columns', 'gap' => 8, 'children' => [
+                        ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Ship To</b><br/><b>{{ customer.name }}</b><br/><span style="font-size:10px;color:#374151;">{{ delivery_order.shipping_address }}</span><br/><span style="font-size:10px;color:#6b7280;">{{ customer.phone }}</span>'],
+                        ['type' => 'text', 'align' => 'right', 'content' => '<b>DO #:</b> {{ delivery_order.number }}<br/><b>Date:</b> {{ delivery_order.delivery_date }}<br/><b>Expected:</b> {{ delivery_order.expected_date }}<br/><b>Carrier:</b> {{ delivery_order.carrier }}<br/><b>Tracking:</b> {{ delivery_order.tracking_number }}'],
+                    ]],
+                    ['type' => 'spacer', 'height' => 12],
+                    ['type' => 'table', 'source' => 'lines', 'columns' => [
+                        ['label' => '#', 'field' => 'index', 'width' => '5%', 'align' => 'center'],
+                        ['label' => 'SKU', 'field' => 'sku', 'width' => '15%'],
+                        ['label' => 'Description', 'field' => 'description', 'width' => '40%'],
+                        ['label' => 'Ordered', 'field' => 'quantity_ordered', 'width' => '13%', 'align' => 'right'],
+                        ['label' => 'Delivered', 'field' => 'quantity_delivered', 'width' => '13%', 'align' => 'right'],
+                        ['label' => 'UoM', 'field' => 'unit', 'width' => '7%', 'align' => 'center'],
+                        ['label' => 'Lot/Batch', 'field' => 'lot_number', 'width' => '7%'],
+                    ]],
+                    ['type' => 'spacer', 'height' => 16],
+                    ['type' => 'text', 'size' => 9, 'color' => '#6b7280', 'content' => '{{ delivery_order.notes }}'],
+                    ['type' => 'spacer', 'height' => 30],
+                    ['type' => 'columns', 'gap' => 8, 'children' => [
+                        ['type' => 'text', 'content' => '<div style="font-size:9px;color:#6b7280;">Received by (Signature):</div><div style="border-top:1px solid #9ca3af;margin-top:40px;width:200px;"></div>'],
+                        ['type' => 'text', 'content' => '<div style="font-size:9px;color:#6b7280;">Date:</div><div style="border-top:1px solid #9ca3af;margin-top:40px;width:150px;"></div>'],
+                        ['type' => 'text', 'content' => '<div style="font-size:9px;color:#6b7280;">Delivered by (Signature):</div><div style="border-top:1px solid #9ca3af;margin-top:40px;width:200px;"></div>'],
+                    ]],
+                    ['type' => 'spacer', 'height' => 8],
+                    ['type' => 'footer', 'children' => [
+                        ['type' => 'divider'],
+                        ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.name }} · {{ company.email }} · {{ company.phone }}'],
+                    ]],
+                ],
+            ],
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    public static function customerStatement(): array
+    {
+        return [
+            'document_type' => 'customer_statement',
+            'code' => 'STMT-TPL-DEFAULT',
+            'name' => 'Default Customer Statement',
+            'mode' => 'block',
+            'format' => 'A4',
+            'orientation' => 'portrait',
+            'default_font' => 'DejaVu Sans',
+            'status' => 'published',
+            'is_system_default' => true,
+            'layout_config' => [
+                'blocks' => [
+                    ['type' => 'columns', 'gap' => 8, 'children' => [
+                        ['type' => 'text', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div>'],
+                        ['type' => 'text', 'align' => 'right', 'content' => '<div style="font-size:24px;font-weight:bold;color:#111827;">ACCOUNT STATEMENT</div>'],
+                    ]],
+                    ['type' => 'divider'],
+                    ['type' => 'columns', 'gap' => 8, 'children' => [
+                        ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Customer</b><br/><b>{{ customer.name }}</b><br/><span style="font-size:10px;color:#6b7280;">{{ customer.code }} · {{ customer.email }}</span>'],
+                        ['type' => 'text', 'align' => 'right', 'content' => '<b>Statement #:</b> {{ statement.number }}<br/><b>Period:</b> {{ statement.period_start }} to {{ statement.period_end }}<br/><b>Generated:</b> {{ statement.generated_at }}'],
+                    ]],
+                    ['type' => 'spacer', 'height' => 8],
+                    ['type' => 'totals', 'rows' => [
+                        ['label' => 'Opening Balance', 'field' => 'totals.opening_balance', 'format' => 'money'],
+                        ['label' => 'Total Debits', 'field' => 'totals.total_debits', 'format' => 'money'],
+                        ['label' => 'Total Credits', 'field' => 'totals.total_credits', 'format' => 'money'],
+                        ['label' => 'Closing Balance', 'field' => 'totals.closing_balance', 'format' => 'money', 'bold' => true],
+                    ]],
+                    ['type' => 'spacer', 'height' => 12],
+                    ['type' => 'table', 'source' => 'transactions', 'columns' => [
+                        ['label' => '#', 'field' => 'index', 'width' => '5%', 'align' => 'center'],
+                        ['label' => 'Date', 'field' => 'date', 'width' => '12%'],
+                        ['label' => 'Type', 'field' => 'type', 'width' => '13%'],
+                        ['label' => 'Document #', 'field' => 'document_number', 'width' => '15%'],
+                        ['label' => 'Description', 'field' => 'description', 'width' => '25%'],
+                        ['label' => 'Debit', 'field' => 'debit', 'width' => '10%', 'align' => 'right', 'format' => 'money'],
+                        ['label' => 'Credit', 'field' => 'credit', 'width' => '10%', 'align' => 'right', 'format' => 'money'],
+                        ['label' => 'Balance', 'field' => 'balance', 'width' => '10%', 'align' => 'right', 'format' => 'money'],
+                    ]],
+                    ['type' => 'spacer', 'height' => 16],
+                    ['type' => 'footer', 'children' => [
+                        ['type' => 'divider'],
+                        ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.name }} · {{ company.email }} · {{ company.phone }}'],
+                    ]],
                 ],
             ],
         ];

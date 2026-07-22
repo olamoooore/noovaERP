@@ -256,7 +256,7 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
 
     public function activeDefaults(): array
     {
-        $types = ['invoice', 'quotation', 'purchase_order', 'receipt'];
+        $types = ['invoice', 'quotation', 'purchase_order', 'receipt', 'delivery_order', 'customer_statement'];
 
         return collect($types)
             ->mapWithKeys(fn (string $type) => [$type => $this->resolveFor($type)?->id])
