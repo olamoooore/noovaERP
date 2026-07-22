@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Modules\TemplateBuilder\Services\DataSource;
 
 use App\Models\CustomerStatement;
+use App\Models\Invoice;
+use Carbon\Carbon;
 use Modules\TemplateBuilder\Contracts\DataSourceContract;
 
 final class CustomerStatementDataSource implements DataSourceContract
@@ -69,6 +71,7 @@ final class CustomerStatementDataSource implements DataSourceContract
                 'total_credits' => (float) ($payload['total_credits'] ?? 0),
                 'closing_balance' => (float) ($payload['closing_balance'] ?? 0),
             ],
+            'aging' => $this->computeAging($statement),
             'meta' => [
                 'currency_code' => $currencyCode,
                 'currency_symbol' => InvoiceDataSource::currencySymbol($currencyCode),
@@ -106,6 +109,14 @@ final class CustomerStatementDataSource implements DataSourceContract
                 ['token' => 'totals.total_credits', 'label' => 'Total Credits'],
                 ['token' => 'totals.closing_balance', 'label' => 'Closing Balance'],
             ]],
+            ['group' => 'Aging Summary', 'fields' => [
+                ['token' => 'aging.current', 'label' => 'Current'],
+                ['token' => 'aging.days_1_30', 'label' => '1-30 Days'],
+                ['token' => 'aging.days_31_60', 'label' => '31-60 Days'],
+                ['token' => 'aging.days_61_90', 'label' => '61-90 Days'],
+                ['token' => 'aging.days_90_plus', 'label' => '90+ Days'],
+                ['token' => 'aging.total', 'label' => 'Total Outstanding'],
+            ]],
             ['group' => 'Transactions', 'fields' => [
                 ['token' => 'transactions', 'label' => 'Transactions table (binds a Table block)'],
             ]],
@@ -142,7 +153,61 @@ final class CustomerStatementDataSource implements DataSourceContract
                 'total_credits' => 3500.00,
                 'closing_balance' => 9556.00,
             ],
+            'aging' => [
+                'current' => 3000.00,
+                'days_1_30' => 4556.00,
+                'days_31_60' => 2000.00,
+                'days_61_90' => 0.00,
+                'days_90_plus' => 0.00,
+                'total' => 9556.00,
+            ],
             'meta' => ['currency_code' => 'MYR', 'currency_symbol' => 'RM ', 'number_format' => '1,234.56', 'locale' => 'en'],
         ];
+    }
+
+    private function computeAging(CustomerStatement $statement): array
+    {
+        $endDate = Carbon::parse($statement->end_date ?? now());
+        $customerId = $statement->customer_id;
+
+        $buckets = [
+            'current' => 0,
+            'days_1_30' => 0,
+            'days_31_60' => 0,
+            'days_61_90' => 0,
+            'days_90_plus' => 0,
+            'total' => 0,
+        ];
+
+        $invoices = Invoice::where('customer_id', $customerId)
+            ->where('balance', '>', 0)
+            ->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
+            ->get();
+
+        foreach ($invoices as $invoice) {
+            $amount = (float) $invoice->balance;
+            if ($amount <= 0) {
+                continue;
+            }
+
+            $dueDate = Carbon::parse($invoice->due_date);
+            $daysOverdue = $dueDate->diffInDays($endDate, false);
+
+            if ($daysOverdue <= 0) {
+                $buckets['current'] += $amount;
+            } elseif ($daysOverdue <= 30) {
+                $buckets['days_1_30'] += $amount;
+            } elseif ($daysOverdue <= 60) {
+                $buckets['days_31_60'] += $amount;
+            } elseif ($daysOverdue <= 90) {
+                $buckets['days_61_90'] += $amount;
+            } else {
+                $buckets['days_90_plus'] += $amount;
+            }
+
+            $buckets['total'] += $amount;
+        }
+
+        return $buckets;
     }
 }

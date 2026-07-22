@@ -48,8 +48,12 @@ final class DefaultTemplates
                     ]],
                     ['type' => 'divider'],
                     ['type' => 'columns', 'gap' => 8, 'children' => [
-                        ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Bill To</b><br/><b>{{ customer.name }}</b><br/><span style="font-size:10px;color:#374151;">{{ invoice.billing_address }}</span><br/><span style="font-size:10px;color:#6b7280;">{{ customer.email }}</span>'],
+                        ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Bill To</b><br/><b>{{ customer.name }}</b><br/><span style="font-size:10px;color:#374151;">{{ invoice.billing_address }}</span><br/><span style="font-size:10px;color:#6b7280;">{{ customer.email }}</span><br/><span style="font-size:10px;color:#6b7280;">{{ customer.tax_id }}</span>'],
                         ['type' => 'text', 'align' => 'right', 'content' => '<b>Invoice #:</b> {{ invoice.number }}<br/><b>Date:</b> {{ invoice.issue_date }}<br/><b>Due:</b> {{ invoice.due_date }}<br/><b>Reference:</b> {{ invoice.reference }}'],
+                    ]],
+                    ['type' => 'columns', 'gap' => 8, 'children' => [
+                        ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Ship To</b><br/><span style="font-size:10px;color:#374151;">{{ invoice.shipping_address }}</span>'],
+                        ['type' => 'text', 'align' => 'right', 'content' => '{{ invoice.shipping_method }}'],
                     ]],
                     ['type' => 'spacer', 'height' => 12],
                     ['type' => 'table', 'source' => 'lines', 'columns' => [
@@ -60,7 +64,16 @@ final class DefaultTemplates
                         ['label' => 'Amount', 'field' => 'line_total', 'width' => '18%', 'align' => 'right', 'format' => 'money'],
                     ]],
                     ['type' => 'spacer', 'height' => 10],
-                    ['type' => 'conditional', 'condition' => '{{ totals.discount }} > 0', 'children' => [
+                    ['type' => 'conditional', 'condition' => '{{ totals.paid }} > 0', 'children' => [
+                        ['type' => 'totals', 'rows' => [
+                            ['label' => 'Subtotal', 'field' => 'totals.subtotal', 'format' => 'money'],
+                            ['label' => 'Tax', 'field' => 'totals.tax', 'format' => 'money'],
+                            ['label' => 'Total', 'field' => 'totals.total', 'format' => 'money'],
+                            ['label' => 'Amount Paid', 'field' => 'totals.paid', 'format' => 'money'],
+                            ['label' => 'Balance Due', 'field' => 'totals.balance', 'format' => 'money', 'bold' => true],
+                        ]],
+                    ]],
+                    ['type' => 'conditional', 'condition' => '{{ totals.paid }} <= 0 && {{ totals.discount }} > 0', 'children' => [
                         ['type' => 'totals', 'rows' => [
                             ['label' => 'Subtotal', 'field' => 'totals.subtotal', 'format' => 'money'],
                             ['label' => 'Discount', 'field' => 'totals.discount', 'format' => 'money'],
@@ -68,7 +81,7 @@ final class DefaultTemplates
                             ['label' => 'Total Due', 'field' => 'totals.total', 'format' => 'money', 'bold' => true],
                         ]],
                     ]],
-                    ['type' => 'conditional', 'condition' => '{{ totals.discount }} <= 0', 'children' => [
+                    ['type' => 'conditional', 'condition' => '{{ totals.paid }} <= 0 && {{ totals.discount }} <= 0', 'children' => [
                         ['type' => 'totals', 'rows' => [
                             ['label' => 'Subtotal', 'field' => 'totals.subtotal', 'format' => 'money'],
                             ['label' => 'Tax', 'field' => 'totals.tax', 'format' => 'money'],
@@ -202,7 +215,7 @@ final class DefaultTemplates
                     ['type' => 'divider'],
                     ['type' => 'columns', 'gap' => 8, 'children' => [
                         ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Ship To</b><br/><b>{{ customer.name }}</b><br/><span style="font-size:10px;color:#374151;">{{ delivery_order.shipping_address }}</span><br/><span style="font-size:10px;color:#6b7280;">{{ customer.phone }}</span>'],
-                        ['type' => 'text', 'align' => 'right', 'content' => '<b>DO #:</b> {{ delivery_order.number }}<br/><b>Date:</b> {{ delivery_order.delivery_date }}<br/><b>Expected:</b> {{ delivery_order.expected_date }}<br/><b>Carrier:</b> {{ delivery_order.carrier }}<br/><b>Tracking:</b> {{ delivery_order.tracking_number }}'],
+                        ['type' => 'text', 'align' => 'right', 'content' => '<b>DO #:</b> {{ delivery_order.number }}<br/><b>Date:</b> {{ delivery_order.delivery_date }}<br/><b>Expected:</b> {{ delivery_order.expected_date }}<br/><b>Carrier:</b> {{ delivery_order.carrier }}<br/><b>Tracking:</b> {{ delivery_order.tracking_number }}<br/><b>Warehouse:</b> {{ warehouse.name }}<br/><b>SO Ref:</b> {{ sales_order.number }}'],
                     ]],
                     ['type' => 'spacer', 'height' => 12],
                     ['type' => 'table', 'source' => 'lines', 'columns' => [
@@ -262,6 +275,16 @@ final class DefaultTemplates
                         ['label' => 'Total Debits', 'field' => 'totals.total_debits', 'format' => 'money'],
                         ['label' => 'Total Credits', 'field' => 'totals.total_credits', 'format' => 'money'],
                         ['label' => 'Closing Balance', 'field' => 'totals.closing_balance', 'format' => 'money', 'bold' => true],
+                    ]],
+                    ['type' => 'spacer', 'height' => 8],
+                    ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Aging Summary</b>'],
+                    ['type' => 'columns', 'gap' => 4, 'children' => [
+                        ['type' => 'text', 'align' => 'center', 'content' => '<div style="font-size:8px;color:#6b7280;">Current</div><div style="font-size:11px;font-weight:bold;">{{ aging.current | money }}</div>'],
+                        ['type' => 'text', 'align' => 'center', 'content' => '<div style="font-size:8px;color:#6b7280;">1-30</div><div style="font-size:11px;font-weight:bold;">{{ aging.days_1_30 | money }}</div>'],
+                        ['type' => 'text', 'align' => 'center', 'content' => '<div style="font-size:8px;color:#6b7280;">31-60</div><div style="font-size:11px;font-weight:bold;">{{ aging.days_31_60 | money }}</div>'],
+                        ['type' => 'text', 'align' => 'center', 'content' => '<div style="font-size:8px;color:#6b7280;">61-90</div><div style="font-size:11px;font-weight:bold;">{{ aging.days_61_90 | money }}</div>'],
+                        ['type' => 'text', 'align' => 'center', 'content' => '<div style="font-size:8px;color:#6b7280;">90+</div><div style="font-size:11px;font-weight:bold;color:#dc2626;">{{ aging.days_90_plus | money }}</div>'],
+                        ['type' => 'text', 'align' => 'center', 'content' => '<div style="font-size:8px;color:#6b7280;">Total</div><div style="font-size:11px;font-weight:bold;">{{ aging.total | money }}</div>'],
                     ]],
                     ['type' => 'spacer', 'height' => 12],
                     ['type' => 'table', 'source' => 'transactions', 'columns' => [
