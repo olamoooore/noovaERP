@@ -844,4 +844,45 @@ class CustomerController extends Controller
             ], 500);
         }
     }
+
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer',
+        ]);
+
+        $ids = $validated['ids'];
+        $customers = Customer::whereIn('id', $ids)->get();
+        $deletedIds = [];
+        $skipped = [];
+
+        foreach ($customers as $customer) {
+            $hasInvoices = \App\Models\Invoice::where('customer_id', $customer->id)->exists();
+            $hasQuotations = \App\Models\Quotation::where('customer_id', $customer->id)->exists();
+
+            if ($hasInvoices || $hasQuotations) {
+                $skipped[] = ['id' => $customer->id, 'reason' => 'Customer has associated invoices or quotations'];
+                continue;
+            }
+
+            try {
+                $customer->delete();
+                $deletedIds[] = $customer->id;
+            } catch (\Throwable $e) {
+                $skipped[] = ['id' => $customer->id, 'reason' => $e->getMessage()];
+            }
+        }
+
+        $notFoundIds = array_values(array_diff($ids, $customers->pluck('id')->toArray()));
+        foreach ($notFoundIds as $notFoundId) {
+            $skipped[] = ['id' => $notFoundId, 'reason' => 'Not found'];
+        }
+
+        return response()->json([
+            'message' => count($deletedIds) . ' customer(s) deleted.',
+            'deleted' => $deletedIds,
+            'skipped' => $skipped,
+        ]);
+    }
 }

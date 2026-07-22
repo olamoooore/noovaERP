@@ -120,6 +120,7 @@ export function CustomersPage() {
   const [page, setPage] = useState(1)
   const [editMode, setEditMode] = useState(false)
   const [formData, setFormData] = useState<CustomerFormData>(initialFormData)
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
 
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -235,6 +236,42 @@ export function CustomersPage() {
       toast({ variant: 'destructive', title: 'Failed to delete customer' })
     },
   })
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const response = await api.post('/customers/bulk-delete', { ids })
+      return response.data
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] })
+      setSelectedIds([])
+      toast({
+        title: `${data.deleted?.length || 0} customer(s) deleted`,
+        description: data.skipped?.length ? `${data.skipped.length} skipped (has invoices/quotations)` : undefined,
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Bulk delete failed',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  const handleBulkDelete = () => {
+    if (selectedIds.length === 0) return
+    if (!window.confirm(`Delete ${selectedIds.length} customer(s)? Customers with invoices or quotations will be skipped.`)) return
+    bulkDeleteMutation.mutate(selectedIds)
+  }
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id])
+  }
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => prev.length === customers.length ? [] : customers.map((c: Customer) => c.id))
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -617,9 +654,27 @@ export function CustomersPage() {
               <Icon icon="solar:refresh-bold" className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : (
+            <>
+              {selectedIds.length > 0 && (
+                <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-2">
+                  <span className="text-sm font-medium">{selectedIds.length} customer(s) selected</span>
+                  <Button size="sm" variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleteMutation.isPending}>
+                    <Icon icon="solar:trash-bin-trash-bold" className="mr-2 h-4 w-4" />
+                    Delete Selected
+                  </Button>
+                </div>
+              )}
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[40px]">
+                    <input
+                      type="checkbox"
+                      checked={customers.length > 0 && selectedIds.length === customers.length}
+                      onChange={toggleSelectAll}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                  </TableHead>
                   <TableHead>Code</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Type</TableHead>
@@ -634,7 +689,7 @@ export function CustomersPage() {
               <TableBody>
                 {customers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
                       No customers found
                     </TableCell>
                   </TableRow>
@@ -645,6 +700,14 @@ export function CustomersPage() {
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => navigate(`/customers/${customer.id}`)}
                     >
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(customer.id)}
+                          onChange={() => toggleSelect(customer.id)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                      </TableCell>
                       <TableCell className="font-mono text-sm">{customer.code || '-'}</TableCell>
                       <TableCell>
                         <div>
@@ -703,6 +766,7 @@ export function CustomersPage() {
                 )}
               </TableBody>
             </Table>
+            </>
           )}
 
           {/* Pagination */}

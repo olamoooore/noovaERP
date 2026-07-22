@@ -651,4 +651,37 @@ class QuotationController extends Controller
             return null;
         }
     }
+
+    public function bulkDestroy(\Illuminate\Http\Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer',
+        ]);
+
+        $ids = $validated['ids'];
+        $deletable = Quotation::whereIn('id', $ids)->whereIn('status', ['draft', 'sent'])->get();
+        $deletedIds = [];
+        $skipped = [];
+
+        foreach ($deletable as $quotation) {
+            try {
+                $quotation->delete();
+                $deletedIds[] = $quotation->id;
+            } catch (\Throwable $e) {
+                $skipped[] = ['id' => $quotation->id, 'reason' => $e->getMessage()];
+            }
+        }
+
+        $notFoundIds = array_values(array_diff($ids, $deletable->pluck('id')->toArray()));
+        foreach ($notFoundIds as $notFoundId) {
+            $skipped[] = ['id' => $notFoundId, 'reason' => 'Not found or not a draft/sent quotation'];
+        }
+
+        return response()->json([
+            'message' => count($deletedIds) . ' quotation(s) deleted.',
+            'deleted' => $deletedIds,
+            'skipped' => $skipped,
+        ]);
+    }
 }

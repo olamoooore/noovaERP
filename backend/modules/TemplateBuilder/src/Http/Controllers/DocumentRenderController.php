@@ -51,6 +51,11 @@ class DocumentRenderController extends Controller
         return $this->renderDocument('delivery_order', $id, $request, 'do-'.$id.'.pdf');
     }
 
+    public function quotationPdf(Request $request, string $id): Response
+    {
+        return $this->renderDocument('quotation', $id, $request, 'quotation-'.$id.'.pdf');
+    }
+
     public function customerStatementPdf(Request $request, string $id): Response
     {
         return $this->renderDocument('customer_statement', $id, $request, 'statement-'.$id.'.pdf');

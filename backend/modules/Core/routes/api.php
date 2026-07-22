@@ -152,6 +152,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::get('customers/statistics', [CustomerController::class, 'statistics']);
     Route::get('customers/search', [CustomerController::class, 'search']);
     Route::post('customers/import', [CustomersController::class, 'import']);
+    Route::post('customers/bulk-delete', [CustomerController::class, 'bulkDestroy']);
 
     // Customers - resource routes
     Route::apiResource('customers', CustomerController::class);
@@ -179,7 +180,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
         // Quotations
         Route::post('/quotations/import', [QuotationController::class, 'import']);
-        Route::get('/quotations/{id}/pdf', [QuotationController::class, 'pdf']);
+        Route::post('/quotations/bulk-delete', [QuotationController::class, 'bulkDestroy']);
         Route::apiResource('quotations', QuotationController::class);
         Route::post('/quotations/{id}/confirm', [QuotationController::class, 'confirm']);
         Route::post('/quotations/{id}/create-invoice', [QuotationController::class, 'createInvoice']);

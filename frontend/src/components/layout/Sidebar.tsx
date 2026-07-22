@@ -220,6 +220,11 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:document-text-bold-duotone',
       },
       {
+        title: 'Customers',
+        href: '/customers',
+        icon: 'solar:users-group-rounded-bold-duotone',
+      },
+      {
         title: 'Customer Invoices',
         href: '/accounting/customers/bills',
         icon: 'solar:bill-list-bold-duotone',

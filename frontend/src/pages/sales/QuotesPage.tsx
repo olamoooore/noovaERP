@@ -19,6 +19,7 @@ export function QuotesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(1)
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
 
   const queryParams = new URLSearchParams()
   queryParams.set('per_page', String(PER_PAGE))
@@ -78,6 +79,45 @@ export function QuotesPage() {
     if (!window.confirm(`Delete quotation ${quoteNumber}? This action cannot be undone.`)) return
     deleteMutation.mutate(quoteId)
   }
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const response = await api.post('/quotations/bulk-delete', { ids })
+      return response.data
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['quotations'] })
+      setSelectedIds([])
+      toast({
+        title: `${data.deleted?.length || 0} quotation(s) deleted`,
+        description: data.skipped?.length ? `${data.skipped.length} skipped (confirmed/cancelled)` : undefined,
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Bulk delete failed',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  const handleBulkDelete = () => {
+    if (selectedIds.length === 0) return
+    if (!window.confirm(`Delete ${selectedIds.length} quotation(s)? Only draft and sent quotations will be deleted.`)) return
+    bulkDeleteMutation.mutate(selectedIds)
+  }
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id])
+  }
+
+  const toggleSelectAll = () => {
+    const deletableIds = quotes.filter((q: any) => q.status === 'draft' || q.status === 'sent').map((q: any) => q.id)
+    setSelectedIds((prev) => prev.length === deletableIds.length ? [] : deletableIds)
+  }
+
+  const allDeletableSelected = quotes.length > 0 && quotes.filter((q: any) => q.status === 'draft' || q.status === 'sent').every((q: any) => selectedIds.includes(q.id))
 
   const formatCurrency = (amount: number | string) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount || 0))
@@ -168,10 +208,27 @@ export function QuotesPage() {
             </div>
           ) : (
             <>
+              {selectedIds.length > 0 && (
+                <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-2">
+                  <span className="text-sm font-medium">{selectedIds.length} quotation(s) selected</span>
+                  <Button size="sm" variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleteMutation.isPending}>
+                    <Icon icon="solar:trash-bin-trash-bold" className="mr-2 h-4 w-4" />
+                    Delete Selected
+                  </Button>
+                </div>
+              )}
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[40px]">
+                        <input
+                          type="checkbox"
+                          checked={allDeletableSelected}
+                          onChange={toggleSelectAll}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                      </TableHead>
                       <TableHead>Quote #</TableHead>
                       <TableHead>Customer</TableHead>
                       <TableHead>Quote Date</TableHead>
@@ -185,6 +242,16 @@ export function QuotesPage() {
                   <TableBody>
                     {quotes.map((quote: any) => (
                       <TableRow key={quote.id} className="hover:bg-accent/50">
+                        <TableCell>
+                          {(quote.status === 'draft' || quote.status === 'sent') && (
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.includes(quote.id)}
+                              onChange={() => toggleSelect(quote.id)}
+                              className="h-4 w-4 rounded border-gray-300"
+                            />
+                          )}
+                        </TableCell>
                         <TableCell className="font-medium">{quote.quotation_number}</TableCell>
                         <TableCell>
                           <div>
