@@ -401,13 +401,13 @@ export const CustomerInvoiceDetail: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {invoice.billing_address_snapshot && (
                     <div className="rounded-lg border p-4 bg-muted/20">
-                      <p className="text-sm text-muted-foreground mb-2">Billing Address Snapshot</p>
+                      <p className="text-sm text-muted-foreground mb-2">Billing Address {invoice.billing_contact ? `(Contact: ${invoice.billing_contact.name})` : ''}</p>
                       <p className="text-sm whitespace-pre-wrap">{formatSnapshotAddress(invoice.billing_address_snapshot)}</p>
                     </div>
                   )}
                   {invoice.shipping_address_snapshot && (
                     <div className="rounded-lg border p-4 bg-muted/20">
-                      <p className="text-sm text-muted-foreground mb-2">Shipping Address Snapshot</p>
+                      <p className="text-sm text-muted-foreground mb-2">Delivery Address {invoice.shipping_contact ? `(Contact: ${invoice.shipping_contact.name})` : ''}</p>
                       <p className="text-sm whitespace-pre-wrap">{formatSnapshotAddress(invoice.shipping_address_snapshot)}</p>
                     </div>
                   )}

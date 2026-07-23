@@ -55,6 +55,13 @@ interface CustomerFormData {
   website: string
   billing_address: string
   shipping_address: string
+  road_number: string
+  road_name: string
+  level_unit: string
+  building_name: string
+  state: string
+  zip_code: string
+  country: string
   credit_limit: string
   payment_terms: string
   preferred_contact: string
@@ -75,6 +82,13 @@ const initialFormData: CustomerFormData = {
   website: '',
   billing_address: '',
   shipping_address: '',
+  road_number: '',
+  road_name: '',
+  level_unit: '',
+  building_name: '',
+  state: '',
+  zip_code: '',
+  country: '',
   credit_limit: '',
   payment_terms: '30',
   preferred_contact: 'email',
@@ -302,6 +316,13 @@ export function CustomersPage() {
         website: customerDetail.website || '',
         billing_address: formatAddress(customerDetail.billing_address),
         shipping_address: formatAddress(customerDetail.shipping_address),
+        road_number: customerDetail.road_number || '',
+        road_name: customerDetail.road_name || '',
+        level_unit: customerDetail.level_unit || '',
+        building_name: customerDetail.building_name || '',
+        state: customerDetail.state || '',
+        zip_code: customerDetail.zip_code || '',
+        country: customerDetail.country || '',
         credit_limit: customerDetail.credit_limit?.toString() || '',
         payment_terms: customerDetail.payment_terms?.toString() || '30',
         preferred_contact: customerDetail.preferred_contact || 'email',
@@ -473,22 +494,93 @@ export function CustomersPage() {
                 </TabsContent>
 
                 <TabsContent value="addresses" className="space-y-4 mt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="road_number">Road Number</Label>
+                      <Input
+                        id="road_number"
+                        value={formData.road_number}
+                        onChange={(e) => setFormData({ ...formData, road_number: e.target.value })}
+                        placeholder="e.g. 123"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="road_name">Road Name</Label>
+                      <Input
+                        id="road_name"
+                        value={formData.road_name}
+                        onChange={(e) => setFormData({ ...formData, road_name: e.target.value })}
+                        placeholder="e.g. Orchard Road"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="level_unit">Level & Unit</Label>
+                      <Input
+                        id="level_unit"
+                        value={formData.level_unit}
+                        onChange={(e) => setFormData({ ...formData, level_unit: e.target.value })}
+                        placeholder="e.g. #12-34"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="building_name">Building Name</Label>
+                      <Input
+                        id="building_name"
+                        value={formData.building_name}
+                        onChange={(e) => setFormData({ ...formData, building_name: e.target.value })}
+                        placeholder="e.g. Marina Bay Sands"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="state">State</Label>
+                      <Input
+                        id="state"
+                        value={formData.state}
+                        onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                        placeholder="e.g. Singapore"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="zip_code">ZIP / Postal Code</Label>
+                      <Input
+                        id="zip_code"
+                        value={formData.zip_code}
+                        onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
+                        placeholder="e.g. 018956"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="country">Country</Label>
+                      <Input
+                        id="country"
+                        value={formData.country}
+                        onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                        placeholder="e.g. Singapore"
+                      />
+                    </div>
+                  </div>
                   <div className="space-y-2">
-                    <Label htmlFor="billing_address">Billing Address</Label>
+                    <Label htmlFor="billing_address">Billing Address (full text)</Label>
                     <Textarea
                       id="billing_address"
-                      rows={3}
+                      rows={2}
                       value={formData.billing_address}
                       onChange={(e) => setFormData({ ...formData, billing_address: e.target.value })}
+                      placeholder="Auto-populated from structured fields, or enter manually"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="shipping_address">Shipping Address</Label>
+                    <Label htmlFor="shipping_address">Shipping Address (full text)</Label>
                     <Textarea
                       id="shipping_address"
-                      rows={3}
+                      rows={2}
                       value={formData.shipping_address}
                       onChange={(e) => setFormData({ ...formData, shipping_address: e.target.value })}
+                      placeholder="Auto-populated from structured fields, or enter manually"
                     />
                   </div>
                 </TabsContent>

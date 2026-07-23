@@ -103,6 +103,15 @@ class CustomerController extends Controller
             'billing_address' => 'nullable|string',
             'shipping_address' => 'nullable|string',
 
+            // Structured address fields
+            'road_number' => 'nullable|string|max:50',
+            'road_name' => 'nullable|string|max:200',
+            'level_unit' => 'nullable|string|max:50',
+            'building_name' => 'nullable|string|max:200',
+            'state' => 'nullable|string|max:100',
+            'zip_code' => 'nullable|string|max:20',
+            'country' => 'nullable|string|max:100',
+
             // Financial
             'credit_limit' => 'nullable|numeric|min:0',
             'payment_terms' => 'nullable|integer|min:0',
@@ -233,6 +242,15 @@ class CustomerController extends Controller
             // Addresses (legacy)
             'billing_address' => 'nullable|string',
             'shipping_address' => 'nullable|string',
+
+            // Structured address fields
+            'road_number' => 'nullable|string|max:50',
+            'road_name' => 'nullable|string|max:200',
+            'level_unit' => 'nullable|string|max:50',
+            'building_name' => 'nullable|string|max:200',
+            'state' => 'nullable|string|max:100',
+            'zip_code' => 'nullable|string|max:20',
+            'country' => 'nullable|string|max:100',
 
             // Financial
             'credit_limit' => 'nullable|numeric|min:0',

@@ -77,6 +77,8 @@ class InvoiceController extends Controller
             'notes' => 'nullable|string',
             'terms' => 'nullable|string',
             'discount_amount' => 'nullable|numeric|min:0',
+            'billing_contact_id' => 'nullable|exists:core_contacts,id',
+            'shipping_contact_id' => 'nullable|exists:core_contacts,id',
             'lines' => 'required|array|min:1',
             'lines.*.product_id' => 'nullable|exists:products,id',
             'lines.*.description' => 'required|string',
@@ -208,7 +210,7 @@ class InvoiceController extends Controller
 
     public function show($id)
     {
-        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments'])->find($id);
+        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact'])->find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);

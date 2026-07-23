@@ -208,6 +208,8 @@ export const CreateInvoicePage: React.FC = () => {
   const [patientName, setPatientName] = useState('');
   const [costCenterId, setCostCenterId] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
+  const [billingContactId, setBillingContactId] = useState('');
+  const [shippingContactId, setShippingContactId] = useState('');
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
@@ -234,6 +236,8 @@ export const CreateInvoicePage: React.FC = () => {
     },
     enabled: Boolean(customerId),
   });
+
+  const customerContacts = (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? []) as CustomerContact[];
 
   const { data: products } = useQuery({
     queryKey: ['products-list'],
@@ -266,6 +270,14 @@ export const CreateInvoicePage: React.FC = () => {
       company_registration_number: selectedCustomer.company_registration_number ?? '',
       tax_registration_number: selectedCustomer.tax_number ?? '',
     });
+
+    const contacts = customerContacts;
+    const primaryIdx = contacts.findIndex((c) => c.is_primary);
+    const defaultIdx = primaryIdx >= 0 ? primaryIdx : 0;
+    if (contacts.length > 0) {
+      setBillingContactId(String((contacts[defaultIdx] as any)?.id ?? ''));
+      setShippingContactId(String((contacts[defaultIdx] as any)?.id ?? ''));
+    }
   }, [selectedCustomer]);
 
   const createMutation = useMutation({
@@ -484,6 +496,8 @@ export const CreateInvoicePage: React.FC = () => {
       patient_name: patientName || undefined,
       cost_center_id: costCenterId || undefined,
       delivery_date: deliveryDate || undefined,
+      billing_contact_id: billingContactId || undefined,
+      shipping_contact_id: shippingContactId || undefined,
       notes: notes || undefined,
       terms: terms || undefined,
       discount_amount: documentDiscountAmount || 0,
@@ -774,6 +788,45 @@ export const CreateInvoicePage: React.FC = () => {
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                     placeholder="VAT / GST / TIN"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Billing Address Contact</label>
+                  <select
+                    value={billingContactId}
+                    onChange={(e) => {
+                      setBillingContactId(e.target.value);
+                      const contact = customerContacts.find((c: any) => String((c as any).id) === e.target.value);
+                      if (contact) {
+                        updateDocumentSnapshot('attention_to', contact.name ?? '');
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  >
+                    <option value="">Select contact...</option>
+                    {customerContacts.map((c: any, i: number) => (
+                      <option key={c.id ?? i} value={c.id ?? ''}>
+                        {c.name || `Contact ${i + 1}`} {c.is_primary ? '(Primary)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Delivery Address Contact</label>
+                  <select
+                    value={shippingContactId}
+                    onChange={(e) => setShippingContactId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  >
+                    <option value="">Select contact...</option>
+                    {customerContacts.map((c: any, i: number) => (
+                      <option key={c.id ?? i} value={c.id ?? ''}>
+                        {c.name || `Contact ${i + 1}`} {c.is_primary ? '(Primary)' : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
