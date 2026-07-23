@@ -70,6 +70,8 @@ class Invoice extends Model
         'po_number',
         'doctor_contact_id',
         'requestor_contact_id',
+        'billing_contact_id',
+        'shipping_contact_id',
         'internal_reference',
         'attention_to',
         'contact_email',
@@ -196,6 +198,16 @@ class Invoice extends Model
     public function requestor()
     {
         return $this->belongsTo(\Modules\Contact\Models\CoreContact::class, 'requestor_contact_id');
+    }
+
+    public function billingContact()
+    {
+        return $this->belongsTo(\Modules\Contact\Models\CoreContact::class, 'billing_contact_id');
+    }
+
+    public function shippingContact()
+    {
+        return $this->belongsTo(\Modules\Contact\Models\CoreContact::class, 'shipping_contact_id');
     }
 
     public static function generateInvoiceNumber(): string

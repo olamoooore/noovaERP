@@ -160,9 +160,21 @@ final class MergeFieldResolver
         try {
             $date = \Illuminate\Support\Carbon::parse($value);
 
-            return $date->format($format ?: 'Y-m-d');
+            // Use explicit format, or fall back to tenant-configured format, or Y-m-d
+            $resolvedFormat = $format ?: $this->getConfiguredDateFormat();
+
+            return $date->format($resolvedFormat);
         } catch (\Throwable $e) {
             return (string) $value;
+        }
+    }
+
+    private function getConfiguredDateFormat(): string
+    {
+        try {
+            return \App\Models\Setting::getValue('template_date_format', 'Y-m-d');
+        } catch (\Throwable $e) {
+            return 'Y-m-d';
         }
     }
 }

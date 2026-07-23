@@ -33,6 +33,13 @@ class Customer extends Model
         // Addresses (legacy - use customer_addresses for multiple)
         'billing_address',
         'shipping_address',
+        'road_number',
+        'road_name',
+        'level_unit',
+        'building_name',
+        'state',
+        'zip_code',
+        'country',
 
         // Financial
         'credit_limit',
@@ -326,6 +333,26 @@ class Customer extends Model
         }
 
         return null;
+    }
+
+    /**
+     * Build a formatted address string from structured fields.
+     */
+    public function getFormattedAddressAttribute(): string
+    {
+        $parts = array_filter([
+            trim(($this->level_unit ?? '') . ' ' . ($this->building_name ?? '')),
+            trim(($this->road_number ?? '') . ' ' . ($this->road_name ?? '')),
+            $this->state,
+            $this->zip_code,
+            $this->country,
+        ], fn ($v) => $v !== '' && $v !== null);
+
+        if (count($parts) > 0) {
+            return implode("\n", $parts);
+        }
+
+        return $this->billing_address ?? '';
     }
 
     /**

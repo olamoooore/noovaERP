@@ -526,8 +526,10 @@ class CompanySettingsController extends Controller
     public function documentFormats(): JsonResponse
     {
         $service = app(\App\Services\DocumentNumberingService::class);
+        $formats = $service->getAllFormats();
+        $formats['date_format'] = \App\Models\Setting::getValue('template_date_format', 'Y-m-d');
 
-        return response()->json($service->getAllFormats());
+        return response()->json($formats);
     }
 
     public function updateDocumentFormats(Request $request): JsonResponse
@@ -536,6 +538,7 @@ class CompanySettingsController extends Controller
             'invoice' => 'nullable|string|max:100',
             'quotation' => 'nullable|string|max:100',
             'delivery_order' => 'nullable|string|max:100',
+            'date_format' => 'nullable|string|in:d/m/Y,m/d/Y,Y-m-d,dd/mm/yy,mm/dd/yy',
         ]);
 
         $service = app(\App\Services\DocumentNumberingService::class);
@@ -546,9 +549,14 @@ class CompanySettingsController extends Controller
             }
         }
 
+        if (isset($validated['date_format'])) {
+            \App\Models\Setting::setValue('template_date_format', $validated['date_format']);
+        }
+
         return response()->json([
             'message' => 'Document number formats updated.',
             'formats' => $service->getAllFormats(),
+            'date_format' => \App\Models\Setting::getValue('template_date_format', 'Y-m-d'),
         ]);
     }
 }
