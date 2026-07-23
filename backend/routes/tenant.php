@@ -136,6 +136,9 @@ Route::middleware([
         Route::post('/bill-payments/{id}/unapply', [\App\Http\Controllers\Api\PaymentCorrectionsController::class, 'unapplyBillPayment']);
     });
 
+    // File upload
+    Route::post('/upload', [\App\Http\Controllers\Api\UploadController::class, 'store']);
+
     // Tenant user management
     Route::prefix('tenant-users')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\TenantUserController::class, 'index']);

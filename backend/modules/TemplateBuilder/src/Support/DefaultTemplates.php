@@ -43,7 +43,10 @@ final class DefaultTemplates
             'layout_config' => [
                 'blocks' => [
                     ['type' => 'columns', 'gap' => 8, 'children' => [
-                        ['type' => 'text', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div>'],
+                        ['type' => 'columns', 'gap' => 4, 'children' => [
+                            ['type' => 'image', 'url' => '{{ company.logo_url }}', 'width' => 120, 'align' => 'left'],
+                            ['type' => 'text', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div><div style="font-size:10px;color:#6b7280;">{{ company.website }}</div>'],
+                        ]],
                         ['type' => 'text', 'align' => 'right', 'content' => '<div style="font-size:24px;font-weight:bold;color:#111827;">INVOICE</div><div style="font-size:10px;color:#6b7280;">{{ company.email }} · {{ company.phone }}</div>'],
                     ]],
                     ['type' => 'divider'],
@@ -93,7 +96,7 @@ final class DefaultTemplates
                     ['type' => 'spacer', 'height' => 8],
                     ['type' => 'footer', 'children' => [
                         ['type' => 'divider'],
-                        ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.name }} · {{ company.email }} · {{ company.phone }}'],
+                        ['type' => 'text', 'align' => 'center', 'size' => 9, 'color' => '#9ca3af', 'content' => '{{ company.name }} · GST Reg: {{ company.tax_id }} · {{ company.email }} · {{ company.phone }} · {{ company.website }}'],
                     ]],
                 ],
             ],
@@ -130,7 +133,10 @@ final class DefaultTemplates
             'layout_config' => [
                 'blocks' => [
                     ['type' => 'columns', 'gap' => 8, 'children' => [
-                        ['type' => 'text', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div>'],
+                        ['type' => 'columns', 'gap' => 4, 'children' => [
+                            ['type' => 'image', 'url' => '{{ company.logo_url }}', 'width' => 120, 'align' => 'left'],
+                            ['type' => 'text', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div><div style="font-size:10px;color:#6b7280;">{{ company.website }}</div>'],
+                        ]],
                         ['type' => 'text', 'align' => 'right', 'content' => '<div style="font-size:24px;font-weight:bold;color:#111827;">PURCHASE ORDER</div>'],
                     ]],
                     ['type' => 'divider'],
@@ -175,7 +181,8 @@ final class DefaultTemplates
             'is_system_default' => true,
             'layout_config' => [
                 'blocks' => [
-                    ['type' => 'text', 'align' => 'center', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div>'],
+                    ['type' => 'image', 'url' => '{{ company.logo_url }}', 'width' => 120, 'align' => 'center'],
+                    ['type' => 'text', 'align' => 'center', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div><div style="font-size:10px;color:#6b7280;">{{ company.website }}</div>'],
                     ['type' => 'divider'],
                     ['type' => 'text', 'align' => 'center', 'content' => '<div style="font-size:22px;font-weight:bold;">PAYMENT RECEIPT</div>'],
                     ['type' => 'spacer', 'height' => 10],
@@ -209,7 +216,10 @@ final class DefaultTemplates
             'layout_config' => [
                 'blocks' => [
                     ['type' => 'columns', 'gap' => 8, 'children' => [
-                        ['type' => 'text', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div>'],
+                        ['type' => 'columns', 'gap' => 4, 'children' => [
+                            ['type' => 'image', 'url' => '{{ company.logo_url }}', 'width' => 120, 'align' => 'left'],
+                            ['type' => 'text', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div><div style="font-size:10px;color:#6b7280;">{{ company.website }}</div>'],
+                        ]],
                         ['type' => 'text', 'align' => 'right', 'content' => '<div style="font-size:24px;font-weight:bold;color:#111827;">DELIVERY ORDER</div>'],
                     ]],
                     ['type' => 'divider'],
@@ -261,7 +271,10 @@ final class DefaultTemplates
             'layout_config' => [
                 'blocks' => [
                     ['type' => 'columns', 'gap' => 8, 'children' => [
-                        ['type' => 'text', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div>'],
+                        ['type' => 'columns', 'gap' => 4, 'children' => [
+                            ['type' => 'image', 'url' => '{{ company.logo_url }}', 'width' => 120, 'align' => 'left'],
+                            ['type' => 'text', 'content' => '<div style="font-size:20px;font-weight:bold;color:#111827;">{{ company.name }}</div><div style="font-size:10px;color:#6b7280;">{{ company.address }}</div><div style="font-size:10px;color:#6b7280;">{{ company.website }}</div>'],
+                        ]],
                         ['type' => 'text', 'align' => 'right', 'content' => '<div style="font-size:24px;font-weight:bold;color:#111827;">ACCOUNT STATEMENT</div>'],
                     ]],
                     ['type' => 'divider'],

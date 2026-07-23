@@ -377,7 +377,7 @@ export default function CompanySettingsPage() {
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="company_logo_url">Company Logo URL</Label>
+                  <Label htmlFor="company_logo_url">Company Logo</Label>
                   <div className="flex items-center gap-3">
                     <Input
                       id="company_logo_url"
@@ -385,7 +385,38 @@ export default function CompanySettingsPage() {
                       type="url"
                       defaultValue={settings?.company_logo_url || ''}
                       placeholder="https://www.example.com/logo.png"
+                      className="flex-1"
                     />
+                    <span className="text-xs text-muted-foreground">or</span>
+                    <label className="flex items-center gap-2 px-3 py-2 border rounded-md cursor-pointer hover:bg-muted transition-colors">
+                      <Icon icon="solar:upload-linear" className="w-4 h-4" />
+                      <span className="text-sm">Upload</span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/jpg,image/gif,image/webp"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const fd = new FormData();
+                          fd.append('file', file);
+                          fd.append('folder', 'logos');
+                          try {
+                            const res = await api.post('/upload', fd, {
+                              headers: { 'Content-Type': 'multipart/form-data' },
+                            });
+                            const url = res.data.url;
+                            const input = document.getElementById('company_logo_url') as HTMLInputElement;
+                            if (input) input.value = url;
+                            // Trigger change so form picks it up
+                            input?.dispatchEvent(new Event('input', { bubbles: true }));
+                            toast({ title: 'Uploaded', description: 'Logo uploaded successfully' });
+                          } catch {
+                            toast({ title: 'Error', description: 'Failed to upload logo', variant: 'destructive' });
+                          }
+                        }}
+                      />
+                    </label>
                     {settings?.company_logo_url && (
                       <img
                         src={settings.company_logo_url}
@@ -395,7 +426,7 @@ export default function CompanySettingsPage() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Enter a public URL for your company logo. This appears on invoices, quotations, and other documents.
+                    Enter a public URL or upload an image file. This appears on invoices, quotations, and other documents.
                   </p>
                 </div>
               </div>
