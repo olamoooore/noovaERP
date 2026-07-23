@@ -208,6 +208,9 @@ export const CreateInvoicePage: React.FC = () => {
   const [patientName, setPatientName] = useState('');
   const [costCenterId, setCostCenterId] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
+  const [poNumber, setPoNumber] = useState('');
+  const [doctorContactId, setDoctorContactId] = useState('');
+  const [requestorContactId, setRequestorContactId] = useState('');
   const [billingContactId, setBillingContactId] = useState('');
   const [shippingContactId, setShippingContactId] = useState('');
   const [notes, setNotes] = useState('');
@@ -496,6 +499,9 @@ export const CreateInvoicePage: React.FC = () => {
       patient_name: patientName || undefined,
       cost_center_id: costCenterId || undefined,
       delivery_date: deliveryDate || undefined,
+      po_number: poNumber || undefined,
+      doctor_contact_id: doctorContactId || undefined,
+      requestor_contact_id: requestorContactId || undefined,
       billing_contact_id: billingContactId || undefined,
       shipping_contact_id: shippingContactId || undefined,
       notes: notes || undefined,
@@ -931,6 +937,46 @@ export const CreateInvoicePage: React.FC = () => {
                     onChange={(event) => setDeliveryDate(event.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">PO Number</label>
+                  <input
+                    type="text"
+                    value={poNumber}
+                    onChange={(event) => setPoNumber(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="Customer PO reference"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Doctor</label>
+                  <select
+                    value={doctorContactId}
+                    onChange={(event) => setDoctorContactId(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  >
+                    <option value="">Select doctor...</option>
+                    {customerContacts.map((c: any, i: number) => (
+                      <option key={c.id ?? i} value={c.id ?? ''}>
+                        {c.name || `Contact ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Requestor</label>
+                  <select
+                    value={requestorContactId}
+                    onChange={(event) => setRequestorContactId(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  >
+                    <option value="">Select requestor...</option>
+                    {customerContacts.map((c: any, i: number) => (
+                      <option key={c.id ?? i} value={c.id ?? ''}>
+                        {c.name || `Contact ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </CardContent>

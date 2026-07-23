@@ -77,6 +77,9 @@ class InvoiceController extends Controller
             'notes' => 'nullable|string',
             'terms' => 'nullable|string',
             'discount_amount' => 'nullable|numeric|min:0',
+            'po_number' => 'nullable|string|max:100',
+            'doctor_contact_id' => 'nullable|exists:core_contacts,id',
+            'requestor_contact_id' => 'nullable|exists:core_contacts,id',
             'billing_contact_id' => 'nullable|exists:core_contacts,id',
             'shipping_contact_id' => 'nullable|exists:core_contacts,id',
             'lines' => 'required|array|min:1',
@@ -200,6 +203,11 @@ class InvoiceController extends Controller
             'notes' => $data['notes'] ?? null,
             'terms' => $data['terms'] ?? null,
             'discount_amount' => $data['discount_amount'] ?? null,
+            'po_number' => $data['po_number'] ?? null,
+            'doctor_contact_id' => $data['doctor_contact_id'] ?? null,
+            'requestor_contact_id' => $data['requestor_contact_id'] ?? null,
+            'billing_contact_id' => $data['billing_contact_id'] ?? null,
+            'shipping_contact_id' => $data['shipping_contact_id'] ?? null,
         ], fn ($v) => $v !== null);
 
         return $this->salesOrderService->createInvoice(
@@ -210,7 +218,7 @@ class InvoiceController extends Controller
 
     public function show($id)
     {
-        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact'])->find($id);
+        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor'])->find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
@@ -252,12 +260,17 @@ class InvoiceController extends Controller
             'notes' => 'nullable|string',
             'terms' => 'nullable|string',
             'discount_amount' => 'nullable|numeric|min:0',
+            'po_number' => 'nullable|string|max:100',
+            'doctor_contact_id' => 'nullable|exists:core_contacts,id',
+            'requestor_contact_id' => 'nullable|exists:core_contacts,id',
+            'billing_contact_id' => 'nullable|exists:core_contacts,id',
+            'shipping_contact_id' => 'nullable|exists:core_contacts,id',
         ]);
 
         $invoice->update($validated);
         $invoice->calculateTotals();
 
-        return response()->json($invoice->fresh(['customer', 'lines']));
+        return response()->json($invoice->fresh(['customer', 'lines', 'doctor', 'requestor', 'billingContact', 'shippingContact']));
     }
 
     public function send($id)
