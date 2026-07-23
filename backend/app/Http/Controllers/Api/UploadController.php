@@ -31,9 +31,11 @@ class UploadController extends Controller
             $path = $file->storeAs($folder, $filename, 'public');
 
             // Return the full URL
+            $fullUrl = $request->getSchemeAndHttpHost() . Storage::url($path);
+
             return response()->json([
                 'path' => $path,
-                'url' => Storage::url($path),
+                'url' => $fullUrl,
             ]);
         }
 

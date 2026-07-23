@@ -183,6 +183,9 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
             ? $this->dataSources->sampleFor($template->document_type)
             : []);
 
+        // Always use real tenant company data so logo, name, tax_id etc. appear in preview
+        $data['company'] = \Modules\TemplateBuilder\Services\DataSource\CompanyDataSource::forCurrentTenant();
+
         $result = $this->renderer->render($template, $data);
 
         // Wrap in the canvas template so the preview gets full styling (fonts, margins, CSS).

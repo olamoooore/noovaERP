@@ -37,7 +37,7 @@ class CompanySettingsController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'company_name' => 'nullable|string|max:255',
-            'company_logo_url' => 'nullable|url|max:500',
+            'company_logo_url' => 'nullable|string|max:500',
             'tax_id' => 'nullable|string|max:50',
             'gst_registration_number' => 'nullable|string|max:100',
             'address' => 'nullable|string|max:1000',
