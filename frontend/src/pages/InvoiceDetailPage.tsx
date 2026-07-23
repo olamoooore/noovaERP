@@ -34,6 +34,10 @@ interface Invoice {
   balance: number
   notes: string
   terms: string
+  date_of_case?: string
+  case_location?: string
+  patient_name?: string
+  delivery_date?: string
   created_at: string
   updated_at: string
   created_by?: {
@@ -382,6 +386,39 @@ export function InvoiceDetailPage() {
                   ))}
                 </TableBody>
               </Table>
+            </div>
+          )}
+
+          {/* Case Information */}
+          {(invoice.date_of_case || invoice.case_location || invoice.patient_name || invoice.delivery_date) && (
+            <div className="mt-6 pt-6 border-t">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase mb-3">Case Information</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {invoice.date_of_case && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Date of Case</span>
+                    <p className="text-sm font-medium">{formatDate(invoice.date_of_case)}</p>
+                  </div>
+                )}
+                {invoice.case_location && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Case Location</span>
+                    <p className="text-sm font-medium">{invoice.case_location}</p>
+                  </div>
+                )}
+                {invoice.patient_name && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Patient Name</span>
+                    <p className="text-sm font-medium">{invoice.patient_name}</p>
+                  </div>
+                )}
+                {invoice.delivery_date && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Delivery Date</span>
+                    <p className="text-sm font-medium">{formatDate(invoice.delivery_date)}</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

@@ -564,15 +564,21 @@ class QuotationController extends Controller
                 $quotation->refresh();
                 $quotation->calculateTotals();
 
-                // Link to existing invoice if invoice_number is provided
-                $invoiceNumber = trim((string) ($headerRow['invoice_number'] ?? ''));
-                if ($invoiceNumber !== '') {
-                    $invoice = Invoice::where('invoice_number', $invoiceNumber)->first();
-                    if ($invoice) {
-                        $invoice->update(['quotation_id' => $quotation->id]);
-                    } else {
+                // Link to existing invoice(s) if invoice_number is provided
+                $invoiceNumberRaw = trim((string) ($headerRow['invoice_number'] ?? ''));
+                if ($invoiceNumberRaw !== '') {
+                    $invoiceNumbers = array_filter(array_map('trim', explode(',', $invoiceNumberRaw)));
+                    $linkedCount = 0;
+                    foreach ($invoiceNumbers as $invNum) {
+                        $invoice = Invoice::where('invoice_number', $invNum)->first();
+                        if ($invoice) {
+                            $invoice->update(['quotation_id' => $quotation->id]);
+                            $linkedCount++;
+                        }
+                    }
+                    if ($linkedCount === 0) {
                         throw new \RuntimeException(
-                            "Invoice number {$invoiceNumber} not found. The quotation was created but not linked to any invoice."
+                            "Invoice number(s) {$invoiceNumberRaw} not found. The quotation was created but not linked to any invoice."
                         );
                     }
                 }

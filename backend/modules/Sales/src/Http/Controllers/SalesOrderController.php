@@ -20,6 +20,7 @@ class SalesOrderController extends Controller
     public function index(Request $request)
     {
         $query = SalesOrder::with(['customer', 'lines.product', 'channelReferences'])
+            ->withCount(['invoiceLinks', 'deliveryOrders'])
             ->orderBy('created_at', 'desc');
 
         if ($request->has('status')) {

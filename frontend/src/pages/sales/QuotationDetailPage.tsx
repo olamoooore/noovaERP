@@ -94,6 +94,7 @@ export function QuotationDetailPage() {
   }
 
   const [isDownloading, setIsDownloading] = useState(false)
+  const [showInvoicesPanel, setShowInvoicesPanel] = useState(false)
   const handleDownloadPdf = async () => {
     setIsDownloading(true)
     try {
@@ -230,6 +231,78 @@ export function QuotationDetailPage() {
         </div>
       </div>
 
+      {/* Odoo-style smart buttons */}
+      <div className="flex gap-3">
+        {quotation.sales_order && (
+          <button
+            onClick={() => navigate('/sales/orders')}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+          >
+            <Icon icon="solar:cart-large-2-bold-duotone" className="h-5 w-5 text-green-600" />
+            <div className="text-left">
+              <div className="font-bold text-foreground">{quotation.sales_order.sales_order_number}</div>
+              <div className="text-xs text-muted-foreground">Sales Order</div>
+            </div>
+          </button>
+        )}
+        {quotation.invoices && quotation.invoices.length > 0 && (
+          <button
+            onClick={() => setShowInvoicesPanel(!showInvoicesPanel)}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+          >
+            <Icon icon="solar:bill-list-bold-duotone" className="h-5 w-5 text-blue-600" />
+            <div className="text-left">
+              <div className="font-bold text-foreground">{quotation.invoices.length}</div>
+              <div className="text-xs text-muted-foreground">Invoice{quotation.invoices.length !== 1 ? 's' : ''}</div>
+            </div>
+          </button>
+        )}
+      </div>
+
+      {/* Invoices panel (expandable) */}
+      {showInvoicesPanel && quotation.invoices && quotation.invoices.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Icon icon="solar:bill-list-bold-duotone" className="h-5 w-5 text-blue-600" />
+              Linked Invoices
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice #</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {quotation.invoices.map((inv: any) => (
+                  <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/50">
+                    <TableCell className="font-medium">{inv.invoice_number}</TableCell>
+                    <TableCell>{formatDate(inv.invoice_date)}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{inv.lifecycle_status || inv.status}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">{formatCurrency(inv.total)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(inv.balance)}</TableCell>
+                    <TableCell>
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/invoices/${inv.id}`)}>
+                        <Icon icon="solar:eye-bold" className="h-3 w-3" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -275,29 +348,6 @@ export function QuotationDetailPage() {
               </div>
             </div>
 
-            {quotation.sales_order && (
-              <div className="mt-4 p-3 rounded-lg bg-green-50 border border-green-200">
-                <div className="text-sm font-medium text-green-800">
-                  Linked Sales Order: {quotation.sales_order.sales_order_number}
-                </div>
-                <div className="text-xs text-green-600 mt-1">
-                  Status: {quotation.sales_order.status}
-                </div>
-              </div>
-            )}
-
-            {quotation.invoices && quotation.invoices.length > 0 && (
-              <div className="mt-4 p-3 rounded-lg bg-blue-50 border border-blue-200">
-                <div className="text-sm font-medium text-blue-800">
-                  Invoices ({quotation.invoices.length})
-                </div>
-                {quotation.invoices.map((inv: any) => (
-                  <div key={inv.id} className="text-xs text-blue-600 mt-1">
-                    {inv.invoice_number} — {formatDate(inv.invoice_date)} — {formatCurrency(inv.total)}
-                  </div>
-                ))}
-              </div>
-            )}
           </CardContent>
         </Card>
 

@@ -168,7 +168,29 @@ export function SalesOrdersPage() {
                 <TableBody>
                   {orders.map((order: any) => (
                     <TableRow key={order.id}>
-                      <TableCell className="font-medium">{order.sales_order_number}</TableCell>
+                      <TableCell className="font-medium">
+                        <div>{order.sales_order_number}</div>
+                        <div className="flex gap-1.5 mt-1">
+                          {order.invoice_links_count > 0 && (
+                            <button
+                              onClick={() => navigate(`/invoices?sales_order_id=${order.id}`)}
+                              className="inline-flex items-center gap-1 rounded bg-blue-50 dark:bg-blue-950 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900"
+                            >
+                              <Icon icon="solar:bill-list-bold" className="h-3 w-3" />
+                              {order.invoice_links_count} Inv
+                            </button>
+                          )}
+                          {order.delivery_orders_count > 0 && (
+                            <button
+                              onClick={() => navigate(`/delivery-orders?sales_order_id=${order.id}`)}
+                              className="inline-flex items-center gap-1 rounded bg-amber-50 dark:bg-amber-950 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900"
+                            >
+                              <Icon icon="solar:delivery-bold" className="h-3 w-3" />
+                              {order.delivery_orders_count} DO
+                            </button>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell>{order.customer?.name || '-'}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">{order.channel || 'admin'}</Badge>

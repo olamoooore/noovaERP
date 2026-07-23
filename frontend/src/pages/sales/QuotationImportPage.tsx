@@ -29,7 +29,7 @@ const TEMPLATE_COLUMNS = [
   { name: 'quotation_date', required: false, description: 'Quote date (M/D/YYYY or YYYY-MM-DD). Default: today.' },
   { name: 'valid_until', required: false, description: 'Expiration / valid-until date.' },
   { name: 'customer_reference', required: false, description: 'Customer PO / reference number.' },
-  { name: 'invoice_number', required: false, description: 'Link this quotation to an existing invoice by its invoice number.' },
+  { name: 'invoice_number', required: false, description: 'Link to existing invoice(s). Use comma-separated for multiple: INV-001, INV-002' },
   { name: 'notes', required: false, description: 'Quotation notes (shown on document).' },
   { name: 'terms', required: false, description: 'Payment terms (e.g. Net 30).' },
   { name: 'discount_amount', required: false, description: 'Header-level discount amount. Default: 0' },
