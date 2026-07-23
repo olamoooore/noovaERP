@@ -17,11 +17,11 @@ return new class extends Migration
                 $table->string('po_number', 100)->nullable()->after('customer_reference');
             }
             if (!Schema::hasColumn('invoices', 'doctor_contact_id')) {
-                $table->unsignedBigInteger('doctor_contact_id')->nullable()->after('po_number');
+                $table->uuid('doctor_contact_id')->nullable()->after('po_number');
                 $table->foreign('doctor_contact_id')->references('id')->on('core_contacts')->nullOnDelete();
             }
             if (!Schema::hasColumn('invoices', 'requestor_contact_id')) {
-                $table->unsignedBigInteger('requestor_contact_id')->nullable()->after('doctor_contact_id');
+                $table->uuid('requestor_contact_id')->nullable()->after('doctor_contact_id');
                 $table->foreign('requestor_contact_id')->references('id')->on('core_contacts')->nullOnDelete();
             }
         });

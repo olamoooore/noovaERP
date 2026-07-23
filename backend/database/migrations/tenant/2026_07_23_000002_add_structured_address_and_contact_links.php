@@ -43,11 +43,11 @@ return new class extends Migration
 
         Schema::table('invoices', function (Blueprint $table) {
             if (!Schema::hasColumn('invoices', 'billing_contact_id')) {
-                $table->unsignedBigInteger('billing_contact_id')->nullable()->after('requestor_contact_id');
+                $table->uuid('billing_contact_id')->nullable()->after('requestor_contact_id');
                 $table->foreign('billing_contact_id')->references('id')->on('core_contacts')->nullOnDelete();
             }
             if (!Schema::hasColumn('invoices', 'shipping_contact_id')) {
-                $table->unsignedBigInteger('shipping_contact_id')->nullable()->after('billing_contact_id');
+                $table->uuid('shipping_contact_id')->nullable()->after('billing_contact_id');
                 $table->foreign('shipping_contact_id')->references('id')->on('core_contacts')->nullOnDelete();
             }
         });
