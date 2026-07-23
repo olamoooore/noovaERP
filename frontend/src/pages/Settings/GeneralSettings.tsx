@@ -260,14 +260,52 @@ export function GeneralSettings() {
               </p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Logo URL</label>
-              <Input 
-                value={logoUrl} 
-                onChange={(e) => setLogoUrl(e.target.value)} 
-                placeholder="https://example.com/logo.png"
-              />
+              <label className="text-sm font-medium">Company Logo</label>
+              <div className="flex items-center gap-3">
+                <Input 
+                  value={logoUrl} 
+                  onChange={(e) => setLogoUrl(e.target.value)} 
+                  placeholder="https://example.com/logo.png"
+                  className="flex-1"
+                />
+                <span className="text-xs text-muted-foreground">or</span>
+                <label className="flex items-center gap-2 px-3 py-2 border rounded-md cursor-pointer hover:bg-muted transition-colors shrink-0">
+                  <Icon icon="solar:upload-linear" className="w-4 h-4" />
+                  <span className="text-sm">Upload</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/jpg,image/gif,image/webp"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const fd = new FormData();
+                      fd.append('file', file);
+                      fd.append('folder', 'logos');
+                      try {
+                        const res = await api.post('/upload', fd, {
+                          headers: { 'Content-Type': 'multipart/form-data' },
+                        });
+                        const url = res.data.url;
+                        setLogoUrl(url);
+                        toast({ title: 'Uploaded', description: 'Logo uploaded successfully' });
+                      } catch {
+                        toast({ title: 'Error', description: 'Failed to upload logo', variant: 'destructive' });
+                      }
+                    }}
+                  />
+                </label>
+                {logoUrl && (
+                  <img
+                    src={logoUrl}
+                    alt="Logo preview"
+                    className="h-10 w-10 rounded border object-contain"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
-                Enter a public URL for your logo.
+                Enter a public URL or upload an image file. This appears on invoices, quotations, and other documents.
               </p>
             </div>
 
