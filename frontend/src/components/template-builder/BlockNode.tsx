@@ -55,13 +55,20 @@ export function BlockNode({ block }: { block: Block }) {
             dangerouslySetInnerHTML={{ __html: tokenToHtml(block.content || '<span class="text-muted-foreground">Empty text</span>') }}
           />
         )
-      case 'image':
+      case 'image': {
+        const url = block.url || ''
+        const isToken = url.includes('{{')
         return (
           <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-            <div className="flex h-10 w-10 items-center justify-center rounded border bg-muted text-[8px]">IMG</div>
-            <code className="truncate">{block.url || '(no url)'}</code>
+            {!isToken && url ? (
+              <img src={url} alt="" className="h-10 w-10 rounded border object-contain" />
+            ) : (
+              <div className="flex h-10 w-10 items-center justify-center rounded border bg-muted text-[8px]">IMG</div>
+            )}
+            <code className="truncate">{url || '(no url)'}</code>
           </div>
         )
+      }
       case 'columns': {
         const c = block as ColumnsBlock
         return c.children.length ? (
