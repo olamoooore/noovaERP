@@ -522,4 +522,33 @@ class CompanySettingsController extends Controller
 
         return $fallback;
     }
+
+    public function documentFormats(): JsonResponse
+    {
+        $service = app(\App\Services\DocumentNumberingService::class);
+
+        return response()->json($service->getAllFormats());
+    }
+
+    public function updateDocumentFormats(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'invoice' => 'nullable|string|max:100',
+            'quotation' => 'nullable|string|max:100',
+            'delivery_order' => 'nullable|string|max:100',
+        ]);
+
+        $service = app(\App\Services\DocumentNumberingService::class);
+
+        foreach (['invoice', 'quotation', 'delivery_order'] as $type) {
+            if (isset($validated[$type])) {
+                $service->setFormat($type, $validated[$type]);
+            }
+        }
+
+        return response()->json([
+            'message' => 'Document number formats updated.',
+            'formats' => $service->getAllFormats(),
+        ]);
+    }
 }

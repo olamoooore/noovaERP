@@ -67,6 +67,9 @@ class Invoice extends Model
         'cost_center_id',
         'delivery_date',
         'customer_reference',
+        'po_number',
+        'doctor_contact_id',
+        'requestor_contact_id',
         'internal_reference',
         'attention_to',
         'contact_email',
@@ -185,34 +188,29 @@ class Invoice extends Model
         return $this->belongsTo(Quotation::class, 'quotation_id');
     }
 
+    public function doctor()
+    {
+        return $this->belongsTo(\Modules\Contact\Models\CoreContact::class, 'doctor_contact_id');
+    }
+
+    public function requestor()
+    {
+        return $this->belongsTo(\Modules\Contact\Models\CoreContact::class, 'requestor_contact_id');
+    }
+
     public static function generateInvoiceNumber(): string
     {
-        $year = date('Y');
-        $prefix = "INV-{$year}-";
-
         try {
-            \Illuminate\Support\Facades\DB::statement('CREATE SEQUENCE IF NOT EXISTS invoice_number_seq START 1');
-
-            $maxNum = (int) (\Illuminate\Support\Facades\DB::selectOne("
-                SELECT MAX(CAST(SUBSTRING(invoice_number FROM '\d{4}$') AS INTEGER)) as m
-                FROM invoices
-            ")->m ?? 0);
-
-            if ($maxNum > 0) {
-                \Illuminate\Support\Facades\DB::statement(
-                    "SELECT setval('invoice_number_seq', GREATEST((SELECT last_value FROM invoice_number_seq), {$maxNum}))"
-                );
-            }
-
-            $seqVal = (int) \Illuminate\Support\Facades\DB::selectOne("SELECT nextval('invoice_number_seq') AS val")->val;
-
-            return $prefix.str_pad($seqVal, 4, '0', STR_PAD_LEFT);
+            return app(\App\Services\DocumentNumberingService::class)
+                ->generate('invoice', 'INV-{YYYY}-{SEQ:4}');
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('Invoice number sequence unavailable, using fallback', [
+            \Illuminate\Support\Facades\Log::warning('DocumentNumberingService failed, using fallback', [
                 'error' => $e->getMessage(),
             ]);
         }
 
+        $year = date('Y');
+        $prefix = "INV-{$year}-";
         $latest = static::withTrashed()
             ->where('invoice_number', 'like', $prefix.'%')
             ->orderBy('id', 'desc')

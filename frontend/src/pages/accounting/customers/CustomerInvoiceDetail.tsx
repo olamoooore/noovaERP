@@ -50,9 +50,29 @@ export const CustomerInvoiceDetail: React.FC = () => {
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showCreditNoteDialog, setShowCreditNoteDialog] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const isQuoteMode = location.pathname.startsWith('/sales/quotes');
   const documentLabel = isQuoteMode ? 'Quotation' : 'Invoice';
   const backPath = isQuoteMode ? '/sales/quotes' : '/accounting/customers/bills';
+
+  const handleDownloadPdf = async () => {
+    setIsDownloading(true);
+    try {
+      const response = await api.get(`/invoices/${id}/pdf`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(response.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice-${id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Failed to download PDF' });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   // Fetch invoice details
   const { data: invoice, isLoading } = useQuery({
@@ -192,14 +212,14 @@ export const CustomerInvoiceDetail: React.FC = () => {
               </Button>
             </>
           )}
-          <Button variant="outline">
-            <Icon icon="solar:printer-bold-duotone" className="h-4 w-4 mr-2" />
-            Print
-          </Button>
-          <Button variant="outline">
-            <Icon icon="solar:download-bold-duotone" className="h-4 w-4 mr-2" />
-            Export
-          </Button>
+           <Button variant="outline" onClick={handleDownloadPdf} disabled={isDownloading}>
+             <Icon icon="solar:printer-bold-duotone" className="h-4 w-4 mr-2" />
+             {isDownloading ? 'Preparing...' : 'Print'}
+           </Button>
+           <Button variant="outline" onClick={handleDownloadPdf} disabled={isDownloading}>
+             <Icon icon="solar:download-bold-duotone" className="h-4 w-4 mr-2" />
+             {isDownloading ? 'Preparing...' : 'PDF'}
+           </Button>
         </div>
       </div>
 
@@ -305,6 +325,24 @@ export const CustomerInvoiceDetail: React.FC = () => {
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Delivery Date</p>
                     <p className="font-medium">{formatDate(invoice.delivery_date)}</p>
+                  </div>
+                )}
+                {invoice.po_number && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">PO Number</p>
+                    <p className="font-medium">{invoice.po_number}</p>
+                  </div>
+                )}
+                {invoice.doctor && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Doctor</p>
+                    <p className="font-medium">{invoice.doctor.display_name || invoice.doctor.full_name || '-'}</p>
+                  </div>
+                )}
+                {invoice.requestor && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Requestor</p>
+                    <p className="font-medium">{invoice.requestor.display_name || invoice.requestor.full_name || '-'}</p>
                   </div>
                 )}
               </div>

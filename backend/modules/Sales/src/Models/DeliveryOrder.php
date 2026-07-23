@@ -112,18 +112,20 @@ class DeliveryOrder extends Model
 
     public static function generateNumber(): string
     {
+        try {
+            return app(\App\Services\DocumentNumberingService::class)
+                ->generate('delivery_order', 'DO-{YYYY}-{SEQ:4}');
+        } catch (\Throwable $e) {
+            // Fallback
+        }
+
         $year = date('Y');
         $prefix = "DO-{$year}-";
-
         $latest = static::withTrashed()
             ->where('delivery_order_number', 'like', $prefix.'%')
             ->orderBy('id', 'desc')
             ->first();
-
-        $number = $latest
-            ? (int) substr($latest->delivery_order_number, -4) + 1
-            : 1;
-
+        $number = $latest ? (int) substr($latest->delivery_order_number, -4) + 1 : 1;
         return $prefix.str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 }

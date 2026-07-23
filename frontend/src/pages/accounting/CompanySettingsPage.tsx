@@ -224,6 +224,7 @@ export default function CompanySettingsPage() {
     const formData = new FormData(e.currentTarget);
     const data = {
       company_name: formData.get('company_name'),
+      company_logo_url: formData.get('company_logo_url'),
       tax_id: formData.get('tax_id'),
       address: formData.get('address'),
       phone: formData.get('phone'),
@@ -374,6 +375,28 @@ export default function CompanySettingsPage() {
                     defaultValue={settings?.website || ''}
                     placeholder="https://www.example.com"
                   />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="company_logo_url">Company Logo URL</Label>
+                  <div className="flex items-center gap-3">
+                    <Input
+                      id="company_logo_url"
+                      name="company_logo_url"
+                      type="url"
+                      defaultValue={settings?.company_logo_url || ''}
+                      placeholder="https://www.example.com/logo.png"
+                    />
+                    {settings?.company_logo_url && (
+                      <img
+                        src={settings.company_logo_url}
+                        alt="Logo preview"
+                        className="h-10 w-10 rounded border object-contain"
+                      />
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Enter a public URL for your company logo. This appears on invoices, quotations, and other documents.
+                  </p>
                 </div>
               </div>
               <Button type="submit" disabled={updateCompanyMutation.isPending}>

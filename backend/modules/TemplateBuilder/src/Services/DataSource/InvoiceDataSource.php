@@ -18,7 +18,7 @@ class InvoiceDataSource implements DataSourceContract
 
     public function load(string $documentId): self
     {
-        $this->invoice = Invoice::with(['customer', 'lines.product'])->findOrFail($documentId);
+        $this->invoice = Invoice::with(['customer', 'lines.product', 'doctor', 'requestor'])->findOrFail($documentId);
 
         return $this;
     }
@@ -50,6 +50,7 @@ class InvoiceDataSource implements DataSourceContract
                 'due_date' => optional($invoice->due_date)->format('Y-m-d'),
                 'status' => $invoice->lifecycle_status,
                 'reference' => $invoice->customer_reference,
+                'po_number' => $invoice->po_number ?? '',
                 'billing_address' => $this->formatAddress($invoice->billing_address_snapshot),
                 'shipping_address' => $this->formatAddress($invoice->shipping_address_snapshot),
                 'notes' => $invoice->notes ?? '',
@@ -58,6 +59,8 @@ class InvoiceDataSource implements DataSourceContract
                 'shipping_method' => $invoice->shipping_method ?? '',
                 'delivery_date' => optional($invoice->delivery_date)->format('Y-m-d') ?? '',
                 'internal_reference' => $invoice->internal_reference ?? '',
+                'doctor' => $invoice->doctor?->full_name ?? $invoice->doctor?->display_name ?? '',
+                'requestor' => $invoice->requestor?->full_name ?? $invoice->requestor?->display_name ?? '',
             ],
             'customer' => [
                 'code' => $invoice->customer?->code ?? '',
@@ -97,9 +100,12 @@ class InvoiceDataSource implements DataSourceContract
                 ['token' => 'invoice.due_date', 'label' => 'Due Date'],
                 ['token' => 'invoice.status', 'label' => 'Status'],
                 ['token' => 'invoice.reference', 'label' => 'Customer Reference'],
+                ['token' => 'invoice.po_number', 'label' => 'PO Number'],
                 ['token' => 'invoice.billing_address', 'label' => 'Billing Address'],
                 ['token' => 'invoice.shipping_address', 'label' => 'Shipping Address'],
                 ['token' => 'invoice.attention_to', 'label' => 'Attention To'],
+                ['token' => 'invoice.doctor', 'label' => 'Doctor'],
+                ['token' => 'invoice.requestor', 'label' => 'Requestor'],
                 ['token' => 'invoice.shipping_method', 'label' => 'Shipping Method'],
                 ['token' => 'invoice.delivery_date', 'label' => 'Delivery Date'],
                 ['token' => 'invoice.notes', 'label' => 'Notes'],

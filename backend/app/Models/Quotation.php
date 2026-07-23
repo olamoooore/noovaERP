@@ -90,32 +90,17 @@ class Quotation extends Model
 
     public static function generateQuotationNumber(): string
     {
-        $year = date('Y');
-        $prefix = "QUO-{$year}-";
-
         try {
-            \Illuminate\Support\Facades\DB::statement('CREATE SEQUENCE IF NOT EXISTS quotation_number_seq START 1');
-
-            $maxNum = (int) (\Illuminate\Support\Facades\DB::selectOne("
-                SELECT MAX(CAST(SUBSTRING(quotation_number FROM '\d{4}$') AS INTEGER)) as m
-                FROM quotations
-            ")->m ?? 0);
-
-            if ($maxNum > 0) {
-                \Illuminate\Support\Facades\DB::statement(
-                    "SELECT setval('quotation_number_seq', GREATEST((SELECT last_value FROM quotation_number_seq), {$maxNum}))"
-                );
-            }
-
-            $seqVal = (int) \Illuminate\Support\Facades\DB::selectOne("SELECT nextval('quotation_number_seq') AS val")->val;
-
-            return $prefix.str_pad($seqVal, 4, '0', STR_PAD_LEFT);
+            return app(\App\Services\DocumentNumberingService::class)
+                ->generate('quotation', 'QUO-{YYYY}-{SEQ:4}');
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::warning('Quotation number sequence unavailable, using fallback', [
+            \Illuminate\Support\Facades\Log::warning('DocumentNumberingService failed, using fallback', [
                 'error' => $e->getMessage(),
             ]);
         }
 
+        $year = date('Y');
+        $prefix = "QUO-{$year}-";
         $latest = static::withTrashed()
             ->where('quotation_number', 'like', $prefix.'%')
             ->orderBy('id', 'desc')

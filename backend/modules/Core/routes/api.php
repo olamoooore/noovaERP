@@ -423,6 +423,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::put('/settings/currencies', [CompanySettingsController::class, 'updateCurrencies']);
         Route::get('/settings/accounts', [CompanySettingsController::class, 'accounts']);
         Route::put('/settings/accounts', [CompanySettingsController::class, 'updateAccounts']);
+        Route::get('/settings/document-formats', [CompanySettingsController::class, 'documentFormats']);
+        Route::put('/settings/document-formats', [CompanySettingsController::class, 'updateDocumentFormats']);
 
         // Accounting Policies
         Route::get('/policies', [\App\Http\Controllers\Api\AccountingPoliciesController::class, 'index']);
