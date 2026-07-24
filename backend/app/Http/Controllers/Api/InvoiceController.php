@@ -439,7 +439,7 @@ class InvoiceController extends Controller
             'valid_until' => 'due_date',
             'expiry_date' => 'due_date',
             'reference' => 'customer_reference',
-            'po_number' => 'customer_reference',
+            'po_number' => 'po_number',
             'sku' => 'product_sku',
             'product_sku' => 'product_sku',
             'item' => 'description',
@@ -458,6 +458,16 @@ class InvoiceController extends Controller
             'tax_reg_no' => 'tax_registration_number',
             'email' => 'contact_email',
             'phone' => 'contact_phone',
+            'case_date' => 'date_of_case',
+            'location' => 'case_location',
+            'patient' => 'patient_name',
+            'cost_center' => 'cost_center_id',
+            'delivery_date' => 'delivery_date',
+            'doctor' => 'doctor_name',
+            'requestor' => 'requestor_name',
+            'billing_contact' => 'billing_contact_name',
+            'shipping_contact' => 'shipping_contact_name',
+            'delivery_contact' => 'shipping_contact_name',
         ];
         $header = array_map(fn ($key) => $columnAliases[$key] ?? $key, $header);
 
@@ -567,12 +577,52 @@ class InvoiceController extends Controller
                     'billing_address_snapshot', 'shipping_address_snapshot',
                     'company_registration_number', 'tax_registration_number',
                     'notes', 'terms', 'discount_amount',
+                    'po_number', 'date_of_case', 'case_location', 'patient_name',
+                    'cost_center_id', 'delivery_date',
                 ] as $field) {
                     $value = $this->readImportValue($headerRow[$field] ?? null);
                     if ($value !== null) {
                         $data[$field] = $field === 'discount_amount'
                             ? $this->parseNumericValue($value)
                             : $value;
+                    }
+                }
+
+                // Resolve doctor and requestor names to contact IDs
+                $doctorName = $this->readImportValue($headerRow['doctor_name'] ?? null);
+                if ($doctorName !== null) {
+                    $doctorContact = \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(display_name) = ?', [strtolower($doctorName)])->first()
+                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(first_name || \' \' || last_name) = ?', [strtolower($doctorName)])->first()
+                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(company_name) = ?', [strtolower($doctorName)])->first();
+                    if ($doctorContact) {
+                        $data['doctor_contact_id'] = $doctorContact->id;
+                    }
+                }
+                $requestorName = $this->readImportValue($headerRow['requestor_name'] ?? null);
+                if ($requestorName !== null) {
+                    $requestorContact = \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(display_name) = ?', [strtolower($requestorName)])->first()
+                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(first_name || \' \' || last_name) = ?', [strtolower($requestorName)])->first()
+                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(company_name) = ?', [strtolower($requestorName)])->first();
+                    if ($requestorContact) {
+                        $data['requestor_contact_id'] = $requestorContact->id;
+                    }
+                }
+                $billingContactName = $this->readImportValue($headerRow['billing_contact_name'] ?? null);
+                if ($billingContactName !== null) {
+                    $billingContact = \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(display_name) = ?', [strtolower($billingContactName)])->first()
+                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(first_name || \' \' || last_name) = ?', [strtolower($billingContactName)])->first()
+                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(company_name) = ?', [strtolower($billingContactName)])->first();
+                    if ($billingContact) {
+                        $data['billing_contact_id'] = $billingContact->id;
+                    }
+                }
+                $shippingContactName = $this->readImportValue($headerRow['shipping_contact_name'] ?? null);
+                if ($shippingContactName !== null) {
+                    $shippingContact = \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(display_name) = ?', [strtolower($shippingContactName)])->first()
+                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(first_name || \' \' || last_name) = ?', [strtolower($shippingContactName)])->first()
+                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(company_name) = ?', [strtolower($shippingContactName)])->first();
+                    if ($shippingContact) {
+                        $data['shipping_contact_id'] = $shippingContact->id;
                     }
                 }
 
