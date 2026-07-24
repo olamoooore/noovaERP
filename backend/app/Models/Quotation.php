@@ -90,6 +90,24 @@ class Quotation extends Model
 
     public static function generateQuotationNumber(): string
     {
+        $maxAttempts = 10;
+        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+            $number = static::generateQuotationNumberRaw();
+            if (! static::withTrashed()->where('quotation_number', $number)->exists()) {
+                return $number;
+            }
+            \Illuminate\Support\Facades\Log::warning('Quotation number collision, retrying', [
+                'number' => $number,
+                'attempt' => $attempt + 1,
+            ]);
+        }
+
+        // Final fallback: use timestamp-based suffix
+        return 'QUO-'.date('Y').'-'.date('is');
+    }
+
+    private static function generateQuotationNumberRaw(): string
+    {
         try {
             return app(\App\Services\DocumentNumberingService::class)
                 ->generate('quotation', 'QUO-{YYYY}-{SEQ:4}');

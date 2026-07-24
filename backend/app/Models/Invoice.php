@@ -212,6 +212,24 @@ class Invoice extends Model
 
     public static function generateInvoiceNumber(): string
     {
+        $maxAttempts = 10;
+        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+            $number = static::generateInvoiceNumberRaw();
+            if (! static::withTrashed()->where('invoice_number', $number)->exists()) {
+                return $number;
+            }
+            \Illuminate\Support\Facades\Log::warning('Invoice number collision, retrying', [
+                'number' => $number,
+                'attempt' => $attempt + 1,
+            ]);
+        }
+
+        // Final fallback: use timestamp-based suffix
+        return 'INV-'.date('Y').'-'.date('is');
+    }
+
+    private static function generateInvoiceNumberRaw(): string
+    {
         try {
             return app(\App\Services\DocumentNumberingService::class)
                 ->generate('invoice', 'INV-{YYYY}-{SEQ:4}');
