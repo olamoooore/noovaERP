@@ -576,7 +576,7 @@ class QuotationController extends Controller
                 }
 
                 if ($importedNumber !== '') {
-                    if (Quotation::where('quotation_number', $importedNumber)->exists()) {
+                    if (Quotation::withoutTrashed()->where('quotation_number', $importedNumber)->exists()) {
                         throw new \RuntimeException(
                             "Quotation number {$importedNumber} already exists. Use a unique number or leave it blank to auto-generate."
                         );
@@ -703,7 +703,7 @@ class QuotationController extends Controller
         }
     }
 
-    private function resolveOrCreateContact(string $name, string $type = 'person', string $source = 'import'): ?int
+    private function resolveOrCreateContact(string $name, string $type = 'person', string $source = 'import'): ?string
     {
         $normalised = strtolower(trim($name));
 
@@ -712,7 +712,7 @@ class QuotationController extends Controller
             ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(company_name) = ?', [$normalised])->first();
 
         if ($contact) {
-            return (int) $contact->id;
+            return $contact->id;
         }
 
         $parts = array_filter(explode(' ', trim($name)));

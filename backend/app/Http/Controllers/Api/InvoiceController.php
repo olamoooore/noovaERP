@@ -135,7 +135,7 @@ class InvoiceController extends Controller
         // Preserve the imported invoice number when provided (reject duplicates).
         $importedNumber = isset($data['invoice_number']) ? trim((string) $data['invoice_number']) : '';
         if ($importedNumber !== '') {
-            if (Invoice::where('invoice_number', $importedNumber)->exists()) {
+            if (Invoice::withoutTrashed()->where('invoice_number', $importedNumber)->exists()) {
                 throw new \RuntimeException(
                     "Invoice number {$importedNumber} already exists. Use a unique number or leave it blank to auto-generate."
                 );
@@ -697,7 +697,7 @@ class InvoiceController extends Controller
     /**
      * Find a contact by name (case-insensitive) or create one if not found.
      */
-    private function resolveOrCreateContact(string $name, string $type = 'person', string $source = 'import'): ?int
+    private function resolveOrCreateContact(string $name, string $type = 'person', string $source = 'import'): ?string
     {
         $normalised = strtolower(trim($name));
 
@@ -707,7 +707,7 @@ class InvoiceController extends Controller
             ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(company_name) = ?', [$normalised])->first();
 
         if ($contact) {
-            return (int) $contact->id;
+            return $contact->id;
         }
 
         // Split name into first/last for person contacts
