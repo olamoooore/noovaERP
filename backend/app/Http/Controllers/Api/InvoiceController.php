@@ -138,8 +138,8 @@ class InvoiceController extends Controller
         if ($importedNumber !== '') {
             $existing = Invoice::withoutTrashed()->where('invoice_number', $importedNumber)->first();
             if ($existing) {
-                // Nullify FKs that have DB-level constraints / boot hooks
-                $existing->update(['journal_entry_id' => null, 'sales_order_id' => null]);
+                // Nullify FKs and set status to draft to bypass DB trigger prevent_posted_document_deletion()
+                $existing->update(['journal_entry_id' => null, 'sales_order_id' => null, 'status' => 'draft']);
                 // Clean up related records
                 $existing->payments()->delete();
                 $existing->lines()->delete();
