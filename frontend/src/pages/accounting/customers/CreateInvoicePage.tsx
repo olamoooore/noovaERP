@@ -242,6 +242,21 @@ export const CreateInvoicePage: React.FC = () => {
 
   const customerContacts = (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? []) as CustomerContact[];
 
+  const { data: systemContacts } = useQuery({
+    queryKey: ['system-contacts'],
+    queryFn: async () => {
+      const response = await api.get('/contacts?per_page=500&is_active=true');
+      return response.data?.data?.data ?? response.data?.data ?? [];
+    },
+  });
+
+  const contactOptions = (systemContacts ?? []).map((c: any) => ({
+    id: c.id,
+    name: c.display_name || [c.first_name, c.last_name].filter(Boolean).join(' ') || c.company_name || 'Unnamed',
+    email: c.email,
+    phone: c.phone,
+  }));
+
   const { data: products } = useQuery({
     queryKey: ['products-list'],
     queryFn: async () => {
@@ -274,8 +289,8 @@ export const CreateInvoicePage: React.FC = () => {
       tax_registration_number: selectedCustomer.tax_number ?? '',
     });
 
-    const contacts = customerContacts;
-    const primaryIdx = contacts.findIndex((c) => c.is_primary);
+    const contacts = contactOptions;
+    const primaryIdx = contacts.findIndex((c: any) => c.is_primary);
     const defaultIdx = primaryIdx >= 0 ? primaryIdx : 0;
     if (contacts.length > 0) {
       setBillingContactId(String((contacts[defaultIdx] as any)?.id ?? ''));
@@ -804,17 +819,17 @@ export const CreateInvoicePage: React.FC = () => {
                     value={billingContactId}
                     onChange={(e) => {
                       setBillingContactId(e.target.value);
-                      const contact = customerContacts.find((c: any) => String((c as any).id) === e.target.value);
+                      const contact = contactOptions.find((c: any) => String((c as any).id) === e.target.value);
                       if (contact) {
-                        updateDocumentSnapshot('attention_to', contact.name ?? '');
+                        updateDocumentSnapshot('attention_to', (contact as any).name ?? '');
                       }
                     }}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                   >
                     <option value="">Select contact...</option>
-                    {customerContacts.map((c: any, i: number) => (
+                    {contactOptions.map((c: any, i: number) => (
                       <option key={c.id ?? i} value={c.id ?? ''}>
-                        {c.name || `Contact ${i + 1}`} {c.is_primary ? '(Primary)' : ''}
+                        {c.name || `Contact ${i + 1}`}
                       </option>
                     ))}
                   </select>
@@ -827,9 +842,9 @@ export const CreateInvoicePage: React.FC = () => {
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                   >
                     <option value="">Select contact...</option>
-                    {customerContacts.map((c: any, i: number) => (
+                    {contactOptions.map((c: any, i: number) => (
                       <option key={c.id ?? i} value={c.id ?? ''}>
-                        {c.name || `Contact ${i + 1}`} {c.is_primary ? '(Primary)' : ''}
+                        {c.name || `Contact ${i + 1}`}
                       </option>
                     ))}
                   </select>
@@ -956,7 +971,7 @@ export const CreateInvoicePage: React.FC = () => {
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                   >
                     <option value="">Select doctor...</option>
-                    {customerContacts.map((c: any, i: number) => (
+                    {contactOptions.map((c: any, i: number) => (
                       <option key={c.id ?? i} value={c.id ?? ''}>
                         {c.name || `Contact ${i + 1}`}
                       </option>
@@ -971,7 +986,7 @@ export const CreateInvoicePage: React.FC = () => {
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                   >
                     <option value="">Select requestor...</option>
-                    {customerContacts.map((c: any, i: number) => (
+                    {contactOptions.map((c: any, i: number) => (
                       <option key={c.id ?? i} value={c.id ?? ''}>
                         {c.name || `Contact ${i + 1}`}
                       </option>

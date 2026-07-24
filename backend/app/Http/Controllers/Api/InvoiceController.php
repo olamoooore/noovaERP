@@ -135,7 +135,7 @@ class InvoiceController extends Controller
         // Preserve the imported invoice number when provided (reject duplicates).
         $importedNumber = isset($data['invoice_number']) ? trim((string) $data['invoice_number']) : '';
         if ($importedNumber !== '') {
-            if (Invoice::withTrashed()->where('invoice_number', $importedNumber)->exists()) {
+            if (Invoice::where('invoice_number', $importedNumber)->exists()) {
                 throw new \RuntimeException(
                     "Invoice number {$importedNumber} already exists. Use a unique number or leave it blank to auto-generate."
                 );

@@ -547,7 +547,7 @@ class QuotationController extends Controller
                 ];
 
                 if ($importedNumber !== '') {
-                    if (Quotation::withTrashed()->where('quotation_number', $importedNumber)->exists()) {
+                    if (Quotation::where('quotation_number', $importedNumber)->exists()) {
                         throw new \RuntimeException(
                             "Quotation number {$importedNumber} already exists. Use a unique number or leave it blank to auto-generate."
                         );
