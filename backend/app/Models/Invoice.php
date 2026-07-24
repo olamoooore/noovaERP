@@ -192,22 +192,22 @@ class Invoice extends Model
 
     public function doctor()
     {
-        return $this->belongsTo(\Modules\Contact\Models\CoreContact::class, 'doctor_contact_id');
+        return $this->belongsTo(\Modules\Contact\src\Models\CoreContact::class, 'doctor_contact_id');
     }
 
     public function requestor()
     {
-        return $this->belongsTo(\Modules\Contact\Models\CoreContact::class, 'requestor_contact_id');
+        return $this->belongsTo(\Modules\Contact\src\Models\CoreContact::class, 'requestor_contact_id');
     }
 
     public function billingContact()
     {
-        return $this->belongsTo(\Modules\Contact\Models\CoreContact::class, 'billing_contact_id');
+        return $this->belongsTo(\Modules\Contact\src\Models\CoreContact::class, 'billing_contact_id');
     }
 
     public function shippingContact()
     {
-        return $this->belongsTo(\Modules\Contact\Models\CoreContact::class, 'shipping_contact_id');
+        return $this->belongsTo(\Modules\Contact\src\Models\CoreContact::class, 'shipping_contact_id');
     }
 
     public static function generateInvoiceNumber(): string
