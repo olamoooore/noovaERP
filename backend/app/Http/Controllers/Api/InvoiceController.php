@@ -588,42 +588,22 @@ class InvoiceController extends Controller
                     }
                 }
 
-                // Resolve doctor and requestor names to contact IDs
+                // Resolve doctor and requestor names to contact IDs (auto-create if not found)
                 $doctorName = $this->readImportValue($headerRow['doctor_name'] ?? null);
                 if ($doctorName !== null) {
-                    $doctorContact = \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(display_name) = ?', [strtolower($doctorName)])->first()
-                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(first_name || \' \' || last_name) = ?', [strtolower($doctorName)])->first()
-                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(company_name) = ?', [strtolower($doctorName)])->first();
-                    if ($doctorContact) {
-                        $data['doctor_contact_id'] = $doctorContact->id;
-                    }
+                    $data['doctor_contact_id'] = $this->resolveOrCreateContact($doctorName, 'person', 'import_invoice');
                 }
                 $requestorName = $this->readImportValue($headerRow['requestor_name'] ?? null);
                 if ($requestorName !== null) {
-                    $requestorContact = \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(display_name) = ?', [strtolower($requestorName)])->first()
-                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(first_name || \' \' || last_name) = ?', [strtolower($requestorName)])->first()
-                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(company_name) = ?', [strtolower($requestorName)])->first();
-                    if ($requestorContact) {
-                        $data['requestor_contact_id'] = $requestorContact->id;
-                    }
+                    $data['requestor_contact_id'] = $this->resolveOrCreateContact($requestorName, 'person', 'import_invoice');
                 }
                 $billingContactName = $this->readImportValue($headerRow['billing_contact_name'] ?? null);
                 if ($billingContactName !== null) {
-                    $billingContact = \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(display_name) = ?', [strtolower($billingContactName)])->first()
-                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(first_name || \' \' || last_name) = ?', [strtolower($billingContactName)])->first()
-                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(company_name) = ?', [strtolower($billingContactName)])->first();
-                    if ($billingContact) {
-                        $data['billing_contact_id'] = $billingContact->id;
-                    }
+                    $data['billing_contact_id'] = $this->resolveOrCreateContact($billingContactName, 'person', 'import_invoice');
                 }
                 $shippingContactName = $this->readImportValue($headerRow['shipping_contact_name'] ?? null);
                 if ($shippingContactName !== null) {
-                    $shippingContact = \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(display_name) = ?', [strtolower($shippingContactName)])->first()
-                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(first_name || \' \' || last_name) = ?', [strtolower($shippingContactName)])->first()
-                        ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(company_name) = ?', [strtolower($shippingContactName)])->first();
-                    if ($shippingContact) {
-                        $data['shipping_contact_id'] = $shippingContact->id;
-                    }
+                    $data['shipping_contact_id'] = $this->resolveOrCreateContact($shippingContactName, 'person', 'import_invoice');
                 }
 
                 $invoiceDate = $this->parseImportDate($headerRow['invoice_date'] ?? null) ?? now()->toDateString();
@@ -712,6 +692,41 @@ class InvoiceController extends Controller
         $value = trim((string) $value);
 
         return ($value === '' || $value === '-') ? null : $value;
+    }
+
+    /**
+     * Find a contact by name (case-insensitive) or create one if not found.
+     */
+    private function resolveOrCreateContact(string $name, string $type = 'person', string $source = 'import'): ?int
+    {
+        $normalised = strtolower(trim($name));
+
+        // Try to find an existing contact
+        $contact = \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(display_name) = ?', [$normalised])->first()
+            ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(first_name || \' \' || last_name) = ?', [$normalised])->first()
+            ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(company_name) = ?', [$normalised])->first();
+
+        if ($contact) {
+            return (int) $contact->id;
+        }
+
+        // Split name into first/last for person contacts
+        $parts = array_filter(explode(' ', trim($name)));
+        $firstName = $parts ? array_shift($parts) : $name;
+        $lastName = $parts ? implode(' ', $parts) : null;
+
+        $newContact = \Modules\Contact\src\Models\CoreContact::create([
+            'tenant_id'     => tenant()->id,
+            'contact_type'  => $type,
+            'first_name'    => $firstName,
+            'last_name'     => $lastName,
+            'display_name'  => trim($name),
+            'company_name'  => $lastName === null ? $name : null,
+            'source'        => $source,
+            'is_active'     => true,
+        ]);
+
+        return $newContact->id;
     }
 
     private function parseNumericValue($value): float
