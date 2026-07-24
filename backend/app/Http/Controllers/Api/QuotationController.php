@@ -576,10 +576,12 @@ class QuotationController extends Controller
                 }
 
                 if ($importedNumber !== '') {
-                    if (Quotation::withoutTrashed()->where('quotation_number', $importedNumber)->exists()) {
-                        throw new \RuntimeException(
-                            "Quotation number {$importedNumber} already exists. Use a unique number or leave it blank to auto-generate."
-                        );
+                    $existing = Quotation::withoutTrashed()->where('quotation_number', $importedNumber)->first();
+                    if ($existing) {
+                        // Nullify quotation_id on linked invoices before deleting
+                        Invoice::withoutTrashed()->where('quotation_id', $existing->id)->update(['quotation_id' => null]);
+                        $existing->lines()->delete();
+                        $existing->forceDelete();
                     }
                     $createData['quotation_number'] = $importedNumber;
                 }

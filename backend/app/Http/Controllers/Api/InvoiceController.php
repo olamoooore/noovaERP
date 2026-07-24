@@ -10,6 +10,7 @@ use App\Models\Warehouse;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Modules\Sales\Services\SalesOrderService;
 
 class InvoiceController extends Controller
@@ -132,13 +133,22 @@ class InvoiceController extends Controller
      */
     private function createInvoiceFromData(array $data): Invoice
     {
-        // Preserve the imported invoice number when provided (reject duplicates).
+        // Preserve the imported invoice number when provided; force-delete existing if re-importing.
         $importedNumber = isset($data['invoice_number']) ? trim((string) $data['invoice_number']) : '';
         if ($importedNumber !== '') {
-            if (Invoice::withoutTrashed()->where('invoice_number', $importedNumber)->exists()) {
-                throw new \RuntimeException(
-                    "Invoice number {$importedNumber} already exists. Use a unique number or leave it blank to auto-generate."
-                );
+            $existing = Invoice::withoutTrashed()->where('invoice_number', $importedNumber)->first();
+            if ($existing) {
+                // Clean up all related records before force-deleting
+                $existing->payments()->delete();
+                $existing->lines()->delete();
+                DB::table('settlement_audit_logs')->where('invoice_id', $existing->id)->delete();
+                try { DB::table('credit_notes')->where('invoice_id', $existing->id)->delete(); } catch (\Exception $e) {}
+                try { DB::table('sales_invoice_links')->where('invoice_id', $existing->id)->delete(); } catch (\Exception $e) {}
+                if ($existing->journal_entry_id) {
+                    DB::table('journal_entry_lines')->where('journal_entry_id', $existing->journal_entry_id)->delete();
+                    DB::table('journal_entries')->where('id', $existing->journal_entry_id)->delete();
+                }
+                $existing->forceDelete();
             }
         }
 
@@ -516,8 +526,15 @@ class InvoiceController extends Controller
             try {
                 $customer = $this->resolveImportCustomer($headerRow, $customerCache);
                 if (! $customer) {
-                    $identifier = trim((string) ($headerRow['customer_code'] ?? $headerRow['customer_name'] ?? $headerRow['customer_id'] ?? ''));
-                    throw new \RuntimeException("Customer not found: {$identifier}");
+                    $code = trim((string) ($headerRow['customer_code'] ?? ''));
+                    $name = trim((string) ($headerRow['customer_name'] ?? ''));
+                    $id = trim((string) ($headerRow['customer_id'] ?? ''));
+                    $parts = [];
+                    if ($code !== '') $parts[] = "code={$code}";
+                    if ($name !== '') $parts[] = "name={$name}";
+                    if ($id !== '') $parts[] = "id={$id}";
+                    $detail = $parts !== '' ? implode(', ', $parts) : 'no customer_code, customer_name, or customer_id provided';
+                    throw new \RuntimeException("Customer not found: {$detail}");
                 }
 
                 $lines = [];
