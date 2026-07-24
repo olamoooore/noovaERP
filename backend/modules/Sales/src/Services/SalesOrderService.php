@@ -243,6 +243,12 @@ class SalesOrderService
 
             $invoiceData['lines'] = $lines;
 
+            // Merge overrides into creation data so the Invoice creating boot hook
+            // respects imported values (especially invoice_number) instead of auto-generating.
+            if (! empty($totalOverrides)) {
+                $invoiceData = array_merge($invoiceData, $totalOverrides);
+            }
+
             $invoice = $invoiceService->createInvoiceInternal($token, $invoiceData);
 
             SalesInvoiceLink::create([
@@ -255,10 +261,8 @@ class SalesOrderService
                 'created_by' => TenantUserHelper::requireTenantUserId($order->created_by),
             ]);
 
-            $invoice->update(['sales_order_id' => $order->id]);
-
-            if (! empty($totalOverrides)) {
-                $invoice->update($totalOverrides);
+            if ($invoice->sales_order_id !== $order->id) {
+                $invoice->update(['sales_order_id' => $order->id]);
             }
 
             $this->synchronizeInvoiceBookkeeping($order->fresh('lines'), $invoice->fresh('lines'));

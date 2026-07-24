@@ -50,7 +50,7 @@ class WS05SalesOrderConvergenceTest extends TestCase
 
         // store() must call createOrder() with channel: 'admin'
         $this->assertStringContainsString(
-            "'channel'     => 'admin'",
+            "'channel' => 'admin'",
             $src,
             "InvoiceController::store() must route through createOrder() with channel 'admin'"
         );
@@ -95,22 +95,30 @@ class WS05SalesOrderConvergenceTest extends TestCase
     }
 
     /** @test */
-    public function test_sales_order_service_applies_overrides_before_sync_bookkeeping(): void
+    public function test_sales_order_service_applies_overrides_before_creation(): void
     {
         $src = file_get_contents(
             base_path('modules/Sales/src/Services/SalesOrderService.php')
         );
 
-        // Overrides must be applied before synchronizeInvoiceBookkeeping() is called
-        $overridePos = strpos($src, '$invoice->update($totalOverrides)');
+        // Overrides must be merged into $invoiceData BEFORE createInvoiceInternal() is called,
+        // so the Invoice creating boot hook respects imported values (e.g. invoice_number).
+        $mergePos = strpos($src, 'array_merge($invoiceData, $totalOverrides)');
+        $createPos = strpos($src, 'createInvoiceInternal($token, $invoiceData)');
         $syncPos = strpos($src, 'synchronizeInvoiceBookkeeping(');
 
-        $this->assertNotFalse($overridePos, 'Override block must exist inside createInvoice()');
+        $this->assertNotFalse($mergePos, 'Override merge must exist inside createInvoice()');
+        $this->assertNotFalse($createPos, 'createInvoiceInternal() must be called');
         $this->assertNotFalse($syncPos, 'synchronizeInvoiceBookkeeping() must exist inside createInvoice()');
-        $this->assertGreaterThan(
+        $this->assertLessThan(
+            $createPos,
+            $mergePos,
+            'Override merge must appear BEFORE createInvoiceInternal() in source'
+        );
+        $this->assertLessThan(
             $syncPos,
-            $overridePos,
-            'Override block must appear BEFORE synchronizeInvoiceBookkeeping() in source'
+            $mergePos,
+            'Override merge must appear BEFORE synchronizeInvoiceBookkeeping() in source'
         );
     }
 
