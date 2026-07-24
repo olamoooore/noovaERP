@@ -30,8 +30,18 @@ const TEMPLATE_COLUMNS = [
   { name: 'customer_name', required: false, description: 'Customer name (used if customer_code is blank).' },
   { name: 'invoice_date', required: false, description: 'Issue date (M/D/YYYY or YYYY-MM-DD). Default: today.' },
   { name: 'due_date', required: false, description: 'Due / valid-until date.' },
-  { name: 'customer_reference', required: false, description: 'Customer PO / reference number.' },
+  { name: 'po_number', required: false, description: 'Customer PO reference.' },
+  { name: 'customer_reference', required: false, description: 'Customer reference number.' },
   { name: 'internal_reference', required: false, description: 'Internal reference note.' },
+  { name: 'date_of_case', required: false, description: 'Case date (M/D/YYYY or YYYY-MM-DD).' },
+  { name: 'case_location', required: false, description: 'Case / site location.' },
+  { name: 'patient_name', required: false, description: 'Patient name.' },
+  { name: 'cost_center_id', required: false, description: 'Cost center reference.' },
+  { name: 'delivery_date', required: false, description: 'Delivery date (M/D/YYYY or YYYY-MM-DD).' },
+  { name: 'doctor', required: false, description: 'Doctor name (matched to contacts).' },
+  { name: 'requestor', required: false, description: 'Requestor name (matched to contacts).' },
+  { name: 'billing_contact', required: false, description: 'Billing address contact name (matched to contacts).' },
+  { name: 'shipping_contact', required: false, description: 'Delivery address contact name (matched to contacts).' },
   { name: 'attention_to', required: false, description: 'Contact person at customer.' },
   { name: 'contact_email', required: false, description: 'Contact email.' },
   { name: 'contact_phone', required: false, description: 'Contact phone.' },
@@ -134,8 +144,8 @@ export function InvoiceImportPage() {
     const headers = TEMPLATE_COLUMNS.map((col) => col.name).join(',')
     // Two rows sharing invoice_number => one invoice with two line items.
     const sampleRows = [
-      ['QUOTE-001', 'draft', 'CUST-001', 'Acme Corp', '1/15/2026', '2/15/2026', 'PO-123', '', 'John Doe', 'ap@acme.com', '', '', '', '', '', 'Net 30', '0', 'SKU-001', 'Widget A', '10', '50.00', '0', '0'],
-      ['QUOTE-001', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', 'SKU-002', 'Widget B', '5', '20.00', '0', '0'],
+      ['QUOTE-001', 'draft', 'CUST-001', 'Acme Corp', '1/15/2026', '2/15/2026', 'PO-456', 'REF-789', 'INT-001', '1/14/2026', 'Main Site', 'John Smith', 'CC-001', '1/20/2026', 'Dr. Sarah Lee', 'Jane Doe', 'Acme Billing', 'Acme Delivery', 'John Doe', 'ap@acme.com', '', '', '', '', 'Net 30', '0', 'SKU-001', 'Widget A', '10', '50.00', '0', '0'],
+      ['QUOTE-001', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', 'SKU-002', 'Widget B', '5', '20.00', '0', '0'],
     ].map((row) => row.map(csvValue).join(','))
 
     const csvContent = `${headers}\n${sampleRows.join('\n')}`
