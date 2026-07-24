@@ -63,6 +63,8 @@ class QuotationController extends Controller
             'customer_reference' => 'nullable|string|max:100',
             'internal_reference' => 'nullable|string|max:100',
             'attention_to' => 'nullable|string|max:255',
+            'billing_contact_id' => 'nullable|exists:core_contacts,id',
+            'shipping_contact_id' => 'nullable|exists:core_contacts,id',
             'contact_email' => 'nullable|email|max:255',
             'contact_phone' => 'nullable|string|max:50',
             'salesperson' => 'nullable|string|max:255',
@@ -93,6 +95,8 @@ class QuotationController extends Controller
                     'customer_reference' => $validated['customer_reference'] ?? null,
                     'internal_reference' => $validated['internal_reference'] ?? null,
                     'attention_to' => $validated['attention_to'] ?? null,
+                    'billing_contact_id' => $validated['billing_contact_id'] ?? null,
+                    'shipping_contact_id' => $validated['shipping_contact_id'] ?? null,
                     'contact_email' => $validated['contact_email'] ?? null,
                     'contact_phone' => $validated['contact_phone'] ?? null,
                     'salesperson' => $validated['salesperson'] ?? null,
@@ -142,7 +146,7 @@ class QuotationController extends Controller
 
     public function show($id)
     {
-        $quotation = Quotation::with(['customer', 'lines.product', 'salesOrder', 'invoices'])->find($id);
+        $quotation = Quotation::with(['customer', 'lines.product', 'salesOrder', 'invoices', 'billingContact', 'shippingContact'])->find($id);
 
         if (! $quotation) {
             return response()->json(['message' => 'Quotation not found'], 404);
@@ -170,6 +174,8 @@ class QuotationController extends Controller
             'customer_reference' => 'nullable|string|max:100',
             'internal_reference' => 'nullable|string|max:100',
             'attention_to' => 'nullable|string|max:255',
+            'billing_contact_id' => 'nullable|exists:core_contacts,id',
+            'shipping_contact_id' => 'nullable|exists:core_contacts,id',
             'contact_email' => 'nullable|email|max:255',
             'contact_phone' => 'nullable|string|max:50',
             'salesperson' => 'nullable|string|max:255',
@@ -428,6 +434,13 @@ class QuotationController extends Controller
             'line_discount' => 'line_discount_amount',
             'line_discount_amount' => 'line_discount_amount',
             'discount' => 'discount_amount',
+            'billing_address' => 'billing_address_snapshot',
+            'shipping_address' => 'shipping_address_snapshot',
+            'email' => 'contact_email',
+            'phone' => 'contact_phone',
+            'billing_contact' => 'billing_contact_name',
+            'shipping_contact' => 'shipping_contact_name',
+            'delivery_contact' => 'shipping_contact_name',
         ];
         $header = array_map(fn ($key) => $columnAliases[$key] ?? $key, $header);
 
@@ -536,15 +549,31 @@ class QuotationController extends Controller
                     'valid_until' => $this->parseImportDate($headerRow['valid_until'] ?? null),
                     'customer_id' => $customer->id,
                     'customer_reference' => $headerRow['customer_reference'] ?? null,
+                    'internal_reference' => $this->readImportValue($headerRow['internal_reference'] ?? null),
+                    'attention_to' => $this->readImportValue($headerRow['attention_to'] ?? null),
+                    'contact_email' => $this->readImportValue($headerRow['contact_email'] ?? null),
+                    'contact_phone' => $this->readImportValue($headerRow['contact_phone'] ?? null),
                     'salesperson' => $this->readImportValue($headerRow['salesperson'] ?? null),
                     'delivery_lead_time' => $this->readImportValue($headerRow['delivery_lead_time'] ?? null),
                     'shipping_method' => $this->readImportValue($headerRow['shipping_method'] ?? null),
                     'shipping_terms' => $this->readImportValue($headerRow['shipping_terms'] ?? null),
                     'validity' => $this->readImportValue($headerRow['validity'] ?? null),
+                    'billing_address_snapshot' => $this->readImportValue($headerRow['billing_address_snapshot'] ?? null),
+                    'shipping_address_snapshot' => $this->readImportValue($headerRow['shipping_address_snapshot'] ?? null),
                     'notes' => $headerRow['notes'] ?? null,
                     'discount_amount' => $this->parseNumericValue($headerRow['discount_amount'] ?? null),
                     'created_by' => Auth::id(),
                 ];
+
+                // Resolve billing/shipping contact names to IDs (auto-create if not found)
+                $billingContactName = $this->readImportValue($headerRow['billing_contact_name'] ?? null);
+                if ($billingContactName !== null) {
+                    $createData['billing_contact_id'] = $this->resolveOrCreateContact($billingContactName, 'person', 'import_quotation');
+                }
+                $shippingContactName = $this->readImportValue($headerRow['shipping_contact_name'] ?? null);
+                if ($shippingContactName !== null) {
+                    $createData['shipping_contact_id'] = $this->resolveOrCreateContact($shippingContactName, 'person', 'import_quotation');
+                }
 
                 if ($importedNumber !== '') {
                     if (Quotation::where('quotation_number', $importedNumber)->exists()) {
@@ -672,6 +701,36 @@ class QuotationController extends Controller
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    private function resolveOrCreateContact(string $name, string $type = 'person', string $source = 'import'): ?int
+    {
+        $normalised = strtolower(trim($name));
+
+        $contact = \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(display_name) = ?', [$normalised])->first()
+            ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(first_name || \' \' || last_name) = ?', [$normalised])->first()
+            ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(company_name) = ?', [$normalised])->first();
+
+        if ($contact) {
+            return (int) $contact->id;
+        }
+
+        $parts = array_filter(explode(' ', trim($name)));
+        $firstName = $parts ? array_shift($parts) : $name;
+        $lastName = $parts ? implode(' ', $parts) : null;
+
+        $newContact = \Modules\Contact\src\Models\CoreContact::create([
+            'tenant_id'    => tenant()->id,
+            'contact_type' => $type,
+            'first_name'   => $firstName,
+            'last_name'    => $lastName,
+            'display_name' => trim($name),
+            'company_name' => $lastName === null ? $name : null,
+            'source'       => $source,
+            'is_active'    => true,
+        ]);
+
+        return $newContact->id;
     }
 
     public function bulkDestroy(\Illuminate\Http\Request $request)

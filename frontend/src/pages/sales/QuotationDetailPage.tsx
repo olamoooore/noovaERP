@@ -348,6 +348,48 @@ export function QuotationDetailPage() {
               </div>
             </div>
 
+            {(quotation.attention_to || quotation.contact_email || quotation.contact_phone || quotation.billing_address_snapshot || quotation.shipping_address_snapshot) && (
+              <div className="mt-6 pt-6 border-t">
+                <div className="text-sm font-medium text-muted-foreground uppercase mb-3">Commercial Snapshot</div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  {quotation.attention_to && (
+                    <div>
+                      <div className="text-muted-foreground">Attention To</div>
+                      <div className="font-medium">{quotation.attention_to}</div>
+                    </div>
+                  )}
+                  {quotation.contact_email && (
+                    <div>
+                      <div className="text-muted-foreground">Contact Email</div>
+                      <div className="font-medium">{quotation.contact_email}</div>
+                    </div>
+                  )}
+                  {quotation.contact_phone && (
+                    <div>
+                      <div className="text-muted-foreground">Contact Phone</div>
+                      <div className="font-medium">{quotation.contact_phone}</div>
+                    </div>
+                  )}
+                </div>
+                {(quotation.billing_address_snapshot || quotation.shipping_address_snapshot) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    {quotation.billing_address_snapshot && (
+                      <div className="rounded-lg border p-4 bg-muted/20">
+                        <div className="text-xs text-muted-foreground mb-1">Billing Address {quotation.billing_contact ? `(Contact: ${quotation.billing_contact.name || quotation.billing_contact.display_name})` : ''}</div>
+                        <div className="text-sm whitespace-pre-wrap">{quotation.billing_address_snapshot}</div>
+                      </div>
+                    )}
+                    {quotation.shipping_address_snapshot && (
+                      <div className="rounded-lg border p-4 bg-muted/20">
+                        <div className="text-xs text-muted-foreground mb-1">Shipping Address {quotation.shipping_contact ? `(Contact: ${quotation.shipping_contact.name || quotation.shipping_contact.display_name})` : ''}</div>
+                        <div className="text-sm whitespace-pre-wrap">{quotation.shipping_address_snapshot}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
           </CardContent>
         </Card>
 

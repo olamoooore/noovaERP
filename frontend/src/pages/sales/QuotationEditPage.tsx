@@ -49,6 +49,11 @@ export const QuotationEditPage: React.FC = () => {
   const [lines, setLines] = useState<QuotationLine[]>([emptyLine()]);
   const [customerReference, setCustomerReference] = useState('');
   const [internalReference, setInternalReference] = useState('');
+  const [attentionTo, setAttentionTo] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [billingAddressSnapshot, setBillingAddressSnapshot] = useState('');
+  const [shippingAddressSnapshot, setShippingAddressSnapshot] = useState('');
   const [salesperson, setSalesperson] = useState('');
   const [deliveryLeadTime, setDeliveryLeadTime] = useState('');
   const [shippingMethod, setShippingMethod] = useState('');
@@ -91,6 +96,11 @@ export const QuotationEditPage: React.FC = () => {
     setDiscountAmount(quotation.discount_amount ? Number(quotation.discount_amount) : '');
     setCustomerReference(quotation.customer_reference || '');
     setInternalReference(quotation.internal_reference || '');
+    setAttentionTo(quotation.attention_to || '');
+    setContactEmail(quotation.contact_email || '');
+    setContactPhone(quotation.contact_phone || '');
+    setBillingAddressSnapshot(quotation.billing_address_snapshot || '');
+    setShippingAddressSnapshot(quotation.shipping_address_snapshot || '');
     setSalesperson(quotation.salesperson || '');
     setDeliveryLeadTime(quotation.delivery_lead_time || '');
     setShippingMethod(quotation.shipping_method || '');
@@ -205,6 +215,11 @@ export const QuotationEditPage: React.FC = () => {
       valid_until: validUntil || null,
       customer_reference: customerReference || null,
       internal_reference: internalReference || null,
+      attention_to: attentionTo || null,
+      contact_email: contactEmail || null,
+      contact_phone: contactPhone || null,
+      billing_address_snapshot: billingAddressSnapshot || null,
+      shipping_address_snapshot: shippingAddressSnapshot || null,
       salesperson: salesperson || null,
       delivery_lead_time: deliveryLeadTime || null,
       shipping_method: shippingMethod || null,
@@ -320,6 +335,62 @@ export const QuotationEditPage: React.FC = () => {
                   placeholder="Sales order / project"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Attention To</label>
+                <input
+                  type="text"
+                  value={attentionTo}
+                  onChange={(event) => setAttentionTo(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="Primary contact"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Contact Email</label>
+                <input
+                  type="email"
+                  value={contactEmail}
+                  onChange={(event) => setContactEmail(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="billing@customer.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Contact Phone</label>
+                <input
+                  type="text"
+                  value={contactPhone}
+                  onChange={(event) => setContactPhone(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="Phone or mobile"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Billing Address</label>
+                <textarea
+                  value={billingAddressSnapshot}
+                  onChange={(event) => setBillingAddressSnapshot(event.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="Billing address"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Shipping Address</label>
+                <textarea
+                  value={shippingAddressSnapshot}
+                  onChange={(event) => setShippingAddressSnapshot(event.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="Delivery address"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Salesperson</label>
                 <input

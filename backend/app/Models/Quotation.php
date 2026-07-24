@@ -41,6 +41,8 @@ class Quotation extends Model
         'customer_reference',
         'internal_reference',
         'attention_to',
+        'billing_contact_id',
+        'shipping_contact_id',
         'contact_email',
         'contact_phone',
         'salesperson',
@@ -86,6 +88,16 @@ class Quotation extends Model
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class, 'quotation_id');
+    }
+
+    public function billingContact(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Contact\src\Models\CoreContact::class, 'billing_contact_id');
+    }
+
+    public function shippingContact(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Contact\src\Models\CoreContact::class, 'shipping_contact_id');
     }
 
     public static function generateQuotationNumber(): string

@@ -51,6 +51,11 @@ export const QuotationCreatePage: React.FC = () => {
   const [lines, setLines] = useState<QuotationLine[]>([emptyLine()]);
   const [customerReference, setCustomerReference] = useState('');
   const [internalReference, setInternalReference] = useState('');
+  const [attentionTo, setAttentionTo] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [billingAddressSnapshot, setBillingAddressSnapshot] = useState('');
+  const [shippingAddressSnapshot, setShippingAddressSnapshot] = useState('');
   const [salesperson, setSalesperson] = useState('');
   const [deliveryLeadTime, setDeliveryLeadTime] = useState('');
   const [shippingMethod, setShippingMethod] = useState('');
@@ -180,6 +185,11 @@ export const QuotationCreatePage: React.FC = () => {
       valid_until: validUntil,
       customer_reference: customerReference || undefined,
       internal_reference: internalReference || undefined,
+      attention_to: attentionTo || undefined,
+      contact_email: contactEmail || undefined,
+      contact_phone: contactPhone || undefined,
+      billing_address_snapshot: billingAddressSnapshot || undefined,
+      shipping_address_snapshot: shippingAddressSnapshot || undefined,
       salesperson: salesperson || undefined,
       delivery_lead_time: deliveryLeadTime || undefined,
       shipping_method: shippingMethod || undefined,
@@ -291,6 +301,62 @@ export const QuotationCreatePage: React.FC = () => {
                   placeholder="Sales order / project"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Attention To</label>
+                <input
+                  type="text"
+                  value={attentionTo}
+                  onChange={(event) => setAttentionTo(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="Primary contact"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Contact Email</label>
+                <input
+                  type="email"
+                  value={contactEmail}
+                  onChange={(event) => setContactEmail(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="billing@customer.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Contact Phone</label>
+                <input
+                  type="text"
+                  value={contactPhone}
+                  onChange={(event) => setContactPhone(event.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="Phone or mobile"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Billing Address</label>
+                <textarea
+                  value={billingAddressSnapshot}
+                  onChange={(event) => setBillingAddressSnapshot(event.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="Billing address"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Shipping Address</label>
+                <textarea
+                  value={shippingAddressSnapshot}
+                  onChange={(event) => setShippingAddressSnapshot(event.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                  placeholder="Delivery address"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Salesperson</label>
                 <input
