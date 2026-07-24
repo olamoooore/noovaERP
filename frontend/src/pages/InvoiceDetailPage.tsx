@@ -37,7 +37,22 @@ interface Invoice {
   date_of_case?: string
   case_location?: string
   patient_name?: string
+  cost_center_id?: string
+  po_number?: string
+  doctor?: { id: number; display_name?: string; full_name?: string; name?: string }
+  requestor?: { id: number; display_name?: string; full_name?: string; name?: string }
   delivery_date?: string
+  internal_reference?: string
+  customer_reference?: string
+  attention_to?: string
+  contact_email?: string
+  contact_phone?: string
+  company_registration_number?: string
+  tax_registration_number?: string
+  billing_address_snapshot?: string
+  shipping_address_snapshot?: string
+  billing_contact?: { id: number; name?: string }
+  shipping_contact?: { id: number; name?: string }
   created_at: string
   updated_at: string
   created_by?: {
@@ -390,7 +405,7 @@ export function InvoiceDetailPage() {
           )}
 
           {/* Case Information */}
-          {(invoice.date_of_case || invoice.case_location || invoice.patient_name || invoice.delivery_date) && (
+          {(invoice.date_of_case || invoice.case_location || invoice.patient_name || invoice.cost_center_id || invoice.delivery_date || invoice.po_number || invoice.doctor || invoice.requestor) && (
             <div className="mt-6 pt-6 border-t">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase mb-3">Case Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -412,13 +427,104 @@ export function InvoiceDetailPage() {
                     <p className="text-sm font-medium">{invoice.patient_name}</p>
                   </div>
                 )}
+                {invoice.cost_center_id && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Cost Center</span>
+                    <p className="text-sm font-medium">{invoice.cost_center_id}</p>
+                  </div>
+                )}
                 {invoice.delivery_date && (
                   <div>
                     <span className="text-xs text-muted-foreground">Delivery Date</span>
                     <p className="text-sm font-medium">{formatDate(invoice.delivery_date)}</p>
                   </div>
                 )}
+                {invoice.po_number && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">PO Number</span>
+                    <p className="text-sm font-medium">{invoice.po_number}</p>
+                  </div>
+                )}
+                {invoice.doctor && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Doctor</span>
+                    <p className="text-sm font-medium">{invoice.doctor.display_name || invoice.doctor.full_name || invoice.doctor.name || '-'}</p>
+                  </div>
+                )}
+                {invoice.requestor && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Requestor</span>
+                    <p className="text-sm font-medium">{invoice.requestor.display_name || invoice.requestor.full_name || invoice.requestor.name || '-'}</p>
+                  </div>
+                )}
               </div>
+            </div>
+          )}
+
+          {/* Commercial Snapshot */}
+          {(invoice.customer_reference || invoice.internal_reference || invoice.attention_to || invoice.contact_email || invoice.contact_phone || invoice.company_registration_number || invoice.tax_registration_number || invoice.billing_address_snapshot || invoice.shipping_address_snapshot) && (
+            <div className="mt-6 pt-6 border-t">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase mb-3">Commercial Snapshot</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {invoice.customer_reference && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Customer Reference</span>
+                    <p className="text-sm font-medium">{invoice.customer_reference}</p>
+                  </div>
+                )}
+                {invoice.internal_reference && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Internal Reference</span>
+                    <p className="text-sm font-medium">{invoice.internal_reference}</p>
+                  </div>
+                )}
+                {invoice.attention_to && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Attention To</span>
+                    <p className="text-sm font-medium">{invoice.attention_to}</p>
+                  </div>
+                )}
+                {invoice.contact_email && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Contact Email</span>
+                    <p className="text-sm font-medium">{invoice.contact_email}</p>
+                  </div>
+                )}
+                {invoice.contact_phone && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Contact Phone</span>
+                    <p className="text-sm font-medium">{invoice.contact_phone}</p>
+                  </div>
+                )}
+                {invoice.company_registration_number && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Company Registration</span>
+                    <p className="text-sm font-medium">{invoice.company_registration_number}</p>
+                  </div>
+                )}
+                {invoice.tax_registration_number && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Tax Registration</span>
+                    <p className="text-sm font-medium">{invoice.tax_registration_number}</p>
+                  </div>
+                )}
+              </div>
+              {(invoice.billing_address_snapshot || invoice.shipping_address_snapshot) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                  {invoice.billing_address_snapshot && (
+                    <div className="rounded-lg border p-4 bg-muted/20">
+                      <p className="text-xs text-muted-foreground mb-1">Billing Address {invoice.billing_contact ? `(Contact: ${invoice.billing_contact.name})` : ''}</p>
+                      <p className="text-sm whitespace-pre-wrap">{formatAddress(invoice.billing_address_snapshot)}</p>
+                    </div>
+                  )}
+                  {invoice.shipping_address_snapshot && (
+                    <div className="rounded-lg border p-4 bg-muted/20">
+                      <p className="text-xs text-muted-foreground mb-1">Delivery Address {invoice.shipping_contact ? `(Contact: ${invoice.shipping_contact.name})` : ''}</p>
+                      <p className="text-sm whitespace-pre-wrap">{formatAddress(invoice.shipping_address_snapshot)}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
