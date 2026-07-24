@@ -138,16 +138,14 @@ class InvoiceController extends Controller
         if ($importedNumber !== '') {
             $existing = Invoice::withoutTrashed()->where('invoice_number', $importedNumber)->first();
             if ($existing) {
-                // Clean up all related records before force-deleting
+                // Nullify FKs that have DB-level constraints / boot hooks
+                $existing->update(['journal_entry_id' => null, 'sales_order_id' => null]);
+                // Clean up related records
                 $existing->payments()->delete();
                 $existing->lines()->delete();
                 DB::table('settlement_audit_logs')->where('invoice_id', $existing->id)->delete();
                 try { DB::table('credit_notes')->where('invoice_id', $existing->id)->delete(); } catch (\Exception $e) {}
                 try { DB::table('sales_invoice_links')->where('invoice_id', $existing->id)->delete(); } catch (\Exception $e) {}
-                if ($existing->journal_entry_id) {
-                    DB::table('journal_entry_lines')->where('journal_entry_id', $existing->journal_entry_id)->delete();
-                    DB::table('journal_entries')->where('id', $existing->journal_entry_id)->delete();
-                }
                 $existing->forceDelete();
             }
         }
