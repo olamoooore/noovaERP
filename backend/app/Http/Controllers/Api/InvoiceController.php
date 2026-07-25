@@ -605,19 +605,19 @@ class InvoiceController extends Controller
                 }
 
                 // Resolve doctor and requestor names to contact IDs (auto-create if not found)
-                $doctorName = $this->readImportValue($headerRow['doctor_name'] ?? null);
+                $doctorName = $this->readImportValue($headerRow['doctor_name'] ?? $headerRow['doctor'] ?? null);
                 if ($doctorName !== null) {
                     $data['doctor_contact_id'] = $this->resolveOrCreateContact($doctorName, 'person', 'import_invoice');
                 }
-                $requestorName = $this->readImportValue($headerRow['requestor_name'] ?? null);
+                $requestorName = $this->readImportValue($headerRow['requestor_name'] ?? $headerRow['requestor'] ?? null);
                 if ($requestorName !== null) {
                     $data['requestor_contact_id'] = $this->resolveOrCreateContact($requestorName, 'person', 'import_invoice');
                 }
-                $billingContactName = $this->readImportValue($headerRow['billing_contact_name'] ?? null);
+                $billingContactName = $this->readImportValue($headerRow['billing_contact_name'] ?? $headerRow['billing_contact'] ?? null);
                 if ($billingContactName !== null) {
                     $data['billing_contact_id'] = $this->resolveOrCreateContact($billingContactName, 'person', 'import_invoice');
                 }
-                $shippingContactName = $this->readImportValue($headerRow['shipping_contact_name'] ?? null);
+                $shippingContactName = $this->readImportValue($headerRow['shipping_contact_name'] ?? $headerRow['shipping_contact'] ?? null);
                 if ($shippingContactName !== null) {
                     $data['shipping_contact_id'] = $this->resolveOrCreateContact($shippingContactName, 'person', 'import_invoice');
                 }
