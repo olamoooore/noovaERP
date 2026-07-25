@@ -25,7 +25,7 @@ final class QuotationDataSource implements DataSourceContract
 
     public function load(string $documentId): self
     {
-        $this->quotation = Quotation::with(['customer', 'lines.product'])->findOrFail($documentId);
+        $this->quotation = Quotation::with(['customer', 'lines.product', 'billingContact', 'shippingContact'])->findOrFail($documentId);
 
         return $this;
     }
@@ -74,6 +74,8 @@ final class QuotationDataSource implements DataSourceContract
                 'shipping_method' => $q->shipping_method ?? '',
                 'shipping_terms' => $q->shipping_terms ?? '',
                 'internal_reference' => $q->internal_reference ?? '',
+                'billing_contact_name' => $q->billingContact?->display_name ?? '',
+                'shipping_contact_name' => $q->shippingContact?->display_name ?? '',
             ],
             'customer' => [
                 'code' => $q->customer?->code ?? '',
@@ -120,6 +122,8 @@ final class QuotationDataSource implements DataSourceContract
                 ['token' => 'invoice.delivery_lead_time', 'label' => 'Delivery Lead Time'],
                 ['token' => 'invoice.shipping_method', 'label' => 'Shipping Method'],
                 ['token' => 'invoice.shipping_terms', 'label' => 'Shipping Terms'],
+                ['token' => 'invoice.billing_contact_name', 'label' => 'Billing Contact'],
+                ['token' => 'invoice.shipping_contact_name', 'label' => 'Shipping Contact'],
                 ['token' => 'invoice.notes', 'label' => 'Notes'],
                 ['token' => 'invoice.terms', 'label' => 'Terms & Conditions'],
             ]],
@@ -154,6 +158,11 @@ final class QuotationDataSource implements DataSourceContract
         $base['invoice']['number'] = 'QT-2026-0001';
         $base['invoice']['status'] = 'draft';
         $base['invoice']['due_date'] = '2026-08-07';
+        $base['invoice']['salesperson'] = 'John Smith';
+        $base['invoice']['validity'] = '30 days';
+        $base['invoice']['delivery_lead_time'] = '2-3 weeks';
+        $base['invoice']['billing_contact_name'] = 'Dr. Sarah Chen';
+        $base['invoice']['shipping_contact_name'] = 'Dr. Sarah Chen';
 
         return $base;
     }

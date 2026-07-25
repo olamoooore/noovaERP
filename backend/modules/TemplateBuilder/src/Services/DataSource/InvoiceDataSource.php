@@ -18,7 +18,7 @@ class InvoiceDataSource implements DataSourceContract
 
     public function load(string $documentId): self
     {
-        $this->invoice = Invoice::with(['customer', 'lines.product', 'doctor', 'requestor'])->findOrFail($documentId);
+        $this->invoice = Invoice::with(['customer', 'lines.product', 'doctor', 'requestor', 'billingContact', 'shippingContact'])->findOrFail($documentId);
 
         return $this;
     }
@@ -61,6 +61,8 @@ class InvoiceDataSource implements DataSourceContract
                 'internal_reference' => $invoice->internal_reference ?? '',
                 'doctor' => $invoice->doctor?->full_name ?? $invoice->doctor?->display_name ?? '',
                 'requestor' => $invoice->requestor?->full_name ?? $invoice->requestor?->display_name ?? '',
+                'billing_contact_name' => $invoice->billingContact?->display_name ?? '',
+                'shipping_contact_name' => $invoice->shippingContact?->display_name ?? '',
             ],
             'customer' => [
                 'code' => $invoice->customer?->code ?? '',
@@ -113,6 +115,8 @@ class InvoiceDataSource implements DataSourceContract
                 ['token' => 'invoice.attention_to', 'label' => 'Attention To'],
                 ['token' => 'invoice.doctor', 'label' => 'Doctor'],
                 ['token' => 'invoice.requestor', 'label' => 'Requestor'],
+                ['token' => 'invoice.billing_contact_name', 'label' => 'Billing Contact'],
+                ['token' => 'invoice.shipping_contact_name', 'label' => 'Shipping Contact'],
                 ['token' => 'invoice.shipping_method', 'label' => 'Shipping Method'],
                 ['token' => 'invoice.delivery_date', 'label' => 'Delivery Date'],
                 ['token' => 'invoice.notes', 'label' => 'Notes'],
@@ -162,6 +166,11 @@ class InvoiceDataSource implements DataSourceContract
                 'shipping_address' => "Globex Corporation\n1 Infinite Loop\nSan Francisco, CA 94102",
                 'notes' => 'Thank you for your business.',
                 'terms' => 'Payment due within 30 days. Late payments incur 1.5% monthly interest.',
+                'attention_to' => 'Dr. Sarah Chen',
+                'doctor' => 'Dr. James Wilson',
+                'requestor' => 'Ms. Emily Park',
+                'billing_contact_name' => 'Dr. Sarah Chen',
+                'shipping_contact_name' => 'Dr. Sarah Chen',
             ],
             'customer' => [
                 'code' => 'CUST-0001',
