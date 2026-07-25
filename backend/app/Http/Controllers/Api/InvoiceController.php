@@ -11,6 +11,7 @@ use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Modules\Sales\Services\SalesOrderService;
 
 class InvoiceController extends Controller
@@ -731,6 +732,7 @@ class InvoiceController extends Controller
         $lastName = $parts ? implode(' ', $parts) : null;
 
         $newContact = \Modules\Contact\src\Models\CoreContact::create([
+            'id'            => (string) Str::uuid(),
             'tenant_id'     => tenant()->id,
             'contact_type'  => $type,
             'first_name'    => $firstName,
