@@ -51,8 +51,8 @@ interface Invoice {
   tax_registration_number?: string
   billing_address_snapshot?: string
   shipping_address_snapshot?: string
-  billing_contact?: { id: number; name?: string }
-  shipping_contact?: { id: number; name?: string }
+  billing_contact?: { id: string; display_name?: string }
+  shipping_contact?: { id: string; display_name?: string }
   created_at: string
   updated_at: string
   created_by?: {
@@ -513,13 +513,13 @@ export function InvoiceDetailPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                   {invoice.billing_address_snapshot && (
                     <div className="rounded-lg border p-4 bg-muted/20">
-                      <p className="text-xs text-muted-foreground mb-1">Billing Address {invoice.billing_contact ? `(Contact: ${invoice.billing_contact.name})` : ''}</p>
+                      <p className="text-xs text-muted-foreground mb-1">Billing Address {invoice.billing_contact ? `(Contact: ${invoice.billing_contact.display_name})` : ''}</p>
                       <p className="text-sm whitespace-pre-wrap">{formatAddress(invoice.billing_address_snapshot)}</p>
                     </div>
                   )}
                   {invoice.shipping_address_snapshot && (
                     <div className="rounded-lg border p-4 bg-muted/20">
-                      <p className="text-xs text-muted-foreground mb-1">Delivery Address {invoice.shipping_contact ? `(Contact: ${invoice.shipping_contact.name})` : ''}</p>
+                      <p className="text-xs text-muted-foreground mb-1">Delivery Address {invoice.shipping_contact ? `(Contact: ${invoice.shipping_contact.display_name})` : ''}</p>
                       <p className="text-sm whitespace-pre-wrap">{formatAddress(invoice.shipping_address_snapshot)}</p>
                     </div>
                   )}

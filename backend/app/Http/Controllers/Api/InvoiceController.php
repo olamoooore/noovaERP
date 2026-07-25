@@ -137,14 +137,14 @@ class InvoiceController extends Controller
         // Preserve the imported invoice number when provided; force-delete existing if re-importing.
         $importedNumber = isset($data['invoice_number']) ? trim((string) $data['invoice_number']) : '';
         if ($importedNumber !== '') {
-            $existing = Invoice::withoutTrashed()->where('invoice_number', $importedNumber)->first();
+            $existing = Invoice::withTrashed()->where('invoice_number', $importedNumber)->first();
             if ($existing) {
                 // Nullify FKs and set status to draft to bypass DB trigger prevent_posted_document_deletion()
                 $existing->update(['journal_entry_id' => null, 'sales_order_id' => null, 'status' => 'draft']);
                 // Clean up related records
                 $existing->payments()->delete();
                 $existing->lines()->delete();
-                DB::table('settlement_audit_logs')->where('invoice_id', $existing->id)->delete();
+                try { DB::table('settlement_audit_logs')->where('invoice_id', $existing->id)->delete(); } catch (\Exception $e) {}
                 try { DB::table('credit_notes')->where('invoice_id', $existing->id)->delete(); } catch (\Exception $e) {}
                 try { DB::table('sales_invoice_links')->where('invoice_id', $existing->id)->delete(); } catch (\Exception $e) {}
                 $existing->forceDelete();

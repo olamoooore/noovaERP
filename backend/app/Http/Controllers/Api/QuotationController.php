@@ -577,7 +577,7 @@ class QuotationController extends Controller
                 }
 
                 if ($importedNumber !== '') {
-                    $existing = Quotation::withoutTrashed()->where('quotation_number', $importedNumber)->first();
+                    $existing = Quotation::withTrashed()->where('quotation_number', $importedNumber)->first();
                     if ($existing) {
                         // Nullify quotation_id on linked invoices before deleting
                         Invoice::withoutTrashed()->where('quotation_id', $existing->id)->update(['quotation_id' => null]);
