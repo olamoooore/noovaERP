@@ -78,25 +78,9 @@ class PublicWebsiteRenderController extends Controller
         // Fix relative logo path — rewrite noovaerplogo.png to /storage/noovaerplogo.png
         $html = str_replace('noovaerplogo.png', '/storage/noovaerplogo.png', $html);
 
-        // If the stored content is a full HTML document (has <head> and <body> tags),
-        // extract the JS from <head>, then extract only the inner <body> content.
-        // This prevents nested <body> and <head> tags when wrapped by generateFullHtml().
-        $extractedHeadJs = '';
-        if (preg_match('/<head[^>]*>(.*)<\/head>/is', $html, $headMatch)) {
-            $headContent = $headMatch[1];
-            // Extract <script>...</script> blocks from the head section
-            if (preg_match_all('/<script\b[^>]*>(.*?)<\/script>/is', $headContent, $scriptMatches)) {
-                $extractedHeadJs = implode("\n", $scriptMatches[0]);
-            }
-            // Merge any extracted head JS with the explicit header_js field
-            if ($extractedHeadJs !== '') {
-                $headerJs = ($headerJs !== '' ? $headerJs."\n" : '').$extractedHeadJs;
-            }
-        }
-        $html = $this->stripOuterDocumentTags($html);
-
         // Get shop settings from website
         $shopSettings = $website->settings['shop'] ?? null;
+        $shopSettingsJson = $shopSettings ? json_encode($shopSettings) : 'null';
 
         // API base URL for e-commerce (relative so it works through any proxy/port)
         $apiBaseUrl = '/api/v1/website-public';
@@ -105,20 +89,41 @@ class PublicWebsiteRenderController extends Controller
         $pages = $website->pages()->orderBy('sort_order')->get();
         $navHtml = $this->generateNavigation($website, $pages, $pageSlug);
 
-        // Build the complete HTML document
-        $fullHtml = $this->generateFullHtml([
-            'title' => $page->seo_title ?: $page->title ?: $website->name,
-            'description' => $page->seo_description ?: '',
-            'html' => $html,
-            'css' => $css,
-            'headerJs' => $headerJs,
-            'bodyJs' => $bodyJs,
-            'apiBaseUrl' => $apiBaseUrl,
-            'shopSettings' => $shopSettings,
-            'websiteSlug' => $websiteSlug,
-            'pageSlug' => $pageSlug,
-            'navigation' => $navHtml,
-        ]);
+        // Detect if stored content is a full HTML document (has <html> or <body> tags)
+        // vs a fragment (just sections/divs that need wrapping).
+        $isFullDocument = (stripos($html, '<html') !== false || stripos($html, '<body') !== false);
+
+        if ($isFullDocument) {
+            // Full HTML document — serve it directly, just inject the API config script
+            // and merge any separate header_js/body_js fields.
+            $apiScript = "<script>\nwindow.__API_BASE_URL__ = '{$apiBaseUrl}';\nwindow.__SHOP_SETTINGS__ = {$shopSettingsJson};\nwindow.__WEBSITE_SLUG__ = '{$websiteSlug}';\n</script>";
+
+            // Inject API config script right after opening <head> tag
+            $html = preg_replace('/(<head[^>]*>)/i', "$1\n{$apiScript}", $html, 1);
+
+            // Inject bodyJs (from separate field) before </body> if not already in the HTML
+            if ($bodyJs !== '' && stripos($html, $bodyJs) === false) {
+                $bodyJsTag = preg_match('/^\s*<script/i', $bodyJs) ? $bodyJs : "<script>\n{$bodyJs}\n</script>";
+                $html = preg_replace('/(<\/body>)/i', "{$bodyJsTag}\n$1", $html, 1);
+            }
+
+            $fullHtml = $html;
+        } else {
+            // HTML fragment — wrap in our template
+            $fullHtml = $this->generateFullHtml([
+                'title' => $page->seo_title ?: $page->title ?: $website->name,
+                'description' => $page->seo_description ?: '',
+                'html' => $html,
+                'css' => $css,
+                'headerJs' => $headerJs,
+                'bodyJs' => $bodyJs,
+                'apiBaseUrl' => $apiBaseUrl,
+                'shopSettings' => $shopSettings,
+                'websiteSlug' => $websiteSlug,
+                'pageSlug' => $pageSlug,
+                'navigation' => $navHtml,
+            ]);
+        }
 
         return response($fullHtml, 200)
             ->header('Content-Type', 'text/html; charset=UTF-8')
@@ -283,32 +288,6 @@ RENDER_OUTPUT;
         })->join("\n");
 
         return $links;
-    }
-
-    /**
-     * If the stored content is a full HTML document (with <html>, <head>, <body> tags),
-     * extract only the inner body content. This prevents nested <body> tags when the
-     * content is wrapped by generateFullHtml().
-     */
-    private function stripOuterDocumentTags(string $html): string
-    {
-        $trimmed = trim($html);
-        if ($trimmed === '') {
-            return $html;
-        }
-
-        // If there's no <body tag, the content is already a fragment — return as-is.
-        if (! preg_match('/<body[\s>]/i', $trimmed)) {
-            return $html;
-        }
-
-        // Extract content between the opening <body...> and closing </body> tags.
-        // Use [^]* (not .* with s flag) to match across newlines in one pass.
-        if (preg_match('/<body[^>]*>(.*)<\/body>/is', $trimmed, $m)) {
-            return $m[1];
-        }
-
-        return $html;
     }
 
     /**
