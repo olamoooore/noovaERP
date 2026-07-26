@@ -220,6 +220,8 @@ export function CustomerDetailsPage() {
   const [customerNote, setCustomerNote] = useState('')
   const [editForm, setEditForm] = useState<Partial<Customer>>({})
   const [emailForm, setEmailForm] = useState({ subject: '', body: '' })
+  const [statementAsOf, setStatementAsOf] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [statementDialogOpen, setStatementDialogOpen] = useState(false)
 
   // Fetch customer details
   const { data: customer, isLoading } = useQuery<Customer>({
@@ -259,6 +261,16 @@ export function CustomerDetailsPage() {
       return response.data
     },
     enabled: !!id && activeTab === 'financial',
+  })
+
+  // Fetch AR aging data for this customer
+  const { data: agingData } = useQuery({
+    queryKey: ['customer-aging', id],
+    queryFn: async () => {
+      const response = await api.get(`/customers/${id}/aging`)
+      return response.data
+    },
+    enabled: !!id && activeTab === 'invoices',
   })
 
   // Update customer mutation
@@ -1079,53 +1091,118 @@ export function CustomerDetailsPage() {
 
         {/* Invoices Tab */}
         <TabsContent value="invoices" className="mt-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Invoices</CardTitle>
-                <CardDescription>All invoices for this customer</CardDescription>
-              </div>
-              <Button onClick={() => navigate('/invoices/new?customer=' + customer.id)}>
-                <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-2" />
-                Create Invoice
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {customer.invoices?.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Invoice #</TableHead>
-                      <TableHead>Issue Date</TableHead>
-                      <TableHead>Due Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="text-right">Balance</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {customer.invoices.map(invoice => (
-                      <TableRow key={invoice.id}>
-                        <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
-                        <TableCell>{format(new Date(invoice.invoice_date), 'MMM d, yyyy')}</TableCell>
-                        <TableCell>{format(new Date(invoice.due_date), 'MMM d, yyyy')}</TableCell>
-                        <TableCell>
-                          <Badge className={getStatusColor(invoice.status)}>{invoice.status}</Badge>
-                        </TableCell>
-                        <TableCell className="text-right font-medium">{formatCurrency(invoice.total)}</TableCell>
-                        <TableCell className="text-right font-medium">{formatCurrency(invoice.balance)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Icon icon="solar:document-text-bold" className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                  <p>No invoices yet</p>
+          <div className="space-y-6">
+            {/* AR Aging Panel */}
+            {agingData && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">AR Aging Summary</CardTitle>
+                  <CardDescription>Outstanding receivables by aging period (as of today)</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <div className="p-4 border rounded-lg bg-green-50">
+                      <p className="text-xs font-medium text-green-700 uppercase">Not Due</p>
+                      <p className="text-xl font-bold text-green-800 mt-1">
+                        {formatCurrency(agingData.buckets?.not_due?.amount || 0)}
+                      </p>
+                    </div>
+                    <div className="p-4 border rounded-lg bg-blue-50">
+                      <p className="text-xs font-medium text-blue-700 uppercase">1-30 Days</p>
+                      <p className="text-xl font-bold text-blue-800 mt-1">
+                        {formatCurrency(agingData.buckets?.['1_30']?.amount || 0)}
+                      </p>
+                    </div>
+                    <div className="p-4 border rounded-lg bg-yellow-50">
+                      <p className="text-xs font-medium text-yellow-700 uppercase">31-60 Days</p>
+                      <p className="text-xl font-bold text-yellow-800 mt-1">
+                        {formatCurrency(agingData.buckets?.['31_60']?.amount || 0)}
+                      </p>
+                    </div>
+                    <div className="p-4 border rounded-lg bg-orange-50">
+                      <p className="text-xs font-medium text-orange-700 uppercase">61-90 Days</p>
+                      <p className="text-xl font-bold text-orange-800 mt-1">
+                        {formatCurrency(agingData.buckets?.['61_90']?.amount || 0)}
+                      </p>
+                    </div>
+                    <div className="p-4 border rounded-lg bg-red-50">
+                      <p className="text-xs font-medium text-red-700 uppercase">91-180 Days</p>
+                      <p className="text-xl font-bold text-red-800 mt-1">
+                        {formatCurrency(agingData.buckets?.['91_180']?.amount || 0)}
+                      </p>
+                    </div>
+                    <div className="p-4 border rounded-lg bg-red-100">
+                      <p className="text-xs font-medium text-red-700 uppercase">180+ Days</p>
+                      <p className="text-xl font-bold text-red-900 mt-1">
+                        {formatCurrency(agingData.buckets?.['180_plus']?.amount || 0)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-4 pt-4 border-t flex justify-between items-center">
+                    <span className="font-medium text-muted-foreground">Total Outstanding</span>
+                    <span className="text-2xl font-bold">
+                      {formatCurrency(agingData.total_outstanding || 0)}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Invoices Table */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Invoices</CardTitle>
+                  <CardDescription>All invoices for this customer</CardDescription>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setStatementDialogOpen(true)}>
+                    <Icon icon="solar:document-text-bold" className="h-4 w-4 mr-2" />
+                    Generate Statement
+                  </Button>
+                  <Button onClick={() => navigate('/invoices/new?customer=' + customer.id)}>
+                    <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-2" />
+                    Create Invoice
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {customer.invoices?.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Invoice #</TableHead>
+                        <TableHead>Issue Date</TableHead>
+                        <TableHead>Due Date</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead className="text-right">Balance</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {customer.invoices.map(invoice => (
+                        <TableRow key={invoice.id}>
+                          <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
+                          <TableCell>{format(new Date(invoice.invoice_date), 'MMM d, yyyy')}</TableCell>
+                          <TableCell>{format(new Date(invoice.due_date), 'MMM d, yyyy')}</TableCell>
+                          <TableCell>
+                            <Badge className={getStatusColor(invoice.status)}>{invoice.status}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(invoice.total)}</TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(invoice.balance)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Icon icon="solar:document-text-bold" className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                    <p>No invoices yet</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Contacts Tab */}
@@ -2101,6 +2178,67 @@ export function CustomerDetailsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOrderDialogOpen(false)}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Statement of Account Dialog */}
+      <Dialog open={statementDialogOpen} onOpenChange={setStatementDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Generate Statement of Account</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Generate a Statement of Account (SOA) PDF for <strong>{customer?.name}</strong>.
+              This will include all outstanding invoices as of the selected date.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="as-of-date">As of Date</Label>
+              <Input
+                id="as-of-date"
+                type="date"
+                value={statementAsOf}
+                onChange={(e) => setStatementAsOf(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStatementDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                try {
+                  const response = await api.get(`/customers/${id}/statement`, {
+                    params: { as_of: statementAsOf },
+                    responseType: 'blob',
+                  })
+                  const blob = new Blob([response.data], { type: 'application/pdf' })
+                  const url = window.URL.createObjectURL(blob)
+                  const link = document.createElement('a')
+                  link.href = url
+                  const customerCode = customer?.code || 'UNKNOWN'
+                  const dateStr = statementAsOf.replace(/-/g, '')
+                  link.download = `SOA_${customerCode}_${dateStr}.pdf`
+                  document.body.appendChild(link)
+                  link.click()
+                  document.body.removeChild(link)
+                  window.URL.revokeObjectURL(url)
+                  setStatementDialogOpen(false)
+                  toast({ title: 'Statement of Account generated successfully' })
+                } catch (error) {
+                  toast({
+                    variant: 'destructive',
+                    title: 'Failed to generate statement',
+                    description: getApiErrorMessage(error),
+                  })
+                }
+              }}
+            >
+              <Icon icon="solar:download-bold" className="h-4 w-4 mr-2" />
+              Download PDF
             </Button>
           </DialogFooter>
         </DialogContent>

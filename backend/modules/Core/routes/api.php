@@ -258,6 +258,12 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::get('/reports/aged-receivables', [AgedReceivablesController::class, 'index']);
         Route::get('/reports/aged-receivables/details', [AgedReceivablesController::class, 'details']);
 
+        // Per-customer aging (customer detail page)
+        Route::get('/customers/{customerId}/aging', [AgedReceivablesController::class, 'customerAging']);
+
+        // Company-wide aging matrix
+        Route::get('/reports/aging', [AgedReceivablesController::class, 'agingReport']);
+
         // Aged Payables Report
         Route::get('/reports/aged-payables', [AgedPayablesController::class, 'index']);
         Route::get('/reports/aged-payables/details', [AgedPayablesController::class, 'details']);
@@ -516,6 +522,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::get('/vendors/transactions/export', [APTransactionsController::class, 'export']);
 
         // Customer Statements
+        Route::get('/customers/{customer}/statement', [CustomerStatementController::class, 'statement']);
         Route::post('/customers/{customer}/statement', [CustomerStatementController::class, 'generate']);
         Route::get('/customers/statements/history', [CustomerStatementController::class, 'history']);
         Route::get('/customers/statements/{statement}', [CustomerStatementController::class, 'show']);

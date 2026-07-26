@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Mail\CustomerStatementMail;
 use App\Models\Customer;
 use App\Models\CustomerStatement;
+use App\Models\Invoice;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +18,95 @@ use Illuminate\Support\Facades\Storage;
 class CustomerStatementController extends Controller
 {
     /**
-     * Generate a customer statement
+     * Generate a Statement of Account PDF for a customer.
+     *
+     * GET /customers/{id}/statement?as_of=YYYY-MM-DD
+     * Filters: status=posted, balance > 0, issue_date <= as_of
+     * Returns PDF with filename SOA_{CustomerCode}_{YYYYMMDD}.pdf
+     */
+    public function statement(Request $request, $customerId)
+    {
+        $validated = $request->validate([
+            'as_of' => 'nullable|date',
+        ]);
+
+        $customer = Customer::with(['customerContacts', 'addresses'])->findOrFail($customerId);
+        $asOf = Carbon::parse($validated['as_of'] ?? now());
+
+        $currencyCode = $this->resolveCurrency();
+
+        // Get outstanding invoices: posted, balance > 0, invoice_date <= as_of
+        $invoices = Invoice::where('customer_id', $customer->id)
+            ->where('status', 'posted')
+            ->where('balance', '>', 0)
+            ->where('invoice_date', '<=', $asOf)
+            ->orderBy('invoice_date', 'asc')
+            ->get();
+
+        $lines = $invoices->map(function (Invoice $invoice) use ($asOf) {
+            $dueDate = $invoice->due_date;
+            $reference = collect([
+                $invoice->po_number,
+                $invoice->customer_reference,
+                $invoice->lines->pluck('product.name')->filter()->implode(', '),
+            ])->filter()->implode(', ');
+
+            return [
+                'invoice_date' => $invoice->invoice_date->format('d/m/Y'),
+                'invoice_number' => $invoice->invoice_number,
+                'reference' => $reference ?: '-',
+                'due_date' => $dueDate ? $dueDate->format('d/m/Y') : '-',
+                'total' => round((float) $invoice->total, 2),
+                'balance' => round((float) $invoice->balance, 2),
+            ];
+        });
+
+        $totalAmountDue = round($invoices->sum('balance'), 2);
+
+        // Get billing address
+        $billingAddress = $customer->addresses()
+            ->where('type', 'billing')
+            ->where('is_default', true)
+            ->first();
+
+        $attentionTo = $customer->customerContacts()
+            ->where('is_primary', true)
+            ->first()?->name ?? $customer->name;
+
+        $company = $this->resolveCompanySettings();
+        $bank = $this->resolveBankSettings();
+
+        $payload = [
+            'customer' => [
+                'code' => $customer->code,
+                'name' => $customer->name,
+                'attention_to' => $attentionTo,
+                'email' => $customer->email,
+                'address' => $billingAddress
+                    ? collect([$billingAddress->street, $billingAddress->street2, $billingAddress->city, $billingAddress->state, $billingAddress->zip, $billingAddress->country])->filter()->implode(', ')
+                    : $customer->billing_address,
+                'payment_terms' => $customer->payment_terms ? $customer->payment_terms . ' Days from Invoice Date' : '',
+            ],
+            'company' => $company,
+            'bank' => $bank,
+            'currency' => $currencyCode,
+            'as_of_date' => $asOf->format('d/m/Y'),
+            'generated_at' => now()->format('d/m/Y'),
+            'lines' => $lines,
+            'total_amount_due' => $totalAmountDue,
+        ];
+
+        $pdf = Pdf::loadView('accounting.customer-statement-pdf', [
+            'payload' => $payload,
+        ])->setPaper('a4', 'portrait');
+
+        $filename = sprintf('SOA_%s_%s.pdf', $customer->code ?? 'UNKNOWN', $asOf->format('Ymd'));
+
+        return $pdf->inline($filename);
+    }
+
+    /**
+     * Generate a customer statement (legacy range-based)
      */
     public function generate(Request $request, $customerId)
     {
@@ -193,5 +283,47 @@ class CustomerStatementController extends Controller
         }
 
         return $response;
+    }
+
+    /**
+     * Get company settings for the statement header
+     */
+    private function resolveCompanySettings(): array
+    {
+        $setting = \App\Models\Setting::first();
+
+        return [
+            'name' => $setting->company_name ?? '',
+            'address' => $setting->company_address ?? '',
+            'email' => $setting->company_email ?? '',
+            'phone' => $setting->company_phone ?? '',
+            'logo' => $setting->company_logo ?? '',
+            'registration_number' => $setting->registration_number ?? '',
+        ];
+    }
+
+    /**
+     * Get bank settings for the statement footer
+     */
+    private function resolveBankSettings(): array
+    {
+        $bank = DB::table('bank_accounts')->first();
+
+        return [
+            'name' => $bank->bank_name ?? '',
+            'account_name' => $bank->account_name ?? '',
+            'account_number' => $bank->account_number ?? '',
+            'swift_code' => $bank->swift_code ?? '',
+        ];
+    }
+
+    /**
+     * Resolve currency from settings
+     */
+    private function resolveCurrency(): string
+    {
+        $setting = \App\Models\Setting::first();
+
+        return $setting->currency ?? 'MYR';
     }
 }
