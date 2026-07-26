@@ -78,6 +78,23 @@ class PublicWebsiteRenderController extends Controller
         // Fix relative logo path — rewrite noovaerplogo.png to /storage/noovaerplogo.png
         $html = str_replace('noovaerplogo.png', '/storage/noovaerplogo.png', $html);
 
+        // If the stored content is a full HTML document (has <head> and <body> tags),
+        // extract the JS from <head>, then extract only the inner <body> content.
+        // This prevents nested <body> and <head> tags when wrapped by generateFullHtml().
+        $extractedHeadJs = '';
+        if (preg_match('/<head[^>]*>(.*)<\/head>/is', $html, $headMatch)) {
+            $headContent = $headMatch[1];
+            // Extract <script>...</script> blocks from the head section
+            if (preg_match_all('/<script\b[^>]*>(.*?)<\/script>/is', $headContent, $scriptMatches)) {
+                $extractedHeadJs = implode("\n", $scriptMatches[0]);
+            }
+            // Merge any extracted head JS with the explicit header_js field
+            if ($extractedHeadJs !== '') {
+                $headerJs = ($headerJs !== '' ? $headerJs."\n" : '').$extractedHeadJs;
+            }
+        }
+        $html = $this->stripOuterDocumentTags($html);
+
         // Get shop settings from website
         $shopSettings = $website->settings['shop'] ?? null;
 
@@ -195,7 +212,6 @@ class PublicWebsiteRenderController extends Controller
   
   {$headerJsWrapped}
 </head>
-</head>
 <body>
   {$html}
   
@@ -267,6 +283,32 @@ RENDER_OUTPUT;
         })->join("\n");
 
         return $links;
+    }
+
+    /**
+     * If the stored content is a full HTML document (with <html>, <head>, <body> tags),
+     * extract only the inner body content. This prevents nested <body> tags when the
+     * content is wrapped by generateFullHtml().
+     */
+    private function stripOuterDocumentTags(string $html): string
+    {
+        $trimmed = trim($html);
+        if ($trimmed === '') {
+            return $html;
+        }
+
+        // If there's no <body tag, the content is already a fragment — return as-is.
+        if (! preg_match('/<body[\s>]/i', $trimmed)) {
+            return $html;
+        }
+
+        // Extract content between the opening <body...> and closing </body> tags.
+        // Use [^]* (not .* with s flag) to match across newlines in one pass.
+        if (preg_match('/<body[^>]*>(.*)<\/body>/is', $trimmed, $m)) {
+            return $m[1];
+        }
+
+        return $html;
     }
 
     /**
