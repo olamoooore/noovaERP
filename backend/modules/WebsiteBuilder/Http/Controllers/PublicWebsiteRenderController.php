@@ -80,7 +80,6 @@ class PublicWebsiteRenderController extends Controller
 
         // Get shop settings from website
         $shopSettings = $website->settings['shop'] ?? null;
-        $shopSettingsJson = $shopSettings ? json_encode($shopSettings) : 'null';
 
         // API base URL for e-commerce (relative so it works through any proxy/port)
         $apiBaseUrl = '/api/v1/website-public';
@@ -89,41 +88,20 @@ class PublicWebsiteRenderController extends Controller
         $pages = $website->pages()->orderBy('sort_order')->get();
         $navHtml = $this->generateNavigation($website, $pages, $pageSlug);
 
-        // Detect if stored content is a full HTML document (has <html> or <body> tags)
-        // vs a fragment (just sections/divs that need wrapping).
-        $isFullDocument = (stripos($html, '<html') !== false || stripos($html, '<body') !== false);
-
-        if ($isFullDocument) {
-            // Full HTML document — serve it directly, just inject the API config script
-            // and merge any separate header_js/body_js fields.
-            $apiScript = "<script>\nwindow.__API_BASE_URL__ = '{$apiBaseUrl}';\nwindow.__SHOP_SETTINGS__ = {$shopSettingsJson};\nwindow.__WEBSITE_SLUG__ = '{$websiteSlug}';\n</script>";
-
-            // Inject API config script right after opening <head> tag
-            $html = preg_replace('/(<head[^>]*>)/i', "$1\n{$apiScript}", $html, 1);
-
-            // Inject bodyJs (from separate field) before </body> if not already in the HTML
-            if ($bodyJs !== '' && stripos($html, $bodyJs) === false) {
-                $bodyJsTag = preg_match('/^\s*<script/i', $bodyJs) ? $bodyJs : "<script>\n{$bodyJs}\n</script>";
-                $html = preg_replace('/(<\/body>)/i', "{$bodyJsTag}\n$1", $html, 1);
-            }
-
-            $fullHtml = $html;
-        } else {
-            // HTML fragment — wrap in our template
-            $fullHtml = $this->generateFullHtml([
-                'title' => $page->seo_title ?: $page->title ?: $website->name,
-                'description' => $page->seo_description ?: '',
-                'html' => $html,
-                'css' => $css,
-                'headerJs' => $headerJs,
-                'bodyJs' => $bodyJs,
-                'apiBaseUrl' => $apiBaseUrl,
-                'shopSettings' => $shopSettings,
-                'websiteSlug' => $websiteSlug,
-                'pageSlug' => $pageSlug,
-                'navigation' => $navHtml,
-            ]);
-        }
+        // Build the complete HTML document
+        $fullHtml = $this->generateFullHtml([
+            'title' => $page->seo_title ?: $page->title ?: $website->name,
+            'description' => $page->seo_description ?: '',
+            'html' => $html,
+            'css' => $css,
+            'headerJs' => $headerJs,
+            'bodyJs' => $bodyJs,
+            'apiBaseUrl' => $apiBaseUrl,
+            'shopSettings' => $shopSettings,
+            'websiteSlug' => $websiteSlug,
+            'pageSlug' => $pageSlug,
+            'navigation' => $navHtml,
+        ]);
 
         return response($fullHtml, 200)
             ->header('Content-Type', 'text/html; charset=UTF-8')
@@ -150,8 +128,6 @@ class PublicWebsiteRenderController extends Controller
 
         // Wrap headerJs and bodyJs in <script> tags if they don't already have them.
         // GrapesJS custom-code editor stores raw JS without <script> wrappers.
-        // Note: str_contains is not enough — "<script" might appear inside a JS comment.
-        // Check if the trimmed content actually starts with a <script tag.
         $headerJsWrapped = $headerJs !== ''
             ? (preg_match('/^\s*<script/i', $headerJs) ? $headerJs : "<script>\n{$headerJs}\n</script>")
             : '';
@@ -159,8 +135,6 @@ class PublicWebsiteRenderController extends Controller
             ? (preg_match('/^\s*<script/i', $bodyJs) ? $bodyJs : "<script>\n{$bodyJs}\n</script>")
             : '';
 
-        // Use a unique heredoc delimiter that won't appear in page content.
-        // The old 'HTML' delimiter broke when page JS contained the string "HTML".
         return <<<RENDER_OUTPUT
 <!DOCTYPE html>
 <html lang="en">
