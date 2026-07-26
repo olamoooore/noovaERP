@@ -22,11 +22,16 @@ class DeliveryOrder extends Model
         'completed_at',
         'source',
         'external_reference',
+        'po_number',
+        'salesperson',
+        'invoice_id',
+        'quotation_id',
         'carrier',
         'tracking_number',
         'shipping_address',
         'shipping_address_overridden',
         'notes',
+        'total',
         'created_by',
         'confirmed_by',
         'completed_by',
@@ -37,6 +42,7 @@ class DeliveryOrder extends Model
         'expected_date' => 'date',
         'completed_at' => 'datetime',
         'shipping_address_overridden' => 'boolean',
+        'total' => 'decimal:2',
     ];
 
     protected static function boot()
@@ -83,6 +89,16 @@ class DeliveryOrder extends Model
     public function completedBy(): BelongsTo
     {
         return $this->belongsTo(\App\Models\User::class, 'completed_by');
+    }
+
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Invoice::class);
+    }
+
+    public function quotation(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Quotation::class);
     }
 
     public function isDraft(): bool

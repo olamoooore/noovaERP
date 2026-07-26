@@ -28,10 +28,15 @@ const TEMPLATE_COLUMNS = [
   { name: 'expected_date', required: false, description: 'Expected delivery date.' },
   { name: 'carrier', required: false, description: 'Carrier name (e.g. DHL, FedEx).' },
   { name: 'tracking_number', required: false, description: 'Tracking number.' },
+  { name: 'po_number', required: false, description: 'Purchase order number.' },
+  { name: 'salesperson', required: false, description: 'Salesperson name.' },
+  { name: 'invoice_number', required: false, description: 'Linked invoice number.' },
+  { name: 'quotation_number', required: false, description: 'Linked quotation number.' },
   { name: 'product_sku', required: false, description: 'Product SKU (links to product).' },
   { name: 'description', required: false, description: 'Line item description.' },
   { name: 'quantity', required: true, description: 'Quantity to deliver.' },
   { name: 'unit', required: false, description: 'Unit of measure. Default: pcs.' },
+  { name: 'unit_price', required: false, description: 'Unit price per item.' },
 ]
 
 const csvValue = (v: string) => {
@@ -106,6 +111,7 @@ export function DeliveryOrderImportPage() {
         case 'carrier': return 'DHL'
         case 'quantity': return '10'
         case 'unit': return 'pcs'
+        case 'unit_price': return '50.00'
         default: return ''
       }
     })

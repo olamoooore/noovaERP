@@ -18,7 +18,7 @@ final class DeliveryOrderDataSource implements DataSourceContract
 
     public function load(string $documentId): self
     {
-        $this->do = DeliveryOrder::with(['customer', 'warehouse', 'lines.product', 'salesOrder'])->findOrFail($documentId);
+        $this->do = DeliveryOrder::with(['customer', 'warehouse', 'lines.product', 'salesOrder', 'invoice', 'quotation'])->findOrFail($documentId);
 
         return $this;
     }
@@ -39,6 +39,8 @@ final class DeliveryOrderDataSource implements DataSourceContract
                 'quantity_delivered' => (float) $line->quantity_delivered,
                 'remaining' => (float) $line->remaining_quantity,
                 'unit' => $line->unit ?? 'pcs',
+                'unit_price' => (float) ($line->unit_price ?? 0),
+                'line_total' => (float) ($line->line_total ?? 0),
                 'lot_number' => $line->lot_number ?? '',
                 'batch_number' => $line->batch_number ?? '',
             ];
@@ -52,10 +54,13 @@ final class DeliveryOrderDataSource implements DataSourceContract
                 'expected_date' => optional($do->expected_date)->format('Y-m-d'),
                 'source' => $do->source,
                 'external_reference' => $do->external_reference ?? '',
+                'po_number' => $do->po_number ?? '',
+                'salesperson' => $do->salesperson ?? '',
                 'carrier' => $do->carrier ?? '',
                 'tracking_number' => $do->tracking_number ?? '',
                 'shipping_address' => $this->formatAddress($do->shipping_address),
                 'notes' => $do->notes ?? '',
+                'total' => (float) ($do->total ?? 0),
             ],
             'customer' => [
                 'code' => $do->customer?->code ?? '',
@@ -65,6 +70,12 @@ final class DeliveryOrderDataSource implements DataSourceContract
             ],
             'sales_order' => [
                 'number' => $do->salesOrder?->order_number ?? '',
+            ],
+            'invoice' => [
+                'number' => $do->invoice?->invoice_number ?? '',
+            ],
+            'quotation' => [
+                'number' => $do->quotation?->quotation_number ?? '',
             ],
             'company' => $company,
             'warehouse' => ['name' => $do->warehouse?->name ?? ''],
@@ -86,10 +97,19 @@ final class DeliveryOrderDataSource implements DataSourceContract
                 ['token' => 'delivery_order.status', 'label' => 'Status'],
                 ['token' => 'delivery_order.delivery_date', 'label' => 'Delivery Date'],
                 ['token' => 'delivery_order.expected_date', 'label' => 'Expected Date'],
+                ['token' => 'delivery_order.po_number', 'label' => 'PO Number'],
+                ['token' => 'delivery_order.salesperson', 'label' => 'Salesperson'],
                 ['token' => 'delivery_order.carrier', 'label' => 'Carrier'],
                 ['token' => 'delivery_order.tracking_number', 'label' => 'Tracking Number'],
                 ['token' => 'delivery_order.shipping_address', 'label' => 'Shipping Address'],
+                ['token' => 'delivery_order.total', 'label' => 'Total'],
                 ['token' => 'delivery_order.notes', 'label' => 'Notes'],
+            ]],
+            ['group' => 'Invoice', 'fields' => [
+                ['token' => 'invoice.number', 'label' => 'Invoice Number'],
+            ]],
+            ['group' => 'Quotation', 'fields' => [
+                ['token' => 'quotation.number', 'label' => 'Quotation Number'],
             ]],
             ['group' => 'Customer', 'fields' => [
                 ['token' => 'customer.code', 'label' => 'Customer Code'],
@@ -122,10 +142,13 @@ final class DeliveryOrderDataSource implements DataSourceContract
                 'expected_date' => '2026-07-25',
                 'source' => 'sales_order',
                 'external_reference' => 'SO-2026-0042',
+                'po_number' => 'PO-2026-0042',
+                'salesperson' => 'John Smith',
                 'carrier' => 'DHL Express',
                 'tracking_number' => '1234567890',
                 'shipping_address' => "Globex Corporation\nWarehouse 7\n1 Infinite Loop\nSan Francisco, CA 94102",
                 'notes' => 'Please deliver between 9am–5pm. Signature required.',
+                'total' => 5740.00,
             ],
             'customer' => [
                 'code' => 'CUST-0001',
@@ -136,11 +159,17 @@ final class DeliveryOrderDataSource implements DataSourceContract
             'sales_order' => [
                 'number' => 'SO-2026-0042',
             ],
+            'invoice' => [
+                'number' => 'INV-2026-0001',
+            ],
+            'quotation' => [
+                'number' => 'QT-2026-0001',
+            ],
             'company' => CompanyDataSource::sample(),
             'warehouse' => ['name' => 'Main Warehouse — KL'],
             'lines' => [
-                ['index' => 1, 'sku' => 'SKU-1001', 'description' => 'Enterprise licence — 50 seats', 'quantity_ordered' => 10, 'quantity_delivered' => 10, 'remaining' => 0, 'unit' => 'box', 'lot_number' => '', 'batch_number' => ''],
-                ['index' => 2, 'sku' => 'SKU-2099', 'description' => 'On-site training materials',     'quantity_ordered' => 25, 'quantity_delivered' => 25, 'remaining' => 0, 'unit' => 'pcs', 'lot_number' => 'LOT-001', 'batch_number' => 'B-2026-07'],
+                ['index' => 1, 'sku' => 'SKU-1001', 'description' => 'Enterprise licence — 50 seats', 'quantity_ordered' => 10, 'quantity_delivered' => 10, 'remaining' => 0, 'unit' => 'box', 'unit_price' => 450.00, 'line_total' => 4500.00, 'lot_number' => '', 'batch_number' => ''],
+                ['index' => 2, 'sku' => 'SKU-2099', 'description' => 'On-site training materials',     'quantity_ordered' => 25, 'quantity_delivered' => 25, 'remaining' => 0, 'unit' => 'pcs', 'unit_price' => 49.60, 'line_total' => 1240.00, 'lot_number' => 'LOT-001', 'batch_number' => 'B-2026-07'],
             ],
             'meta' => ['currency_code' => 'MYR', 'currency_symbol' => 'RM ', 'number_format' => '1,234.56', 'locale' => 'en'],
         ];

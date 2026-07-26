@@ -14,6 +14,8 @@ class DeliveryOrderLine extends Model
         'description',
         'quantity_ordered',
         'quantity_delivered',
+        'unit_price',
+        'line_total',
         'unit',
         'lot_number',
         'batch_number',
@@ -23,6 +25,8 @@ class DeliveryOrderLine extends Model
     protected $casts = [
         'quantity_ordered' => 'decimal:4',
         'quantity_delivered' => 'decimal:4',
+        'unit_price' => 'decimal:2',
+        'line_total' => 'decimal:2',
         'expiry_date' => 'date',
     ];
 

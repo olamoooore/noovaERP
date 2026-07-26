@@ -314,11 +314,16 @@ class DeliveryOrderController extends Controller
             'carrier' => 'carrier',
             'tracking_number' => 'tracking_number',
             'shipping_address' => 'shipping_address',
+            'po_number' => 'po_number',
+            'salesperson' => 'salesperson',
+            'invoice_number' => 'invoice_number',
+            'quotation_number' => 'quotation_number',
             'notes' => 'notes',
             'product_sku' => 'product_sku',
             'description' => 'description',
             'quantity' => 'quantity_delivered',
             'unit' => 'unit',
+            'unit_price' => 'unit_price',
         ];
 
         $result = $this->importService->importGroupedCSV(
@@ -377,6 +382,35 @@ class DeliveryOrderController extends Controller
                     $header['status'] = 'draft';
                     $header['delivery_date'] = $header['delivery_date'] ?? now()->toDateString();
 
+                    // Resolve invoice_id from invoice_number
+                    if (! empty($header['invoice_number'])) {
+                        $invoice = \App\Models\Invoice::withoutTrashed()
+                            ->where('invoice_number', $header['invoice_number'])
+                            ->first();
+                        $header['invoice_id'] = $invoice?->id;
+                        unset($header['invoice_number']);
+                    }
+
+                    // Resolve quotation_id from quotation_number
+                    if (! empty($header['quotation_number'])) {
+                        $quotation = \App\Models\Quotation::withoutTrashed()
+                            ->where('quotation_number', $header['quotation_number'])
+                            ->first();
+                        $header['quotation_id'] = $quotation?->id;
+                        unset($header['quotation_number']);
+                    }
+
+                    // Calculate total from line items
+                    $total = 0;
+                    foreach ($rows as $row) {
+                        $qty = (float) ($row['quantity_delivered'] ?? $row['quantity'] ?? 0);
+                        $price = (float) ($row['unit_price'] ?? 0);
+                        $total += $qty * $price;
+                    }
+                    if ($total > 0) {
+                        $header['total'] = $total;
+                    }
+
                     return $header;
                 },
                 'transform_line' => function (array $line, array $rawRow, int $idx) {
@@ -387,6 +421,14 @@ class DeliveryOrderController extends Controller
                     }
                     $line['quantity_ordered'] = $line['quantity_delivered'] ?? 0;
                     $line['unit'] = $line['unit'] ?? 'pcs';
+
+                    // Handle unit_price and calculate line_total
+                    $unitPrice = isset($line['unit_price']) ? (float) $line['unit_price'] : 0;
+                    $quantity = (float) ($line['quantity_delivered'] ?? 0);
+                    if ($unitPrice > 0) {
+                        $line['unit_price'] = $unitPrice;
+                        $line['line_total'] = $unitPrice * $quantity;
+                    }
 
                     return $line;
                 },
@@ -413,10 +455,15 @@ class DeliveryOrderController extends Controller
             ['name' => 'expected_date', 'example' => '', 'description' => 'Expected delivery date (optional).'],
             ['name' => 'carrier', 'example' => '', 'description' => 'Carrier name (optional).'],
             ['name' => 'tracking_number', 'example' => '', 'description' => 'Tracking number (optional).'],
+            ['name' => 'po_number', 'example' => 'PO-2024-001', 'description' => 'Purchase order number.'],
+            ['name' => 'salesperson', 'example' => 'John Smith', 'description' => 'Salesperson name.'],
+            ['name' => 'invoice_number', 'example' => 'INV-2024-001', 'description' => 'Linked invoice number.'],
+            ['name' => 'quotation_number', 'example' => 'QT-2024-001', 'description' => 'Linked quotation number.'],
             ['name' => 'product_sku', 'example' => '21007', 'description' => 'Product SKU (links to product).'],
             ['name' => 'description', 'example' => 'HTx60s Disposable Hysteroscope', 'description' => 'Line description.'],
             ['name' => 'quantity', 'example' => '6', 'description' => 'Quantity to deliver.'],
             ['name' => 'unit', 'example' => 'pcs', 'description' => 'Unit of measure. Default: pcs.'],
+            ['name' => 'unit_price', 'example' => '50.00', 'description' => 'Unit price per item.'],
         ];
 
         return $this->importService->downloadTemplate($columns, 'delivery-order-import-template.csv');
