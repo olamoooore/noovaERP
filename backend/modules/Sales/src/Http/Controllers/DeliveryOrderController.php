@@ -334,11 +334,6 @@ class DeliveryOrderController extends Controller
             'invoice_number' => 'invoice_number',
             'quotation_number' => 'quotation_number',
             'notes' => 'notes',
-            'product_sku' => 'product_sku',
-            'description' => 'description',
-            'quantity' => 'quantity_delivered',
-            'unit' => 'unit',
-            'unit_price' => 'unit_price',
         ];
 
         $result = $this->importService->importGroupedCSV(
@@ -357,6 +352,7 @@ class DeliveryOrderController extends Controller
                         'description' => 'description',
                         'quantity' => 'quantity_delivered',
                         'unit' => 'unit',
+                        'unit_price' => 'unit_price',
                     ],
                 ],
                 'transform_header' => function (array $header, array $rows) {
