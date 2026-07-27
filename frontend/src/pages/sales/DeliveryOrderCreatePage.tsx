@@ -39,6 +39,7 @@ export function DeliveryOrderCreatePage() {
   const [shippingAddress, setShippingAddress] = useState('')
   const [poNumber, setPoNumber] = useState('')
   const [salesperson, setSalesperson] = useState('')
+  const [attentionTo, setAttentionTo] = useState('')
   const [notes, setNotes] = useState('')
   const [lineQuantities, setLineQuantities] = useState<Record<number, number>>({})
   const [lineLotNumbers, setLineLotNumbers] = useState<Record<number, string>>({})
@@ -152,6 +153,7 @@ export function DeliveryOrderCreatePage() {
       shipping_address: shippingAddress || undefined,
       po_number: poNumber || undefined,
       salesperson: salesperson || undefined,
+      attention_to: attentionTo || undefined,
       notes: notes || undefined,
       lines,
     })
@@ -184,6 +186,7 @@ export function DeliveryOrderCreatePage() {
       shipping_address: shippingAddress || undefined,
       po_number: poNumber || undefined,
       salesperson: salesperson || undefined,
+      attention_to: attentionTo || undefined,
       notes: notes || undefined,
       lines: validLines.map((l) => ({
         product_id: l.product_id,
@@ -362,6 +365,10 @@ export function DeliveryOrderCreatePage() {
               <Label>Salesperson</Label>
               <Input value={salesperson} onChange={(e) => setSalesperson(e.target.value)} placeholder="Salesperson name" />
             </div>
+          </div>
+          <div>
+            <Label>Attention To</Label>
+            <Input value={attentionTo} onChange={(e) => setAttentionTo(e.target.value)} placeholder="Attention to (e.g. Warehouse Manager)" />
           </div>
           <div>
             <Label>Shipping Address</Label>

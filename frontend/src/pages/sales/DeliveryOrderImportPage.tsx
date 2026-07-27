@@ -28,6 +28,8 @@ const TEMPLATE_COLUMNS = [
   { name: 'expected_date', required: false, description: 'Expected delivery date.' },
   { name: 'carrier', required: false, description: 'Carrier name (e.g. DHL, FedEx).' },
   { name: 'tracking_number', required: false, description: 'Tracking number.' },
+  { name: 'shipping_address', required: false, description: 'Shipping address. Auto-filled from customer if blank.' },
+  { name: 'attention_to', required: false, description: 'Attention to (e.g. Warehouse Manager).' },
   { name: 'po_number', required: false, description: 'Purchase order number.' },
   { name: 'salesperson', required: false, description: 'Salesperson name.' },
   { name: 'invoice_number', required: false, description: 'Linked invoice number.' },

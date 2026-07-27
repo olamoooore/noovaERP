@@ -279,6 +279,10 @@ export function DeliveryOrderDetailPage() {
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-4">
               <div>
+                <div className="text-muted-foreground">Attention To</div>
+                <div className="font-medium">{deliveryOrder.attention_to || '-'}</div>
+              </div>
+              <div>
                 <div className="text-muted-foreground">Created By</div>
                 <div className="font-medium">{deliveryOrder.createdBy?.name || '-'}</div>
               </div>
