@@ -18,7 +18,7 @@ class InvoiceDataSource implements DataSourceContract
 
     public function load(string $documentId): self
     {
-        $this->invoice = Invoice::with(['customer', 'lines.product', 'doctor', 'requestor', 'billingContact', 'shippingContact'])->findOrFail($documentId);
+        $this->invoice = Invoice::with(['customer.salesperson', 'lines.product', 'doctor', 'requestor', 'billingContact', 'shippingContact'])->findOrFail($documentId);
 
         return $this;
     }
@@ -63,6 +63,7 @@ class InvoiceDataSource implements DataSourceContract
                 'requestor' => $invoice->requestor?->full_name ?? $invoice->requestor?->display_name ?? '',
                 'billing_contact_name' => $invoice->billingContact?->display_name ?? '',
                 'shipping_contact_name' => $invoice->shippingContact?->display_name ?? '',
+                'salesperson' => $invoice->customer?->salesperson?->name ?? '',
             ],
             'customer' => [
                 'code' => $invoice->customer?->code ?? '',
@@ -118,6 +119,7 @@ class InvoiceDataSource implements DataSourceContract
                 ['token' => 'invoice.billing_contact_name', 'label' => 'Billing Contact'],
                 ['token' => 'invoice.shipping_contact_name', 'label' => 'Shipping Contact'],
                 ['token' => 'invoice.shipping_method', 'label' => 'Shipping Method'],
+                ['token' => 'invoice.salesperson', 'label' => 'Salesperson'],
                 ['token' => 'invoice.delivery_date', 'label' => 'Delivery Date'],
                 ['token' => 'invoice.notes', 'label' => 'Notes'],
                 ['token' => 'invoice.terms', 'label' => 'Terms & Conditions'],
@@ -171,6 +173,7 @@ class InvoiceDataSource implements DataSourceContract
                 'requestor' => 'Ms. Emily Park',
                 'billing_contact_name' => 'Dr. Sarah Chen',
                 'shipping_contact_name' => 'Dr. Sarah Chen',
+                'salesperson' => 'John Smith',
             ],
             'customer' => [
                 'code' => 'CUST-0001',
