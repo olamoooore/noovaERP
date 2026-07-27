@@ -321,6 +321,7 @@ class DeliveryOrderController extends Controller
 
         $file = $request->file('file');
         $columnMap = [
+            'delivery_order_number' => 'delivery_order_number',
             'customer_code' => 'customer_id',
             'customer_name' => 'customer_name',
             'delivery_date' => 'delivery_date',
