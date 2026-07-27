@@ -426,10 +426,12 @@ class DeliveryOrderController extends Controller
                     return $header;
                 },
                 'transform_line' => function (array $line, array $rawRow, int $idx) {
-                    // Resolve product_id from SKU
-                    if (isset($line['product_id']) && ! is_numeric($line['product_id'])) {
+                    // Resolve product_id from SKU (always resolve, even if SKU is numeric)
+                    if (isset($line['product_id']) && $line['product_id'] !== '') {
                         $product = \App\Models\Product::where('sku', $line['product_id'])->first();
-                        $line['product_id'] = $product?->id;
+                        if ($product) {
+                            $line['product_id'] = $product->id;
+                        }
                     }
                     $line['quantity_ordered'] = $line['quantity_delivered'] ?? 0;
                     $line['unit'] = $line['unit'] ?? 'pcs';
