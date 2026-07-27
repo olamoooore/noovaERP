@@ -521,10 +521,12 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::get('/vendors/{vendorId}/balance', [APTransactionsController::class, 'getBalance']);
         Route::get('/vendors/transactions/export', [APTransactionsController::class, 'export']);
 
-        // Customer Statements
-        Route::get('/customers/{customer}/statement', [CustomerStatementController::class, 'statement']);
+        // Customer Statements (legacy range-based)
         Route::post('/customers/{customer}/statement', [CustomerStatementController::class, 'generate']);
         Route::get('/customers/statements/history', [CustomerStatementController::class, 'history']);
         Route::get('/customers/statements/{statement}', [CustomerStatementController::class, 'show']);
     });
+
+    // Statement of Account PDF (no entity/accounting middleware needed)
+    Route::get('/customers/{customer}/statement', [CustomerStatementController::class, 'statement']);
 });

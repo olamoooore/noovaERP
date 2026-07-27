@@ -130,19 +130,35 @@ class DeliveryOrder extends Model
     public static function generateNumber(): string
     {
         try {
-            return app(\App\Services\DocumentNumberingService::class)
+            $number = app(\App\Services\DocumentNumberingService::class)
                 ->generate('delivery_order', 'DO-{YYYY}-{SEQ:4}');
+
+            // Verify uniqueness (DocumentNumberingService counter may fall out of sync)
+            if (! static::withTrashed()->where('delivery_order_number', $number)->exists()) {
+                return $number;
+            }
         } catch (\Throwable $e) {
-            // Fallback
+            // Fallback below
         }
 
         $year = date('Y');
         $prefix = "DO-{$year}-";
-        $latest = static::withTrashed()
-            ->where('delivery_order_number', 'like', $prefix.'%')
-            ->orderBy('id', 'desc')
-            ->first();
-        $number = $latest ? (int) substr($latest->delivery_order_number, -4) + 1 : 1;
-        return $prefix.str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        // Retry loop — find the next available number
+        for ($attempt = 1; $attempt <= 10; $attempt++) {
+            $latest = static::withTrashed()
+                ->where('delivery_order_number', 'like', $prefix.'%')
+                ->orderBy('delivery_order_number', 'desc')
+                ->first();
+            $seq = $latest ? ((int) substr($latest->delivery_order_number, -4)) + 1 : 1;
+            $number = $prefix.str_pad($seq, 4, '0', STR_PAD_LEFT);
+
+            if (! static::withTrashed()->where('delivery_order_number', $number)->exists()) {
+                return $number;
+            }
+        }
+
+        // Last resort — timestamp suffix
+        return $prefix.date('His');
     }
 }
