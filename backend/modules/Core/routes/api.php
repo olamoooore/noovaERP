@@ -258,9 +258,6 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::get('/reports/aged-receivables', [AgedReceivablesController::class, 'index']);
         Route::get('/reports/aged-receivables/details', [AgedReceivablesController::class, 'details']);
 
-        // Per-customer aging (customer detail page)
-        Route::get('/customers/{customerId}/aging', [AgedReceivablesController::class, 'customerAging']);
-
         // Company-wide aging matrix
         Route::get('/reports/aging', [AgedReceivablesController::class, 'agingReport']);
 
@@ -529,4 +526,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
     // Statement of Account PDF (no entity/accounting middleware needed)
     Route::get('/customers/{customer}/statement', [CustomerStatementController::class, 'statement']);
+
+    // Per-customer aging (customer detail page — no entity/accounting middleware needed)
+    Route::get('/customers/{customerId}/aging', [AgedReceivablesController::class, 'customerAging']);
 });

@@ -102,7 +102,7 @@ class CustomerStatementController extends Controller
 
         $filename = sprintf('SOA_%s_%s.pdf', $customer->code ?? 'UNKNOWN', $asOf->format('Ymd'));
 
-        return $pdf->inline($filename);
+        return $pdf->download($filename);
     }
 
     /**
