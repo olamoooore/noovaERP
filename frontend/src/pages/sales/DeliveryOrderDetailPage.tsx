@@ -268,12 +268,31 @@ export function DeliveryOrderDetailPage() {
                 <div className="font-medium">{deliveryOrder.warehouse?.name || '-'}</div>
               </div>
               <div>
+                <div className="text-muted-foreground">PO Number</div>
+                <div className="font-medium">{deliveryOrder.po_number || '-'}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Salesperson</div>
+                <div className="font-medium">{deliveryOrder.salesperson || '-'}</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-4">
+              <div>
                 <div className="text-muted-foreground">Created By</div>
                 <div className="font-medium">{deliveryOrder.createdBy?.name || '-'}</div>
               </div>
               <div>
                 <div className="text-muted-foreground">Confirmed By</div>
                 <div className="font-medium">{deliveryOrder.confirmedBy?.name || '-'}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Invoice</div>
+                <div className="font-medium">{deliveryOrder.invoice?.invoice_number || '-'}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Quotation</div>
+                <div className="font-medium">{deliveryOrder.quotation?.quotation_number || '-'}</div>
               </div>
             </div>
 
@@ -312,6 +331,8 @@ export function DeliveryOrderDetailPage() {
                   <TableHead className="text-right">Qty Ordered</TableHead>
                   <TableHead className="text-right">Qty Delivered</TableHead>
                   <TableHead className="text-right">Unit</TableHead>
+                  <TableHead className="text-right">Unit Price</TableHead>
+                  <TableHead className="text-right">Line Total</TableHead>
                   <TableHead>Lot Number</TableHead>
                 </TableRow>
               </TableHeader>
@@ -324,18 +345,28 @@ export function DeliveryOrderDetailPage() {
                   <TableCell className="text-right">{line.quantity_ordered}</TableCell>
                   <TableCell className="text-right font-medium text-green-600">{line.quantity_delivered}</TableCell>
                   <TableCell className="text-right">{line.unit}</TableCell>
+                  <TableCell className="text-right">{line.unit_price ? parseFloat(line.unit_price).toFixed(2) : '-'}</TableCell>
+                  <TableCell className="text-right font-medium">{line.line_total ? parseFloat(line.line_total).toFixed(2) : '-'}</TableCell>
                   <TableCell>{line.lot_number || '-'}</TableCell>
                 </TableRow>
               ))}
               {(!deliveryOrder.lines || deliveryOrder.lines.length === 0) && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                     No lines in this delivery order.
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
+          {deliveryOrder.total && (
+            <div className="flex justify-end mt-4 pt-4 border-t">
+              <div className="text-right">
+                <span className="text-muted-foreground mr-4">Total:</span>
+                <span className="text-lg font-bold">{parseFloat(deliveryOrder.total).toFixed(2)}</span>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

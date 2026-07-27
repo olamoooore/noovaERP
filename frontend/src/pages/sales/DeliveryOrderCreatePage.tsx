@@ -17,6 +17,7 @@ interface LineItem {
   description: string
   quantity: number
   unit: string
+  unit_price: number | null
   lot_number: string
 }
 
@@ -36,13 +37,15 @@ export function DeliveryOrderCreatePage() {
   const [carrier, setCarrier] = useState('')
   const [trackingNumber, setTrackingNumber] = useState('')
   const [shippingAddress, setShippingAddress] = useState('')
+  const [poNumber, setPoNumber] = useState('')
+  const [salesperson, setSalesperson] = useState('')
   const [notes, setNotes] = useState('')
   const [lineQuantities, setLineQuantities] = useState<Record<number, number>>({})
   const [lineLotNumbers, setLineLotNumbers] = useState<Record<number, string>>({})
 
   // Standalone mode line items
   const [standaloneLines, setStandaloneLines] = useState<LineItem[]>([
-    { product_id: null, product_name: '', description: '', quantity: 1, unit: 'pcs', lot_number: '' },
+    { product_id: null, product_name: '', description: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' },
   ])
 
   // Fetch customers for standalone mode
@@ -147,6 +150,8 @@ export function DeliveryOrderCreatePage() {
       carrier: carrier || undefined,
       tracking_number: trackingNumber || undefined,
       shipping_address: shippingAddress || undefined,
+      po_number: poNumber || undefined,
+      salesperson: salesperson || undefined,
       notes: notes || undefined,
       lines,
     })
@@ -177,12 +182,15 @@ export function DeliveryOrderCreatePage() {
       carrier: carrier || undefined,
       tracking_number: trackingNumber || undefined,
       shipping_address: shippingAddress || undefined,
+      po_number: poNumber || undefined,
+      salesperson: salesperson || undefined,
       notes: notes || undefined,
       lines: validLines.map((l) => ({
         product_id: l.product_id,
         description: l.description,
         quantity_delivered: l.quantity,
         unit: l.unit,
+        unit_price: l.unit_price || undefined,
         lot_number: l.lot_number || undefined,
       })),
     })
@@ -197,7 +205,7 @@ export function DeliveryOrderCreatePage() {
   }
 
   const addStandaloneLine = () => {
-    setStandaloneLines((prev) => [...prev, { product_id: null, product_name: '', description: '', quantity: 1, unit: 'pcs', lot_number: '' }])
+    setStandaloneLines((prev) => [...prev, { product_id: null, product_name: '', description: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' }])
   }
 
   const removeStandaloneLine = (index: number) => {
@@ -345,6 +353,16 @@ export function DeliveryOrderCreatePage() {
               <Input value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} placeholder="Tracking number" />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>PO Number</Label>
+              <Input value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="Purchase order number" />
+            </div>
+            <div>
+              <Label>Salesperson</Label>
+              <Input value={salesperson} onChange={(e) => setSalesperson(e.target.value)} placeholder="Salesperson name" />
+            </div>
+          </div>
           <div>
             <Label>Shipping Address</Label>
             <textarea
@@ -444,6 +462,7 @@ export function DeliveryOrderCreatePage() {
                   <TableHead>Description</TableHead>
                   <TableHead className="text-right w-[100px]">Quantity</TableHead>
                   <TableHead className="w-[100px]">Unit</TableHead>
+                  <TableHead className="text-right w-[120px]">Unit Price</TableHead>
                   <TableHead className="w-[120px]">Lot Number</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
@@ -495,6 +514,17 @@ export function DeliveryOrderCreatePage() {
                         value={line.unit}
                         onChange={(e) => updateStandaloneLine(idx, 'unit', e.target.value)}
                         className="w-20"
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={line.unit_price ?? ''}
+                        onChange={(e) => updateStandaloneLine(idx, 'unit_price', parseFloat(e.target.value) || null)}
+                        className="w-28 text-right"
+                        placeholder="0.00"
                       />
                     </TableCell>
                     <TableCell>

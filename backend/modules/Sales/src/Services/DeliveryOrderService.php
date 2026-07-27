@@ -55,6 +55,10 @@ class DeliveryOrderService
                 'tracking_number' => $data['tracking_number'] ?? null,
                 'shipping_address' => $data['shipping_address'] ?? null,
                 'shipping_address_overridden' => ! empty($data['shipping_address']),
+                'po_number' => $data['po_number'] ?? null,
+                'salesperson' => $data['salesperson'] ?? null,
+                'invoice_id' => $data['invoice_id'] ?? null,
+                'quotation_id' => $data['quotation_id'] ?? null,
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $actorId,
             ]);
@@ -134,6 +138,10 @@ class DeliveryOrderService
                 'tracking_number' => $data['tracking_number'] ?? null,
                 'shipping_address' => $data['shipping_address'] ?? null,
                 'shipping_address_overridden' => ! empty($data['shipping_address']),
+                'po_number' => $data['po_number'] ?? null,
+                'salesperson' => $data['salesperson'] ?? null,
+                'invoice_id' => $data['invoice_id'] ?? null,
+                'quotation_id' => $data['quotation_id'] ?? null,
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $actorId,
             ]);
@@ -152,10 +160,18 @@ class DeliveryOrderService
                     'quantity_ordered' => $quantityDelivered,
                     'quantity_delivered' => $quantityDelivered,
                     'unit' => $lineData['unit'] ?? 'pcs',
+                    'unit_price' => $lineData['unit_price'] ?? null,
+                    'line_total' => isset($lineData['unit_price']) ? ($lineData['unit_price'] * $quantityDelivered) : null,
                     'lot_number' => $lineData['lot_number'] ?? null,
                     'batch_number' => $lineData['batch_number'] ?? null,
                     'expiry_date' => $lineData['expiry_date'] ?? null,
                 ]);
+            }
+
+            // Calculate total from line items
+            $total = $deliveryOrder->lines()->sum('line_total');
+            if ($total > 0) {
+                $deliveryOrder->update(['total' => $total]);
             }
 
             return $deliveryOrder->fresh(['lines.product', 'customer']);

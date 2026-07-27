@@ -21,7 +21,7 @@ class DeliveryOrderController extends Controller
 
     public function index(Request $request)
     {
-        $query = DeliveryOrder::with(['customer', 'salesOrder', 'lines.product'])
+        $query = DeliveryOrder::with(['customer', 'salesOrder', 'lines.product', 'invoice', 'quotation'])
             ->orderBy('created_at', 'desc');
 
         if ($request->has('status')) {
@@ -75,6 +75,10 @@ class DeliveryOrderController extends Controller
                 'carrier' => 'nullable|string|max:100',
                 'tracking_number' => 'nullable|string|max:100',
                 'shipping_address' => 'nullable|string',
+                'po_number' => 'nullable|string|max:100',
+                'salesperson' => 'nullable|string|max:255',
+                'invoice_id' => 'nullable|exists:invoices,id',
+                'quotation_id' => 'nullable|exists:quotations,id',
                 'notes' => 'nullable|string',
                 'lines' => 'required|array|min:1',
                 'lines.*.product_id' => 'nullable|exists:products,id',
@@ -82,6 +86,7 @@ class DeliveryOrderController extends Controller
                 'lines.*.quantity_delivered' => 'required|numeric|min:0.0001',
                 'lines.*.quantity' => 'nullable|numeric|min:0.0001',
                 'lines.*.unit' => 'nullable|string|max:20',
+                'lines.*.unit_price' => 'nullable|numeric|min:0',
                 'lines.*.lot_number' => 'nullable|string|max:100',
                 'lines.*.batch_number' => 'nullable|string|max:100',
                 'lines.*.expiry_date' => 'nullable|date',
@@ -108,12 +113,17 @@ class DeliveryOrderController extends Controller
             'carrier' => 'nullable|string|max:100',
             'tracking_number' => 'nullable|string|max:100',
             'shipping_address' => 'nullable|string',
+            'po_number' => 'nullable|string|max:100',
+            'salesperson' => 'nullable|string|max:255',
+            'invoice_id' => 'nullable|exists:invoices,id',
+            'quotation_id' => 'nullable|exists:quotations,id',
             'notes' => 'nullable|string',
             'lines' => 'required|array|min:1',
             'lines.*.sales_order_line_id' => 'required|exists:sales_order_lines,id',
             'lines.*.quantity_delivered' => 'required|numeric|min:0.0001',
             'lines.*.description' => 'nullable|string',
             'lines.*.unit' => 'nullable|string|max:20',
+            'lines.*.unit_price' => 'nullable|numeric|min:0',
             'lines.*.lot_number' => 'nullable|string|max:100',
             'lines.*.batch_number' => 'nullable|string|max:100',
             'lines.*.expiry_date' => 'nullable|date',
@@ -145,6 +155,8 @@ class DeliveryOrderController extends Controller
             'lines.salesOrderLine',
             'createdBy',
             'confirmedBy',
+            'invoice',
+            'quotation',
         ])->find($id);
 
         if (! $deliveryOrder) {
