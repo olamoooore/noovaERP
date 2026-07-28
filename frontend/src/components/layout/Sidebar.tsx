@@ -273,6 +273,7 @@ const baseNavItems: NavItem[] = [
         title: 'Financial Close',
         href: '/financial-close',
         icon: 'solar:calendar-mark-bold-duotone',
+        featureKey: 'financial-close',
         children: [
           {
             title: 'Dashboard',
@@ -331,6 +332,7 @@ const baseNavItems: NavItem[] = [
         title: 'Configuration',
         href: '/accounting/configuration/company',
         icon: 'solar:settings-bold-duotone',
+        featureKey: 'accounting-config',
         children: [
           {
             title: 'Company',
@@ -691,7 +693,19 @@ export function Sidebar() {
   // Tenant-specific hard blocks for modules that must never appear in navigation.
   const tenantForceDisabledFeatures: Record<string, string[]> = {
     'c194ebd3-a0af-4aca-a9b5-1f3275318228': ['field-service'],
-    '00000000-0000-0000-0000-000000000001': ['ecommerce', 'website-builder', 'iot', 'ai'],
+    '00000000-0000-0000-0000-000000000001': [
+      'financial-close',
+      'ocr-bookkeeping',
+      'accounting-config',
+      'loyalty',
+      'event_management',
+      'website-builder',
+      'ecommerce',
+      'iot',
+      'ai',
+      'field-service',
+      'hrm',
+    ],
   }
 
   const isFeatureEnabled = (featureKey?: string) => {
