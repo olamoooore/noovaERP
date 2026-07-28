@@ -30,6 +30,7 @@ class InvoiceDataSource implements DataSourceContract
         $currencyCode = $company['currency_code'] ?? 'MYR';
 
         $lines = [];
+        $salesperson = $invoice->customer?->salesperson?->name ?? '';
         foreach ($invoice->lines as $i => $line) {
             $lines[] = [
                 'index' => $i + 1,
@@ -40,6 +41,7 @@ class InvoiceDataSource implements DataSourceContract
                 'tax_rate' => (float) $line->tax_rate,
                 'discount' => (float) ($line->discount_amount ?? 0),
                 'line_total' => (float) $line->line_total,
+                'salesperson' => $salesperson,
             ];
         }
 
