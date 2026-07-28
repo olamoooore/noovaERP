@@ -31,8 +31,8 @@ class DeliveryOrderService
      */
     public function createDeliveryOrder(SalesOrder $order, array $data): DeliveryOrder
     {
-        if (! $order->isConfirmed() && ! $order->isAllocated() && ! $order->isFulfilled()) {
-            throw new \Exception('Only confirmed, allocated, or fulfilled orders can have delivery orders.');
+        if (! $order->isConfirmed() && ! $order->isAllocated() && ! $order->isFulfilled() && $order->status !== 'invoiced') {
+            throw new \Exception('Only confirmed, allocated, fulfilled, or invoiced orders can have delivery orders.');
         }
 
         $warehouseId = $data['warehouse_id'] ?? $order->warehouse_id;

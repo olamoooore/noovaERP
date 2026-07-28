@@ -1,0 +1,1126 @@
+delivery_order_number,delivery_date,customer_code,attention_to,shipping_address,salesperson,Currency,po_number,invoice_number,quotation_number,Contract Number,Shipping Method,Shipping Terms,delivery_date,terms,Due Date,Validity,Location,Case No,Case Date,Patient Name,quantity,product_sku,Item Cat #,description,Unit Price,Discount,total amount of unit,tax_rate,notes,source file,,
+DO2024/09/002,9/10/24,VC0028,Dr Daniel Koh,"DK Medical Services Pte Ltd, #08-07 Gleneagles Medical Centre, 6 Napier Road, Singapore 258499",,,,,,,,,,,,,,,,,6,21007,HTx60s,HTx60s Disposable Hysteroscope | LOT: 2409G01 Exp: 20May2027,1,,6,,Partial Delivery for 18+3 Bnousing; Scheme,DO_202409002_AcuVu_Dr Daniel Koh.xlsx,,
+DO2024/09/003,9/16/24,VC0028,Dr Daniel Koh,"DK Medical Services Pte Ltd, #08-07 Gleneagles Medical Centre, 6 Napier Road, Singapore 258499",,,,,,,,,,,,,,,,,12,21007,HTx60s,HTx60s Disposable Hysteroscope | LOT: 2409G01 Exp: 29May2027,1,,12,,Completed Partial Delivery for 18+3 Bnousing Scheme,DO_202409003_AcuVu_Dr Daniel Koh.xlsx,,
+DO2024/09/003,,,,,,,,,,,,,,,,,,,,,3,21007,,HTx60s Disposable Hysteroscope | LOT: 2407G02 Exp: 29May2027,,,,,,,,
+DO2024/09/005,9/18/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100694835,2024-09-027,Qu2024/09/004,,,,,60 days,11/17/24,,,,,,1,21028,RSI-370-5-C,Biopsy Forceps (5 Fr),,,,,,DO_202409005_AcuVu Instruments_MENH OT.xlsx,,
+DO2024/09/006,9/18/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100694955,2024-09-028,Qu2024/09/002,,,,,60 days,11/17/24,,,,,,1,21010,RSI-370-5-A,Single Action Scissors (5 Fr),,,,,,DO_202409006_AcuVu Instruments_MENH OT.xlsx,,
+DO2024/09/007,9/18/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100695557,2024-09-029,Qu2024/09/003,,,,,60 days,11/17/24,,,,,,1,21046,RSI-370-5-E,Alligator Grasper (5 Fr),,,,,,DO_202409007_AcuVu Instruments_MENH OT.xlsx,,
+DO2024/09/008,9/18/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100695839,2024-09-030,Qu2024/09/007,,,,,60 days,11/17/24,,,,,,1,21028,RSI-370-5-C,Biopsy Forceps (5 Fr),,,,,,DO_202409008_AcuVu Instruments_MENH OT.xlsx,,
+DO2024/09/009,9/18/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100695889,2024-09-031,Qu2024/09/005,,,,,60 days,11/17/24,,,,,,1,21010,RSI-370-5-A,Single Action Scissors (5 Fr),,,,,,DO_202409009_AcuVu Instruments_MENH OT.xlsx,,
+DO2024/09/010,9/18/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100696195,2024-09-032,Qu2024/09/006,,,,,60 days,11/17/24,,,,,,1,21046,RSI-370-5-E,Alligator Grasper (5 Fr),,,,,,DO_202409010_AcuVu Instruments_MENH OT.xlsx,,
+DO2024/09/011,9/25/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100696347,2024-09-041,Qu2024/09/010,,,,,60 days,11/24/24,,,,,,1,21028,RSI-370-5-C,Biopsy Forceps (5 Fr),,,,,,DO_202409011_AcuVu Instruments_MENH OT.xlsx,,
+DO2024/09/012,9/25/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100696588,2024-09-042,Qu2024/09/008,,,,,60 days,11/24/24,,,,,,1,21010,RSI-370-5-A,Single Action Scissors (5 Fr),,,,,,DO_202409012_AcuVu Instruments_MENH OT.xlsx,,
+DO2024/09/013,9/25/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100696614,2024-09-043,Qu2024/09/009,,,,,60 days,11/24/24,,,,,,1,21046,RSI-370-5-E,Alligator Grasper (5 Fr),,,,,,DO_202409013_AcuVu Instruments_MENH OT.xlsx,,
+DO2024/09/014,9/25/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100696762,2024-09-044,Qu2024/09/011,,,,,60 days,11/24/24,,,,,,1,21028,RSI-370-5-C,Biopsy Forceps (5 Fr),,,,,,DO_202409014_AcuVu Instruments_MENH OT.xlsx,,
+DO2024/10/001,10/2/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100696989,2024-10-002,Qu2024/09/013,,,,,60 days,12/1/24,,,,,,1,21010,RSI-370-5-A,Single Action Scissors (5 Fr),,,,,,DO_202410001_AcuVu Instruments_MENH OT.xlsx,,
+DO2024/10/002,10/1/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100697300,2024-10-003,Qu2024/09/012,,,,,60 days,12/1/24,,,,,,1,21046,RSI-370-5-E,Alligator Grasper (5 Fr),,,,,,DO_202410002_AcuVu Instruments_MENH OT.xlsx,,
+DO2024/10/003,10/2/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100697338,2024-10-004,Qu2024/09/011,,,,,60 days,12/1/24,,,,,,1,21028,RSI-370-5-C,Biopsy Forceps (5 Fr),,,,,,DO_202410003_AcuVu Instruments_MENH OT.xlsx,,
+DO2024/10/004,10/2/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100697780,2024-10-005,Qu2024/09/013,,,,,60 days,12/1/24,,,,,,1,21010,RSI-370-5-A,Single Action Scissors (5 Fr),,,,,,DO_202410004_AcuVu Instruments_MENH OT.xlsx,,
+DO2024/10/005,10/4/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100697979,2024-10-016,Qu2024/09/012,,,,,60 days,12/3/24,,,,,,1,21046,RSI-370-5-E,Alligator Grasper (5 Fr),,,,,,DO_202410005_AcuVu Instruments_MENH OT.xlsx,,
+DO2024/10/006,10/8/24,VC0005,Raffles Hospital,"Level 5, MMD Store, 585 North Bridge Road, Singapore 188770",Melody Lee,SGD,7210100403,2024-10-019,-,,,,,90 days,1/7/25,,,,,,6,40-008-005,2404006,MateRegen Gel 5ml,,,,,,DO_202410006_BioRegen_RH OT.xlsx,,
+DO2024/10/007,10/28/24,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,1,21005,HTx 60,HTx60 Disposable Hysteroscope,500,,,,,DO_202410007_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2024/10/007,,,,,,,,,,,,,,,,,,,,,1,21003,,HTx40 Disposable Hysteroscope,500,,,,,,,
+DO/2024/10/008,10/29/24,,Sister Eunice Tan,"Day Surgery, KK Women's and Children's Hopsital, 100 Bukit Timah Road, Singapore 229899",,,TBA,,,,,,10/29/24,,,,,,,,30,40-008-011,,MaterRegen Gel 3ml | LOT No.: 2402004 | EXP: 2/3/2027,120,,3600,,Pending for PO,DO_202410008_BioRegen_KKH Day Surgery.xlsx,,
+DO/2024/10/008,,,,,,,,,,,,,,,,,,,,,,NOTE:,,Pending for PO,,,,,,,,
+DO2024/11/002,11/4/24,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,1,21003,HTx 40,HTx40 Disposable Hysteroscope,500,,,,,DO_202411002_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2024/11/003,11/29/24,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,1,21007,HTx 60s,HTx60s Disposable Hysteroscope | Lot Number: 2409G08 | Expiry Date: 29-05-2027,500,,,,,DO_202411003_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2024/12/002,12/10/24,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+Lot Number: 2409S05
+Expiry Date: 02/02/2027",500,,,,,DO_202412002_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2024/12/002,,,,,,,,,,,,,,,,,,,,,2,21007,,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2411G01
+Expiry Date: 30/07/2027",500,,,,,,,
+DO/2024/12/003,12/16/24,,Sr Koh Xue Ling,"SGH Major Operating Theatre, Blk 3 Level 2",,,8724009360,,,,,,12/16/24,,,,,,,,5,40-008-005,,MaterRegen Gel 5ml | LOT No.: 2404006 | EXP: 17/4/2027,150,,750,9,,DO_202412003_BR_SGH.xlsx,,
+DO2025/01/001,1/3/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+Lot Number: 2409S05
+Expiry Date: 02/02/2027",500,,,,,DO_202501001_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/01/001,,,,,,,,,,,,,,,,,,,,,1,21007,,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2411G01
+Expiry Date: 30/07/2027",500,,,,,,,
+DO2025/01/002,1/13/25,VC0028,Dr Daniel Koh,"DK Medical Services Pte Ltd, #08-07 Gleneagles Medical Centre, 6 Napier Road, Singapore 258499",,,,,,,,,,,,,,,,,12,21007,HTx60s,HTx60s Disposable Hysteroscope | LOT: 2412G14 Exp: 22 Dec 2027,,,12,,"Completed Partial Delivery for 18+3 Bnousing Scheme. Invoice No. 2024/12/040, Dated 27/12/2024",DO_202501002_AcuVu_Dr Daniel Koh.xlsx,,
+DO2025/01/002,,,,,,,,,,,,,,,,,,,,,3,21007,,HTx60s Disposable Hysteroscope | LOT: 2412G14 Exp: 22 Dec 2027,,,,,,,,
+DO/2025/01/003,1/24/25,,Sr Koh Xue Ling,"SGH Major Operating Theatre, Blk 3 Level 2",,,8724009360,,,,,,1/24/25,,,,,,,,5,40-008-005,,MaterRegen Gel 5ml | LOT No.: 2302012 | EXP: 25/02/2026,150,,750,9,,DO_202501003_BR_SGH.xlsx,,
+DO2025/01/004,1/27/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,2,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2412G14
+Expiry Date: 22/12/2027",500,,,,,DO_202501004_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/02/001,2/4/25,,Sister Nancy,"Operating Theatre, Thomson Medical Centre, 339 Thomson Road, Singapore 307677",,,,,,,,,2/4/25,,,,,,,,2,21010,RSI-370-5-A,Single Action Scissors,,,,,,DO_202502001_TMC_Instruments.xlsx,,
+DO2025/02/002,2/7/25,VC0030,Novaptus Surgery Centre,"1 Orchard Blvd, #04-06, Singapore 248649",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21046,RSI-370-5-E,Alligator Grasper,600,,,,,DO_202502002_AcuVu Instruments_Novaptus.xlsx,,
+DO2025/02/002,,,,,,,,,,,,,,,,,,,,,1,21010,,Single Action Scissors,600,,,,,,,
+DO2025/02/003,2/26/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+Lot Number: 2502S04
+Expiry Date: 21/01/2028",500,,,,,DO_202502003_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/03/001,3/4/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,2,21007,HTx 60s,"HTx 60s Disposable Hysteroscope, AcuVu
+Lot Number: 2412G14
+Expiry Date: 22/12/2027",500,,,,,DO_202503001_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/03/002,3/11/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,2,21007,HTx 60s,"HTx 60s Disposable Hysteroscope, AcuVu
+Lot Number: 2412G14
+Expiry Date: 22/12/2027",500,,,,,DO_202503002_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/03/003,3/17/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+Lot Number: 2502S09
+Expiry Date: 21/01/2028",500,,,,,DO_202503003_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO/2025/03/004,3/24/25,,Sr Koh Xue Ling,"SGH Major Operating Theatre, Blk 3 Level 2",,,8724009360,,,,,,3/24/25,,,,,,,,6,40-008-005,,MateRegen Gel 5ml | LOT No.: 2302012 | EXP: 25/02/2026,150,,900,9,,DO_202503004_BR_SGH.xlsx,,
+DO/2025/03/004,,,,,,,,,,,,,,,,,,,,,3,40-008-005,,MateRegen Gel 5ml | LOT No.: 2404006 | EXP: 17/04/2027,150,,,,,,,
+DO2025/04/001,4/8/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+Lot Number: 2502S05
+Expiry Date: 21/01/2028",500,,,,,DO_202504001_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/04/001,,,,,,,,,,,,,,,,,,,,,1,21007,,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2503G01
+Expiry Date: 07/03/2028",500,,,,,,,
+DO2025/04/002,4/14/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+Lot Number: 2502S05
+Expiry Date: 21/01/2028",500,,,,,DO_202504002_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/04/003,4/22/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,1,21007,HTx60s,"HTx60s Disposable Hysteroscope
+
+Lot Number: 2503G01
+Expiry Date: 07/03/2028",500,,,,,DO_202504003_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/04/005,4/25/25,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",Melody Lee,SGD,4100719965,2025/04/47,Qu2025/04/008,,,,,60 days,5/24/25,,,,,,1,ZP649RN,ZP649RN,"Needle Holder, Left Curved | 330mm x 5mm",,,-,,QU2025/04/008; Item was delivered on 24 April 2025 (Urgent Delivery),DO_202504005_Shinva _MENH OT.xlsx,,
+DO2025/05/002,5/14/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+Lot Number: 2502S09
+Expiry Date: 21/01/2028",500,,,,,DO_202505002_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/05/003,5/21/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+Lot Number: 2502S09
+Expiry Date: 21/01/2028",500,,,,,DO_202505003_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/06/001,6/12/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+Lot Number: 2504S01
+Expiry Date: 29/01/2028",500,,,,,DO_202506001_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/06/001,,,,,,,,,,,,,,,,,,,,,1,21007,,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2504G02
+Expiry Date: 07/03/2028",500,,,,,,,
+DO2025/06/002,6/16/25,VC0051,Thomson Specialists (Woodleigh),"11 Bidadari Park Drive, #02-05/06/07, The Woodleigh Mall, Singapore 367803",Melody Lee,,,,,,,,,,,,,,,,5,40-008-011,3ml,"MateRegen Gel 3ml
+
+Lot Number: 2402004
+Exp: 02-03-2027
+
+Delivered on 27 May 2025",120,,600,,,DO_202506002_BioRegen Gel_Dr Ryan Lee.xlsx,,
+DO2025/06/002,,,,,,,,,,,,,,,,,,,,,3,40-008-005,,"MateRegen Gel 5ml
+
+Lot Number: 2404006
+Exp: 17-04-2027
+
+Delivered on 27 May 2025",150,,,,,,,
+DO2025/06/002,,,,,,,,,,,,,,,,,,,,,2,40-012-010,,"HyaRegen Gel 10ml
+
+Lot Number: A2409005
+Exp: 03/10/2026
+
+Delivered on 11 June 2025",200,,,,,,,
+DO2025/06/002,,,,,,,,,,,,,,,,,,,,,TOTAL,,,,,,,,,,,
+DO2025/06/003,6/19/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,2,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2504G02
+Expiry Date: 07/03/2028",500,,,,,DO_202506003_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/06/004,6/27/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2505G05
+Expiry Date: 07/03/2028",500,,,,,DO_202506004_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/07/001,7/1/25,VC0066,STO+G Fertility & Oncology Practice,"101 Irrawaddy Road, Royal Square Medical Centre, #21-13/14, Singapore 329565",Melody Lee,,,,,,,,,,,,,,,,2,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2506G04
+Expiry Date: 29/05/2027",,,,,,DO_202507001_AcuVu Disposable Scope_STO+G (Royal Square).xlsx,,
+DO2025/07/002,7/1/25,VC0066,STO+G Practice,"339 Thomson Road, #04-06A, Thomson Medical Centre, Singapore 307677",Melody Lee,,,,,,,,,,,,,,,,4,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2506G04
+Expiry Date: 29/05/2027",,,,,,DO_202507002_AcuVu Disposable Scope_STO+G (TMC).xlsx,,
+DO2025/07/003,7/1/25,VC0066,STO+G Women's Health Specialists,"820 Thomson Rd, Mount Alvernia Hospital, #04-84, St Anne Mother & Child Centre, Singapore 574623",Melody Lee,,,,,,,,,,,,,,,,3,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2506G04
+Expiry Date: 29/05/2027",,,,,,DO_202507003_AcuVu Disposable Scope_STO+G (MAH - Dr Wong Wai Loong).xlsx,,
+DO2025/07/004,7/1/25,VC0066,STO+G Clinic for Women,"820 Thomson Road, Mount Alvernia Hospital, Medical Centre D, #08-60, Singapore 574623",Melody Lee,,,,,,,,,,,,,,,,3,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2506G04
+Expiry Date: 29/05/2027",,,,,,DO_202507004_AcuVu Disposable Scope_STO+G (MAH - Dr Hong Sze Ching).xlsx,,
+DO2025/07/006,7/14/25,VC0051,Thomson Specialists (Woodleigh),"11 Bidadari Park Drive, #02-05/06/07, The Woodleigh Mall, Singapore 367803",Melody Lee,,,,,,,,,,,,,,,,1,40-008-011,3ml,"MateRegen Gel 3ml
+
+Lot Number: 2412005
+Exp: 18-12-2027
+
+Used on KHOO LI LING, SELINA",120,,120,,"Kindly refer to DO2025/06/002 (10 units was delivered)
+
+20 + 4 package (to be billed after completion of the package)",DO_202507006_BioRegen Gel_Dr Ryan Lee.xlsx,,
+DO2025/07/007,7/18/25,VC0066,STO+G Fertility & Oncology Practice,"101 Irrawaddy Road, Royal Square Medical Centre, #21-13/14, Singapore 329565",Melody Lee,,,,,,,,,,,,,,,,4,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2506G04
+Expiry Date: 29/05/2027",,,,,,DO_202507007_AcuVu Disposable Scope_STO+G (Royal Square).xlsx,,
+DO2025/07/008,7/18/25,VC0066,STO+G Practice,"339 Thomson Road, #04-06A, Thomson Medical Centre, Singapore 307677",Melody Lee,,,,,,,,,,,,,,,,8,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2506G04
+Expiry Date: 29/05/2027",,,,,,DO_202507008_AcuVu Disposable Scope_STO+G (TMC).xlsx,,
+DO2025/07/010,7/25/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,,,,,,,,,,,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2505G05
+Expiry Date: 07/03/2028",500,,,,,DO_202507010_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/07/013,7/29/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2505G05
+Expiry Date: 07/03/2028",500,,,,,DO_202507013_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/07/014,7/31/25,VC0050,Thomson Specialists (Paragon),"290 Orchard Road #19-01, Singapore 238859",Melody Lee,-,-,-,-,,,,,-,-,,,1,5/27/25,SYLVANIA WIMANDJAJA ,1,21003,HTx 40,,,,,,,DO_202507014_AcuVu Disposable Scope_TMC Paragon_Dr Sharon Foo.xlsx,,
+DO2025/07/014,,,,,,,,,,,,,,,,,,,,,1,21007,,,,,,,,,,
+DO2025/07/014,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/07/014,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/07/014,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/07/014,,,,,,,,,,,,,,,,,,,,,1,21007,,,,,,,,,,
+DO2025/07/014,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/07/014,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/07/014,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/07/014,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/07/014,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/07/014,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/07/014,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/07/015,8/1/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2505G05
+Expiry Date: 07/03/2028",500,,,,,DO_202507015_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/08/001,8/4/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2506G03
+Expiry Date: 31/05/2028",500,,,,,DO_202508001_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/08/002,8/8/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2506G03
+Expiry Date: 31/05/2028",500,,,,,DO_202508002_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/08/004,8/14/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2506G03
+Expiry Date: 31/05/2028",500,,,,,DO_202508004_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/08/005,8/15/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,2,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2506G03
+Expiry Date: 31/05/2028",500,,,,,DO_202508005_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/08/006,8/18/25,VC0066,STO+G Fertility & Oncology Practice,"101 Irrawaddy Road, Royal Square Medical Centre, #21-13/14, Singapore 329565",Melody Lee,,,,,,,,,,,,,,,,2,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2507G07
+Expiry Date: 29/05/2027 | Invoice Number: 2025/08/082",,,,,,DO_202508006_AcuVu Disposable Scope_STO+G (Royal Square).xlsx,,
+DO2025/08/007,8/18/25,VC0066,STO+G Practice,"339 Thomson Road, #04-06A, Thomson Medical Centre, Singapore 307677",Melody Lee,,,,,,,,,,,,,,,,6,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2507G07
+Expiry Date: 29/05/2027 | Invoice Number: 2025/08/082",,,,,,DO_202508007_AcuVu Disposable Scope_STO+G (TMC).xlsx,,
+DO2025/08/008,8/18/25,VC0066,STO+G Women's Health Specialists,"820 Thomson Rd, Mount Alvernia Hospital, #04-84, St Anne Mother & Child Centre, Singapore 574623",Melody Lee,,,,,,,,,,,,,,,,4,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2507G07
+Expiry Date: 29/05/2027 | Invoice Number: 2025/08/082",,,,,,DO_202508008_AcuVu Disposable Scope_STO+G (MAH - Dr Liana Koe).xlsx,,
+DO2025/08/009,8/21/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,2,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2506G03
+Expiry Date: 31/05/2028",500,,1000,,,DO_202508009_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/08/011,8/27/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+Lot Number: 2508S01
+Expiry Date: 04/07/2028",500,,500,,,DO_202508011_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/08/011,,,,,,,,,,,,,,,,,,,,,1,21007,,"HTx 60s Disposable Hysteroscope
+Lot Number: 2508G03
+Expiry Date: 25/06/2028",500,,,,,,,
+DO2025/08/012,8/29/25,VC0050,Thomson Specialists (Paragon),"290 Orchard Road #19-01, Singapore 238859",Melody Lee,-,-,-,-,,,,,-,-,,,14,8/12/25,TERESA PURNOMO,1,21230,HTx 60t,,,,,,,DO_202508012_AcuVu Disposable Scope_TMC Paragon_Dr Sharon Foo.xlsx,,
+DO2025/08/012,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/08/012,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/08/013,8/30/25,VC0048,"Nobel Obstetrics,Gynaecology & Minimally Invasive Surgery Centre","38 Irrawaddy Road, #10-23, Mount Elizabeth Novena Specialist Centre, Singapore 329563",Melody Lee,-,-,2025/08/146,-,,,,,-,-,,,1,8/13/25,Daliana Suryawinata,1,21005,HTx 60,,,,,,,DO_202508013_AcuVu Disposable Scope_Dr Michelle Lim.xlsx,,
+DO2025/08/013,,,,,,,,,,,,,,,,,,,,,1,21003,,,,,,,,,,
+DO2025/08/013,,,,,,,,,,,,,,,,,,,,,1,21005,,,,,,,,,,
+DO2025/08/013,,,,,,,,,,,,,,,,,,,,,1,21003,,,,,,,,,,
+DO2025/08/013,,,,,,,,,,,,,,,,,,,,,1,21003,,,,,,,,,,
+DO2025/09/001,9/8/25,VC0066,STO+G Practice,"Thomson Medical Centre, 339 Thomson Road, #04-06A, Singapore 307677",Melody Lee,,,,,,,,,,,,,,,,2,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2508G05
+Expiry Date: 23/05/2028",,,,,,DO_202509001_AcuVu Disposable Scope_STO+G (TMC).xlsx,,
+DO2025/09/001,,,,,,,,,,,,,,,,,,,,,6,21005,,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2507G08
+Expiry Date: 23/05/2028 | Invoice Number: 2025/09/040",,,,,,,,
+DO2025/09/002,9/8/25,VC0066,STO+G Cancer & Fertility Practice,"38 Irrawaddy Road,#06-49, Mount Elizabeth Novena Specialist Centre, Singapore 329563",Melody Lee,,,,,,,,,,,,,,,,4,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2508G05
+Expiry Date: 23/05/2028 | Invoice Number: 2025/09/040",,,,,,DO_202509002_AcuVu Disposable Scope_STO+G (MENH).xlsx,,
+DO2025/09/004,9/15/25,VC0051,Thomson Specialists (Woodleigh),"11 Bidadari Park Drive, #02-05/06/07, The Woodleigh Mall, Singapore 367803",Melody Lee,,,,,,,,,,,,,,,,9,40-008-011,3ml,"MateRegen Gel 3ml
+
+Lot Number: 2412005
+Exp: 18-12-2027",120,,1080,,"Kindly refer to DO2025/06/002 (10 units was delivered)
+
+Kindly refer to DO2025/07/006 (1 unit was delivered)
+
+Completed 20 + 4 package",DO_202509004_BioRegen Gel_Dr Ryan Lee.xlsx,,
+DO2025/09/004,,,,,,,,,,,,,,,,,,,,,4,40-012-010,,"HyaRegen Gel 10ml
+
+Lot Number: A2502008
+Exp: 26-02-2027",0,,,,,,,
+DO2025/09/004,,,,,,,,,,,,,,,,,,,,,TOTAL,,,,,,,,,,,
+DO2025/09/007,9/25/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,2,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2508G02
+Expiry Date: 12/07/2028",500,,,,,DO_202509007_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/09/008,9/29/25,VC0010,Sister Rosnah Ismail,"Clinic D, Level B1, Women's Tower, KK Womens' and Childrens' Hosptial, 100 Bukit Timah Road, Singapore 229899",,,TBC,,,,,,,,,,"Women's Tower, B1, Clinic D",,,,6,21003,HTx40,"HTx40 Disposable Hysteroscope | LOT: 2508S01, Exp: 04 July 2028 | Manufacturer: | Suzhou AcuVu Medical Technology Co., Ltd | HSA SMDR: DE0508857, Class B",500,,3000,,,DO_202509008_AcuVu Disposable Scope_KKH.xlsx,,
+DO2025/09/011,9/29/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+Lot Number: 2508S01
+Expiry Date: 04/07/2028",500,,,,,DO_202509011_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/09/012,9/30/25,VC0050,Thomson Specialists (Paragon),"290 Orchard Road #19-01, Singapore 238859",Melody Lee,-,-,-,-,,,,,-,-,,,17,9/9/25,KOCH GEMENILLE VENTURA,1,21230,HTx 60t,,,,,,,DO_202509012_AcuVu Disposable Scope_TMC Paragon_Dr Sharon Foo.xlsx,,
+DO2025/09/012,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/09/012,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/09/012,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/10/001,10/1/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+Lot Number: 2508S01
+Expiry Date: 04/07/2028",500,,,,,DO_202510001_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/10/003,10/12/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+Lot Number: 2509S06
+Expiry Date: 09/08/2028",500,,,,,DO_202510003_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/10/004,10/25/25,VC0066,STO+G Practice,"339 Thomson Road, #04-06A, Thomson Medical Centre, Singapore 307677",Melody Lee,,,,,,,,,,,,,,,,6,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2506G04
+Expiry Date: 29/05/2027",,,,,,DO_202510004_AcuVu Disposable Scope_STO+G (TMC).xlsx,,
+DO2025/10/004,,,,,,,,,,,,,,,,,,,,,2,21005,,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2508G05
+Expiry Date: 23/05/2028 | Invoice Number: 2025/10/105",,,,,,,,
+DO2025/10/005,10/25/25,VC0066,STO+G Fertility & Oncology Practice,"101 Irrawaddy Road, Royal Square Medical Centre, #21-13/14, Singapore 329565",Melody Lee,,,,,,,,,,,,,,,,4,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2508G05
+Expiry Date: 23/05/2028 | Invoice Number: 2025/10/105",,,,,,DO_202510005_AcuVu Disposable Scope_STO+G (Royal Square).xlsx,,
+DO2025/10/006,10/30/25,VC0050,Thomson Specialists (Paragon),"290 Orchard Road #19-01, Singapore 238859",Melody Lee,-,-,-,-,,,,,-,-,,,21,10/7/25,"NG, JESSIE",1,21230,HTx 60t,,,,,,,DO_202510006_AcuVu Disposable Scope_TMC Paragon_Dr Sharon Foo.xlsx,,
+DO2025/10/006,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/10/006,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/10/006,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/10/006,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/10/006,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/10/007,10/31/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2509G11
+Expiry Date: 08/08/2028",500,,,,"Topped up for 
+Case Number: 1025087328
+Date of Surgery: 27 October 2025
+Doctor: Dr Serene Lim",DO_202510007_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/11/001,11/3/25,VC0010,SEN Siti Sabariyah Abdullah,"Clinic D, Level B1, Women's Tower, KK Womens' and Childrens' Hosptial, 100 Bukit Timah Road, Singapore 229899",,,9410283373,,,,,,,,,,"Women's Tower, B1, Clinic D",,,,4,21003,HTx40,"HTx40 Disposable Hysteroscope | LOT: 2509S07, Exp: 09 Aug 2028 | Manufacturer: | Suzhou AcuVu Medical Technology Co., Ltd | HSA SMDR: DE0508857, Class B",500,,2000,,,DO_202511001_AcuVu Disposable Scope_KKH.xlsx,,
+DO2025/11/003,11/6/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,2,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2509S07     EXP: 09/08/2028",500,,,,"Topped up for 
+Case Number: 1025088029
+Date of Surgery: 20 October 2025
+Doctor: Dr Peter Chew; Topped up for 
+Case Number: 1025089748
+Date of Surgery: 04 November 2025
+Doctor: Dr Peter Chew",DO_202511003_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/11/005,11/10/25,VC0066,STO+G Practice,"339 Thomson Road, #04-06A, Thomson Medical Centre, Singapore 307677",Melody Lee,,,,,,,,,,,,,,,,6,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2508G05
+Expiry Date: 23/05/2028 | Invoice Number: 2025/11/036",,,,,,DO_202511005_AcuVu Disposable Scope_STO+G (TMC).xlsx,,
+DO2025/11/006,11/10/25,VC0066,STO+G Women's Health Specialists,"820 Thomson Rd, Mount Alvernia Hospital, #04-84, St Anne Mother & Child Centre, Singapore 574623",Melody Lee,,,,,,,,,,,,,,,,3,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2508G05
+Expiry Date: 23/05/2028 | Invoice Number: 2025/11/036",,,,,,DO_202511006_AcuVu Disposable Scope_STO+G (MAH - Dr Liana Koe).xlsx,,
+DO2025/11/007,11/10/25,VC0066,STO+G Clinic for Women,"820 Thomson Road, Mount Alvernia Hospital, Medical Centre A, #03-01, Singapore 574623",Melody Lee,,,,,,,,,,,,,,,,3,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2508G05
+Expiry Date: 23/05/2028 | Invoice Number: 2025/11/036",,,,,,DO_202511007_AcuVu Disposable Scope_STO+G (MAH - Dr Hong Sze Ching).xlsx,,
+DO2025/11/010,11/13/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2509G11     EXP: 08/08/2028",500,,,,"Topped up for 
+Case Number: 1025091598
+Date of Surgery: 11 November 2025
+Doctor: Dr Anthony Siow",DO_202511010_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/11/011,11/20/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,2,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2509S07     EXP: 09/08/2028",500,,,,"Topped up for 
+Case Number: 1025092374
+Date of Surgery: 13 November 2025
+Doctor: Dr Peter Chew; Topped up for 
+Case Number: 1025093022
+Date of Surgery: 15 November 2025
+Doctor: Dr Peter Chew; Topped up for 
+Case Number: 1025093693
+Date of Surgery: 18 November 2025
+Doctor: Dr Felicia Chin",DO_202511011_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/11/011,,,,,,,,,,,,,,,,,,,,,1,21007,,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2509G11     EXP: 08/08/2028",500,,,,,,,
+DO2025/11/012,11/25/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,5,65652-122,65652-122,"Specimen Sock
+
+LOT No.: 1250392     EXP: 30/04/2030",50,,,,,DO_202511012_Specimen Sock_GEH OT.xlsx,,
+DO2025/11/013,11/26/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2509G11     EXP: 08/08/2028",500,,,,"Topped up for 
+Case Number: 1025095630
+Date of Surgery: 24 November 2025
+Doctor: Dr Mary Yang",DO_202511013_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/11/014,11/28/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,65652122,,Specimen Sock,50,,,,"Topped up for 
+Case Number: 1025096524
+Date of Surgery: 27 November 2025
+Doctor: Dr Mary Yang",DO_202511014_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/11/014,,,,,,,,,,,,,,,,,,,,,1,21007,,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2509G11     EXP: 08/08/2028",500,,,,,,,
+DO2025/11/015,11/28/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2509S07     EXP: 09/08/2028",500,,,,"Topped up for 
+Case Number: 1025096562
+Date of Surgery: 27 November 2025
+Doctor: Dr Peter Chew",DO_202511015_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/11/016,11/29/25,VC0050,Thomson Specialists (Paragon),"290 Orchard Road #19-01, Singapore 238859",Melody Lee,-,-,-,-,,,,,-,-,,,27,11/4/25,"Lo Nee Teng, Hestia",1,21230,HTx 60t,,,,,,,DO_202511016_AcuVu Disposable Scope_TMC Paragon_Dr Sharon Foo.xlsx,,
+DO2025/11/016,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/11/016,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/11/016,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/11/016,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2025/12/001,12/1/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2509S07     EXP: 09/08/2028",500,,,,"Topped up for 
+Case Number: 1025097040
+Date of Surgery: 29 November 2025
+Doctor: Dr Peter Chew",DO_202512001_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/12/002,12/2/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,2,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2509G11     EXP: 08/08/2028",500,,1000,,"Topped up for 
+Case Number: 1025097435
+Date of Surgery: 1 December 2025
+Doctor: Dr Mary Yang; Topped up for 
+Case Number: 1025097399
+Date of Surgery: 1 December 2025
+Doctor: Dr Chia Yin Nin",DO_202512002_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/12/003,12/3/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2509S07     EXP: 09/08/2028",500,,500,,"Topped up for (HTx40)
+Case Number: 1025097881
+Date of Surgery: 2 December 2025
+Doctor: Dr Chia Yin Nin; Topped up for (HTx60s)
+Additional 2 each Consignment Stock",DO_202512003_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/12/003,,,,,,,,,,,,,,,,,,,,,2,21007,,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2509G11     EXP: 08/08/2028",500,,,,,,,
+DO2025/12/004,12/5/25,VC0051,Thomson Specialists (Woodleigh),"11 Bidadari Park Drive, #02-05/06/07, The Woodleigh Mall, Singapore 367803",Melody Lee,,,,,,,,,,,,,,,,3,40-012-010,10ml,"HyaRegen Gel 10ml
+
+Lot Number: A2502008
+Exp: 26-02-2027",200,,600,,"Accumulative 20 + 4
+Delivered 3 pieces on 05 December 2025 (Invoice Number: 2025/12/032)",DO_202512004_BioRegen Gel_Dr Ryan Lee.xlsx,,
+DO2025/12/004,,,,,,,,,,,,,,,,,,,,,TOTAL,,,,,,,,,,,
+DO2025/12/005,12/8/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2509S07     EXP: 09/08/2028",500,,,,"Topped up for 
+Case Number: 1025098542
+Date of Surgery: 04 December 2025
+Doctor: Dr Peter Chew; Topped up for 
+Case Number: 1025098641
+Date of Surgery: 04 December 2025
+Doctor: Dr Regina Zuzarte; Topped up for 
+Case Number:  1025098865
+Date of Surgery: 05 December 2025
+Doctor: Dr Mary Yang",DO_202512005_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/12/005,,,,,,,,,,,,,,,,,,,,,2,21007,,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2509G10     EXP: 31/05/2028",500,,,,,,,
+DO2025/12/005,,,,,,,,,,,,,,,,,,,,,1,65652-122,,"Specimen Sock
+
+LOT No.: 1250392     EXP: 30/04/2030",50,,,,,,,
+DO2025/12/006,12/11/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,2,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2509G11     EXP: 08/08/2028",500,,,,"Topped up for 
+Case Number: 1025097715
+Date of Surgery: 08 December 2025
+Doctor: Dr Chia Yin Nin; Topped up for 
+Case Number:  1025098952
+Date of Surgery: 09 December 2025
+Doctor: Dr Mary Yang",DO_202512006_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/12/006,,,,,,,,,,,,,,,,,,,,,1,65652-122,,"Specimen Sock
+
+LOT No.: 1250392     EXP: 30/04/2030",50,,,,,,,
+DO2025/12/007,12/12/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,2,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2509G11     EXP: 08/08/2028",500,,,,"Topped up for 
+Case Number: 1025100514
+Date of Surgery: 11 December 2025
+Doctor: Dr Wee Wei Wei; Topped up for 
+Case Number:  1025100468
+Date of Surgery: 11 December 2025
+Doctor: Dr Chia Yin Nin; Topped up for 
+Case Number:  1025099598
+Date of Surgery: 09 December 2025
+Doctor: Dr Chia Yin Nin",DO_202512007_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/12/007,,,,,,,,,,,,,,,,,,,,,3,65652-122,,"Specimen Sock
+
+LOT No.: 1250392     EXP: 30/04/2030",50,,,,,,,
+DO2025/12/008,12/17/25,VC0089,Woodlands Health Pte Ltd,"Tower B, Level 2, OT Entrance 4",Tonny Shi,-,-,-,-,,,,,-,-,,,,,,2,40-011-005,40-011-005,"PureRegen Gel Sinus (5ml)
+
+LOT No.: 2402001     EXP: 27/02/2027",Sample,,,,Sample for Dr Richmond Lim,DO_202512008_BioRegen PureRegen_WoodlandsHealth.xlsx,,
+DO2025/12/009,12/22/25,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,3,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2509G11     EXP: 08/08/2028",500,,,,"Topped up for 
+Case Number: 1025100644
+Date of Surgery: 16 December 2025
+Doctor: Dr Felicia Chin; Topped up for 
+Case Number:  1025100644
+Date of Surgery: 16 December 2025
+Doctor: Dr Chia Yin Nin; Topped up for 
+Case Number:  1025102448
+Date of Surgery: 18 December 2025
+Doctor: Dr Mary Yang; Topped up for 
+Case Number:  1025102636
+Date of Surgery: 18 December 2025
+Doctor: Dr Chia Yin Nin",DO_202512009_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2025/12/009,,,,,,,,,,,,,,,,,,,,,3,65652-122,,"Specimen Sock
+
+LOT No.: 1250392     EXP: 30/04/2030",50,,,,,,,
+DO2025/12/010,12/22/25,VC0066,STO+G Practice,"339 Thomson Road, #04-06A, Thomson Medical Centre, Singapore 307677",Melody Lee,,,,,,,,,,,,,,,,6,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2508G05
+Expiry Date: 23/05/2028",,,,,,DO_202512010_AcuVu Disposable Scope_STO+G (TMC).xlsx,,
+DO2025/12/010,,,,,,,,,,,,,,,,,,,,,2,21005,,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2509G09
+Expiry Date: 29/05/2028 | Invoice Number: 2025/12/105",,,,,,,,
+DO2025/12/011,12/22/25,VC0066,STO+G Women's Health Specialists,"820 Thomson Rd, Mount Alvernia Hospital, #04-84, St Anne Mother & Child Centre, Singapore 574623",Melody Lee,,,,,,,,,,,,,,,,2,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2507G08
+Expiry Date: 23/05/2028 | Invoice Number: 2025/12/105",,,,,,DO_202512011_AcuVu Disposable Scope_STO+G (MAH - Dr Liana Koe).xlsx,,
+DO2025/12/012,12/22/25,VC0066,STO+G Fertility & Oncology Practice,"101 Irrawaddy Road, Royal Square Medical Centre, #21-13/14, Singapore 329565",Melody Lee,,,,,,,,,,,,,,,,1,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2506G04
+Expiry Date: 29/05/2028",,,,,,DO_202512012_AcuVu Disposable Scope_STO+G (Royal Square).xlsx,,
+DO2025/12/012,,,,,,,,,,,,,,,,,,,,,1,21005,,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2506G04
+Expiry Date: 29/05/2028 | Invoice Number: 2025/12/105",,,,,,,,
+DO2025/12/013,12/31/25,VC0050,Thomson Specialists (Paragon),"290 Orchard Road #19-01, Singapore 238859",Melody Lee,-,-,-,-,,,,,-,-,,,32,12/9/25,Yip Chun Yin,1,21230,HTx 60t,,,,,,,DO_202512013_AcuVu Disposable Scope_TMC Paragon_Dr Sharon Foo.xlsx,,
+DO2025/12/013,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/01/001,1/2/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2509S07     EXP: 09/08/2028",500,,,,"Topped up for 
+Case Number: 1025102761
+Date of Surgery: 19 December 2025
+Doctor: Dr Peter Chew",DO_202601001_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/01/002,1/8/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,65652-122,65652-122,"Specimen Sock
+
+Lot Number: 1250392
+Expiry Date: 30/04/2030",50,,,,"Topped up for 
+Case Number: 1025105506
+Date of Surgery: 31 December 2025
+Doctor: Dr Ang Huai Yan",DO_202601002_Specimen Sock_GEH OT.xlsx,,
+DO2026/01/003,1/9/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2511S12     EXP: 27/09/2028",500,,,,"Topped up for 
+Case Number: 1026000287
+Date of Surgery: 02 January 2026
+Doctor: Dr Peter Chew; Topped up for 
+Case Number: 1026001636
+Date of Surgery: 07 January 2026
+Doctor: Dr Chia Yin Nin; Topped up for 
+Case Number: 1026001633
+Date of Surgery: 07 January 2026
+Doctor: Dr Chia Yin Nin",DO_202601003_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/01/003,,,,,,,,,,,,,,,,,,,,,2,21007,,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2511G13     EXP: 14/10/2028",500,,,,,,,
+DO2026/01/004,1/14/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2511S12     EXP: 27/09/2028",500,,,,"Topped up for 
+Case Number: 1026002464
+Date of Surgery: 09 January 2026
+Doctor: Dr Peter Chew; Topped up for 
+Case Number: 1026002759
+Date of Surgery: 12 January 2026
+Doctor: Dr Chia Yin Nin",DO_202601004_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/01/004,,,,,,,,,,,,,,,,,,,,,1,21007,,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2511G13     EXP: 14/10/2028",500,,,,,,,
+DO2026/01/005,1/16/26,VC0035,Sister Agnes,"CSSU, Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",,,,,,,,,,,,,,,,,4,21010,RSI-370-5-A,Single Action Scissors (5 Fr) | LOT: 2409J04,,,,,Replacement for defective scissors,DO_202601005_AcuVu Instruments_MENH OT.xlsx,,
+DO2026/01/006,1/20/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,3,65652-122,65652-122,Specimen Sock,50,,,,"Topped up for 
+Case Number: 1026004224
+Date of Surgery: 16 January 2026
+Doctor: Dr Chia Yin Nin; Topped up for 
+Case Number: 1026004134
+Date of Surgery: 16 January 2026
+Doctor: Dr Serene Lim; Topped up for 
+Case Number: 1026003263
+Date of Surgery: 15 January 2026
+Doctor: Dr Chia Yin Nin; Topped up for 
+Case Number: 1026004394
+Date of Surgery: 19 January 2026
+Doctor: Dr Ang Huai Yan",DO_202601006_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/01/006,,,,,,,,,,,,,,,,,,,,,2,21007,,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2511G13     EXP: 14/10/2028",500,,,,,,,
+DO2026/01/007,1/23/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2511G11     EXP: 08/08/2028",500,,,,"Topped up for 
+Case Number: 1026005075
+Date of Surgery: 21 January 2026
+Doctor: Dr Peter Chew; Topped up for 
+Case Number: 1026005626
+Date of Surgery: 21 January 2026
+Doctor: Dr Chia Yin Nin",DO_202601007_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/01/007,,,,,,,,,,,,,,,,,,,,,1,21003,,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2511S12     EXP: 27/09/2028",500,,,,,,,
+DO2026/01/008,1/23/26,VC0066,STO+G Practice,"339 Thomson Road, #04-06A, Thomson Medical Centre, Singapore 307677",Melody Lee,,,,,,,,,,,,,,,,4,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2508G05
+Expiry Date: 23/05/2028",,,,,,DO_202601008_AcuVu Disposable Scope_STO+G (TMC).xlsx,,
+DO2026/01/008,,,,,,,,,,,,,,,,,,,,,1,21005,,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2511G17
+Expiry Date: 23/08/2028",-,,,,,,,
+DO2026/01/008,,,,,,,,,,,,,,,,,,,,,1,21005,,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2507G08
+Expiry Date: 23/05/2028 | Invoice Number: 2026/01/109",,,,,,,,
+DO2026/01/008,,,,,,,,,,,,,,,,,,,,,6,,,,Total,,,,,,,
+DO/2026/01/009,1/23/26,VC0066,STO+G Women's Health Specialists,"820 Thomson Rd, Mount Alvernia Hospital, #04-84, St Anne Mother & Child Centre, Singapore 574623",Melody Lee,,,,,,,,,,,,,,,,5,21005,HTx 60,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2507G01
+Expiry Date: 29/05/2027",,,,,,DO_202601009_AcuVu Disposable Scope_STO+G (MAH - Dr Liana Koe).xlsx,,
+DO/2026/01/009,,,,,,,,,,,,,,,,,,,,,1,21005,,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2506G04
+Expiry Date: 29/05/2027 | Invoice Number: 2026/01/109",,,,,,,,
+DO/2026/01/009,,,,,,,,,,,,,,,,,,,,,6,,,,Total,,,,,,,
+DO2026/01/010,1/26/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,65652-122,65652-122,"Specimen Sock
+
+Lot Number: 1250392
+Expiry Date: 30/04/2030",50,,,,"Topped up for 
+Case Number: 1026005876
+Date of Surgery: 22 January 2026
+Doctor: Dr Wee Wei Wei",DO_202601010_Specimen Sock_GEH OT.xlsx,,
+DO2026/01/011,1/28/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,2,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2511S12     EXP: 27/09/2028",500,,,,"Topped up for 
+Case Number: 1025105401
+Date of Surgery: 30 December 2025
+Doctor: Dr Peter Chew; Topped up for 
+Case Number: 1026006842
+Date of Surgery: 26 January 2026
+Doctor: Dr Peter Chew",DO_202601011_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/02/003,2/5/26,VC0066,STO+G Practice,"339 Thomson Road, #04-06A, Thomson Medical Centre, Singapore 307677",Melody Lee,,,,,,,,,,,,,,,,8,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2511G12
+Expiry Date: 12/08/2028 | Invoice Number: 2026/02/022",,,,,,DO_202602003_AcuVu Disposable Scope_STO+G (TMC).xlsx,,
+DO2026/02/003,,,,,,,,,,,,,,,,,,,,,8,,,,Total,,,,,,,
+DO2026/02/004,2/5/26,VC0066,STO+G Fertility & Oncology Practice,"101 Irrawaddy Road, Royal Square Medical Centre, #21-13/14, Singapore 329565",Melody Lee,,,,,,,,,,,,,,,,4,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2511G12
+Expiry Date: 12/08/2027",,,,,,DO_202602004_AcuVu Disposable Scope_STO+G (Royal Square).xlsx,,
+DO2026/02/005,2/5/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2511G11     EXP: 08/08/2028",500,,,,"Additional top up 1 unit of HTx 60s + 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026006413
+Date of Surgery: 23 January 2026
+Doctor: Dr Christopher Ng; Topped up for 
+Case Number: 1026007757
+Date of Surgery: 28 February 2026
+Doctor: Dr Chia Yin Nin",DO_202602005_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/02/005,,,,,,,,,,,,,,,,,,,,,1,21007,,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2505G05     EXP: 07/03/2028",500,,,,,,,
+DO2026/02/005,,,,,,,,,,,,,,,,,,,,,2,65652-122,,"Specimen Sock
+
+Lot Number: 1250392
+Expiry Date: 30/04/2030",50,,,,,,,
+DO2026/02/006,2/7/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2509G11     EXP: 08/08/2028",500,,,,"Topped up for 
+Case Number: 1026009736
+Date of Surgery: 04 February 2026
+Doctor: Dr Mary Yang; Topped up for 
+Case Number: 1026009592
+Date of Surgery: 02 February 2026
+Doctor: Dr Chia Yin Nin",DO_202602006_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/02/006,,,,,,,,,,,,,,,,,,,,,1,21007,,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2508G02     EXP: 12/07/2028",500,,,,,,,
+DO2026/02/006,,,,,,,,,,,,,,,,,,,,,1,65652-122,,"Specimen Sock
+
+Lot Number: 1250392
+Expiry Date: 30/04/2030",50,,,,,,,
+DO2026/02/007,2/9/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,65652-122,65652-122,"Specimen Sock
+
+Lot Number: 1250392
+Expiry Date: 30/04/2030",50,,,,"Topped up for 
+Case Number: 1026007459
+Date of Surgery: 28 January 2026
+Doctor: Dr Serene Lim",DO_202602007_Specimen Sock_GEH OT.xlsx,,
+DO2026/02/008,2/9/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2511G11     EXP: 08/08/2028",500,,,,Topped up for PAR level,DO_202602008_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/02/008,,,,,,,,,,,,,,,,,,,,,1,21007,,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2511G13     EXP: 14/10/2028",500,,,,,,,
+DO2026/02/006,,,,,,,,,,,,,,,,,,,,,3,21007,,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2511G11     EXP: 08/08/2028",500,,,,,,,
+DO2026/02/006,,,,,,,,,,,,,,,,,,,,,1,21003,,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2511S12     EXP: 27/09/2028",500,,,,,,,
+DO/2026/02/010,2/13/26,,Dr Daniel Koh,"DK Medical Services Pte Ltd, #08-07 Gleneagles Medical Centre, 6 Napier Road, Singapore 258499",,,,,,,,,2/13/26,,,,,,,,6,21007,,"HTx60s Disposable Hysteroscope, AcuVu | LOT NO.: 2511G12 | EXP: 12 Aug 2028",0,,,9,,DO_202602010_AcuVu Disposable Scope_Dr Daniel Koh.xlsx,,
+DO/2026/02/012,2/15/26,,Dr Daniel Koh,"DK Medical Services Pte Ltd, #08-07 Gleneagles Medical Centre, 6 Napier Road, Singapore 258499",,,,,,,,,2/15/26,,,,,,,,34,21007,,"HTx60s Disposable Hysteroscope, AcuVu | LOT NO.: 2511G12 | EXP: 12 Aug 2028",0,,,9,,DO_202602012_AcuVu Disposable Scope_Dr Daniel Koh.xlsx,,
+DO2026/02/013,2/16/26,VC0066,STO+G Practice,"339 Thomson Road, #04-06A, Thomson Medical Centre, Singapore 307677",Melody Lee,,,,,,,,,,,,,,,,9,21007,HTx60s,"HTx60s Disposable Hysteroscope
+
+Lot Number: 2511G12
+Expiry Date: 12/08/2028",,,,,,DO_202602013_AcuVu Disposable Scope_STO+G (TMC).xlsx,,
+DO2026/02/013,,,,,,,,,,,,,,,,,,,,,6,21005,,"HTx60 Disposable Hysteroscope
+
+Lot Number: 2508G05
+Expiry Date: 28/05/2023 | Invoice Number: 2026/02/071",,,,,,,,
+DO2026/02/013,,,,,,,,,,,,,,,,,,,,,15,,,,Total,,,,,,,
+DO2026/02/014,2/16/26,VC0066,STO+G Cancer & Fertility Practice,"38 Irrawaddy Road,#06-49, Mount Elizabeth Novena Specialist Centre, Singapore 329563",Melody Lee,,,,,,,,,,,,,,,,5,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2511G12
+Expiry Date: 12/08/2028 | Invoice Number: 2026/02/071",,,,,,DO_202602014_AcuVu Disposable Scope_STO+G (MENH).xlsx,,
+DO2026/02/015,2/16/26,VC0066,STO+G Fertility & Oncology Practice,"101 Irrawaddy Road, Royal Square Medical Centre, #21-13/14, Singapore 329565",Melody Lee,,,2026/02/071,,,,,2/16/26,,,,,,,,2,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2511G12
+Expiry Date: 12/08/2028",,,,,,DO_202602015_AcuVu Disposable Scope_STO+G (Royal Square).xlsx,,
+DO2026/02/016,2/16/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,2,65652-122,65652-122,"Specimen Sock
+
+Lot Number: 1250392
+Expiry Date: 30/04/2030",50,,,,"Topped up for 
+Case Number: 1026011256
+Date of Surgery: 11 February 2026
+Doctor: Dr Lim Min Yu; Topped up for 
+Case Number: 1026011628
+Date of Surgery: 11 February 2026
+Doctor: Dr Lisa Chin; Topped up for 
+Case Number: 1026012222
+Date of Surgery: 13 February 2026
+Doctor: Dr Christopher Ng",DO_202602016_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/02/016,,,,,,,,,,,,,,,,,,,,,1,21003,,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2511S12     EXP: 27/09/2028",500,,,,,,,
+DO2026/02/017,2/25/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,10,65652-122,65652-122,"Specimen Sock
+
+Lot Number: 1250392
+Expiry Date: 30/04/2030",50,,,,"Topped up for 
+Case Number: 1026013880
+Date of Surgery: 23 February 2026
+Doctor: Dr Chia Yin Nin
+Remark: 1 unit of HTx 60s; Topped up for 
+Case Number: 1026012888
+Date of Surgery: 20 February 2026
+Doctor: Dr Ang Huai Yan
+Remark: 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026013864
+Date of Surgery: 23 February 2026
+Doctor: Dr Regina Zuzarte
+Remark: 1 unit of Specimen Sock; Additional Top up: 8 units of Specimen Sock",DO_202602017_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/02/017,,,,,,,,,,,,,,,,,,,,,1,21007,,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2511G11     EXP: 08/08/2028",500,,,,,,,
+DO2026/02/018,2/25/26,VC0050,Thomson Specialists (Paragon),"290 Orchard Road #19-01, Singapore 238859",Melody Lee,-,-,-,-,,,,,-,-,,,,,,10,40-008-011,40-008-011,"MateRegen 3ml Gel
+
+Lot Number: 2402004
+Expiry Date: 02/03/2027",,,,,Invoice Number: 2026/02/124; Remaining 27 units of MateRegen 3ml Gel will be kept by Melody until clinic activation,DO_202602018_BioRegen 3ml MateRegen_TMC Paragon_Dr Sharon Foo.xlsx,,
+DO2026/02/019,2/26/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,2,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2511G12     EXP: 12/08/2028",500,,,,"Topped up for 
+Case Number: 1026014513
+Date of Surgery: 24 February 2026
+Doctor: Dr Chia Yin Nin
+Remark: 1 unit of HTx 60s; Topped up for 
+Case Number: 1026014343
+Date of Surgery: 24 February 2026
+Doctor: Dr Anthony Siow
+Remark: 1 unit of HTx 60s",DO_202602019_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/03/001,3/4/26,VC0050,Thomson Specialists (Paragon),"290 Orchard Road #19-01, Singapore 238859",Melody Lee,-,-,-,-,,,,,-,-,,,34,1/6/26,Chan Ainsley,1,21230,HTx 60t,,,,,,,DO_202603001_AcuVu Disposable Scope_TMC Paragon_Dr Sharon Foo.xlsx,,
+DO2026/03/001,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/03/001,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/03/001,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/03/001,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/03/001,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/03/001,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/03/003,3/6/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,65652-122,65652-122,"Specimen Sock
+
+Lot Number: 1250392
+Expiry Date: 30/04/2030",50,,,,"Topped up for 
+Case Number: 1026016713
+Date of Surgery: 04 March 2026
+Doctor: Dr Christopher Ng",DO_202603003_Specimen Sock_GEH OT.xlsx,,
+DO2026/03/005,3/12/26,VC0010,Sister Soo Cheng Voon,"Major Operating Theatre, KK Womens' and Childrens' Hosptial, 100 Bukit Timah Road, Singapore 229899",,,TBA,,,,,,,,,,"Level 2, MOT",,,,11,21007,HTx60s,"HTx60s Disposable Hysteroscope | LOT: 2511G12, Exp: 12 Aug 2028 | Manufacturer: | Suzhou AcuVu Medical Technology Co., Ltd | HSA SMDR: DE0508857, Class B",,,0,,,DO_202603005_AcuVu Disposable Scope_KKH.xlsx,,
+DO2026/02/019,,,,,,,,,,,,,,,,,,,,,3,21007,,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2511G12     EXP: 12/08/2028",500,,,,,,,
+DO2026/02/019,,,,,,,,,,,,,,,,,,,,,3,21003,,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2511S12     EXP: 27/09/2028",500,,,,,,,
+DO2026/02/019,,,,,,,,,,,,,,,,,,,,,3,65652-122,,"Specimen Sock
+
+Lot Number: 1250392
+Expiry Date: 30/04/2030",50,,,,,,,
+DO2026/02/019,,,,,,,,,,,,,,,,,,,,,Specimen Sock delivered on 13 March 2027,,,"Topped up for 
+Case Number: 1026017746
+Date of Surgery: 07 March 2026
+Doctor: Dr Felicia Chin
+Remark: 1 unit of HTx 60s + 1 unit of Specimen Sock | Topped up for 
+Case Number: 1026017510
+Date of Surgery: 06 March 2026
+Doctor: Dr Peter Chew
+Remark: 1 unit of HTx 40 | Topped up for 
+Case Number: 1026017505
+Date of Surgery: 06 March 2026
+Doctor: Dr Peter Chew
+Remark: 1 unit of HTx 40",HTx 60s delivered on 11 March 2026,,,,,,,
+DO2026/02/019,,,,,,,,,,,,,,,,,,,,,Specimen Sock delivered on 13 March 2027,,,"Topped up for 
+Case Number: 1026017185
+Date of Surgery: 06 March 2026
+Doctor: Dr Mary Yang
+Remark: 1 unit of HTx 60s + 1 unit of Specimen Sock",HTx 60s delivered on 11 March 2026,,,,,,,
+DO2026/02/019,,,,,,,,,,,,,,,,,,,,,Specimen Sock delivered on 13 March 2027,,,"Topped up for 
+Case Number: 1026017937
+Date of Surgery: 09 March 2026
+Doctor: Dr Regina Zuzarte
+Remark: 1 unit of HTx 60s + 1 unit of Specimen Sock | Topped up for additional HTx 40",HTx 60s delivered on 11 March 2026,,,,,,,
+DO2026/03/007,3/20/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,3,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2511G12     EXP: 12/08/2028",500,,,,"Topped up for 
+Case Number: 1026020017
+Date of Surgery: 16 March 2026
+Doctor: Dr Peter Chew
+Remark: 1 unit of HTx 40; Topped up for 
+Case Number: 1026019462
+Date of Surgery: 13 March 2026
+Doctor: Dr Mary Yang
+Remark: 1 unit of HTx 60s + 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026019521
+Date of Surgery: 13 March 2026
+Doctor: Dr Lee Lih Charn
+Remark: 1 unit of HTx 60s + 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026017200
+Date of Surgery: 10 March 2026
+Doctor: Dr Felicia Chin
+Remark: 1 unit of HTx 60s",DO_202603007_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/03/007,,,,,,,,,,,,,,,,,,,,,1,21003,,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2511S12     EXP: 27/09/2028",500,,,,,,,
+DO2026/03/007,,,,,,,,,,,,,,,,,,,,,2,65652-122,,"Specimen Sock
+
+Lot Number: 1250392
+Expiry Date: 30/04/2030",50,,,,,,,
+DO2026/03/010,3/31/26,VC0050,Thomson Specialists (Paragon),"290 Orchard Road #19-01, Singapore 238859",Melody Lee,-,-,2026/03/208,-,,,,,-,-,,,41,2/23/26,Chong Shourong Amy ,1,21230,HTx 60t,,,,,,,DO_202603010_AcuVu Disposable Scope_TMC Paragon_Dr Sharon Foo.xlsx,,
+DO2026/03/010,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/03/010,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/03/010,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/03/010,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/03/010,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/03/010,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/04/001,4/1/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2511G12     EXP: 12/08/2028",500,,,,"Topped up for 
+Case Number: 1026022503
+Date of Surgery: 24 March 2026
+Doctor: Dr Peter Chew
+Remark: 1 unit of HTx 40; Topped up for 
+Case Number: 1026022646
+Date of Surgery: 25 March 2026
+Doctor: Dr Chia Yin Nin
+Remark: 1 unit of HTx 60s + 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026023362
+Date of Surgery: 30 March 2026
+Doctor: Dr Chia Yin Nin
+Remark: 1 unit of HTx 40; Topped up for 
+Case Number: 1026024047
+Date of Surgery: 31 March 2026
+Doctor: Dr Peter Chew
+Remark: 1 unit of HTx 40; Topped up for 
+Case Number: 1026020432
+Date of Surgery: 20 March 2026
+Doctor: Dr Felicia Chin
+Remark: 1 unit of Specimen Sock",DO_202604001_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/04/001,,,,,,,,,,,,,,,,,,,,,3,21003,,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2511S12     EXP: 27/09/2028",500,,,,,,,
+DO2026/04/001,,,,,,,,,,,,,,,,,,,,,2,65652-122,,"Specimen Sock
+
+Lot Number: 1250392
+Expiry Date: 30/04/2030",50,,,,,,,
+DO2026/04/002,4/6/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2509G13     EXP: 31/05/2028",500,,,,"Topped up for 
+Case Number: 1026024337
+Date of Surgery: 01 April 2026
+Doctor: Dr Peter Chew
+Remark: 1 unit of HTx 60s + 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026024325
+Date of Surgery: 01 April 2026
+Doctor: Dr Wee Wei Wei
+Remark: 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026020432
+Date of Surgery: 20 March 2026
+Doctor: Dr Felicia Chin
+Remark: 1 unit of Specimen Sock",DO_202604002_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/04/002,,,,,,,,,,,,,,,,,,,,,3,65652-122,,"Specimen Sock
+
+Lot Number: 1250392
+Expiry Date: 30/04/2030",50,,,,,,,
+DO2026/04/003,4/9/26,VC0066,STO+G Practice,"339 Thomson Road, #04-06A, Thomson Medical Centre, Singapore 307677",Melody Lee,-,-,2026/04/038,-,,,,,-,-,,,,,,12,21007,HTx 60s,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2508G05
+Expiry Date: 14/10/2028",-,,,,,DO_202604003_AcuVu Disposable Scope_STO+G (TMC).xlsx,,
+DO2026/04/004,4/9/26,VC0066,STO+G Fertility & Oncology Practice,"101 Irrawaddy Road, Royal Square Medical Centre, #21-13/14, Singapore 329565",Melody Lee,-,-,2026/04/038,-,,,,,-,-,,,,,,5,21007,HTx 60s,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2508G05
+Expiry Date: 14/10/2028",-,,,,,DO_202604004_AcuVu Disposable Scope_STO+G (Royal Square).xlsx,,
+DO2026/04/005,4/9/26,VC0066,STO+G Cancer & Fertility Practice,"38 Irrawaddy Road, #06-49, Mount Elizabeth Novena Specialist Centre, Singapore 329563",Melody Lee,-,-,2026/04/038,-,,,,,-,-,,,,,,5,21007,HTx 60s,"HTx 60 Disposable Hysteroscope
+
+Lot Number: 2508G05
+Expiry Date: 14/10/2028",-,,,,,DO_202604005_AcuVu Disposable Scope_STO+G (MENH).xlsx,,
+DO2026/04/006,4/13/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,2,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2509G13     EXP: 31/05/2028",500,,,,"Topped up for 
+Case Number: 1026025363
+Date of Surgery: 06 April 2026
+Doctor: Dr Mary Yang
+Remark: 1 unit of HTx 60s + 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026024731
+Date of Surgery: 08 April 2026
+Doctor: Dr Peter Chew
+Remark: 1 unit of HTx 40; Topped up for 
+Case Number: 1026026237
+Date of Surgery: 09 April 2026
+Doctor: Dr Mary Yang
+Remark: 1 unit of HTx 60s + 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026026318
+Date of Surgery: 09 April 2026
+Doctor: Dr Serene Lim
+Remark: 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026026548
+Date of Surgery: 10 April 2026
+Doctor: Dr Harvard Lin
+Remark: 1 unit of Specimen Sock",DO_202604006_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/04/006,,,,,,,,,,,,,,,,,,,,,1,21003,,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2511S12     EXP: 27/09/2028",500,,,,,,,
+DO2026/04/006,,,,,,,,,,,,,,,,,,,,,4,65652-122,,"Specimen Sock
+
+Lot Number: 1250392
+Expiry Date: 30/04/2030",50,,,,,,,
+DO2026/04/007,4/13/26,VC0050,Thomson Specialists (Paragon),"290 Orchard Road #19-01, Singapore 238859",Melody Lee,-,-,-,-,,,,,-,-,,,,,,10,40-008-011,40-008-011,"MateRegen 3ml Gel
+
+Lot Number: 2412005
+Expiry Date: 18/12/2027",,,,,Remaining 17 units of MateRegen 3ml Gel will be kept by Melody until clinic activation; Delivery Order: 2026/02/018 (10 units); Invoice Number: 2026/02/124,DO_202604007_BioRegen 3ml MateRegen_TMC Paragon_Dr Sharon Foo.xlsx,,
+DO2026/04/008,4/15/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,4,65652-122,65652-122,"Specimen Sock
+
+Lot Number: 1250392
+Expiry Date: 30/04/2030",50,,,,"Topped up for 
+Case Number: 1026025707
+Date of Surgery: 07 April 2026
+Doctor: Dr Serene Lim
+Remark: 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026025335
+Date of Surgery: 08 April 2026
+Doctor: Dr Serene Lim
+Remark: 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026027513
+Date of Surgery: 14 April 2026
+Doctor: Dr Regina Zuzarte
+Remark: 1 unit of HTx 60s + 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026027543
+Date of Surgery: 14 April 2026
+Doctor: Dr Regina Zuzarte
+Remark: 1 unit of HTx 60s + 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026027065
+Date of Surgery: 12 April 2026
+Doctor: Dr Chia Yin Nin
+Remark: 1 unit of HTx 40",DO_202604008_Specimen Sock_GEH OT.xlsx,,
+DO2026/04/008,,,,,,,,,,,,,,,,,,,,,2,21007,,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2511G12     EXP: 12/08/2028",500,,,,,,,
+DO2026/04/008,,,,,,,,,,,,,,,,,,,,,1,21003,,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2511S12     EXP: 27/09/2028",500,,,,,,,
+DO2026/04/009,4/20/26,VC0010,KK Womens' and Childrens' Hosptial,"100 Bukit Timah Road, Singapore 229899",,,,,,,,,,,,,,,,,2,21165,HTx2000,"HTx2000 Portable Image Processing System | Serial Number: SN2601043, SN2601046",,,,,"Equipment on Loan for Trial use; Suzhou AcuVu Medical Technology Co. Ltd; DE0508857, Class B Medical Device",DO_202604009_AcuVu HTx2000_KKH.xlsx,,
+DO2026/04/010,4/21/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2511G13     EXP: 14/10/2028",500,,,,"Topped up for 
+Case Number: 1026028423
+Date of Surgery: 16 April 2026
+Doctor: Dr Chia Yin Nin
+Remark: 1 unit of HTx 60s; Topped up for 
+Case Number: 1026028598
+Date of Surgery: 18 April 2026
+Doctor: Dr Peter Chew
+Remark: 1 unit of HTx 40",DO_202604010_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/04/010,,,,,,,,,,,,,,,,,,,,,1,21003,,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2511S12     EXP: 27/09/2028",500,,,,,,,
+DO2026/04/011,4/24/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,3,21003,HTx 40,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2511S12     EXP: 27/09/2028",500,,,,"Topped up for 
+Case Number: 1026026389
+Date of Surgery: 21 April 2026
+Doctor: Dr Seng Shay Way
+Remark: 1 unit of HTx 40; Topped up for 
+Case Number: 1026030368
+Date of Surgery: 23 April 2026
+Doctor: Dr Anthony Siow
+Remark: 1 unit of HTx 40; Topped up for faulty HTx 40",DO_202604011_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/04/013,4/30/26,VC0050,Thomson Specialists (Paragon),"290 Orchard Road #19-01, Singapore 238859",Melody Lee,-,-,2026/04/200,-,,,,,-,-,,,48,4/7/26,LEE HUI SHIN,1,21230,HTx 60t,,,,,,,DO_202604013_AcuVu Disposable Scope_TMC Paragon_Dr Sharon Foo.xlsx,,
+DO2026/04/013,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/04/013,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/04/013,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/04/013,,,,,,,,,,,,,,,,,,,,,1,21230,,,,,,,,,,
+DO2026/05/001,5/4/26,VC0066,STO+G Practice,"339 Thomson Road, #04-06A, Thomson Medical Centre, Singapore 307677",Melody Lee,-,-,2026/05/007,-,,,,,-,-,,,,,,39,40-008-011,40-008-011,"MateRegen Gel 3ml
+
+Lot Number: 2412005
+Expiry Date: 18/12/2027",,,,,,DO_202605001_BioRegen 3ml Gel_STO+G (TMC).xlsx,,
+DO2026/05/002,5/4/26,VC0066,STO+G Practice,"339 Thomson Road, #04-06A, Thomson Medical Centre, Singapore 307677",Melody Lee,-,-,2026/05/008,-,,,,,-,-,,,,,,11,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2603G05
+Expiry Date: 04/03/2029",,,,,,DO_202605002_AcuVu Disposable Scope_STO+G (TMC).xlsx,,
+DO2026/05/003,5/4/26,VC0066,STO+G Clinic for Women,"820 Thomson Road, Mount Alvernia Hospital, Medical Centre A, #03-01, Singapore 574623",Melody Lee,,,2026/05/008,,,,,,,,,,,,,5,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2603G05
+Expiry Date: 04/03/2029",,,,,,DO_202605003_AcuVu Disposable Scope_STO+G (MAH - Dr Hong Sze Ching).xlsx,,
+DO2026/05/004,5/4/26,VC0066,STO+G Women's Health Specialists,"820 Thomson Rd, Mount Alvernia Hospital, #04-84, St Anne Mother & Child Centre, Singapore 574623",Melody Lee,,,2026/05/008,,,,,,,,,,,,,6,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+Lot Number: 2603G05
+Expiry Date: 04/03/2029",,,,,,DO_202605004_AcuVu Disposable Scope_STO+G (MAH - Dr Liana Koe).xlsx,,
+DO2026/05/005,5/4/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,6,65652-122,65652-123,"Specimen Sock
+
+Lot No.: 1250392   EXP: 30/04/2030",50,,,,"Topped up for 
+Case Number: 1026012458
+Date of Surgery: 14 February 2026
+Doctor: Dr Serene Lim
+Remark: 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026015352
+Date of Surgery: 27 February 2026
+Doctor: Dr Serene Lim
+Remark: 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026030868
+Date of Surgery: 24 April 2026
+Doctor: Dr Regina Zuzarte
+Remark: 1 unit of HTx 60s + 1 unit of Specimen Sock; Topped up for 
+Case Number: 1026032100
+Date of Surgery: 29 April 2026
+Doctor: Dr Peter Chew
+Remark: 1 unit of HTx 40; Topped up for 
+Case Number: 1026032662
+Date of Surgery: 30 April 2026
+Doctor: Dr Chia Yin Nin
+Remark: 1 unit of HTx 60s",DO_202605005_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/05/005,,,,,,,,,,,,,,,,,,,,,2,21007,,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2603G05     EXP: 04/03/2029",500,,,,,,,
+DO2026/05/005,,,,,,,,,,,,,,,,,,,,,2,21003,,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2511S12     EXP: 27/09/2028",500,,,,,,,
+DO2026/05/006,5/4/26,VC0051,Thomson Specialists (Woodleigh),"11 Bidadari Park Drive, #02-05/06/07, The Woodleigh Mall, Singapore 367803",Melody Lee,,,,,,,,,,,,,,,,3,40-012-010,10ml,"HyaRegen Gel 10ml
+
+Lot Number: A2502008
+Exp: 26-02-2027",200,,600,,"Accumulative 20 + 4
+Delivered 3 pieces on 05 December 2025 (Invoice Number: 2025/12/032)
+
+Delivered 3 pieces on 04 May 2026 (Invoice Number: 2026/05/006)",DO_202605006_BioRegen Gel_Dr Ryan Lee.xlsx,,
+DO2026/05/006,,,,,,,,,,,,,,,,,,,,,TOTAL,,,,,,,,,,,
+DO2026/05/007,5/11/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,1,21007,HTx 60s,"HTx 60s Disposable Hysteroscope
+
+LOT No.: 2603G05     EXP: 04/03/2029",500,,,,"Topped up for 
+Case Number: 1026032662
+Date of Surgery: 30 April 2026
+Doctor: Dr Chia Yin Nin
+Remark: 1 unit of HTx 60s; Topped up for 
+Case Number: 1026033795
+Date of Surgery: 06 May 2026
+Doctor: Dr Peter Chew
+Remark: 1 unit of HTx 40; Topped up for 
+Case Number: 1026033778
+Date of Surgery: 06 May 2026
+Doctor: Dr Seng Shay Way
+Remark: 1 unit of HTx 40",DO_202605007_AcuVu Disposable Scope_GEH OT.xlsx,,
+DO2026/05/007,,,,,,,,,,,,,,,,,,,,,2,21003,,"HTx 40 Disposable Hysteroscope
+
+LOT No.: 2511S12     EXP: 27/09/2028",500,,,,,,,
+DO2026/05/008,5/13/26,VC0021,GEH - OT,"Annexe Block, Level 4, 6A Napier Road, Singapore 258500",Melody Lee,-,-,-,-,,,,,-,-,,,,,,3,65652-122,65652-122,"Specimen Sock
+
+Lot Number: 1250392
+Expiry Date: 30/04/2030",50,,,,"Topped up for 
+Case Number: 1026034753
+Date of Surgery: 09 May 2026
+Doctor: Dr Felicia Chin; Topped up for 
+Case Number: 1026035019
+Date of Surgery: 11 May 2026
+Doctor: Dr Ang Huai Yan; Topped up for 
+Case Number: 1026035005
+Date of Surgery: 11 May 2026
+Doctor: Dr Serene Lim",DO_202605008_Specimen Sock_GEH OT.xlsx,,
+DO2026/05/009,5/14/26,VC0010,Sister Eunice Tan,"Day Surgery Centre, KK Womens' and Childrens' Hosptial, 100 Bukit Timah Road, Singapore 229899",,,TBA,,,,,,,,,,"B1, Day Surgery Centre",,,,6,21007,HTx60s,"HTx60s Disposable Hysteroscope | LOT: 2603G05, Exp: 04 Mar 2029 | Manufacturer: | Suzhou AcuVu Medical Technology Co., Ltd | HSA SMDR: DE0508857, Class B",450,,2700,,,DO_202605009_AcuVu Disposable Scope_KKH.xlsx,,
+DO2025/09/010,9/28/25,VC0021,Sister Jorelyn,"Operating Theatre, Gleneagles Hospital, 6A Napier Road, Singapore 258500",,,,,,,,,,,,,,,,,1,21078,HTx1000,"HTx1000 Image Processing System | S/N: SN2305004 | Machine On Loan to Gleneagles Hospital | Manufacturer: | Suzhou AcuVu Medical Technology Co. Ltd.,China | HSA SMDR Registration No.: DE0508857",,,,,,DO_GL_AcuVu_202509010.xlsx,,
+DO2023/09/004,9/17/24,VC0010,Major Operating Theatre,"KK Womens' and Childrens' Hosptial, 100 Bukit Timah Road, Singapore 229899",,,,,,,,,,,,,,,,,2,21001,HTx1000,"AcuVu HTx1000 Image Processing System | Serial No.: SN2407001, SN2409003 | Completed with 2 sets of Laptop PC (Asus Vivobook), 2 sets of Canon Photo Printer (Selphy CP1500), 2 sets of mobile trolleys.",,,0,,,DO_KKH_AcuVu_202409004.xlsx,,
+DO2023/09/004,,,,,,,,,,,,,,,,,,,,,2,21003,,HTx Disposable hysteroscope (HTx40) | LOT: 2407S05,,,,,,,,
+DO2023/09/004,,,,,,,,,,,,,,,,,,,,,2,21005,,HTx Disposable hysteroscope (HTx60) | LOT: 2409G03,,,,,,,,
+DO2023/09/004,,,,,,,,,,,,,,,,,,,,,,21007,,HTx Disposable hysteroscope (HTx60s) compatible with TRD,,,,,,,,
+DO2023/09/004,,,,,,,,,,,,,,,,,,,,,1,,,LOT: 2409G02,,,,,,,,
+DO2023/09/004,,,,,,,,,,,,,,,,,,,,,1,,,LOT: 2407G02 | Equipments on loan for trial | HSA SMDR: DE0508857 | Manufacturer: AcuVu Medical,,,,,,,,
+DO2024/11/001,11/1/24,VC0010,Sister Rosnah Ismail,"KK Womens' and Childrens' Hosptial, 100 Bukit Timah Road, Singapore 229899",,,TBC,,,,,,,,,,"Women's Tower, B1, Clinic D",,,,6,21003,HTx40,"HTx40 Disposable Hysteroscope | LOT: 2409S05, Exp: 02Feb2027",500,,3000,,,DO_KKH_AcuVu_202411001.xlsx,,
+DO2025/03/005,3/26/25,VC0010,Sister Rosnah Ismail,"Clinic D, Level B1, Women's Tower, KK Womens' and Childrens' Hosptial, 100 Bukit Timah Road, Singapore 229899",,,9410274080,,,,,,,,,,"Women's Tower, B1, Clinic D",,,,6,21003,HTx40,"HTx40 Disposable Hysteroscope | LOT: 2502S05, Exp: 21 Jan 2028 | Manufacturer: | Suzhou AcuVu Medical Technology Co., Ltd | HSA SMDR: DE0508857, Class B",500,,3000,,,DO_KKH_AcuVu_202503005.xlsx,,
+DO2025/04/004,4/25/25,VC0010,Sister Rosnah Ismail,"Clinic D, Level B1, Women's Tower, KK Womens' and Childrens' Hosptial, 100 Bukit Timah Road, Singapore 229899",,,TBC,,,,,,,,,,"Women's Tower, B1, Clinic D",,,,6,21003,HTx40,"HTx40 Disposable Hysteroscope | LOT: 2502S09, Exp: 21 Jan 2028 | Manufacturer: | Suzhou AcuVu Medical Technology Co., Ltd | HSA SMDR: DE0508857, Class B",500,,3000,,,DO_KKH_AcuVu_202504004.xlsx,,
+DO2024/08/002,8/27/24,VC0035,Sister Li Rong,"Operating Theatre, Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",,,,,,,,,,,,,,,,,1,21078,HTx1000,"HTx1000 Image Processing System | S/N: SN2407002 | Machine On Loan to Mount Elizabeth Novena Hospital | Manufacturer: | Suzhou AcuVu Medical Technology Co. Ltd.,China | HSA SMDR Registration No.: DE0508857",,,,,,DO_MENH_AcuVu_202408002.xlsx,,
+DO2024/08/003,9/2/24,VC0035,Operating Theatre,"Mount Elizabeth Novena Hospital, 38 Irrawaddy Rd, Singapore 329563",,,,,,,,,,,,,,,,,1,21010,RSI-370-5-A,Single Action Scissors,600,,,,"Free of charge for Trial; Suzhou AcuVu Medical Technology Co., Ltd",DO_MENH_AcuVu_202408003.xlsx,,
+DO2024/08/003,,,,,,,,,,,,,,,,,,,,,1,21046,,Alligator Grasper,600,,,,,,,
+DO2026/02/001,2/4/26,,NG TENG FONG GENERAL HOSPITAL,"1 Jurong East Street 21, Singapore 609606",,,,,,,,,2/4/26,,,,,,,,1,21165,HTX2000,"HTx2000 Portable Image Processor, AcuVu | S/N: SN2601044",,,,,Equipment on loan for Trial,DO_NTFGH_AcuVu_202602001.xlsx,,
+DO2026/02/001,,,,,,,,,,,,,,,,,,,,,2,21003,,"HTx40 Disposable Hysteroscope, AcuVu | LOT: 2511S12   EXP: 27/09/2028",,,,,,,,
+DO2026/02/001,,,,,,,,,,,,,,,,,,,,,2,21005,,"HTx60 Disposable Hysteroscope, AcuVu | LOT: 2508G05   EXP: 23/05/2028",,,,,,,,
+DO2026/02/001,,,,,,,,,,,,,,,,,,,,,4,22021,,HTx Procedure Pack,,,,,,,,
+DO2026/02/001,,,,,,,,,,,,,,,,,,,,,2,21010,,"Single Action Scissors, 5 Fr | LOT: 2409J01",,,,,,,,
+DO2026/02/001,,,,,,,,,,,,,,,,,,,,,2,21046,,"Alligator Grasper, 5 Fr | LOT: 2509J18",,,,,,,,
+DO2026/02/001,,,,,,,,,,,,,,,,,,,,,2,21028,,"Biopsy Forceps, 5 Fr | LOT: 2509J19",,,,,,,,
+DO2026/02/001,,,,,,,,,,,,,,,,,,,,,4,9900,,EZ SERT Video Camera Drape | LOT: 24-112J,,,,,,,,
+DO/2024/08/001,8/15/24,,Sister Eunice Tan,"Day Surgery, KK Women's and Children's Hopsital, 100 Bukit Timah Road, Singapore 229899",,,TBA,,,,,,8/15/24,,,,,,,,9,40-008-011,,MaterRegen Gel 3ml | LOT No.: 22202004 | EXP: 25/02/2025,120,,1080,,Waiting for PO,Acme_Delivery Order_202408001_KKH.xlsx,,
+DO/2024/08/001,,,,,,,,,,,,,,,,,,,,,3,40-008-011,,MaterRegen Gel 3ml | LOT No.: 2402004 | EXP: 2/3/2027,120,,,,,,,
+DO/2024/08/001,,,,,,,,,,,,,,,,,,,,,12,40-008-005,,MateRegen Gel 5ml | LOT No.: 2404006 | EXP: 17/04/2027,150,,,,,,,
+DO/2024/08/001,,,,,,,,,,,,,,,,,,,,,,NOTE:,,Waiting for PO,,,,,,,,
+DO/2024/09/001,9/10/24,,Dr Heng Tung Lan,"SOG-Heng Clinic for Women, Parkway East Medical Centre, 319 Joo Chiat Place, #02-08, Singapore 427989",Tonny,,,,,,,,,,,,,,,,4,40-008-011,,MaterRegen Gel 3ml | LOT No.: 2402004 | EXP: 02/03/2027,,,0,,Replacement for Expired Stock; LOT No. 2108005,Acme_Delivery Order_202409001_Dr Heng.xlsx,,
+DO/2024/09/001,,,,,,,,,,,,,,,,,,,,,,NOTE,,Replacement for Expired Stock | LOT No. 2108005,,,,,,,,
+DO/2024/12/001,12/9/24,,Sister Soo Cheng Voon,"Major Operating Theatre, KK Women's and Children's Hopsital, 100 Bukit Timah Road, Singapore 229899",,,169157,,,,,,12/9/24,,,,,,,,18,40-008-011,,MaterRegen Gel 3ml | LOT No.: 2402004 | EXP: 2/3/2027,120,,2160,0.09,Waiting for PO,Acme_Delivery Order_202412001_KKH.xlsx,,
+DO/2024/12/001,,,,,,,,,,,,,,,,,,,,,18,40-008-005,,MateRegen Gel 5ml | LOT No.: 2404006 | EXP: 17/04/2027,150,,,,,,,
+DO/2024/12/001,,,,,,,,,,,,,,,,,,,,,,NOTE:,,Waiting for PO,,,,,,,,
+DO/2025/05/001,5/8/25,,Dr Serence Lim,"SWC Serene Fertility & Women's Clinic, 6 Napier Road, #05-10, Gleneagles Medical Centre, Singapore 258499",,,,,,,,,5/8/25,,,,,,,,10,40-008-005,,MateRegen Gel 5ml | LOT No.: 2404006 | EXP: 17/04/2027 | In exchange of:,,,0,9,,Acme_Delivery Order_202505001_MateRegen_Dr Serene.xlsx,,
+DO/2025/05/001,,,,,,,,,,,,,,,,,,,,,10,40-008-011,,MateRegen Gel 3ml,,,,,,,,
+DO/2025/05/002,5/23/25,,STO+G Partners Pte Ltd,"101 Irrawaddy Road, Royal Square Medical Centre,#21-13, Singapore 329565",,,,,,,,,5/23/25,,,,,,,,,40-008-011,,MateRegn Gel 3ml | LOT: 2412005 | EXP: 18/12/2027,,,,9,,Acme_Delivery Order_202505002_MateRegen_STO+G RS.xlsx,,
+DO/2025/05/003,5/23/25,,STO+G Practise,"339 Thomson Road, #04-06A, Thomson Medical Centre, Singapore 307677",,,,,,,,,5/23/25,,,,,,,,,40-008-011,,MateRegn Gel 3ml | LOT: 2412005 | EXP: 18/12/2027,,,,9,,Acme_Delivery Order_202505003_MateRegen_STO+G TMC.xlsx,,
+DO/2025/05/004,5/23/25,,STO+G Clinic for Women,"820 Thomson Road, Mount Alvernia Hospital, Medical Centre D, #08-60, Singapore 574623",,,,,,,,,5/23/25,,,,,,,,,40-008-011,,MateRegn Gel 3ml | LOT: 2412005 | EXP: 18/12/2027,,,,9,,Acme_Delivery Order_202505004_MateRegen_STO+G Dr Hong.xlsx,,
+DO/2025/05/005,5/23/25,,STO+G Women's Health Specialists,"820 Thomson Road, Mount Alvernia Hospital, #04-84, St Anne Mother & Child Centre, Singapore 574623",,,,,,,,,5/23/25,,,,,,,,,40-008-011,,MateRegn Gel 3ml | LOT: 2412005 | EXP: 18/12/2027,,,,9,,Acme_Delivery Order_202505005_MateRegen_STO+G Dr Wong.xlsx,,
+DO/2025/06/005,6/27/25,,Sister Eunice Tan,"Day Surgery, KK Women's and Children's Hopsital, 100 Bukit Timah Road, Singapore 229899",,,TBA,,,,,,6/27/25,,,,,,,,12,40-008-011,,"MaterRegen Gel 3ml | LOT No.: 2412005 | EXP: 18/12/2027 | Manufacturer: | BioRegen Biomedical (Changzhou) Co., Ltd. | HSA SMDR Registration:  DE0508943 | Class D Medical Device",120,,1440,,,Acme_Delivery Order_202506005_KKH.xlsx,,
+DO/2025/07/005,7/4/25,,Sister Soo Cheng Voon,"Major Operating Theatre, KK Women's and Children's Hopsital, 100 Bukit Timah Road, Singapore 229899",Tonny,,R327251,,,,,,7/4/25,,,,,,,,36,40-008-011,,"MaterRegen Gel 3ml | LOT No.: 2412005 | EXP: 18/12/2027 | Manufacturer: | BioRegen Biomedical (Changzhou) Co., Ltd. | HSA SMDR Registration:  DE0508943 | Class D Medical Device",120,,4320,,,Acme_Delivery Order_202507005_KKH.xlsx,,
+DO/2025/07/009,7/21/25,,Sister Eunice Tan,"Day Surgery, KK Women's and Children's Hopsital, 100 Bukit Timah Road, Singapore 229899",,,TBA,,,,,,7/21/25,,,,,,,,18,40-008-011,,"MaterRegen Gel 3ml | LOT No.: 2412005 | EXP: 18/12/2027 | Manufacturer: | BioRegen Biomedical (Changzhou) Co., Ltd. | HSA SMDR Registration:  DE0508943 | Class D Medical Device",120,,2160,,,Acme_Delivery Order_202507009_KKH_Day Surgery_Gel.xlsx,,
+DO/2025/08/003,8/12/25,,Dr Daniel Koh,"DK Medical Services Pte Ltd, #08-07 Gleneagles Medical Centre, 6 Napier Road, Singapore 258499",,,,,,,,,8/12/25,,,,,,,,18,40-008-011,,MateRegen Gel 3ml | LOT NO.: 2412005 | EXP: 18 Dec 2027,0,,,9,Bonus item under INV 2024/12/007 (Total 96 pcs FOC); Balance bonus quantity after this D/O:    78 pcs,Acme_Delivery Order_202508003_MateRegen_Dr Daniel Koh.xlsx,,
+DO/2025/08/003,,,,,,,,,,,,,,,,,,,,,,NOTE:,,Bonus item under INV 2024/12/007 (Total 96 pcs FOC) | Balance bonus quantity after this D/O:    78 pcs,,,,,,,,
+DO/2025/08/010,8/22/25,,Sister Hui Jin,"Operating Theatre, Singapore National Eye Centre, 11 Third Hospital Ave, Singapore 168751",,,,,,,,,5/6/24,,,,,,,,2,40-011-005,,PureRegen Gel Sinus 5ml | LOT No.: 2402001 | EXP: 27/02/2027,0,,0,9,Free of charge for sample; HSA SMDR Registration No: DE0508579; Class B Medical Device,Acme_Delivery Order_202508010_SNEC_PureRegen.xlsx,,
+DO/2025/08/010,,,,,,,,,,,,,,,,,,,,,,NOTE:,,Free of charge for sample | HSA SMDR Registration No: DE0508579 | Class B Medical Device,,,,,,,,
+DO/2025/09/003,9/9/25,,Dr Michelle Lim,"Nobel Obstetrics,Gynaecology & Minimally Invasive Surgery Centre, 38 Irrawaddy Road, #10-23, Mount Elizabeth Novena Specialist Centre, Singapore 329563",,,,,,,,,9/9/25,,,,,,,,1,40-012-010,,HyaRegen Gel 10ml | LOT No.: A2502008 | EXP: 26-02-2027,0,,0,9,FOC for trial use,Acme_Delivery Order_202509003_HyaRegen_Dr Michelle.xlsx,,
+DO/2025/09/003,,,,,,,,,,,,,,,,,,,,,1,40-012-010,,HyaRegen Gel 10ml | LOT No.: A2505003 | EXP: 13-05-2027,0,,,,,,,
+DO/2025/09/003,,,,,,,,,,,,,,,,,,,,,,NOTE:,,FOC for trial use,,,,,,,,
+DO/2025/09/005,9/24/25,,STO+G Partners Pte Ltd,"101 Irrawaddy Road, Royal Square Medical Centre,#21-13, Singapore 329565",,,,,,,,,9/24/25,,,,,,,,,40-008-011,,MateRegn Gel 3ml | LOT: 2412005 | EXP: 18/12/2027,,,,9,,Acme_Delivery Order_202509005_MateRegen_STO+G RS.xlsx,,
+DO/2025/09/006,9/24/25,,STO+G Practise,"339 Thomson Road, #04-06A, Thomson Medical Centre, Singapore 307677",,,,,,,,,9/24/25,,,,,,,,,40-008-011,,MateRegn Gel 3ml | LOT: 2412005 | EXP: 18/12/2027,,,,9,,Acme_Delivery Order_202509006_MateRegen_STO+G TMC.xlsx,,
+DO/2025/09/009,9/29/25,,Sister Eunice Tan,"Day Surgery, KK Women's and Children's Hopsital, 100 Bukit Timah Road, Singapore 229899",,,TBA,,,,,,9/29/25,,,,,,,,12,40-008-011,,MaterRegen Gel 3ml | LOT No.: 2412005 | EXP: 18/12/2027,120,,1440,,,Acme_Delivery Order_202509009_KKH_Day Surgery_Gel.xlsx,,
+DO/2025/09/009,,,,,,,,,,,,,,,,,,,,,6,40-008-005,,"MaterRegen Gel 5ml | LOT No.: 2404006 | EXP: 17/04/2027 | Manufacturer: | BioRegen Biomedical (Changzhou) Co., Ltd. | HSA SMDR Registration:  DE0508943 | Class D Medical Device",150,,,,,,,
+DO/2025/10/002,10/6/25,,Sister Soo Cheng Voon / Sister Santha,"Major Operating Theatre, KK Women's and Children's Hopsital, 100 Bukit Timah Road, Singapore 229899",Tonny,,TBC,,,,,,10/6/25,,,,,,,,18,40-008-011,,MaterRegen Gel 3ml | LOT No.: 2412005 | EXP: 18/12/2027,120,,2160,,,Acme_Delivery Order_202510002_KKH.xlsx,,
+DO/2025/10/002,,,,,,,,,,,,,,,,,,,,,12,40-008-005,,"MaterRegen Gel 5ml | LOT No.: 2404006 | EXP: 17/04/2027 | Manufacturer: | BioRegen Biomedical (Changzhou) Co., Ltd. | HSA SMDR Registration:  DE0508943 | Class D Medical Device",150,,,,,,,
+DO/2025/10/004,11/7/25,,Sister Eunice Tan,"Day Surgery, KK Women's and Children's Hopsital, 100 Bukit Timah Road, Singapore 229899",,,TBA,,,,,,11/7/25,,,,,,,,12,40-008-011,,"MaterRegen Gel 3ml | LOT No.: 2412005 | EXP: 18/12/2027 | Manufacturer: | BioRegen Biomedical (Changzhou) Co., Ltd. | HSA SMDR Registration:  DE0508943 | Class D Medical Device",120,,1440,,,Acme_Delivery Order_202510004_KKH_Day Surgery_Gel.xlsx,,
+DO/2025/11/002,11/4/25,,Dr Daniel Koh,"DK Medical Services Pte Ltd, #08-07 Gleneagles Medical Centre, 6 Napier Road, Singapore 258499",,,,,,,,,11/4/25,,,,,,,,24,40-008-011,,MateRegen Gel 3ml | LOT NO.: 2412005 | EXP: 18 Dec 2027,0,,,9,"Bonus item Qty under INV 2024/12/007; Delivery on 12/8/2025, DO/2025/08/003; Balance bonus quantity after this D/O:",Acme_Delivery Order_202511002_MateRegen_Dr Daniel Koh.xlsx,,
+DO/2025/11/002,,,,,,,,,,,,,,,,,,,,,,NOTE:,,"Bonus item Qty under INV 2024/12/007 | Delivery on 12/8/2025, DO/2025/08/003 | Balance bonus quantity after this D/O:",96,,,,,,,
+DO/2026/02/001,2/2/26,,Ms Aslinda,"Sincere Medical Specialist Centre Pte Ltd, 8 Sinaran Drive #06-13/14, Novena Specialist Centre, Singapore 308900",,,,,,,,,2/2/26,,,,,,,,5,40-008-005,,MateRegen Gel 5ml | LOT NO.: 2404006 | EXP: 17 April 2027,0,,,9,Replacement for near expiry stock,Acme_Delivery Order_202602001_MateRegen_Sincere.xlsx,,
+DO/2026/02/001,,,,,,,,,,,,,,,,,,,,,,NOTE:,,Replacement for near expiry stock,,,,,,,,
+DO/2026/02/005,2/5/26,,Dr Daniel Koh,"DK Medical Services Pte Ltd, #08-07 Gleneagles Medical Centre, 6 Napier Road, Singapore 258499",,,,,,,,,2/5/26,,,,,,,,6,40-008-005,,MateRegen Gel 5ml | LOT NO.: 2404006 | EXP: 17 Apr 2027,0,,,9,Balance bonus quantity after this D/O:,Acme_Delivery Order_202602005_MateRegen_Dr Daniel Koh.xlsx,,
+DO/2026/02/005,,,,,,,,,,,,,,,,,,,,,,NOTE:,,Balance bonus quantity after this D/O:,48,,,,,,,
+DO/2026/02/011,2/13/26,,Dr Daniel Koh,"DK Medical Services Pte Ltd, #08-07 Gleneagles Medical Centre, 6 Napier Road, Singapore 258499",,,,,,,,,2/13/26,,,,,,,,12,40-008-005,,MateRegen Gel 5ml | LOT NO.: 2404006 | EXP: 17 Apr 2027,0,,,9,Balance bonus quantity after this D/O:,Acme_Delivery Order_202602011_MateRegen_Dr Daniel Koh.xlsx,,
+DO/2026/02/011,,,,,,,,,,,,,,,,,,,,,,NOTE:,,Balance bonus quantity after this D/O:,36,,,,,,,
+DO/2026/03/002,3/6/26,,Dr Daniel Koh,"DK Medical Services Pte Ltd, #08-07 Gleneagles Medical Centre, 6 Napier Road, Singapore 258499",,,,,,,,,2/13/26,,,,,,,,12,40-008-005,,MateRegen Gel 5ml | LOT NO.: 2404006 | EXP: 17 Apr 2027,0,,,9,Balance bonus quantity after this D/O:,Acme_Delivery Order_202603002_MateRegen_Dr Daniel Koh.xlsx,,
+DO/2026/03/002,,,,,,,,,,,,,,,,,,,,,,NOTE:,,Balance bonus quantity after this D/O:,24,,,,,,,
+DO/2026/03/004,3/11/26,,Sister Eunice Tan,"Day Surgery, KK Women's and Children's Hopsital, 100 Bukit Timah Road, Singapore 229899",,,TBA,,,,,,3/11/26,,,,,,,,12,40-008-005,,"MaterRegen Gel 5ml | LOT No.: 2404006 | EXP: 17/04/2027 | Manufacturer: | BioRegen Biomedical (Changzhou) Co., Ltd. | HSA SMDR Registration:  DE0508943 | Class D Medical Device",150,,1800,,,Acme_Delivery Order_202603004_KKH_Day Surgery_Gel.xlsx,,
+DO/2026/03/008,3/23/26,,STO+G Partners Pte Ltd,"101 Irrawaddy Road, Royal Square Medical Centre,#21-13, Singapore 329565",,,,2026/03/145,,,,,3/23/26,,,,,,,,,40-008-011,,MateRegn Gel 3ml | LOT: 2412005 | EXP: 18/12/2027,,,,9,,Acme_Delivery Order_202603008_MateRegen_STO+G RS.xlsx,,
+DO/2026/03/009,3/23/26,,STO+G Practise,"339 Thomson Road, #04-06A, Thomson Medical Centre, Singapore 307677",,,,2026/03/145,,,,,3/23/26,,,,,,,,,40-008-011,,MateRegn Gel 3ml | LOT: 2412005 | EXP: 18/12/2027,,,,9,,Acme_Delivery Order_202603009_MateRegen_STO+G TMC.xlsx,,
+DO/2026/04/012,4/28/26,,Dr Daniel Koh,"DK Medical Services Pte Ltd, #08-07 Gleneagles Medical Centre, 6 Napier Road, Singapore 258499",,,,,,,,,4/28/26,,,,,,,,24,40-008-005,,MateRegen Gel 5ml | LOT NO.: 2404006 | EXP: 17 Apr 2027,0,,,9,Balance bonus quantity after this D/O:,Acme_Delivery Order_202604012_MateRegen_Dr Daniel Koh.xlsx,,
+DO/2026/04/012,,,,,,,,,,,,,,,,,,,,,,NOTE:,,Balance bonus quantity after this D/O:,0,,,,,,,
+DO2025/11/009,11/13/25,VC0006,Tan Rou Ann,"National University Cancer Institute Singapore, National University Hospital (Singapore) Pte Ltd, 5 Lower Kent Ridge Road, Singapore 119074",Tonny,,4520866059,,,NUH-RFQ-25-1272,,,11/13/25,60 Days,1/12/26,,,,,,20,PIT KIT/CS,,PIT KIT/CS | LOT No.: 24A08000 | Expiry Date: 06 Jan 2027,1900,,38000,,,Acme_Delivery Order_NUH_UVA PIT_2025-11-009.xlsx,,
+DO2025/11/009,,,,,,,,,,,,,,,,,,,,,4,PIT KIT/CS,,"PIT KIT/CS | LOT No.: 24A08000 | Expiry Date: 06 Jan 2027 | HSA SMDR: DE0505180 | Class C Medical Device | Manufacturer: PIT Medical Systems GmbH, Germany | Inclusive of:",Free of Charge,,,,,,,
+DO2025/11/009,,,,,,,,,,,,,,,,,,,,,25,Methoxsalen,,"Methoxsalen | LOT No.: H01181 | Expiry Date: May 2029 | Manufacturer: G.L.Pharma, Austria",0,,,,,,,
+DO2025/11/008,11/12/25,VC0003,SSN Rohani Bte Salleh,"Haematology Centre, Singapore General Hospital, Outram Road, Singapore 169608, 63266961",Tonny,,,,,,,,11/12/25,,,,,,,,25,,,"Methoxsalen | LOT No.: H01181 | Expiry Date: May 2029 | Manufacturer: G.L.Pharma, Austria",0,,0,,,Acme_Delivery Order_SGH_8MOP-2025-11-008.xlsx,,
+DO/2025/07/012,7/28/25,VC0010,Ms Vijayakumari,"Haematology/Oncology Service, KK Women's and Children's Hospital, 100 Bukit Timah Road, Singapore 229899",Tonny,,TBA,,,,,,7/28/25,,,,,,,,3,PIT KIT/CS,,UVA PIT KIT / CS | LOT No.: 23C22008 | Exp: 02/04/2026,2300,,6900,,,Acme_Delivery Order_KKH_202507012_KIT.pdf,,
+DO/2025/07/012,,,,,,,,,,,,,,,,,,,,,4,PIT KIT/CS,,UVA PIT KIT / CS | LOT No.: 24A08000 | Exp: 06/01/2027,2300,,,,,,,
+DO/2025/07/012,,,,,,,,,,,,,,,,,,,,,10,56511GB,,Methoxsalen G.L.Pharma | LOT: H01181 | Exp: 05/2029,,,,,,,,
+DO/2025/07/011,7/28/25,VC0010,Ward 76,"KK Woment's and Children's Hospital, 100 Bukit Timah Road, Singapore 229899",Tonny,,TBC,,,,,,7/28/25,Free On Loan,,,,,,,1,UVA PIT,,UVA PIT SYSTEM FOR ECP Treatment | Serial No.: 20B-B0004,,,,,Remarks: Machine free on loan to KKH,Acme_Delivery Order_KKH_System_2025-07-011.pdf,,
