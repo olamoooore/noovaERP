@@ -421,6 +421,11 @@ class InvoiceService
             return true;
         }
 
+        // Skip for invoiced orders — stock was already deducted via delivery orders
+        if ($salesOrder->status === 'invoiced') {
+            return true;
+        }
+
         return false;
     }
 
