@@ -23,11 +23,11 @@ final class CompanyDataSource
         return [
             'name' => $company?->company_name ?? Setting::getValue('business_name', config('app.name', 'Your Company')),
             'logo_url' => $company?->company_logo_url ?? Setting::getValue('business_logo_url'),
-            'email' => Setting::getValue('business_email', ''),
-            'phone' => Setting::getValue('business_phone', ''),
-            'address' => Setting::getValue('business_address', ''),
-            'website' => Setting::getValue('business_website', ''),
-            'tax_id' => $company?->tax_registration_number ?? Setting::getValue('gst_registration_number', ''),
+            'email' => $company?->email ?? Setting::getValue('business_email', ''),
+            'phone' => $company?->phone ?? Setting::getValue('business_phone', ''),
+            'address' => $company?->address ?? Setting::getValue('business_address', ''),
+            'website' => $company?->website ?? Setting::getValue('business_website', ''),
+            'tax_id' => $company?->tax_id ?? $company?->gst_registration_number ?? $company?->tax_registration_number ?? Setting::getValue('gst_registration_number', ''),
             'registration_number' => $company?->company_registration_number ?? '',
             'currency_code' => $company?->base_currency ?? 'MYR',
         ];

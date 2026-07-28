@@ -28,6 +28,14 @@ class CompanySettings extends Model
         'shipping_revenue_account_id',
         'default_expense_account_id',
         'default_tax_account_id',
+        'tax_id',
+        'address',
+        'phone',
+        'email',
+        'website',
+        'gst_registration_number',
+        'tax_registration_number',
+        'company_registration_number',
     ];
 
     protected $casts = [
