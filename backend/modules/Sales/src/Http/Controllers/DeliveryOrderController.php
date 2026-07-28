@@ -7,6 +7,7 @@ use App\Platform\Import\ImportService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\DeliveryOrder;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\DeliveryOrderService;
@@ -166,6 +167,80 @@ class DeliveryOrderController extends Controller
         }
 
         return response()->json($deliveryOrder);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $deliveryOrder = DeliveryOrder::find($id);
+
+        if (! $deliveryOrder) {
+            return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        if (! $deliveryOrder->isDraft()) {
+            return response()->json(['message' => 'Only draft delivery orders can be edited'], 422);
+        }
+
+        $validated = $request->validate([
+            'delivery_date' => 'nullable|date',
+            'expected_date' => 'nullable|date',
+            'carrier' => 'nullable|string|max:100',
+            'tracking_number' => 'nullable|string|max:100',
+            'shipping_address' => 'nullable|string',
+            'po_number' => 'nullable|string|max:100',
+            'salesperson' => 'nullable|string|max:255',
+            'attention_to' => 'nullable|string|max:255',
+            'notes' => 'nullable|string',
+            'lines' => 'nullable|array',
+            'lines.*.product_id' => 'nullable|exists:products,id',
+            'lines.*.description' => 'nullable|string',
+            'lines.*.quantity_delivered' => 'nullable|numeric|min:0.0001',
+            'lines.*.unit' => 'nullable|string|max:20',
+            'lines.*.unit_price' => 'nullable|numeric|min:0',
+            'lines.*.lot_number' => 'nullable|string|max:100',
+        ]);
+
+        DB::transaction(function () use ($deliveryOrder, $validated) {
+            // Update header fields
+            $headerFields = ['delivery_date', 'expected_date', 'carrier', 'tracking_number', 'shipping_address', 'po_number', 'salesperson', 'attention_to', 'notes'];
+            foreach ($headerFields as $field) {
+                if (array_key_exists($field, $validated)) {
+                    $deliveryOrder->{$field} = $validated[$field];
+                }
+            }
+            $deliveryOrder->save();
+
+            // Update lines if provided
+            if (isset($validated['lines'])) {
+                $deliveryOrder->lines()->delete();
+                foreach ($validated['lines'] as $lineData) {
+                    $qty = (float) ($lineData['quantity_delivered'] ?? 0);
+                    $unitPrice = isset($lineData['unit_price']) ? (float) $lineData['unit_price'] : null;
+                    \Modules\Sales\Models\DeliveryOrderLine::create([
+                        'delivery_order_id' => $deliveryOrder->id,
+                        'product_id' => $lineData['product_id'] ?? null,
+                        'description' => $lineData['description'] ?? null,
+                        'quantity_ordered' => $qty,
+                        'quantity_delivered' => $qty,
+                        'unit' => $lineData['unit'] ?? 'pcs',
+                        'unit_price' => $unitPrice,
+                        'line_total' => $unitPrice ? $unitPrice * $qty : null,
+                        'lot_number' => $lineData['lot_number'] ?? null,
+                    ]);
+                }
+
+                // Recalculate total
+                $total = $deliveryOrder->lines()->sum('line_total');
+                if ($total > 0) {
+                    $deliveryOrder->update(['total' => $total]);
+                }
+            }
+        });
+
+        return response()->json([
+            'message' => 'Delivery order updated',
+            'data' => $deliveryOrder->fresh(['lines.product', 'customer', 'invoice', 'quotation']),
+        ]);
     }
 
     public function confirm($id)
@@ -392,7 +467,26 @@ class DeliveryOrderController extends Controller
                     }
 
                     $header['status'] = 'draft';
-                    $header['delivery_date'] = $header['delivery_date'] ?? now()->toDateString();
+
+                    // Parse delivery_date from CSV (support multiple formats)
+                    if (! empty($header['delivery_date'])) {
+                        try {
+                            $header['delivery_date'] = \Carbon\Carbon::parse($header['delivery_date'])->format('Y-m-d');
+                        } catch (\Exception $e) {
+                            $header['delivery_date'] = now()->toDateString();
+                        }
+                    } else {
+                        $header['delivery_date'] = now()->toDateString();
+                    }
+
+                    // Parse expected_date from CSV
+                    if (! empty($header['expected_date'])) {
+                        try {
+                            $header['expected_date'] = \Carbon\Carbon::parse($header['expected_date'])->format('Y-m-d');
+                        } catch (\Exception $e) {
+                            unset($header['expected_date']);
+                        }
+                    }
 
                     // Resolve invoice_id from invoice_number
                     if (! empty($header['invoice_number'])) {

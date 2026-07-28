@@ -230,6 +230,37 @@ export function DeliveryOrderDetailPage() {
               View Sales Order
             </Button>
           )}
+          <Button
+            variant="outline"
+            onClick={async () => {
+              try {
+                const response = await api.get(`/delivery-orders/${id}/pdf`, { responseType: 'blob' })
+                const blob = new Blob([response.data], { type: 'application/pdf' })
+                const url = window.URL.createObjectURL(blob)
+                const link = document.createElement('a')
+                link.href = url
+                link.download = `DO-${deliveryOrder.delivery_order_number}.pdf`
+                document.body.appendChild(link)
+                link.click()
+                document.body.removeChild(link)
+                window.URL.revokeObjectURL(url)
+              } catch (error) {
+                toast({ variant: 'destructive', title: 'Failed to download PDF' })
+              }
+            }}
+          >
+            <Icon icon="solar:download-bold" className="h-4 w-4 mr-2" />
+            Download PDF
+          </Button>
+          {deliveryOrder.status === 'draft' && (
+            <Button
+              variant="outline"
+              onClick={() => navigate(`/delivery-orders/${id}/edit`)}
+            >
+              <Icon icon="solar:pen-bold" className="h-4 w-4 mr-2" />
+              Edit
+            </Button>
+          )}
         </div>
       </div>
 

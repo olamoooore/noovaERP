@@ -68,6 +68,7 @@ const DeliveryOrdersPage = lazy(() => import('@/pages/sales/DeliveryOrdersPage')
 const DeliveryOrderCreatePage = lazy(() => import('@/pages/sales/DeliveryOrderCreatePage').then(m => ({ default: m.DeliveryOrderCreatePage })))
 const DeliveryOrderDetailPage = lazy(() => import('@/pages/sales/DeliveryOrderDetailPage').then(m => ({ default: m.DeliveryOrderDetailPage })))
 const DeliveryOrderImportPage = lazy(() => import('@/pages/sales/DeliveryOrderImportPage').then(m => ({ default: m.DeliveryOrderImportPage })))
+const DeliveryOrderEditPage = lazy(() => import('@/pages/sales/DeliveryOrderEditPage').then(m => ({ default: m.DeliveryOrderEditPage })))
 const SalesOrdersPage = lazy(() => import('@/pages/sales/SalesOrdersPage').then(m => ({ default: m.SalesOrdersPage })))
 const InventoryDashboard = lazy(() => import('@/pages/dashboards/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })))
 const FinancialDashboard = lazy(() => import('@/pages/dashboards/FinancialDashboard').then(m => ({ default: m.FinancialDashboard })))
@@ -342,6 +343,7 @@ function App() {
                 <Route path="/delivery-orders" element={<DeliveryOrdersPage />} />
                 <Route path="/delivery-orders/create" element={<DeliveryOrderCreatePage />} />
                 <Route path="/delivery-orders/import" element={<DeliveryOrderImportPage />} />
+                <Route path="/delivery-orders/:id/edit" element={<DeliveryOrderEditPage />} />
                 <Route path="/delivery-orders/:id" element={<DeliveryOrderDetailPage />} />
                 
                 {/* Customer Routes */}

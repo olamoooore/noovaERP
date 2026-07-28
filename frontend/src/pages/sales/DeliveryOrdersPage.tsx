@@ -32,7 +32,11 @@ export function DeliveryOrdersPage() {
   })
 
   const deliveryOrders = response?.data || []
-  const meta = response?.meta || { current_page: 1, last_page: 1, total: 0 }
+  const meta = {
+    current_page: response?.current_page || 1,
+    last_page: response?.last_page || 1,
+    total: response?.total || 0,
+  }
 
   const confirmMutation = useMutation({
     mutationFn: async (id: number) => {
