@@ -37,7 +37,7 @@ final class QuotationDataSource implements DataSourceContract
         $currencyCode = $company['currency_code'] ?? 'MYR';
 
         $lines = [];
-        $salesperson = $q->customer?->salesperson?->name ?? '';
+        $salesperson = $q->customer?->salesperson?->name ?? $q->salesperson ?? '';
         foreach ($q->lines as $i => $line) {
             $lines[] = [
                 'index' => $i + 1,
@@ -49,6 +49,12 @@ final class QuotationDataSource implements DataSourceContract
                 'discount' => (float) ($line->discount_amount ?? 0),
                 'line_total' => (float) $line->line_total,
                 'salesperson' => $salesperson,
+                'attention_to' => $q->attention_to ?? '',
+                'po_number' => $q->customer_reference ?? '',
+                'shipping_method' => $q->shipping_method ?? '',
+                'shipping_terms' => $q->shipping_terms ?? '',
+                'delivery_lead_time' => $q->delivery_lead_time ?? '',
+                'validity' => $q->validity ?? '',
             ];
         }
 

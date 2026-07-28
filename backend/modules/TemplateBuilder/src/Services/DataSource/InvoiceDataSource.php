@@ -31,6 +31,8 @@ class InvoiceDataSource implements DataSourceContract
 
         $lines = [];
         $salesperson = $invoice->customer?->salesperson?->name ?? '';
+        $doctor = $invoice->doctor?->full_name ?? $invoice->doctor?->display_name ?? '';
+        $requestor = $invoice->requestor?->full_name ?? $invoice->requestor?->display_name ?? '';
         foreach ($invoice->lines as $i => $line) {
             $lines[] = [
                 'index' => $i + 1,
@@ -42,6 +44,14 @@ class InvoiceDataSource implements DataSourceContract
                 'discount' => (float) ($line->discount_amount ?? 0),
                 'line_total' => (float) $line->line_total,
                 'salesperson' => $salesperson,
+                'doctor' => $doctor,
+                'requestor' => $requestor,
+                'attention_to' => $invoice->attention_to ?? '',
+                'po_number' => $invoice->po_number ?? '',
+                'shipping_method' => $invoice->shipping_method ?? '',
+                'case_location' => $invoice->case_location ?? '',
+                'date_of_case' => optional($invoice->date_of_case)->format('Y-m-d') ?? '',
+                'patient_name' => $invoice->patient_name ?? '',
             ];
         }
 
