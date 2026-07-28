@@ -14,11 +14,13 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract;
 
 class CustomerStatementController extends Controller
 {
     /**
      * Generate a Statement of Account PDF for a customer.
+     * Uses the template builder system (not a custom Blade template).
      *
      * GET /customers/{id}/statement?as_of=YYYY-MM-DD
      * Filters: status=posted, balance > 0, issue_date <= as_of
@@ -33,8 +35,6 @@ class CustomerStatementController extends Controller
         $customer = Customer::with(['customerContacts', 'addresses'])->findOrFail($customerId);
         $asOf = Carbon::parse($validated['as_of'] ?? now());
 
-        $currencyCode = $this->resolveCurrency();
-
         // Get outstanding invoices: posted, balance > 0, invoice_date <= as_of
         $invoices = Invoice::where('customer_id', $customer->id)
             ->where('status', 'posted')
@@ -43,25 +43,27 @@ class CustomerStatementController extends Controller
             ->orderBy('invoice_date', 'asc')
             ->get();
 
-        $lines = $invoices->map(function (Invoice $invoice) use ($asOf) {
-            $dueDate = $invoice->due_date;
+        // Build transaction lines for the template
+        $transactions = [];
+        foreach ($invoices as $invoice) {
             $reference = collect([
                 $invoice->po_number,
                 $invoice->customer_reference,
-                $invoice->lines->pluck('product.name')->filter()->implode(', '),
             ])->filter()->implode(', ');
 
-            return [
-                'invoice_date' => $invoice->invoice_date->format('d/m/Y'),
-                'invoice_number' => $invoice->invoice_number,
-                'reference' => $reference ?: '-',
-                'due_date' => $dueDate ? $dueDate->format('d/m/Y') : '-',
-                'total' => round((float) $invoice->total, 2),
+            $transactions[] = [
+                'date' => $invoice->invoice_date->format('Y-m-d'),
+                'type' => 'Invoice',
+                'document_number' => $invoice->invoice_number,
+                'description' => $reference ?: ($invoice->lines->pluck('description')->filter()->first() ?? ''),
+                'reference' => $reference,
+                'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : '',
+                'debit' => round((float) $invoice->total, 2),
+                'credit' => 0.00,
                 'balance' => round((float) $invoice->balance, 2),
+                'status' => $invoice->status,
             ];
-        });
-
-        $totalAmountDue = round($invoices->sum('balance'), 2);
+        }
 
         // Get billing address
         $billingAddress = $customer->addresses()
@@ -73,36 +75,58 @@ class CustomerStatementController extends Controller
             ->where('is_primary', true)
             ->first()?->name ?? $customer->name;
 
-        $company = $this->resolveCompanySettings();
-        $bank = $this->resolveBankSettings();
-
+        // Build payload matching CustomerStatementDataSource expectations
         $payload = [
             'customer' => [
+                'id' => $customer->id,
                 'code' => $customer->code,
                 'name' => $customer->name,
-                'attention_to' => $attentionTo,
                 'email' => $customer->email,
-                'address' => $billingAddress
+                'attention_to' => $attentionTo,
+                'billing_address' => $billingAddress
                     ? collect([$billingAddress->street, $billingAddress->street2, $billingAddress->city, $billingAddress->state, $billingAddress->zip, $billingAddress->country])->filter()->implode(', ')
                     : $customer->billing_address,
                 'payment_terms' => $customer->payment_terms ? $customer->payment_terms . ' Days from Invoice Date' : '',
             ],
-            'company' => $company,
-            'bank' => $bank,
-            'currency' => $currencyCode,
-            'as_of_date' => $asOf->format('d/m/Y'),
-            'generated_at' => now()->format('d/m/Y'),
-            'lines' => $lines,
-            'total_amount_due' => $totalAmountDue,
+            'period' => [
+                'start_date' => null,
+                'end_date' => $asOf->format('Y-m-d'),
+                'type' => 'as_of',
+            ],
+            'opening_balance' => 0,
+            'closing_balance' => round($invoices->sum('balance'), 2),
+            'total_debits' => round($invoices->sum('total'), 2),
+            'total_credits' => 0,
+            'transactions' => $transactions,
+            'generated_at' => now()->toISOString(),
+            'include_paid' => false,
+            'as_of_date' => $asOf->format('Y-m-d'),
         ];
 
-        $pdf = Pdf::loadView('accounting.customer-statement-pdf', [
+        // Save a CustomerStatement record (required by template builder's DataSource)
+        $statement = CustomerStatement::create([
+            'customer_id' => $customer->id,
+            'start_date' => null,
+            'end_date' => $asOf->toDateString(),
+            'period_type' => 'as_of',
+            'include_paid' => false,
             'payload' => $payload,
-        ])->setPaper('a4', 'portrait');
+            'generated_by' => Auth::id(),
+        ]);
+
+        // Render PDF using the template builder
+        $pdfService = app(PdfGenerationServiceContract::class);
+        $result = $pdfService->render('customer_statement', (string) $statement->id, [
+            'format' => 'pdf',
+        ]);
 
         $filename = sprintf('SOA_%s_%s.pdf', $customer->code ?? 'UNKNOWN', $asOf->format('Ymd'));
 
-        return $pdf->download($filename);
+        return response($result['bytes'], 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="'.$filename.'"',
+            'Content-Length' => strlen($result['bytes']),
+        ]);
     }
 
     /**
