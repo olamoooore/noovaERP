@@ -7,6 +7,7 @@ import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api';
+import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 
 interface QuotationLine {
   product_id: string;
@@ -516,18 +517,23 @@ export const QuotationEditPage: React.FC = () => {
                     <tr key={index} className="border-b">
                       <td className="py-2 px-2 text-sm font-medium text-slate-500">{index + 1}</td>
                       <td className="py-2 px-2">
-                        <select
+                        <ProductSearchCombobox
                           value={line.product_id}
-                          onChange={(event) => updateLine(index, 'product_id', event.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
-                        >
-                          <option value="">-- None --</option>
-                          {products?.map((product: any) => (
-                            <option key={product.id} value={product.id}>
-                              {product.name} {product.sku ? `(${product.sku})` : ''}
-                            </option>
-                          ))}
-                        </select>
+                          onValueChange={(val, product) => {
+                            updateLine(index, 'product_id', val)
+                            if (product) {
+                              const updated = [...lines]
+                              updated[index] = {
+                                ...updated[index],
+                                product_id: val,
+                                description: product.name || updated[index].description,
+                                unit_price: parseFloat((product as any).price || (product as any).selling_price || '0') || updated[index].unit_price,
+                              }
+                              setLines(updated)
+                            }
+                          }}
+                          placeholder="Search product..."
+                        />
                       </td>
                       <td className="py-2 px-2">
                         <input

@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
+import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
 
 interface LineItem {
   product_id: number | null
@@ -478,26 +478,15 @@ export function DeliveryOrderCreatePage() {
                 {standaloneLines.map((line, idx) => (
                   <TableRow key={idx}>
                     <TableCell>
-                      <Select
+                      <ProductSearchCombobox
                         value={line.product_id?.toString() || ''}
-                        onValueChange={(val) => {
-                          const product = products.find((p: any) => p.id === parseInt(val))
-                          updateStandaloneLine(idx, 'product_id', parseInt(val))
+                        onValueChange={(val, product) => {
+                          updateStandaloneLine(idx, 'product_id', val ? parseInt(val) : null)
                           updateStandaloneLine(idx, 'product_name', product?.name || '')
-                          if (!line.description) updateStandaloneLine(idx, 'description', product?.name || '')
+                          if (!line.description && product) updateStandaloneLine(idx, 'description', product.name || '')
                         }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select product" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {products.map((p: any) => (
-                            <SelectItem key={p.id} value={p.id.toString()}>
-                              {p.sku ? `${p.sku} — ` : ''}{p.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        placeholder="Search product..."
+                      />
                     </TableCell>
                     <TableCell>
                       <Input
