@@ -737,6 +737,58 @@ class QuotationController extends Controller
         return $newContact->id;
     }
 
+    /**
+     * Cancel a quotation (draft|sent → cancelled).
+     * Prevents cancellation if a Sales Order has been created from this quotation.
+     */
+    public function cancel(\Illuminate\Http\Request $request, $id)
+    {
+        $quotation = Quotation::find($id);
+
+        if (! $quotation) {
+            return response()->json(['message' => 'Quotation not found'], 404);
+        }
+
+        if (! in_array($quotation->status, ['draft', 'sent'])) {
+            return response()->json(['message' => 'Only draft or sent quotations can be cancelled'], 403);
+        }
+
+        if ($quotation->sales_order_id) {
+            return response()->json(['message' => 'Cannot cancel a quotation that has a linked Sales Order. Cancel the Sales Order instead.'], 422);
+        }
+
+        $quotation->update(['status' => 'cancelled']);
+
+        return response()->json([
+            'message' => 'Quotation cancelled',
+            'data' => $quotation->fresh(['customer', 'lines.product']),
+        ]);
+    }
+
+    /**
+     * Reset a cancelled quotation back to draft.
+     * Allows re-editing and re-confirming.
+     */
+    public function resetToDraft($id)
+    {
+        $quotation = Quotation::find($id);
+
+        if (! $quotation) {
+            return response()->json(['message' => 'Quotation not found'], 404);
+        }
+
+        if ($quotation->status !== 'cancelled') {
+            return response()->json(['message' => 'Only cancelled quotations can be reset to draft'], 403);
+        }
+
+        $quotation->update(['status' => 'draft']);
+
+        return response()->json([
+            'message' => 'Quotation reset to draft',
+            'data' => $quotation->fresh(['customer', 'lines.product']),
+        ]);
+    }
+
     public function bulkDestroy(\Illuminate\Http\Request $request)
     {
         $validated = $request->validate([

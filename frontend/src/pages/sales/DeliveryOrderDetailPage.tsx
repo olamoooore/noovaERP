@@ -121,6 +121,25 @@ export function DeliveryOrderDetailPage() {
     },
   })
 
+  const resetToDraftMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/sales/delivery-orders/${id}/reset-to-draft`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['delivery-order', id] })
+      queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
+      toast({ title: 'Delivery order reset to draft' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to reset to draft',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
       draft: 'bg-gray-100 text-gray-800',
@@ -220,6 +239,20 @@ export function DeliveryOrderDetailPage() {
             >
               <Icon icon="solar:undo-left-round-bold" className="mr-2 h-4 w-4" />
               {reverseMutation.isPending ? 'Reversing...' : 'Reverse'}
+            </Button>
+          )}
+          {deliveryOrder.status === 'cancelled' && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (confirm('Reset this delivery order to draft? You will be able to edit and re-confirm it.')) {
+                  resetToDraftMutation.mutate()
+                }
+              }}
+              disabled={resetToDraftMutation.isPending}
+            >
+              <Icon icon="solar:undo-left-round-bold" className="mr-2 h-4 w-4" />
+              {resetToDraftMutation.isPending ? 'Resetting...' : 'Reset to Draft'}
             </Button>
           )}
           {deliveryOrder.sales_order && (

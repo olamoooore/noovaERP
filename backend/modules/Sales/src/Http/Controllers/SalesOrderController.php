@@ -234,6 +234,43 @@ class SalesOrderController extends Controller
         }
     }
 
+    /**
+     * Reset a cancelled sales order back to draft.
+     * Clears cancellation data and resets line cancelled quantities.
+     */
+    public function resetToDraft($id)
+    {
+        $order = SalesOrder::find($id);
+
+        if (! $order) {
+            return response()->json(['message' => 'Sales order not found'], 404);
+        }
+
+        if (! $order->isCancelled()) {
+            return response()->json(['message' => 'Only cancelled orders can be reset to draft'], 403);
+        }
+
+        if ($order->invoices()->exists()) {
+            return response()->json(['message' => 'Cannot reset an order that has linked invoices. Create a new order instead.'], 422);
+        }
+
+        $order->update([
+            'status' => 'draft',
+            'cancellation_reason' => null,
+            'cancelled_by' => null,
+            'cancelled_at' => null,
+        ]);
+
+        foreach ($order->lines as $line) {
+            $line->update(['quantity_cancelled' => 0]);
+        }
+
+        return response()->json([
+            'message' => 'Order reset to draft',
+            'order' => $order->fresh(['customer', 'lines.product']),
+        ]);
+    }
+
     public function history($id)
     {
         $order = SalesOrder::find($id);

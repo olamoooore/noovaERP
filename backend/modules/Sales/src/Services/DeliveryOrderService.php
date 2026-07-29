@@ -397,6 +397,31 @@ class DeliveryOrderService
         return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);
     }
 
+    /**
+     * CANCELLED → DRAFT
+     * Allows re-editing and re-confirming a cancelled delivery order.
+     * Blocks if the DO has been invoiced (stock was already deducted via invoice flow).
+     */
+    public function resetToDraft(DeliveryOrder $deliveryOrder): DeliveryOrder
+    {
+        if (! $deliveryOrder->isCancelled()) {
+            throw new \Exception('Only cancelled delivery orders can be reset to draft.');
+        }
+
+        if ($deliveryOrder->invoice_id) {
+            throw new \Exception('Cannot reset a delivery order that is linked to an invoice. Create a new delivery order instead.');
+        }
+
+        $deliveryOrder->update([
+            'status' => 'draft',
+            'notes' => $deliveryOrder->notes
+                ? $deliveryOrder->notes."\n[RESET TO DRAFT]"
+                : '[RESET TO DRAFT]',
+        ]);
+
+        return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);
+    }
+
     // ════════════════════════════════════════════════════════════════════════
     //  HELPERS
     // ════════════════════════════════════════════════════════════════════════

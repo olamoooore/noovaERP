@@ -11,6 +11,7 @@ use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\Sales\Services\SalesOrderService;
 
@@ -362,6 +363,145 @@ class InvoiceController extends Controller
         $invoice->delete();
 
         return response()->json(['message' => 'Invoice deleted successfully']);
+    }
+
+    /**
+     * Cancel a posted/sent/partial/overdue invoice (→ cancelled).
+     * Blocks if payments exist — user must void/refund payments first.
+     * This is an accounting-safe cancel: the journal entry remains for audit
+     * but the invoice is marked as cancelled and excluded from reports.
+     */
+    public function cancel($id)
+    {
+        $invoice = Invoice::find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        if (! in_array($invoice->status, ['posted', 'sent', 'partial', 'overdue'])) {
+            return response()->json(['message' => 'Only posted, sent, partial, or overdue invoices can be cancelled'], 403);
+        }
+
+        if ($invoice->payments()->exists()) {
+            return response()->json([
+                'message' => 'Cannot cancel an invoice with payments. Void or refund the payments first.',
+            ], 422);
+        }
+
+        $invoice->update(['status' => 'cancelled']);
+
+        return response()->json([
+            'message' => 'Invoice cancelled',
+            'data' => $invoice->fresh(['customer', 'lines']),
+        ]);
+    }
+
+    /**
+     * Reset a cancelled invoice back to draft.
+     * Reverses the associated journal entry (if any) and clears the link.
+     * Returns the invoice to draft state for re-editing and re-posting.
+     */
+    public function resetToDraft($id)
+    {
+        $invoice = Invoice::find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        if ($invoice->status !== 'cancelled') {
+            return response()->json(['message' => 'Only cancelled invoices can be reset to draft'], 403);
+        }
+
+        if ($invoice->payments()->exists()) {
+            return response()->json([
+                'message' => 'Cannot reset an invoice that has payments. Void or refund the payments first.',
+            ], 422);
+        }
+
+        try {
+            DB::transaction(function () use ($invoice) {
+                // Reverse the journal entry if one exists
+                if ($invoice->journal_entry_id) {
+                    $this->reverseJournalEntry($invoice);
+                }
+
+                $invoice->update([
+                    'status' => 'draft',
+                    'journal_entry_id' => null,
+                    'lifecycle_status' => 'draft',
+                    'sent_at' => null,
+                ]);
+            });
+
+            return response()->json([
+                'message' => 'Invoice reset to draft',
+                'data' => $invoice->fresh(['customer', 'lines']),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to reset invoice to draft', [
+                'invoice_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to reset invoice to draft',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Reverse a journal entry by creating a compensating entry.
+     * Used when resetting a posted invoice to draft.
+     */
+    private function reverseJournalEntry(Invoice $invoice): void
+    {
+        $journalEntry = \App\Models\JournalEntry::find($invoice->journal_entry_id);
+        if (! $journalEntry) {
+            return;
+        }
+
+        // Create a reversal journal entry
+        $reversalEntry = \App\Models\JournalEntry::create([
+            'journal_id' => $journalEntry->journal_id,
+            'entry_number' => $journalEntry->entry_number . '-REV',
+            'entry_date' => now()->toDateString(),
+            'description' => "Reversal of {$journalEntry->description} (Invoice #{$invoice->invoice_number})",
+            'status' => 'posted',
+            'reference_type' => 'Invoice',
+            'reference_id' => $invoice->id,
+            'legal_entity_id' => $journalEntry->legal_entity_id,
+            'entity_book_id' => $journalEntry->entity_book_id,
+            'currency_code' => $journalEntry->currency_code,
+            'exchange_rate' => $journalEntry->exchange_rate,
+        ]);
+
+        // Copy lines with swapped debit/credit
+        $lines = DB::table('journal_entry_lines')
+            ->where('journal_entry_id', $journalEntry->id)
+            ->get();
+
+        foreach ($lines as $line) {
+            DB::table('journal_entry_lines')->insert([
+                'journal_entry_id' => $reversalEntry->id,
+                'account_id' => $line->account_id,
+                'debit' => $line->credit,
+                'credit' => $line->debit,
+                'description' => $line->description,
+                'party_type' => $line->party_type,
+                'party_id' => $line->party_id,
+                'currency_code' => $line->currency_code,
+                'amount' => $line->amount ? -$line->amount : null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        // Update the original invoice's journal entry to reference the reversal
+        $journalEntry->update(['status' => 'reversed']);
     }
 
     /**

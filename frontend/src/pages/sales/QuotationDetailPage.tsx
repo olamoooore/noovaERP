@@ -88,6 +88,44 @@ export function QuotationDetailPage() {
     },
   })
 
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/quotations/${id}/cancel`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotation', id] })
+      queryClient.invalidateQueries({ queryKey: ['quotations'] })
+      toast({ title: 'Quotation cancelled' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to cancel quotation',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  const resetToDraftMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/quotations/${id}/reset-to-draft`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotation', id] })
+      queryClient.invalidateQueries({ queryKey: ['quotations'] })
+      toast({ title: 'Quotation reset to draft' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to reset quotation',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
   const handleDelete = () => {
     if (!window.confirm(`Delete quotation ${quotation?.quotation_number}? This action cannot be undone.`)) return
     deleteMutation.mutate()
@@ -181,7 +219,7 @@ export function QuotationDetailPage() {
             <Icon icon="solar:download-minimistic-bold-duotone" className="mr-2 h-4 w-4" />
             {isDownloading ? 'Preparing...' : 'Download PDF'}
           </Button>
-          {(quotation.status === 'draft' || quotation.status === 'sent') && (
+          {quotation.status === 'draft' && (
             <>
               <Button
                 onClick={() => confirmMutation.mutate()}
@@ -208,6 +246,26 @@ export function QuotationDetailPage() {
               </Button>
             </>
           )}
+          {quotation.status === 'sent' && (
+            <>
+              <Button
+                onClick={() => confirmMutation.mutate()}
+                disabled={confirmMutation.isPending}
+              >
+                <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
+                {confirmMutation.isPending ? 'Confirming...' : 'Confirm'}
+              </Button>
+              <Button
+                variant="outline"
+                className="text-destructive"
+                onClick={() => cancelMutation.mutate()}
+                disabled={cancelMutation.isPending}
+              >
+                <Icon icon="solar:close-circle-bold" className="mr-2 h-4 w-4" />
+                {cancelMutation.isPending ? 'Cancelling...' : 'Cancel'}
+              </Button>
+            </>
+          )}
           {quotation.status === 'confirmed' && (
             <div className="flex gap-2">
               <Button
@@ -227,6 +285,20 @@ export function QuotationDetailPage() {
                 </Button>
               )}
             </div>
+          )}
+          {quotation.status === 'cancelled' && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (window.confirm('Reset this quotation to draft? You will be able to edit and re-confirm it.')) {
+                  resetToDraftMutation.mutate()
+                }
+              }}
+              disabled={resetToDraftMutation.isPending}
+            >
+              <Icon icon="solar:undo-left-round-bold" className="mr-2 h-4 w-4" />
+              {resetToDraftMutation.isPending ? 'Resetting...' : 'Reset to Draft'}
+            </Button>
           )}
         </div>
       </div>

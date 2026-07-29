@@ -171,4 +171,14 @@ class Quotation extends Model
     {
         return $this->status === 'confirmed';
     }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === 'cancelled';
+    }
+
+    public function isSent(): bool
+    {
+        return $this->status === 'sent';
+    }
 }

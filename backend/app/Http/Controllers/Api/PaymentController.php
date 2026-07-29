@@ -168,6 +168,59 @@ class PaymentController extends Controller
     {
         $payment = Payment::findOrFail($payment);
 
-        return response()->json(['message' => 'Payments cannot be deleted once posted'], 403);
+        return response()->json(['message' => 'Payments cannot be deleted once posted. Use the cancel endpoint instead.'], 403);
+    }
+
+    /**
+     * Cancel a recorded payment (recorded → cancelled).
+     * Unapplies the payment from the linked invoice, restoring the invoice balance.
+     * The payment record is preserved for audit but marked as cancelled.
+     */
+    public function cancel($paymentId)
+    {
+        $payment = Payment::findOrFail($paymentId);
+
+        if ($payment->payment_status !== 'recorded') {
+            return response()->json(['message' => 'Only recorded payments can be cancelled'], 403);
+        }
+
+        try {
+            \Illuminate\Support\Facades\DB::transaction(function () use ($payment) {
+                // Unapply from linked invoice if one exists
+                if ($payment->invoice_id) {
+                    $invoice = Invoice::find($payment->invoice_id);
+                    if ($invoice) {
+                        $invoice->paid_amount = max(0, (float) $invoice->paid_amount - (float) $payment->amount);
+                        $invoice->balance = $invoice->total - $invoice->paid_amount;
+
+                        // Update invoice status based on new balance
+                        if ($invoice->paid_amount <= 0) {
+                            $invoice->status = $invoice->journal_entry_id ? 'posted' : 'draft';
+                            $invoice->settlement_status = 'unpaid';
+                        } else {
+                            $invoice->status = 'partial';
+                            $invoice->settlement_status = 'partial';
+                        }
+                        $invoice->save();
+                    }
+                }
+
+                $payment->update([
+                    'payment_status' => 'cancelled',
+                    'invoice_id' => null,
+                ]);
+            });
+
+            return response()->json([
+                'message' => 'Payment cancelled and unapplied from invoice',
+                'data' => $payment->fresh(['customer', 'invoice']),
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to cancel payment',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 }

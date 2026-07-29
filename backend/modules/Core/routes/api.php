@@ -177,12 +177,16 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/invoices/bulk-delete', [InvoiceController::class, 'bulkDestroy']);
         Route::apiResource('invoices', InvoiceController::class);
         Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'send']);
+        Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel']);
+        Route::post('/invoices/{invoice}/reset-to-draft', [InvoiceController::class, 'resetToDraft']);
 
         // Quotations
         Route::post('/quotations/import', [QuotationController::class, 'import']);
         Route::post('/quotations/bulk-delete', [QuotationController::class, 'bulkDestroy']);
         Route::apiResource('quotations', QuotationController::class);
         Route::post('/quotations/{id}/confirm', [QuotationController::class, 'confirm']);
+        Route::post('/quotations/{id}/cancel', [QuotationController::class, 'cancel']);
+        Route::post('/quotations/{id}/reset-to-draft', [QuotationController::class, 'resetToDraft']);
         Route::post('/quotations/{id}/create-invoice', [QuotationController::class, 'createInvoice']);
 
         // Payments (no update — PaymentController has no update method)
@@ -191,6 +195,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/payments', [PaymentController::class, 'store']);
         Route::get('/payments/{payment}', [PaymentController::class, 'show']);
         Route::delete('/payments/{payment}', [PaymentController::class, 'destroy']);
+        Route::post('/payments/{payment}/cancel', [PaymentController::class, 'cancel']);
     });
 
     // Accounting

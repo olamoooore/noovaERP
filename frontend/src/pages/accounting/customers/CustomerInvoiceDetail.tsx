@@ -123,6 +123,42 @@ export const CustomerInvoiceDetail: React.FC = () => {
     },
   });
 
+  // Cancel invoice mutation
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/invoices/${id}/cancel`);
+    },
+    onSuccess: () => {
+      toast({ title: `${documentLabel} cancelled` });
+      queryClient.invalidateQueries({ queryKey: ['customer-invoice', id] });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: `Failed to cancel ${documentLabel.toLowerCase()}`,
+        description: error.response?.data?.message || 'An error occurred',
+      });
+    },
+  });
+
+  // Reset to draft mutation
+  const resetToDraftMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/invoices/${id}/reset-to-draft`);
+    },
+    onSuccess: () => {
+      toast({ title: `${documentLabel} reset to draft` });
+      queryClient.invalidateQueries({ queryKey: ['customer-invoice', id] });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: `Failed to reset ${documentLabel.toLowerCase()}`,
+        description: error.response?.data?.message || 'An error occurred',
+      });
+    },
+  });
+
   const formatCurrency = (amount: number | string) => {
     const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
     return new Intl.NumberFormat('en-US', {
@@ -211,6 +247,35 @@ export const CustomerInvoiceDetail: React.FC = () => {
                 Delete
               </Button>
             </>
+          )}
+          {['posted', 'sent', 'partial', 'overdue'].includes(invoice.status) && (
+            <Button
+              variant="outline"
+              className="text-destructive"
+              onClick={() => {
+                if (window.confirm(`Cancel ${documentLabel.toLowerCase()} ${invoice.invoice_number}? This will mark it as cancelled.`)) {
+                  cancelMutation.mutate();
+                }
+              }}
+              disabled={cancelMutation.isPending}
+            >
+              <Icon icon="solar:close-circle-bold" className="h-4 w-4 mr-2" />
+              {cancelMutation.isPending ? 'Cancelling...' : 'Cancel'}
+            </Button>
+          )}
+          {invoice.status === 'cancelled' && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (window.confirm(`Reset ${documentLabel.toLowerCase()} to draft? You will be able to edit and re-post it.`)) {
+                  resetToDraftMutation.mutate();
+                }
+              }}
+              disabled={resetToDraftMutation.isPending}
+            >
+              <Icon icon="solar:undo-left-round-bold" className="h-4 w-4 mr-2" />
+              {resetToDraftMutation.isPending ? 'Resetting...' : 'Reset to Draft'}
+            </Button>
           )}
            <Button variant="outline" onClick={handleDownloadPdf} disabled={isDownloading}>
              <Icon icon="solar:printer-bold-duotone" className="h-4 w-4 mr-2" />

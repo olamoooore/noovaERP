@@ -337,6 +337,29 @@ class DeliveryOrderController extends Controller
         }
     }
 
+    /**
+     * Reset a cancelled delivery order back to draft.
+     */
+    public function resetToDraft($id)
+    {
+        $deliveryOrder = DeliveryOrder::find($id);
+
+        if (! $deliveryOrder) {
+            return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        try {
+            $deliveryOrder = $this->deliveryService->resetToDraft($deliveryOrder);
+
+            return response()->json([
+                'message' => 'Delivery order reset to draft',
+                'data' => $deliveryOrder,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
     public function destroy($id)
     {
         $deliveryOrder = DeliveryOrder::find($id);
@@ -346,6 +369,14 @@ class DeliveryOrderController extends Controller
 
         if ($deliveryOrder->status === 'confirmed') {
             return response()->json(['message' => 'Cannot delete a confirmed delivery order. Cancel it first.'], 422);
+        }
+
+        if ($deliveryOrder->status === 'done') {
+            return response()->json(['message' => 'Cannot delete a completed delivery order. Reverse it first to restore stock.'], 422);
+        }
+
+        if ($deliveryOrder->status === 'cancelled') {
+            return response()->json(['message' => 'Cannot delete a cancelled delivery order. Reset it to draft first if you need to edit, or use force-delete for cleanup.'], 422);
         }
 
         $deliveryOrder->delete();
@@ -360,14 +391,14 @@ class DeliveryOrderController extends Controller
             'ids.*' => 'integer|exists:delivery_orders,id',
         ]);
 
-        // Block deletion of confirmed orders
-        $confirmed = DeliveryOrder::whereIn('id', $validated['ids'])
-            ->where('status', 'confirmed')
+        // Block deletion of confirmed, done, and cancelled orders
+        $blocked = DeliveryOrder::whereIn('id', $validated['ids'])
+            ->whereIn('status', ['confirmed', 'done', 'cancelled'])
             ->count();
 
-        if ($confirmed > 0) {
+        if ($blocked > 0) {
             return response()->json([
-                'message' => "Cannot delete {$confirmed} confirmed delivery order(s). Cancel them first.",
+                'message' => "Cannot delete {$blocked} confirmed/done/cancelled delivery order(s). Cancel them first.",
             ], 422);
         }
 

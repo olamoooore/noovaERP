@@ -25,6 +25,7 @@ Route::middleware([
         Route::post('/sales/orders/{id}/allocate', [SalesOrderController::class, 'allocate']);
         Route::post('/sales/orders/{id}/fulfil', [SalesOrderController::class, 'fulfil']);
         Route::post('/sales/orders/{id}/cancel', [SalesOrderController::class, 'cancel']);
+        Route::post('/sales/orders/{id}/reset-to-draft', [SalesOrderController::class, 'resetToDraft']);
 
         // Linked documents
         Route::post('/sales/orders/{id}/invoice', [SalesOrderController::class, 'createInvoice']);
@@ -44,6 +45,7 @@ Route::middleware([
         Route::post('/sales/delivery-orders/{id}/complete', [DeliveryOrderController::class, 'complete']);
         Route::post('/sales/delivery-orders/{id}/reverse', [DeliveryOrderController::class, 'reverse']);
         Route::post('/sales/delivery-orders/{id}/cancel', [DeliveryOrderController::class, 'cancel']);
+        Route::post('/sales/delivery-orders/{id}/reset-to-draft', [DeliveryOrderController::class, 'resetToDraft']);
         Route::post('/sales/delivery-orders/bulk-delete', [DeliveryOrderController::class, 'bulkDestroy']);
         Route::post('/sales/delivery-orders/import', [DeliveryOrderController::class, 'import']);
         Route::get('/sales/delivery-orders/template', [DeliveryOrderController::class, 'template']);
