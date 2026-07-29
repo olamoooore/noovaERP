@@ -226,7 +226,7 @@ export function InvoiceDetailPage() {
             <Icon icon="material-symbols:download" className="mr-2 h-4 w-4" />
             Download PDF
           </Button>
-          {invoice.status !== 'paid' && (
+          {['posted', 'sent', 'partial', 'overdue'].includes(invoice.status) && invoice.balance > 0 && (
             <Button onClick={() => navigate(`/invoices/${id}/payment`)}>
               <Icon icon="material-symbols:payment" className="mr-2 h-4 w-4" />
               Record Payment

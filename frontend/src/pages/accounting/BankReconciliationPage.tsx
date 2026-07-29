@@ -50,18 +50,6 @@ export function BankReconciliationPage() {
     search: '',
   });
 
-  // Pre-select bank account from query param
-  const accountParam = searchParams.get('account');
-  useEffect(() => {
-    if (accountParam && bankAccountsData?.data) {
-      const accId = parseInt(accountParam, 10);
-      const exists = bankAccountsData.data.find((a: any) => a.id === accId);
-      if (exists) {
-        setSelectedBankAccount(accId);
-      }
-    }
-  }, [accountParam, bankAccountsData]);
-
   // Add transaction form state
   const [newTransaction, setNewTransaction] = useState<AddTransactionRequest>({
     bank_account_id: 0,
@@ -79,6 +67,18 @@ export function BankReconciliationPage() {
     queryKey: ['bank-accounts'],
     queryFn: () => reportApi.getBankAccounts(),
   });
+
+  // Pre-select bank account from query param
+  const accountParam = searchParams.get('account');
+  useEffect(() => {
+    if (accountParam && bankAccountsData?.data) {
+      const accId = parseInt(accountParam, 10);
+      const exists = bankAccountsData.data.find((a: any) => a.id === accId);
+      if (exists) {
+        setSelectedBankAccount(accId);
+      }
+    }
+  }, [accountParam, bankAccountsData]);
 
   const { data: chartOfAccounts = [] } = useQuery({
     queryKey: ['chart-of-accounts'],

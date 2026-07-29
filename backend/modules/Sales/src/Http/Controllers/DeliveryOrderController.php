@@ -488,11 +488,29 @@ class DeliveryOrderController extends Controller
                         }
                     }
 
-                    // Resolve invoice_id from invoice_number
+                    // Resolve invoice_id from invoice_number (try multiple formats)
                     if (! empty($header['invoice_number'])) {
+                        $invNum = $header['invoice_number'];
                         $invoice = \App\Models\Invoice::withoutTrashed()
-                            ->where('invoice_number', $header['invoice_number'])
+                            ->where('invoice_number', $invNum)
                             ->first();
+
+                        // Try slash format: 2024-09-027 → 2024/09/027
+                        if (! $invoice && str_contains($invNum, '-')) {
+                            $slash = str_replace('-', '/', $invNum);
+                            $invoice = \App\Models\Invoice::withoutTrashed()
+                                ->where('invoice_number', $slash)
+                                ->first();
+                        }
+
+                        // Try INV- prefix: 2024/09/027 → INV-2024/09/027
+                        if (! $invoice) {
+                            $withPrefix = 'INV-' . $invNum;
+                            $invoice = \App\Models\Invoice::withoutTrashed()
+                                ->where('invoice_number', $withPrefix)
+                                ->first();
+                        }
+
                         $header['invoice_id'] = $invoice?->id;
                         unset($header['invoice_number']);
                     }
