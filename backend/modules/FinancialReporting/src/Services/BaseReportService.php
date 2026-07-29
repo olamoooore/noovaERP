@@ -82,6 +82,12 @@ abstract class BaseReportService
      */
     protected function isSummaryDataFresh(Carbon $date): bool
     {
+        // Quick check: if summary table is globally empty, never use it
+        $hasAnySummaries = DB::table('daily_ledger_summaries')->exists();
+        if (! $hasAnySummaries) {
+            return false;
+        }
+
         // Check if any journal entries exist for this date
         $journalEntriesExist = DB::table('journal_entries')
             ->where('entry_date', $date->format('Y-m-d'))
