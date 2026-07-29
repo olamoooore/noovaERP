@@ -119,12 +119,13 @@ class InvoiceService
                 description: "Invoice {$invoice->invoice_number}",
             );
 
-            // CR Sales Revenue (subtotal)
+            // CR Sales Revenue (subtotal minus discount)
+            $salesRevenue = (float) $invoice->subtotal - (float) $invoice->discount_amount;
             $lines[] = new PostingRequestLine(
                 accountMappingKey: 'sales_revenue',
                 accountId: null,
                 debit: 0,
-                credit: (float) $invoice->subtotal,
+                credit: $salesRevenue,
                 description: "Sales - Invoice {$invoice->invoice_number}",
             );
 
