@@ -242,6 +242,9 @@ export const CreateInvoicePage: React.FC = () => {
 
   const customerContacts = (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? []) as CustomerContact[];
 
+  const selectedCustomer = selectedCustomerDetail
+    ?? customers?.find((customer) => String(customer.id) === String(customerId));
+
   const { data: systemContacts } = useQuery({
     queryKey: ['system-contacts', selectedCustomer?.id],
     queryFn: async () => {
@@ -269,9 +272,6 @@ export const CreateInvoicePage: React.FC = () => {
       return response.data.data || response.data || [];
     },
   });
-
-  const selectedCustomer = selectedCustomerDetail
-    ?? customers?.find((customer) => String(customer.id) === String(customerId));
 
   useEffect(() => {
     if (!selectedCustomer) {
