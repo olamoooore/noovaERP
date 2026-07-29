@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface LineItem {
   product_id: number | null
@@ -36,6 +37,7 @@ export function DeliveryOrderEditPage() {
   const [salesperson, setSalesperson] = useState('')
   const [attentionTo, setAttentionTo] = useState('')
   const [notes, setNotes] = useState('')
+  const [warehouseId, setWarehouseId] = useState('')
   const [lines, setLines] = useState<LineItem[]>([])
 
   // Fetch existing delivery order
@@ -57,6 +59,16 @@ export function DeliveryOrderEditPage() {
     },
   })
 
+  // Fetch warehouses
+  const { data: warehousesData } = useQuery({
+    queryKey: ['warehouses-list'],
+    queryFn: async () => {
+      const res = await api.get('/warehouses', { params: { per_page: 100 } })
+      return res.data?.data || res.data || []
+    },
+  })
+  const warehouses = Array.isArray(warehousesData) ? warehousesData : []
+
   // Populate form when data loads
   useEffect(() => {
     if (deliveryOrder) {
@@ -69,6 +81,7 @@ export function DeliveryOrderEditPage() {
       setSalesperson(deliveryOrder.salesperson || '')
       setAttentionTo(deliveryOrder.attention_to || '')
       setNotes(deliveryOrder.notes || '')
+      setWarehouseId(deliveryOrder.warehouse_id?.toString() || '')
       setLines(
         deliveryOrder.lines?.map((l: any) => ({
           product_id: l.product_id,
@@ -120,6 +133,7 @@ export function DeliveryOrderEditPage() {
   const handleSubmit = () => {
     const validLines = lines.filter((l) => l.quantity > 0)
     updateMutation.mutate({
+      warehouse_id: warehouseId ? parseInt(warehouseId) : undefined,
       delivery_date: deliveryDate || undefined,
       expected_date: expectedDate || undefined,
       carrier: carrier || undefined,
@@ -192,12 +206,23 @@ export function DeliveryOrderEditPage() {
               <Input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} />
             </div>
             <div>
-              <Label>Carrier</Label>
-              <Input value={carrier} onChange={(e) => setCarrier(e.target.value)} placeholder="e.g. DHL, FedEx" />
+              <Label>Warehouse</Label>
+              <Select value={warehouseId} onValueChange={setWarehouseId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select warehouse" />
+                </SelectTrigger>
+                <SelectContent>
+                  {warehouses.map((w: any) => (
+                    <SelectItem key={w.id} value={w.id.toString()}>
+                      {w.code ? `${w.code} — ` : ''}{w.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
-              <Label>Tracking #</Label>
-              <Input value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} placeholder="Tracking number" />
+              <Label>Carrier</Label>
+              <Input value={carrier} onChange={(e) => setCarrier(e.target.value)} placeholder="e.g. DHL, FedEx" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">

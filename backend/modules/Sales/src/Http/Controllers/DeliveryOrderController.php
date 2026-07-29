@@ -182,6 +182,7 @@ class DeliveryOrderController extends Controller
         }
 
         $validated = $request->validate([
+            'warehouse_id' => 'nullable|exists:warehouses,id',
             'delivery_date' => 'nullable|date',
             'expected_date' => 'nullable|date',
             'carrier' => 'nullable|string|max:100',
@@ -202,7 +203,7 @@ class DeliveryOrderController extends Controller
 
         DB::transaction(function () use ($deliveryOrder, $validated) {
             // Update header fields
-            $headerFields = ['delivery_date', 'expected_date', 'carrier', 'tracking_number', 'shipping_address', 'po_number', 'salesperson', 'attention_to', 'notes'];
+            $headerFields = ['warehouse_id', 'delivery_date', 'expected_date', 'carrier', 'tracking_number', 'shipping_address', 'po_number', 'salesperson', 'attention_to', 'notes'];
             foreach ($headerFields as $field) {
                 if (array_key_exists($field, $validated)) {
                     $deliveryOrder->{$field} = $validated[$field];

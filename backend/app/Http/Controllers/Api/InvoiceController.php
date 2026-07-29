@@ -857,10 +857,11 @@ class InvoiceController extends Controller
     {
         $normalised = strtolower(trim($name));
 
-        // Try to find an existing contact
-        $contact = \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(display_name) = ?', [$normalised])->first()
-            ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(first_name || \' \' || last_name) = ?', [$normalised])->first()
-            ?? \Modules\Contact\src\Models\CoreContact::whereRaw('LOWER(company_name) = ?', [$normalised])->first();
+        // Try to find an existing contact (scoped to current tenant)
+        $tenantId = tenant()->id;
+        $contact = \Modules\Contact\src\Models\CoreContact::where('tenant_id', $tenantId)->whereRaw('LOWER(display_name) = ?', [$normalised])->first()
+            ?? \Modules\Contact\src\Models\CoreContact::where('tenant_id', $tenantId)->whereRaw('LOWER(first_name || \' \' || last_name) = ?', [$normalised])->first()
+            ?? \Modules\Contact\src\Models\CoreContact::where('tenant_id', $tenantId)->whereRaw('LOWER(company_name) = ?', [$normalised])->first();
 
         if ($contact) {
             return $contact->id;

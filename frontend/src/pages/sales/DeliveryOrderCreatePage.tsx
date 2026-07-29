@@ -107,6 +107,18 @@ export function DeliveryOrderCreatePage() {
     },
   })
 
+  // Pre-select default warehouse
+  useEffect(() => {
+    if (warehousesData?.length && !warehouseId) {
+      const defaultWh = warehousesData.find((w: any) => w.is_default)
+      if (defaultWh) {
+        setWarehouseId(defaultWh.id.toString())
+      } else if (warehousesData.length === 1) {
+        setWarehouseId(warehousesData[0].id.toString())
+      }
+    }
+  }, [warehousesData, warehouseId])
+
   // Auto-fill shipping address when customer is selected
   const handleCustomerChange = (val: string) => {
     setCustomerId(val)
@@ -128,6 +140,11 @@ export function DeliveryOrderCreatePage() {
   const handleSubmitLinked = () => {
     if (!salesOrderId) {
       toast({ variant: 'destructive', title: 'Please enter a Sales Order ID' })
+      return
+    }
+
+    if (!warehouseId) {
+      toast({ variant: 'destructive', title: 'Please select a warehouse' })
       return
     }
 
@@ -286,6 +303,21 @@ export function DeliveryOrderCreatePage() {
                 <span className="text-muted-foreground">Status: {soData.sales_order?.status}</span>
               </div>
             )}
+            <div>
+              <Label>Warehouse <span className="text-destructive">*</span></Label>
+              <Select value={warehouseId} onValueChange={setWarehouseId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select warehouse" />
+                </SelectTrigger>
+                <SelectContent>
+                  {warehouses.map((w: any) => (
+                    <SelectItem key={w.id} value={w.id.toString()}>
+                      {w.code ? `${w.code} — ` : ''}{w.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </CardContent>
         </Card>
       )}
