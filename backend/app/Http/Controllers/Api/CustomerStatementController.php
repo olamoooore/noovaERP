@@ -45,11 +45,15 @@ class CustomerStatementController extends Controller
 
         // Build transaction lines for the template
         $transactions = [];
+        $runningBalance = 0;
         foreach ($invoices as $invoice) {
             $reference = collect([
                 $invoice->po_number,
                 $invoice->customer_reference,
             ])->filter()->implode(', ');
+
+            $invAmount = round((float) $invoice->total, 2);
+            $runningBalance += $invAmount;
 
             $transactions[] = [
                 'date' => $invoice->invoice_date->format('Y-m-d'),
@@ -58,9 +62,11 @@ class CustomerStatementController extends Controller
                 'description' => $reference ?: ($invoice->lines->pluck('description')->filter()->first() ?? ''),
                 'reference' => $reference,
                 'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : '',
-                'debit' => round((float) $invoice->total, 2),
-                'credit' => 0.00,
+                'inv_amount' => $invAmount,
                 'balance' => round((float) $invoice->balance, 2),
+                'total' => $runningBalance,
+                'debit' => $invAmount,
+                'credit' => 0.00,
                 'status' => $invoice->status,
             ];
         }
@@ -95,12 +101,14 @@ class CustomerStatementController extends Controller
             ],
             'opening_balance' => 0,
             'closing_balance' => round($invoices->sum('balance'), 2),
+            'total_amount_due' => round($invoices->sum('balance'), 2),
             'total_debits' => round($invoices->sum('total'), 2),
             'total_credits' => 0,
             'transactions' => $transactions,
             'generated_at' => now()->toISOString(),
             'include_paid' => false,
             'as_of_date' => $asOf->format('Y-m-d'),
+            'bank' => $this->resolveBankSettings(),
         ];
 
         // Save a CustomerStatement record (required by template builder's DataSource)

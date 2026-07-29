@@ -43,9 +43,11 @@ final class CustomerStatementDataSource implements DataSourceContract
                 'description' => $txn['description'] ?? '',
                 'reference' => $txn['reference'] ?? '',
                 'due_date' => $txn['due_date'] ?? '',
+                'inv_amount' => (float) ($txn['inv_amount'] ?? $txn['debit'] ?? 0),
                 'debit' => (float) ($txn['debit'] ?? 0),
                 'credit' => (float) ($txn['credit'] ?? 0),
                 'balance' => (float) ($txn['balance'] ?? 0),
+                'total' => (float) ($txn['total'] ?? 0),
                 'status' => $txn['status'] ?? '',
             ];
         }
@@ -73,9 +75,17 @@ final class CustomerStatementDataSource implements DataSourceContract
             'transactions' => $transactions,
             'totals' => [
                 'opening_balance' => (float) ($payload['opening_balance'] ?? 0),
+                'total_amount_due' => (float) ($payload['total_amount_due'] ?? $payload['closing_balance'] ?? 0),
                 'total_debits' => (float) ($payload['total_debits'] ?? 0),
                 'total_credits' => (float) ($payload['total_credits'] ?? 0),
                 'closing_balance' => (float) ($payload['closing_balance'] ?? 0),
+            ],
+            'bank' => [
+                'bank_name' => $payload['bank']['bank_name'] ?? '',
+                'account_name' => $payload['bank']['account_name'] ?? '',
+                'account_number' => $payload['bank']['account_number'] ?? '',
+                'swift_code' => $payload['bank']['swift_code'] ?? '',
+                'bank_code' => $payload['bank']['bank_code'] ?? '',
             ],
             'aging' => $this->computeAging($statement),
             'meta' => [
@@ -115,9 +125,17 @@ final class CustomerStatementDataSource implements DataSourceContract
             ]],
             ['group' => 'Totals', 'fields' => [
                 ['token' => 'totals.opening_balance', 'label' => 'Opening Balance'],
+                ['token' => 'totals.total_amount_due', 'label' => 'Total Amount Due'],
                 ['token' => 'totals.total_debits', 'label' => 'Total Debits'],
                 ['token' => 'totals.total_credits', 'label' => 'Total Credits'],
                 ['token' => 'totals.closing_balance', 'label' => 'Closing Balance'],
+            ]],
+            ['group' => 'Bank Details', 'fields' => [
+                ['token' => 'bank.bank_name', 'label' => 'Bank Name'],
+                ['token' => 'bank.account_name', 'label' => 'Account Name'],
+                ['token' => 'bank.account_number', 'label' => 'Account Number'],
+                ['token' => 'bank.swift_code', 'label' => 'Swift Code'],
+                ['token' => 'bank.bank_code', 'label' => 'Bank Code'],
             ]],
             ['group' => 'Aging Summary', 'fields' => [
                 ['token' => 'aging.current', 'label' => 'Current'],
