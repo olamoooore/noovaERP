@@ -154,7 +154,7 @@ class ContactMasterService
 
     public function list(string $tenantId, array $filters = [])
     {
-        $query = CoreContact::where('tenant_id', $tenantId);
+        $query = CoreContact::where('tenant_id', $tenantId)->with('addresses');
 
         if (! empty($filters['entity_id'])) {
             $query->where('entity_id', $filters['entity_id']);

@@ -243,11 +243,16 @@ export const CreateInvoicePage: React.FC = () => {
   const customerContacts = (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? []) as CustomerContact[];
 
   const { data: systemContacts } = useQuery({
-    queryKey: ['system-contacts'],
+    queryKey: ['system-contacts', selectedCustomer?.id],
     queryFn: async () => {
-      const response = await api.get('/contacts?per_page=500&is_active=true');
+      const params = new URLSearchParams({ per_page: '500', is_active: 'true' });
+      if (selectedCustomer?.id) {
+        params.set('entity_id', String(selectedCustomer.id));
+      }
+      const response = await api.get(`/contacts?${params.toString()}`);
       return response.data?.data?.data ?? response.data?.data ?? [];
     },
+    enabled: !!selectedCustomer?.id,
   });
 
   const contactOptions = (systemContacts ?? []).map((c: any) => ({
@@ -289,14 +294,43 @@ export const CreateInvoicePage: React.FC = () => {
       tax_registration_number: selectedCustomer.tax_number ?? '',
     });
 
-    const contacts = contactOptions;
-    const primaryIdx = contacts.findIndex((c: any) => c.is_primary);
-    const defaultIdx = primaryIdx >= 0 ? primaryIdx : 0;
-    if (contacts.length > 0) {
-      setBillingContactId(String((contacts[defaultIdx] as any)?.id ?? ''));
-      setShippingContactId(String((contacts[defaultIdx] as any)?.id ?? ''));
-    }
+    setBillingContactId('');
+    setShippingContactId('');
+    setDoctorContactId('');
+    setRequestorContactId('');
   }, [selectedCustomer]);
+
+  useEffect(() => {
+    if (!billingContactId || !systemContacts?.length) return;
+    const contact = systemContacts.find((c: any) => String(c.id) === String(billingContactId));
+    if (!contact?.addresses?.length) return;
+
+    const addr = contact.addresses.find((a: any) => a.is_default_billing)
+      || contact.addresses.find((a: any) => a.is_primary)
+      || contact.addresses[0];
+
+    if (addr) {
+      const formatted = [addr.line_1, addr.line_2, addr.line_3, addr.city, addr.state, addr.postal_code, addr.country]
+        .filter(Boolean).join(', ');
+      setDocumentSnapshot(prev => ({ ...prev, billing_address_snapshot: formatted, attention_to: contact.display_name || [contact.first_name, contact.last_name].filter(Boolean).join(' ') || prev.attention_to }));
+    }
+  }, [billingContactId, systemContacts]);
+
+  useEffect(() => {
+    if (!shippingContactId || !systemContacts?.length) return;
+    const contact = systemContacts.find((c: any) => String(c.id) === String(shippingContactId));
+    if (!contact?.addresses?.length) return;
+
+    const addr = contact.addresses.find((a: any) => a.is_default_shipping)
+      || contact.addresses.find((a: any) => a.is_primary)
+      || contact.addresses[0];
+
+    if (addr) {
+      const formatted = [addr.line_1, addr.line_2, addr.line_3, addr.city, addr.state, addr.postal_code, addr.country]
+        .filter(Boolean).join(', ');
+      setDocumentSnapshot(prev => ({ ...prev, shipping_address_snapshot: formatted }));
+    }
+  }, [shippingContactId, systemContacts]);
 
   const createMutation = useMutation({
     mutationFn: async (data: unknown) => {
