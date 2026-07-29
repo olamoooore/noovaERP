@@ -878,9 +878,15 @@ class InvoiceController extends Controller
         $firstName = $parts ? array_shift($parts) : $name;
         $lastName = $parts ? implode(' ', $parts) : null;
 
-        $newContact = \Modules\Contact\src\Models\CoreContact::create([
-            'id'            => (string) Str::uuid(),
-            'tenant_id'     => tenant()->id,
+        $newId = (string) Str::uuid();
+
+        // Use raw DB insert with schema-qualified table to avoid search_path issues
+        $schema = tenant()->getSchemaName();
+        $table = $schema ? "\"{$schema}\".core_contacts" : 'core_contacts';
+
+        DB::table($table)->insert([
+            'id'            => $newId,
+            'tenant_id'     => $tenantId,
             'contact_type'  => $type,
             'first_name'    => $firstName,
             'last_name'     => $lastName,
@@ -888,9 +894,11 @@ class InvoiceController extends Controller
             'company_name'  => $lastName === null ? $name : null,
             'source'        => $source,
             'is_active'     => true,
+            'created_at'    => now(),
+            'updated_at'    => now(),
         ]);
 
-        return $newContact->id;
+        return $newId;
     }
 
     private function parseNumericValue($value): float
