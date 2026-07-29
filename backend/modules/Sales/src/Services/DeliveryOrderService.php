@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Models\StockReservation;
+use Modules\Inventory\Models\Warehouse;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\StockReservationService;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
@@ -35,7 +36,7 @@ class DeliveryOrderService
             throw new \Exception('Only confirmed, allocated, fulfilled, or invoiced orders can have delivery orders.');
         }
 
-        $warehouseId = $data['warehouse_id'] ?? $order->warehouse_id;
+        $warehouseId = $data['warehouse_id'] ?? $order->warehouse_id ?? Warehouse::getDefault()?->id;
         if (! $warehouseId) {
             throw new \Exception('Warehouse is required for delivery orders.');
         }
@@ -118,7 +119,7 @@ class DeliveryOrderService
             throw new \Exception('At least one line item is required.');
         }
 
-        $warehouseId = $data['warehouse_id'] ?? null;
+        $warehouseId = $data['warehouse_id'] ?? Warehouse::getDefault()?->id;
         if (! $warehouseId) {
             throw new \Exception('Warehouse is required for delivery orders.');
         }
