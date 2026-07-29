@@ -663,6 +663,12 @@ class InvoiceController extends Controller
             $headerRow = $group['header'];
 
             try {
+                // Re-apply tenant search_path on every iteration to survive connection resets
+                $schema = tenant()->getSchemaName();
+                if ($schema) {
+                    DB::statement("SET search_path TO \"{$schema}\", public");
+                }
+
                 $customer = $this->resolveImportCustomer($headerRow, $customerCache);
                 if (! $customer) {
                     $code = trim((string) ($headerRow['customer_code'] ?? ''));
