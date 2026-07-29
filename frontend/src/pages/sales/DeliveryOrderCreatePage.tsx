@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface LineItem {
   product_id: number | null
