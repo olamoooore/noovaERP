@@ -133,8 +133,19 @@ class InvoiceController extends Controller
      *        shipping_address_snapshot, company_registration_number,
      *        tax_registration_number, notes, terms, discount_amount).
      */
+    private function ensureTenantSearchPath(): void
+    {
+        $schema = tenant()->getSchemaName();
+        if ($schema) {
+            DB::statement("SET search_path TO \"{$schema}\", public");
+        }
+    }
+
     private function createInvoiceFromData(array $data): Invoice
     {
+        // Re-apply search_path before any DB operations (SalesOrder lifecycle can reset it)
+        $this->ensureTenantSearchPath();
+
         // Preserve the imported invoice number when provided; force-delete existing if re-importing.
         $importedNumber = isset($data['invoice_number']) ? trim((string) $data['invoice_number']) : '';
         if ($importedNumber !== '') {
@@ -188,9 +199,13 @@ class InvoiceController extends Controller
         ]);
 
         // Fast-track admin orders through the full lifecycle immediately
+        // Re-apply search_path after each DB::transaction() call which can reset connections
         $salesOrder = $this->salesOrderService->confirmOrder($salesOrder);
+        $this->ensureTenantSearchPath();
         $salesOrder = $this->salesOrderService->allocateOrder($salesOrder);
+        $this->ensureTenantSearchPath();
         $salesOrder = $this->salesOrderService->fulfilOrder($salesOrder);
+        $this->ensureTenantSearchPath();
 
         $invoiceOverrides = array_filter([
             'invoice_number' => $importedNumber !== '' ? $importedNumber : null,
@@ -214,16 +229,25 @@ class InvoiceController extends Controller
             'terms' => $data['terms'] ?? null,
             'discount_amount' => $data['discount_amount'] ?? null,
             'po_number' => $data['po_number'] ?? null,
-            'doctor_contact_id' => $data['doctor_contact_id'] ?? null,
-            'requestor_contact_id' => $data['requestor_contact_id'] ?? null,
-            'billing_contact_id' => $data['billing_contact_id'] ?? null,
-            'shipping_contact_id' => $data['shipping_contact_id'] ?? null,
+            // Contact IDs are handled separately via UPDATE after invoice creation
+            // to bypass FK violations caused by connection recycling during SO lifecycle
         ], fn ($v) => $v !== null);
 
-        return $this->salesOrderService->createInvoice(
+        // Pass contact IDs through the invoice overrides now that contacts
+        // are properly persisted (UTF-8 sanitization in resolveOrCreateContact
+        // prevents silent INSERT failures that caused FK violations).
+        foreach (['doctor_contact_id', 'requestor_contact_id', 'billing_contact_id', 'shipping_contact_id'] as $contactKey) {
+            if (($data[$contactKey] ?? null) !== null) {
+                $invoiceOverrides[$contactKey] = $data[$contactKey];
+            }
+        }
+
+        $invoice = $this->salesOrderService->createInvoice(
             $salesOrder,
             empty($invoiceOverrides) ? null : $invoiceOverrides
         );
+
+        return $invoice;
     }
 
     public function show($id)
@@ -627,9 +651,18 @@ class InvoiceController extends Controller
             }
             $row = [];
             foreach ($header as $idx => $key) {
-                if ($key !== '') {
-                    $row[$key] = $data[$idx] ?? null;
+                if ($key !== '' && isset($data[$idx])) {
+                    // Sanitize to valid UTF-8 — Excel CSVs often contain Windows-1252
+                    // bytes (e.g. 0x92 right-apostrophe) that silently break PostgreSQL INSERTs
+                    $val = $data[$idx];
+                    if (! mb_check_encoding($val, 'UTF-8')) {
+                        $val = mb_convert_encoding($val, 'UTF-8', 'UTF-8');
+                    }
+                    $row[$key] = $val;
                 }
+            }
+            if (empty($row)) {
+                continue;
             }
             $rows[] = $row;
         }
@@ -754,18 +787,22 @@ class InvoiceController extends Controller
                 $doctorName = $this->readImportValue($headerRow['doctor_name'] ?? $headerRow['doctor'] ?? null);
                 if ($doctorName !== null) {
                     $data['doctor_contact_id'] = $this->resolveOrCreateContact($doctorName, 'person', 'import_invoice');
+                    $data['_doctor_name'] = $doctorName;
                 }
                 $requestorName = $this->readImportValue($headerRow['requestor_name'] ?? $headerRow['requestor'] ?? null);
                 if ($requestorName !== null) {
                     $data['requestor_contact_id'] = $this->resolveOrCreateContact($requestorName, 'person', 'import_invoice');
+                    $data['_requestor_name'] = $requestorName;
                 }
                 $billingContactName = $this->readImportValue($headerRow['billing_contact_name'] ?? $headerRow['billing_contact'] ?? null);
                 if ($billingContactName !== null) {
                     $data['billing_contact_id'] = $this->resolveOrCreateContact($billingContactName, 'person', 'import_invoice');
+                    $data['_billing_name'] = $billingContactName;
                 }
                 $shippingContactName = $this->readImportValue($headerRow['shipping_contact_name'] ?? $headerRow['shipping_contact'] ?? null);
                 if ($shippingContactName !== null) {
                     $data['shipping_contact_id'] = $this->resolveOrCreateContact($shippingContactName, 'person', 'import_invoice');
+                    $data['_shipping_name'] = $shippingContactName;
                 }
 
                 $invoiceDate = $this->parseImportDate($headerRow['invoice_date'] ?? null) ?? now()->toDateString();
@@ -825,13 +862,13 @@ class InvoiceController extends Controller
 
         $customer = null;
         if ($code !== '' && $code !== '-') {
-            $customer = Customer::whereRaw('LOWER(code) = ?', [strtolower($code)])->first();
+            $customer = Customer::withTrashed()->whereRaw('LOWER(code) = ?', [strtolower($code)])->first();
         }
         if (! $customer && $name !== '' && $name !== '-') {
-            $customer = Customer::whereRaw('LOWER(name) = ?', [strtolower($name)])->first();
+            $customer = Customer::withTrashed()->whereRaw('LOWER(name) = ?', [strtolower($name)])->first();
         }
         if (! $customer && $id !== '' && filter_var($id, FILTER_VALIDATE_INT) !== false) {
-            $customer = Customer::find((int) $id);
+            $customer = Customer::withTrashed()->find((int) $id);
         }
 
         return $cache[$cacheKey] = $customer;
@@ -851,16 +888,40 @@ class InvoiceController extends Controller
         if ($value === null) {
             return null;
         }
-        $value = trim((string) $value);
+        $value = $this->sanitizeUtf8(trim((string) $value));
 
         return ($value === '' || $value === '-') ? null : $value;
     }
 
     /**
+     * Ensure the string is valid UTF-8.
+     * CSV files exported from Excel often contain Windows-1252 bytes (e.g. 0x92
+     * for the right single quotation mark) that are invalid UTF-8. PostgreSQL
+     * silently rejects INSERTs containing these bytes, causing data loss.
+     */
+    private function sanitizeUtf8(string $value): string
+    {
+        if (mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        return mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+    }
+
+    /**
      * Find a contact by name (case-insensitive) or create one if not found.
+     * Uses Eloquent model for both read and write to ensure the same connection
+     * and search_path are used throughout — DB::statement() bypasses the query
+     * builder and can silently use a different PDO connection.
      */
     private function resolveOrCreateContact(string $name, string $type = 'person', string $source = 'import'): ?string
     {
+        // Sanitize to valid UTF-8 — CSV files from Excel often contain Windows-1252
+        // bytes (e.g. 0x92) that cause PostgreSQL to silently reject the INSERT.
+        if (! mb_check_encoding($name, 'UTF-8')) {
+            $name = mb_convert_encoding($name, 'UTF-8', 'UTF-8');
+        }
+
         $normalised = strtolower(trim($name));
 
         // Try to find an existing contact (scoped to current tenant)
@@ -878,27 +939,21 @@ class InvoiceController extends Controller
         $firstName = $parts ? array_shift($parts) : $name;
         $lastName = $parts ? implode(' ', $parts) : null;
 
-        $newId = (string) Str::uuid();
-
-        // Use raw DB insert with schema-qualified table to avoid search_path issues
-        $schema = tenant()->getSchemaName();
-        $table = $schema ? "\"{$schema}\".core_contacts" : 'core_contacts';
-
-        DB::table($table)->insert([
-            'id'            => $newId,
-            'tenant_id'     => $tenantId,
-            'contact_type'  => $type,
-            'first_name'    => $firstName,
-            'last_name'     => $lastName,
-            'display_name'  => trim($name),
-            'company_name'  => $lastName === null ? $name : null,
-            'source'        => $source,
-            'is_active'     => true,
-            'created_at'    => now(),
-            'updated_at'    => now(),
+        // Use Eloquent create() so the INSERT goes through the same connection
+        // and search_path as the SELECT queries above.
+        $contact = \Modules\Contact\src\Models\CoreContact::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => $tenantId,
+            'contact_type' => $type,
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'display_name' => trim($name),
+            'company_name' => $lastName === null ? $name : null,
+            'source' => $source,
+            'is_active' => true,
         ]);
 
-        return $newId;
+        return $contact->id;
     }
 
     private function parseNumericValue($value): float
