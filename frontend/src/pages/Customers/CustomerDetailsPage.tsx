@@ -68,6 +68,13 @@ interface Customer {
   website: string
   billing_address: string
   shipping_address: string
+  road_number: string
+  road_name: string
+  level_unit: string
+  building_name: string
+  state: string
+  zip_code: string
+  country: string
   credit_limit: number
   payment_terms: number
   total_outstanding: number
@@ -195,6 +202,17 @@ interface LoyaltyTransaction {
   reference_type: string
   notes: string
   created_at: string
+}
+
+const formatStructuredAddress = (customer: Partial<Customer>) => {
+  const roadLine = [customer.road_number, customer.road_name].filter(Boolean).join(' ').trim()
+  const unitLine = [customer.level_unit, customer.building_name].filter(Boolean).join(' ').trim()
+  const localityLine = [customer.state, customer.zip_code, customer.country].filter(Boolean).join(', ').trim()
+
+  const lines = [unitLine, roadLine, localityLine].filter(Boolean)
+  if (lines.length === 0) return null
+
+  return lines.join('\n')
 }
 
 export function CustomerDetailsPage() {
@@ -429,6 +447,13 @@ export function CustomerDetailsPage() {
         payment_terms: customer.payment_terms,
         billing_address: customer.billing_address,
         shipping_address: customer.shipping_address,
+        road_number: customer.road_number,
+        road_name: customer.road_name,
+        level_unit: customer.level_unit,
+        building_name: customer.building_name,
+        state: customer.state,
+        zip_code: customer.zip_code,
+        country: customer.country,
         date_of_birth: customer.date_of_birth,
         gender: customer.gender,
         marketing_opt_in: customer.marketing_opt_in,
@@ -831,10 +856,10 @@ export function CustomerDetailsPage() {
               )}
               
               {/* Legacy addresses */}
-              {(customer.billing_address || customer.shipping_address) && (
+              {(customer.billing_address || customer.shipping_address || formatStructuredAddress(customer)) && (
                 <>
                   <Separator className="my-4" />
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {customer.billing_address && (
                       <div className="p-4 border rounded-lg">
                         <Badge variant="outline" className="mb-2">Billing (Legacy)</Badge>
@@ -845,6 +870,12 @@ export function CustomerDetailsPage() {
                       <div className="p-4 border rounded-lg">
                         <Badge variant="outline" className="mb-2">Shipping (Legacy)</Badge>
                         <p className="text-sm whitespace-pre-line">{formatLegacyAddress(customer.shipping_address)}</p>
+                      </div>
+                    )}
+                    {formatStructuredAddress(customer) && (
+                      <div className="p-4 border rounded-lg">
+                        <Badge variant="outline" className="mb-2">Structured Address</Badge>
+                        <p className="text-sm whitespace-pre-line">{formatStructuredAddress(customer)}</p>
                       </div>
                     )}
                   </div>
@@ -1959,6 +1990,67 @@ export function CustomerDetailsPage() {
                 onChange={(e) => setEditForm({ ...editForm, billing_address: e.target.value })}
                 placeholder="Enter billing address"
                 rows={2}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-road-number">Road Name/Number</Label>
+                <Input
+                  id="edit-road-number"
+                  value={editForm.road_number || ''}
+                  onChange={(e) => setEditForm({ ...editForm, road_number: e.target.value })}
+                  placeholder="e.g. 123 Orchard Road"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-level-unit">Level & Unit</Label>
+                <Input
+                  id="edit-level-unit"
+                  value={editForm.level_unit || ''}
+                  onChange={(e) => setEditForm({ ...editForm, level_unit: e.target.value })}
+                  placeholder="e.g. #12-34"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-building-name">Building Name</Label>
+                <Input
+                  id="edit-building-name"
+                  value={editForm.building_name || ''}
+                  onChange={(e) => setEditForm({ ...editForm, building_name: e.target.value })}
+                  placeholder="e.g. Marina Bay Sands"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-state">State</Label>
+                <Input
+                  id="edit-state"
+                  value={editForm.state || ''}
+                  onChange={(e) => setEditForm({ ...editForm, state: e.target.value })}
+                  placeholder="e.g. Singapore"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-zip-code">ZIP / Postal Code</Label>
+                <Input
+                  id="edit-zip-code"
+                  value={editForm.zip_code || ''}
+                  onChange={(e) => setEditForm({ ...editForm, zip_code: e.target.value })}
+                  placeholder="e.g. 018956"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-country">Country</Label>
+              <Input
+                id="edit-country"
+                value={editForm.country || ''}
+                onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
+                placeholder="e.g. Singapore"
               />
             </div>
 

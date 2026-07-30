@@ -140,6 +140,7 @@ export function ProductEditPage() {
   const [formData, setFormData] = useState({
     name: '',
     secondary_name: '',
+    model_number: '',
     sku: '',
     barcode: '',
     type: 'product' as ProductType,
@@ -309,6 +310,7 @@ export function ProductEditPage() {
       ...prev,
       name: product.name || '',
       secondary_name: product.secondary_name || '',
+      model_number: product.model_number || '',
       sku: product.sku || '',
       barcode: product.barcode || '',
       type: (product.type || 'product') as ProductType,
@@ -557,6 +559,7 @@ export function ProductEditPage() {
     updateMutation.mutate({
       name: formData.name,
       secondary_name: formData.secondary_name || null,
+      model_number: formData.model_number || null,
       sku: formData.sku,
       barcode: formData.barcode || null,
       type: formData.type,
@@ -707,6 +710,16 @@ export function ProductEditPage() {
                     value={formData.secondary_name}
                     onChange={(e) => setFormData({ ...formData, secondary_name: e.target.value })}
                     placeholder="e.g. 500ml / Small / Variant label"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="model_number">Model Number</Label>
+                  <Input
+                    id="model_number"
+                    value={formData.model_number}
+                    onChange={(e) => setFormData({ ...formData, model_number: e.target.value })}
+                    placeholder="e.g. MDL-A100"
                   />
                 </div>
 

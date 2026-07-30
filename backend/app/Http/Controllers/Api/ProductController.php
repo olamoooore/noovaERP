@@ -195,6 +195,7 @@ class ProductController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'secondary_name' => 'nullable|string|max:255',
+            'model_number' => 'nullable|string|max:100',
             'sku' => 'required|string|unique:products,sku',
             'barcode' => 'nullable|string',
             'description' => 'nullable|string',
@@ -623,6 +624,7 @@ class ProductController extends Controller
         $validated = $request->validate([
             'name' => 'string|max:255',
             'secondary_name' => 'nullable|string|max:255',
+            'model_number' => 'nullable|string|max:100',
             'sku' => 'string|unique:products,sku,'.$product->id,
             'barcode' => 'nullable|string',
             'description' => 'nullable|string',
@@ -760,6 +762,8 @@ class ProductController extends Controller
             'product_type' => 'category_id',
             'artist' => 'secondary_name',
             'artist_group' => 'manufacturer',
+            'model_no' => 'model_number',
+            'model_num' => 'model_number',
             'weblink_for_the_image' => 'image_url',
             // Batch / lot tracking
             'lot' => 'lot_number',
@@ -868,6 +872,9 @@ class ProductController extends Controller
                 'name' => $name,
                 'sku' => ($sku !== '' && $sku !== '-') ? $sku : ($existingProduct->sku ?? $sku),
                 'secondary_name' => $secondaryName !== '' && $secondaryName !== '-' ? $secondaryName : null,
+                'model_number' => isset($row['model_number']) && trim((string) $row['model_number']) !== '' && trim((string) $row['model_number']) !== '-'
+                    ? trim((string) $row['model_number'])
+                    : null,
                 'barcode' => $barcode !== '' ? $barcode : null,
                 'description' => $description !== '' ? $description : null,
                 'short_description' => $row['short_description'] ?? ($description !== '' ? $description : null),

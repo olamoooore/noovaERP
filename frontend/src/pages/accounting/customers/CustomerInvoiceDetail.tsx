@@ -358,10 +358,16 @@ export const CustomerInvoiceDetail: React.FC = () => {
               <p className="text-sm">{invoice.terms}</p>
             </div>
           )}
-          {(invoice.date_of_case || invoice.case_location || invoice.patient_name || invoice.cost_center_id || invoice.delivery_date) && (
+          {(invoice.case_number || invoice.date_of_case || invoice.case_location || invoice.patient_name || invoice.cost_center_id || invoice.delivery_date) && (
             <div className="mt-6 pt-6 border-t">
               <p className="text-sm font-medium mb-3">Case Information</p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {invoice.case_number && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Case Number</p>
+                    <p className="font-medium">{invoice.case_number}</p>
+                  </div>
+                )}
                 {invoice.date_of_case && (
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Date of Case</p>

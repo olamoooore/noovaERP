@@ -203,6 +203,7 @@ export const CreateInvoicePage: React.FC = () => {
   const [dueDate, setDueDate] = useState(
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
+  const [caseNumber, setCaseNumber] = useState('');
   const [dateOfCase, setDateOfCase] = useState('');
   const [caseLocation, setCaseLocation] = useState('');
   const [patientName, setPatientName] = useState('');
@@ -543,6 +544,7 @@ export const CreateInvoicePage: React.FC = () => {
       customer_id: parseInt(customerId, 10),
       invoice_date: invoiceDate,
       due_date: dueDate,
+      case_number: caseNumber || undefined,
       date_of_case: dateOfCase || undefined,
       case_location: caseLocation || undefined,
       patient_name: patientName || undefined,
@@ -939,6 +941,16 @@ export const CreateInvoicePage: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Case Number</label>
+                  <input
+                    type="text"
+                    value={caseNumber}
+                    onChange={(event) => setCaseNumber(event.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
+                    placeholder="Case reference number"
+                  />
+                </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Date of Case</label>
                   <input

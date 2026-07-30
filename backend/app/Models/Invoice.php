@@ -61,6 +61,7 @@ class Invoice extends Model
         'customer_id',
         'invoice_date',
         'due_date',
+        'case_number',
         'date_of_case',
         'case_location',
         'patient_name',

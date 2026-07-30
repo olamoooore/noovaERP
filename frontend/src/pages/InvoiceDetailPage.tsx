@@ -35,6 +35,7 @@ interface Invoice {
   notes: string
   terms: string
   date_of_case?: string
+  case_number?: string
   case_location?: string
   patient_name?: string
   cost_center_id?: string
@@ -405,10 +406,16 @@ export function InvoiceDetailPage() {
           )}
 
           {/* Case Information */}
-          {(invoice.date_of_case || invoice.case_location || invoice.patient_name || invoice.cost_center_id || invoice.delivery_date || invoice.po_number || invoice.doctor || invoice.requestor) && (
+          {(invoice.case_number || invoice.date_of_case || invoice.case_location || invoice.patient_name || invoice.cost_center_id || invoice.delivery_date || invoice.po_number || invoice.doctor || invoice.requestor) && (
             <div className="mt-6 pt-6 border-t">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase mb-3">Case Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {invoice.case_number && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Case Number</span>
+                    <p className="text-sm font-medium">{invoice.case_number}</p>
+                  </div>
+                )}
                 {invoice.date_of_case && (
                   <div>
                     <span className="text-xs text-muted-foreground">Date of Case</span>

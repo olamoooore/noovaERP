@@ -33,6 +33,7 @@ const TEMPLATE_COLUMNS = [
   { name: 'po_number', required: false, description: 'Customer PO reference.' },
   { name: 'customer_reference', required: false, description: 'Customer reference number.' },
   { name: 'internal_reference', required: false, description: 'Internal reference note.' },
+  { name: 'case_number', required: false, description: 'Case number / case reference.' },
   { name: 'date_of_case', required: false, description: 'Case date (M/D/YYYY or YYYY-MM-DD).' },
   { name: 'case_location', required: false, description: 'Case / site location.' },
   { name: 'patient_name', required: false, description: 'Patient name.' },
@@ -144,8 +145,8 @@ export function InvoiceImportPage() {
     const headers = TEMPLATE_COLUMNS.map((col) => col.name).join(',')
     // Two rows sharing invoice_number => one invoice with two line items.
     const sampleRows = [
-      ['QUOTE-001', 'draft', 'CUST-001', 'Acme Corp', '1/15/2026', '2/15/2026', 'PO-456', 'REF-789', 'INT-001', '1/14/2026', 'Main Site', 'John Smith', 'CC-001', '1/20/2026', 'Dr. Sarah Lee', 'Jane Doe', 'Acme Billing', 'Acme Delivery', 'John Doe', 'ap@acme.com', '', '', '', '', 'Net 30', '0', 'SKU-001', 'Widget A', '10', '50.00', '0', '0'],
-      ['QUOTE-001', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', 'SKU-002', 'Widget B', '5', '20.00', '0', '0'],
+      ['QUOTE-001', 'draft', 'CUST-001', 'Acme Corp', '1/15/2026', '2/15/2026', 'PO-456', 'REF-789', 'INT-001', 'CASE-2026-001', '1/14/2026', 'Main Site', 'John Smith', 'CC-001', '1/20/2026', 'Dr. Sarah Lee', 'Jane Doe', 'Acme Billing', 'Acme Delivery', 'John Doe', 'ap@acme.com', '', '', '', '', 'Net 30', '0', 'SKU-001', 'Widget A', '10', '50.00', '0', '0'],
+      ['QUOTE-001', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', 'SKU-002', 'Widget B', '5', '20.00', '0', '0'],
     ].map((row) => row.map(csvValue).join(','))
 
     const csvContent = `${headers}\n${sampleRows.join('\n')}`

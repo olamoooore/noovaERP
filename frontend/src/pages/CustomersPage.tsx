@@ -122,6 +122,14 @@ function formatAddress(address: string | null | undefined): string {
   }
 }
 
+function formatStructuredAddress(customer: Partial<CustomerFormData>): string {
+  const roadLine = [customer.road_number, customer.road_name].filter(Boolean).join(' ').trim()
+  const unitLine = [customer.level_unit, customer.building_name].filter(Boolean).join(' ').trim()
+  const localityLine = [customer.state, customer.zip_code, customer.country].filter(Boolean).join(', ').trim()
+
+  return [unitLine, roadLine, localityLine].filter(Boolean).join('\n')
+}
+
 const PAGE_SIZE = 20
 
 export function CustomersPage() {
@@ -496,23 +504,15 @@ export function CustomersPage() {
                 <TabsContent value="addresses" className="space-y-4 mt-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="road_number">Road Number</Label>
+                      <Label htmlFor="road_number">Road Name/Number</Label>
                       <Input
                         id="road_number"
                         value={formData.road_number}
                         onChange={(e) => setFormData({ ...formData, road_number: e.target.value })}
-                        placeholder="e.g. 123"
+                        placeholder="e.g. 123 Orchard Road"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="road_name">Road Name</Label>
-                      <Input
-                        id="road_name"
-                        value={formData.road_name}
-                        onChange={(e) => setFormData({ ...formData, road_name: e.target.value })}
-                        placeholder="e.g. Orchard Road"
-                      />
-                    </div>
+            
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -1036,6 +1036,18 @@ export function CustomersPage() {
                   </Card>
                 </div>
 
+                {formatStructuredAddress(customerDetail) && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Structured Address</CardTitle>
+                      <CardDescription>Road/Unit details from existing customer profile</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm whitespace-pre-line">{formatStructuredAddress(customerDetail)}</p>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Notes */}
                 {customerDetail.notes && (
                   <Card>
@@ -1233,6 +1245,67 @@ export function CustomersPage() {
                 </TabsContent>
 
                 <TabsContent value="addresses" className="space-y-4 mt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-road-number">Road Name/Number</Label>
+                      <Input
+                        id="edit-road-number"
+                        value={formData.road_number}
+                        onChange={(e) => setFormData({ ...formData, road_number: e.target.value })}
+                        placeholder="e.g. 123 Orchard Road"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-level-unit">Level & Unit</Label>
+                      <Input
+                        id="edit-level-unit"
+                        value={formData.level_unit}
+                        onChange={(e) => setFormData({ ...formData, level_unit: e.target.value })}
+                        placeholder="e.g. #12-34"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-building-name">Building Name</Label>
+                      <Input
+                        id="edit-building-name"
+                        value={formData.building_name}
+                        onChange={(e) => setFormData({ ...formData, building_name: e.target.value })}
+                        placeholder="e.g. Marina Bay Sands"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-state">State</Label>
+                      <Input
+                        id="edit-state"
+                        value={formData.state}
+                        onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                        placeholder="e.g. Singapore"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-zip-code">ZIP / Postal Code</Label>
+                      <Input
+                        id="edit-zip-code"
+                        value={formData.zip_code}
+                        onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
+                        placeholder="e.g. 018956"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-country">Country</Label>
+                    <Input
+                      id="edit-country"
+                      value={formData.country}
+                      onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                      placeholder="e.g. Singapore"
+                    />
+                  </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="edit-billing">Billing Address</Label>
                     <Textarea
