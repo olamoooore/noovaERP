@@ -16,6 +16,8 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract;
 
+use function Safe\json_decode;
+
 class CustomerStatementController extends Controller
 {
     /**
@@ -206,6 +208,303 @@ class CustomerStatementController extends Controller
         $statement->loadMissing(['customer:id,name,email', 'generatedBy:id,name']);
 
         return response()->json($this->formatStatementResponse($statement, true));
+    }
+
+    /**
+     * Year-over-year comparison of customer SOA across multiple as-of dates.
+     *
+     * GET /customers/{id}/statement/compare?dates=2024-08-31,2025-08-31
+     *
+     * For each date, returns outstanding invoices, aging buckets, and totals.
+     * Also computes delta (change) between consecutive periods.
+     */
+    public function compare(Request $request, $customerId)
+    {
+        $validated = $request->validate([
+            'dates' => 'required|string', // comma-separated dates
+        ]);
+
+        $dates = collect(explode(',', $validated['dates']))
+            ->map(fn ($d) => trim($d))
+            ->filter()
+            ->sort()
+            ->values()
+            ->all();
+
+        if (count($dates) < 2) {
+            return response()->json(['message' => 'At least two comparison dates are required.'], 422);
+        }
+
+        $customer = Customer::with(['customerContacts', 'addresses'])->findOrFail($customerId);
+
+        // Get company settings for the response
+        $companySetting = \App\Models\Setting::first();
+        $company = [
+            'name' => $companySetting->company_name ?? '',
+            'address' => $companySetting->company_address ?? '',
+            'email' => $companySetting->company_email ?? '',
+            'phone' => $companySetting->company_phone ?? '',
+        ];
+
+        $comparisons = [];
+        foreach ($dates as $dateStr) {
+            $asOf = Carbon::parse($dateStr);
+
+            // Get outstanding invoices as of this date
+            $invoices = Invoice::where('customer_id', $customer->id)
+                ->where('status', 'posted')
+                ->where('balance', '>', 0)
+                ->where('invoice_date', '<=', $asOf)
+                ->orderBy('invoice_date', 'asc')
+                ->get();
+
+            $totalOutstanding = round($invoices->sum('balance'), 2);
+            $totalInvoiceValue = round($invoices->sum('total'), 2);
+            $invoiceCount = $invoices->count();
+
+            // Compute aging buckets at this point in time
+            $aging = $this->computeAgingAtDate($invoices, $asOf);
+
+            // Build transaction lines for this snapshot
+            $transactions = [];
+            $runningBalance = 0;
+            foreach ($invoices as $invoice) {
+                $invAmount = round((float) $invoice->total, 2);
+                $runningBalance += $invAmount;
+
+                $reference = collect([
+                    $invoice->po_number,
+                    $invoice->customer_reference,
+                ])->filter()->implode(', ');
+
+                $transactions[] = [
+                    'date' => $invoice->invoice_date->format('Y-m-d'),
+                    'type' => 'Invoice',
+                    'document_number' => $invoice->invoice_number,
+                    'description' => $reference ?: ($invoice->lines->pluck('description')->filter()->first() ?? ''),
+                    'reference' => $reference,
+                    'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : '',
+                    'inv_amount' => $invAmount,
+                    'balance' => round((float) $invoice->balance, 2),
+                    'total' => $runningBalance,
+                    'debit' => $invAmount,
+                    'credit' => 0.00,
+                ];
+            }
+
+            $comparisons[] = [
+                'as_of_date' => $asOf->format('Y-m-d'),
+                'total_outstanding' => $totalOutstanding,
+                'total_invoice_value' => $totalInvoiceValue,
+                'invoice_count' => $invoiceCount,
+                'aging' => $aging,
+                'transactions' => $transactions,
+            ];
+        }
+
+        // Compute deltas between consecutive periods
+        $deltas = [];
+        for ($i = 1; $i < count($comparisons); $i++) {
+            $prev = $comparisons[$i - 1];
+            $curr = $comparisons[$i];
+
+            $outstandingChange = round($curr['total_outstanding'] - $prev['total_outstanding'], 2);
+            $outstandingChangePct = $prev['total_outstanding'] != 0
+                ? round(($outstandingChange / $prev['total_outstanding']) * 100, 1)
+                : 0;
+            $invoiceCountChange = $curr['invoice_count'] - $prev['invoice_count'];
+
+            $deltas[] = [
+                'from_date' => $prev['as_of_date'],
+                'to_date' => $curr['as_of_date'],
+                'outstanding_change' => $outstandingChange,
+                'outstanding_change_pct' => $outstandingChangePct,
+                'invoice_count_change' => $invoiceCountChange,
+                'aging_changes' => [
+                    'current' => $curr['aging']['current'] - $prev['aging']['current'],
+                    'days_1_30' => $curr['aging']['days_1_30'] - $prev['aging']['days_1_30'],
+                    'days_31_60' => $curr['aging']['days_31_60'] - $prev['aging']['days_31_60'],
+                    'days_61_90' => $curr['aging']['days_61_90'] - $prev['aging']['days_61_90'],
+                    'days_90_plus' => $curr['aging']['days_90_plus'] - $prev['aging']['days_90_plus'],
+                ],
+            ];
+        }
+
+        return response()->json([
+            'customer' => [
+                'id' => $customer->id,
+                'code' => $customer->code,
+                'name' => $customer->name,
+                'email' => $customer->email,
+                'billing_address' => $customer->billing_address,
+                'payment_terms' => $customer->payment_terms,
+            ],
+            'company' => $company,
+            'comparisons' => $comparisons,
+            'deltas' => $deltas,
+            'generated_at' => now()->toISOString(),
+        ]);
+    }
+
+    /**
+     * Generate a comparison PDF.
+     *
+     * GET /customers/{id}/statement/compare/pdf?dates=2024-08-31,2025-08-31
+     */
+    public function comparePdf(Request $request, $customerId)
+    {
+        $validated = $request->validate([
+            'dates' => 'required|string',
+        ]);
+
+        $dates = collect(explode(',', $validated['dates']))
+            ->map(fn ($d) => trim($d))
+            ->filter()
+            ->sort()
+            ->values()
+            ->all();
+
+        if (count($dates) < 2) {
+            return response()->json(['message' => 'At least two comparison dates are required.'], 422);
+        }
+
+        $customer = Customer::with(['customerContacts', 'addresses'])->findOrFail($customerId);
+
+        // Get company settings
+        $companySetting = \App\Models\Setting::first();
+        $company = [
+            'name' => $companySetting->company_name ?? '',
+            'address' => $companySetting->company_address ?? '',
+            'email' => $companySetting->company_email ?? '',
+            'phone' => $companySetting->company_phone ?? '',
+        ];
+
+        // Build billing address
+        $billingAddress = $customer->addresses()
+            ->where('type', 'billing')
+            ->where('is_default', true)
+            ->first();
+
+        $customerAddress = $billingAddress
+            ? collect([$billingAddress->street, $billingAddress->street2, $billingAddress->city, $billingAddress->state, $billingAddress->zip, $billingAddress->country])->filter()->implode(', ')
+            : $customer->billing_address;
+
+        $attentionTo = $customer->customerContacts()
+            ->where('is_primary', true)
+            ->first()?->name ?? $customer->name;
+
+        $comparisons = [];
+        foreach ($dates as $dateStr) {
+            $asOf = Carbon::parse($dateStr);
+
+            $invoices = Invoice::where('customer_id', $customer->id)
+                ->where('status', 'posted')
+                ->where('balance', '>', 0)
+                ->where('invoice_date', '<=', $asOf)
+                ->orderBy('invoice_date', 'asc')
+                ->get();
+
+            $totalOutstanding = round($invoices->sum('balance'), 2);
+            $invoiceCount = $invoices->count();
+
+            $aging = $this->computeAgingAtDate($invoices, $asOf);
+
+            $comparisons[] = [
+                'as_of_date' => $asOf->format('Y-m-d'),
+                'total_outstanding' => $totalOutstanding,
+                'invoice_count' => $invoiceCount,
+                'aging' => $aging,
+            ];
+        }
+
+        // Compute deltas
+        $deltas = [];
+        for ($i = 1; $i < count($comparisons); $i++) {
+            $prev = $comparisons[$i - 1];
+            $curr = $comparisons[$i];
+
+            $outstandingChange = round($curr['total_outstanding'] - $prev['total_outstanding'], 2);
+            $outstandingChangePct = $prev['total_outstanding'] != 0
+                ? round(($outstandingChange / $prev['total_outstanding']) * 100, 1)
+                : 0;
+
+            $deltas[] = [
+                'outstanding_change' => $outstandingChange,
+                'outstanding_change_pct' => $outstandingChangePct,
+                'invoice_count_change' => $curr['invoice_count'] - $prev['invoice_count'],
+                'aging_changes' => [
+                    'current' => $curr['aging']['current'] - $prev['aging']['current'],
+                    'days_1_30' => $curr['aging']['days_1_30'] - $prev['aging']['days_1_30'],
+                    'days_31_60' => $curr['aging']['days_31_60'] - $prev['aging']['days_31_60'],
+                    'days_61_90' => $curr['aging']['days_61_90'] - $prev['aging']['days_61_90'],
+                    'days_90_plus' => $curr['aging']['days_90_plus'] - $prev['aging']['days_90_plus'],
+                ],
+            ];
+        }
+
+        $payload = [
+            'company' => $company,
+            'customer' => [
+                'code' => $customer->code,
+                'name' => $customer->name,
+                'attention_to' => $attentionTo,
+                'address' => $customerAddress,
+                'payment_terms' => $customer->payment_terms ? $customer->payment_terms . ' Days' : '',
+            ],
+            'comparisons' => $comparisons,
+            'deltas' => $deltas,
+            'currency' => $this->resolveCurrency(),
+            'generated_at' => now()->format('Y-m-d'),
+        ];
+
+        $pdf = Pdf::loadView('accounting.customer-statement-comparison-pdf', [
+            'payload' => $payload,
+        ]);
+
+        $filename = sprintf('SOA_Compare_%s_%s.pdf', $customer->code ?? 'UNKNOWN', now()->format('Ymd'));
+
+        return response($pdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="'.$filename.'"',
+        ]);
+    }
+
+    /**
+     * Compute aging buckets for a collection of invoices as of a given date.
+     */
+    private function computeAgingAtDate($invoices, Carbon $asOf): array
+    {
+        $aging = [
+            'current' => 0,
+            'days_1_30' => 0,
+            'days_31_60' => 0,
+            'days_61_90' => 0,
+            'days_90_plus' => 0,
+        ];
+
+        foreach ($invoices as $invoice) {
+            if (! $invoice->due_date) {
+                $aging['current'] += round((float) $invoice->balance, 2);
+                continue;
+            }
+
+            $dueDate = Carbon::parse($invoice->due_date);
+            $daysOverdue = $asOf->diffInDays($dueDate, false); // negative = past due
+
+            if ($daysOverdue >= 0) {
+                $aging['current'] += round((float) $invoice->balance, 2);
+            } elseif ($daysOverdue >= -30) {
+                $aging['days_1_30'] += round((float) $invoice->balance, 2);
+            } elseif ($daysOverdue >= -60) {
+                $aging['days_31_60'] += round((float) $invoice->balance, 2);
+            } elseif ($daysOverdue >= -90) {
+                $aging['days_61_90'] += round((float) $invoice->balance, 2);
+            } else {
+                $aging['days_90_plus'] += round((float) $invoice->balance, 2);
+            }
+        }
+
+        return $aging;
     }
 
     protected function buildStatementPayload(Customer $customer, array $validated): array

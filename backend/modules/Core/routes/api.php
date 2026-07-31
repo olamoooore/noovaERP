@@ -529,7 +529,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::get('/customers/statements/{statement}', [CustomerStatementController::class, 'show']);
     });
 
-    // Statement of Account PDF (no entity/accounting middleware needed)
+    // Statement of Account (no entity/accounting middleware needed)
+    Route::get('/customers/{customer}/statement/compare', [CustomerStatementController::class, 'compare']);
+    Route::get('/customers/{customer}/statement/compare/pdf', [CustomerStatementController::class, 'comparePdf']);
     Route::get('/customers/{customer}/statement', [CustomerStatementController::class, 'statement']);
 
     // Per-customer aging (customer detail page — no entity/accounting middleware needed)

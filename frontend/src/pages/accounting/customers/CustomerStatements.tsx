@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
+import { useNavigate } from 'react-router-dom';
 
 interface StatementRecord {
   id: number;
@@ -37,6 +38,7 @@ export const CustomerStatements: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // Fetch customers with outstanding balances
   const { data: customers, isLoading } = useQuery({
@@ -95,7 +97,15 @@ export const CustomerStatements: React.FC = () => {
             Generate and send account statements to customers
           </p>
         </div>
-        <Dialog open={showGenerateDialog} onOpenChange={setShowGenerateDialog}>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => navigate('/accounting/customers/statements/compare')}
+          >
+            <Icon icon="solar:chart-bold-duotone" className="h-4 w-4 mr-2" />
+            Compare SOA
+          </Button>
+          <Dialog open={showGenerateDialog} onOpenChange={setShowGenerateDialog}>
           <DialogTrigger asChild>
             <Button>
               <Icon icon="solar:document-add-bold-duotone" className="h-4 w-4 mr-2" />
@@ -118,6 +128,7 @@ export const CustomerStatements: React.FC = () => {
             />
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Search */}

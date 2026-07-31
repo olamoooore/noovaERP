@@ -81,6 +81,7 @@ const CustomerInvoiceDetail = lazy(() => import('@/pages/accounting/customers/Cu
 const CustomerPayments = lazy(() => import('@/pages/accounting/customers/CustomerPayments').then(m => ({ default: m.CustomerPayments })))
 const CustomerFollowupReports = lazy(() => import('@/pages/accounting/customers/CustomerFollowupReports').then(m => ({ default: m.CustomerFollowupReports })))
 const CustomerStatements = lazy(() => import('@/pages/accounting/customers/CustomerStatements').then(m => ({ default: m.CustomerStatements })))
+const CustomerStatementComparison = lazy(() => import('@/pages/accounting/customers/CustomerStatementComparison').then(m => ({ default: m.CustomerStatementComparison })))
 const VendorsPage = lazy(() => import('@/pages/accounting/vendors/VendorsPage'))
 const VendorBills = lazy(() => import('@/pages/accounting/vendors/VendorBills').then(m => ({ default: m.VendorBills })))
 const CreateVendorBillPage = lazy(() => import('@/pages/accounting/vendors/CreateVendorBillPage').then(m => ({ default: m.CreateVendorBillPage })))
@@ -371,6 +372,7 @@ function App() {
                 <Route path="/accounting/customers/transactions" element={<ARTransactionsPage />} />
                 <Route path="/accounting/customers/followup-reports" element={<CustomerFollowupReports />} />
                 <Route path="/accounting/customers/statements" element={<CustomerStatements />} />
+                <Route path="/accounting/customers/statements/compare" element={<CustomerStatementComparison />} />
                 
                 {/* Vendor Section */}
                 <Route path="/accounting/vendors" element={<VendorsPage />} />
