@@ -16,6 +16,7 @@ interface LineItem {
   product_id: number | null
   product_name: string
   description: string
+  patient_name: string
   quantity: number
   unit: string
   unit_price: number | null
@@ -44,10 +45,11 @@ export function DeliveryOrderCreatePage() {
   const [notes, setNotes] = useState('')
   const [lineQuantities, setLineQuantities] = useState<Record<number, number>>({})
   const [lineLotNumbers, setLineLotNumbers] = useState<Record<number, string>>({})
+  const [linePatientNames, setLinePatientNames] = useState<Record<number, string>>({})
 
   // Standalone mode line items
   const [standaloneLines, setStandaloneLines] = useState<LineItem[]>([
-    { product_id: null, product_name: '', description: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' },
+    { product_id: null, product_name: '', description: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' },
   ])
 
   // Fetch customers for standalone mode
@@ -154,6 +156,7 @@ export function DeliveryOrderCreatePage() {
         sales_order_line_id: line.sales_order_line_id,
         quantity_delivered: lineQuantities[line.sales_order_line_id] || 0,
         lot_number: lineLotNumbers[line.sales_order_line_id] || undefined,
+        patient_name: linePatientNames[line.sales_order_line_id] || undefined,
       }))
 
     if (lines.length === 0) {
@@ -209,6 +212,7 @@ export function DeliveryOrderCreatePage() {
       lines: validLines.map((l) => ({
         product_id: l.product_id,
         description: l.description,
+        patient_name: l.patient_name || undefined,
         quantity_delivered: l.quantity,
         unit: l.unit,
         unit_price: l.unit_price || undefined,
@@ -225,8 +229,12 @@ export function DeliveryOrderCreatePage() {
     setLineLotNumbers((prev) => ({ ...prev, [lineId]: lot }))
   }
 
+  const updateLinePatientName = (lineId: number, patientName: string) => {
+    setLinePatientNames((prev) => ({ ...prev, [lineId]: patientName }))
+  }
+
   const addStandaloneLine = () => {
-    setStandaloneLines((prev) => [...prev, { product_id: null, product_name: '', description: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' }])
+    setStandaloneLines((prev) => [...prev, { product_id: null, product_name: '', description: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' }])
   }
 
   const removeStandaloneLine = (index: number) => {
@@ -438,6 +446,7 @@ export function DeliveryOrderCreatePage() {
                   <TableHead className="text-right">Already Delivered</TableHead>
                   <TableHead className="text-right">Remaining</TableHead>
                   <TableHead className="text-right">Deliver Now</TableHead>
+                  <TableHead>Patient Name</TableHead>
                   <TableHead>Lot Number</TableHead>
                 </TableRow>
               </TableHeader>
@@ -462,6 +471,15 @@ export function DeliveryOrderCreatePage() {
                           onChange={(e) => updateLineQty(line.sales_order_line_id, parseFloat(e.target.value) || 0)}
                           className="w-24 text-right"
                           placeholder="0"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="text"
+                          value={linePatientNames[line.sales_order_line_id] || ''}
+                          onChange={(e) => updateLinePatientName(line.sales_order_line_id, e.target.value)}
+                          className="w-40"
+                          placeholder="Patient name"
                         />
                       </TableCell>
                       <TableCell>
@@ -500,6 +518,7 @@ export function DeliveryOrderCreatePage() {
                 <TableRow>
                   <TableHead className="w-[200px]">Product</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead className="w-[180px]">Patient Name</TableHead>
                   <TableHead className="text-right w-[100px]">Quantity</TableHead>
                   <TableHead className="w-[100px]">Unit</TableHead>
                   <TableHead className="text-right w-[120px]">Unit Price</TableHead>
@@ -526,6 +545,13 @@ export function DeliveryOrderCreatePage() {
                         value={line.description}
                         onChange={(e) => updateStandaloneLine(idx, 'description', e.target.value)}
                         placeholder="Description"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={line.patient_name}
+                        onChange={(e) => updateStandaloneLine(idx, 'patient_name', e.target.value)}
+                        placeholder="Patient name"
                       />
                     </TableCell>
                     <TableCell className="text-right">

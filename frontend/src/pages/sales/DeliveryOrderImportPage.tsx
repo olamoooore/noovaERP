@@ -39,6 +39,7 @@ const TEMPLATE_COLUMNS = [
   { name: 'quantity', required: true, description: 'Quantity to deliver.' },
   { name: 'unit', required: false, description: 'Unit of measure. Default: pcs.' },
   { name: 'unit_price', required: false, description: 'Unit price per item.' },
+  { name: 'patient_name', required: false, description: 'Patient name for this line item.' },
 ]
 
 const csvValue = (v: string) => {
@@ -114,6 +115,7 @@ export function DeliveryOrderImportPage() {
         case 'quantity': return '10'
         case 'unit': return 'pcs'
         case 'unit_price': return '50.00'
+        case 'patient_name': return 'Jane Doe'
         default: return ''
       }
     })

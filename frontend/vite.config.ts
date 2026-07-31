@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
-const backendTarget = process.env.VITE_BACKEND_URL || 'http://localhost:8000'
+const backendTarget = process.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'
 const iotBackendTarget = process.env.VITE_IOT_BACKEND_URL || backendTarget
 
 export default defineConfig({

@@ -16,6 +16,7 @@ interface LineItem {
   product_id: number | null
   product_name: string
   description: string
+  patient_name: string
   quantity: number
   unit: string
   unit_price: number | null
@@ -87,6 +88,7 @@ export function DeliveryOrderEditPage() {
           product_id: l.product_id,
           product_name: l.product?.name || '',
           description: l.description || '',
+          patient_name: l.patient_name || '',
           quantity: parseFloat(l.quantity_delivered) || 1,
           unit: l.unit || 'pcs',
           unit_price: l.unit_price ? parseFloat(l.unit_price) : null,
@@ -123,7 +125,7 @@ export function DeliveryOrderEditPage() {
   }
 
   const addLine = () => {
-    setLines((prev) => [...prev, { product_id: null, product_name: '', description: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' }])
+    setLines((prev) => [...prev, { product_id: null, product_name: '', description: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' }])
   }
 
   const removeLine = (index: number) => {
@@ -146,6 +148,7 @@ export function DeliveryOrderEditPage() {
       lines: validLines.map((l) => ({
         product_id: l.product_id,
         description: l.description,
+        patient_name: l.patient_name || undefined,
         quantity_delivered: l.quantity,
         unit: l.unit,
         unit_price: l.unit_price || undefined,
@@ -271,6 +274,7 @@ export function DeliveryOrderEditPage() {
               <TableRow>
                 <TableHead className="w-[200px]">Product</TableHead>
                 <TableHead>Description</TableHead>
+                <TableHead className="w-[180px]">Patient Name</TableHead>
                 <TableHead className="text-right w-[100px]">Quantity</TableHead>
                 <TableHead className="w-[100px]">Unit</TableHead>
                 <TableHead className="text-right w-[120px]">Unit Price</TableHead>
@@ -294,6 +298,9 @@ export function DeliveryOrderEditPage() {
                   </TableCell>
                   <TableCell>
                     <Input value={line.description} onChange={(e) => updateLine(idx, 'description', e.target.value)} placeholder="Description" />
+                  </TableCell>
+                  <TableCell>
+                    <Input value={line.patient_name} onChange={(e) => updateLine(idx, 'patient_name', e.target.value)} placeholder="Patient name" />
                   </TableCell>
                   <TableCell className="text-right">
                     <Input type="number" min="0.01" step="0.01" value={line.quantity || ''} onChange={(e) => updateLine(idx, 'quantity', parseFloat(e.target.value) || 0)} className="w-24 text-right" />

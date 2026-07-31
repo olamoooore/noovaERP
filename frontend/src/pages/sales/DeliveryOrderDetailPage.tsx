@@ -396,6 +396,7 @@ export function DeliveryOrderDetailPage() {
                  <TableHead>#</TableHead>
                   <TableHead>Product</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead>Patient Name</TableHead>
                   <TableHead className="text-right">Qty Ordered</TableHead>
                   <TableHead className="text-right">Qty Delivered</TableHead>
                   <TableHead className="text-right">Unit</TableHead>
@@ -410,6 +411,7 @@ export function DeliveryOrderDetailPage() {
                   <TableCell>{index + 1}</TableCell>
                   <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
                   <TableCell>{line.description || '-'}</TableCell>
+                  <TableCell>{line.patient_name || '-'}</TableCell>
                   <TableCell className="text-right">{line.quantity_ordered}</TableCell>
                   <TableCell className="text-right font-medium text-green-600">{line.quantity_delivered}</TableCell>
                   <TableCell className="text-right">{line.unit}</TableCell>
@@ -420,7 +422,7 @@ export function DeliveryOrderDetailPage() {
               ))}
               {(!deliveryOrder.lines || deliveryOrder.lines.length === 0) && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                     No lines in this delivery order.
                   </TableCell>
                 </TableRow>
