@@ -10,6 +10,7 @@ class SalesOrderLine extends Model
     protected $fillable = [
         'sales_order_id',
         'product_id',
+        'model_number',
         'variant_id',
         'description',
         'sku',
@@ -85,10 +86,21 @@ class SalesOrderLine extends Model
     public function calculateLineTotal(): void
     {
         $baseTotal = $this->quantity * $this->unit_price;
-        $this->discount_amount = $this->discount_type === 'percentage'
-            ? $baseTotal * ($this->discount_value / 100)
-            : ($this->discount_value ?? 0);
-        $netTotal = $baseTotal - $this->discount_amount;
+
+        // When a discount_value is explicitly provided (percentage or fixed),
+        // derive discount_amount from it. Otherwise honour a directly-set
+        // discount_amount (e.g. flat discount from the invoice line editor or
+        // CSV import) instead of clobbering it to 0.
+        if (($this->discount_value ?? 0) > 0) {
+            $this->discount_amount = $this->discount_type === 'percentage'
+                ? $baseTotal * ($this->discount_value / 100)
+                : $this->discount_value;
+        } else {
+            $this->discount_amount = $this->discount_amount ?? 0;
+        }
+
+        $discount = $this->discount_amount;
+        $netTotal = $baseTotal - $discount;
 
         if ($this->tax_inclusive) {
             $divisor = 1 + ($this->tax_rate / 100);

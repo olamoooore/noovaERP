@@ -10,6 +10,7 @@ class QuotationLine extends Model
     protected $fillable = [
         'quotation_id',
         'product_id',
+        'model_number',
         'description',
         'quantity',
         'unit_price',

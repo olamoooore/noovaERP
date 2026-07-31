@@ -11,6 +11,7 @@ import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombo
 
 interface QuotationLine {
   product_id: string;
+  model_number: string;
   description: string;
   quantity: number;
   unit_price: number | '';
@@ -26,6 +27,7 @@ interface CustomerRecord {
 
 const emptyLine = (): QuotationLine => ({
   product_id: '',
+  model_number: '',
   description: '',
   quantity: 1,
   unit_price: '',
@@ -110,6 +112,7 @@ export const QuotationEditPage: React.FC = () => {
 
     const mappedLines = (quotation.lines || []).map((line: any): QuotationLine => ({
       product_id: line.product_id ? String(line.product_id) : '',
+      model_number: line.model_number || '',
       description: line.description || '',
       quantity: line.quantity ?? 1,
       unit_price: line.unit_price != null ? Number(line.unit_price) : '',
@@ -143,12 +146,13 @@ export const QuotationEditPage: React.FC = () => {
     const updated = [...lines];
     updated[index] = { ...updated[index], [field]: value };
 
-    if (field === 'product_id' && value && products) {
-      const product = products.find((item: any) => String(item.id) === String(value));
-      if (product) {
-        updated[index].unit_price = parseFloat(product.price || product.selling_price || '0');
-      }
+  if (field === 'product_id' && value && products) {
+    const product = products.find((item: any) => String(item.id) === String(value));
+    if (product) {
+      updated[index].unit_price = parseFloat(product.price || product.selling_price || '0');
+      updated[index].model_number = product.manufacturer_part_number || '';
     }
+  }
 
     setLines(updated);
   };
@@ -229,16 +233,17 @@ export const QuotationEditPage: React.FC = () => {
       notes: notes || null,
       terms: terms || null,
       discount_amount: discountAmt || 0,
-      lines: lines
-        .filter((line) => line.description || line.product_id)
-        .map((line) => ({
-          product_id: line.product_id ? parseInt(line.product_id, 10) : null,
-          description: line.description || 'Item',
-          quantity: line.quantity,
-          unit_price: line.unit_price === '' ? 0 : line.unit_price,
-          tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
-          discount_amount: line.discount_amount === '' ? 0 : line.discount_amount,
-        })),
+  lines: lines
+    .filter((line) => line.description || line.product_id)
+    .map((line) => ({
+      product_id: line.product_id ? parseInt(line.product_id, 10) : null,
+      model_number: line.model_number || null,
+      description: line.description || 'Item',
+      quantity: line.quantity,
+      unit_price: line.unit_price === '' ? 0 : line.unit_price,
+      tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
+      discount_amount: line.discount_amount === '' ? 0 : line.discount_amount,
+    })),
     };
 
     updateMutation.mutate(payload);
@@ -500,17 +505,18 @@ export const QuotationEditPage: React.FC = () => {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2 px-2 w-12">#</th>
-                    <th className="text-left py-2 px-2">Product</th>
-                    <th className="text-left py-2 px-2">Description</th>
-                    <th className="text-right py-2 px-2 w-24">Qty</th>
-                    <th className="text-right py-2 px-2 w-32">Unit Price</th>
-                    <th className="text-right py-2 px-2 w-24">Tax %</th>
-                    <th className="text-right py-2 px-2 w-24">Disc</th>
-                    <th className="text-right py-2 px-2 w-32">Line Total</th>
-                    <th className="py-2 px-2 w-40">Actions</th>
-                  </tr>
+  <tr className="border-b">
+    <th className="text-left py-2 px-2 w-12">#</th>
+    <th className="text-left py-2 px-2">Product</th>
+    <th className="text-left py-2 px-2">Description</th>
+    <th className="text-left py-2 px-2 w-32">Model #</th>
+    <th className="text-right py-2 px-2 w-24">Qty</th>
+    <th className="text-right py-2 px-2 w-32">Unit Price</th>
+    <th className="text-right py-2 px-2 w-24">Tax %</th>
+    <th className="text-right py-2 px-2 w-24">Disc</th>
+    <th className="text-right py-2 px-2 w-32">Line Total</th>
+    <th className="py-2 px-2 w-40">Actions</th>
+  </tr>
                 </thead>
                 <tbody>
                   {lines.map((line, index) => (
@@ -543,6 +549,15 @@ export const QuotationEditPage: React.FC = () => {
                           className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
                           placeholder="Description"
                           required
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="text"
+                          value={line.model_number}
+                          onChange={(event) => updateLine(index, 'model_number', event.target.value)}
+                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                          placeholder="Model #"
                         />
                       </td>
                       <td className="py-2 px-2">

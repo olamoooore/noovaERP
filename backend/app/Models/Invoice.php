@@ -191,6 +191,11 @@ class Invoice extends Model
         return $this->belongsTo(Quotation::class, 'quotation_id');
     }
 
+    public function deliveryOrders(): HasMany
+    {
+        return $this->hasMany(\Modules\Sales\Models\DeliveryOrder::class, 'invoice_id');
+    }
+
     public function doctor()
     {
         return $this->belongsTo(\Modules\Contact\src\Models\CoreContact::class, 'doctor_contact_id');

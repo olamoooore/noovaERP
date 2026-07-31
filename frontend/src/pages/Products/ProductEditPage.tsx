@@ -179,6 +179,10 @@ export function ProductEditPage() {
     height: '',
     dimension_unit: 'cm',
 
+    // Manufacturer
+    manufacturer: '',
+    manufacturer_part_number: '',
+
     image: '' as string,
     gallery: [] as string[],
 
@@ -350,6 +354,8 @@ export function ProductEditPage() {
       width: product.width != null ? String(product.width) : '',
       height: product.height != null ? String(product.height) : '',
       dimension_unit: product.dimension_unit || 'cm',
+      manufacturer: product.manufacturer || '',
+      manufacturer_part_number: product.manufacturer_part_number || '',
     }))
 
     // hydrate suppliers
@@ -400,7 +406,7 @@ export function ProductEditPage() {
       const fd = new FormData()
       fd.append('file', file)
       fd.append('folder', folder)
-      const response = await api.post('/uploads', fd, {
+      const response = await api.post('/upload', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       return response.data as { url: string; path: string }
@@ -603,6 +609,8 @@ export function ProductEditPage() {
       length: formData.length ? parseFloat(formData.length) : null,
       width: formData.width ? parseFloat(formData.width) : null,
       height: formData.height ? parseFloat(formData.height) : null,
+      manufacturer: formData.manufacturer || null,
+      manufacturer_part_number: formData.manufacturer_part_number || null,
 
       // Suppliers
       suppliers: productSuppliers.filter(s => s.supplier_id).map(s => ({
@@ -759,6 +767,26 @@ export function ProductEditPage() {
                         <SelectItem value="service">Service</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-manufacturer">Manufacturer</Label>
+                    <Input
+                      id="edit-manufacturer"
+                      value={formData.manufacturer}
+                      onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value })}
+                      placeholder="e.g. Pfizer, Samsung"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-manufacturer_part_number">Model / Part Number</Label>
+                    <Input
+                      id="edit-manufacturer_part_number"
+                      value={formData.manufacturer_part_number}
+                      onChange={(e) => setFormData({ ...formData, manufacturer_part_number: e.target.value })}
+                      placeholder="e.g. MOD-12345"
+                    />
                   </div>
 
                   <div className="space-y-2 flex flex-col">

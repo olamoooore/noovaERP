@@ -62,6 +62,9 @@ interface Invoice {
   }
   lines: InvoiceLine[]
   payments: Payment[]
+  sales_order?: { id: number; sales_order_number: string }
+  quotation?: { id: number; quotation_number: string }
+  delivery_orders?: { id: number; delivery_order_number: string; status: string }[]
 }
 
 interface InvoiceLine {
@@ -71,7 +74,9 @@ interface InvoiceLine {
     id: number
     name: string
     sku: string
+    manufacturer_part_number?: string
   }
+  model_number?: string
   description: string
   quantity: number
   unit_price: number
@@ -236,6 +241,46 @@ export function InvoiceDetailPage() {
         </div>
       </div>
 
+      {/* Smart Buttons */}
+      <div className="flex gap-3 print:hidden">
+        {invoice.quotation && (
+          <button
+            onClick={() => navigate(`/quotations/${invoice.quotation!.id}`)}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+          >
+            <Icon icon="solar:document-text-bold-duotone" className="h-5 w-5 text-purple-600" />
+            <div className="text-left">
+              <div className="font-bold text-foreground">{invoice.quotation.quotation_number}</div>
+              <div className="text-xs text-muted-foreground">Quotation</div>
+            </div>
+          </button>
+        )}
+        {invoice.sales_order && (
+          <button
+            onClick={() => navigate(`/sales/orders/${invoice.sales_order!.id}`)}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+          >
+            <Icon icon="solar:cart-large-2-bold-duotone" className="h-5 w-5 text-green-600" />
+            <div className="text-left">
+              <div className="font-bold text-foreground">{invoice.sales_order.sales_order_number}</div>
+              <div className="text-xs text-muted-foreground">Sales Order</div>
+            </div>
+          </button>
+        )}
+        {invoice.delivery_orders && invoice.delivery_orders.length > 0 && (
+          <button
+            onClick={() => navigate('/delivery-orders')}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+          >
+            <Icon icon="solar:package-bold" className="h-5 w-5 text-orange-600" />
+            <div className="text-left">
+              <div className="font-bold text-foreground">{invoice.delivery_orders.length}</div>
+              <div className="text-xs text-muted-foreground">Delivery Order{invoice.delivery_orders.length !== 1 ? 's' : ''}</div>
+            </div>
+          </button>
+        )}
+      </div>
+
       {/* Invoice Content */}
       <Card className="print:shadow-none">
         <CardContent className="p-8">
@@ -320,8 +365,10 @@ export function InvoiceDetailPage() {
                     <TableCell>
                       <div>
                         <p className="font-medium">{line.description}</p>
-                        {line.product?.sku && (
-                          <p className="text-xs text-muted-foreground">SKU: {line.product.sku}</p>
+                        {(line.model_number || line.product?.manufacturer_part_number || line.product?.sku) && (
+                          <p className="text-xs text-muted-foreground">
+                            {line.model_number ? `Model: ${line.model_number}` : line.product?.manufacturer_part_number ? `Part #: ${line.product.manufacturer_part_number}` : `SKU: ${line.product?.sku}`}
+                          </p>
                         )}
                       </div>
                     </TableCell>

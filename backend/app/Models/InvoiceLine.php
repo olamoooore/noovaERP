@@ -14,6 +14,7 @@ class InvoiceLine extends Model
         'invoice_id',
         'line_type',
         'product_id',
+        'model_number',
         'gl_account_id',
         'cost_center_id',
         'project_id',
@@ -74,12 +75,11 @@ class InvoiceLine extends Model
             $netAfterDiscount = $netBeforeDiscount * (1 - $discountRatio);
             $this->line_total = round($netAfterDiscount + $this->tax_amount, 2);
         } else {
-            // Tax is exclusive: add tax on top of net
-            $netBeforeDiscount = $gross;
-            $this->tax_amount = round($netBeforeDiscount * ($this->tax_rate / 100), 2);
-
-            // Apply discount to net only
-            $netAfterDiscount = $netBeforeDiscount - $discount;
+            // Tax is exclusive: add tax on top of net-after-discount.
+            // Apply discount to net first, then compute tax on the reduced
+            // amount so the tax base is post-discount.
+            $netAfterDiscount = $gross - $discount;
+            $this->tax_amount = round($netAfterDiscount * ($this->tax_rate / 100), 2);
             $this->line_total = round($netAfterDiscount + $this->tax_amount, 2);
         }
     }

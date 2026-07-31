@@ -88,6 +88,7 @@ class InvoiceController extends Controller
             'shipping_contact_id' => 'nullable|exists:core_contacts,id',
             'lines' => 'required|array|min:1',
             'lines.*.product_id' => 'nullable|exists:products,id',
+            'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.quantity' => 'required|integer|min:1',
             'lines.*.unit_price' => 'required|numeric|min:0',
@@ -103,6 +104,21 @@ class InvoiceController extends Controller
                 'message' => "Cannot create invoice dated in a closed period. {$lockResult['message']}",
                 'lock_date' => $lockResult['lock_date'],
                 'transaction_date' => $invoiceDate,
+            ], 422);
+        }
+
+        // Reject document discount exceeding the line subtotal
+        $subtotal = array_reduce($validated['lines'], function ($sum, $line) {
+            $qty = (int) ($line['quantity'] ?? 0);
+            $price = (float) ($line['unit_price'] ?? 0);
+            $lineDiscount = (float) ($line['discount_amount'] ?? 0);
+
+            return $sum + ($qty * $price) - $lineDiscount;
+        }, 0);
+        $docDiscount = (float) ($validated['discount_amount'] ?? 0);
+        if ($docDiscount > 0 && $subtotal > 0 && $docDiscount > $subtotal) {
+            return response()->json([
+                'message' => "Discount amount ({$docDiscount}) exceeds the invoice subtotal ({$subtotal}).",
             ], 422);
         }
 
@@ -166,6 +182,7 @@ class InvoiceController extends Controller
 
         $salesLines = array_map(fn ($line) => [
             'product_id' => $line['product_id'] ?? null,
+            'model_number' => $line['model_number'] ?? null,
             'description' => $line['description'],
             'quantity' => $line['quantity'],
             'unit_price' => $line['unit_price'],
@@ -254,7 +271,7 @@ class InvoiceController extends Controller
 
     public function show($id)
     {
-        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor'])->find($id);
+        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'salesOrder', 'quotation', 'deliveryOrders'])->find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
@@ -303,6 +320,17 @@ class InvoiceController extends Controller
             'billing_contact_id' => 'nullable|exists:core_contacts,id',
             'shipping_contact_id' => 'nullable|exists:core_contacts,id',
         ]);
+
+        // Reject document discount exceeding the line subtotal
+        $subtotal = $invoice->lines->reduce(function ($sum, $line) {
+            return $sum + ($line->quantity * $line->unit_price) - ($line->discount_amount ?? 0);
+        }, 0);
+        $docDiscount = (float) ($validated['discount_amount'] ?? $invoice->discount_amount ?? 0);
+        if ($docDiscount > 0 && $subtotal > 0 && $docDiscount > $subtotal) {
+            return response()->json([
+                'message' => "Discount amount ({$docDiscount}) exceeds the invoice subtotal ({$subtotal}).",
+            ], 422);
+        }
 
         $invoice->update($validated);
         $invoice->calculateTotals();

@@ -543,24 +543,37 @@ export function ProductCreatePage() {
       const fd = new FormData()
       fd.append('file', file)
       fd.append('folder', folder)
-      const response = await api.post('/uploads', fd, {
+      const response = await api.post('/upload', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       return response.data as { url: string; path: string }
     },
   })
 
+  // When true, a successful create navigates to the detailed edit page instead
+  // of the product list (used by the "Save & Add Details" action).
+  const addDetailsAfterSave = useRef(false)
+
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
       const response = await api.post('/products', data)
       return response.data
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       toast({ title: 'Product created successfully' })
+      if (addDetailsAfterSave.current) {
+        addDetailsAfterSave.current = false
+        const newId = data?.id ?? data?.data?.id
+        if (newId) {
+          navigate(`/products/${newId}/edit`)
+          return
+        }
+      }
       navigate('/products')
     },
     onError: () => {
+      addDetailsAfterSave.current = false
       toast({ variant: 'destructive', title: 'Failed to create product' })
     },
   })
@@ -720,6 +733,8 @@ export function ProductCreatePage() {
       width: formData.width ? parseFloat(formData.width) : null,
       height: formData.height ? parseFloat(formData.height) : null,
       dimension_unit: formData.dimension_unit || null,
+      manufacturer: (formData as any).manufacturer || null,
+      manufacturer_part_number: (formData as any).manufacturer_part_number || null,
 
       // Suppliers
       suppliers: productSuppliers.filter(s => s.supplier_id).map(s => ({
@@ -736,6 +751,18 @@ export function ProductCreatePage() {
 
       attributes: payloadAttributes,
     })
+  }
+
+  // "Save & Add Details": persist the product first, then (on success) open the
+  // detailed edit form for completion — see createMutation.onSuccess.
+  const handleSaveAndAddDetails = () => {
+    addDetailsAfterSave.current = true
+    const form = document.getElementById('product-form') as HTMLFormElement | null
+    if (form?.requestSubmit) {
+      form.requestSubmit()
+    } else {
+      form?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }))
+    }
   }
 
   const selectedTaxRate = useMemo(() => {
@@ -919,7 +946,7 @@ export function ProductCreatePage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="submit" form="product-form" disabled={createMutation.isPending}>Save Product</Button>
-            <Button type="button" variant="secondary" onClick={() => handleTopTabClick('product')}>Save & Add Details</Button>
+            <Button type="button" variant="secondary" onClick={handleSaveAndAddDetails} disabled={createMutation.isPending}>Save & Add Details</Button>
           </div>
         </CardContent>
       </Card>
@@ -1060,6 +1087,26 @@ export function ProductCreatePage() {
                         <SelectItem value="service">Service</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="manufacturer">Manufacturer</Label>
+                    <Input
+                      id="manufacturer"
+                      value={(formData as any).manufacturer || ''}
+                      onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value } as any)}
+                      placeholder="e.g. Pfizer, Samsung"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="manufacturer_part_number">Model / Part Number</Label>
+                    <Input
+                      id="manufacturer_part_number"
+                      value={(formData as any).manufacturer_part_number || ''}
+                      onChange={(e) => setFormData({ ...formData, manufacturer_part_number: e.target.value } as any)}
+                      placeholder="e.g. MOD-12345"
+                    />
                   </div>
 
                   <div className="space-y-2 flex flex-col">

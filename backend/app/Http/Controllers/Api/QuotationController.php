@@ -79,7 +79,8 @@ class QuotationController extends Controller
             'terms' => 'nullable|string',
             'discount_amount' => 'nullable|numeric|min:0',
             'lines' => 'required|array|min:1',
-            'lines.*.product_id' => 'nullable|exists:products,id',
+            'lines.*.product_id' => 'required|exists:products,id',
+            'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.quantity' => 'required|integer|min:1',
             'lines.*.unit_price' => 'required|numeric|min:0',
@@ -118,6 +119,7 @@ class QuotationController extends Controller
                 foreach ($validated['lines'] as $lineData) {
                     $quotation->lines()->create([
                         'product_id' => $lineData['product_id'] ?? null,
+                        'model_number' => $lineData['model_number'] ?? null,
                         'description' => $lineData['description'],
                         'quantity' => $lineData['quantity'],
                         'unit_price' => $lineData['unit_price'],
@@ -147,7 +149,7 @@ class QuotationController extends Controller
 
     public function show($id)
     {
-        $quotation = Quotation::with(['customer', 'lines.product', 'salesOrder', 'invoices', 'billingContact', 'shippingContact'])->find($id);
+        $quotation = Quotation::with(['customer', 'lines.product', 'salesOrder', 'invoices', 'billingContact', 'shippingContact', 'deliveryOrders'])->find($id);
 
         if (! $quotation) {
             return response()->json(['message' => 'Quotation not found'], 404);
@@ -189,6 +191,14 @@ class QuotationController extends Controller
             'notes' => 'nullable|string',
             'terms' => 'nullable|string',
             'discount_amount' => 'nullable|numeric|min:0',
+            'lines' => 'nullable|array|min:1',
+            'lines.*.product_id' => 'required_with:lines|exists:products,id',
+            'lines.*.model_number' => 'nullable|string|max:100',
+            'lines.*.description' => 'required_with:lines|string',
+            'lines.*.quantity' => 'required_with:lines|integer|min:1',
+            'lines.*.unit_price' => 'required_with:lines|numeric|min:0',
+            'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ]);
 
         $quotation->update($validated);
@@ -197,7 +207,8 @@ class QuotationController extends Controller
             $quotation->lines()->delete();
             foreach ($request->lines as $lineData) {
                 $quotation->lines()->create([
-                    'product_id' => $lineData['product_id'] ?? null,
+                    'product_id' => $lineData['product_id'],
+                    'model_number' => $lineData['model_number'] ?? null,
                     'description' => $lineData['description'],
                     'quantity' => $lineData['quantity'],
                     'unit_price' => $lineData['unit_price'],
@@ -485,6 +496,7 @@ class QuotationController extends Controller
 
         $created = 0;
         $errors = [];
+        $conflictGroups = [];
         $customerCache = [];
         $productCache = [];
 
@@ -492,6 +504,30 @@ class QuotationController extends Controller
             $group = $groups[$key];
             $firstIndex = $group['first_index'];
             $headerRow = $group['header'];
+
+            // Detect conflicting customer codes within the same quotation group
+            $customerCodes = [];
+            foreach ($group['lines'] as $lineRow) {
+                $code = trim((string) ($lineRow['customer_code'] ?? ''));
+                $name = trim((string) ($lineRow['customer_name'] ?? ''));
+                $identifier = $code ?: $name;
+                if ($identifier !== '') {
+                    $customerCodes[$identifier] = true;
+                }
+            }
+            if (count($customerCodes) > 1) {
+                $lineNumbers = [];
+                foreach ($group['lines'] as $idx => $lineRow) {
+                    $lineNumbers[] = $firstIndex + $idx + 2; // +2 for 1-indexed + header
+                }
+                $conflictGroups[] = [
+                    'quotation_number' => $headerRow['quotation_number'] ?? '',
+                    'customer_codes' => array_keys($customerCodes),
+                    'line_numbers' => $lineNumbers,
+                ];
+                $errors[] = "Row {$lineNumbers[0]}: Conflicting customers for quotation_number '".($headerRow['quotation_number'] ?? '')."': ".implode(', ', array_keys($customerCodes)).'. Each quotation_number must belong to a single customer.';
+                continue;
+            }
 
             try {
                 // Re-apply tenant search_path on every iteration to survive connection resets
@@ -639,6 +675,7 @@ class QuotationController extends Controller
         return response()->json([
             'created' => $created,
             'errors' => $errors,
+            'conflict_groups' => $conflictGroups,
         ], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
     }
 
