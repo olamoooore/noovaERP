@@ -185,6 +185,33 @@ class SalesOrder extends Model
 
     public static function generateOrderNumber(): string
     {
+        $maxAttempts = 10;
+        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+            $number = static::generateOrderNumberRaw();
+            if (! static::withTrashed()->where('sales_order_number', $number)->exists()) {
+                return $number;
+            }
+            \Illuminate\Support\Facades\Log::warning('SalesOrder number collision, retrying', [
+                'number' => $number,
+                'attempt' => $attempt + 1,
+            ]);
+        }
+
+        // Final fallback: use timestamp-based suffix
+        return 'SO-'.date('Y').'-'.date('is');
+    }
+
+    private static function generateOrderNumberRaw(): string
+    {
+        try {
+            return app(\App\Services\DocumentNumberingService::class)
+                ->generate('sales_order', 'SO-{YYYY}-{SEQ:4}');
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('DocumentNumberingService failed for SO, using fallback', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         $latest = static::withTrashed()
             ->where('sales_order_number', 'like', 'SO-'.date('Y').'-%')
             ->orderBy('id', 'desc')

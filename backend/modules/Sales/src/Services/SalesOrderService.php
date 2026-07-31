@@ -41,6 +41,7 @@ class SalesOrderService
             foreach ($lines as $lineData) {
                 $line = $order->lines()->create([
                     'product_id' => $lineData['product_id'] ?? null,
+                    'model_number' => $lineData['model_number'] ?? null,
                     'variant_id' => $lineData['variant_id'] ?? null,
                     'description' => $lineData['description'] ?? '',
                     'sku' => $lineData['sku'] ?? null,

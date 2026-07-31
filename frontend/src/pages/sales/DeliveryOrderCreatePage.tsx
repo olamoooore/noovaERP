@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 interface LineItem {
   product_id: number | null
   product_name: string
+  model_number: string
   description: string
   patient_name: string
   quantity: number
@@ -49,7 +50,7 @@ export function DeliveryOrderCreatePage() {
 
   // Standalone mode line items
   const [standaloneLines, setStandaloneLines] = useState<LineItem[]>([
-    { product_id: null, product_name: '', description: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' },
+    { product_id: null, product_name: '', model_number: '', description: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' },
   ])
 
   // Fetch customers for standalone mode
@@ -197,6 +198,12 @@ export function DeliveryOrderCreatePage() {
       return
     }
 
+    const linesWithoutProduct = validLines.filter((l) => !l.product_id)
+    if (linesWithoutProduct.length > 0) {
+      toast({ variant: 'destructive', title: 'Each line must have a product selected' })
+      return
+    }
+
     createMutation.mutate({
       customer_id: parseInt(customerId),
       warehouse_id: parseInt(warehouseId),
@@ -211,6 +218,7 @@ export function DeliveryOrderCreatePage() {
       notes: notes || undefined,
       lines: validLines.map((l) => ({
         product_id: l.product_id,
+        model_number: l.model_number || null,
         description: l.description,
         patient_name: l.patient_name || undefined,
         quantity_delivered: l.quantity,
@@ -234,7 +242,7 @@ export function DeliveryOrderCreatePage() {
   }
 
   const addStandaloneLine = () => {
-    setStandaloneLines((prev) => [...prev, { product_id: null, product_name: '', description: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' }])
+    setStandaloneLines((prev) => [...prev, { product_id: null, product_name: '', model_number: '', description: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' }])
   }
 
   const removeStandaloneLine = (index: number) => {

@@ -90,6 +90,11 @@ class Quotation extends Model
         return $this->hasMany(Invoice::class, 'quotation_id');
     }
 
+    public function deliveryOrders(): HasMany
+    {
+        return $this->hasMany(\Modules\Sales\Models\DeliveryOrder::class, 'quotation_id');
+    }
+
     public function billingContact(): BelongsTo
     {
         return $this->belongsTo(\Modules\Contact\src\Models\CoreContact::class, 'billing_contact_id');

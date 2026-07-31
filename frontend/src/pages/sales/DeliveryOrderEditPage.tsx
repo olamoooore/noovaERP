@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 interface LineItem {
   product_id: number | null
   product_name: string
+  model_number: string
   description: string
   patient_name: string
   quantity: number
@@ -87,6 +88,7 @@ export function DeliveryOrderEditPage() {
         deliveryOrder.lines?.map((l: any) => ({
           product_id: l.product_id,
           product_name: l.product?.name || '',
+          model_number: l.model_number || '',
           description: l.description || '',
           patient_name: l.patient_name || '',
           quantity: parseFloat(l.quantity_delivered) || 1,
@@ -125,7 +127,7 @@ export function DeliveryOrderEditPage() {
   }
 
   const addLine = () => {
-    setLines((prev) => [...prev, { product_id: null, product_name: '', description: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' }])
+    setLines((prev) => [...prev, { product_id: null, product_name: '', model_number: '', description: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' }])
   }
 
   const removeLine = (index: number) => {
@@ -147,6 +149,7 @@ export function DeliveryOrderEditPage() {
       notes: notes || undefined,
       lines: validLines.map((l) => ({
         product_id: l.product_id,
+        model_number: l.model_number || null,
         description: l.description,
         patient_name: l.patient_name || undefined,
         quantity_delivered: l.quantity,

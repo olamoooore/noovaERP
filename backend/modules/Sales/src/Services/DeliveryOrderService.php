@@ -90,6 +90,7 @@ class DeliveryOrderService
                     'delivery_order_id' => $deliveryOrder->id,
                     'sales_order_line_id' => $soLine->id,
                     'product_id' => $soLine->product_id,
+                    'model_number' => $lineData['model_number'] ?? $soLine->model_number ?? null,
                     'description' => $lineData['description'] ?? $soLine->description,
                     'patient_name' => $lineData['patient_name'] ?? null,
                     'quantity_ordered' => (float) $soLine->quantity,
@@ -156,10 +157,27 @@ class DeliveryOrderService
                     throw new \Exception('Each line must have a quantity greater than 0.');
                 }
 
+                // Check available stock for stock-tracked products
+                $productId = $lineData['product_id'] ?? null;
+                if ($productId) {
+                    $product = \App\Models\Product::find($productId);
+                    if ($product && (bool) ($product->track_inventory ?? false)) {
+                        $stockLevel = $this->inventoryService->getStockLevel((int) $productId, (int) $warehouseId);
+                        $available = $stockLevel ? (float) $stockLevel->quantity : 0;
+                        if ($quantityDelivered > $available) {
+                            throw new \Exception(
+                                "Insufficient stock for {$product->name}. "
+                                ."Available: {$available}, requested: {$quantityDelivered}."
+                            );
+                        }
+                    }
+                }
+
                 DeliveryOrderLine::create([
                     'delivery_order_id' => $deliveryOrder->id,
                     'sales_order_line_id' => null,
                     'product_id' => $lineData['product_id'] ?? null,
+                    'model_number' => $lineData['model_number'] ?? null,
                     'description' => $lineData['description'] ?? null,
                     'patient_name' => $lineData['patient_name'] ?? null,
                     'quantity_ordered' => $quantityDelivered,

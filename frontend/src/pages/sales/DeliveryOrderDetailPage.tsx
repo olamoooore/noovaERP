@@ -255,14 +255,6 @@ export function DeliveryOrderDetailPage() {
               {resetToDraftMutation.isPending ? 'Resetting...' : 'Reset to Draft'}
             </Button>
           )}
-          {deliveryOrder.sales_order && (
-            <Button
-              variant="outline"
-              onClick={() => navigate(`/sales/orders/${deliveryOrder.sales_order.id}`)}
-            >
-              View Sales Order
-            </Button>
-          )}
           <Button
             variant="outline"
             onClick={async () => {
@@ -295,6 +287,46 @@ export function DeliveryOrderDetailPage() {
             </Button>
           )}
         </div>
+      </div>
+
+      {/* Odoo-style smart buttons */}
+      <div className="flex gap-3">
+        {deliveryOrder.sales_order && (
+          <button
+            onClick={() => navigate(`/sales/orders/${deliveryOrder.sales_order.id}`)}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+          >
+            <Icon icon="solar:cart-large-2-bold-duotone" className="h-5 w-5 text-green-600" />
+            <div className="text-left">
+              <div className="font-bold text-foreground">{deliveryOrder.sales_order.sales_order_number}</div>
+              <div className="text-xs text-muted-foreground">Sales Order</div>
+            </div>
+          </button>
+        )}
+        {deliveryOrder.invoice && (
+          <button
+            onClick={() => navigate(`/invoices/${deliveryOrder.invoice.id}`)}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+          >
+            <Icon icon="solar:bill-list-bold-duotone" className="h-5 w-5 text-blue-600" />
+            <div className="text-left">
+              <div className="font-bold text-foreground">{deliveryOrder.invoice.invoice_number}</div>
+              <div className="text-xs text-muted-foreground">Invoice</div>
+            </div>
+          </button>
+        )}
+        {deliveryOrder.quotation && (
+          <button
+            onClick={() => navigate(`/quotations/${deliveryOrder.quotation.id}`)}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+          >
+            <Icon icon="solar:document-text-bold-duotone" className="h-5 w-5 text-purple-600" />
+            <div className="text-left">
+              <div className="font-bold text-foreground">{deliveryOrder.quotation.quotation_number}</div>
+              <div className="text-xs text-muted-foreground">Quotation</div>
+            </div>
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -356,11 +388,29 @@ export function DeliveryOrderDetailPage() {
               </div>
               <div>
                 <div className="text-muted-foreground">Invoice</div>
-                <div className="font-medium">{deliveryOrder.invoice?.invoice_number || '-'}</div>
+                <div className="font-medium">
+                  {deliveryOrder.invoice ? (
+                    <button
+                      onClick={() => navigate(`/invoices/${deliveryOrder.invoice.id}`)}
+                      className="text-primary hover:underline cursor-pointer"
+                    >
+                      {deliveryOrder.invoice.invoice_number}
+                    </button>
+                  ) : '-'}
+                </div>
               </div>
               <div>
                 <div className="text-muted-foreground">Quotation</div>
-                <div className="font-medium">{deliveryOrder.quotation?.quotation_number || '-'}</div>
+                <div className="font-medium">
+                  {deliveryOrder.quotation ? (
+                    <button
+                      onClick={() => navigate(`/quotations/${deliveryOrder.quotation.id}`)}
+                      className="text-primary hover:underline cursor-pointer"
+                    >
+                      {deliveryOrder.quotation.quotation_number}
+                    </button>
+                  ) : '-'}
+                </div>
               </div>
             </div>
 
@@ -410,7 +460,16 @@ export function DeliveryOrderDetailPage() {
                 <TableRow key={line.id}>
                   <TableCell>{index + 1}</TableCell>
                   <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
-                  <TableCell>{line.description || '-'}</TableCell>
+                  <TableCell>
+                    <div>
+                      <p>{line.description || '-'}</p>
+                      {(line.model_number || line.product?.manufacturer_part_number) && (
+                        <p className="text-xs text-muted-foreground">
+                          {line.model_number ? `Model: ${line.model_number}` : `Part #: ${line.product?.manufacturer_part_number}`}
+                        </p>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>{line.patient_name || '-'}</TableCell>
                   <TableCell className="text-right">{line.quantity_ordered}</TableCell>
                   <TableCell className="text-right font-medium text-green-600">{line.quantity_delivered}</TableCell>

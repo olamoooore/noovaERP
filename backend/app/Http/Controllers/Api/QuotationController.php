@@ -79,7 +79,8 @@ class QuotationController extends Controller
             'terms' => 'nullable|string',
             'discount_amount' => 'nullable|numeric|min:0',
             'lines' => 'required|array|min:1',
-            'lines.*.product_id' => 'nullable|exists:products,id',
+            'lines.*.product_id' => 'required|exists:products,id',
+            'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.quantity' => 'required|integer|min:1',
             'lines.*.unit_price' => 'required|numeric|min:0',
@@ -118,6 +119,7 @@ class QuotationController extends Controller
                 foreach ($validated['lines'] as $lineData) {
                     $quotation->lines()->create([
                         'product_id' => $lineData['product_id'] ?? null,
+                        'model_number' => $lineData['model_number'] ?? null,
                         'description' => $lineData['description'],
                         'quantity' => $lineData['quantity'],
                         'unit_price' => $lineData['unit_price'],
@@ -147,7 +149,7 @@ class QuotationController extends Controller
 
     public function show($id)
     {
-        $quotation = Quotation::with(['customer', 'lines.product', 'salesOrder', 'invoices', 'billingContact', 'shippingContact'])->find($id);
+        $quotation = Quotation::with(['customer', 'lines.product', 'salesOrder', 'invoices', 'billingContact', 'shippingContact', 'deliveryOrders'])->find($id);
 
         if (! $quotation) {
             return response()->json(['message' => 'Quotation not found'], 404);
@@ -189,6 +191,14 @@ class QuotationController extends Controller
             'notes' => 'nullable|string',
             'terms' => 'nullable|string',
             'discount_amount' => 'nullable|numeric|min:0',
+            'lines' => 'nullable|array|min:1',
+            'lines.*.product_id' => 'required_with:lines|exists:products,id',
+            'lines.*.model_number' => 'nullable|string|max:100',
+            'lines.*.description' => 'required_with:lines|string',
+            'lines.*.quantity' => 'required_with:lines|integer|min:1',
+            'lines.*.unit_price' => 'required_with:lines|numeric|min:0',
+            'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ]);
 
         $quotation->update($validated);
@@ -197,7 +207,8 @@ class QuotationController extends Controller
             $quotation->lines()->delete();
             foreach ($request->lines as $lineData) {
                 $quotation->lines()->create([
-                    'product_id' => $lineData['product_id'] ?? null,
+                    'product_id' => $lineData['product_id'],
+                    'model_number' => $lineData['model_number'] ?? null,
                     'description' => $lineData['description'],
                     'quantity' => $lineData['quantity'],
                     'unit_price' => $lineData['unit_price'],
@@ -452,11 +463,17 @@ class QuotationController extends Controller
             }
             $row = [];
             foreach ($header as $idx => $key) {
-                if ($key !== '') {
-                    $row[$key] = $data[$idx] ?? null;
+                if ($key !== '' && isset($data[$idx])) {
+                    $val = $data[$idx];
+                    if (! mb_check_encoding($val, 'UTF-8')) {
+                        $val = mb_convert_encoding($val, 'UTF-8', 'UTF-8');
+                    }
+                    $row[$key] = $val;
                 }
             }
-            $rows[] = $row;
+            if (! empty($row)) {
+                $rows[] = $row;
+            }
         }
         fclose($handle);
 
@@ -479,6 +496,7 @@ class QuotationController extends Controller
 
         $created = 0;
         $errors = [];
+        $conflictGroups = [];
         $customerCache = [];
         $productCache = [];
 
@@ -486,6 +504,30 @@ class QuotationController extends Controller
             $group = $groups[$key];
             $firstIndex = $group['first_index'];
             $headerRow = $group['header'];
+
+            // Detect conflicting customer codes within the same quotation group
+            $customerCodes = [];
+            foreach ($group['lines'] as $lineRow) {
+                $code = trim((string) ($lineRow['customer_code'] ?? ''));
+                $name = trim((string) ($lineRow['customer_name'] ?? ''));
+                $identifier = $code ?: $name;
+                if ($identifier !== '') {
+                    $customerCodes[$identifier] = true;
+                }
+            }
+            if (count($customerCodes) > 1) {
+                $lineNumbers = [];
+                foreach ($group['lines'] as $idx => $lineRow) {
+                    $lineNumbers[] = $firstIndex + $idx + 2; // +2 for 1-indexed + header
+                }
+                $conflictGroups[] = [
+                    'quotation_number' => $headerRow['quotation_number'] ?? '',
+                    'customer_codes' => array_keys($customerCodes),
+                    'line_numbers' => $lineNumbers,
+                ];
+                $errors[] = "Row {$lineNumbers[0]}: Conflicting customers for quotation_number '".($headerRow['quotation_number'] ?? '')."': ".implode(', ', array_keys($customerCodes)).'. Each quotation_number must belong to a single customer.';
+                continue;
+            }
 
             try {
                 // Re-apply tenant search_path on every iteration to survive connection resets
@@ -633,6 +675,7 @@ class QuotationController extends Controller
         return response()->json([
             'created' => $created,
             'errors' => $errors,
+            'conflict_groups' => $conflictGroups,
         ], 200, [], JSON_INVALID_UTF8_SUBSTITUTE);
     }
 
@@ -649,13 +692,13 @@ class QuotationController extends Controller
 
         $customer = null;
         if ($code !== '' && $code !== '-') {
-            $customer = Customer::whereRaw('LOWER(code) = ?', [strtolower($code)])->first();
+            $customer = Customer::withTrashed()->whereRaw('LOWER(code) = ?', [strtolower($code)])->first();
         }
         if (! $customer && $name !== '' && $name !== '-') {
-            $customer = Customer::whereRaw('LOWER(name) = ?', [strtolower($name)])->first();
+            $customer = Customer::withTrashed()->whereRaw('LOWER(name) = ?', [strtolower($name)])->first();
         }
         if (! $customer && $id !== '' && filter_var($id, FILTER_VALIDATE_INT) !== false) {
-            $customer = Customer::find((int) $id);
+            $customer = Customer::withTrashed()->find((int) $id);
         }
 
         return $cache[$cacheKey] = $customer;
@@ -686,6 +729,9 @@ class QuotationController extends Controller
             return null;
         }
         $value = trim((string) $value);
+        if (! mb_check_encoding($value, 'UTF-8')) {
+            $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+        }
 
         return ($value === '' || $value === '-') ? null : $value;
     }
@@ -714,6 +760,10 @@ class QuotationController extends Controller
 
     private function resolveOrCreateContact(string $name, string $type = 'person', string $source = 'import'): ?string
     {
+        if (! mb_check_encoding($name, 'UTF-8')) {
+            $name = mb_convert_encoding($name, 'UTF-8', 'UTF-8');
+        }
+
         $normalised = strtolower(trim($name));
 
         $tenantId = tenant()->id;
@@ -731,23 +781,17 @@ class QuotationController extends Controller
 
         $newId = (string) Str::uuid();
 
-        // Use raw DB insert with schema-qualified table to avoid search_path issues
+        // Use raw SQL INSERT with schema-qualified table to bypass search_path issues.
+        // DB::table() double-wraps quotes when table name contains dots — use DB::statement() instead.
         $schema = tenant()->getSchemaName();
         $table = $schema ? "\"{$schema}\".core_contacts" : 'core_contacts';
+        $now = now()->toDateTimeString();
 
-        DB::table($table)->insert([
-            'id'           => $newId,
-            'tenant_id'    => $tenantId,
-            'contact_type' => $type,
-            'first_name'   => $firstName,
-            'last_name'    => $lastName,
-            'display_name' => trim($name),
-            'company_name' => $lastName === null ? $name : null,
-            'source'       => $source,
-            'is_active'    => true,
-            'created_at'   => now(),
-            'updated_at'   => now(),
-        ]);
+        DB::statement(
+            "INSERT INTO {$table} (id, tenant_id, contact_type, first_name, last_name, display_name, company_name, source, is_active, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [$newId, $tenantId, $type, $firstName, $lastName, trim($name), $lastName === null ? $name : null, $source, true, $now, $now]
+        );
 
         return $newId;
     }

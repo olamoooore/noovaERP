@@ -17,6 +17,23 @@ use Modules\Inventory\Services\InventoryService;
 
 class ProductController extends Controller
 {
+    /**
+     * Treat an empty/whitespace-only barcode as "no barcode" (null) so the
+     * nullable uniqueness validation rule is skipped. This allows many products
+     * to coexist without a barcode while still rejecting real duplicates.
+     */
+    private function normalizeBarcodeInput(Request $request): void
+    {
+        if (! $request->exists('barcode')) {
+            return;
+        }
+
+        $barcode = $request->input('barcode');
+        if ($barcode === null || trim((string) $barcode) === '') {
+            $request->merge(['barcode' => null]);
+        }
+    }
+
     private function removeUnsupportedProductColumns(array $payload): array
     {
         if (! Schema::hasColumn('products', 'is_merchandise')) {
@@ -192,12 +209,16 @@ class ProductController extends Controller
 
     public function store(Request $request)
     {
+        // Normalize empty barcode to null so the (nullable) uniqueness rule is
+        // skipped — multiple products may legitimately have no barcode.
+        $this->normalizeBarcodeInput($request);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'secondary_name' => 'nullable|string|max:255',
             'model_number' => 'nullable|string|max:100',
             'sku' => 'required|string|unique:products,sku',
-            'barcode' => 'nullable|string',
+            'barcode' => 'nullable|string|unique:products,barcode',
             'description' => 'nullable|string',
             'short_description' => 'nullable|string',
             'category_id' => 'nullable|exists:product_categories,id',
@@ -621,12 +642,16 @@ class ProductController extends Controller
         // Route model binding happens BEFORE middleware, so it doesn't respect tenant search path
         $product = Product::findOrFail($id);
 
+        // Normalize empty barcode to null so the (nullable) uniqueness rule is
+        // skipped — multiple products may legitimately have no barcode.
+        $this->normalizeBarcodeInput($request);
+
         $validated = $request->validate([
             'name' => 'string|max:255',
             'secondary_name' => 'nullable|string|max:255',
             'model_number' => 'nullable|string|max:100',
             'sku' => 'string|unique:products,sku,'.$product->id,
-            'barcode' => 'nullable|string',
+            'barcode' => 'nullable|string|unique:products,barcode,'.$product->id,
             'description' => 'nullable|string',
             'short_description' => 'nullable|string',
             'category_id' => 'nullable|exists:product_categories,id',
@@ -803,6 +828,7 @@ class ProductController extends Controller
         $errors = [];
         $categoriesCache = [];
         $defaultWarehouse = null;
+        $seenSkus = [];
 
         foreach ($rows as $index => $row) {
             $name = trim((string) ($row['name'] ?? ''));
@@ -811,6 +837,24 @@ class ProductController extends Controller
                 $errors[] = [
                     'row' => $index + 2,
                     'message' => 'Missing required field: name',
+                ];
+
+                continue;
+            }
+
+            // Validate numeric columns — flag rows with non-numeric values
+            // (e.g. "abc") instead of silently coercing them to 0.
+            $numericColumns = ['cost', 'price', 'stock_quantity', 'shelf_life_days'];
+            $invalidColumns = [];
+            foreach ($numericColumns as $column) {
+                if (array_key_exists($column, $row) && $this->isNonNumericImportValue($row[$column])) {
+                    $invalidColumns[] = $column;
+                }
+            }
+            if (! empty($invalidColumns)) {
+                $errors[] = [
+                    'row' => $index + 2,
+                    'message' => 'Invalid numeric value(s) for: '.implode(', ', $invalidColumns),
                 ];
 
                 continue;
@@ -866,6 +910,21 @@ class ProductController extends Controller
                 $base = Str::upper(Str::substr(preg_replace('/[^A-Za-z0-9]+/', '', $name), 0, 8));
                 $base = $base !== '' ? $base : 'SKU';
                 $sku = $base.'-'.Str::upper(Str::random(6));
+            }
+
+            // Detect a SKU that repeats within this import file and flag it
+            // instead of silently overwriting the product from its first row.
+            if ($sku !== '' && $sku !== '-') {
+                $skuKey = mb_strtolower($sku);
+                if (isset($seenSkus[$skuKey])) {
+                    $errors[] = [
+                        'row' => $index + 2,
+                        'message' => "Duplicate SKU in import file: {$sku}",
+                    ];
+
+                    continue;
+                }
+                $seenSkus[$skuKey] = true;
             }
 
             $productData = [
@@ -977,6 +1036,25 @@ class ProductController extends Controller
         $cleaned = preg_replace('/[^0-9.]/', '', trim((string) $value));
 
         return $cleaned !== '' ? (float) $cleaned : 0;
+    }
+
+    /**
+     * Detect a clearly non-numeric CSV value (e.g. "abc", "ten"). Empty/missing
+     * values are allowed (they default to 0). Currency symbols, thousands
+     * separators and a sign are tolerated, mirroring parseNumericValue().
+     */
+    private function isNonNumericImportValue($value): bool
+    {
+        if ($value === null) {
+            return false;
+        }
+        $raw = trim((string) $value);
+        if ($raw === '' || $raw === '-') {
+            return false;
+        }
+        $cleaned = preg_replace('/[^0-9.\-]/', '', $raw);
+
+        return $cleaned === '' || ! is_numeric($cleaned);
     }
 
     /**

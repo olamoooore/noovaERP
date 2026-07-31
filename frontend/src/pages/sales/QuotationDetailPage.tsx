@@ -329,6 +329,18 @@ export function QuotationDetailPage() {
             </div>
           </button>
         )}
+        {quotation.delivery_orders && quotation.delivery_orders.length > 0 && (
+          <button
+            onClick={() => navigate('/delivery-orders')}
+            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+          >
+            <Icon icon="solar:package-bold" className="h-5 w-5 text-orange-600" />
+            <div className="text-left">
+              <div className="font-bold text-foreground">{quotation.delivery_orders.length}</div>
+              <div className="text-xs text-muted-foreground">Delivery Order{quotation.delivery_orders.length !== 1 ? 's' : ''}</div>
+            </div>
+          </button>
+        )}
       </div>
 
       {/* Invoices panel (expandable) */}
@@ -500,21 +512,30 @@ export function QuotationDetailPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>#</TableHead>
-                <TableHead>Product</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead className="text-right">Qty</TableHead>
-                <TableHead className="text-right">Unit Price</TableHead>
-                <TableHead className="text-right">Tax</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {quotation.lines?.map((line: any, index: number) => (
-                <TableRow key={line.id}>
-                  <TableCell>{index + 1}</TableCell>
-                  <TableCell>{line.product?.name || '-'}</TableCell>
-                  <TableCell>{line.description}</TableCell>
+                  <TableHead>#</TableHead>
+                  <TableHead>Product</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="text-right">Qty</TableHead>
+                  <TableHead className="text-right">Unit Price</TableHead>
+                  <TableHead className="text-right">Tax</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {quotation.lines?.map((line: any, index: number) => (
+                  <TableRow key={line.id}>
+                    <TableCell>{index + 1}</TableCell>
+                    <TableCell>{line.product?.name || '-'}</TableCell>
+                    <TableCell>
+                      <div>
+                        <p>{line.description}</p>
+                        {(line.model_number || line.product?.manufacturer_part_number) && (
+                          <p className="text-xs text-muted-foreground">
+                            {line.model_number ? `Model: ${line.model_number}` : `Part #: ${line.product?.manufacturer_part_number}`}
+                          </p>
+                        )}
+                      </div>
+                    </TableCell>
                   <TableCell className="text-right">{line.quantity}</TableCell>
                   <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
                   <TableCell className="text-right">{line.tax_rate}%</TableCell>

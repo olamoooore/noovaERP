@@ -17,6 +17,7 @@ import api from '@/lib/api';
 
 interface InvoiceLine {
   product_id: string;
+  model_number: string;
   description: string;
   quantity: number;
   unit_price: number | '';
@@ -94,6 +95,7 @@ interface InvoiceDocumentSnapshot {
 
 const emptyLine = (): InvoiceLine => ({
   product_id: '',
+  model_number: '',
   description: '',
   quantity: 1,
   unit_price: '',
@@ -417,6 +419,7 @@ export const CreateInvoicePage: React.FC = () => {
         // description is a free-text field the user can customize per document.
         updated[index].description = product.description || product.short_description || '';
         updated[index].unit_price = parseFloat(product.price || product.selling_price || '0');
+        updated[index].model_number = product.manufacturer_part_number || '';
       }
     }
 
@@ -540,6 +543,11 @@ export const CreateInvoicePage: React.FC = () => {
       return;
     }
 
+    if (discountMode === 'percentage' && (discountAmount === '' ? 0 : discountAmount) > 100) {
+      toast({ variant: 'destructive', title: 'Percentage discount cannot exceed 100%' });
+      return;
+    }
+
     const payload = {
       customer_id: parseInt(customerId, 10),
       invoice_date: invoiceDate,
@@ -563,6 +571,7 @@ export const CreateInvoicePage: React.FC = () => {
         .filter((line) => line.description || line.product_id)
         .map((line) => ({
           product_id: line.product_id ? parseInt(line.product_id, 10) : null,
+          model_number: line.model_number || null,
           description: line.description || 'Item',
           quantity: line.quantity,
           unit_price: line.unit_price === '' ? 0 : line.unit_price,
@@ -1067,6 +1076,7 @@ export const CreateInvoicePage: React.FC = () => {
                       <th className="text-left py-2 px-2 w-12">#</th>
                       <th className="text-left py-2 px-2">Product</th>
                       <th className="text-left py-2 px-2">Description</th>
+                      <th className="text-left py-2 px-2 w-32">Model #</th>
                       <th className="text-right py-2 px-2 w-24">Qty</th>
                       <th className="text-right py-2 px-2 w-32">Unit Price</th>
                       <th className="text-right py-2 px-2 w-24">Tax %</th>
@@ -1100,6 +1110,15 @@ export const CreateInvoicePage: React.FC = () => {
                             rows={2}
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
                             placeholder="Description (editable per line)"
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="text"
+                            value={line.model_number}
+                            onChange={(event) => updateLine(index, 'model_number', event.target.value)}
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                            placeholder="Model #"
                           />
                         </td>
                         <td className="py-2 px-2">
