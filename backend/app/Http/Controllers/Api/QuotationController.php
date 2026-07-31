@@ -452,11 +452,17 @@ class QuotationController extends Controller
             }
             $row = [];
             foreach ($header as $idx => $key) {
-                if ($key !== '') {
-                    $row[$key] = $data[$idx] ?? null;
+                if ($key !== '' && isset($data[$idx])) {
+                    $val = $data[$idx];
+                    if (! mb_check_encoding($val, 'UTF-8')) {
+                        $val = mb_convert_encoding($val, 'UTF-8', 'UTF-8');
+                    }
+                    $row[$key] = $val;
                 }
             }
-            $rows[] = $row;
+            if (! empty($row)) {
+                $rows[] = $row;
+            }
         }
         fclose($handle);
 
@@ -649,13 +655,13 @@ class QuotationController extends Controller
 
         $customer = null;
         if ($code !== '' && $code !== '-') {
-            $customer = Customer::whereRaw('LOWER(code) = ?', [strtolower($code)])->first();
+            $customer = Customer::withTrashed()->whereRaw('LOWER(code) = ?', [strtolower($code)])->first();
         }
         if (! $customer && $name !== '' && $name !== '-') {
-            $customer = Customer::whereRaw('LOWER(name) = ?', [strtolower($name)])->first();
+            $customer = Customer::withTrashed()->whereRaw('LOWER(name) = ?', [strtolower($name)])->first();
         }
         if (! $customer && $id !== '' && filter_var($id, FILTER_VALIDATE_INT) !== false) {
-            $customer = Customer::find((int) $id);
+            $customer = Customer::withTrashed()->find((int) $id);
         }
 
         return $cache[$cacheKey] = $customer;
@@ -686,6 +692,9 @@ class QuotationController extends Controller
             return null;
         }
         $value = trim((string) $value);
+        if (! mb_check_encoding($value, 'UTF-8')) {
+            $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+        }
 
         return ($value === '' || $value === '-') ? null : $value;
     }
@@ -714,6 +723,10 @@ class QuotationController extends Controller
 
     private function resolveOrCreateContact(string $name, string $type = 'person', string $source = 'import'): ?string
     {
+        if (! mb_check_encoding($name, 'UTF-8')) {
+            $name = mb_convert_encoding($name, 'UTF-8', 'UTF-8');
+        }
+
         $normalised = strtolower(trim($name));
 
         $tenantId = tenant()->id;
@@ -731,23 +744,17 @@ class QuotationController extends Controller
 
         $newId = (string) Str::uuid();
 
-        // Use raw DB insert with schema-qualified table to avoid search_path issues
+        // Use raw SQL INSERT with schema-qualified table to bypass search_path issues.
+        // DB::table() double-wraps quotes when table name contains dots — use DB::statement() instead.
         $schema = tenant()->getSchemaName();
         $table = $schema ? "\"{$schema}\".core_contacts" : 'core_contacts';
+        $now = now()->toDateTimeString();
 
-        DB::table($table)->insert([
-            'id'           => $newId,
-            'tenant_id'    => $tenantId,
-            'contact_type' => $type,
-            'first_name'   => $firstName,
-            'last_name'    => $lastName,
-            'display_name' => trim($name),
-            'company_name' => $lastName === null ? $name : null,
-            'source'       => $source,
-            'is_active'    => true,
-            'created_at'   => now(),
-            'updated_at'   => now(),
-        ]);
+        DB::statement(
+            "INSERT INTO {$table} (id, tenant_id, contact_type, first_name, last_name, display_name, company_name, source, is_active, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [$newId, $tenantId, $type, $firstName, $lastName, trim($name), $lastName === null ? $name : null, $source, true, $now, $now]
+        );
 
         return $newId;
     }
