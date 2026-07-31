@@ -8,6 +8,7 @@ use App\Models\CustomerCategory;
 use App\Models\CustomerLoyaltyProgram;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class CustomerController extends Controller
@@ -87,7 +88,12 @@ class CustomerController extends Controller
     {
         $validated = $request->validate([
             // Basic
-            'code' => 'nullable|string|max:50|unique:customers,code',
+            'code' => [
+                'nullable',
+                'string',
+                'max:50',
+                Rule::unique('customers', 'code')->whereNull('deleted_at'),
+            ],
             'type' => 'in:individual,company',
             'name' => 'required|string|max:255',
             'email' => 'nullable|email',
@@ -156,6 +162,12 @@ class CustomerController extends Controller
             'contacts.*.email' => 'nullable|email',
             'contacts.*.phone' => self::NUMERIC_PHONE_RULE,
             'contacts.*.mobile' => self::NUMERIC_PHONE_RULE,
+            'contacts.*.level_unit' => 'nullable|string|max:50',
+            'contacts.*.road_number' => 'nullable|string|max:50',
+            'contacts.*.building_name' => 'nullable|string|max:200',
+            'contacts.*.state' => 'nullable|string|max:100',
+            'contacts.*.country' => 'nullable|string|max:100',
+            'contacts.*.zip_code' => 'nullable|string|max:20',
             'contacts.*.is_primary' => 'boolean',
             'contacts.*.notes' => 'nullable|string',
         ]);
@@ -227,7 +239,14 @@ class CustomerController extends Controller
         $customer = Customer::findOrFail($id);
         $validated = $request->validate([
             // Basic
-            'code' => 'nullable|string|max:50|unique:customers,code,'.$id,
+            'code' => [
+                'nullable',
+                'string',
+                'max:50',
+                Rule::unique('customers', 'code')
+                    ->ignore($customer->getKey())
+                    ->whereNull('deleted_at'),
+            ],
             'type' => 'in:individual,company',
             'name' => 'string|max:255',
             'email' => 'nullable|email',
@@ -376,6 +395,12 @@ class CustomerController extends Controller
             'email' => 'nullable|email',
             'phone' => self::NUMERIC_PHONE_RULE,
             'mobile' => self::NUMERIC_PHONE_RULE,
+            'level_unit' => 'nullable|string|max:50',
+            'road_number' => 'nullable|string|max:50',
+            'building_name' => 'nullable|string|max:200',
+            'state' => 'nullable|string|max:100',
+            'country' => 'nullable|string|max:100',
+            'zip_code' => 'nullable|string|max:20',
             'is_primary' => 'boolean',
             'notes' => 'nullable|string',
         ]);
@@ -396,6 +421,12 @@ class CustomerController extends Controller
             'email' => 'nullable|email',
             'phone' => self::NUMERIC_PHONE_RULE,
             'mobile' => self::NUMERIC_PHONE_RULE,
+            'level_unit' => 'nullable|string|max:50',
+            'road_number' => 'nullable|string|max:50',
+            'building_name' => 'nullable|string|max:200',
+            'state' => 'nullable|string|max:100',
+            'country' => 'nullable|string|max:100',
+            'zip_code' => 'nullable|string|max:20',
             'is_primary' => 'boolean',
             'notes' => 'nullable|string',
         ]);
@@ -511,7 +542,11 @@ class CustomerController extends Controller
         $messages = [];
 
         $email = $validated['email'] ?? null;
-        if ($email) {
+        $emailChanged = ! $ignoreCustomer
+            || (array_key_exists('email', $validated)
+                && $email !== $this->normalizeEmail($ignoreCustomer->email));
+
+        if ($email && $emailChanged) {
             $duplicateEmail = Customer::query()
                 ->when($ignoreCustomer, fn ($query) => $query->whereKeyNot($ignoreCustomer->id))
                 ->whereRaw('LOWER(email) = ?', [$email])
@@ -523,7 +558,18 @@ class CustomerController extends Controller
         }
 
         $incomingPhones = collect(['phone', 'mobile'])
-            ->filter(fn (string $field) => ! empty($validated[$field]))
+            ->filter(function (string $field) use ($validated, $ignoreCustomer) {
+                if (empty($validated[$field])) {
+                    return false;
+                }
+
+                if (! $ignoreCustomer) {
+                    return true;
+                }
+
+                return array_key_exists($field, $validated)
+                    && $validated[$field] !== $this->normalizePhone($ignoreCustomer->{$field});
+            })
             ->mapWithKeys(fn (string $field) => [$field => $validated[$field]]);
 
         if ($incomingPhones->isNotEmpty()) {

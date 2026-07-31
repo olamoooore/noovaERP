@@ -504,19 +504,7 @@ export function CustomersPage() {
                 <TabsContent value="addresses" className="space-y-4 mt-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="road_number">Road Name/Number</Label>
-                      <Input
-                        id="road_number"
-                        value={formData.road_number}
-                        onChange={(e) => setFormData({ ...formData, road_number: e.target.value })}
-                        placeholder="e.g. 123 Orchard Road"
-                      />
-                    </div>
-            
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="level_unit">Level & Unit</Label>
+                      <Label htmlFor="level_unit">Unit Number</Label>
                       <Input
                         id="level_unit"
                         value={formData.level_unit}
@@ -525,6 +513,16 @@ export function CustomersPage() {
                       />
                     </div>
                     <div className="space-y-2">
+                      <Label htmlFor="road_number">Road Number</Label>
+                      <Input
+                        id="road_number"
+                        value={formData.road_number}
+                        onChange={(e) => setFormData({ ...formData, road_number: e.target.value })}
+                        placeholder="e.g. 123 Orchard Road"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
                       <Label htmlFor="building_name">Building Name</Label>
                       <Input
                         id="building_name"
@@ -532,7 +530,6 @@ export function CustomersPage() {
                         onChange={(e) => setFormData({ ...formData, building_name: e.target.value })}
                         placeholder="e.g. Marina Bay Sands"
                       />
-                    </div>
                   </div>
                   <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-2">
@@ -545,21 +542,21 @@ export function CustomersPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="zip_code">ZIP / Postal Code</Label>
-                      <Input
-                        id="zip_code"
-                        value={formData.zip_code}
-                        onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
-                        placeholder="e.g. 018956"
-                      />
-                    </div>
-                    <div className="space-y-2">
                       <Label htmlFor="country">Country</Label>
                       <Input
                         id="country"
                         value={formData.country}
                         onChange={(e) => setFormData({ ...formData, country: e.target.value })}
                         placeholder="e.g. Singapore"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="zip_code">ZIP / Postal Code</Label>
+                      <Input
+                        id="zip_code"
+                        value={formData.zip_code}
+                        onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
+                        placeholder="e.g. 123456"
                       />
                     </div>
                   </div>
@@ -1247,16 +1244,7 @@ export function CustomersPage() {
                 <TabsContent value="addresses" className="space-y-4 mt-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="edit-road-number">Road Name/Number</Label>
-                      <Input
-                        id="edit-road-number"
-                        value={formData.road_number}
-                        onChange={(e) => setFormData({ ...formData, road_number: e.target.value })}
-                        placeholder="e.g. 123 Orchard Road"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-level-unit">Level & Unit</Label>
+                      <Label htmlFor="edit-level-unit">Unit Number</Label>
                       <Input
                         id="edit-level-unit"
                         value={formData.level_unit}
@@ -1264,10 +1252,18 @@ export function CustomersPage() {
                         placeholder="e.g. #12-34"
                       />
                     </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-road-number">Road Number</Label>
+                      <Input
+                        id="edit-road-number"
+                        value={formData.road_number}
+                        onChange={(e) => setFormData({ ...formData, road_number: e.target.value })}
+                        placeholder="e.g. 123 Orchard Road"
+                      />
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
+                  <div className="space-y-2">
                       <Label htmlFor="edit-building-name">Building Name</Label>
                       <Input
                         id="edit-building-name"
@@ -1275,7 +1271,9 @@ export function CustomersPage() {
                         onChange={(e) => setFormData({ ...formData, building_name: e.target.value })}
                         placeholder="e.g. Marina Bay Sands"
                       />
-                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="edit-state">State</Label>
                       <Input
@@ -1286,24 +1284,23 @@ export function CustomersPage() {
                       />
                     </div>
                     <div className="space-y-2">
+                      <Label htmlFor="edit-country">Country</Label>
+                      <Input
+                        id="edit-country"
+                        value={formData.country}
+                        onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                        placeholder="e.g. Singapore"
+                      />
+                    </div>
+                    <div className="space-y-2">
                       <Label htmlFor="edit-zip-code">ZIP / Postal Code</Label>
                       <Input
                         id="edit-zip-code"
                         value={formData.zip_code}
                         onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
-                        placeholder="e.g. 018956"
+                        placeholder="e.g. 123456"
                       />
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-country">Country</Label>
-                    <Input
-                      id="edit-country"
-                      value={formData.country}
-                      onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                      placeholder="e.g. Singapore"
-                    />
                   </div>
 
                   <div className="space-y-2">

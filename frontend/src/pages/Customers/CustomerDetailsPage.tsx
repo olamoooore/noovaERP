@@ -122,6 +122,12 @@ interface CustomerContact {
   email: string
   phone: string
   mobile: string
+  level_unit: string
+  road_number: string
+  building_name: string
+  state: string
+  country: string
+  zip_code: string
   is_primary: boolean
   notes: string
 }
@@ -224,6 +230,7 @@ export function CustomerDetailsPage() {
   const [activeTab, setActiveTab] = useState('overview')
   const [addressDialogOpen, setAddressDialogOpen] = useState(false)
   const [contactDialogOpen, setContactDialogOpen] = useState(false)
+  const [editingContactId, setEditingContactId] = useState<number | null>(null)
   const [loyaltyDialogOpen, setLoyaltyDialogOpen] = useState(false)
   const [noteDialogOpen, setNoteDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -346,6 +353,27 @@ export function CustomerDetailsPage() {
       setContactDialogOpen(false)
       setContactForm({})
       toast({ title: 'Contact added successfully' })
+    },
+  })
+
+  const updateContactMutation = useMutation({
+    mutationFn: async ({ contactId, data }: { contactId: number; data: Partial<CustomerContact> }) => {
+      const response = await api.put(`/customers/${id}/contacts/${contactId}`, data)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customer', id] })
+      setContactDialogOpen(false)
+      setEditingContactId(null)
+      setContactForm({})
+      toast({ title: 'Contact updated successfully' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to update contact',
+        description: getApiErrorMessage(error),
+      })
     },
   })
 
@@ -1244,7 +1272,13 @@ export function CustomerDetailsPage() {
                 <CardTitle>Contacts</CardTitle>
                 <CardDescription>People associated with this customer</CardDescription>
               </div>
-              <Button onClick={() => setContactDialogOpen(true)}>
+              <Button
+                onClick={() => {
+                  setEditingContactId(null)
+                  setContactForm({})
+                  setContactDialogOpen(true)
+                }}
+              >
                 <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-2" />
                 Add Contact
               </Button>
@@ -1285,17 +1319,43 @@ export function CustomerDetailsPage() {
                                 {contact.mobile}
                               </p>
                             )}
+                            {(contact.level_unit || contact.road_number || contact.building_name || contact.state || contact.country || contact.zip_code) && (
+                              <div className="flex items-start gap-2 pt-1 text-muted-foreground">
+                                <Icon icon="solar:map-point-bold" className="h-3 w-3 mt-1 shrink-0" />
+                                <div>
+                                  {(contact.level_unit || contact.road_number) && (
+                                    <p>{[contact.level_unit, contact.road_number].filter(Boolean).join(' · ')}</p>
+                                  )}
+                                  {contact.building_name && <p>{contact.building_name}</p>}
+                                  {(contact.state || contact.country || contact.zip_code) && (
+                                    <p>{[contact.state, contact.country, contact.zip_code].filter(Boolean).join(', ')}</p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => deleteContactMutation.mutate(contact.id)}
-                      >
-                        <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 text-red-500" />
-                      </Button>
+                      <div className="absolute top-2 right-2 flex opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setEditingContactId(contact.id)
+                            setContactForm({ ...contact })
+                            setContactDialogOpen(true)
+                          }}
+                        >
+                          <Icon icon="solar:pen-bold" className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deleteContactMutation.mutate(contact.id)}
+                        >
+                          <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1619,11 +1679,20 @@ export function CustomerDetailsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Contact Dialog */}
-      <Dialog open={contactDialogOpen} onOpenChange={setContactDialogOpen}>
-        <DialogContent>
+      {/* Add/Edit Contact Dialog */}
+      <Dialog
+        open={contactDialogOpen}
+        onOpenChange={(open) => {
+          setContactDialogOpen(open)
+          if (!open) {
+            setEditingContactId(null)
+            setContactForm({})
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Add Contact</DialogTitle>
+            <DialogTitle>{editingContactId ? 'Edit Contact' : 'Add Contact'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -1640,6 +1709,58 @@ export function CustomerDetailsPage() {
                 <Input 
                   value={contactForm.job_title || ''}
                   onChange={(e) => setContactForm({ ...contactForm, job_title: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Unit Number</Label>
+                <Input
+                  value={contactForm.level_unit || ''}
+                  onChange={(e) => setContactForm({ ...contactForm, level_unit: e.target.value })}
+                  placeholder="e.g. #12-34"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Road Number</Label>
+                <Input
+                  value={contactForm.road_number || ''}
+                  onChange={(e) => setContactForm({ ...contactForm, road_number: e.target.value })}
+                  placeholder="e.g. 123 Orchard Road"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Building Name</Label>
+              <Input
+                value={contactForm.building_name || ''}
+                onChange={(e) => setContactForm({ ...contactForm, building_name: e.target.value })}
+                placeholder="e.g. Marina Bay Sands"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>State</Label>
+                <Input
+                  value={contactForm.state || ''}
+                  onChange={(e) => setContactForm({ ...contactForm, state: e.target.value })}
+                  placeholder="e.g. Singapore"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Country</Label>
+                <Input
+                  value={contactForm.country || ''}
+                  onChange={(e) => setContactForm({ ...contactForm, country: e.target.value })}
+                  placeholder="e.g. Singapore"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>ZIP / Postal Code</Label>
+                <Input
+                  value={contactForm.zip_code || ''}
+                  onChange={(e) => setContactForm({ ...contactForm, zip_code: e.target.value })}
+                  placeholder="e.g. 123456"
                 />
               </div>
             </div>
@@ -1691,11 +1812,19 @@ export function CustomerDetailsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setContactDialogOpen(false)}>Cancel</Button>
-            <Button 
-              onClick={() => addContactMutation.mutate(contactForm)}
-              disabled={!contactForm.name || addContactMutation.isPending}
+            <Button
+              onClick={() => {
+                if (editingContactId) {
+                  updateContactMutation.mutate({ contactId: editingContactId, data: contactForm })
+                } else {
+                  addContactMutation.mutate(contactForm)
+                }
+              }}
+              disabled={!contactForm.name || addContactMutation.isPending || updateContactMutation.isPending}
             >
-              Add Contact
+              {editingContactId
+                ? (updateContactMutation.isPending ? 'Saving...' : 'Save Changes')
+                : (addContactMutation.isPending ? 'Adding...' : 'Add Contact')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1995,16 +2124,7 @@ export function CustomerDetailsPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-road-number">Road Name/Number</Label>
-                <Input
-                  id="edit-road-number"
-                  value={editForm.road_number || ''}
-                  onChange={(e) => setEditForm({ ...editForm, road_number: e.target.value })}
-                  placeholder="e.g. 123 Orchard Road"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-level-unit">Level & Unit</Label>
+                <Label htmlFor="edit-level-unit">Unit Number</Label>
                 <Input
                   id="edit-level-unit"
                   value={editForm.level_unit || ''}
@@ -2012,10 +2132,18 @@ export function CustomerDetailsPage() {
                   placeholder="e.g. #12-34"
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-road-number">Road Number</Label>
+                <Input
+                  id="edit-road-number"
+                  value={editForm.road_number || ''}
+                  onChange={(e) => setEditForm({ ...editForm, road_number: e.target.value })}
+                  placeholder="e.g. 123 Orchard Road"
+                />
+              </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
+            <div className="space-y-2">
                 <Label htmlFor="edit-building-name">Building Name</Label>
                 <Input
                   id="edit-building-name"
@@ -2023,7 +2151,9 @@ export function CustomerDetailsPage() {
                   onChange={(e) => setEditForm({ ...editForm, building_name: e.target.value })}
                   placeholder="e.g. Marina Bay Sands"
                 />
-              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-state">State</Label>
                 <Input
@@ -2034,24 +2164,23 @@ export function CustomerDetailsPage() {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="edit-country">Country</Label>
+                <Input
+                  id="edit-country"
+                  value={editForm.country || ''}
+                  onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
+                  placeholder="e.g. Singapore"
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="edit-zip-code">ZIP / Postal Code</Label>
                 <Input
                   id="edit-zip-code"
                   value={editForm.zip_code || ''}
                   onChange={(e) => setEditForm({ ...editForm, zip_code: e.target.value })}
-                  placeholder="e.g. 018956"
+                  placeholder="e.g. 123456"
                 />
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-country">Country</Label>
-              <Input
-                id="edit-country"
-                value={editForm.country || ''}
-                onChange={(e) => setEditForm({ ...editForm, country: e.target.value })}
-                placeholder="e.g. Singapore"
-              />
             </div>
 
             <div className="space-y-2">

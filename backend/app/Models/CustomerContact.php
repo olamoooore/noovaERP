@@ -17,6 +17,12 @@ class CustomerContact extends Model
         'email',
         'phone',
         'mobile',
+        'level_unit',
+        'road_number',
+        'building_name',
+        'state',
+        'country',
+        'zip_code',
         'is_primary',
         'notes',
     ];
