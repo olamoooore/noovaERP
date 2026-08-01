@@ -55,13 +55,6 @@ interface CustomerFormData {
   website: string
   billing_address: string
   shipping_address: string
-  road_number: string
-  road_name: string
-  level_unit: string
-  building_name: string
-  state: string
-  zip_code: string
-  country: string
   credit_limit: string
   payment_terms: string
   preferred_contact: string
@@ -82,13 +75,6 @@ const initialFormData: CustomerFormData = {
   website: '',
   billing_address: '',
   shipping_address: '',
-  road_number: '',
-  road_name: '',
-  level_unit: '',
-  building_name: '',
-  state: '',
-  zip_code: '',
-  country: '',
   credit_limit: '',
   payment_terms: '30',
   preferred_contact: 'email',
@@ -120,14 +106,6 @@ function formatAddress(address: string | null | undefined): string {
     // If not JSON, return as-is (plain text address)
     return address;
   }
-}
-
-function formatStructuredAddress(customer: Partial<CustomerFormData>): string {
-  const roadLine = [customer.road_number, customer.road_name].filter(Boolean).join(' ').trim()
-  const unitLine = [customer.level_unit, customer.building_name].filter(Boolean).join(' ').trim()
-  const localityLine = [customer.state, customer.zip_code, customer.country].filter(Boolean).join(', ').trim()
-
-  return [unitLine, roadLine, localityLine].filter(Boolean).join('\n')
 }
 
 const PAGE_SIZE = 20
@@ -324,13 +302,6 @@ export function CustomersPage() {
         website: customerDetail.website || '',
         billing_address: formatAddress(customerDetail.billing_address),
         shipping_address: formatAddress(customerDetail.shipping_address),
-        road_number: customerDetail.road_number || '',
-        road_name: customerDetail.road_name || '',
-        level_unit: customerDetail.level_unit || '',
-        building_name: customerDetail.building_name || '',
-        state: customerDetail.state || '',
-        zip_code: customerDetail.zip_code || '',
-        country: customerDetail.country || '',
         credit_limit: customerDetail.credit_limit?.toString() || '',
         payment_terms: customerDetail.payment_terms?.toString() || '30',
         preferred_contact: customerDetail.preferred_contact || 'email',
@@ -502,64 +473,6 @@ export function CustomersPage() {
                 </TabsContent>
 
                 <TabsContent value="addresses" className="space-y-4 mt-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="level_unit">Unit Number</Label>
-                      <Input
-                        id="level_unit"
-                        value={formData.level_unit}
-                        onChange={(e) => setFormData({ ...formData, level_unit: e.target.value })}
-                        placeholder="e.g. #12-34"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="road_number">Road Number</Label>
-                      <Input
-                        id="road_number"
-                        value={formData.road_number}
-                        onChange={(e) => setFormData({ ...formData, road_number: e.target.value })}
-                        placeholder="e.g. 123 Orchard Road"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                      <Label htmlFor="building_name">Building Name</Label>
-                      <Input
-                        id="building_name"
-                        value={formData.building_name}
-                        onChange={(e) => setFormData({ ...formData, building_name: e.target.value })}
-                        placeholder="e.g. Marina Bay Sands"
-                      />
-                  </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="state">State</Label>
-                      <Input
-                        id="state"
-                        value={formData.state}
-                        onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                        placeholder="e.g. Singapore"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="country">Country</Label>
-                      <Input
-                        id="country"
-                        value={formData.country}
-                        onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                        placeholder="e.g. Singapore"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="zip_code">ZIP / Postal Code</Label>
-                      <Input
-                        id="zip_code"
-                        value={formData.zip_code}
-                        onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
-                        placeholder="e.g. 123456"
-                      />
-                    </div>
-                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="billing_address">Billing Address (full text)</Label>
                     <Textarea
@@ -1033,18 +946,6 @@ export function CustomersPage() {
                   </Card>
                 </div>
 
-                {formatStructuredAddress(customerDetail) && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Structured Address</CardTitle>
-                      <CardDescription>Road/Unit details from existing customer profile</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm whitespace-pre-line">{formatStructuredAddress(customerDetail)}</p>
-                    </CardContent>
-                  </Card>
-                )}
-
                 {/* Notes */}
                 {customerDetail.notes && (
                   <Card>
@@ -1242,67 +1143,6 @@ export function CustomersPage() {
                 </TabsContent>
 
                 <TabsContent value="addresses" className="space-y-4 mt-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-level-unit">Unit Number</Label>
-                      <Input
-                        id="edit-level-unit"
-                        value={formData.level_unit}
-                        onChange={(e) => setFormData({ ...formData, level_unit: e.target.value })}
-                        placeholder="e.g. #12-34"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-road-number">Road Number</Label>
-                      <Input
-                        id="edit-road-number"
-                        value={formData.road_number}
-                        onChange={(e) => setFormData({ ...formData, road_number: e.target.value })}
-                        placeholder="e.g. 123 Orchard Road"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                      <Label htmlFor="edit-building-name">Building Name</Label>
-                      <Input
-                        id="edit-building-name"
-                        value={formData.building_name}
-                        onChange={(e) => setFormData({ ...formData, building_name: e.target.value })}
-                        placeholder="e.g. Marina Bay Sands"
-                      />
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-state">State</Label>
-                      <Input
-                        id="edit-state"
-                        value={formData.state}
-                        onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                        placeholder="e.g. Singapore"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-country">Country</Label>
-                      <Input
-                        id="edit-country"
-                        value={formData.country}
-                        onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                        placeholder="e.g. Singapore"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-zip-code">ZIP / Postal Code</Label>
-                      <Input
-                        id="edit-zip-code"
-                        value={formData.zip_code}
-                        onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
-                        placeholder="e.g. 123456"
-                      />
-                    </div>
-                  </div>
-
                   <div className="space-y-2">
                     <Label htmlFor="edit-billing">Billing Address</Label>
                     <Textarea

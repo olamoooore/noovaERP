@@ -51,7 +51,6 @@ class Product extends Model
         // Basic Info
         'name',
         'secondary_name',
-        'model_number',
         'slug',
         'sku',
         'barcode',
