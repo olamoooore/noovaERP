@@ -29,8 +29,8 @@ class RolePermissionSeeder extends Seeder
         'pos.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
         // Inventory
-        'inventory.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
-        'inventory.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'inventory.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::SALES, UserRole::VIEWER],
+        'inventory.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'inventory.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
         // Sales
@@ -40,7 +40,7 @@ class RolePermissionSeeder extends Seeder
 
         // Accounting
         'accounting.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
-        'accounting.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        'accounting.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::SALES],
         'accounting.post' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
         'accounting.reverse' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
         'accounting.lock' => [UserRole::OWNER, UserRole::ADMIN],
