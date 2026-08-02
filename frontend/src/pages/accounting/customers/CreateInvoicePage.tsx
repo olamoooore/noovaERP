@@ -1047,8 +1047,8 @@ export const CreateInvoicePage: React.FC = () => {
                   <thead>
                     <tr className="border-b">
                       <th className="text-left py-2 px-2 w-12">#</th>
-                      <th className="text-left py-2 px-2">Product</th>
-                      <th className="text-left py-2 px-2 w-28">SKU</th>
+                      <th className="text-left py-2 px-2 w-[200px]">Product</th>
+                      <th className="text-left py-2 px-2 w-24">SKU</th>
                       <th className="text-left py-2 px-2">Description</th>
                       <th className="text-left py-2 px-2 w-28">Model #</th>
                       <th className="text-left py-2 px-2 w-36">Product Notes</th>
@@ -1063,7 +1063,7 @@ export const CreateInvoicePage: React.FC = () => {
                     {lines.map((line, index) => (
                       <tr key={index} className="border-b">
                         <td className="py-2 px-2 text-sm font-medium text-slate-500">{index + 1}</td>
-                        <td className="py-2 px-2">
+                        <td className="py-2 px-2 w-[200px] max-w-[200px] overflow-hidden">
                           <ProductSearchCombobox
                             value={line.product_id}
                             onValueChange={(productId, product) => {

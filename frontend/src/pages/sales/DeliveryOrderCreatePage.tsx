@@ -527,8 +527,8 @@ export function DeliveryOrderCreatePage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[180px]">Product</TableHead>
-                  <TableHead className="w-[100px]">SKU</TableHead>
+                  <TableHead className="w-[160px]">Product</TableHead>
+                  <TableHead className="w-[90px]">SKU</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead className="w-[100px]">Model #</TableHead>
                   <TableHead className="w-[180px]">Product Notes</TableHead>
