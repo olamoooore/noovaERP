@@ -660,7 +660,17 @@ const baseNavItems: NavItem[] = [
 export function Sidebar() {
   const location = useLocation()
   const [expandedItems, setExpandedItems] = useState<string[]>([])
+  const [isMinimized, setIsMinimized] = useState(() => localStorage.getItem('sidebar_minimized') === 'true')
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null)
   const tenantId = localStorage.getItem('tenant_id') || 'default'
+
+  const toggleMinimize = () => {
+    setIsMinimized(prev => {
+      const next = !prev
+      localStorage.setItem('sidebar_minimized', String(next))
+      return next
+    })
+  }
 
   const { data: features } = useQuery({
     queryKey: ['features', tenantId],
@@ -795,8 +805,11 @@ export function Sidebar() {
 
   const isItemActive = (item: NavItem): boolean => {
     if (location.pathname === item.href) return true
+    // For parent items, check if current route starts with the parent href
+    // This catches nested routes like /sales/orders when parent is /sales
+    if (item.href !== '/' && location.pathname.startsWith(item.href + '/')) return true
     if (item.children) {
-      return item.children.some(child => 
+      return item.children.some(child =>
         location.pathname === child.href || location.pathname.startsWith(child.href + '/')
       )
     }
@@ -810,45 +823,76 @@ export function Sidebar() {
 
   const effectiveExpanded = [...new Set([...expandedItems, ...activeParents])]
 
+  const sidebarWidth = isMinimized ? 'w-16' : 'w-64'
+
   return (
-    <div className="flex h-full w-64 flex-col border-r bg-card">
-      {/* Logo */}
-      <div className="flex h-16 items-center border-b px-6">
-        <img
-          src={NOOVAERP_LOGO_URL}
-          alt="NoovaERP"
-          className="h-9 w-auto max-w-full object-contain"
-        />
+    <div className={cn('flex h-full flex-col border-r bg-card transition-all duration-300', sidebarWidth)}>
+      {/* Logo + Minimize Toggle */}
+      <div className={cn('flex h-16 items-center border-b', isMinimized ? 'justify-center px-2' : 'justify-between px-6')}>
+        {!isMinimized && (
+          <img
+            src={NOOVAERP_LOGO_URL}
+            alt="NoovaERP"
+            className="h-9 w-auto max-w-full object-contain"
+          />
+        )}
+        <button
+          onClick={toggleMinimize}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          title={isMinimized ? 'Expand sidebar' : 'Minimize sidebar'}
+        >
+          <Icon
+            icon={isMinimized ? 'solar:sidebar-right-bold-duotone' : 'solar:sidebar-minimalistic-bold-duotone'}
+            className="h-5 w-5"
+          />
+        </button>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
+      <nav className={cn('flex-1 space-y-1 overflow-y-auto', isMinimized ? 'p-2' : 'p-4')}>
         {navItems.map((item) => {
           const isActive = isItemActive(item)
           const isExpanded = effectiveExpanded.includes(item.title)
           const hasChildren = item.children && item.children.length > 0
 
           return (
-            <div key={item.href}>
+            <div key={item.href} className="relative">
               {hasChildren ? (
                 <>
                   <button
-                    onClick={() => toggleExpand(item.title)}
+                    onClick={() => {
+                      if (isMinimized) return
+                      toggleExpand(item.title)
+                    }}
+                    onMouseEnter={() => isMinimized && setHoveredItem(item.title)}
+                    onMouseLeave={() => isMinimized && setHoveredItem(null)}
                     className={cn(
-                      'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                      'flex w-full items-center gap-3 rounded-lg text-sm font-medium transition-colors',
+                      isMinimized ? 'justify-center p-2' : 'px-3 py-2',
                       isActive
                         ? 'bg-primary/10 text-primary'
                         : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                     )}
                   >
-                    <Icon icon={item.icon} className="h-5 w-5" />
-                    <span className="flex-1 text-left">{item.title}</span>
-                    <Icon 
-                      icon={isExpanded ? "solar:alt-arrow-up-linear" : "solar:alt-arrow-down-linear"} 
-                      className="h-4 w-4" 
-                    />
+                    <Icon icon={item.icon} className="h-5 w-5 shrink-0" />
+                    {!isMinimized && (
+                      <>
+                        <span className="flex-1 text-left">{item.title}</span>
+                        <Icon
+                          icon={isExpanded ? "solar:alt-arrow-up-linear" : "solar:alt-arrow-down-linear"}
+                          className="h-4 w-4"
+                        />
+                      </>
+                    )}
                   </button>
-                  {isExpanded && (
+                  {/* Minimized tooltip */}
+                  {isMinimized && hoveredItem === item.title && (
+                    <div className="absolute left-full top-0 z-50 ml-2 rounded-lg border bg-popover px-3 py-2 text-sm font-medium text-popover-foreground shadow-md whitespace-nowrap">
+                      {item.title}
+                    </div>
+                  )}
+                  {/* Expanded children */}
+                  {!isMinimized && isExpanded && (
                     <div className="ml-4 mt-1 space-y-1 border-l pl-4">
                       {item.children?.map((child) => {
                         const childActive = location.pathname === child.href
@@ -874,19 +918,30 @@ export function Sidebar() {
               ) : (
                 <Link
                   to={item.href}
+                  onMouseEnter={() => isMinimized && setHoveredItem(item.title)}
+                  onMouseLeave={() => isMinimized && setHoveredItem(null)}
                   className={cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    'flex items-center gap-3 rounded-lg text-sm font-medium transition-colors relative',
+                    isMinimized ? 'justify-center p-2' : 'px-3 py-2',
                     isActive
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                   )}
                 >
-                  <Icon icon={item.icon} className="h-5 w-5" />
-                  <span>{item.title}</span>
-                  {item.badge && (
+                  <Icon icon={item.icon} className="h-5 w-5 shrink-0" />
+                  {!isMinimized && (
+                    <span>{item.title}</span>
+                  )}
+                  {!isMinimized && item.badge && (
                     <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground">
                       {item.badge}
                     </span>
+                  )}
+                  {/* Minimized tooltip */}
+                  {isMinimized && hoveredItem === item.title && (
+                    <div className="absolute left-full top-0 z-50 ml-2 rounded-lg border bg-popover px-3 py-2 text-sm font-medium text-popover-foreground shadow-md whitespace-nowrap">
+                      {item.title}
+                    </div>
                   )}
                 </Link>
               )}
@@ -896,15 +951,17 @@ export function Sidebar() {
       </nav>
 
       {/* User info */}
-      <div className="border-t p-4">
-        <div className="flex items-center gap-3 text-sm">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
+      <div className={cn('border-t', isMinimized ? 'p-2' : 'p-4')}>
+        <div className={cn('flex items-center gap-3 text-sm', isMinimized && 'justify-center')}>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <Icon icon="solar:user-bold" className="h-5 w-5" />
           </div>
-          <div className="flex-1">
-            <p className="font-medium">{user?.name || 'User'}</p>
-            <p className="text-xs text-muted-foreground capitalize">{role || 'Member'}</p>
-          </div>
+          {!isMinimized && (
+            <div className="flex-1 min-w-0">
+              <p className="font-medium truncate">{user?.name || 'User'}</p>
+              <p className="text-xs text-muted-foreground capitalize">{role || 'Member'}</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
