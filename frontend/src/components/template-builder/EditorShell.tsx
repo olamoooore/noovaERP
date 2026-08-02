@@ -78,6 +78,7 @@ export function EditorShell({ templateId }: { templateId: string }) {
       orientation: template.orientation,
       default_font: template.default_font,
       layout_config: template.layout_config,
+      metadata: template.metadata,
     })
   }
 
@@ -85,7 +86,7 @@ export function EditorShell({ templateId }: { templateId: string }) {
     if (!template) return
     setLoadingPreview(true)
     templateBuilderApi
-      .preview(templateId, { layout_config: template.layout_config, css: template.css ?? undefined, mode: 'block', document_type: template.document_type })
+      .preview(templateId, { layout_config: template.layout_config, css: template.css ?? undefined, mode: 'block', document_type: template.document_type, metadata: template.metadata })
       .then((r) => setPreview(r.html, r.warnings))
       .catch(() => toast({ title: 'Preview failed', variant: 'destructive' }))
       .finally(() => setLoadingPreview(false))

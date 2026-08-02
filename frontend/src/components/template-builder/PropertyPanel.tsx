@@ -78,10 +78,23 @@ export function PropertyPanel() {
 
 /* ── Document-level settings (shown when no block is selected) ─────── */
 
+const DATE_FORMAT_OPTIONS = [
+  { value: 'Y-m-d', label: '2026-07-22' },
+  { value: 'd/m/Y', label: '22/07/2026' },
+  { value: 'd-m-Y', label: '22-07-2026' },
+  { value: 'd-M-Y', label: '22-Jul-2026' },
+  { value: 'd-F-Y', label: '22-July-2026' },
+  { value: 'M d, Y', label: 'Jul 22, 2026' },
+  { value: 'F d, Y', label: 'July 22, 2026' },
+  { value: 'd/m/y', label: '22/07/26' },
+]
+
 function DocumentSettings({ template, updateMeta }: {
-  template: { document_type: DocumentType; format: string; orientation: 'portrait' | 'landscape'; default_font: string | null }
+  template: { document_type: DocumentType; format: string; orientation: 'portrait' | 'landscape'; default_font: string | null; metadata?: Record<string, unknown> | null }
   updateMeta: (patch: Record<string, unknown>) => void
 }) {
+  const currentDateFormat = (template.metadata as Record<string, unknown> | null)?.date_format as string ?? 'Y-m-d'
+
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">Select a block on the canvas to edit it, or adjust document defaults below.</p>
@@ -126,6 +139,15 @@ function DocumentSettings({ template, updateMeta }: {
           placeholder="DejaVu Sans"
           onChange={(e) => updateMeta({ default_font: e.target.value })}
         />
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs">Date format</Label>
+        <Select value={currentDateFormat} onValueChange={(v) => updateMeta({ metadata: { ...(template.metadata ?? {}), date_format: v } })}>
+          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {DATE_FORMAT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </div>
     </div>
   )

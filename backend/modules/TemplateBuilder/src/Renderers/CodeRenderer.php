@@ -34,6 +34,11 @@ final class CodeRenderer implements TemplateRendererInterface
     public function render(DocumentTemplate $template, array $data): array
     {
         $this->resolver->with($data);
+        $meta = $template->metadata ?? [];
+        $dateFormat = $meta['date_format'] ?? null;
+        if ($dateFormat) {
+            $this->resolver->setDateFormat($dateFormat);
+        }
 
         // Sanitise FIRST (before tokens are interpolated, so token values are
         // also escaped downstream by the resolver).

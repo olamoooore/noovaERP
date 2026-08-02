@@ -23,6 +23,7 @@ class PreviewTemplateRequest extends FormRequest
             'mode' => ['nullable', 'in:'.implode(',', [DocumentTemplate::MODE_BLOCK, DocumentTemplate::MODE_CODE])],
             'sample_data' => ['nullable', 'array'],
             'document_type' => ['nullable', 'string', 'max:40'],
+            'metadata' => ['nullable', 'array'],
         ];
     }
 }

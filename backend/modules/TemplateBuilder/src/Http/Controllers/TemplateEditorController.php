@@ -63,6 +63,9 @@ class TemplateEditorController extends Controller
         if ($request->has('mode')) {
             $clone->mode = $request->input('mode');
         }
+        if ($request->has('metadata')) {
+            $clone->metadata = $request->input('metadata');
+        }
 
         return $clone;
     }

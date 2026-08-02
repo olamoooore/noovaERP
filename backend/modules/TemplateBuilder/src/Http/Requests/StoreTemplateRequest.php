@@ -30,6 +30,7 @@ class StoreTemplateRequest extends FormRequest
             'layout_config' => ['nullable', 'array'],
             'html' => ['nullable', 'string'],
             'css' => ['nullable', 'string'],
+            'metadata' => ['nullable', 'array'],
             'status' => ['nullable', 'in:'.implode(',', [DocumentTemplate::STATUS_DRAFT, DocumentTemplate::STATUS_PUBLISHED, DocumentTemplate::STATUS_ARCHIVED])],
         ];
     }

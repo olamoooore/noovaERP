@@ -28,6 +28,11 @@ final class BlockRenderer implements TemplateRendererInterface
     public function render(DocumentTemplate $template, array $data): array
     {
         $this->resolver->with($data);
+        $meta = $template->metadata ?? [];
+        $dateFormat = $meta['date_format'] ?? null;
+        if ($dateFormat) {
+            $this->resolver->setDateFormat($dateFormat);
+        }
 
         $layout = is_array($template->layout_config) ? $template->layout_config : [];
         $blocks = $layout['blocks'] ?? [];

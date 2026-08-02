@@ -838,7 +838,12 @@ export function Sidebar() {
         )}
         <button
           onClick={toggleMinimize}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          className={cn(
+            'flex items-center justify-center rounded-lg transition-colors',
+            isMinimized
+              ? 'h-8 w-8 text-foreground/70 hover:bg-accent hover:text-foreground'
+              : 'h-8 w-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+          )}
           title={isMinimized ? 'Expand sidebar' : 'Minimize sidebar'}
         >
           <Icon
