@@ -25,6 +25,31 @@ class SalesOrderService
 
     public function createOrder(array $data): SalesOrder
     {
+        $maxRetries = 5;
+        for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
+            try {
+                return $this->createOrderInternal($data);
+            } catch (\Illuminate\Database\QueryException $e) {
+                if (str_contains($e->getMessage(), 'sales_orders_sales_order_number_unique')) {
+                    if ($attempt < $maxRetries - 1) {
+                        // Reset the DocumentNumberingService counter by clearing cache
+                        cache()->forget('document_numbering_sales_order');
+                        \Illuminate\Support\Facades\Log::warning('SalesOrder SO number collision on insert, retrying', [
+                            'attempt' => $attempt + 1,
+                        ]);
+                        continue;
+                    }
+                }
+                throw $e;
+            }
+        }
+
+        // Should not reach here, but fallback
+        return $this->createOrderInternal($data);
+    }
+
+    private function createOrderInternal(array $data): SalesOrder
+    {
         return DB::transaction(function () use ($data) {
             $lines = $data['lines'] ?? [];
             unset($data['lines']);

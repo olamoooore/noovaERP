@@ -191,6 +191,8 @@ class SalesOrder extends Model
             if (! static::withTrashed()->where('sales_order_number', $number)->exists()) {
                 return $number;
             }
+            // Clear DocumentNumberingService counter cache on collision
+            cache()->forget('document_numbering_sales_order');
             \Illuminate\Support\Facades\Log::warning('SalesOrder number collision, retrying', [
                 'number' => $number,
                 'attempt' => $attempt + 1,

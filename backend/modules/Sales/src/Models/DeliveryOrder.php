@@ -137,6 +137,8 @@ class DeliveryOrder extends Model
             if (! static::withTrashed()->where('delivery_order_number', $number)->exists()) {
                 return $number;
             }
+            // Clear counter cache on collision
+            cache()->forget('document_numbering_delivery_order');
         } catch (\Throwable $e) {
             // Fallback below
         }

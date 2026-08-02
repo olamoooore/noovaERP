@@ -252,9 +252,6 @@ export const CreateInvoicePage: React.FC = () => {
     queryKey: ['system-contacts', selectedCustomer?.id],
     queryFn: async () => {
       const params = new URLSearchParams({ per_page: '500', is_active: 'true' });
-      if (selectedCustomer?.id) {
-        params.set('entity_id', String(selectedCustomer.id));
-      }
       const response = await api.get(`/contacts?${params.toString()}`);
       return response.data?.data?.data ?? response.data?.data ?? [];
     },

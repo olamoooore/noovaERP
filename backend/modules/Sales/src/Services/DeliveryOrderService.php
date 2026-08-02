@@ -126,6 +126,29 @@ class DeliveryOrderService
             throw new \Exception('Warehouse is required for delivery orders.');
         }
 
+        $maxRetries = 5;
+        for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
+            try {
+                return $this->createStandaloneDeliveryOrderInternal($data, $customerId, $warehouseId, $lines);
+            } catch (\Illuminate\Database\QueryException $e) {
+                if (str_contains($e->getMessage(), 'delivery_orders_delivery_order_number_unique')) {
+                    if ($attempt < $maxRetries - 1) {
+                        cache()->forget('document_numbering_delivery_order');
+                        \Illuminate\Support\Facades\Log::warning('DO number collision on insert, retrying', [
+                            'attempt' => $attempt + 1,
+                        ]);
+                        continue;
+                    }
+                }
+                throw $e;
+            }
+        }
+
+        return $this->createStandaloneDeliveryOrderInternal($data, $customerId, $warehouseId, $lines);
+    }
+
+    private function createStandaloneDeliveryOrderInternal(array $data, int $customerId, int $warehouseId, array $lines): DeliveryOrder
+    {
         return DB::transaction(function () use ($data, $customerId, $warehouseId, $lines) {
             $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
 
