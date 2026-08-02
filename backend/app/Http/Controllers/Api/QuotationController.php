@@ -856,7 +856,7 @@ class QuotationController extends Controller
         ]);
 
         $ids = $validated['ids'];
-        $deletable = Quotation::whereIn('id', $ids)->whereIn('status', ['draft', 'sent'])->get();
+        $deletable = Quotation::whereIn('id', $ids)->whereIn('status', ['draft', 'sent', 'confirmed'])->get();
         $deletedIds = [];
         $skipped = [];
 

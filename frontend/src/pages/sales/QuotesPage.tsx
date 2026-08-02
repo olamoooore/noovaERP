@@ -4,6 +4,16 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
@@ -20,6 +30,7 @@ export function QuotesPage() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
 
   const queryParams = new URLSearchParams()
   queryParams.set('per_page', String(PER_PAGE))
@@ -104,8 +115,7 @@ export function QuotesPage() {
 
   const handleBulkDelete = () => {
     if (selectedIds.length === 0) return
-    if (!window.confirm(`Delete ${selectedIds.length} quotation(s)? Only draft and sent quotations will be deleted.`)) return
-    bulkDeleteMutation.mutate(selectedIds)
+    setShowBulkDeleteDialog(true)
   }
 
   const toggleSelect = (id: number) => {
@@ -113,11 +123,11 @@ export function QuotesPage() {
   }
 
   const toggleSelectAll = () => {
-    const deletableIds = quotes.filter((q: any) => q.status === 'draft' || q.status === 'sent').map((q: any) => q.id)
+    const deletableIds = quotes.filter((q: any) => ['draft', 'sent', 'confirmed'].includes(q.status)).map((q: any) => q.id)
     setSelectedIds((prev) => prev.length === deletableIds.length ? [] : deletableIds)
   }
 
-  const allDeletableSelected = quotes.length > 0 && quotes.filter((q: any) => q.status === 'draft' || q.status === 'sent').every((q: any) => selectedIds.includes(q.id))
+  const allDeletableSelected = quotes.length > 0 && quotes.filter((q: any) => ['draft', 'sent', 'confirmed'].includes(q.status)).every((q: any) => selectedIds.includes(q.id))
 
   const formatCurrency = (amount: number | string) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount || 0))
@@ -243,7 +253,7 @@ export function QuotesPage() {
                     {quotes.map((quote: any) => (
                       <TableRow key={quote.id} className="hover:bg-accent/50">
                         <TableCell>
-                          {(quote.status === 'draft' || quote.status === 'sent') && (
+                          {['draft', 'sent', 'confirmed'].includes(quote.status) && (
                             <input
                               type="checkbox"
                               checked={selectedIds.includes(quote.id)}
@@ -339,6 +349,30 @@ export function QuotesPage() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedIds.length} quotation(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Only draft, sent, and confirmed quotations will be deleted. Quotations that have already been converted to invoices cannot be deleted and will be skipped.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go Back</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                bulkDeleteMutation.mutate(selectedIds)
+                setShowBulkDeleteDialog(false)
+              }}
+              disabled={bulkDeleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {bulkDeleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
