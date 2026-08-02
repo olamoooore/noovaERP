@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Log;
 
 class SalesOrder extends Model
 {
@@ -187,13 +188,20 @@ class SalesOrder extends Model
     {
         $maxAttempts = 10;
         for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
-            $number = static::generateOrderNumberRaw();
+            // On first attempt, use DocumentNumberingService for normal sequencing.
+            // On retries (collision), bypass it and use MAX-based to avoid
+            // counter-in-rollback loop where the incremented counter gets
+            // rolled back along with the failed INSERT, causing the same number
+            // to be generated again.
+            $number = $attempt === 0
+                ? static::generateOrderNumberRaw()
+                : static::generateNextAvailableNumber();
+
             if (! static::withTrashed()->where('sales_order_number', $number)->exists()) {
                 return $number;
             }
-            // Clear DocumentNumberingService counter cache on collision
-            cache()->forget('document_numbering_sales_order');
-            \Illuminate\Support\Facades\Log::warning('SalesOrder number collision, retrying', [
+
+            Log::warning('SalesOrder number collision, retrying', [
                 'number' => $number,
                 'attempt' => $attempt + 1,
             ]);
@@ -201,6 +209,22 @@ class SalesOrder extends Model
 
         // Final fallback: use timestamp-based suffix
         return 'SO-'.date('Y').'-'.date('is');
+    }
+
+    private static function generateNextAvailableNumber(): string
+    {
+        $prefix = 'SO-'.date('Y').'-';
+
+        $latest = static::withTrashed()
+            ->where('sales_order_number', 'like', $prefix.'%')
+            ->orderByRaw("SUBSTRING(sales_order_number FROM '[0-9]+$')::int DESC")
+            ->first();
+
+        $nextSeq = $latest
+            ? (int) preg_replace('/[^0-9]/', '', substr($latest->sales_order_number, strlen($prefix))) + 1
+            : 1;
+
+        return $prefix.str_pad($nextSeq, 4, '0', STR_PAD_LEFT);
     }
 
     private static function generateOrderNumberRaw(): string
