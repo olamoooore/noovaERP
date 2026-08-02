@@ -372,9 +372,9 @@ export function InvoiceDetailPage() {
             <div className="p-4 bg-muted/50 rounded-lg">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase mb-2">From</h3>
               <div className="space-y-1">
-                <p className="font-semibold text-lg">NoovaERP</p>
-                <p className="text-sm text-muted-foreground">Your Company Address</p>
-                <p className="text-sm text-muted-foreground">contact@noovaerp.com</p>
+                <p className="font-semibold text-lg">Acme Pte Ltd</p>
+                <p className="text-sm text-muted-foreground">#01-36, 50 Faber Walk</p>
+                <p className="text-sm text-muted-foreground">Singapore 128994</p>
               </div>
             </div>
           </div>

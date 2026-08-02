@@ -56,6 +56,12 @@ interface Category {
   parent_id?: number | null
 }
 
+interface Brand {
+  id: number
+  name: string
+  is_active: boolean
+}
+
 interface ProductUnit {
   id: number
   name: string
@@ -168,7 +174,9 @@ export function ProductCreatePage() {
   const [formData, setFormData] = useState({
     name: '',
     secondary_name: '',
-    model_number: '',
+    brand_id: '',
+    manufacturer: '',
+    manufacturer_part_number: '',
     sku: '',
     barcode: '',
     type: 'product' as ProductType,
@@ -430,6 +438,14 @@ export function ProductCreatePage() {
     },
   })
 
+  const { data: brands } = useQuery<Brand[]>({
+    queryKey: ['brands'],
+    queryFn: async () => {
+      const response = await api.get('/brands', { params: { per_page: 100, is_active: true } })
+      return Array.isArray(response.data) ? response.data : (response.data.data || [])
+    },
+  })
+
   const { data: units } = useQuery<ProductUnit[]>({
     queryKey: ['product-units'],
     queryFn: async () => {
@@ -685,7 +701,7 @@ export function ProductCreatePage() {
     createMutation.mutate({
       name: formData.name,
       secondary_name: formData.secondary_name || null,
-      model_number: formData.model_number || null,
+      brand_id: formData.brand_id ? parseInt(formData.brand_id) : null,
       sku: formData.sku,
       barcode: formData.barcode || null,
       type: formData.type,
@@ -733,8 +749,8 @@ export function ProductCreatePage() {
       width: formData.width ? parseFloat(formData.width) : null,
       height: formData.height ? parseFloat(formData.height) : null,
       dimension_unit: formData.dimension_unit || null,
-      manufacturer: (formData as any).manufacturer || null,
-      manufacturer_part_number: (formData as any).manufacturer_part_number || null,
+      manufacturer: formData.manufacturer || null,
+      manufacturer_part_number: formData.manufacturer_part_number || null,
 
       // Suppliers
       suppliers: productSuppliers.filter(s => s.supplier_id).map(s => ({
@@ -1014,16 +1030,6 @@ export function ProductCreatePage() {
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="model_number">Model Number</Label>
-                      <Input
-                        id="model_number"
-                        value={formData.model_number}
-                        onChange={(e) => setFormData({ ...formData, model_number: e.target.value })}
-                        placeholder="e.g. MDL-A100"
-                      />
-                    </div>
-
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="sku">SKU</Label>
@@ -1093,8 +1099,8 @@ export function ProductCreatePage() {
                     <Label htmlFor="manufacturer">Manufacturer</Label>
                     <Input
                       id="manufacturer"
-                      value={(formData as any).manufacturer || ''}
-                      onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value } as any)}
+                      value={formData.manufacturer}
+                      onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value })}
                       placeholder="e.g. Pfizer, Samsung"
                     />
                   </div>
@@ -1103,10 +1109,28 @@ export function ProductCreatePage() {
                     <Label htmlFor="manufacturer_part_number">Model / Part Number</Label>
                     <Input
                       id="manufacturer_part_number"
-                      value={(formData as any).manufacturer_part_number || ''}
-                      onChange={(e) => setFormData({ ...formData, manufacturer_part_number: e.target.value } as any)}
+                      value={formData.manufacturer_part_number}
+                      onChange={(e) => setFormData({ ...formData, manufacturer_part_number: e.target.value })}
                       placeholder="e.g. MOD-12345"
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Brand</Label>
+                    <Select
+                      value={formData.brand_id || 'none'}
+                      onValueChange={(value) => setFormData({ ...formData, brand_id: value === 'none' ? '' : value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select brand" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No brand</SelectItem>
+                        {(brands || []).map((brand) => (
+                          <SelectItem key={brand.id} value={String(brand.id)}>{brand.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="space-y-2 flex flex-col">

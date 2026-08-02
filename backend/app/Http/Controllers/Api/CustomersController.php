@@ -125,14 +125,14 @@ class CustomersController extends Controller
             'address' => 'billing_address',
             'billing' => 'billing_address',
             'shipping' => 'shipping_address',
-            'road' => 'road_number',
-            'road_no' => 'road_number',
-            'road_num' => 'road_number',
-            'unit_number' => 'level_unit',
-            'unit_no' => 'level_unit',
-            'zip' => 'zip_code',
-            'postal_code' => 'zip_code',
-            'postal' => 'zip_code',
+            'address_label' => 'label',
+            'address_street' => 'street',
+            'address_street2' => 'street2',
+            'address_city' => 'city',
+            'address_state' => 'state',
+            'address_zip' => 'zip',
+            'postal_code' => 'zip',
+            'address_country' => 'country',
             'credit' => 'credit_limit',
             'payment_terms_days' => 'payment_terms',
             'category_name' => 'category',
@@ -141,8 +141,9 @@ class CustomersController extends Controller
             'contact_person' => 'contact_name',
             'name_of_contact' => 'contact_name',
             'contact_person_name' => 'contact_name',
-            'contact_category' => 'contact_job_title',
             'contact_role' => 'contact_job_title',
+            'contact_postal_code' => 'contact_zip',
+            'contact_zip_code' => 'contact_zip',
         ];
 
         $header = array_map(function ($h) use ($columnAliases) {
@@ -152,6 +153,7 @@ class CustomersController extends Controller
 
             return $columnAliases[$h] ?? $h;
         }, $rawHeader);
+        $presentColumns = array_fill_keys($header, true);
 
         $rows = [];
         while (($data = fgetcsv($handle)) !== false) {
@@ -188,10 +190,6 @@ class CustomersController extends Controller
                     continue;
                 }
 
-                // Normalize customer type to the enum values (case-insensitive)
-                $rawType = strtolower(trim((string) ($row['type'] ?? '')));
-                $type = in_array($rawType, ['individual', 'company'], true) ? $rawType : 'individual';
-
                 // Resolve customer code: use the provided one, else auto-generate.
                 // DB::table->insert() bypasses the model's creating event, so we
                 // must generate explicitly to match the manual create behaviour.
@@ -203,24 +201,33 @@ class CustomersController extends Controller
                 $customerData = [
                     'code' => $code,
                     'name' => $name,
-                    'type' => $type,
-                    'email' => $row['email'] ?? null,
-                    'phone' => $row['phone'] ?? null,
-                    'mobile' => $row['mobile'] ?? null,
-                    'company' => $row['company'] ?? null,
-                    'tax_number' => $row['tax_number'] ?? null,
-                    'website' => $row['website'] ?? null,
-                    'billing_address' => $row['billing_address'] ?? null,
-                    'shipping_address' => $row['shipping_address'] ?? null,
-                    'road_number' => $row['road_number'] ?? null,
-                    'level_unit' => $row['level_unit'] ?? null,
-                    'building_name' => $row['building_name'] ?? null,
-                    'state' => $row['state'] ?? null,
-                    'zip_code' => $row['zip_code'] ?? null,
-                    'country' => $row['country'] ?? null,
-                    'notes' => $row['notes'] ?? null,
                     'is_active' => true,
                 ];
+
+                // Only overwrite fields represented by columns in the uploaded CSV.
+                // This keeps an update-only import from clearing unrelated customer data.
+                foreach ([
+                    'email',
+                    'phone',
+                    'mobile',
+                    'company',
+                    'tax_number',
+                    'website',
+                    'billing_address',
+                    'shipping_address',
+                    'notes',
+                ] as $field) {
+                    if (isset($presentColumns[$field])) {
+                        $customerData[$field] = ($row[$field] ?? '') !== '' ? $row[$field] : null;
+                    }
+                }
+
+                $rawType = strtolower(trim((string) ($row['type'] ?? '')));
+                if (isset($presentColumns['type']) && in_array($rawType, ['individual', 'company'], true)) {
+                    $customerData['type'] = in_array($rawType, ['individual', 'company'], true)
+                        ? $rawType
+                        : 'individual';
+                }
 
                 if (isset($row['credit_limit']) && $row['credit_limit'] !== '') {
                     $customerData['credit_limit'] = (float) $row['credit_limit'];
@@ -234,24 +241,9 @@ class CustomersController extends Controller
                     // ignored so re-importing after a delete creates fresh customers
                     // instead of silently updating trashed, invisible ones.
                     $existing = DB::table('customers')
-                        ->where('code', $code)
+                        ->whereRaw('LOWER(code) = ?', [strtolower($code)])
                         ->whereNull('deleted_at')
                         ->first();
-
-                    // Same code but a DIFFERENT customer name -> do NOT merge them.
-                    // Assign a unique variant code (e.g. VC0066 -> VC0066-2) so distinct
-                    // customers that accidentally share a code are kept separate.
-                    if ($existing && strtolower(trim($existing->name)) !== strtolower(trim($name))) {
-                        $base = $code;
-                        $seq = 2;
-                        do {
-                            $candidate = $base.'-'.$seq;
-                            $seq++;
-                        } while (DB::table('customers')->where('code', $candidate)->whereNull('deleted_at')->exists());
-                        $code = $candidate;
-                        $customerData['code'] = $code;
-                        $existing = null;
-                    }
 
                     $customerId = $existing->id ?? null;
 
@@ -269,6 +261,46 @@ class CustomersController extends Controller
                     }
 
                     if ($customerId) {
+                        $explicitAddressType = strtolower(trim((string) ($row['address_type'] ?? '')));
+                        $addressType = in_array($explicitAddressType, ['billing', 'shipping', 'other'], true)
+                            ? $explicitAddressType
+                            : (in_array($rawType, ['billing', 'shipping', 'other'], true) ? $rawType : 'shipping');
+                        $hasAddressColumns = collect(['address_type', 'label', 'street', 'street2', 'city', 'state', 'zip', 'country'])
+                            ->contains(fn (string $field) => isset($presentColumns[$field]));
+
+                        if ($hasAddressColumns) {
+                            $addressData = [
+                                'type' => $addressType,
+                                'updated_at' => now(),
+                            ];
+                            foreach (['label', 'street', 'street2', 'city', 'state', 'zip', 'country'] as $field) {
+                                if (isset($presentColumns[$field])) {
+                                    $addressData[$field] = ($row[$field] ?? '') !== '' ? $row[$field] : null;
+                                }
+                            }
+
+                            $addressQuery = DB::table('customer_addresses')
+                                ->where('customer_id', $customerId)
+                                ->where('type', $addressType);
+                            $addressLabel = trim((string) ($row['label'] ?? ''));
+                            if ($addressLabel !== '') {
+                                $addressQuery->whereRaw('LOWER(label) = ?', [strtolower($addressLabel)]);
+                            } else {
+                                $addressQuery->whereNull('label');
+                            }
+                            $existingAddress = $addressQuery->first();
+
+                            if ($existingAddress) {
+                                DB::table('customer_addresses')->where('id', $existingAddress->id)->update($addressData);
+                            } else {
+                                DB::table('customer_addresses')->insert($addressData + [
+                                    'customer_id' => $customerId,
+                                    'is_default' => false,
+                                    'created_at' => now(),
+                                ]);
+                            }
+                        }
+
                         // Attach a category by id or name (case-insensitive)
                         $categoryInput = trim((string) ($row['category'] ?? ''));
                         if ($categoryInput !== '') {
@@ -289,17 +321,42 @@ class CustomersController extends Controller
                         // Create a contact person when a contact name is supplied
                         $contactName = trim((string) ($row['contact_name'] ?? ''));
                         if ($contactName !== '') {
-                            DB::table('customer_contacts')->insert([
-                                'customer_id' => $customerId,
-                                'name' => $contactName,
-                                'job_title' => $row['contact_job_title'] ?? null,
-                                'email' => $row['contact_email'] ?? null,
-                                'phone' => $row['contact_phone'] ?? null,
-                                'mobile' => $row['contact_mobile'] ?? null,
-                                'is_primary' => false,
-                                'created_at' => now(),
-                                'updated_at' => now(),
-                            ]);
+                            $contactData = ['name' => $contactName, 'updated_at' => now()];
+                            foreach ([
+                                'contact_job_title' => 'job_title',
+                                'contact_category' => 'contact_category',
+                                'contact_type' => 'contact_type',
+                                'contact_email' => 'email',
+                                'contact_phone' => 'phone',
+                                'contact_mobile' => 'mobile',
+                                'contact_street' => 'street',
+                                'contact_street2' => 'street2',
+                                'contact_city' => 'city',
+                                'contact_state' => 'state',
+                                'contact_zip' => 'zip',
+                                'contact_country' => 'country',
+                            ] as $csvField => $databaseField) {
+                                if (isset($presentColumns[$csvField])) {
+                                    $contactData[$databaseField] = ($row[$csvField] ?? '') !== ''
+                                        ? $row[$csvField]
+                                        : null;
+                                }
+                            }
+
+                            $existingContact = DB::table('customer_contacts')
+                                ->where('customer_id', $customerId)
+                                ->whereRaw('LOWER(name) = ?', [strtolower($contactName)])
+                                ->first();
+
+                            if ($existingContact) {
+                                DB::table('customer_contacts')->where('id', $existingContact->id)->update($contactData);
+                            } else {
+                                DB::table('customer_contacts')->insert($contactData + [
+                                    'customer_id' => $customerId,
+                                    'is_primary' => false,
+                                    'created_at' => now(),
+                                ]);
+                            }
                         }
                     }
                 } catch (\Throwable $e) {

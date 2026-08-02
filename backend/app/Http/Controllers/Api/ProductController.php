@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Modules\Inventory\Models\Brand;
 use Modules\Inventory\Services\InventoryService;
 
 class ProductController extends Controller
@@ -216,12 +217,14 @@ class ProductController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'secondary_name' => 'nullable|string|max:255',
-            'model_number' => 'nullable|string|max:100',
             'sku' => 'required|string|unique:products,sku',
             'barcode' => 'nullable|string|unique:products,barcode',
             'description' => 'nullable|string',
             'short_description' => 'nullable|string',
             'category_id' => 'nullable|exists:product_categories,id',
+            'brand_id' => 'nullable|exists:brands,id',
+            'manufacturer' => 'nullable|string|max:255',
+            'manufacturer_part_number' => 'nullable|string|max:100',
             'type' => 'required|in:product,service',
             'cost' => 'required|numeric|min:0',
             'price' => 'required|numeric|min:0',
@@ -649,12 +652,14 @@ class ProductController extends Controller
         $validated = $request->validate([
             'name' => 'string|max:255',
             'secondary_name' => 'nullable|string|max:255',
-            'model_number' => 'nullable|string|max:100',
             'sku' => 'string|unique:products,sku,'.$product->id,
             'barcode' => 'nullable|string|unique:products,barcode,'.$product->id,
             'description' => 'nullable|string',
             'short_description' => 'nullable|string',
             'category_id' => 'nullable|exists:product_categories,id',
+            'brand_id' => 'nullable|exists:brands,id',
+            'manufacturer' => 'nullable|string|max:255',
+            'manufacturer_part_number' => 'nullable|string|max:100',
             'type' => 'in:product,service',
             'cost' => 'nullable|numeric|min:0',
             'price' => 'nullable|numeric|min:0',
@@ -787,8 +792,9 @@ class ProductController extends Controller
             'product_type' => 'category_id',
             'artist' => 'secondary_name',
             'artist_group' => 'manufacturer',
-            'model_no' => 'model_number',
-            'model_num' => 'model_number',
+            'brand_name' => 'brand',
+            'mpn' => 'manufacturer_part_number',
+            'part_number' => 'manufacturer_part_number',
             'weblink_for_the_image' => 'image_url',
             // Batch / lot tracking
             'lot' => 'lot_number',
@@ -893,6 +899,17 @@ class ProductController extends Controller
             $secondaryName = isset($row['secondary_name']) ? trim((string) $row['secondary_name']) : '';
             $unit = isset($row['unit']) ? trim((string) $row['unit']) : '';
             $manufacturer = isset($row['manufacturer']) ? trim((string) $row['manufacturer']) : '';
+            $manufacturerPartNumber = isset($row['manufacturer_part_number'])
+                ? trim((string) $row['manufacturer_part_number'])
+                : '';
+            $brandInput = isset($row['brand']) ? trim((string) $row['brand']) : '';
+            $brandId = null;
+            if ($brandInput !== '' && $brandInput !== '-') {
+                $brand = ctype_digit($brandInput) ? Brand::find((int) $brandInput) : null;
+                $brand ??= Brand::query()->whereRaw('LOWER(name) = ?', [strtolower($brandInput)])->first();
+                $brand ??= Brand::create(['name' => $brandInput, 'is_active' => true]);
+                $brandId = $brand->id;
+            }
             $hasImportedStockQuantity = array_key_exists('stock_quantity', $row);
             $importedStockQuantity = $hasImportedStockQuantity
                 ? max(0, (int) round($this->parseNumericValue($row['stock_quantity'] ?? null)))
@@ -931,13 +948,11 @@ class ProductController extends Controller
                 'name' => $name,
                 'sku' => ($sku !== '' && $sku !== '-') ? $sku : ($existingProduct->sku ?? $sku),
                 'secondary_name' => $secondaryName !== '' && $secondaryName !== '-' ? $secondaryName : null,
-                'model_number' => isset($row['model_number']) && trim((string) $row['model_number']) !== '' && trim((string) $row['model_number']) !== '-'
-                    ? trim((string) $row['model_number'])
-                    : null,
                 'barcode' => $barcode !== '' ? $barcode : null,
                 'description' => $description !== '' ? $description : null,
                 'short_description' => $row['short_description'] ?? ($description !== '' ? $description : null),
                 'category_id' => $categoryId,
+                'brand_id' => $brandId,
                 'type' => in_array(($row['type'] ?? ''), ['product', 'service'], true) ? $row['type'] : 'product',
                 'cost' => $cost,
                 'price' => $price,
@@ -945,6 +960,9 @@ class ProductController extends Controller
                 'is_active' => isset($row['is_active']) ? filter_var($row['is_active'], FILTER_VALIDATE_BOOLEAN) : true,
                 'image' => $imageValue,
                 'manufacturer' => $manufacturer !== '' && $manufacturer !== '-' ? $manufacturer : null,
+                'manufacturer_part_number' => $manufacturerPartNumber !== '' && $manufacturerPartNumber !== '-'
+                    ? $manufacturerPartNumber
+                    : null,
                 'unit' => $unit !== '' && $unit !== '-' ? $unit : null,
                 'lot_number' => $lotNumber !== '' && $lotNumber !== '-' ? $lotNumber : null,
                 'expiry_date' => $expiryDate,
