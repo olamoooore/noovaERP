@@ -20,8 +20,10 @@ import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombo
 
 interface InvoiceLine {
   product_id: string;
+  sku: string;
   model_number: string;
   description: string;
+  product_notes: string;
   quantity: number;
   unit_price: number | '';
   tax_rate: number | '';
@@ -98,8 +100,10 @@ interface InvoiceDocumentSnapshot {
 
 const emptyLine = (): InvoiceLine => ({
   product_id: '',
+  sku: '',
   model_number: '',
   description: '',
+  product_notes: '',
   quantity: 1,
   unit_price: '',
   tax_rate: '',
@@ -414,12 +418,10 @@ export const CreateInvoicePage: React.FC = () => {
     if (field === 'product_id' && value && products) {
       const product = products.find((item: any) => String(item.id) === String(value));
       if (product) {
-        // Default the line description to the product's FULL description (not its
-        // name). The product name already shows in the Product column; the
-        // description is a free-text field the user can customize per document.
         updated[index].description = product.description || product.short_description || '';
         updated[index].unit_price = parseFloat(product.price || product.selling_price || '0');
         updated[index].model_number = product.manufacturer_part_number || '';
+        updated[index].sku = product.sku || '';
       }
     }
 
@@ -573,6 +575,7 @@ export const CreateInvoicePage: React.FC = () => {
           product_id: line.product_id ? parseInt(line.product_id, 10) : null,
           model_number: line.model_number || null,
           description: line.description || 'Item',
+          product_notes: line.product_notes || null,
           quantity: line.quantity,
           unit_price: line.unit_price === '' ? 0 : line.unit_price,
           tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
@@ -1045,14 +1048,15 @@ export const CreateInvoicePage: React.FC = () => {
                     <tr className="border-b">
                       <th className="text-left py-2 px-2 w-12">#</th>
                       <th className="text-left py-2 px-2">Product</th>
+                      <th className="text-left py-2 px-2 w-28">SKU</th>
                       <th className="text-left py-2 px-2">Description</th>
-                      <th className="text-left py-2 px-2 w-32">Model #</th>
-                      <th className="text-right py-2 px-2 w-24">Qty</th>
-                      <th className="text-right py-2 px-2 w-32">Unit Price</th>
-                      <th className="text-right py-2 px-2 w-24">Tax %</th>
-                      <th className="text-right py-2 px-2 w-28">Line Discount</th>
-                      <th className="text-right py-2 px-2 w-32">Line Total</th>
-                      <th className="py-2 px-2 w-40">Actions</th>
+                      <th className="text-left py-2 px-2 w-28">Model #</th>
+                      <th className="text-left py-2 px-2 w-36">Product Notes</th>
+                      <th className="text-right py-2 px-2 w-20">Qty</th>
+                      <th className="text-right py-2 px-2 w-28">Unit Price</th>
+                      <th className="text-right py-2 px-2 w-20">Tax %</th>
+                      <th className="text-right py-2 px-2 w-28">Line Total</th>
+                      <th className="py-2 px-2 w-32">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1069,9 +1073,19 @@ export const CreateInvoicePage: React.FC = () => {
                                 updated[index].description = (product as any).description || (product as any).short_description || '';
                                 updated[index].unit_price = parseFloat((product as any).price || (product as any).selling_price || '0');
                                 updated[index].model_number = (product as any).manufacturer_part_number || '';
+                                updated[index].sku = (product as any).sku || '';
                               }
                               setLines(updated);
                             }}
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="text"
+                            value={line.sku}
+                            readOnly
+                            className="w-full px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-sm text-slate-500"
+                            placeholder="SKU"
                           />
                         </td>
                         <td className="py-2 px-2">
@@ -1080,16 +1094,25 @@ export const CreateInvoicePage: React.FC = () => {
                             onChange={(event) => updateLine(index, 'description', event.target.value)}
                             rows={2}
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
-                            placeholder="Description (editable per line)"
+                            placeholder="Description"
                           />
                         </td>
                         <td className="py-2 px-2">
                           <input
                             type="text"
                             value={line.model_number}
-                            onChange={(event) => updateLine(index, 'model_number', event.target.value)}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                            readOnly
+                            className="w-full px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-sm text-slate-500"
                             placeholder="Model #"
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <textarea
+                            value={line.product_notes}
+                            onChange={(event) => updateLine(index, 'product_notes', event.target.value)}
+                            rows={2}
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                            placeholder="Product notes"
                           />
                         </td>
                         <td className="py-2 px-2">
@@ -1122,18 +1145,6 @@ export const CreateInvoicePage: React.FC = () => {
                           value={line.tax_rate === '' ? '' : line.tax_rate}
                           onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
                           className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
-                        />
-                      </td>
-                      <td className="py-2 px-2">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={line.discount_amount === '' ? '' : line.discount_amount}
-                          onChange={(event) => updateLine(index, 'discount_amount', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
-                          title="Per-line discount amount (line_discount_amount)"
                         />
                       </td>
                         <td className="py-2 px-2 text-right font-medium">

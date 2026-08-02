@@ -21,6 +21,7 @@ class InvoiceLine extends Model
         'department_id',
         'branch_id',
         'description',
+        'product_notes',
         'quantity',
         'unit_price',
         'tax_rate',

@@ -13,6 +13,7 @@ class DeliveryOrderLine extends Model
         'product_id',
         'model_number',
         'description',
+        'product_notes',
         'patient_name',
         'quantity_ordered',
         'quantity_delivered',

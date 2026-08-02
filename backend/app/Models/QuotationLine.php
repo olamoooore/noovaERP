@@ -12,6 +12,7 @@ class QuotationLine extends Model
         'product_id',
         'model_number',
         'description',
+        'product_notes',
         'quantity',
         'unit_price',
         'tax_rate',

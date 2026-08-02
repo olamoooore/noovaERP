@@ -13,6 +13,7 @@ class SalesOrderLine extends Model
         'model_number',
         'variant_id',
         'description',
+        'product_notes',
         'sku',
         'quantity',
         'quantity_allocated',

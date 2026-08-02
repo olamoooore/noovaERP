@@ -11,8 +11,10 @@ import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombo
 
 interface QuotationLine {
   product_id: string;
+  sku: string;
   model_number: string;
   description: string;
+  product_notes: string;
   quantity: number;
   unit_price: number | '';
   tax_rate: number | '';
@@ -30,8 +32,10 @@ interface CustomerRecord {
 
 const emptyLine = (): QuotationLine => ({
   product_id: '',
+  sku: '',
   model_number: '',
   description: '',
+  product_notes: '',
   quantity: 1,
   unit_price: '',
   tax_rate: '',
@@ -114,6 +118,7 @@ export const QuotationCreatePage: React.FC = () => {
       updated[index].description = product.name || product.description || '';
       updated[index].unit_price = parseFloat(product.price || product.selling_price || '0');
       updated[index].model_number = product.manufacturer_part_number || '';
+      updated[index].sku = product.sku || '';
     }
   }
 
@@ -208,6 +213,7 @@ export const QuotationCreatePage: React.FC = () => {
         product_id: line.product_id ? parseInt(line.product_id, 10) : null,
         model_number: line.model_number || null,
         description: line.description || 'Item',
+        product_notes: line.product_notes || null,
         quantity: line.quantity,
         unit_price: line.unit_price === '' ? 0 : line.unit_price,
         tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
@@ -462,13 +468,15 @@ export const QuotationCreatePage: React.FC = () => {
     <tr className="border-b">
       <th className="text-left py-2 px-2 w-12">#</th>
       <th className="text-left py-2 px-2">Product</th>
+      <th className="text-left py-2 px-2 w-28">SKU</th>
       <th className="text-left py-2 px-2">Description</th>
-      <th className="text-left py-2 px-2 w-32">Model #</th>
-      <th className="text-right py-2 px-2 w-24">Qty</th>
-      <th className="text-right py-2 px-2 w-32">Unit Price</th>
-      <th className="text-right py-2 px-2 w-24">Tax %</th>
-      <th className="text-right py-2 px-2 w-32">Line Total</th>
-      <th className="py-2 px-2 w-40">Actions</th>
+      <th className="text-left py-2 px-2 w-28">Model #</th>
+      <th className="text-left py-2 px-2 w-36">Product Notes</th>
+      <th className="text-right py-2 px-2 w-20">Qty</th>
+      <th className="text-right py-2 px-2 w-28">Unit Price</th>
+      <th className="text-right py-2 px-2 w-20">Tax %</th>
+      <th className="text-right py-2 px-2 w-28">Line Total</th>
+      <th className="py-2 px-2 w-32">Actions</th>
     </tr>
                 </thead>
                 <tbody>
@@ -487,11 +495,22 @@ export const QuotationCreatePage: React.FC = () => {
                                 product_id: val,
                                 description: product.name || updated[index].description,
                                 unit_price: parseFloat((product as any).price || (product as any).selling_price || '0') || updated[index].unit_price,
+                                model_number: (product as any).manufacturer_part_number || updated[index].model_number,
+                                sku: (product as any).sku || updated[index].sku,
                               }
                               setLines(updated)
                             }
                           }}
                           placeholder="Search product..."
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="text"
+                          value={line.sku}
+                          readOnly
+                          className="w-full px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-sm text-slate-500"
+                          placeholder="SKU"
                         />
                       </td>
                       <td className="py-2 px-2">
@@ -508,9 +527,18 @@ export const QuotationCreatePage: React.FC = () => {
                         <input
                           type="text"
                           value={line.model_number}
-                          onChange={(event) => updateLine(index, 'model_number', event.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                          readOnly
+                          className="w-full px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-sm text-slate-500"
                           placeholder="Model #"
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <textarea
+                          value={line.product_notes}
+                          onChange={(event) => updateLine(index, 'product_notes', event.target.value)}
+                          rows={2}
+                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                          placeholder="Product notes"
                         />
                       </td>
                       <td className="py-2 px-2">

@@ -15,8 +15,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 interface LineItem {
   product_id: number | null
   product_name: string
+  sku: string
   model_number: string
   description: string
+  product_notes: string
   patient_name: string
   quantity: number
   unit: string
@@ -50,7 +52,7 @@ export function DeliveryOrderCreatePage() {
 
   // Standalone mode line items
   const [standaloneLines, setStandaloneLines] = useState<LineItem[]>([
-    { product_id: null, product_name: '', model_number: '', description: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' },
+    { product_id: null, product_name: '', sku: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' },
   ])
 
   // Fetch customers for standalone mode
@@ -220,6 +222,7 @@ export function DeliveryOrderCreatePage() {
         product_id: l.product_id,
         model_number: l.model_number || null,
         description: l.description,
+        product_notes: l.product_notes || null,
         patient_name: l.patient_name || undefined,
         quantity_delivered: l.quantity,
         unit: l.unit,
@@ -242,7 +245,7 @@ export function DeliveryOrderCreatePage() {
   }
 
   const addStandaloneLine = () => {
-    setStandaloneLines((prev) => [...prev, { product_id: null, product_name: '', model_number: '', description: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' }])
+    setStandaloneLines((prev) => [...prev, { product_id: null, product_name: '', sku: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' }])
   }
 
   const removeStandaloneLine = (index: number) => {
@@ -524,13 +527,16 @@ export function DeliveryOrderCreatePage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[200px]">Product</TableHead>
+                  <TableHead className="w-[180px]">Product</TableHead>
+                  <TableHead className="w-[100px]">SKU</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead className="w-[100px]">Model #</TableHead>
+                  <TableHead className="w-[180px]">Product Notes</TableHead>
                   <TableHead className="w-[180px]">Patient Name</TableHead>
                   <TableHead className="text-right w-[100px]">Quantity</TableHead>
-                  <TableHead className="w-[100px]">Unit</TableHead>
+                  <TableHead className="w-[80px]">Unit</TableHead>
                   <TableHead className="text-right w-[120px]">Unit Price</TableHead>
-                  <TableHead className="w-[120px]">Lot Number</TableHead>
+                  <TableHead className="w-[100px]">Lot Number</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -544,8 +550,21 @@ export function DeliveryOrderCreatePage() {
                           updateStandaloneLine(idx, 'product_id', val ? parseInt(val) : null)
                           updateStandaloneLine(idx, 'product_name', product?.name || '')
                           if (!line.description && product) updateStandaloneLine(idx, 'description', product.name || '')
+                          if (product) {
+                            updateStandaloneLine(idx, 'sku', (product as any).sku || '')
+                            updateStandaloneLine(idx, 'model_number', (product as any).manufacturer_part_number || '')
+                            if (!line.unit_price) updateStandaloneLine(idx, 'unit_price', parseFloat((product as any).price || (product as any).selling_price || '0') || null)
+                          }
                         }}
                         placeholder="Search product..."
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={line.sku}
+                        readOnly
+                        className="bg-gray-50 dark:bg-gray-900 text-slate-500"
+                        placeholder="SKU"
                       />
                     </TableCell>
                     <TableCell>
@@ -553,6 +572,21 @@ export function DeliveryOrderCreatePage() {
                         value={line.description}
                         onChange={(e) => updateStandaloneLine(idx, 'description', e.target.value)}
                         placeholder="Description"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={line.model_number}
+                        readOnly
+                        className="bg-gray-50 dark:bg-gray-900 text-slate-500"
+                        placeholder="Model #"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={line.product_notes}
+                        onChange={(e) => updateStandaloneLine(idx, 'product_notes', e.target.value)}
+                        placeholder="Product notes"
                       />
                     </TableCell>
                     <TableCell>
