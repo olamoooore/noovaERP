@@ -561,19 +561,22 @@ class InvoiceController extends Controller
             return;
         }
 
-        // Create a reversal journal entry
-        $reversalEntry = \App\Models\JournalEntry::create([
+        // Create a reversal journal entry using raw insert to bypass fillable restrictions
+        $reversalId = DB::table('journal_entries')->insertGetId([
             'journal_id' => $journalEntry->journal_id,
             'entry_number' => $journalEntry->entry_number . '-REV',
             'entry_date' => now()->toDateString(),
             'description' => "Reversal of {$journalEntry->description} (Invoice #{$invoice->invoice_number})",
             'status' => 'posted',
-            'reference_type' => 'Invoice',
-            'reference_id' => $invoice->id,
+            'posted_at' => now(),
+            'created_by' => $journalEntry->created_by,
+            'reference' => $journalEntry->reference,
             'legal_entity_id' => $journalEntry->legal_entity_id,
             'entity_book_id' => $journalEntry->entity_book_id,
-            'currency_code' => $journalEntry->currency_code,
-            'exchange_rate' => $journalEntry->exchange_rate,
+            'is_reversal' => true,
+            'reversed_entry_id' => $journalEntry->id,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         // Copy lines with swapped debit/credit
@@ -583,22 +586,21 @@ class InvoiceController extends Controller
 
         foreach ($lines as $line) {
             DB::table('journal_entry_lines')->insert([
-                'journal_entry_id' => $reversalEntry->id,
+                'journal_entry_id' => $reversalId,
                 'account_id' => $line->account_id,
                 'debit' => $line->credit,
                 'credit' => $line->debit,
                 'description' => $line->description,
-                'party_type' => $line->party_type,
-                'party_id' => $line->party_id,
                 'currency_code' => $line->currency_code,
-                'amount' => $line->amount ? -$line->amount : null,
+                'original_amount' => isset($line->original_amount) ? -$line->original_amount : null,
+                'exchange_rate' => $line->exchange_rate,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
         }
 
-        // Update the original invoice's journal entry to reference the reversal
-        $journalEntry->update(['status' => 'reversed']);
+        // Mark original journal entry as reversed (keep status as 'posted' — CHECK constraint only allows draft/posted)
+        $journalEntry->update(['reversed_at' => now()]);
     }
 
     /**

@@ -49,6 +49,8 @@ export const CustomerInvoiceDetail: React.FC = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
   const [showCreditNoteDialog, setShowCreditNoteDialog] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const isQuoteMode = location.pathname.startsWith('/sales/quotes');
@@ -252,11 +254,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
             <Button
               variant="outline"
               className="text-destructive"
-              onClick={() => {
-                if (window.confirm(`Cancel ${documentLabel.toLowerCase()} ${invoice.invoice_number}? This will mark it as cancelled.`)) {
-                  cancelMutation.mutate();
-                }
-              }}
+              onClick={() => setShowCancelDialog(true)}
               disabled={cancelMutation.isPending}
             >
               <Icon icon="solar:close-circle-bold" className="h-4 w-4 mr-2" />
@@ -266,11 +264,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
           {invoice.status === 'cancelled' && (
             <Button
               variant="outline"
-              onClick={() => {
-                if (window.confirm(`Reset ${documentLabel.toLowerCase()} to draft? You will be able to edit and re-post it.`)) {
-                  resetToDraftMutation.mutate();
-                }
-              }}
+              onClick={() => setShowResetDialog(true)}
               disabled={resetToDraftMutation.isPending}
             >
               <Icon icon="solar:undo-left-round-bold" className="h-4 w-4 mr-2" />
@@ -713,6 +707,47 @@ export const CustomerInvoiceDetail: React.FC = () => {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel {documentLabel}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel {invoice.invoice_number}? This will mark it as cancelled.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go Back</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => cancelMutation.mutate()}
+              disabled={cancelMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {cancelMutation.isPending ? 'Cancelling...' : 'Cancel Invoice'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset to Draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to reset {invoice.invoice_number} to draft? You will be able to edit and re-post it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go Back</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => resetToDraftMutation.mutate()}
+              disabled={resetToDraftMutation.isPending}
+            >
+              {resetToDraftMutation.isPending ? 'Resetting...' : 'Reset to Draft'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
