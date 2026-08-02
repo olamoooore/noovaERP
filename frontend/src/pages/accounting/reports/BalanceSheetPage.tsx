@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import reportApi from '@/lib/reportApi';
+import { ComparisonTable, type ComparisonRow } from '@/components/reports/ComparisonTable';
 
 interface Account {
   account_id: number;
@@ -56,6 +57,12 @@ interface BalanceSheetData {
   total_liabilities_and_equity: number;
   balance_check: number;
   working_capital: number;
+  comparison?: {
+    as_of_date: string;
+    total_assets: { amount: number; change: number; change_percent: number };
+    total_liabilities: { amount: number; change: number; change_percent: number };
+    total_equity: { amount: number; change: number; change_percent: number };
+  };
 }
 
 export default function BalanceSheetPage() {
@@ -217,35 +224,32 @@ export default function BalanceSheetPage() {
         </div>
       </Card>
 
-      {/* Comparison Summary */}
-      {compareEnabled && (balanceSheet as any)?.comparison && (
+      {/* Comparison Table */}
+      {compareEnabled && balanceSheet?.comparison && (
         <Card className="p-6">
           <h3 className="font-bold text-lg mb-4">
-            Comparison: As of {asOfDate} vs As of {(balanceSheet as any).comparison.period}
+            Comparison: As of {new Date(asOfDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+            {' vs As of '}
+            {new Date(balanceSheet.comparison.as_of_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[
-              { label: 'Total Assets', current: balanceSheet?.total_assets, compare: (balanceSheet as any)?.comparison?.total_assets },
-              { label: 'Total Liabilities', current: balanceSheet?.total_liabilities, compare: (balanceSheet as any)?.comparison?.total_liabilities },
-              { label: 'Total Equity', current: balanceSheet?.total_equity, compare: (balanceSheet as any)?.comparison?.total_equity },
-            ].map(({ label, current, compare }) => {
-              const change = (current || 0) - (compare || 0);
-              const changePct = compare ? Math.round((change / Math.abs(compare)) * 100) : 0;
-              return (
-                <div key={label} className="border rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground">{label}</p>
-                  <p className="text-lg font-bold mt-1">{formatCurrency(current || 0)}</p>
-                  {compare !== undefined && (
-                    <p className={`text-sm mt-1 font-medium ${
-                      change >= 0 ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {change >= 0 ? '▲' : '▼'} {formatCurrency(Math.abs(change))} ({changePct}%)
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <ComparisonTable
+            currentLabel={`As of ${new Date(asOfDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+            compareLabel={`As of ${new Date(balanceSheet.comparison.as_of_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+            rows={[
+              { label: 'ASSETS', current: 0, compare: 0, sectionHeader: true },
+              { label: 'Total Current Assets', current: normalizeGroups(balanceSheet.assets?.current || []).reduce((sum, group) => sum + group.total, 0), compare: normalizeGroups(balanceSheet.assets?.current || []).reduce((sum, group) => sum + group.total, 0) - (balanceSheet.comparison?.total_assets?.change || 0), indent: true },
+              { label: 'Total Non-Current Assets', current: normalizeGroups(balanceSheet.assets?.non_current || []).reduce((sum, group) => sum + group.total, 0), compare: normalizeGroups(balanceSheet.assets?.non_current || []).reduce((sum, group) => sum + group.total, 0) - (balanceSheet.comparison?.total_assets?.change || 0), indent: true },
+              { label: 'TOTAL ASSETS', current: balanceSheet.total_assets || 0, compare: balanceSheet.comparison.total_assets.amount, bold: true },
+              { label: 'LIABILITIES', current: 0, compare: 0, sectionHeader: true },
+              { label: 'Total Current Liabilities', current: normalizeGroups(balanceSheet.liabilities?.current || []).reduce((sum, group) => sum + group.total, 0), compare: normalizeGroups(balanceSheet.liabilities?.current || []).reduce((sum, group) => sum + group.total, 0) - (balanceSheet.comparison?.total_liabilities?.change || 0), indent: true },
+              { label: 'Total Non-Current Liabilities', current: normalizeGroups(balanceSheet.liabilities?.non_current || []).reduce((sum, group) => sum + group.total, 0), compare: normalizeGroups(balanceSheet.liabilities?.non_current || []).reduce((sum, group) => sum + group.total, 0) - (balanceSheet.comparison?.total_liabilities?.change || 0), indent: true },
+              { label: 'TOTAL LIABILITIES', current: balanceSheet.total_liabilities || 0, compare: balanceSheet.comparison.total_liabilities.amount, bold: true },
+              { label: 'EQUITY', current: 0, compare: 0, sectionHeader: true },
+              { label: 'TOTAL EQUITY', current: balanceSheet.total_equity || 0, compare: balanceSheet.comparison.total_equity.amount, bold: true },
+              { label: 'TOTAL LIABILITIES + EQUITY', current: balanceSheet.total_liabilities_and_equity || 0, compare: (balanceSheet.comparison.total_liabilities.amount + balanceSheet.comparison.total_equity.amount), bold: true },
+            ]}
+            formatCurrency={formatCurrency}
+          />
         </Card>
       )}
 

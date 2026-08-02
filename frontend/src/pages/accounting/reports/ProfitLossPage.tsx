@@ -15,6 +15,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import reportApi from '@/lib/reportApi';
+import { ComparisonTable } from '@/components/reports/ComparisonTable';
 
 export default function ProfitLossPage() {
   const navigate = useNavigate();
@@ -134,33 +135,32 @@ export default function ProfitLossPage() {
         </div>
       </Card>
 
-      {/* Comparison Summary */}
+      {/* Comparison Table */}
       {compareEnabled && profitLoss?.comparison && (
         <Card className="p-6">
           <h3 className="font-bold text-lg mb-4">
-            Comparison: {startDate} to {endDate} vs {profitLoss.comparison.period?.start} to {profitLoss.comparison.period?.end}
+            Comparison: {new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            {' - '}
+            {new Date(endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            {' vs '}
+            {new Date(profitLoss.comparison.period?.start || '').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            {' - '}
+            {new Date(profitLoss.comparison.period?.end || '').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {[
-              { label: 'Revenue', data: profitLoss.comparison.revenue },
-              { label: 'Gross Profit', data: profitLoss.comparison.gross_profit },
-              { label: 'Operating Profit', data: profitLoss.comparison.operating_profit },
-              { label: 'Net Profit', data: profitLoss.comparison.net_profit },
-            ].map(({ label, data }) => (
-              <div key={label} className="border rounded-lg p-4">
-                <p className="text-sm text-muted-foreground">{label}</p>
-                <p className="text-lg font-bold mt-1">{formatCurrency(data?.amount || 0)}</p>
-                {data?.change !== undefined && (
-                  <p className={`text-sm mt-1 font-medium ${
-                    data.change >= 0 ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {data.change >= 0 ? '▲' : '▼'} {formatCurrency(Math.abs(data.change))}
-                    ({data.change_percent || 0}%)
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
+          <ComparisonTable
+            currentLabel={`${new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${new Date(endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+            compareLabel={`${new Date(profitLoss.comparison.period?.start || '').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${new Date(profitLoss.comparison.period?.end || '').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+            rows={[
+              { label: 'Revenue', current: profitLoss.revenue?.total || 0, compare: profitLoss.comparison.revenue?.amount || 0, bold: true },
+              { label: 'Cost of Goods Sold', current: profitLoss.cost_of_goods_sold?.total || 0, compare: (profitLoss.revenue?.total || 0) - (profitLoss.gross_profit?.amount || 0), indent: true },
+              { label: 'Gross Profit', current: profitLoss.gross_profit?.amount || 0, compare: profitLoss.comparison.gross_profit?.amount || 0, bold: true },
+              { label: 'Operating Expenses', current: profitLoss.operating_expenses?.total || 0, compare: (profitLoss.gross_profit?.amount || 0) - (profitLoss.operating_profit?.amount || 0), indent: true },
+              { label: 'Operating Profit', current: profitLoss.operating_profit?.amount || 0, compare: profitLoss.comparison.operating_profit?.amount || 0, bold: true },
+              { label: 'Other Income/Expenses', current: (profitLoss.other_income?.total || 0) - (profitLoss.other_expenses?.total || 0), compare: ((profitLoss.comparison.net_profit?.amount || 0) - (profitLoss.comparison.operating_profit?.amount || 0)), indent: true },
+              { label: 'Net Profit/(Loss)', current: profitLoss.net_profit?.amount || 0, compare: profitLoss.comparison.net_profit?.amount || 0, bold: true },
+            ]}
+            formatCurrency={formatCurrency}
+          />
         </Card>
       )}
 

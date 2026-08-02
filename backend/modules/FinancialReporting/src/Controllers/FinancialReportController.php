@@ -230,6 +230,11 @@ class FinancialReportController extends Controller
                 'balance_check' => round((float) ($totalAssets - $totalLiabilities - $totalEquity), 2),
             ];
 
+            // Add comparison if available
+            if ($reportData->comparison) {
+                $response['comparison'] = $reportData->comparison;
+            }
+
             // Add no-cache headers to prevent browser caching
             return response()->json([
                 'success' => true,
