@@ -252,6 +252,7 @@ class VendorsController extends Controller
         }
 
         $created = 0;
+        $updated = 0;
         $errors = [];
 
         DB::beginTransaction();
@@ -269,17 +270,29 @@ class VendorsController extends Controller
                 }
 
                 try {
-                    DB::table('vendors')->insert([
+                    $vendorData = [
                         'name' => $name,
                         'email' => isset($row['email']) && $row['email'] !== '' ? trim((string) $row['email']) : null,
                         'phone' => isset($row['phone']) && $row['phone'] !== '' ? trim((string) $row['phone']) : null,
                         'company' => isset($row['company']) && $row['company'] !== '' ? trim((string) $row['company']) : null,
                         'address' => isset($row['address']) && $row['address'] !== '' ? trim((string) $row['address']) : null,
                         'contact_person' => isset($row['contact_person']) && $row['contact_person'] !== '' ? trim((string) $row['contact_person']) : null,
-                        'created_at' => now(),
                         'updated_at' => now(),
-                    ]);
-                    $created++;
+                    ];
+
+                    $existing = DB::table('vendors')
+                        ->where('name', $name)
+                        ->whereNull('deleted_at')
+                        ->first();
+
+                    if ($existing) {
+                        DB::table('vendors')->where('id', $existing->id)->update($vendorData);
+                        $updated++;
+                    } else {
+                        $vendorData['created_at'] = now();
+                        DB::table('vendors')->insert($vendorData);
+                        $created++;
+                    }
                 } catch (\Throwable $e) {
                     $errors[] = [
                         'row' => $index + 2,
@@ -297,6 +310,7 @@ class VendorsController extends Controller
 
         return response()->json([
             'created' => $created,
+            'updated' => $updated,
             'errors' => $errors,
         ]);
     }

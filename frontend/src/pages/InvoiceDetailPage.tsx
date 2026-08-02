@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -127,6 +127,7 @@ export function InvoiceDetailPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { toast } = useToast()
+  const queryClient = useQueryClient()
 
   const { data: invoice, isLoading } = useQuery({
     queryKey: ['invoice', id],
@@ -135,6 +136,24 @@ export function InvoiceDetailPage() {
       return response.data as Invoice
     },
     enabled: !!id,
+  })
+
+  const postMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/invoices/${id}/send`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+      toast({ title: 'Invoice posted successfully' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to post invoice',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
   })
 
   const getStatusBadge = (status: string) => {
@@ -224,6 +243,19 @@ export function InvoiceDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {invoice.status === 'draft' && (
+            <Button
+              onClick={() => postMutation.mutate()}
+              disabled={postMutation.isPending}
+            >
+              {postMutation.isPending ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              ) : (
+                <Icon icon="solar:send-bold-duotone" className="mr-2 h-4 w-4" />
+              )}
+              Post Invoice
+            </Button>
+          )}
           <Button variant="outline" onClick={handlePrint}>
             <Icon icon="material-symbols:print" className="mr-2 h-4 w-4" />
             Print

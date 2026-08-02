@@ -163,23 +163,65 @@ class InvoiceController extends Controller
         // Re-apply search_path before any DB operations (SalesOrder lifecycle can reset it)
         $this->ensureTenantSearchPath();
 
-        // Preserve the imported invoice number when provided; force-delete existing if re-importing.
+        // Preserve the imported invoice number when provided; update existing if re-importing.
         $importedNumber = isset($data['invoice_number']) ? trim((string) $data['invoice_number']) : '';
+        $existingInvoice = null;
         if ($importedNumber !== '') {
-            $existing = Invoice::withTrashed()->where('invoice_number', $importedNumber)->first();
-            if ($existing) {
-                // Nullify FKs and set status to draft to bypass DB trigger prevent_posted_document_deletion()
-                $existing->update(['journal_entry_id' => null, 'sales_order_id' => null, 'status' => 'draft']);
-                // Clean up related records
-                $existing->payments()->delete();
-                $existing->lines()->delete();
-                try { DB::table('settlement_audit_logs')->where('invoice_id', $existing->id)->delete(); } catch (\Exception $e) {}
-                try { DB::table('credit_notes')->where('invoice_id', $existing->id)->delete(); } catch (\Exception $e) {}
-                try { DB::table('sales_invoice_links')->where('invoice_id', $existing->id)->delete(); } catch (\Exception $e) {}
-                $existing->forceDelete();
+            $existingInvoice = Invoice::withTrashed()->where('invoice_number', $importedNumber)->first();
+            if ($existingInvoice) {
+                // If invoice is already posted, skip update to preserve financial integrity
+                if ($existingInvoice->status === 'posted' && $existingInvoice->journal_entry_id) {
+                    return $existingInvoice;
+                }
+                // Clean up existing lines for re-creation
+                $existingInvoice->lines()->delete();
             }
         }
 
+        // If updating an existing draft invoice, update header + lines directly
+        if ($existingInvoice && $existingInvoice->status === 'draft') {
+            $existingInvoice->update(array_filter([
+                'customer_id' => $data['customer_id'] ?? null,
+                'invoice_date' => $data['invoice_date'] ?? null,
+                'due_date' => $data['due_date'] ?? null,
+                'case_number' => $data['case_number'] ?? null,
+                'date_of_case' => $data['date_of_case'] ?? null,
+                'case_location' => $data['case_location'] ?? null,
+                'patient_name' => $data['patient_name'] ?? null,
+                'customer_reference' => $data['customer_reference'] ?? null,
+                'internal_reference' => $data['internal_reference'] ?? null,
+                'attention_to' => $data['attention_to'] ?? null,
+                'contact_email' => $data['contact_email'] ?? null,
+                'contact_phone' => $data['contact_phone'] ?? null,
+                'billing_address_snapshot' => $data['billing_address_snapshot'] ?? null,
+                'shipping_address_snapshot' => $data['shipping_address_snapshot'] ?? null,
+                'notes' => $data['notes'] ?? null,
+                'terms' => $data['terms'] ?? null,
+                'discount_amount' => $data['discount_amount'] ?? null,
+                'po_number' => $data['po_number'] ?? null,
+                'updated_at' => now(),
+            ], fn ($v) => $v !== null));
+
+            // Recreate lines
+            foreach ($data['lines'] as $line) {
+                $existingInvoice->lines()->create([
+                    'product_id' => $line['product_id'] ?? null,
+                    'model_number' => $line['model_number'] ?? null,
+                    'description' => $line['description'],
+                    'quantity' => $line['quantity'],
+                    'unit_price' => $line['unit_price'],
+                    'tax_rate' => $line['tax_rate'] ?? 0,
+                    'discount_amount' => $line['discount_amount'] ?? 0,
+                ]);
+            }
+
+            $existingInvoice->load('lines');
+            $existingInvoice->calculateTotals();
+
+            return $existingInvoice;
+        }
+
+        // For new invoices, create via SalesOrder lifecycle
         $salesLines = array_map(fn ($line) => [
             'product_id' => $line['product_id'] ?? null,
             'model_number' => $line['model_number'] ?? null,

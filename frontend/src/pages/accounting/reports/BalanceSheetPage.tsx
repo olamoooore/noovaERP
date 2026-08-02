@@ -61,10 +61,15 @@ interface BalanceSheetData {
 export default function BalanceSheetPage() {
   const navigate = useNavigate();
   const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split('T')[0]);
+  const [compareEnabled, setCompareEnabled] = useState(false);
+  const [compareDate, setCompareDate] = useState('');
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['balance-sheet', asOfDate],
-    queryFn: () => reportApi.getBalanceSheet({ as_of_date: asOfDate }),
+    queryKey: ['balance-sheet', asOfDate, compareEnabled, compareDate],
+    queryFn: () => reportApi.getBalanceSheet({
+      as_of_date: asOfDate,
+      ...(compareEnabled && compareDate ? { compare_date: compareDate } : {}),
+    }),
     enabled: !!asOfDate,
   });
 
@@ -181,7 +186,68 @@ export default function BalanceSheetPage() {
             Print
           </Button>
         </div>
+
+        {/* Comparison Toggle */}
+        <div className="mt-4 border-t pt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <input
+              type="checkbox"
+              id="compare_enabled"
+              checked={compareEnabled}
+              onChange={(e) => setCompareEnabled(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            <Label htmlFor="compare_enabled" className="cursor-pointer font-medium">
+              Compare with another date
+            </Label>
+          </div>
+          {compareEnabled && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="compare_date">Comparison Date</Label>
+                <Input
+                  id="compare_date"
+                  type="date"
+                  value={compareDate}
+                  onChange={(e) => setCompareDate(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </Card>
+
+      {/* Comparison Summary */}
+      {compareEnabled && (balanceSheet as any)?.comparison && (
+        <Card className="p-6">
+          <h3 className="font-bold text-lg mb-4">
+            Comparison: As of {asOfDate} vs As of {(balanceSheet as any).comparison.period}
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              { label: 'Total Assets', current: balanceSheet?.total_assets, compare: (balanceSheet as any)?.comparison?.total_assets },
+              { label: 'Total Liabilities', current: balanceSheet?.total_liabilities, compare: (balanceSheet as any)?.comparison?.total_liabilities },
+              { label: 'Total Equity', current: balanceSheet?.total_equity, compare: (balanceSheet as any)?.comparison?.total_equity },
+            ].map(({ label, current, compare }) => {
+              const change = (current || 0) - (compare || 0);
+              const changePct = compare ? Math.round((change / Math.abs(compare)) * 100) : 0;
+              return (
+                <div key={label} className="border rounded-lg p-4">
+                  <p className="text-sm text-muted-foreground">{label}</p>
+                  <p className="text-lg font-bold mt-1">{formatCurrency(current || 0)}</p>
+                  {compare !== undefined && (
+                    <p className={`text-sm mt-1 font-medium ${
+                      change >= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {change >= 0 ? '▲' : '▼'} {formatCurrency(Math.abs(change))} ({changePct}%)
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       <Card className="p-4 bg-blue-50 border-blue-200">
         <div className="flex items-start gap-3">

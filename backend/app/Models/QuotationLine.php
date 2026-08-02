@@ -52,14 +52,25 @@ class QuotationLine extends Model
 
     /**
      * Compute tax_amount and line_total from quantity, unit_price, tax_rate
-     * and discount_amount. Tax is computed on the gross amount; the line
-     * discount is then subtracted from the net portion (tax-exclusive model).
+     * and discount_amount. Tax is computed on the post-discount amount.
      */
     public function calculateLineTotals(): void
     {
         $gross = (float) $this->quantity * (float) $this->unit_price;
         $discount = (float) ($this->discount_amount ?? 0);
-        $this->tax_amount = round($gross * ((float) $this->tax_rate / 100), 2);
-        $this->line_total = round($gross - $discount + $this->tax_amount, 2);
+
+        if (!empty($this->tax_inclusive)) {
+            $divisor = 1 + ((float) $this->tax_rate / 100);
+            $netBeforeDiscount = $divisor > 0 ? $gross / $divisor : $gross;
+            $taxBeforeDiscount = $gross - $netBeforeDiscount;
+            $discountRatio = $gross > 0 ? $discount / $gross : 0;
+            $this->tax_amount = round($taxBeforeDiscount * (1 - $discountRatio), 2);
+            $netAfterDiscount = $netBeforeDiscount * (1 - $discountRatio);
+            $this->line_total = round($netAfterDiscount + $this->tax_amount, 2);
+        } else {
+            $netAfterDiscount = $gross - $discount;
+            $this->tax_amount = round($netAfterDiscount * ((float) $this->tax_rate / 100), 2);
+            $this->line_total = round($netAfterDiscount + $this->tax_amount, 2);
+        }
     }
 }

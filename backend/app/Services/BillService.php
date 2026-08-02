@@ -153,7 +153,7 @@ class BillService
                 $unitPrice = (float) $lineData['unit_price'];
                 $taxRate = (float) ($lineData['tax_rate'] ?? 0);
                 $lineTotal = $quantity * $unitPrice;
-                $taxAmount = $lineTotal * ($taxRate / 100);
+                $taxAmount = round($lineTotal * ($taxRate / 100), 2);
 
                 BillLine::create([
                     'bill_id' => $bill->id,
@@ -171,9 +171,26 @@ class BillService
 
             // ── Calculate totals ──────────────────────────────────────────────────
             $bill->load('lines');
-            $bill->subtotal = $bill->lines->sum('line_total');
-            $bill->tax_amount = $bill->lines->sum('tax_amount');
-            $bill->total = $bill->subtotal + $bill->tax_amount - $bill->discount_amount;
+            $grossSubtotal = (float) $bill->lines->sum('line_total');
+            $documentDiscount = (float) ($bill->discount_amount ?? 0);
+
+            // Proportionally allocate document discount to recompute tax
+            if ($documentDiscount > 0 && $grossSubtotal > 0) {
+                $discountRatio = $documentDiscount / $grossSubtotal;
+                $adjustedTax = 0;
+                foreach ($bill->lines as $line) {
+                    $lineGross = (float) $line->quantity * (float) $line->unit_price;
+                    $lineDiscount = $lineGross * $discountRatio;
+                    $netAfterDiscount = $lineGross - $lineDiscount;
+                    $adjustedTax += round($netAfterDiscount * ((float) $line->tax_rate / 100), 2);
+                }
+                $bill->tax_amount = round($adjustedTax, 2);
+            } else {
+                $bill->tax_amount = $bill->lines->sum('tax_amount');
+            }
+
+            $bill->subtotal = $grossSubtotal;
+            $bill->total = $bill->subtotal + $bill->tax_amount - $documentDiscount;
             $bill->balance = $bill->total - $bill->paid_amount;
             $bill->save();
 

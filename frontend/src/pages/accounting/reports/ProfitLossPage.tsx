@@ -22,13 +22,20 @@ export default function ProfitLossPage() {
     new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]
   );
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [compareEnabled, setCompareEnabled] = useState(false);
+  const [compareStartDate, setCompareStartDate] = useState('');
+  const [compareEndDate, setCompareEndDate] = useState('');
 
   // Fetch profit & loss
   const { data, isLoading, error } = useQuery({
-    queryKey: ['profit-loss', startDate, endDate],
-    queryFn: () => reportApi.getProfitLoss({ 
-      start_date: startDate, 
-      end_date: endDate 
+    queryKey: ['profit-loss', startDate, endDate, compareEnabled, compareStartDate, compareEndDate],
+    queryFn: () => reportApi.getProfitLoss({
+      start_date: startDate,
+      end_date: endDate,
+      ...(compareEnabled && compareStartDate && compareEndDate ? {
+        compare_start_date: compareStartDate,
+        compare_end_date: compareEndDate,
+      } : {}),
     }),
     enabled: !!startDate && !!endDate,
   });
@@ -80,14 +87,82 @@ export default function ProfitLossPage() {
               onChange={(e) => setEndDate(e.target.value)}
             />
           </div>
-          <div className="flex items-end">
-            <Button onClick={() => window.print()} variant="outline" className="w-full">
+          <div className="flex items-end gap-2">
+            <Button onClick={() => window.print()} variant="outline" className="flex-1">
               <Icon icon="solar:printer-linear" className="w-4 h-4 mr-2" />
               Print
             </Button>
           </div>
         </div>
+
+        {/* Comparison Toggle */}
+        <div className="mt-4 border-t pt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <input
+              type="checkbox"
+              id="compare_enabled"
+              checked={compareEnabled}
+              onChange={(e) => setCompareEnabled(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            <Label htmlFor="compare_enabled" className="cursor-pointer font-medium">
+              Compare with another period
+            </Label>
+          </div>
+          {compareEnabled && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="compare_start_date">Comparison Start Date</Label>
+                <Input
+                  id="compare_start_date"
+                  type="date"
+                  value={compareStartDate}
+                  onChange={(e) => setCompareStartDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="compare_end_date">Comparison End Date</Label>
+                <Input
+                  id="compare_end_date"
+                  type="date"
+                  value={compareEndDate}
+                  onChange={(e) => setCompareEndDate(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </Card>
+
+      {/* Comparison Summary */}
+      {compareEnabled && profitLoss?.comparison && (
+        <Card className="p-6">
+          <h3 className="font-bold text-lg mb-4">
+            Comparison: {startDate} to {endDate} vs {profitLoss.comparison.period?.start} to {profitLoss.comparison.period?.end}
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {[
+              { label: 'Revenue', data: profitLoss.comparison.revenue },
+              { label: 'Gross Profit', data: profitLoss.comparison.gross_profit },
+              { label: 'Operating Profit', data: profitLoss.comparison.operating_profit },
+              { label: 'Net Profit', data: profitLoss.comparison.net_profit },
+            ].map(({ label, data }) => (
+              <div key={label} className="border rounded-lg p-4">
+                <p className="text-sm text-muted-foreground">{label}</p>
+                <p className="text-lg font-bold mt-1">{formatCurrency(data?.amount || 0)}</p>
+                {data?.change !== undefined && (
+                  <p className={`text-sm mt-1 font-medium ${
+                    data.change >= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {data.change >= 0 ? '▲' : '▼'} {formatCurrency(Math.abs(data.change))}
+                    ({data.change_percent || 0}%)
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Report */}
       <Card className="p-6">
@@ -138,7 +213,7 @@ export default function ProfitLossPage() {
                 </TableRow>
                 {profitLoss.revenue?.accounts?.map((account: any, index: number) => (
                   <TableRow key={account.account_id || account.id || `revenue-${index}`}>
-                    <TableCell className="pl-6">{account.name}</TableCell>
+                    <TableCell className="pl-6">{account.code ? `${account.code} - ` : ''}{account.name}</TableCell>
                     <TableCell className="text-right font-mono">
                       {formatCurrency(account.amount || account.balance || 0)}
                     </TableCell>
@@ -158,7 +233,7 @@ export default function ProfitLossPage() {
                 </TableRow>
                 {profitLoss.cost_of_goods_sold?.accounts?.map((account: any, index: number) => (
                   <TableRow key={account.account_id || account.id || `cogs-${index}`}>
-                    <TableCell className="pl-6">{account.name}</TableCell>
+                    <TableCell className="pl-6">{account.code ? `${account.code} - ` : ''}{account.name}</TableCell>
                     <TableCell className="text-right font-mono">
                       {formatCurrency(account.amount || account.balance || 0)}
                     </TableCell>
@@ -190,7 +265,7 @@ export default function ProfitLossPage() {
                     </TableRow>
                     {profitLoss.operating_expenses.accounts.map((account: any, index: number) => (
                       <TableRow key={account.account_id || account.id || `opex-${index}`}>
-                        <TableCell className="pl-6">{account.name}</TableCell>
+                        <TableCell className="pl-6">{account.code ? `${account.code} - ` : ''}{account.name}</TableCell>
                         <TableCell className="text-right font-mono">
                           {formatCurrency(account.amount || account.balance || 0)}
                         </TableCell>
@@ -224,7 +299,7 @@ export default function ProfitLossPage() {
                     </TableRow>
                     {profitLoss.other_expenses.accounts.map((account: any, index: number) => (
                       <TableRow key={account.account_id || account.id || `other-${index}`}>
-                        <TableCell className="pl-6">{account.name}</TableCell>
+                        <TableCell className="pl-6">{account.code ? `${account.code} - ` : ''}{account.name}</TableCell>
                         <TableCell className="text-right font-mono">
                           {formatCurrency(account.amount || account.balance || 0)}
                         </TableCell>
