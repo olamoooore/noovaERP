@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api';
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
+import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 
 interface InvoiceLine {
@@ -668,19 +669,18 @@ export const CreateInvoicePage: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Customer *</label>
-                  <select
+                  <CustomerSearchCombobox
                     value={customerId}
-                    onChange={(event) => setCustomerId(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  >
-                    <option value="">Select customer...</option>
-                    {customers?.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name}
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={(id, customer) => {
+                      setCustomerId(id)
+                      if (customer) {
+                        // Auto-populate customer reference if available
+                        if ((customer as any).code) {
+                          setDocumentSnapshot(prev => ({ ...prev, customer_reference: (customer as any).code }))
+                        }
+                      }
+                    }}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">{isQuoteMode ? 'Quote Date' : 'Invoice Date'}</label>

@@ -26,16 +26,18 @@ class SalesOrderService
     public function createOrder(array $data): SalesOrder
     {
         $maxRetries = 5;
+        $lockKey = crc32('sales_order_create');
+
         for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
             try {
-                // Use PostgreSQL advisory lock to serialize SO number generation
-                // This prevents two concurrent requests from generating the same number
-                $lockKey = crc32('sales_order_create');
-                DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+                // Advisory lock must be acquired INSIDE the transaction.
+                // DB::transaction wraps everything; the lock is held until commit/rollback.
+                return DB::transaction(function () use ($data, $lockKey) {
+                    // Acquire advisory lock — serializes all SO creation across connections
+                    DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
 
-                $result = $this->createOrderInternal($data);
-
-                return $result;
+                    return $this->createOrderInsideTransaction($data);
+                });
             } catch (\Illuminate\Database\QueryException $e) {
                 if (str_contains($e->getMessage(), 'sales_orders_sales_order_number_unique')) {
                     if ($attempt < $maxRetries - 1) {
@@ -50,10 +52,14 @@ class SalesOrderService
             }
         }
 
-        return $this->createOrderInternal($data);
+        // Final attempt — should not reach here
+        return DB::transaction(function () use ($data, $lockKey) {
+            DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+            return $this->createOrderInsideTransaction($data);
+        });
     }
 
-    private function createOrderInternal(array $data): SalesOrder
+    private function createOrderInsideTransaction(array $data): SalesOrder
     {
         return DB::transaction(function () use ($data) {
             $lines = $data['lines'] ?? [];

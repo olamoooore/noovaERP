@@ -127,12 +127,14 @@ class DeliveryOrderService
         }
 
         $maxRetries = 5;
+        $lockKey = crc32('delivery_order_create');
+
         for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
             try {
-                $lockKey = crc32('delivery_order_create');
-                DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
-
-                return $this->createStandaloneDeliveryOrderInternal($data, $customerId, $warehouseId, $lines);
+                return DB::transaction(function () use ($data, $customerId, $warehouseId, $lines, $lockKey) {
+                    DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+                    return $this->createStandaloneDeliveryOrderInsideTransaction($data, $customerId, $warehouseId, $lines);
+                });
             } catch (\Illuminate\Database\QueryException $e) {
                 if (str_contains($e->getMessage(), 'delivery_orders_delivery_order_number_unique')) {
                     if ($attempt < $maxRetries - 1) {
@@ -147,10 +149,13 @@ class DeliveryOrderService
             }
         }
 
-        return $this->createStandaloneDeliveryOrderInternal($data, $customerId, $warehouseId, $lines);
+        return DB::transaction(function () use ($data, $customerId, $warehouseId, $lines, $lockKey) {
+            DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+            return $this->createStandaloneDeliveryOrderInsideTransaction($data, $customerId, $warehouseId, $lines);
+        });
     }
 
-    private function createStandaloneDeliveryOrderInternal(array $data, int $customerId, int $warehouseId, array $lines): DeliveryOrder
+    private function createStandaloneDeliveryOrderInsideTransaction(array $data, int $customerId, int $warehouseId, array $lines): DeliveryOrder
     {
         return DB::transaction(function () use ($data, $customerId, $warehouseId, $lines) {
             $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
