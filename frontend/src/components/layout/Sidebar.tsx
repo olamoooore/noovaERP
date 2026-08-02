@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { Icon } from '@iconify/react'
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { NOOVAERP_LOGO_URL } from '@/lib/assets'
 import { useQuery } from '@tanstack/react-query'
@@ -846,10 +847,11 @@ export function Sidebar() {
           )}
           title={isMinimized ? 'Expand sidebar' : 'Minimize sidebar'}
         >
-          <Icon
-            icon={isMinimized ? 'solar:sidebar-right-bold-duotone' : 'solar:sidebar-minimalistic-bold-duotone'}
-            className="h-5 w-5"
-          />
+          {isMinimized ? (
+            <PanelLeftOpen className="h-5 w-5" />
+          ) : (
+            <PanelLeftClose className="h-5 w-5" />
+          )}
         </button>
       </div>
 
