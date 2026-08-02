@@ -116,10 +116,14 @@ export function createBlock(type: BlockType): Block {
         type,
         source: 'lines',
         columns: [
-          { label: '#', field: 'index', width: '6%', align: 'center' },
-          { label: 'Description', field: 'description', width: '46%' },
-          { label: 'Qty', field: 'quantity', width: '12%', align: 'right' },
-          { label: 'Amount', field: 'line_total', width: '18%', align: 'right', format: 'money' },
+          { label: '#', field: 'index', width: '4%', align: 'center' },
+          { label: 'SKU', field: 'sku', width: '10%' },
+          { label: 'Description', field: 'description', width: '34%' },
+          { label: 'Qty', field: 'quantity', width: '8%', align: 'right' },
+          { label: 'Unit Price', field: 'unit_price', width: '12%', align: 'right', format: 'money' },
+          { label: 'Tax %', field: 'tax_rate', width: '8%', align: 'right' },
+          { label: 'Discount', field: 'discount', width: '10%', align: 'right', format: 'money' },
+          { label: 'Line Total', field: 'line_total', width: '14%', align: 'right', format: 'money' },
         ],
       }
     case 'totals':
