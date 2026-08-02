@@ -129,12 +129,15 @@ class DeliveryOrderService
         $maxRetries = 5;
         for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
             try {
+                $lockKey = crc32('delivery_order_create');
+                DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+
                 return $this->createStandaloneDeliveryOrderInternal($data, $customerId, $warehouseId, $lines);
             } catch (\Illuminate\Database\QueryException $e) {
                 if (str_contains($e->getMessage(), 'delivery_orders_delivery_order_number_unique')) {
                     if ($attempt < $maxRetries - 1) {
                         cache()->forget('document_numbering_delivery_order');
-                        \Illuminate\Support\Facades\Log::warning('DO number collision on insert, retrying', [
+                        Log::warning('DO number collision on insert, retrying', [
                             'attempt' => $attempt + 1,
                         ]);
                         continue;

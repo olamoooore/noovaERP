@@ -28,13 +28,19 @@ class SalesOrderService
         $maxRetries = 5;
         for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
             try {
-                return $this->createOrderInternal($data);
+                // Use PostgreSQL advisory lock to serialize SO number generation
+                // This prevents two concurrent requests from generating the same number
+                $lockKey = crc32('sales_order_create');
+                DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+
+                $result = $this->createOrderInternal($data);
+
+                return $result;
             } catch (\Illuminate\Database\QueryException $e) {
                 if (str_contains($e->getMessage(), 'sales_orders_sales_order_number_unique')) {
                     if ($attempt < $maxRetries - 1) {
-                        // Reset the DocumentNumberingService counter by clearing cache
                         cache()->forget('document_numbering_sales_order');
-                        \Illuminate\Support\Facades\Log::warning('SalesOrder SO number collision on insert, retrying', [
+                        Log::warning('SalesOrder SO number collision on insert, retrying', [
                             'attempt' => $attempt + 1,
                         ]);
                         continue;
@@ -44,7 +50,6 @@ class SalesOrderService
             }
         }
 
-        // Should not reach here, but fallback
         return $this->createOrderInternal($data);
     }
 

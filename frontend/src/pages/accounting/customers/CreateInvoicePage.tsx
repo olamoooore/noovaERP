@@ -14,6 +14,8 @@ import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api';
+import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
+import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 
 interface InvoiceLine {
   product_id: string;
@@ -857,39 +859,24 @@ export const CreateInvoicePage: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Billing Address Contact</label>
-                  <select
+                  <ContactSearchCombobox
                     value={billingContactId}
-                    onChange={(e) => {
-                      setBillingContactId(e.target.value);
-                      const contact = contactOptions.find((c: any) => String((c as any).id) === e.target.value);
+                    onValueChange={(val, contact) => {
+                      setBillingContactId(val);
                       if (contact) {
-                        updateDocumentSnapshot('attention_to', (contact as any).name ?? '');
+                        updateDocumentSnapshot('attention_to', contact.display_name || [contact.first_name, contact.last_name].filter(Boolean).join(' ') || '');
                       }
                     }}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  >
-                    <option value="">Select contact...</option>
-                    {contactOptions.map((c: any, i: number) => (
-                      <option key={c.id ?? i} value={c.id ?? ''}>
-                        {c.name || `Contact ${i + 1}`}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Select contact..."
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Delivery Address Contact</label>
-                  <select
+                  <ContactSearchCombobox
                     value={shippingContactId}
-                    onChange={(e) => setShippingContactId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  >
-                    <option value="">Select contact...</option>
-                    {contactOptions.map((c: any, i: number) => (
-                      <option key={c.id ?? i} value={c.id ?? ''}>
-                        {c.name || `Contact ${i + 1}`}
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={(val) => setShippingContactId(val)}
+                    placeholder="Select contact..."
+                  />
                 </div>
               </div>
 
@@ -1017,33 +1004,19 @@ export const CreateInvoicePage: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Doctor</label>
-                  <select
+                  <ContactSearchCombobox
                     value={doctorContactId}
-                    onChange={(event) => setDoctorContactId(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  >
-                    <option value="">Select doctor...</option>
-                    {contactOptions.map((c: any, i: number) => (
-                      <option key={c.id ?? i} value={c.id ?? ''}>
-                        {c.name || `Contact ${i + 1}`}
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={(val) => setDoctorContactId(val)}
+                    placeholder="Select doctor..."
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Requestor</label>
-                  <select
+                  <ContactSearchCombobox
                     value={requestorContactId}
-                    onChange={(event) => setRequestorContactId(event.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  >
-                    <option value="">Select requestor...</option>
-                    {contactOptions.map((c: any, i: number) => (
-                      <option key={c.id ?? i} value={c.id ?? ''}>
-                        {c.name || `Contact ${i + 1}`}
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={(val) => setRequestorContactId(val)}
+                    placeholder="Select requestor..."
+                  />
                 </div>
               </div>
             </CardContent>
@@ -1087,18 +1060,19 @@ export const CreateInvoicePage: React.FC = () => {
                       <tr key={index} className="border-b">
                         <td className="py-2 px-2 text-sm font-medium text-slate-500">{index + 1}</td>
                         <td className="py-2 px-2">
-                          <select
+                          <ProductSearchCombobox
                             value={line.product_id}
-                            onChange={(event) => updateLine(index, 'product_id', event.target.value)}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
-                          >
-                            <option value="">-- None --</option>
-                            {products?.map((product: any) => (
-                              <option key={product.id} value={product.id}>
-                                {product.name} {product.sku ? `(${product.sku})` : ''}
-                              </option>
-                            ))}
-                          </select>
+                            onValueChange={(productId, product) => {
+                              const updated = [...lines];
+                              updated[index] = { ...updated[index], product_id: productId };
+                              if (product) {
+                                updated[index].description = (product as any).description || (product as any).short_description || '';
+                                updated[index].unit_price = parseFloat((product as any).price || (product as any).selling_price || '0');
+                                updated[index].model_number = (product as any).manufacturer_part_number || '';
+                              }
+                              setLines(updated);
+                            }}
+                          />
                         </td>
                         <td className="py-2 px-2">
                           <textarea
