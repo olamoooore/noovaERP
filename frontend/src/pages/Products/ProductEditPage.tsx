@@ -154,6 +154,7 @@ export function ProductEditPage() {
     subcategory_id: '',
     price: '',
     cost: '',
+    vendor_price: '',
     wholesale_price: '',
     msrp: '',
     track_inventory: true,
@@ -335,6 +336,7 @@ export function ProductEditPage() {
       category_parent_id: categoryId,
       subcategory_id: '',
       cost: product.cost != null ? String(product.cost) : '',
+      vendor_price: product.vendor_price != null ? String(product.vendor_price) : '',
       price: product.price != null ? String(product.price) : '',
       wholesale_price: product.wholesale_price != null ? String(product.wholesale_price) : '',
       msrp: product.msrp != null ? String(product.msrp) : '',
@@ -585,6 +587,7 @@ export function ProductEditPage() {
       type: formData.type,
       category_id: finalCategoryId ? parseInt(finalCategoryId) : null,
       cost: parseFloat(formData.cost),
+      vendor_price: formData.vendor_price ? parseFloat(formData.vendor_price) : null,
       price: parseFloat(formData.price),
       wholesale_price: formData.wholesale_price ? parseFloat(formData.wholesale_price) : null,
       msrp: formData.msrp ? parseFloat(formData.msrp) : null,
@@ -1019,6 +1022,19 @@ export function ProductEditPage() {
                         required
                       />
                       <p className="text-xs text-muted-foreground">Retail price</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="vendor_price">Vendor Price</Label>
+                      <Input
+                        id="vendor_price"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={formData.vendor_price}
+                        onChange={(e) => setFormData({ ...formData, vendor_price: e.target.value })}
+                      />
+                      <p className="text-xs text-muted-foreground">Price quoted by the vendor</p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="wholesale_price">Wholesale Price</Label>

@@ -71,6 +71,7 @@ class Product extends Model
 
         // Pricing
         'cost',
+        'vendor_price',
         'price',
         'wholesale_price',
         'msrp',
@@ -162,6 +163,7 @@ class Product extends Model
     protected $casts = [
         // Pricing
         'cost' => 'decimal:2',
+        'vendor_price' => 'decimal:2',
         'price' => 'decimal:2',
         'wholesale_price' => 'decimal:2',
         'msrp' => 'decimal:2',

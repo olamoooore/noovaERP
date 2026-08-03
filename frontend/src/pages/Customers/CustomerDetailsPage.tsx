@@ -1724,11 +1724,11 @@ export function CustomerDetailsPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-h-[90dvh] w-[calc(100%-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-0 sm:max-w-2xl">
+          <DialogHeader className="px-6 pt-6">
             <DialogTitle>{editingContactId ? 'Edit Contact' : 'Add Contact'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto px-6 py-1">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Name *</Label>
@@ -1856,7 +1856,7 @@ export function CustomerDetailsPage() {
               <Label htmlFor="is_primary" className="font-normal">Primary contact</Label>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="border-t bg-background px-6 py-4">
             <Button variant="outline" onClick={() => setContactDialogOpen(false)}>Cancel</Button>
             <Button
               onClick={() => {

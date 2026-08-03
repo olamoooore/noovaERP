@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Modules\Inventory\Models\Brand;
 use Modules\Inventory\Services\InventoryService;
 
@@ -227,6 +228,7 @@ class ProductController extends Controller
             'manufacturer_part_number' => 'nullable|string|max:100',
             'type' => 'required|in:product,service',
             'cost' => 'required|numeric|min:0',
+            'vendor_price' => 'nullable|numeric|min:0',
             'price' => 'required|numeric|min:0',
             'tax_rate' => 'nullable|numeric|min:0|max:100',
             'tax_mode' => 'nullable|in:default,none,custom,tax',
@@ -649,11 +651,25 @@ class ProductController extends Controller
         // skipped — multiple products may legitimately have no barcode.
         $this->normalizeBarcodeInput($request);
 
+        if ($request->exists('sku')) {
+            $request->merge(['sku' => trim((string) $request->input('sku'))]);
+        }
+
+        $skuRules = ['string', 'max:255'];
+        if ($request->exists('sku') && $request->input('sku') !== $product->sku) {
+            $skuRules[] = Rule::unique('products', 'sku')->ignore($product->getKey());
+        }
+
+        $barcodeRules = ['nullable', 'string'];
+        if ($request->exists('barcode') && $request->input('barcode') !== $product->barcode) {
+            $barcodeRules[] = Rule::unique('products', 'barcode')->ignore($product->getKey());
+        }
+
         $validated = $request->validate([
             'name' => 'string|max:255',
             'secondary_name' => 'nullable|string|max:255',
-            'sku' => 'string|unique:products,sku,'.$product->id,
-            'barcode' => 'nullable|string|unique:products,barcode,'.$product->id,
+            'sku' => $skuRules,
+            'barcode' => $barcodeRules,
             'description' => 'nullable|string',
             'short_description' => 'nullable|string',
             'category_id' => 'nullable|exists:product_categories,id',
@@ -662,6 +678,7 @@ class ProductController extends Controller
             'manufacturer_part_number' => 'nullable|string|max:100',
             'type' => 'in:product,service',
             'cost' => 'nullable|numeric|min:0',
+            'vendor_price' => 'nullable|numeric|min:0',
             'price' => 'nullable|numeric|min:0',
             'wholesale_price' => 'nullable|numeric|min:0',
             'msrp' => 'nullable|numeric|min:0',
@@ -868,6 +885,9 @@ class ProductController extends Controller
 
             // Parse price/cost – strip currency symbols ($) and non-numeric chars
             $cost = $this->parseNumericValue($row['cost'] ?? null);
+            $vendorPrice = isset($row['vendor_price']) && trim((string) $row['vendor_price']) !== ''
+                ? $this->parseNumericValue($row['vendor_price'])
+                : null;
             $price = $this->parseNumericValue($row['price'] ?? null);
 
             $sku = trim((string) ($row['sku'] ?? ''));
@@ -955,6 +975,7 @@ class ProductController extends Controller
                 'brand_id' => $brandId,
                 'type' => in_array(($row['type'] ?? ''), ['product', 'service'], true) ? $row['type'] : 'product',
                 'cost' => $cost,
+                'vendor_price' => $vendorPrice,
                 'price' => $price,
                 'track_inventory' => isset($row['track_inventory']) ? filter_var($row['track_inventory'], FILTER_VALIDATE_BOOLEAN) : true,
                 'is_active' => isset($row['is_active']) ? filter_var($row['is_active'], FILTER_VALIDATE_BOOLEAN) : true,
