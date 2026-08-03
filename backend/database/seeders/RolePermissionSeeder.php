@@ -58,7 +58,7 @@ class RolePermissionSeeder extends Seeder
         'loyalty.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
         // Reports
-        'reports.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::VIEWER],
+        'reports.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
 
         // Settings
         'settings.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::VIEWER],
