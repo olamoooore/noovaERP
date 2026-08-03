@@ -184,6 +184,7 @@ export function ProductCreatePage() {
     unit: '',
     price: '',
     cost: '',
+    vendor_price: '',
     wholesale_price: '',
     msrp: '',
     track_inventory: true,
@@ -707,6 +708,7 @@ export function ProductCreatePage() {
       type: formData.type,
       category_id: finalCategoryId ? parseInt(finalCategoryId) : null,
       cost: Number.isFinite(baseCost) ? baseCost : 0,
+      vendor_price: formData.vendor_price ? parseFloat(formData.vendor_price) : null,
       price: Number.isFinite(basePrice) ? basePrice : 0,
       wholesale_price: formData.wholesale_price ? parseFloat(formData.wholesale_price) : null,
       msrp: formData.msrp ? parseFloat(formData.msrp) : null,
@@ -1368,6 +1370,19 @@ export function ProductCreatePage() {
                           <p className="text-xs text-muted-foreground">Retail price</p>
                         </div>
                         <div className="space-y-2">
+                          <Label htmlFor="vendor_price">Vendor Price</Label>
+                          <Input
+                            id="vendor_price"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={formData.vendor_price}
+                            onChange={(e) => setFormData({ ...formData, vendor_price: e.target.value })}
+                          />
+                          <p className="text-xs text-muted-foreground">Current vendor quoted price</p>
+                        </div>
+                        <div className="space-y-2">
                           <Label htmlFor="wholesale_price">Wholesale Price</Label>
                           <Input
                             id="wholesale_price"
@@ -1784,6 +1799,17 @@ export function ProductCreatePage() {
                         placeholder="0.00"
                         value={formData.cost}
                         onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Vendor Price</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={formData.vendor_price}
+                        onChange={(e) => setFormData({ ...formData, vendor_price: e.target.value })}
                       />
                     </div>
                   </div>
