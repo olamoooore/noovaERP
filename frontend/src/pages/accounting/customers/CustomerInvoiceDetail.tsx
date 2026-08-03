@@ -172,7 +172,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { variant: any; label: string; icon: string }> = {
       draft: { variant: 'secondary', label: 'Draft', icon: 'solar:document-bold-duotone' },
-      sent: { variant: 'default', label: 'Sent', icon: 'solar:paper-plane-bold' },
+      sent: { variant: 'default', label: 'Sent', icon: 'solar:check-circle-bold' },
       posted: { variant: 'default', label: 'Posted', icon: 'solar:check-circle-bold-duotone' },
       paid: { variant: 'default', label: 'Paid', icon: 'solar:wallet-money-bold-duotone' },
       partial: { variant: 'default', label: 'Partially Paid', icon: 'solar:wallet-bold-duotone' },
