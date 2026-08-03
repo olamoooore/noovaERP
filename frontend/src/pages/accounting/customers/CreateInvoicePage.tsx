@@ -871,6 +871,7 @@ export const CreateInvoicePage: React.FC = () => {
                       }
                     }}
                     placeholder="Select contact..."
+                    customerId={customerId}
                   />
                 </div>
                 <div>
@@ -879,6 +880,7 @@ export const CreateInvoicePage: React.FC = () => {
                     value={shippingContactId}
                     onValueChange={(val) => setShippingContactId(val)}
                     placeholder="Select contact..."
+                    customerId={customerId}
                   />
                 </div>
               </div>
@@ -1011,6 +1013,7 @@ export const CreateInvoicePage: React.FC = () => {
                     value={doctorContactId}
                     onValueChange={(val) => setDoctorContactId(val)}
                     placeholder="Select doctor..."
+                    customerId={customerId}
                   />
                 </div>
                 <div>
@@ -1019,6 +1022,7 @@ export const CreateInvoicePage: React.FC = () => {
                     value={requestorContactId}
                     onValueChange={(val) => setRequestorContactId(val)}
                     placeholder="Select requestor..."
+                    customerId={customerId}
                   />
                 </div>
               </div>

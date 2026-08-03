@@ -33,6 +33,7 @@ interface ContactSearchComboboxProps {
   onValueChange: (value: string, contact?: Contact) => void
   placeholder?: string
   disabled?: boolean
+  customerId?: string | number
 }
 
 export function ContactSearchCombobox({
@@ -40,6 +41,7 @@ export function ContactSearchCombobox({
   onValueChange,
   placeholder = 'Search contacts...',
   disabled = false,
+  customerId,
 }: ContactSearchComboboxProps) {
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -53,8 +55,24 @@ export function ContactSearchCombobox({
   }, [searchQuery])
 
   const { data: searchResults, isLoading } = useQuery<Contact[]>({
-    queryKey: ['contacts-search', debouncedQuery],
+    queryKey: ['contacts-search', debouncedQuery, customerId],
     queryFn: async () => {
+      // If customerId is provided, fetch customer-specific contacts
+      if (customerId) {
+        const res = await api.get(`/customers/${customerId}/contacts`)
+        const contacts = res.data ?? []
+        // Apply search filter client-side if needed
+        if (debouncedQuery) {
+          const q = debouncedQuery.toLowerCase()
+          return contacts.filter((c: Contact) => {
+            const name = getDisplayName(c).toLowerCase()
+            const email = (c.email || '').toLowerCase()
+            return name.includes(q) || email.includes(q)
+          })
+        }
+        return contacts
+      }
+      // Otherwise fetch all contacts
       const params: Record<string, string> = { per_page: '50', is_active: 'true' }
       if (debouncedQuery) {
         params.search = debouncedQuery
