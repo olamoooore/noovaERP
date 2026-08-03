@@ -307,7 +307,7 @@ export function QuotationDetailPage() {
       <div className="flex gap-3">
         {quotation.sales_order && (
           <button
-            onClick={() => navigate('/sales/orders')}
+            onClick={() => navigate(`/sales/orders/${quotation.sales_order.id}`)}
             className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
           >
             <Icon icon="solar:cart-large-2-bold-duotone" className="h-5 w-5 text-green-600" />

@@ -251,7 +251,7 @@ export function InvoiceDetailPage() {
               {postMutation.isPending ? (
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
               ) : (
-                <Icon icon="solar:send-bold-duotone" className="mr-2 h-4 w-4" />
+                <Icon icon="solar:paper-plane-bold" className="mr-2 h-4 w-4" />
               )}
               Post Invoice
             </Button>

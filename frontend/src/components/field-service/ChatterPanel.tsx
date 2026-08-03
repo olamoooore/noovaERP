@@ -95,7 +95,7 @@ export function ChatterPanel({ workOrderId, activities }: Props) {
         />
         <div className="flex justify-end">
           <Button type="submit" size="sm" disabled={!note.trim() || addNote.isPending}>
-            <Icon icon="solar:send-bold-duotone" width={16} className="mr-1" />
+            <Icon icon="solar:paper-plane-bold" width={16} className="mr-1" />
             {addNote.isPending ? 'Sending...' : 'Add Note'}
           </Button>
         </div>

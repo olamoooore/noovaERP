@@ -70,6 +70,7 @@ const DeliveryOrderDetailPage = lazy(() => import('@/pages/sales/DeliveryOrderDe
 const DeliveryOrderImportPage = lazy(() => import('@/pages/sales/DeliveryOrderImportPage').then(m => ({ default: m.DeliveryOrderImportPage })))
 const DeliveryOrderEditPage = lazy(() => import('@/pages/sales/DeliveryOrderEditPage').then(m => ({ default: m.DeliveryOrderEditPage })))
 const SalesOrdersPage = lazy(() => import('@/pages/sales/SalesOrdersPage').then(m => ({ default: m.SalesOrdersPage })))
+const SalesOrderDetailPage = lazy(() => import('@/pages/sales/SalesOrderDetailPage').then(m => ({ default: m.SalesOrderDetailPage })))
 const InventoryDashboard = lazy(() => import('@/pages/dashboards/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })))
 const FinancialDashboard = lazy(() => import('@/pages/dashboards/FinancialDashboard').then(m => ({ default: m.FinancialDashboard })))
 
@@ -329,6 +330,7 @@ function App() {
                 {/* Sales Routes */}
                 <Route path="/sales" element={<SalesDashboard />} />
                 <Route path="/sales/orders" element={<SalesOrdersPage />} />
+                <Route path="/sales/orders/:id" element={<SalesOrderDetailPage />} />
                 <Route path="/sales/quotes" element={<QuotesPage />} />
                 <Route path="/sales/quotes/create" element={<QuotationCreatePage />} />
                 <Route path="/sales/quotes/:id" element={<QuotationDetailPage />} />

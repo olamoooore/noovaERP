@@ -172,7 +172,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { variant: any; label: string; icon: string }> = {
       draft: { variant: 'secondary', label: 'Draft', icon: 'solar:document-bold-duotone' },
-      sent: { variant: 'default', label: 'Sent', icon: 'solar:send-bold-duotone' },
+      sent: { variant: 'default', label: 'Sent', icon: 'solar:paper-plane-bold' },
       posted: { variant: 'default', label: 'Posted', icon: 'solar:check-circle-bold-duotone' },
       paid: { variant: 'default', label: 'Paid', icon: 'solar:wallet-money-bold-duotone' },
       partial: { variant: 'default', label: 'Partially Paid', icon: 'solar:wallet-bold-duotone' },
@@ -241,7 +241,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
           {invoice.status === 'draft' && (
             <>
               <Button variant="default" onClick={() => postMutation.mutate()}>
-                <Icon icon="solar:send-bold-duotone" className="h-4 w-4 mr-2" />
+                <Icon icon="solar:paper-plane-bold" className="h-4 w-4 mr-2" />
                 {isQuoteMode ? 'Convert to Invoice' : 'Post Invoice'}
               </Button>
               <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>
