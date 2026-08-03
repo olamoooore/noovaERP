@@ -241,7 +241,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
           {invoice.status === 'draft' && (
             <>
               <Button variant="default" onClick={() => postMutation.mutate()}>
-                <Icon icon="solar:paper-plane-bold" className="h-4 w-4 mr-2" />
+                <Icon icon="solar:check-circle-bold" className="h-4 w-4 mr-2" />
                 {isQuoteMode ? 'Convert to Invoice' : 'Post Invoice'}
               </Button>
               <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>

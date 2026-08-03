@@ -218,7 +218,7 @@ export function InvoicesPage() {
                                 <Icon icon="solar:pen-bold" className="h-3 w-3" />
                               </Button>
                               <Button size="sm" variant="outline" onClick={() => sendInvoiceMutation.mutate(invoice.id)} title="Post">
-                                <Icon icon="solar:paper-plane-bold" className="h-3 w-3" />
+                                <Icon icon="solar:check-circle-bold" className="h-3 w-3" />
                               </Button>
                             </>
                           )}
