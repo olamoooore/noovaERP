@@ -241,7 +241,8 @@ class JournalEntry extends Model
         \Illuminate\Support\Facades\DB::statement('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
 
         $latest = static::where('entry_number', 'like', $prefix.'%')
-            ->orderByRaw("CAST(SUBSTRING(entry_number FROM '.{4}$') AS INTEGER) DESC")
+            ->where('entry_number', 'not like', '%-REV')
+            ->orderByRaw("CAST(SUBSTRING(entry_number FROM '[0-9]+$') AS INTEGER) DESC")
             ->first();
 
         $number = $latest ? (int) substr($latest->entry_number, -4) + 1 : 1;
