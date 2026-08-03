@@ -348,6 +348,8 @@ export const VendorBillDetail: React.FC = () => {
                 <TableRow>
                   <TableHead>Account</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead>Model #</TableHead>
+                  <TableHead>Product Notes</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Unit Price</TableHead>
                   <TableHead className="text-right">Tax Rate</TableHead>
@@ -363,6 +365,8 @@ export const VendorBillDetail: React.FC = () => {
                         {line.account?.code} - {line.account?.name}
                       </TableCell>
                       <TableCell>{line.description || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{line.model_number || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
                       <TableCell className="text-right">{line.quantity}</TableCell>
                       <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
                       <TableCell className="text-right">{line.tax_rate}%</TableCell>
@@ -372,7 +376,7 @@ export const VendorBillDetail: React.FC = () => {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                       No line items
                     </TableCell>
                   </TableRow>

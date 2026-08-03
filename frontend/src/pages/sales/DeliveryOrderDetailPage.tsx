@@ -445,7 +445,10 @@ export function DeliveryOrderDetailPage() {
                 <TableRow>
                  <TableHead>#</TableHead>
                   <TableHead>Product</TableHead>
+                  <TableHead>SKU</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead>Model #</TableHead>
+                  <TableHead>Product Notes</TableHead>
                   <TableHead>Patient Name</TableHead>
                   <TableHead className="text-right">Qty Ordered</TableHead>
                   <TableHead className="text-right">Qty Delivered</TableHead>
@@ -460,16 +463,10 @@ export function DeliveryOrderDetailPage() {
                 <TableRow key={line.id}>
                   <TableCell>{index + 1}</TableCell>
                   <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
-                  <TableCell>
-                    <div>
-                      <p>{line.description || '-'}</p>
-                      {(line.model_number || line.product?.manufacturer_part_number) && (
-                        <p className="text-xs text-muted-foreground">
-                          {line.model_number ? `Model: ${line.model_number}` : `Part #: ${line.product?.manufacturer_part_number}`}
-                        </p>
-                      )}
-                    </div>
-                  </TableCell>
+                  <TableCell className="text-muted-foreground">{line.product?.sku || '-'}</TableCell>
+                  <TableCell>{line.description || '-'}</TableCell>
+                  <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
+                  <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
                   <TableCell>{line.patient_name || '-'}</TableCell>
                   <TableCell className="text-right">{line.quantity_ordered}</TableCell>
                   <TableCell className="text-right font-medium text-green-600">{line.quantity_delivered}</TableCell>
@@ -481,7 +478,7 @@ export function DeliveryOrderDetailPage() {
               ))}
               {(!deliveryOrder.lines || deliveryOrder.lines.length === 0) && (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={13} className="text-center text-muted-foreground py-8">
                     No lines in this delivery order.
                   </TableCell>
                 </TableRow>

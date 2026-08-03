@@ -384,7 +384,11 @@ export function InvoiceDetailPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Product</TableHead>
+                  <TableHead>SKU</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead>Model #</TableHead>
+                  <TableHead>Product Notes</TableHead>
                   <TableHead className="text-right">Qty</TableHead>
                   <TableHead className="text-right">Unit Price</TableHead>
                   <TableHead className="text-right">Tax</TableHead>
@@ -394,16 +398,11 @@ export function InvoiceDetailPage() {
               <TableBody>
                 {invoice.lines?.map((line) => (
                   <TableRow key={line.id}>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{line.description}</p>
-                        {(line.model_number || line.product?.manufacturer_part_number || line.product?.sku) && (
-                          <p className="text-xs text-muted-foreground">
-                            {line.model_number ? `Model: ${line.model_number}` : line.product?.manufacturer_part_number ? `Part #: ${line.product.manufacturer_part_number}` : `SKU: ${line.product?.sku}`}
-                          </p>
-                        )}
-                      </div>
-                    </TableCell>
+                    <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{line.product?.sku || '-'}</TableCell>
+                    <TableCell>{line.description || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
                     <TableCell className="text-right">{line.quantity}</TableCell>
                     <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(line.tax_amount)}</TableCell>

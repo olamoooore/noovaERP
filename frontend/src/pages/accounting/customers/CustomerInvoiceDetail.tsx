@@ -494,7 +494,10 @@ export const CustomerInvoiceDetail: React.FC = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Product/Service</TableHead>
+                  <TableHead>SKU</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead>Model #</TableHead>
+                  <TableHead>Product Notes</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Unit Price</TableHead>
                   <TableHead className="text-right">Tax Rate</TableHead>
@@ -521,13 +524,13 @@ export const CustomerInvoiceDetail: React.FC = () => {
                           )}
                           <div className="min-w-0">
                             <p className="font-medium truncate">{line.product?.name || line.description || '-'}</p>
-                            {line.product?.name && line.description && line.product.name !== line.description && (
-                              <p className="text-xs text-muted-foreground whitespace-pre-line">{line.description}</p>
-                            )}
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="whitespace-pre-line align-top">{line.description || line.product?.name || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{line.product?.sku || '-'}</TableCell>
+                      <TableCell className="whitespace-pre-line align-top">{line.description || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
                       <TableCell className="text-right">{line.quantity}</TableCell>
                       <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
                       <TableCell className="text-right">{line.tax_rate}%</TableCell>
@@ -537,7 +540,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                       No line items
                     </TableCell>
                   </TableRow>

@@ -514,7 +514,10 @@ export function QuotationDetailPage() {
               <TableRow>
                   <TableHead>#</TableHead>
                   <TableHead>Product</TableHead>
+                  <TableHead>SKU</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead>Model #</TableHead>
+                  <TableHead>Product Notes</TableHead>
                   <TableHead className="text-right">Qty</TableHead>
                   <TableHead className="text-right">Unit Price</TableHead>
                   <TableHead className="text-right">Tax</TableHead>
@@ -525,17 +528,11 @@ export function QuotationDetailPage() {
                 {quotation.lines?.map((line: any, index: number) => (
                   <TableRow key={line.id}>
                     <TableCell>{index + 1}</TableCell>
-                    <TableCell>{line.product?.name || '-'}</TableCell>
-                    <TableCell>
-                      <div>
-                        <p>{line.description}</p>
-                        {(line.model_number || line.product?.manufacturer_part_number) && (
-                          <p className="text-xs text-muted-foreground">
-                            {line.model_number ? `Model: ${line.model_number}` : `Part #: ${line.product?.manufacturer_part_number}`}
-                          </p>
-                        )}
-                      </div>
-                    </TableCell>
+                    <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{line.product?.sku || '-'}</TableCell>
+                    <TableCell>{line.description || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
                   <TableCell className="text-right">{line.quantity}</TableCell>
                   <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
                   <TableCell className="text-right">{line.tax_rate}%</TableCell>
