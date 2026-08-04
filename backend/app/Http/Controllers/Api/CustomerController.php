@@ -31,11 +31,11 @@ class CustomerController extends Controller
         if ($request->search) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%")
-                    ->orWhere('company', 'like', "%{$search}%")
-                    ->orWhere('code', 'like', "%{$search}%");
+                $q->where('name', 'ilike', "%{$search}%")
+                    ->orWhere('email', 'ilike', "%{$search}%")
+                    ->orWhere('phone', 'ilike', "%{$search}%")
+                    ->orWhere('company', 'ilike', "%{$search}%")
+                    ->orWhere('code', 'ilike', "%{$search}%");
             });
         }
 
@@ -626,12 +626,12 @@ class CustomerController extends Controller
         $search = $request->q;
 
         $customers = Customer::where(function ($q) use ($search) {
-            $q->where('name', 'like', "%{$search}%")
-                ->orWhere('email', 'like', "%{$search}%")
-                ->orWhere('phone', 'like', "%{$search}%")
-                ->orWhere('mobile', 'like', "%{$search}%")
-                ->orWhere('company', 'like', "%{$search}%")
-                ->orWhere('code', 'like', "%{$search}%");
+            $q->where('name', 'ilike', "%{$search}%")
+                ->orWhere('email', 'ilike', "%{$search}%")
+                ->orWhere('phone', 'ilike', "%{$search}%")
+                ->orWhere('mobile', 'ilike', "%{$search}%")
+                ->orWhere('company', 'ilike', "%{$search}%")
+                ->orWhere('code', 'ilike', "%{$search}%");
         })
             ->where('is_active', true)
             ->limit(20)
