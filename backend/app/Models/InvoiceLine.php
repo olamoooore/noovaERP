@@ -22,6 +22,8 @@ class InvoiceLine extends Model
         'branch_id',
         'description',
         'product_notes',
+        'lot_number',
+        'expiry_date',
         'quantity',
         'unit_price',
         'tax_rate',
@@ -38,6 +40,7 @@ class InvoiceLine extends Model
         'tax_amount' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'line_total' => 'decimal:2',
+        'expiry_date' => 'date',
     ];
 
     protected static function boot()

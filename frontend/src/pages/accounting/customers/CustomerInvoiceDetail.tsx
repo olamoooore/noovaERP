@@ -498,6 +498,8 @@ export const CustomerInvoiceDetail: React.FC = () => {
                   <TableHead>Description</TableHead>
                   <TableHead>Model #</TableHead>
                   <TableHead>Product Notes</TableHead>
+                  <TableHead>Lot Number</TableHead>
+                  <TableHead>Expiry Date</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Unit Price</TableHead>
                   <TableHead className="text-right">Tax Rate</TableHead>
@@ -531,6 +533,8 @@ export const CustomerInvoiceDetail: React.FC = () => {
                       <TableCell className="whitespace-pre-line align-top">{line.description || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
                       <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{line.lot_number || '-'}</TableCell>
+                      <TableCell className="text-muted-foreground">{line.expiry_date ? formatDate(line.expiry_date) : '-'}</TableCell>
                       <TableCell className="text-right">{line.quantity}</TableCell>
                       <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
                       <TableCell className="text-right">{line.tax_rate}%</TableCell>
@@ -540,7 +544,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
                       No line items
                     </TableCell>
                   </TableRow>

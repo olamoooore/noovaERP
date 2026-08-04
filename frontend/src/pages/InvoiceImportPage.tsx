@@ -57,6 +57,8 @@ const TEMPLATE_COLUMNS = [
   { name: 'model_number', required: false, description: 'Line item: model / part number. Auto-filled from product if SKU given.' },
   { name: 'description', required: true, description: 'Line item: description. Required for each line.' },
   { name: 'product_notes', required: false, description: 'Line item: product notes (free text).' },
+  { name: 'lot_number', required: false, description: 'Line item: lot or batch number.' },
+  { name: 'expiry_date', required: false, description: 'Line item: expiry date (M/D/YYYY or YYYY-MM-DD).' },
   { name: 'quantity', required: true, description: 'Line item: quantity. Default: 1' },
   { name: 'unit_price', required: true, description: 'Line item: unit price. Default: 0 (uses product price if SKU given).' },
   { name: 'tax_rate', required: false, description: 'Line item: tax rate %. Default: 0' },
@@ -146,10 +148,23 @@ export function InvoiceImportPage() {
   const handleDownloadTemplate = () => {
     const headers = TEMPLATE_COLUMNS.map((col) => col.name).join(',')
     // Two rows sharing invoice_number => one invoice with two line items.
-    const sampleRows = [
-      ['QUOTE-001', 'draft', 'CUST-001', 'Acme Corp', '1/15/2026', '2/15/2026', 'PO-456', 'REF-789', 'INT-001', 'CASE-2026-001', '1/14/2026', 'Main Site', 'John Smith', 'CC-001', '1/20/2026', 'Dr. Sarah Lee', 'Jane Doe', 'Acme Billing', 'Acme Delivery', 'John Doe', 'ap@acme.com', '', '', '', '', 'Net 30', '0', 'SKU-001', 'Widget A', '10', '50.00', '0', '0'],
-      ['QUOTE-001', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', 'SKU-002', 'Widget B', '5', '20.00', '0', '0'],
-    ].map((row) => row.map(csvValue).join(','))
+    const samples: Array<Record<string, string>> = [
+      {
+        invoice_number: 'QUOTE-001', status: 'draft', customer_code: 'CUST-001', customer_name: 'Acme Corp',
+        invoice_date: '1/15/2026', due_date: '2/15/2026', po_number: 'PO-456', customer_reference: 'REF-789',
+        internal_reference: 'INT-001', case_number: 'CASE-2026-001', date_of_case: '1/14/2026', case_location: 'Main Site',
+        patient_name: 'John Smith', cost_center_id: 'CC-001', delivery_date: '1/20/2026', doctor: 'Dr. Sarah Lee',
+        requestor: 'Jane Doe', billing_contact: 'Acme Billing', shipping_contact: 'Acme Delivery', attention_to: 'John Doe',
+        contact_email: 'ap@acme.com', terms: 'Net 30', discount_amount: '0', product_sku: 'SKU-001',
+        model_number: 'MODEL-001', description: 'Widget A', product_notes: 'Handle with care', lot_number: 'LOT-001',
+        expiry_date: '12/31/2027', quantity: '10', unit_price: '50.00', tax_rate: '0', line_discount_amount: '0',
+      },
+      {
+        invoice_number: 'QUOTE-001', product_sku: 'SKU-002', description: 'Widget B', lot_number: 'LOT-002',
+        expiry_date: '12/31/2028', quantity: '5', unit_price: '20.00', tax_rate: '0', line_discount_amount: '0',
+      },
+    ]
+    const sampleRows = samples.map((sample) => TEMPLATE_COLUMNS.map((column) => csvValue(sample[column.name] || '')).join(','))
 
     const csvContent = `${headers}\n${sampleRows.join('\n')}`
     const blob = new Blob([csvContent], { type: 'text/csv' })

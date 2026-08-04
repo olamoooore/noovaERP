@@ -78,6 +78,8 @@ interface InvoiceLine {
   }
   model_number?: string
   product_notes?: string | null
+  lot_number?: string | null
+  expiry_date?: string | null
   description: string
   quantity: number
   unit_price: number
@@ -390,6 +392,8 @@ export function InvoiceDetailPage() {
                   <TableHead>Description</TableHead>
                   <TableHead>Model #</TableHead>
                   <TableHead>Product Notes</TableHead>
+                  <TableHead>Lot Number</TableHead>
+                  <TableHead>Expiry Date</TableHead>
                   <TableHead className="text-right">Qty</TableHead>
                   <TableHead className="text-right">Unit Price</TableHead>
                   <TableHead className="text-right">Tax</TableHead>
@@ -404,6 +408,8 @@ export function InvoiceDetailPage() {
                     <TableCell>{line.description || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{line.lot_number || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{line.expiry_date ? formatDate(line.expiry_date) : '-'}</TableCell>
                     <TableCell className="text-right">{line.quantity}</TableCell>
                     <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(line.tax_amount)}</TableCell>

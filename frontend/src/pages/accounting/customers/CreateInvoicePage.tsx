@@ -24,6 +24,8 @@ interface InvoiceLine {
   model_number: string;
   description: string;
   product_notes: string;
+  lot_number: string;
+  expiry_date: string;
   quantity: number;
   unit_price: number | '';
   tax_rate: number | '';
@@ -104,6 +106,8 @@ const emptyLine = (): InvoiceLine => ({
   model_number: '',
   description: '',
   product_notes: '',
+  lot_number: '',
+  expiry_date: '',
   quantity: 1,
   unit_price: '',
   tax_rate: '',
@@ -242,6 +246,22 @@ export const CreateInvoicePage: React.FC = () => {
   const [customerDialogMode, setCustomerDialogMode] = useState<'create' | 'edit'>('create');
   const [customerForm, setCustomerForm] = useState<CustomerFormState>(initialCustomerForm);
   const [originalCustomerId, setOriginalCustomerId] = useState('');
+  const [visibleLineColumns, setVisibleLineColumns] = useState<Record<string, boolean>>(() => {
+    const defaults = { sku: true, description: true, model_number: true, product_notes: true, lot_number: true, expiry_date: true, tax_rate: true };
+    try {
+      return { ...defaults, ...JSON.parse(localStorage.getItem('invoice-line-columns') || '{}') };
+    } catch {
+      return defaults;
+    }
+  });
+
+  const toggleLineColumn = (column: string) => {
+    setVisibleLineColumns((current) => {
+      const next = { ...current, [column]: !current[column] };
+      localStorage.setItem('invoice-line-columns', JSON.stringify(next));
+      return next;
+    });
+  };
 
   const { data: existingInvoice, isLoading: isInvoiceLoading } = useQuery({
     queryKey: ['invoice-edit', id],
@@ -372,6 +392,8 @@ export const CreateInvoicePage: React.FC = () => {
       model_number: line.model_number || line.product?.manufacturer_part_number || '',
       description: line.description || '',
       product_notes: line.product_notes || '',
+      lot_number: line.lot_number || '',
+      expiry_date: line.expiry_date ? String(line.expiry_date).split('T')[0] : '',
       quantity: Number(line.quantity ?? 1),
       unit_price: line.unit_price != null ? Number(line.unit_price) : '',
       tax_rate: line.tax_rate != null ? Number(line.tax_rate) : '',
@@ -655,6 +677,8 @@ export const CreateInvoicePage: React.FC = () => {
           model_number: line.model_number || null,
           description: line.description || 'Item',
           product_notes: line.product_notes || null,
+          lot_number: line.lot_number || null,
+          expiry_date: line.expiry_date || null,
           quantity: line.quantity,
           unit_price: line.unit_price === '' ? 0 : line.unit_price,
           tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
@@ -1113,6 +1137,24 @@ export const CreateInvoicePage: React.FC = () => {
               <CardTitle className="flex items-center justify-between">
                 <span>Line Items</span>
                 <div className="flex flex-wrap gap-2">
+                  <details className="relative">
+                    <summary className="list-none cursor-pointer rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-accent">
+                      <Icon icon="solar:settings-bold-duotone" className="inline h-4 w-4 mr-1" />
+                      Show/Hide Fields
+                    </summary>
+                    <div className="absolute right-0 z-20 mt-2 w-52 rounded-md border bg-background p-3 shadow-lg">
+                      {[
+                        ['sku', 'SKU'], ['description', 'Description'], ['model_number', 'Model #'],
+                        ['product_notes', 'Product Notes'], ['lot_number', 'Lot Number'],
+                        ['expiry_date', 'Expiry Date'], ['tax_rate', 'Tax %'],
+                      ].map(([key, label]) => (
+                        <label key={key} className="flex cursor-pointer items-center gap-2 py-1 text-sm">
+                          <input type="checkbox" checked={visibleLineColumns[key]} onChange={() => toggleLineColumn(key)} />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </details>
                   <Button type="button" variant="outline" size="sm" onClick={addLine}>
                     <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-1" />
                     Add Line
@@ -1131,13 +1173,15 @@ export const CreateInvoicePage: React.FC = () => {
                     <tr className="border-b">
                       <th className="text-left py-2 px-2 w-12">#</th>
                       <th className="text-left py-2 px-2 w-[200px]">Product</th>
-                      <th className="text-left py-2 px-2 w-24">SKU</th>
-                      <th className="text-left py-2 px-2">Description</th>
-                      <th className="text-left py-2 px-2 w-28">Model #</th>
-                      <th className="text-left py-2 px-2 w-36">Product Notes</th>
+                      {visibleLineColumns.sku && <th className="text-left py-2 px-2 w-24">SKU</th>}
+                      {visibleLineColumns.description && <th className="text-left py-2 px-2">Description</th>}
+                      {visibleLineColumns.model_number && <th className="text-left py-2 px-2 w-28">Model #</th>}
+                      {visibleLineColumns.product_notes && <th className="text-left py-2 px-2 w-36">Product Notes</th>}
+                      {visibleLineColumns.lot_number && <th className="text-left py-2 px-2 w-32">Lot Number</th>}
+                      {visibleLineColumns.expiry_date && <th className="text-left py-2 px-2 w-36">Expiry Date</th>}
                       <th className="text-right py-2 px-2 w-20">Qty</th>
                       <th className="text-right py-2 px-2 w-28">Unit Price</th>
-                      <th className="text-right py-2 px-2 w-20">Tax %</th>
+                      {visibleLineColumns.tax_rate && <th className="text-right py-2 px-2 w-20">Tax %</th>}
                       <th className="text-right py-2 px-2 w-28">Line Total</th>
                       <th className="py-2 px-2 w-32">Actions</th>
                     </tr>
@@ -1162,7 +1206,7 @@ export const CreateInvoicePage: React.FC = () => {
                             }}
                           />
                         </td>
-                        <td className="py-2 px-2">
+                        {visibleLineColumns.sku && <td className="py-2 px-2">
                           <input
                             type="text"
                             value={line.sku}
@@ -1170,8 +1214,8 @@ export const CreateInvoicePage: React.FC = () => {
                             className="w-full px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-sm text-slate-500"
                             placeholder="SKU"
                           />
-                        </td>
-                        <td className="py-2 px-2">
+                        </td>}
+                        {visibleLineColumns.description && <td className="py-2 px-2">
                           <textarea
                             value={line.description}
                             onChange={(event) => updateLine(index, 'description', event.target.value)}
@@ -1179,8 +1223,8 @@ export const CreateInvoicePage: React.FC = () => {
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
                             placeholder="Description"
                           />
-                        </td>
-                        <td className="py-2 px-2">
+                        </td>}
+                        {visibleLineColumns.model_number && <td className="py-2 px-2">
                           <input
                             type="text"
                             value={line.model_number}
@@ -1188,8 +1232,8 @@ export const CreateInvoicePage: React.FC = () => {
                             className="w-full px-2 py-1 border border-gray-200 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-900 text-sm text-slate-500"
                             placeholder="Model #"
                           />
-                        </td>
-                        <td className="py-2 px-2">
+                        </td>}
+                        {visibleLineColumns.product_notes && <td className="py-2 px-2">
                           <textarea
                             value={line.product_notes}
                             onChange={(event) => updateLine(index, 'product_notes', event.target.value)}
@@ -1197,7 +1241,13 @@ export const CreateInvoicePage: React.FC = () => {
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
                             placeholder="Product notes"
                           />
-                        </td>
+                        </td>}
+                        {visibleLineColumns.lot_number && <td className="py-2 px-2">
+                          <input type="text" value={line.lot_number} onChange={(event) => updateLine(index, 'lot_number', event.target.value)} className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm" placeholder="Lot number" />
+                        </td>}
+                        {visibleLineColumns.expiry_date && <td className="py-2 px-2">
+                          <input type="date" value={line.expiry_date} onChange={(event) => updateLine(index, 'expiry_date', event.target.value)} className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm" />
+                        </td>}
                         <td className="py-2 px-2">
                           <input
                             type="number"
@@ -1218,7 +1268,7 @@ export const CreateInvoicePage: React.FC = () => {
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
                           />
                         </td>
-                        <td className="py-2 px-2">
+                        {visibleLineColumns.tax_rate && <td className="py-2 px-2">
                         <input
                           type="number"
                           min="0"
@@ -1229,7 +1279,7 @@ export const CreateInvoicePage: React.FC = () => {
                           onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
                           className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
                         />
-                      </td>
+                      </td>}
                         <td className="py-2 px-2 text-right font-medium">
                           {formatCurrency(getLineTotal(line))}
                         </td>

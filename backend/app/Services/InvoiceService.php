@@ -75,6 +75,8 @@ class InvoiceService
                     'model_number' => $lineData['model_number'] ?? null,
                     'description' => $lineData['description'],
                     'product_notes' => $lineData['product_notes'] ?? null,
+                    'lot_number' => $lineData['lot_number'] ?? null,
+                    'expiry_date' => $lineData['expiry_date'] ?? null,
                     'quantity' => $lineData['quantity'],
                     'unit_price' => $lineData['unit_price'],
                     'tax_rate' => $lineData['tax_rate'] ?? 0,

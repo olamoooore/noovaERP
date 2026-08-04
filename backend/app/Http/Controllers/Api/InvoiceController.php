@@ -91,6 +91,8 @@ class InvoiceController extends Controller
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
+            'lines.*.lot_number' => 'nullable|string|max:100',
+            'lines.*.expiry_date' => 'nullable|date',
             'lines.*.quantity' => 'required|integer|min:1',
             'lines.*.unit_price' => 'required|numeric|min:0',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
@@ -210,6 +212,8 @@ class InvoiceController extends Controller
                     'model_number' => $line['model_number'] ?? null,
                     'description' => $line['description'],
                     'product_notes' => $line['product_notes'] ?? null,
+                    'lot_number' => $line['lot_number'] ?? null,
+                    'expiry_date' => $line['expiry_date'] ?? null,
                     'quantity' => $line['quantity'],
                     'unit_price' => $line['unit_price'],
                     'tax_rate' => $line['tax_rate'] ?? 0,
@@ -311,6 +315,16 @@ class InvoiceController extends Controller
             empty($invoiceOverrides) ? null : $invoiceOverrides
         );
 
+        // Lot/expiry values belong to the invoice lines rather than sales-order lines.
+        $invoice->load('lines');
+        foreach ($invoice->lines->values() as $index => $invoiceLine) {
+            $sourceLine = $data['lines'][$index] ?? [];
+            $invoiceLine->update([
+                'lot_number' => $sourceLine['lot_number'] ?? null,
+                'expiry_date' => $sourceLine['expiry_date'] ?? null,
+            ]);
+        }
+
         return $invoice;
     }
 
@@ -369,6 +383,8 @@ class InvoiceController extends Controller
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
+            'lines.*.lot_number' => 'nullable|string|max:100',
+            'lines.*.expiry_date' => 'nullable|date',
             'lines.*.quantity' => 'required|integer|min:1',
             'lines.*.unit_price' => 'required|numeric|min:0',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
@@ -404,6 +420,8 @@ class InvoiceController extends Controller
                         'model_number' => $line['model_number'] ?? null,
                         'description' => $line['description'],
                         'product_notes' => $line['product_notes'] ?? null,
+                        'lot_number' => $line['lot_number'] ?? null,
+                        'expiry_date' => $line['expiry_date'] ?? null,
                         'quantity' => $line['quantity'],
                         'unit_price' => $line['unit_price'],
                         'tax_rate' => $line['tax_rate'] ?? 0,
@@ -724,13 +742,16 @@ class InvoiceController extends Controller
             'date' => 'invoice_date',
             'issue_date' => 'invoice_date',
             'valid_until' => 'due_date',
-            'expiry_date' => 'due_date',
+            'invoice_expiry_date' => 'due_date',
             'reference' => 'customer_reference',
             'po_number' => 'po_number',
             'sku' => 'product_sku',
             'product_sku' => 'product_sku',
             'item' => 'description',
             'item_description' => 'description',
+            'lot' => 'lot_number',
+            'batch' => 'lot_number',
+            'batch_number' => 'lot_number',
             'qty' => 'quantity',
             'price' => 'unit_price',
             'unit_price' => 'unit_price',
@@ -844,6 +865,10 @@ class InvoiceController extends Controller
 
                     $line = [
                         'description' => $description !== '' ? $description : 'Imported line',
+                        'model_number' => $this->readImportValue($lineRow['model_number'] ?? null),
+                        'product_notes' => $this->readImportValue($lineRow['product_notes'] ?? null),
+                        'lot_number' => $this->readImportValue($lineRow['lot_number'] ?? null),
+                        'expiry_date' => $this->parseImportDate($lineRow['expiry_date'] ?? null),
                         'quantity' => $quantity,
                         'unit_price' => $unitPrice,
                         'tax_rate' => $taxRate,
