@@ -364,9 +364,15 @@ class FinancialReportController extends Controller
 
         $validated = $request->validate([
             'as_of_date' => 'required|date',
+            'compare_date' => 'nullable|date',
             'account_type' => 'nullable|in:asset,liability,equity,revenue,expense',
             'grouped' => 'nullable|boolean',
         ]);
+
+        // Map compare_date to compare_start_date for ReportFilter
+        if (isset($validated['compare_date'])) {
+            $validated['compare_start_date'] = $validated['compare_date'];
+        }
 
         \Log::info('TrialBalance validation passed', ['validated' => $validated]);
 
@@ -410,6 +416,21 @@ class FinancialReportController extends Controller
                 'as_of_date' => $reportData->metadata['as_of_date'] ?? null,
                 'account_count' => $reportData->metadata['account_count'] ?? 0,
             ];
+
+            // Generate comparison if requested
+            if ($filter->compareStartDate) {
+                $compareFilter = new ReportFilter(
+                    asOfDate: $filter->compareStartDate
+                );
+                $compareData = $this->trialBalanceService->generate($compareFilter);
+
+                $response['comparison'] = [
+                    'as_of_date' => $filter->compareStartDate->format('Y-m-d'),
+                    'total_debits' => $compareData->summary['total_debits'] ?? 0,
+                    'total_credits' => $compareData->summary['total_credits'] ?? 0,
+                    'accounts' => $compareData->data ?? [],
+                ];
+            }
 
             return response()->json([
                 'success' => true,
