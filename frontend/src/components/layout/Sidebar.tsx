@@ -650,6 +650,7 @@ const baseNavItems: NavItem[] = [
         title: 'Settings',
         href: '/settings',
         icon: 'solar:settings-bold-duotone',
+        requiredPermission: 'settings.view',
       },
       {
         title: 'Template Builder',
