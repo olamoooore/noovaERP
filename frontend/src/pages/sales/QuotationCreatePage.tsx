@@ -544,9 +544,9 @@ export const QuotationCreatePage: React.FC = () => {
                       <td className="py-2 px-2">
                         <input
                           type="number"
-                          min="1"
+                          min="0"
                           value={line.quantity}
-                          onChange={(event) => updateLine(index, 'quantity', parseInt(event.target.value, 10) || 1)}
+                          onChange={(event) => updateLine(index, 'quantity', Math.max(0, parseInt(event.target.value, 10) || 0))}
                           className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
                         />
                       </td>

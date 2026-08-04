@@ -357,6 +357,7 @@ function App() {
                 <Route path="/invoices" element={<InvoicesPage />} />
                 <Route path="/invoices/import" element={<InvoiceImportPage />} />
                 <Route path="/invoices/create" element={<CreateInvoicePage />} />
+                <Route path="/invoices/:id/edit" element={<CreateInvoicePage />} />
                 <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
                 <Route path="/invoices/:id/payment" element={<InvoicePaymentPage />} />
                 <Route path="/accounting" element={<Navigate to="/accounting/dashboard" replace />} />
@@ -367,6 +368,7 @@ function App() {
                 {/* Customer Section */}
                 <Route path="/accounting/customers/bills" element={<CustomerBills />} />
                 <Route path="/accounting/customers/bills/create" element={<CreateInvoicePage />} />
+                <Route path="/accounting/customers/bills/:id/edit" element={<CreateInvoicePage />} />
                 <Route path="/accounting/customers/bills/:id" element={<CustomerInvoiceDetail />} />
                 <Route path="/accounting/customers/payments" element={<CustomerPayments />} />
                 <Route path="/accounting/customers/credit-notes" element={<CustomerCreditNotesPage />} />

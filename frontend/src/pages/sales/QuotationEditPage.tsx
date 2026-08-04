@@ -13,6 +13,7 @@ interface QuotationLine {
   product_id: string;
   model_number: string;
   description: string;
+  product_notes: string;
   quantity: number;
   unit_price: number | '';
   tax_rate: number | '';
@@ -29,6 +30,7 @@ const emptyLine = (): QuotationLine => ({
   product_id: '',
   model_number: '',
   description: '',
+  product_notes: '',
   quantity: 1,
   unit_price: '',
   tax_rate: '',
@@ -114,6 +116,7 @@ export const QuotationEditPage: React.FC = () => {
       product_id: line.product_id ? String(line.product_id) : '',
       model_number: line.model_number || '',
       description: line.description || '',
+      product_notes: line.product_notes || '',
       quantity: line.quantity ?? 1,
       unit_price: line.unit_price != null ? Number(line.unit_price) : '',
       tax_rate: line.tax_rate != null ? Number(line.tax_rate) : '',
@@ -239,6 +242,7 @@ export const QuotationEditPage: React.FC = () => {
       product_id: line.product_id ? parseInt(line.product_id, 10) : null,
       model_number: line.model_number || null,
       description: line.description || 'Item',
+      product_notes: line.product_notes || null,
       quantity: line.quantity,
       unit_price: line.unit_price === '' ? 0 : line.unit_price,
       tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
@@ -510,6 +514,7 @@ export const QuotationEditPage: React.FC = () => {
     <th className="text-left py-2 px-2">Product</th>
     <th className="text-left py-2 px-2">Description</th>
     <th className="text-left py-2 px-2 w-32">Model #</th>
+    <th className="text-left py-2 px-2 w-40">Product Notes</th>
     <th className="text-right py-2 px-2 w-24">Qty</th>
     <th className="text-right py-2 px-2 w-32">Unit Price</th>
     <th className="text-right py-2 px-2 w-24">Tax %</th>
@@ -561,11 +566,20 @@ export const QuotationEditPage: React.FC = () => {
                         />
                       </td>
                       <td className="py-2 px-2">
+                        <textarea
+                          value={line.product_notes}
+                          onChange={(event) => updateLine(index, 'product_notes', event.target.value)}
+                          rows={2}
+                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                          placeholder="Product notes"
+                        />
+                      </td>
+                      <td className="py-2 px-2">
                         <input
                           type="number"
-                          min="1"
+                          min="0"
                           value={line.quantity}
-                          onChange={(event) => updateLine(index, 'quantity', parseInt(event.target.value, 10) || 1)}
+                          onChange={(event) => updateLine(index, 'quantity', Math.max(0, parseInt(event.target.value, 10) || 0))}
                           className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
                         />
                       </td>

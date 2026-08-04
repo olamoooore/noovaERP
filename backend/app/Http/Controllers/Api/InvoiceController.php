@@ -90,6 +90,7 @@ class InvoiceController extends Controller
             'lines.*.product_id' => 'nullable|exists:products,id',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
+            'lines.*.product_notes' => 'nullable|string',
             'lines.*.quantity' => 'required|integer|min:1',
             'lines.*.unit_price' => 'required|numeric|min:0',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
@@ -208,6 +209,7 @@ class InvoiceController extends Controller
                     'product_id' => $line['product_id'] ?? null,
                     'model_number' => $line['model_number'] ?? null,
                     'description' => $line['description'],
+                    'product_notes' => $line['product_notes'] ?? null,
                     'quantity' => $line['quantity'],
                     'unit_price' => $line['unit_price'],
                     'tax_rate' => $line['tax_rate'] ?? 0,
@@ -226,6 +228,7 @@ class InvoiceController extends Controller
             'product_id' => $line['product_id'] ?? null,
             'model_number' => $line['model_number'] ?? null,
             'description' => $line['description'],
+            'product_notes' => $line['product_notes'] ?? null,
             'quantity' => $line['quantity'],
             'unit_price' => $line['unit_price'],
             'tax_rate' => $line['tax_rate'] ?? 0,
@@ -361,12 +364,25 @@ class InvoiceController extends Controller
             'requestor_contact_id' => 'nullable|exists:core_contacts,id',
             'billing_contact_id' => 'nullable|exists:core_contacts,id',
             'shipping_contact_id' => 'nullable|exists:core_contacts,id',
+            'lines' => 'sometimes|array|min:1',
+            'lines.*.product_id' => 'nullable|exists:products,id',
+            'lines.*.model_number' => 'nullable|string|max:100',
+            'lines.*.description' => 'required|string',
+            'lines.*.product_notes' => 'nullable|string',
+            'lines.*.quantity' => 'required|integer|min:1',
+            'lines.*.unit_price' => 'required|numeric|min:0',
+            'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ]);
 
         // Reject document discount exceeding the line subtotal
-        $subtotal = $invoice->lines->reduce(function ($sum, $line) {
-            return $sum + ($line->quantity * $line->unit_price) - ($line->discount_amount ?? 0);
-        }, 0);
+        $subtotal = isset($validated['lines'])
+            ? array_reduce($validated['lines'], function ($sum, $line) {
+                return $sum + ($line['quantity'] * $line['unit_price']) - ($line['discount_amount'] ?? 0);
+            }, 0)
+            : $invoice->lines->reduce(function ($sum, $line) {
+                return $sum + ($line->quantity * $line->unit_price) - ($line->discount_amount ?? 0);
+            }, 0);
         $docDiscount = (float) ($validated['discount_amount'] ?? $invoice->discount_amount ?? 0);
         if ($docDiscount > 0 && $subtotal > 0 && $docDiscount > $subtotal) {
             return response()->json([
@@ -374,8 +390,31 @@ class InvoiceController extends Controller
             ], 422);
         }
 
-        $invoice->update($validated);
-        $invoice->calculateTotals();
+        DB::transaction(function () use ($invoice, $validated) {
+            $lines = $validated['lines'] ?? null;
+            unset($validated['lines']);
+
+            $invoice->update($validated);
+
+            if ($lines !== null) {
+                $invoice->lines()->delete();
+                foreach ($lines as $line) {
+                    $invoice->lines()->create([
+                        'product_id' => $line['product_id'] ?? null,
+                        'model_number' => $line['model_number'] ?? null,
+                        'description' => $line['description'],
+                        'product_notes' => $line['product_notes'] ?? null,
+                        'quantity' => $line['quantity'],
+                        'unit_price' => $line['unit_price'],
+                        'tax_rate' => $line['tax_rate'] ?? 0,
+                        'discount_amount' => $line['discount_amount'] ?? 0,
+                    ]);
+                }
+            }
+
+            $invoice->refresh();
+            $invoice->calculateTotals();
+        });
 
         return response()->json($invoice->fresh(['customer', 'lines', 'doctor', 'requestor', 'billingContact', 'shippingContact']));
     }

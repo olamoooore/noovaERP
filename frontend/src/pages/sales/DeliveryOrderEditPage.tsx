@@ -17,6 +17,7 @@ interface LineItem {
   product_name: string
   model_number: string
   description: string
+  product_notes: string
   patient_name: string
   quantity: number
   unit: string
@@ -90,6 +91,7 @@ export function DeliveryOrderEditPage() {
           product_name: l.product?.name || '',
           model_number: l.model_number || '',
           description: l.description || '',
+          product_notes: l.product_notes || '',
           patient_name: l.patient_name || '',
           quantity: parseFloat(l.quantity_delivered) || 1,
           unit: l.unit || 'pcs',
@@ -127,7 +129,7 @@ export function DeliveryOrderEditPage() {
   }
 
   const addLine = () => {
-    setLines((prev) => [...prev, { product_id: null, product_name: '', model_number: '', description: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' }])
+    setLines((prev) => [...prev, { product_id: null, product_name: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' }])
   }
 
   const removeLine = (index: number) => {
@@ -151,6 +153,7 @@ export function DeliveryOrderEditPage() {
         product_id: l.product_id,
         model_number: l.model_number || null,
         description: l.description,
+        product_notes: l.product_notes || null,
         patient_name: l.patient_name || undefined,
         quantity_delivered: l.quantity,
         unit: l.unit,
@@ -277,6 +280,7 @@ export function DeliveryOrderEditPage() {
               <TableRow>
                 <TableHead className="w-[200px]">Product</TableHead>
                 <TableHead>Description</TableHead>
+                <TableHead className="w-[180px]">Product Notes</TableHead>
                 <TableHead className="w-[180px]">Patient Name</TableHead>
                 <TableHead className="text-right w-[100px]">Quantity</TableHead>
                 <TableHead className="w-[100px]">Unit</TableHead>
@@ -301,6 +305,9 @@ export function DeliveryOrderEditPage() {
                   </TableCell>
                   <TableCell>
                     <Input value={line.description} onChange={(e) => updateLine(idx, 'description', e.target.value)} placeholder="Description" />
+                  </TableCell>
+                  <TableCell>
+                    <Input value={line.product_notes} onChange={(e) => updateLine(idx, 'product_notes', e.target.value)} placeholder="Product notes" />
                   </TableCell>
                   <TableCell>
                     <Input value={line.patient_name} onChange={(e) => updateLine(idx, 'patient_name', e.target.value)} placeholder="Patient name" />

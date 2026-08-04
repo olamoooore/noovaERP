@@ -78,6 +78,7 @@ class SalesOrderService
                 $line = $order->lines()->create([
                     'product_id' => $lineData['product_id'] ?? null,
                     'model_number' => $lineData['model_number'] ?? null,
+                    'product_notes' => $lineData['product_notes'] ?? null,
                     'variant_id' => $lineData['variant_id'] ?? null,
                     'description' => $lineData['description'] ?? '',
                     'sku' => $lineData['sku'] ?? null,
@@ -260,6 +261,8 @@ class SalesOrderService
 
                 $lines[] = [
                     'product_id' => $line->product_id,
+                    'model_number' => $line->model_number,
+                    'product_notes' => $line->product_notes,
                     'description' => $description,
                     'quantity' => $invoiceQuantity,
                     'unit_price' => $invoiceUnitPrice,

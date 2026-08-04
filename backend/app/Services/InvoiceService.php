@@ -72,7 +72,9 @@ class InvoiceService
             foreach ($lines as $lineData) {
                 $invoice->lines()->create([
                     'product_id' => $lineData['product_id'] ?? null,
+                    'model_number' => $lineData['model_number'] ?? null,
                     'description' => $lineData['description'],
+                    'product_notes' => $lineData['product_notes'] ?? null,
                     'quantity' => $lineData['quantity'],
                     'unit_price' => $lineData['unit_price'],
                     'tax_rate' => $lineData['tax_rate'] ?? 0,

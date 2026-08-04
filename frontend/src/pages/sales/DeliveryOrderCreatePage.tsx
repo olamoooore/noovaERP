@@ -49,6 +49,7 @@ export function DeliveryOrderCreatePage() {
   const [lineQuantities, setLineQuantities] = useState<Record<number, number>>({})
   const [lineLotNumbers, setLineLotNumbers] = useState<Record<number, string>>({})
   const [linePatientNames, setLinePatientNames] = useState<Record<number, string>>({})
+  const [lineProductNotes, setLineProductNotes] = useState<Record<number, string>>({})
 
   // Standalone mode line items
   const [standaloneLines, setStandaloneLines] = useState<LineItem[]>([
@@ -160,6 +161,7 @@ export function DeliveryOrderCreatePage() {
         quantity_delivered: lineQuantities[line.sales_order_line_id] || 0,
         lot_number: lineLotNumbers[line.sales_order_line_id] || undefined,
         patient_name: linePatientNames[line.sales_order_line_id] || undefined,
+        product_notes: lineProductNotes[line.sales_order_line_id] ?? line.product_notes ?? undefined,
       }))
 
     if (lines.length === 0) {
@@ -453,6 +455,7 @@ export function DeliveryOrderCreatePage() {
                 <TableRow>
                   <TableHead>Product</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead>Product Notes</TableHead>
                   <TableHead className="text-right">Ordered</TableHead>
                   <TableHead className="text-right">Already Delivered</TableHead>
                   <TableHead className="text-right">Remaining</TableHead>
@@ -469,6 +472,15 @@ export function DeliveryOrderCreatePage() {
                     <TableRow key={line.sales_order_line_id}>
                       <TableCell className="font-medium">{line.product_name || '-'}</TableCell>
                       <TableCell>{line.description}</TableCell>
+                      <TableCell>
+                        <Input
+                          type="text"
+                          value={lineProductNotes[line.sales_order_line_id] ?? line.product_notes ?? ''}
+                          onChange={(e) => setLineProductNotes((prev) => ({ ...prev, [line.sales_order_line_id]: e.target.value }))}
+                          className="w-44"
+                          placeholder="Product notes"
+                        />
+                      </TableCell>
                       <TableCell className="text-right">{line.quantity_ordered}</TableCell>
                       <TableCell className="text-right">{line.quantity_delivered}</TableCell>
                       <TableCell className="text-right font-medium">{remaining}</TableCell>

@@ -77,6 +77,7 @@ interface InvoiceLine {
     manufacturer_part_number?: string
   }
   model_number?: string
+  product_notes?: string | null
   description: string
   quantity: number
   unit_price: number

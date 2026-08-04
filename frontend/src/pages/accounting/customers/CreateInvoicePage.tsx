@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -201,11 +201,20 @@ const getCustomerAddress = (customer?: CustomerRecord | null, type?: 'billing' |
 export const CreateInvoicePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const isQuoteMode = location.pathname.startsWith('/sales/quotes');
+  const isEditMode = Boolean(id);
   const documentLabel = isQuoteMode ? 'Quotation' : 'Invoice';
-  const backPath = isQuoteMode ? '/sales/quotes' : '/accounting/customers/bills';
+  const isLegacyInvoiceRoute = location.pathname.startsWith('/invoices/');
+  const backPath = isQuoteMode
+    ? '/sales/quotes'
+    : isLegacyInvoiceRoute
+      ? `/invoices/${id ?? ''}`
+      : isEditMode
+        ? `/accounting/customers/bills/${id}`
+        : '/accounting/customers/bills';
 
   const [customerId, setCustomerId] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
@@ -232,6 +241,16 @@ export const CreateInvoicePage: React.FC = () => {
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [customerDialogMode, setCustomerDialogMode] = useState<'create' | 'edit'>('create');
   const [customerForm, setCustomerForm] = useState<CustomerFormState>(initialCustomerForm);
+  const [originalCustomerId, setOriginalCustomerId] = useState('');
+
+  const { data: existingInvoice, isLoading: isInvoiceLoading } = useQuery({
+    queryKey: ['invoice-edit', id],
+    queryFn: async () => {
+      const response = await api.get(`/invoices/${id}`);
+      return response.data;
+    },
+    enabled: isEditMode,
+  });
 
   const { data: customers } = useQuery<CustomerRecord[]>({
     queryKey: ['customers-list'],
@@ -285,6 +304,11 @@ export const CreateInvoicePage: React.FC = () => {
       return;
     }
 
+    // Preserve the invoice's saved snapshots while initially loading edit mode.
+    if (isEditMode && String(selectedCustomer.id) === originalCustomerId) {
+      return;
+    }
+
     const primaryContact = getPrimaryCustomerContact(selectedCustomer);
     const billingAddress = getCustomerAddress(selectedCustomer, 'billing');
     const shippingAddress = getCustomerAddress(selectedCustomer, 'shipping');
@@ -305,7 +329,56 @@ export const CreateInvoicePage: React.FC = () => {
     setShippingContactId('');
     setDoctorContactId('');
     setRequestorContactId('');
-  }, [selectedCustomer]);
+  }, [isEditMode, originalCustomerId, selectedCustomer]);
+
+  useEffect(() => {
+    if (!existingInvoice) return;
+
+    const savedCustomerId = existingInvoice.customer_id ? String(existingInvoice.customer_id) : '';
+    setOriginalCustomerId(savedCustomerId);
+    setCustomerId(savedCustomerId);
+    setInvoiceDate(existingInvoice.invoice_date ? String(existingInvoice.invoice_date).split('T')[0] : '');
+    setDueDate(existingInvoice.due_date ? String(existingInvoice.due_date).split('T')[0] : '');
+    setCaseNumber(existingInvoice.case_number || '');
+    setDateOfCase(existingInvoice.date_of_case ? String(existingInvoice.date_of_case).split('T')[0] : '');
+    setCaseLocation(existingInvoice.case_location || '');
+    setPatientName(existingInvoice.patient_name || '');
+    setCostCenterId(existingInvoice.cost_center_id || '');
+    setDeliveryDate(existingInvoice.delivery_date ? String(existingInvoice.delivery_date).split('T')[0] : '');
+    setPoNumber(existingInvoice.po_number || '');
+    setDoctorContactId(existingInvoice.doctor_contact_id ? String(existingInvoice.doctor_contact_id) : '');
+    setRequestorContactId(existingInvoice.requestor_contact_id ? String(existingInvoice.requestor_contact_id) : '');
+    setBillingContactId(existingInvoice.billing_contact_id ? String(existingInvoice.billing_contact_id) : '');
+    setShippingContactId(existingInvoice.shipping_contact_id ? String(existingInvoice.shipping_contact_id) : '');
+    setNotes(existingInvoice.notes || '');
+    setTerms(existingInvoice.terms || '');
+    setDiscountMode('fixed');
+    setDiscountAmount(existingInvoice.discount_amount ? Number(existingInvoice.discount_amount) : '');
+    setDocumentSnapshot({
+      customer_reference: existingInvoice.customer_reference || '',
+      internal_reference: existingInvoice.internal_reference || '',
+      attention_to: existingInvoice.attention_to || '',
+      contact_email: existingInvoice.contact_email || '',
+      contact_phone: existingInvoice.contact_phone || '',
+      billing_address_snapshot: existingInvoice.billing_address_snapshot || '',
+      shipping_address_snapshot: existingInvoice.shipping_address_snapshot || '',
+      company_registration_number: existingInvoice.company_registration_number || '',
+      tax_registration_number: existingInvoice.tax_registration_number || '',
+    });
+
+    const mappedLines = (existingInvoice.lines || []).map((line: any): InvoiceLine => ({
+      product_id: line.product_id ? String(line.product_id) : '',
+      sku: line.product?.sku || '',
+      model_number: line.model_number || line.product?.manufacturer_part_number || '',
+      description: line.description || '',
+      product_notes: line.product_notes || '',
+      quantity: Number(line.quantity ?? 1),
+      unit_price: line.unit_price != null ? Number(line.unit_price) : '',
+      tax_rate: line.tax_rate != null ? Number(line.tax_rate) : '',
+      discount_amount: line.discount_amount != null ? Number(line.discount_amount) : '',
+    }));
+    setLines(mappedLines.length ? mappedLines : [emptyLine()]);
+  }, [existingInvoice]);
 
   useEffect(() => {
     if (!billingContactId || !systemContacts?.length) return;
@@ -339,16 +412,22 @@ export const CreateInvoicePage: React.FC = () => {
     }
   }, [shippingContactId, systemContacts]);
 
-  const createMutation = useMutation({
+  const saveMutation = useMutation({
     mutationFn: async (data: unknown) => {
-      const response = await api.post('/invoices', data);
+      const response = isEditMode
+        ? await api.put(`/invoices/${id}`, data)
+        : await api.post('/invoices', data);
       return response.data;
     },
     onSuccess: (data) => {
-      toast({ title: `${documentLabel} created successfully` });
-      const invoiceId = data?.id || data?.data?.id;
+      toast({ title: `${documentLabel} ${isEditMode ? 'updated' : 'created'} successfully` });
+      const invoiceId = id || data?.id || data?.data?.id;
       if (invoiceId) {
-        navigate(isQuoteMode ? `/sales/quotes/${invoiceId}` : `/accounting/customers/bills/${invoiceId}`);
+        navigate(isQuoteMode
+          ? `/sales/quotes/${invoiceId}`
+          : isLegacyInvoiceRoute
+            ? `/invoices/${invoiceId}`
+            : `/accounting/customers/bills/${invoiceId}`);
       } else {
         navigate(backPath);
       }
@@ -356,7 +435,7 @@ export const CreateInvoicePage: React.FC = () => {
     onError: (error: any) => {
       toast({
         variant: 'destructive',
-        title: `Failed to create ${documentLabel.toLowerCase()}`,
+        title: `Failed to ${isEditMode ? 'update' : 'create'} ${documentLabel.toLowerCase()}`,
         description: getApiErrorMessage(error),
       });
     },
@@ -583,7 +662,7 @@ export const CreateInvoicePage: React.FC = () => {
         })),
     };
 
-    createMutation.mutate(payload);
+    saveMutation.mutate(payload);
   };
 
   const customerMutationPending = createCustomerMutation.isPending || updateCustomerMutation.isPending;
@@ -655,7 +734,7 @@ export const CreateInvoicePage: React.FC = () => {
               Back
             </Button>
             <div>
-              <h1 className="text-3xl font-bold">Create {documentLabel}</h1>
+              <h1 className="text-3xl font-bold">{isEditMode ? 'Edit' : 'Create'} {documentLabel}</h1>
               <p className="text-muted-foreground mt-1">
                 Prepare the customer, products, and commercial details for this {documentLabel.toLowerCase()}.
               </p>
@@ -1231,16 +1310,16 @@ export const CreateInvoicePage: React.FC = () => {
             <Button type="button" variant="outline" onClick={() => navigate(backPath)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
-              {createMutation.isPending ? (
+            <Button type="submit" disabled={saveMutation.isPending || isInvoiceLoading}>
+              {saveMutation.isPending ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                  Creating...
+                  {isEditMode ? 'Saving...' : 'Creating...'}
                 </>
               ) : (
                 <>
                   <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 mr-2" />
-                  Create {documentLabel}
+                  {isEditMode ? 'Save Changes' : `Create ${documentLabel}`}
                 </>
               )}
             </Button>
