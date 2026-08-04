@@ -85,6 +85,7 @@
     "grapesjs-typed": "^2.0.1",
     "grapesjs-ui-suggest-classes": "^1.0.19",
     "gsap": "^3.14.2",
+    "html2pdf.js": "^0.14.0",
     "immer": "^11.1.0",
     "lucide-react": "^0.561.0",
     "react": "^18.2.0",

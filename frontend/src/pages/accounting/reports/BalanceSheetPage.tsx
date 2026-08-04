@@ -89,44 +89,6 @@ export default function BalanceSheetPage() {
     }).format(amount);
   };
 
-  // CSV Download
-  const handleDownloadCSV = () => {
-    if (!balanceSheet?.comparison) return;
-
-    const currentLabel = new Date(asOfDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const compareLabel = new Date(balanceSheet.comparison.as_of_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
-    const rows = [
-      ['Account', currentLabel, compareLabel, 'Change', 'Change %'],
-      ['ASSETS', '', '', '', ''],
-      ['Total Current Assets', formatCurrency(normalizeGroups(balanceSheet.assets?.current || []).reduce((sum, group) => sum + group.total, 0)), formatCurrency(normalizeGroups(balanceSheet.assets?.current || []).reduce((sum, group) => sum + group.total, 0) - (balanceSheet.comparison?.total_assets?.change || 0)), '', ''],
-      ['Total Non-Current Assets', formatCurrency(normalizeGroups(balanceSheet.assets?.non_current || []).reduce((sum, group) => sum + group.total, 0)), formatCurrency(normalizeGroups(balanceSheet.assets?.non_current || []).reduce((sum, group) => sum + group.total, 0) - (balanceSheet.comparison?.total_assets?.change || 0)), '', ''],
-      ['TOTAL ASSETS', formatCurrency(balanceSheet.total_assets), formatCurrency(balanceSheet.comparison.total_assets.amount), formatCurrency(balanceSheet.comparison.total_assets.change), `${balanceSheet.comparison.total_assets.change_percent?.toFixed(1) || 0}%`],
-      ['LIABILITIES', '', '', '', ''],
-      ['Total Current Liabilities', formatCurrency(normalizeGroups(balanceSheet.liabilities?.current || []).reduce((sum, group) => sum + group.total, 0)), formatCurrency(normalizeGroups(balanceSheet.liabilities?.current || []).reduce((sum, group) => sum + group.total, 0) - (balanceSheet.comparison?.total_liabilities?.change || 0)), '', ''],
-      ['Total Non-Current Liabilities', formatCurrency(normalizeGroups(balanceSheet.liabilities?.non_current || []).reduce((sum, group) => sum + group.total, 0)), formatCurrency(normalizeGroups(balanceSheet.liabilities?.non_current || []).reduce((sum, group) => sum + group.total, 0) - (balanceSheet.comparison?.total_liabilities?.change || 0)), '', ''],
-      ['TOTAL LIABILITIES', formatCurrency(balanceSheet.total_liabilities), formatCurrency(balanceSheet.comparison.total_liabilities.amount), formatCurrency(balanceSheet.comparison.total_liabilities.change), `${balanceSheet.comparison.total_liabilities.change_percent?.toFixed(1) || 0}%`],
-      ['EQUITY', '', '', '', ''],
-      ['TOTAL EQUITY', formatCurrency(balanceSheet.total_equity), formatCurrency(balanceSheet.comparison.total_equity.amount), formatCurrency(balanceSheet.comparison.total_equity.change), `${balanceSheet.comparison.total_equity.change_percent?.toFixed(1) || 0}%`],
-      ['TOTAL LIABILITIES + EQUITY', formatCurrency(balanceSheet.total_liabilities_and_equity), formatCurrency(balanceSheet.comparison.total_liabilities.amount + balanceSheet.comparison.total_equity.amount), '', ''],
-    ];
-
-    const csv = rows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `balance-sheet-comparison-${asOfDate}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  };
-
-  // PDF Download (uses browser print)
-  const handleDownloadPDF = () => {
-    window.print();
-  };
-
   const normalizeGroups = (items: Array<AccountGroup | Account> = []): AccountGroup[] => {
     return items.map((item, index) => {
       if ('accounts' in item) {
@@ -216,7 +178,7 @@ export default function BalanceSheetPage() {
       </div>
 
       <Card className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
           <div className="space-y-2">
             <Label htmlFor="as_of_date" className="text-sm font-medium text-gray-700">As of Date</Label>
             <Input
@@ -254,20 +216,6 @@ export default function BalanceSheetPage() {
               />
             </div>
           )}
-          <div className="flex gap-2">
-            <Button onClick={handleDownloadCSV} variant="outline" className="flex-1" disabled={!balanceSheet?.comparison}>
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              CSV
-            </Button>
-            <Button onClick={handleDownloadPDF} variant="outline" className="flex-1">
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-              </svg>
-              PDF
-            </Button>
-          </div>
         </div>
       </Card>
 
@@ -275,6 +223,11 @@ export default function BalanceSheetPage() {
       {compareEnabled && balanceSheet?.comparison && (
         <Card className="p-6">
           <ComparisonTable
+            title="Balance Sheet Comparison"
+            companyName="NoovaERP"
+            asOfDate={new Date(asOfDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            compareDate={new Date(balanceSheet.comparison.as_of_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            filename={`balance-sheet-comparison-${asOfDate}`}
             currentLabel={`As of ${new Date(asOfDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
             compareLabel={`As of ${new Date(balanceSheet.comparison.as_of_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
             rows={[

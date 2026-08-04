@@ -1,6 +1,8 @@
+import { useRef } from 'react'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { generateReportPDF } from '@/lib/pdfGenerator'
 
 export interface ComparisonRow {
   label: string
@@ -16,11 +18,68 @@ interface ComparisonTableProps {
   compareLabel: string
   rows: ComparisonRow[]
   formatCurrency: (amount: number) => string
-  onDownloadCSV?: () => void
-  onDownloadPDF?: () => void
+  title?: string
+  companyName?: string
+  asOfDate?: string
+  compareDate?: string
+  filename?: string
 }
 
-export function ComparisonTable({ currentLabel, compareLabel, rows, formatCurrency, onDownloadCSV, onDownloadPDF }: ComparisonTableProps) {
+export function ComparisonTable({
+  currentLabel,
+  compareLabel,
+  rows,
+  formatCurrency,
+  title = 'Financial Report',
+  companyName = 'NoovaERP',
+  asOfDate,
+  compareDate,
+  filename = 'report-comparison'
+}: ComparisonTableProps) {
+  const tableRef = useRef<HTMLDivElement>(null)
+
+  const handleDownloadCSV = () => {
+    const csvRows = [
+      ['Account', currentLabel, compareLabel, 'Change', 'Change %'],
+    ]
+
+    rows.forEach((row) => {
+      const change = row.current - row.compare
+      const changePct = row.compare !== 0 ? ((change / Math.abs(row.compare)) * 100) : null
+
+      csvRows.push([
+        row.label,
+        formatCurrency(row.current),
+        formatCurrency(row.compare),
+        change !== 0 ? formatCurrency(change) : '—',
+        changePct !== null ? `${changePct.toFixed(1)}%` : '—',
+      ])
+    })
+
+    const csv = csvRows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `${filename}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+  }
+
+  const handleDownloadPDF = async () => {
+    if (!tableRef.current) return
+
+    await generateReportPDF(tableRef.current, {
+      title,
+      subtitle: `${currentLabel} vs ${compareLabel}`,
+      companyName,
+      asOfDate,
+      compareDate,
+      filename,
+    })
+  }
+
   return (
     <div className="space-y-4">
       {/* Header with download buttons */}
@@ -35,33 +94,29 @@ export function ComparisonTable({ currentLabel, compareLabel, rows, formatCurren
           </Badge>
         </div>
         <div className="flex gap-2">
-          {onDownloadCSV && (
-            <button
-              onClick={onDownloadCSV}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              CSV
-            </button>
-          )}
-          {onDownloadPDF && (
-            <button
-              onClick={onDownloadPDF}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-              </svg>
-              PDF
-            </button>
-          )}
+          <button
+            onClick={handleDownloadCSV}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            CSV
+          </button>
+          <button
+            onClick={handleDownloadPDF}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+            PDF
+          </button>
         </div>
       </div>
 
       {/* Comparison Table */}
-      <div className="border rounded-lg overflow-hidden">
+      <div ref={tableRef} className="border rounded-lg overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow className="bg-gray-50">
@@ -112,7 +167,6 @@ export function ComparisonTable({ currentLabel, compareLabel, rows, formatCurren
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
-                      {/* Change indicator arrow */}
                       {change !== 0 && (
                         <span className={cn(
                           'inline-flex items-center justify-center w-5 h-5 rounded-full',
