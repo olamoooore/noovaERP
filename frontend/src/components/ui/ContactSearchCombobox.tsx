@@ -26,6 +26,16 @@ interface Contact {
   company_name?: string
   email?: string
   phone?: string
+  // Address fields
+  type?: string
+  label?: string
+  street?: string
+  street2?: string
+  city?: string
+  state?: string
+  zip?: string
+  country?: string
+  is_default?: boolean
 }
 
 interface ContactSearchComboboxProps {
@@ -57,20 +67,20 @@ export function ContactSearchCombobox({
   const { data: searchResults, isLoading } = useQuery<Contact[]>({
     queryKey: ['contacts-search', debouncedQuery, customerId],
     queryFn: async () => {
-      // If customerId is provided, fetch customer-specific contacts
+      // If customerId is provided, fetch customer addresses
       if (customerId) {
-        const res = await api.get(`/customers/${customerId}/contacts`)
-        const contacts = res.data ?? []
+        const res = await api.get(`/customers/${customerId}`)
+        const customer = res.data?.data ?? res.data
+        const addresses = customer?.addresses ?? []
         // Apply search filter client-side if needed
         if (debouncedQuery) {
           const q = debouncedQuery.toLowerCase()
-          return contacts.filter((c: Contact) => {
-            const name = getDisplayName(c).toLowerCase()
-            const email = (c.email || '').toLowerCase()
-            return name.includes(q) || email.includes(q)
+          return addresses.filter((a: Contact) => {
+            const display = getDisplayName(a).toLowerCase()
+            return display.includes(q)
           })
         }
-        return contacts
+        return addresses
       }
       // Otherwise fetch all contacts
       const params: Record<string, string> = { per_page: '50', is_active: 'true' }
@@ -92,8 +102,14 @@ export function ContactSearchCombobox({
     enabled: !!value && !searchResults?.find(c => String(c.id) === value),
   })
 
-  const getDisplayName = (c: Contact) =>
-    c.display_name || [c.first_name, c.last_name].filter(Boolean).join(' ') || c.company_name || 'Unnamed'
+  const getDisplayName = (c: Contact) => {
+    // If it's an address, show the address
+    if (c.street || c.city || c.country) {
+      const parts = [c.street, c.street2, c.city, c.state, c.zip, c.country].filter(Boolean)
+      return parts.join(', ') || c.label || c.type || 'Address'
+    }
+    return c.display_name || [c.first_name, c.last_name].filter(Boolean).join(' ') || c.company_name || 'Unnamed'
+  }
 
   const getDisplayValue = useCallback(() => {
     if (!value) return placeholder
@@ -170,6 +186,7 @@ export function ContactSearchCombobox({
                     )}
                   />
                   <div className="flex flex-col">
+                    <span className="text-xs font-medium text-muted-foreground capitalize">{contact.type || 'Contact'}</span>
                     <span>{getDisplayName(contact)}</span>
                     {contact.email && (
                       <span className="text-xs text-muted-foreground">{contact.email}</span>
