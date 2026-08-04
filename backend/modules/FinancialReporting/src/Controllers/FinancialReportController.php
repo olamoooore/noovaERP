@@ -127,6 +127,11 @@ class FinancialReportController extends Controller
             'location_id' => 'nullable|integer|exists:locations,id',
         ]);
 
+        // Map compare_date to compare_start_date for ReportFilter
+        if (isset($validated['compare_date'])) {
+            $validated['compare_start_date'] = $validated['compare_date'];
+        }
+
         try {
             $filter = ReportFilter::fromRequest($validated);
 
