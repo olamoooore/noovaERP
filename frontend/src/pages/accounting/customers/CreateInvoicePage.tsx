@@ -40,15 +40,23 @@ interface CustomerAddress {
   state?: string | null;
   zip?: string | null;
   country?: string | null;
+  label?: string | null;
   is_default?: boolean;
 }
 
 interface CustomerContact {
+  id?: number | string;
   name?: string | null;
   email?: string | null;
   phone?: string | null;
   mobile?: string | null;
   is_primary?: boolean;
+  street?: string | null;
+  street2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  country?: string | null;
 }
 
 interface CustomerRecord {
@@ -142,14 +150,35 @@ const emptyDocumentSnapshot: InvoiceDocumentSnapshot = {
   tax_registration_number: '',
 };
 
+type AddressFormState = Record<'label' | 'street' | 'street2' | 'city' | 'state' | 'zip' | 'country', string>;
+
+const emptyAddressForm: AddressFormState = {
+  label: '', street: '', street2: '', city: '', state: '', zip: '', country: '',
+};
+
+const toAddressForm = (address?: CustomerAddress | null): AddressFormState => ({
+  label: address?.label ?? '',
+  street: address?.street ?? '',
+  street2: address?.street2 ?? '',
+  city: address?.city ?? '',
+  state: address?.state ?? '',
+  zip: address?.zip ?? '',
+  country: address?.country ?? '',
+});
+
+const addressFormToSnapshot = (address: AddressFormState): string =>
+  [address.label, address.street, address.street2, address.city, address.state, address.zip, address.country]
+    .filter(Boolean)
+    .join('\n');
+
 const formatAddress = (address?: CustomerAddress | null): string => {
   if (!address) {
     return '';
   }
 
-  return [address.street, address.street2, address.city, address.state, address.zip, address.country]
+  return [address.label, address.street, address.street2, address.city, address.state, address.zip, address.country]
     .filter(Boolean)
-    .join(', ');
+    .join('\n');
 };
 
 const getPrimaryCustomerContact = (customer?: CustomerRecord | null): CustomerContact | undefined => {
@@ -236,6 +265,8 @@ export const CreateInvoicePage: React.FC = () => {
   const [requestorContactId, setRequestorContactId] = useState('');
   const [billingContactId, setBillingContactId] = useState('');
   const [shippingContactId, setShippingContactId] = useState('');
+  const [billingAddress, setBillingAddress] = useState<AddressFormState>(emptyAddressForm);
+  const [shippingAddress, setShippingAddress] = useState<AddressFormState>(emptyAddressForm);
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
@@ -289,27 +320,8 @@ export const CreateInvoicePage: React.FC = () => {
     enabled: Boolean(customerId),
   });
 
-  const customerContacts = (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? []) as CustomerContact[];
-
   const selectedCustomer = selectedCustomerDetail
     ?? customers?.find((customer) => String(customer.id) === String(customerId));
-
-  const { data: systemContacts } = useQuery({
-    queryKey: ['system-contacts', selectedCustomer?.id],
-    queryFn: async () => {
-      const params = new URLSearchParams({ per_page: '500', is_active: 'true' });
-      const response = await api.get(`/contacts?${params.toString()}`);
-      return response.data?.data?.data ?? response.data?.data ?? [];
-    },
-    enabled: !!selectedCustomer?.id,
-  });
-
-  const contactOptions = (systemContacts ?? []).map((c: any) => ({
-    id: c.id,
-    name: c.display_name || [c.first_name, c.last_name].filter(Boolean).join(' ') || c.company_name || 'Unnamed',
-    email: c.email,
-    phone: c.phone,
-  }));
 
   const { data: products } = useQuery({
     queryKey: ['products-list'],
@@ -324,6 +336,15 @@ export const CreateInvoicePage: React.FC = () => {
       return;
     }
 
+    const addresses = selectedCustomer.addresses ?? [];
+    const billingAddressRecord = addresses.find((address) => address.type === 'billing' && address.is_default)
+      ?? addresses.find((address) => address.type === 'billing');
+    const shippingAddressRecord = addresses.find((address) => address.type === 'shipping' && address.is_default)
+      ?? addresses.find((address) => address.type === 'shipping');
+
+    setBillingAddress(toAddressForm(billingAddressRecord));
+    setShippingAddress(toAddressForm(shippingAddressRecord));
+
     // Preserve the invoice's saved snapshots while initially loading edit mode.
     if (isEditMode && String(selectedCustomer.id) === originalCustomerId) {
       return;
@@ -332,7 +353,6 @@ export const CreateInvoicePage: React.FC = () => {
     const primaryContact = getPrimaryCustomerContact(selectedCustomer);
     const billingAddress = getCustomerAddress(selectedCustomer, 'billing');
     const shippingAddress = getCustomerAddress(selectedCustomer, 'shipping');
-
     setDocumentSnapshot({
       customer_reference: selectedCustomer.code ?? '',
       internal_reference: '',
@@ -403,36 +423,31 @@ export const CreateInvoicePage: React.FC = () => {
   }, [existingInvoice]);
 
   useEffect(() => {
-    if (!billingContactId || !systemContacts?.length) return;
-    const contact = systemContacts.find((c: any) => String(c.id) === String(billingContactId));
-    if (!contact?.addresses?.length) return;
+    if (!isEditMode || !existingInvoice || !selectedCustomerDetail) return;
 
-    const addr = contact.addresses.find((a: any) => a.is_default_billing)
-      || contact.addresses.find((a: any) => a.is_primary)
-      || contact.addresses[0];
+    const contacts = selectedCustomerDetail.customer_contacts ?? selectedCustomerDetail.customerContacts ?? [];
+    const billingName = existingInvoice.billing_contact?.display_name?.trim().toLowerCase();
+    const shippingName = existingInvoice.shipping_contact?.display_name?.trim().toLowerCase();
+    const doctorName = (existingInvoice.doctor?.display_name || existingInvoice.doctor?.full_name || existingInvoice.doctor?.name)?.trim().toLowerCase();
+    const requestorName = (existingInvoice.requestor?.display_name || existingInvoice.requestor?.full_name || existingInvoice.requestor?.name)?.trim().toLowerCase();
+    const billingMatch = billingName
+      ? contacts.find((contact) => contact.name?.trim().toLowerCase() === billingName)
+      : undefined;
+    const shippingMatch = shippingName
+      ? contacts.find((contact) => contact.name?.trim().toLowerCase() === shippingName)
+      : undefined;
+    const doctorMatch = doctorName
+      ? contacts.find((contact) => contact.name?.trim().toLowerCase() === doctorName)
+      : undefined;
+    const requestorMatch = requestorName
+      ? contacts.find((contact) => contact.name?.trim().toLowerCase() === requestorName)
+      : undefined;
 
-    if (addr) {
-      const formatted = [addr.line_1, addr.line_2, addr.line_3, addr.city, addr.state, addr.postal_code, addr.country]
-        .filter(Boolean).join(', ');
-      setDocumentSnapshot(prev => ({ ...prev, billing_address_snapshot: formatted, attention_to: contact.display_name || [contact.first_name, contact.last_name].filter(Boolean).join(' ') || prev.attention_to }));
-    }
-  }, [billingContactId, systemContacts]);
-
-  useEffect(() => {
-    if (!shippingContactId || !systemContacts?.length) return;
-    const contact = systemContacts.find((c: any) => String(c.id) === String(shippingContactId));
-    if (!contact?.addresses?.length) return;
-
-    const addr = contact.addresses.find((a: any) => a.is_default_shipping)
-      || contact.addresses.find((a: any) => a.is_primary)
-      || contact.addresses[0];
-
-    if (addr) {
-      const formatted = [addr.line_1, addr.line_2, addr.line_3, addr.city, addr.state, addr.postal_code, addr.country]
-        .filter(Boolean).join(', ');
-      setDocumentSnapshot(prev => ({ ...prev, shipping_address_snapshot: formatted }));
-    }
-  }, [shippingContactId, systemContacts]);
+    setBillingContactId(billingMatch?.id != null ? String(billingMatch.id) : '');
+    setShippingContactId(shippingMatch?.id != null ? String(shippingMatch.id) : '');
+    setDoctorContactId(doctorMatch?.id != null ? String(doctorMatch.id) : '');
+    setRequestorContactId(requestorMatch?.id != null ? String(requestorMatch.id) : '');
+  }, [existingInvoice, isEditMode, selectedCustomerDetail]);
 
   const saveMutation = useMutation({
     mutationFn: async (data: unknown) => {
@@ -534,6 +549,18 @@ export const CreateInvoicePage: React.FC = () => {
       ...current,
       [field]: value,
     }));
+  };
+
+  const updateAddress = (type: 'billing' | 'shipping', field: keyof AddressFormState, value: string) => {
+    const setter = type === 'billing' ? setBillingAddress : setShippingAddress;
+    setter((current) => {
+      const next = { ...current, [field]: value };
+      updateDocumentSnapshot(
+        type === 'billing' ? 'billing_address_snapshot' : 'shipping_address_snapshot',
+        addressFormToSnapshot(next),
+      );
+      return next;
+    });
   };
 
   const addLine = () => setLines([...lines, emptyLine()]);
@@ -662,10 +689,20 @@ export const CreateInvoicePage: React.FC = () => {
       cost_center_id: costCenterId || undefined,
       delivery_date: deliveryDate || undefined,
       po_number: poNumber || undefined,
-      doctor_contact_id: doctorContactId || undefined,
-      requestor_contact_id: requestorContactId || undefined,
-      billing_contact_id: billingContactId || undefined,
-      shipping_contact_id: shippingContactId || undefined,
+      doctor_contact_id: doctorContactId.includes('-') ? doctorContactId : null,
+      requestor_contact_id: requestorContactId.includes('-') ? requestorContactId : null,
+      // Customer-contact selections populate the document snapshot. The legacy
+      // UUID contact links are retained only when loading an existing invoice.
+      billing_contact_id: billingContactId.includes('-') ? billingContactId : null,
+      shipping_contact_id: shippingContactId.includes('-') ? shippingContactId : null,
+      billing_contact_name: (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? [])
+        .find((contact) => String(contact.id) === billingContactId)?.name || null,
+      shipping_contact_name: (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? [])
+        .find((contact) => String(contact.id) === shippingContactId)?.name || null,
+      doctor_contact_name: (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? [])
+        .find((contact) => String(contact.id) === doctorContactId)?.name || null,
+      requestor_contact_name: (selectedCustomerDetail?.customer_contacts ?? selectedCustomerDetail?.customerContacts ?? [])
+        .find((contact) => String(contact.id) === requestorContactId)?.name || null,
       notes: notes || undefined,
       terms: terms || undefined,
       discount_amount: documentDiscountAmount || 0,
@@ -964,51 +1001,63 @@ export const CreateInvoicePage: React.FC = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Billing Address Contact</label>
+                  <label className="block text-sm font-medium mb-1">Billing Contact</label>
                   <ContactSearchCombobox
                     value={billingContactId}
                     onValueChange={(val, contact) => {
                       setBillingContactId(val);
                       if (contact) {
-                        updateDocumentSnapshot('attention_to', contact.display_name || [contact.first_name, contact.last_name].filter(Boolean).join(' ') || '');
+                        setDocumentSnapshot((current) => ({
+                          ...current,
+                          attention_to: (contact as any).name || contact.display_name || current.attention_to,
+                          contact_email: contact.email || current.contact_email,
+                          contact_phone: contact.phone || (contact as any).mobile || current.contact_phone,
+                        }));
                       }
                     }}
-                    placeholder="Select contact..."
+                    placeholder="Select customer contact..."
                     customerId={customerId}
+                    source="customer_contacts"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Delivery Address Contact</label>
+                  <label className="block text-sm font-medium mb-1">Shipping Contact</label>
                   <ContactSearchCombobox
                     value={shippingContactId}
                     onValueChange={(val) => setShippingContactId(val)}
-                    placeholder="Select contact..."
+                    placeholder="Select customer contact..."
                     customerId={customerId}
+                    source="customer_contacts"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Billing Address Snapshot</label>
-                  <textarea
-                    value={documentSnapshot.billing_address_snapshot}
-                    onChange={(event) => updateDocumentSnapshot('billing_address_snapshot', event.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                    placeholder="Invoice billing address"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Shipping Address Snapshot</label>
-                  <textarea
-                    value={documentSnapshot.shipping_address_snapshot}
-                    onChange={(event) => updateDocumentSnapshot('shipping_address_snapshot', event.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                    placeholder="Delivery address"
-                  />
-                </div>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4">
+                {([
+                  ['billing', 'Billing Address', billingAddress],
+                  ['shipping', 'Shipping Address', shippingAddress],
+                ] as const).map(([type, title, address]) => (
+                  <div key={type} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="mb-3 text-sm font-semibold text-slate-900">{title}</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {([
+                        ['label', 'Label'], ['street', 'Street'], ['street2', 'Street 2'],
+                        ['city', 'City'], ['state', 'State'], ['zip', 'ZIP'], ['country', 'Country'],
+                      ] as const).map(([field, label]) => (
+                        <div key={field} className={field === 'street' || field === 'street2' ? 'md:col-span-2' : ''}>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
+                          <input
+                            type="text"
+                            value={address[field]}
+                            onChange={(event) => updateAddress(type, field, event.target.value)}
+                            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+                            placeholder={label}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
@@ -1117,6 +1166,7 @@ export const CreateInvoicePage: React.FC = () => {
                     onValueChange={(val) => setDoctorContactId(val)}
                     placeholder="Select doctor..."
                     customerId={customerId}
+                    source="customer_contacts"
                   />
                 </div>
                 <div>
@@ -1126,6 +1176,7 @@ export const CreateInvoicePage: React.FC = () => {
                     onValueChange={(val) => setRequestorContactId(val)}
                     placeholder="Select requestor..."
                     customerId={customerId}
+                    source="customer_contacts"
                   />
                 </div>
               </div>

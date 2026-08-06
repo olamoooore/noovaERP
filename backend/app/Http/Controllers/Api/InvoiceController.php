@@ -84,8 +84,12 @@ class InvoiceController extends Controller
             'po_number' => 'nullable|string|max:100',
             'doctor_contact_id' => 'nullable|exists:core_contacts,id',
             'requestor_contact_id' => 'nullable|exists:core_contacts,id',
+            'doctor_contact_name' => 'nullable|string|max:255',
+            'requestor_contact_name' => 'nullable|string|max:255',
             'billing_contact_id' => 'nullable|exists:core_contacts,id',
             'shipping_contact_id' => 'nullable|exists:core_contacts,id',
+            'billing_contact_name' => 'nullable|string|max:255',
+            'shipping_contact_name' => 'nullable|string|max:255',
             'lines' => 'required|array|min:1',
             'lines.*.product_id' => 'nullable|exists:products,id',
             'lines.*.model_number' => 'nullable|string|max:100',
@@ -123,6 +127,15 @@ class InvoiceController extends Controller
             return response()->json([
                 'message' => "Discount amount ({$docDiscount}) exceeds the invoice subtotal ({$subtotal}).",
             ], 422);
+        }
+
+        foreach (['doctor', 'requestor', 'billing', 'shipping'] as $contactType) {
+            $nameKey = $contactType.'_contact_name';
+            $idKey = $contactType.'_contact_id';
+            if (! empty($validated[$nameKey])) {
+                $validated[$idKey] = $this->resolveOrCreateContact($validated[$nameKey], 'person', 'invoice_form');
+            }
+            unset($validated[$nameKey]);
         }
 
         try {
@@ -198,6 +211,10 @@ class InvoiceController extends Controller
                 'contact_phone' => $data['contact_phone'] ?? null,
                 'billing_address_snapshot' => $data['billing_address_snapshot'] ?? null,
                 'shipping_address_snapshot' => $data['shipping_address_snapshot'] ?? null,
+                'doctor_contact_id' => $data['doctor_contact_id'] ?? null,
+                'requestor_contact_id' => $data['requestor_contact_id'] ?? null,
+                'billing_contact_id' => $data['billing_contact_id'] ?? null,
+                'shipping_contact_id' => $data['shipping_contact_id'] ?? null,
                 'notes' => $data['notes'] ?? null,
                 'terms' => $data['terms'] ?? null,
                 'discount_amount' => $data['discount_amount'] ?? null,
@@ -376,8 +393,12 @@ class InvoiceController extends Controller
             'po_number' => 'nullable|string|max:100',
             'doctor_contact_id' => 'nullable|exists:core_contacts,id',
             'requestor_contact_id' => 'nullable|exists:core_contacts,id',
+            'doctor_contact_name' => 'nullable|string|max:255',
+            'requestor_contact_name' => 'nullable|string|max:255',
             'billing_contact_id' => 'nullable|exists:core_contacts,id',
             'shipping_contact_id' => 'nullable|exists:core_contacts,id',
+            'billing_contact_name' => 'nullable|string|max:255',
+            'shipping_contact_name' => 'nullable|string|max:255',
             'lines' => 'sometimes|array|min:1',
             'lines.*.product_id' => 'nullable|exists:products,id',
             'lines.*.model_number' => 'nullable|string|max:100',
@@ -390,6 +411,15 @@ class InvoiceController extends Controller
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ]);
+
+        foreach (['doctor', 'requestor', 'billing', 'shipping'] as $contactType) {
+            $nameKey = $contactType.'_contact_name';
+            $idKey = $contactType.'_contact_id';
+            if (! empty($validated[$nameKey])) {
+                $validated[$idKey] = $this->resolveOrCreateContact($validated[$nameKey], 'person', 'invoice_form');
+            }
+            unset($validated[$nameKey]);
+        }
 
         // Reject document discount exceeding the line subtotal
         $subtotal = isset($validated['lines'])
@@ -924,27 +954,41 @@ class InvoiceController extends Controller
                     }
                 }
 
+                foreach (['billing', 'shipping'] as $addressType) {
+                    $snapshot = $this->buildImportAddressSnapshot($headerRow, $addressType);
+                    if ($snapshot !== null) {
+                        $data[$addressType.'_address_snapshot'] = $snapshot;
+                    }
+                }
+
                 // Resolve doctor and requestor names to contact IDs (auto-create if not found)
                 $doctorName = $this->readImportValue($headerRow['doctor_name'] ?? $headerRow['doctor'] ?? null);
                 if ($doctorName !== null) {
+                    $this->resolveOrCreateImportCustomerContact($customer, $doctorName, 'doctor', $headerRow);
                     $data['doctor_contact_id'] = $this->resolveOrCreateContact($doctorName, 'person', 'import_invoice');
                     $data['_doctor_name'] = $doctorName;
                 }
                 $requestorName = $this->readImportValue($headerRow['requestor_name'] ?? $headerRow['requestor'] ?? null);
                 if ($requestorName !== null) {
+                    $this->resolveOrCreateImportCustomerContact($customer, $requestorName, 'requestor', $headerRow);
                     $data['requestor_contact_id'] = $this->resolveOrCreateContact($requestorName, 'person', 'import_invoice');
                     $data['_requestor_name'] = $requestorName;
                 }
                 $billingContactName = $this->readImportValue($headerRow['billing_contact_name'] ?? $headerRow['billing_contact'] ?? null);
                 if ($billingContactName !== null) {
+                    $this->resolveOrCreateImportCustomerContact($customer, $billingContactName, 'billing', $headerRow);
                     $data['billing_contact_id'] = $this->resolveOrCreateContact($billingContactName, 'person', 'import_invoice');
                     $data['_billing_name'] = $billingContactName;
                 }
                 $shippingContactName = $this->readImportValue($headerRow['shipping_contact_name'] ?? $headerRow['shipping_contact'] ?? null);
                 if ($shippingContactName !== null) {
+                    $this->resolveOrCreateImportCustomerContact($customer, $shippingContactName, 'shipping', $headerRow);
                     $data['shipping_contact_id'] = $this->resolveOrCreateContact($shippingContactName, 'person', 'import_invoice');
                     $data['_shipping_name'] = $shippingContactName;
                 }
+
+                $this->syncImportCustomerAddress($customer, $headerRow, 'billing');
+                $this->syncImportCustomerAddress($customer, $headerRow, 'shipping');
 
                 $invoiceDate = $this->parseImportDate($headerRow['invoice_date'] ?? null) ?? now()->toDateString();
                 $data['invoice_date'] = $invoiceDate;
@@ -1032,6 +1076,95 @@ class InvoiceController extends Controller
         $value = $this->sanitizeUtf8(trim((string) $value));
 
         return ($value === '' || $value === '-') ? null : $value;
+    }
+
+    private function buildImportAddressSnapshot(array $row, string $prefix): ?string
+    {
+        $parts = [];
+        foreach (['label', 'street', 'street2', 'city', 'state', 'zip', 'country'] as $field) {
+            $value = $this->readImportValue($row[$prefix.'_'.$field] ?? null);
+            if ($value !== null) {
+                $parts[] = $value;
+            }
+        }
+
+        return $parts === [] ? null : implode("\n", $parts);
+    }
+
+    private function importAddressData(array $row, string $prefix): array
+    {
+        $data = [];
+        foreach (['label', 'street', 'street2', 'city', 'state', 'zip', 'country'] as $field) {
+            $value = $this->readImportValue($row[$prefix.'_'.$field] ?? null);
+            if ($value !== null) {
+                $data[$field] = $value;
+            }
+        }
+
+        return $data;
+    }
+
+    private function syncImportCustomerAddress(Customer $customer, array $row, string $type): void
+    {
+        $addressData = $this->importAddressData($row, $type);
+        if ($addressData === []) {
+            return;
+        }
+
+        $query = $customer->addresses()->where('type', $type);
+        $address = isset($addressData['label'])
+            ? (clone $query)->whereRaw('LOWER(label) = ?', [strtolower($addressData['label'])])->first()
+            : null;
+        $address ??= (clone $query)->where('is_default', true)->first();
+        $address ??= $query->first();
+
+        if ($address) {
+            $address->update($addressData);
+            return;
+        }
+
+        $customer->addresses()->create([
+            ...$addressData,
+            'type' => $type,
+            'is_default' => ! $customer->addresses()->where('type', $type)->exists(),
+        ]);
+    }
+
+    private function resolveOrCreateImportCustomerContact(
+        Customer $customer,
+        string $name,
+        string $category,
+        array $row
+    ): \App\Models\CustomerContact {
+        $contact = $customer->customerContacts()
+            ->whereRaw('LOWER(name) = ?', [strtolower($name)])
+            ->first();
+
+        $contactData = [
+            'contact_category' => $category,
+            'contact_type' => $this->readImportValue(
+                $row[$category.'_contact_type'] ?? ($category === 'billing' ? ($row['type'] ?? null) : null)
+            ) ?? $category,
+        ];
+
+        if ($category === 'billing') {
+            $email = $this->readImportValue($row['contact_email'] ?? null);
+            $phone = $this->readImportValue($row['contact_phone'] ?? null);
+            if ($email !== null) $contactData['email'] = $email;
+            if ($phone !== null) $contactData['phone'] = $phone;
+        }
+
+        $contactData = [...$contactData, ...$this->importAddressData($row, $category)];
+
+        if ($contact) {
+            $contact->update($contactData);
+            return $contact;
+        }
+
+        return $customer->customerContacts()->create([
+            'name' => $name,
+            ...$contactData,
+        ]);
     }
 
     /**

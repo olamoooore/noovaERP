@@ -44,6 +44,8 @@ interface ContactSearchComboboxProps {
   placeholder?: string
   disabled?: boolean
   customerId?: string | number
+  source?: 'contacts' | 'customer_contacts' | 'addresses'
+  addressType?: 'billing' | 'shipping'
 }
 
 export function ContactSearchCombobox({
@@ -52,6 +54,8 @@ export function ContactSearchCombobox({
   placeholder = 'Search contacts...',
   disabled = false,
   customerId,
+  source = customerId ? 'customer_contacts' : 'contacts',
+  addressType,
 }: ContactSearchComboboxProps) {
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -67,20 +71,21 @@ export function ContactSearchCombobox({
   const { data: searchResults, isLoading } = useQuery<Contact[]>({
     queryKey: ['contacts-search', debouncedQuery, customerId],
     queryFn: async () => {
-      // If customerId is provided, fetch customer addresses
-      if (customerId) {
+      if (customerId && (source === 'customer_contacts' || source === 'addresses')) {
         const res = await api.get(`/customers/${customerId}`)
         const customer = res.data?.data ?? res.data
-        const addresses = customer?.addresses ?? []
+        const records = source === 'addresses'
+          ? (customer?.addresses ?? []).filter((address: Contact) => !addressType || address.type === addressType)
+          : (customer?.customer_contacts ?? customer?.customerContacts ?? [])
         // Apply search filter client-side if needed
         if (debouncedQuery) {
           const q = debouncedQuery.toLowerCase()
-          return addresses.filter((a: Contact) => {
-            const display = getDisplayName(a).toLowerCase()
+          return records.filter((record: Contact) => {
+            const display = getDisplayName(record).toLowerCase()
             return display.includes(q)
           })
         }
-        return addresses
+        return records
       }
       // Otherwise fetch all contacts
       const params: Record<string, string> = { per_page: '50', is_active: 'true' }
@@ -90,12 +95,20 @@ export function ContactSearchCombobox({
       const res = await api.get('/contacts', { params })
       return res.data?.data?.data ?? res.data?.data ?? []
     },
-    enabled: open,
+    enabled: open && (source === 'contacts' || !!customerId),
   })
 
   const { data: selectedContact } = useQuery<Contact>({
     queryKey: ['contact-detail', value],
     queryFn: async () => {
+      if (customerId && (source === 'customer_contacts' || source === 'addresses')) {
+        const res = await api.get(`/customers/${customerId}`)
+        const customer = res.data?.data ?? res.data
+        const records = source === 'addresses'
+          ? customer?.addresses ?? []
+          : customer?.customer_contacts ?? customer?.customerContacts ?? []
+        return records.find((record: Contact) => String(record.id) === String(value))
+      }
       const res = await api.get(`/contacts/${value}`)
       return res.data?.data ?? res.data
     },
@@ -103,12 +116,13 @@ export function ContactSearchCombobox({
   })
 
   const getDisplayName = (c: Contact) => {
-    // If it's an address, show the address
-    if (c.street || c.city || c.country) {
+    // Only address selectors should render structured address values. Customer
+    // contacts can also carry address fields but must still display their name.
+    if (source === 'addresses' && (c.street || c.city || c.country)) {
       const parts = [c.street, c.street2, c.city, c.state, c.zip, c.country].filter(Boolean)
       return parts.join(', ') || c.label || c.type || 'Address'
     }
-    return c.display_name || [c.first_name, c.last_name].filter(Boolean).join(' ') || c.company_name || 'Unnamed'
+    return c.display_name || (c as any).name || [c.first_name, c.last_name].filter(Boolean).join(' ') || c.company_name || c.label || 'Unnamed'
   }
 
   const getDisplayValue = useCallback(() => {
@@ -188,9 +202,7 @@ export function ContactSearchCombobox({
                   <div className="flex flex-col">
                     <span className="text-xs font-medium text-muted-foreground capitalize">{contact.type || 'Contact'}</span>
                     <span>{getDisplayName(contact)}</span>
-                    {contact.email && (
-                      <span className="text-xs text-muted-foreground">{contact.email}</span>
-                    )}
+                    {contact.email && <span className="text-xs text-muted-foreground">{contact.email}</span>}
                   </div>
                 </CommandItem>
               ))}

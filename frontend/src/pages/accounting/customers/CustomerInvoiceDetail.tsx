@@ -413,7 +413,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
               </div>
             </div>
           )}
-          {(invoice.customer_reference || invoice.internal_reference || invoice.attention_to || invoice.contact_email || invoice.contact_phone || invoice.company_registration_number || invoice.tax_registration_number || invoice.billing_address_snapshot || invoice.shipping_address_snapshot) && (
+          {(invoice.customer_reference || invoice.internal_reference || invoice.attention_to || invoice.contact_email || invoice.contact_phone || invoice.company_registration_number || invoice.tax_registration_number || invoice.billing_contact || invoice.shipping_contact || invoice.billing_address_snapshot || invoice.shipping_address_snapshot) && (
             <div className="mt-6 pt-6 border-t space-y-6">
               <div>
                 <p className="text-sm font-medium mb-3">Commercial Snapshot</p>
@@ -448,6 +448,18 @@ export const CustomerInvoiceDetail: React.FC = () => {
                       <p className="font-medium">{invoice.contact_phone}</p>
                     </div>
                   )}
+                  {invoice.billing_contact && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Billing Contact</p>
+                      <p className="font-medium">{invoice.billing_contact.display_name || '-'}</p>
+                    </div>
+                  )}
+                  {invoice.shipping_contact && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Shipping Contact</p>
+                      <p className="font-medium">{invoice.shipping_contact.display_name || '-'}</p>
+                    </div>
+                  )}
                   {invoice.company_registration_number && (
                     <div>
                       <p className="text-sm text-muted-foreground mb-1">Company Registration</p>
@@ -466,13 +478,13 @@ export const CustomerInvoiceDetail: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {invoice.billing_address_snapshot && (
                     <div className="rounded-lg border p-4 bg-muted/20">
-                      <p className="text-sm text-muted-foreground mb-2">Billing Address {invoice.billing_contact ? `(Contact: ${invoice.billing_contact.display_name})` : ''}</p>
+                      <p className="text-sm text-muted-foreground mb-2">Billing Address</p>
                       <p className="text-sm whitespace-pre-wrap">{formatSnapshotAddress(invoice.billing_address_snapshot)}</p>
                     </div>
                   )}
                   {invoice.shipping_address_snapshot && (
                     <div className="rounded-lg border p-4 bg-muted/20">
-                      <p className="text-sm text-muted-foreground mb-2">Delivery Address {invoice.shipping_contact ? `(Contact: ${invoice.shipping_contact.display_name})` : ''}</p>
+                      <p className="text-sm text-muted-foreground mb-2">Delivery Address</p>
                       <p className="text-sm whitespace-pre-wrap">{formatSnapshotAddress(invoice.shipping_address_snapshot)}</p>
                     </div>
                   )}
