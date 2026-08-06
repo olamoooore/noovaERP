@@ -889,7 +889,9 @@ class InvoiceController extends Controller
                     if ($quantity < 1) {
                         $quantity = 1;
                     }
-                    $unitPrice = $this->parseNumericValue($lineRow['unit_price'] ?? null);
+                    $rawUnitPrice = $this->readImportValue($lineRow['unit_price'] ?? null);
+                    $hasExplicitUnitPrice = $rawUnitPrice !== null;
+                    $unitPrice = $this->parseNumericValue($rawUnitPrice);
                     $taxRate = $this->parseNumericValue($lineRow['tax_rate'] ?? null);
                     $lineDiscount = $this->parseNumericValue($lineRow['line_discount_amount'] ?? null);
 
@@ -913,7 +915,7 @@ class InvoiceController extends Controller
                             if ($description === '') {
                                 $line['description'] = $product->name;
                             }
-                            if ($unitPrice == 0) {
+                            if (! $hasExplicitUnitPrice) {
                                 $line['unit_price'] = (float) $product->price;
                             }
                         }
@@ -1249,7 +1251,9 @@ class InvoiceController extends Controller
         if ($raw === '' || $raw === '-') {
             return null;
         }
-        foreach (['Y-m-d', 'm/d/Y', 'n/j/y', 'n/j/Y', 'd-m-Y', 'Y/m/d'] as $format) {
+        // Slash-separated dates prefer day/month/year. US month/day values are
+        // still accepted when they cannot be interpreted as DD/MM/YYYY.
+        foreach (['Y-m-d', 'd/m/Y', 'j/n/Y', 'j/n/y', 'm/d/Y', 'n/j/Y', 'n/j/y', 'd-m-Y', 'Y/m/d'] as $format) {
             $dt = \DateTimeImmutable::createFromFormat($format, $raw);
             if ($dt instanceof \DateTimeImmutable && $dt->format($format) === $raw) {
                 return $dt->format('Y-m-d');
