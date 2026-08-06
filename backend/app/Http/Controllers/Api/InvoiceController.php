@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Warehouse;
+use App\Services\CaseImportService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
@@ -21,6 +22,7 @@ class InvoiceController extends Controller
         private InvoiceService $invoiceService,
         private SalesOrderService $salesOrderService,
         private LockDateValidationService $lockDateValidator,
+        private CaseImportService $caseImportService,
     ) {}
 
     public function index(Request $request)
@@ -729,6 +731,73 @@ class InvoiceController extends Controller
     }
 
     /**
+     * Bulk post (send) multiple draft customer invoices in a single action.
+     * Used by the Bulk Post button on the invoice list page.
+     */
+    public function bulkPost(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer',
+        ]);
+
+        $ids = $validated['ids'];
+        $posted = [];
+        $skipped = [];
+
+        foreach ($ids as $id) {
+            $invoice = Invoice::find($id);
+            if (! $invoice) {
+                $skipped[] = ['id' => $id, 'reason' => 'Invoice not found'];
+                continue;
+            }
+
+            // Idempotent: already-posted invoices are counted as success
+            if ($invoice->status === 'posted') {
+                $posted[] = $invoice->id;
+                continue;
+            }
+
+            // Only draft invoices can be posted via Bulk Post
+            if ($invoice->status !== 'draft') {
+                $skipped[] = ['id' => $id, 'reason' => "Cannot post invoice in status '{$invoice->status}'. Only draft invoices can be posted."];
+                continue;
+            }
+
+            // Lock-date check
+            $lockResult = $this->lockDateValidator->validateTransactionDate('sales', $invoice->invoice_date);
+            if ($lockResult['is_locked']) {
+                $skipped[] = [
+                    'id' => $id,
+                    'reason' => $lockResult['message'] ?? "Date in closed period ({$invoice->invoice_date})",
+                ];
+                continue;
+            }
+
+            try {
+                $this->invoiceService->postInvoice($invoice);
+                $posted[] = $invoice->id;
+            } catch (\Throwable $e) {
+                $message = $e->getMessage();
+                if (str_contains($message, 'Cannot resolve GL account')) {
+                    $message = 'Default accounts not configured. Please go to Company Settings > Default Accounts and map the required GL accounts before posting invoices.';
+                }
+                \Log::warning('Bulk invoice posting failed', [
+                    'invoice_id' => $id,
+                    'error' => $e->getMessage(),
+                ]);
+                $skipped[] = ['id' => $id, 'reason' => $message];
+            }
+        }
+
+        return response()->json([
+            'message' => count($posted).' invoice(s) posted.',
+            'posted' => $posted,
+            'skipped' => $skipped,
+        ]);
+    }
+
+    /**
      * Bulk import invoices/quotations from CSV.
      *
      * One row = one line item. Rows are grouped into a single invoice by
@@ -808,6 +877,11 @@ class InvoiceController extends Controller
             'billing_contact' => 'billing_contact_name',
             'shipping_contact' => 'shipping_contact_name',
             'delivery_contact' => 'shipping_contact_name',
+            'case_no' => 'medical_case_no',
+            'case_tag' => 'case_tag',
+            'patient_name' => 'patient_name',
+            'delivered_to' => 'delivered_to',
+            'other_note' => 'other_note',
         ];
         $header = array_map(fn ($key) => $columnAliases[$key] ?? $key, $header);
 
@@ -1005,6 +1079,35 @@ class InvoiceController extends Controller
                 }
 
                 $invoice = $this->createInvoiceFromData($data);
+
+                // Create medical case if case data is present
+                $caseData = [
+                    'case_no' => $this->readImportValue($headerRow['medical_case_no'] ?? $headerRow['case_no'] ?? null),
+                    'case_tag' => $this->readImportValue($headerRow['case_tag'] ?? null),
+                    'case_date' => $this->parseImportDate($headerRow['case_date'] ?? null),
+                    'patient_name' => $this->readImportValue($headerRow['patient_name'] ?? null),
+                    'delivered_to' => $this->readImportValue($headerRow['delivered_to'] ?? null),
+                    'other_note' => $this->readImportValue($headerRow['other_note'] ?? null),
+                ];
+                try {
+                    $medicalCase = $this->caseImportService->createCaseFromInvoiceImport($invoice, $caseData);
+                    if ($medicalCase) {
+                        Log::info('Medical case created from import', [
+                            'invoice_id' => $invoice->id,
+                            'case_id' => $medicalCase->id,
+                            'case_no' => $medicalCase->case_no,
+                        ]);
+                    }
+                } catch (\Throwable $caseError) {
+                    Log::warning('Failed to create medical case from import', [
+                        'invoice_id' => $invoice->id,
+                        'error' => $caseError->getMessage(),
+                    ]);
+                    $errors[] = [
+                        'row' => $firstIndex + 2,
+                        'message' => 'Invoice '.$invoice->invoice_number.' created but case creation failed: '.$caseError->getMessage(),
+                    ];
+                }
 
                 // Optional: post the invoice if status = sent/posted
                 $status = strtolower(trim((string) ($headerRow['status'] ?? '')));

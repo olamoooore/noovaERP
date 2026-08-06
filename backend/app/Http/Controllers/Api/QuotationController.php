@@ -8,12 +8,14 @@ use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Quotation;
 use App\Models\Warehouse;
+use App\Services\CaseImportService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\Sales\Services\SalesOrderService;
 use Modules\TemplateBuilder\Services\DataSource\CompanyDataSource;
@@ -24,6 +26,7 @@ class QuotationController extends Controller
         private SalesOrderService $salesOrderService,
         private InvoiceService $invoiceService,
         private LockDateValidationService $lockDateValidator,
+        private CaseImportService $caseImportService,
     ) {}
 
     public function index(Request $request)
@@ -457,6 +460,11 @@ class QuotationController extends Controller
             'billing_contact' => 'billing_contact_name',
             'shipping_contact' => 'shipping_contact_name',
             'delivery_contact' => 'shipping_contact_name',
+            'case_no' => 'medical_case_no',
+            'case_tag' => 'case_tag',
+            'patient_name' => 'patient_name',
+            'delivered_to' => 'delivered_to',
+            'other_note' => 'other_note',
         ];
         $header = array_map(fn ($key) => $columnAliases[$key] ?? $key, $header);
 
@@ -647,6 +655,31 @@ class QuotationController extends Controller
 
                 $quotation->refresh();
                 $quotation->calculateTotals();
+
+                // Create medical case if case data is present
+                $caseData = [
+                    'case_no' => $this->readImportValue($headerRow['medical_case_no'] ?? $headerRow['case_no'] ?? null),
+                    'case_tag' => $this->readImportValue($headerRow['case_tag'] ?? null),
+                    'case_date' => $this->parseImportDate($headerRow['case_date'] ?? null),
+                    'patient_name' => $this->readImportValue($headerRow['patient_name'] ?? null),
+                    'delivered_to' => $this->readImportValue($headerRow['delivered_to'] ?? null),
+                    'other_note' => $this->readImportValue($headerRow['other_note'] ?? null),
+                ];
+                try {
+                    $medicalCase = $this->caseImportService->createCaseFromQuotationImport($quotation, $caseData);
+                    if ($medicalCase) {
+                        Log::info('Medical case created from quotation import', [
+                            'quotation_id' => $quotation->id,
+                            'case_id' => $medicalCase->id,
+                            'case_no' => $medicalCase->case_no,
+                        ]);
+                    }
+                } catch (\Throwable $caseError) {
+                    Log::warning('Failed to create medical case from quotation import', [
+                        'quotation_id' => $quotation->id,
+                        'error' => $caseError->getMessage(),
+                    ]);
+                }
 
                 // Link to existing invoice(s) if invoice_number is provided
                 $invoiceNumberRaw = trim((string) ($headerRow['invoice_number'] ?? ''));

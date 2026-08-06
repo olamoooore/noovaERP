@@ -41,7 +41,17 @@ class DeliveryOrderService
             throw new \Exception('Warehouse is required for delivery orders.');
         }
 
-        return DB::transaction(function () use ($order, $data, $warehouseId) {
+        // Auto-resolve quotation_id from the linked invoice if not provided
+        $quotationId = $data['quotation_id'] ?? null;
+        $invoiceId = $data['invoice_id'] ?? null;
+        if ($quotationId === null && $invoiceId !== null) {
+            $invoice = \App\Models\Invoice::find($invoiceId);
+            if ($invoice && $invoice->quotation_id) {
+                $quotationId = $invoice->quotation_id;
+            }
+        }
+
+        return DB::transaction(function () use ($order, $data, $warehouseId, $quotationId, $invoiceId) {
             $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
 
             $deliveryOrder = DeliveryOrder::create([
@@ -59,8 +69,8 @@ class DeliveryOrderService
                 'po_number' => $data['po_number'] ?? null,
                 'salesperson' => $data['salesperson'] ?? null,
                 'attention_to' => $data['attention_to'] ?? null,
-                'invoice_id' => $data['invoice_id'] ?? null,
-                'quotation_id' => $data['quotation_id'] ?? null,
+                'invoice_id' => $invoiceId,
+                'quotation_id' => $quotationId,
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $actorId,
             ]);
@@ -158,7 +168,17 @@ class DeliveryOrderService
 
     private function createStandaloneDeliveryOrderInsideTransaction(array $data, int $customerId, int $warehouseId, array $lines): DeliveryOrder
     {
-        return DB::transaction(function () use ($data, $customerId, $warehouseId, $lines) {
+        // Auto-resolve quotation_id from the linked invoice if not provided
+        $quotationId = $data['quotation_id'] ?? null;
+        $invoiceId = $data['invoice_id'] ?? null;
+        if ($quotationId === null && $invoiceId !== null) {
+            $invoice = \App\Models\Invoice::find($invoiceId);
+            if ($invoice && $invoice->quotation_id) {
+                $quotationId = $invoice->quotation_id;
+            }
+        }
+
+        return DB::transaction(function () use ($data, $customerId, $warehouseId, $lines, $quotationId, $invoiceId) {
             $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
 
             $deliveryOrder = DeliveryOrder::create([
@@ -177,8 +197,8 @@ class DeliveryOrderService
                 'po_number' => $data['po_number'] ?? null,
                 'salesperson' => $data['salesperson'] ?? null,
                 'attention_to' => $data['attention_to'] ?? null,
-                'invoice_id' => $data['invoice_id'] ?? null,
-                'quotation_id' => $data['quotation_id'] ?? null,
+                'invoice_id' => $invoiceId,
+                'quotation_id' => $quotationId,
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $actorId,
             ]);

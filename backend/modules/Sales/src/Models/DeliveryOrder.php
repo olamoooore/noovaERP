@@ -31,6 +31,10 @@ class DeliveryOrder extends Model
         'tracking_number',
         'shipping_address',
         'shipping_address_overridden',
+        'delivery_address_snapshot',
+        'delivered_by_user_id',
+        'issued_at',
+        'delivered_at',
         'notes',
         'total',
         'created_by',
@@ -42,6 +46,8 @@ class DeliveryOrder extends Model
         'delivery_date' => 'date',
         'expected_date' => 'date',
         'completed_at' => 'datetime',
+        'issued_at' => 'datetime',
+        'delivered_at' => 'datetime',
         'shipping_address_overridden' => 'boolean',
         'total' => 'decimal:2',
     ];
@@ -90,6 +96,11 @@ class DeliveryOrder extends Model
     public function completedBy(): BelongsTo
     {
         return $this->belongsTo(\App\Models\User::class, 'completed_by');
+    }
+
+    public function deliveredBy(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'delivered_by_user_id');
     }
 
     public function invoice(): BelongsTo

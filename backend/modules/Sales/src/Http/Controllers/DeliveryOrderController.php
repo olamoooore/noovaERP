@@ -2,12 +2,17 @@
 
 namespace Modules\Sales\Http\Controllers;
 
+use App\Models\DeliveryOrder as CentralDeliveryOrder;
+use App\Models\MedicalCase;
+use App\Models\MedicalCaseItem;
 use App\Platform\BulkDelete\BulkDeleteService;
 use App\Platform\Import\ImportService;
+use App\Services\CaseImportService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Modules\Sales\Models\DeliveryOrder;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\DeliveryOrderService;
@@ -18,6 +23,7 @@ class DeliveryOrderController extends Controller
         private DeliveryOrderService $deliveryService,
         private BulkDeleteService $bulkDeleteService,
         private ImportService $importService,
+        private CaseImportService $caseImportService,
     ) {}
 
     public function index(Request $request)
@@ -453,6 +459,12 @@ class DeliveryOrderController extends Controller
             'invoice_number' => 'invoice_number',
             'quotation_number' => 'quotation_number',
             'notes' => 'notes',
+            'case_no' => '_case_no',
+            'case_tag' => '_case_tag',
+            'case_date' => '_case_date',
+            'patient_name' => 'patient_name',
+            'delivered_to' => '_delivered_to',
+            'other_note' => '_other_note',
         ];
 
         $result = $this->importService->importGroupedCSV(
@@ -605,11 +617,139 @@ class DeliveryOrderController extends Controller
             ]
         );
 
+        // Post-import: create medical cases if case data is present
+        $caseData = $this->extractCaseDataFromCsv($file);
+        $caseCount = 0;
+        foreach ($caseData as $doNumber => $data) {
+            if (empty($data['case_no']) && empty($data['case_tag']) && empty($data['patient_name'])) {
+                continue;
+            }
+            try {
+                $do = DeliveryOrder::where('delivery_order_number', $doNumber)->first();
+                if (!$do) continue;
+
+                $caseNo = $this->buildCaseNo($data['case_no'] ?? null, $doNumber);
+                $bonusSchemeId = null;
+                if (!empty($data['case_tag'])) {
+                    $bonusSchemeId = $this->caseImportService->resolveOrCreateBonusScheme(
+                        $data['case_tag'], $do->customer_id, $data['case_date'] ?? null
+                    );
+                }
+
+                $isFoc = $this->caseImportService->isFocTag($data['case_tag'] ?? null);
+                $case = MedicalCase::create([
+                    'case_no' => $caseNo,
+                    'case_tag' => $data['case_tag'] ?? null,
+                    'customer_id' => $do->customer_id,
+                    'delivery_address_id' => null,
+                    'patient_reference' => $data['patient_name'] ?? null,
+                    'case_date' => $data['case_date'] ?? null,
+                    'delivered_to' => $data['delivered_to'] ?? null,
+                    'notes' => $data['other_note'] ?? null,
+                    'status' => 'delivered',
+                    'created_by' => Auth::id(),
+                ]);
+
+                foreach ($do->lines as $line) {
+                    MedicalCaseItem::create([
+                        'medical_case_id' => $case->id,
+                        'delivery_order_item_id' => $line->id,
+                        'product_id' => $line->product_id,
+                        'delivered_qty' => $line->quantity_delivered,
+                        'allocated_qty' => $line->quantity_ordered,
+                        'unit_price' => $isFoc ? 0 : $line->unit_price,
+                        'is_foc' => $isFoc,
+                    ]);
+                }
+                $caseCount++;
+            } catch (\Throwable $e) {
+                Log::warning('Failed to create medical case from DO import', [
+                    'do_number' => $doNumber,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         return response()->json([
-            'message' => "Import complete: {$result['created']} delivery order(s) created",
+            'message' => "Import complete: {$result['created']} delivery order(s) created, {$caseCount} medical case(s) created",
             'created' => $result['created'],
+            'cases_created' => $caseCount,
             'errors' => $result['errors'],
         ], ! empty($result['errors']) ? 207 : 201);
+    }
+
+    /**
+     * Extract case data from CSV file, grouped by delivery_order_number.
+     */
+    private function extractCaseDataFromCsv($file): array
+    {
+        $caseData = [];
+        $handle = fopen($file->getRealPath(), 'r');
+        if (!$handle) return [];
+
+        $headers = fgetcsv($handle);
+        if (!$headers) {
+            fclose($handle);
+            return [];
+        }
+        $normalizedHeaders = array_map(fn($h) => strtolower(trim(str_replace(' ', '_', $h))), $headers);
+        $caseNoIdx = array_search('case_no', $normalizedHeaders);
+        $caseTagIdx = array_search('case_tag', $normalizedHeaders);
+        $caseDateIdx = array_search('case_date', $normalizedHeaders);
+        $patientIdx = array_search('patient_name', $normalizedHeaders);
+        $deliveredToIdx = array_search('delivered_to', $normalizedHeaders);
+        $otherNoteIdx = array_search('other_note', $normalizedHeaders);
+        $doNumberIdx = array_search('delivery_order_number', $normalizedHeaders);
+
+        if ($doNumberIdx === false) {
+            fclose($handle);
+            return [];
+        }
+
+        while (($row = fgetcsv($handle)) !== false) {
+            if (empty(array_filter($row))) continue;
+            $doNumber = trim((string)($row[$doNumberIdx] ?? ''));
+            if ($doNumber === '') continue;
+
+            $caseData[$doNumber] = [
+                'case_no' => $caseNoIdx !== false ? trim((string)($row[$caseNoIdx] ?? '')) : '',
+                'case_tag' => $caseTagIdx !== false ? trim((string)($row[$caseTagIdx] ?? '')) : '',
+                'case_date' => $caseDateIdx !== false ? $this->parseDateForCase($row[$caseDateIdx] ?? null) : null,
+                'patient_name' => $patientIdx !== false ? trim((string)($row[$patientIdx] ?? '')) : '',
+                'delivered_to' => $deliveredToIdx !== false ? trim((string)($row[$deliveredToIdx] ?? '')) : '',
+                'other_note' => $otherNoteIdx !== false ? trim((string)($row[$otherNoteIdx] ?? '')) : '',
+            ];
+        }
+        fclose($handle);
+        return $caseData;
+    }
+
+    private function parseDateForCase(?string $value): ?string
+    {
+        if (!$value) return null;
+        try {
+            return \Carbon\Carbon::parse($value)->format('Y-m-d');
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    private function buildCaseNo(?string $caseNo, string $doNumber): string
+    {
+        if ($caseNo && trim($caseNo) !== '') {
+            $base = 'DO-' . trim($doNumber) . '-' . trim($caseNo);
+            $final = $base;
+            $counter = 1;
+            while (MedicalCase::withTrashed()->where('case_no', $final)->exists()) {
+                $final = $base . '-' . $counter;
+                $counter++;
+                if ($counter > 100) {
+                    return 'DO-CASE-' . $doNumber;
+                }
+            }
+            return $final;
+        }
+        return 'DO-CASE-' . $doNumber;
     }
 
     /**
@@ -629,8 +769,13 @@ class DeliveryOrderController extends Controller
             ['name' => 'salesperson', 'example' => 'John Smith', 'description' => 'Salesperson name.'],
             ['name' => 'invoice_number', 'example' => 'INV-2024-001', 'description' => 'Linked invoice number.'],
             ['name' => 'quotation_number', 'example' => 'QT-2024-001', 'description' => 'Linked quotation number.'],
-            ['name' => 'product_sku', 'example' => '21007', 'description' => 'Product SKU (links to product).'],
+            ['name' => 'case_no', 'example' => '1st', 'description' => 'Medical case number (e.g. 1st, 2nd, 3rd).'],
+            ['name' => 'case_tag', 'example' => 'FOC', 'description' => 'Case tag: FOC, GEH, HTx 60s, Clinic, CCK — auto-creates bonus scheme.'],
+            ['name' => 'case_date', 'example' => '5/15/2025', 'description' => 'Date of the medical case.'],
             ['name' => 'patient_name', 'example' => 'Jane Doe', 'description' => 'Patient name for this line item.'],
+            ['name' => 'delivered_to', 'example' => 'OT, Clinic, MENH', 'description' => 'Where it was delivered to.'],
+            ['name' => 'other_note', 'example' => 'Clinic', 'description' => 'Other case notes.'],
+            ['name' => 'product_sku', 'example' => '21007', 'description' => 'Product SKU (links to product).'],
             ['name' => 'description', 'example' => 'HTx60s Disposable Hysteroscope', 'description' => 'Line description.'],
             ['name' => 'quantity', 'example' => '6', 'description' => 'Quantity to deliver.'],
             ['name' => 'unit', 'example' => 'pcs', 'description' => 'Unit of measure. Default: pcs.'],

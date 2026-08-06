@@ -302,18 +302,19 @@ export function InvoiceDetailPage() {
             </div>
           </button>
         )}
-        {invoice.delivery_orders && invoice.delivery_orders.length > 0 && (
+        {invoice.delivery_orders && invoice.delivery_orders.length > 0 && invoice.delivery_orders.map((d) => (
           <button
-            onClick={() => navigate('/delivery-orders')}
+            key={d.id}
+            onClick={() => navigate(`/delivery-orders/${d.id}`)}
             className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
           >
             <Icon icon="solar:package-bold" className="h-5 w-5 text-orange-600" />
             <div className="text-left">
-              <div className="font-bold text-foreground">{invoice.delivery_orders.length}</div>
-              <div className="text-xs text-muted-foreground">Delivery Order{invoice.delivery_orders.length !== 1 ? 's' : ''}</div>
+              <div className="font-bold text-foreground">{d.delivery_order_number}</div>
+              <div className="text-xs text-muted-foreground">Delivery Order</div>
             </div>
           </button>
-        )}
+        ))}
       </div>
 
       {/* Invoice Content */}

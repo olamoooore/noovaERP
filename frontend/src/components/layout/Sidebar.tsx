@@ -174,6 +174,21 @@ const baseNavItems: NavItem[] = [
         href: '/payments',
         icon: 'solar:wallet-money-bold-duotone',
       },
+      {
+        title: 'Medical Cases',
+        href: '/sales/medical-cases',
+        icon: 'solar:medkit-bold-duotone',
+      },
+      {
+        title: 'Bonus Schemes',
+        href: '/sales/bonus-schemes',
+        icon: 'solar:gift-bold-duotone',
+      },
+      {
+        title: 'Scheme Assignments',
+        href: '/sales/customer-bonus-schemes',
+        icon: 'solar:users-group-bold-duotone',
+      },
     ],
   },
   {

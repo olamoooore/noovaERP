@@ -68,6 +68,31 @@ export function InvoicesPage() {
     },
   })
 
+  const bulkPostMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const res = await api.post('/invoices/bulk-post', { ids })
+      return res.data
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      setSelectedIds([])
+      const postedCount = data.posted?.length || 0
+      const skippedCount = data.skipped?.length || 0
+      if (skippedCount > 0) {
+        toast({
+          title: `Bulk post complete: ${postedCount} posted, ${skippedCount} skipped`,
+          description: data.skipped.slice(0, 3).map((s: any) => `#${s.id}: ${s.reason}`).join('; '),
+          variant: 'default',
+        })
+      } else {
+        toast({ title: `${postedCount} invoice(s) posted successfully` })
+      }
+    },
+    onError: (error: any) => {
+      toast({ variant: 'destructive', title: 'Bulk post failed', description: error.response?.data?.message })
+    },
+  })
+
   const toggleSelectAll = () => {
     if (selectedIds.length === invoices.length) {
       setSelectedIds([])
@@ -117,12 +142,24 @@ export function InvoicesPage() {
           <CardTitle className="flex items-center justify-between">
             <span>All Invoices</span>
             {selectedIds.length > 0 && (
-              <Button variant="destructive" size="sm" onClick={() => {
-                if (confirm(`Delete ${selectedIds.length} invoice(s)?`)) bulkDeleteMutation.mutate(selectedIds)
-              }}>
-                <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4 mr-1" />
-                Delete ({selectedIds.length})
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (confirm(`Post ${selectedIds.length} invoice(s)?`)) bulkPostMutation.mutate(selectedIds)
+                  }}
+                  disabled={bulkPostMutation.isPending}
+                >
+                  <Icon icon="solar:check-circle-bold" className="h-4 w-4 mr-1" />
+                  {bulkPostMutation.isPending ? 'Posting...' : `Bulk Post (${selectedIds.length})`}
+                </Button>
+                <Button variant="destructive" size="sm" onClick={() => {
+                  if (confirm(`Delete ${selectedIds.length} invoice(s)?`)) bulkDeleteMutation.mutate(selectedIds)
+                }}>
+                  <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4 mr-1" />
+                  Delete ({selectedIds.length})
+                </Button>
+              </div>
             )}
           </CardTitle>
         </CardHeader>

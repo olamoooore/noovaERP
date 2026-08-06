@@ -220,6 +220,22 @@ class Customer extends Model
         return $this->hasMany(\Modules\Sales\Models\SalesOrder::class);
     }
 
+    /**
+     * Medical cases
+     */
+    public function medicalCases(): HasMany
+    {
+        return $this->hasMany(MedicalCase::class);
+    }
+
+    /**
+     * Bonus scheme assignments
+     */
+    public function bonusSchemeAssignments(): HasMany
+    {
+        return $this->hasMany(CustomerBonusScheme::class);
+    }
+
     // ==========================================
     // ACCESSORS
     // ==========================================

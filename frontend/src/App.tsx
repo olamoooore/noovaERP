@@ -71,6 +71,14 @@ const DeliveryOrderImportPage = lazy(() => import('@/pages/sales/DeliveryOrderIm
 const DeliveryOrderEditPage = lazy(() => import('@/pages/sales/DeliveryOrderEditPage').then(m => ({ default: m.DeliveryOrderEditPage })))
 const SalesOrdersPage = lazy(() => import('@/pages/sales/SalesOrdersPage').then(m => ({ default: m.SalesOrdersPage })))
 const SalesOrderDetailPage = lazy(() => import('@/pages/sales/SalesOrderDetailPage').then(m => ({ default: m.SalesOrderDetailPage })))
+const MedicalCasesPage = lazy(() => import('@/pages/sales/MedicalCasesPage').then(m => ({ default: m.MedicalCasesPage })))
+const MedicalCaseDetailPage = lazy(() => import('@/pages/sales/MedicalCaseDetailPage').then(m => ({ default: m.MedicalCaseDetailPage })))
+const MedicalCaseCreatePage = lazy(() => import('@/pages/sales/MedicalCaseCreatePage').then(m => ({ default: m.MedicalCaseCreatePage })))
+const BonusSchemesPage = lazy(() => import('@/pages/sales/BonusSchemesPage').then(m => ({ default: m.BonusSchemesPage })))
+const BonusSchemeDetailPage = lazy(() => import('@/pages/sales/BonusSchemeDetailPage').then(m => ({ default: m.BonusSchemeDetailPage })))
+const BonusSchemeCreatePage = lazy(() => import('@/pages/sales/BonusSchemeCreatePage').then(m => ({ default: m.BonusSchemeCreatePage })))
+const CustomerBonusSchemesPage = lazy(() => import('@/pages/sales/CustomerBonusSchemesPage').then(m => ({ default: m.CustomerBonusSchemesPage })))
+const CustomerBonusSchemeCreatePage = lazy(() => import('@/pages/sales/CustomerBonusSchemeCreatePage').then(m => ({ default: m.CustomerBonusSchemeCreatePage })))
 const InventoryDashboard = lazy(() => import('@/pages/dashboards/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })))
 const FinancialDashboard = lazy(() => import('@/pages/dashboards/FinancialDashboard').then(m => ({ default: m.FinancialDashboard })))
 
@@ -334,6 +342,20 @@ function App() {
                 <Route path="/sales/quotes" element={<QuotesPage />} />
                 <Route path="/sales/quotes/create" element={<QuotationCreatePage />} />
                 <Route path="/sales/quotes/:id" element={<QuotationDetailPage />} />
+
+                {/* Medical Cases */}
+                <Route path="/sales/medical-cases" element={<MedicalCasesPage />} />
+                <Route path="/sales/medical-cases/create" element={<MedicalCaseCreatePage />} />
+                <Route path="/sales/medical-cases/:id" element={<MedicalCaseDetailPage />} />
+
+                {/* Bonus Schemes */}
+                <Route path="/sales/bonus-schemes" element={<BonusSchemesPage />} />
+                <Route path="/sales/bonus-schemes/create" element={<BonusSchemeCreatePage />} />
+                <Route path="/sales/bonus-schemes/:id" element={<BonusSchemeDetailPage />} />
+
+                {/* Customer Bonus Scheme Assignments */}
+                <Route path="/sales/customer-bonus-schemes" element={<CustomerBonusSchemesPage />} />
+                <Route path="/sales/customer-bonus-schemes/create" element={<CustomerBonusSchemeCreatePage />} />
 
                 {/* Quotation Routes (new) */}
                 <Route path="/quotations" element={<QuotesPage />} />

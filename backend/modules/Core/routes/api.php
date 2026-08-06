@@ -53,6 +53,9 @@ use App\Http\Controllers\Api\VendorCreditNotesController;
 use App\Http\Controllers\Api\VendorDebitNotesController;
 use App\Http\Controllers\Api\VendorsController;
 use App\Http\Controllers\Api\WarehouseController;
+use App\Http\Controllers\Api\MedicalCaseController;
+use App\Http\Controllers\Api\BonusSchemeController;
+use App\Http\Controllers\Api\CustomerBonusSchemeController;
 use App\Http\Middleware\EnsureAccountingLockManageAccess;
 use App\Http\Middleware\EnsureAccountingPostAccess;
 use App\Http\Middleware\EnsureAccountingReverseAccess;
@@ -175,6 +178,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         // Invoices
         Route::post('/invoices/import', [InvoiceController::class, 'import']);
         Route::post('/invoices/bulk-delete', [InvoiceController::class, 'bulkDestroy']);
+        Route::post('/invoices/bulk-post', [InvoiceController::class, 'bulkPost']);
         Route::apiResource('invoices', InvoiceController::class);
         Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'send']);
         Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel']);
@@ -533,6 +537,30 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::get('/customers/{customer}/statement/compare', [CustomerStatementController::class, 'compare']);
     Route::get('/customers/{customer}/statement/compare/pdf', [CustomerStatementController::class, 'comparePdf']);
     Route::get('/customers/{customer}/statement', [CustomerStatementController::class, 'statement']);
+
+    // Medical Cases
+    Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
+        Route::apiResource('medical-cases', MedicalCaseController::class);
+        Route::post('/medical-cases/{id}/allocate', [MedicalCaseController::class, 'allocate']);
+        Route::post('/medical-cases/{id}/deliver', [MedicalCaseController::class, 'deliver']);
+        Route::post('/medical-cases/{id}/invoice', [MedicalCaseController::class, 'invoice']);
+        Route::post('/medical-cases/{id}/complete', [MedicalCaseController::class, 'complete']);
+        Route::post('/medical-cases/{id}/cancel', [MedicalCaseController::class, 'cancel']);
+    });
+
+    // Bonus Schemes
+    Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
+        Route::apiResource('bonus-schemes', BonusSchemeController::class);
+        Route::post('/bonus-schemes/{id}/activate', [BonusSchemeController::class, 'activate']);
+        Route::post('/bonus-schemes/{id}/deactivate', [BonusSchemeController::class, 'deactivate']);
+    });
+
+    // Customer Bonus Scheme Assignments
+    Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
+        Route::apiResource('customer-bonus-schemes', CustomerBonusSchemeController::class);
+        Route::post('/customer-bonus-schemes/{id}/suspend', [CustomerBonusSchemeController::class, 'suspend']);
+        Route::post('/customer-bonus-schemes/{id}/reactivate', [CustomerBonusSchemeController::class, 'reactivate']);
+    });
 
     // Per-customer aging (customer detail page — no entity/accounting middleware needed)
     Route::get('/customers/{customerId}/aging', [AgedReceivablesController::class, 'customerAging']);

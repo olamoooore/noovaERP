@@ -78,7 +78,8 @@ class Invoice extends Model
         'contact_email',
         'contact_phone',
         'billing_address_snapshot',
-        'shipping_address_snapshot',
+        'delivery_address_snapshot',
+        'payment_terms_snapshot',
         'company_registration_number',
         'tax_registration_number',
         'status',
@@ -194,6 +195,11 @@ class Invoice extends Model
     public function deliveryOrders(): HasMany
     {
         return $this->hasMany(\Modules\Sales\Models\DeliveryOrder::class, 'invoice_id');
+    }
+
+    public function medicalCases(): HasMany
+    {
+        return $this->hasMany(MedicalCase::class);
     }
 
     public function doctor()
