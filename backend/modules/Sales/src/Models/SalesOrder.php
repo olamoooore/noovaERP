@@ -117,6 +117,11 @@ class SalesOrder extends Model
         return $this->belongsTo(\App\Models\User::class, 'cancelled_by');
     }
 
+    public function quotation()
+    {
+        return $this->hasOne(\App\Models\Quotation::class, 'sales_order_id');
+    }
+
     public function invoices()
     {
         return $this->belongsToMany(

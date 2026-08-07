@@ -116,7 +116,7 @@ export function SalesOrderDetailPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={() => navigate('/sales/orders')}>
+          <Button variant="outline" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/sales/orders'))}>
             <Icon icon="material-symbols:arrow-back" className="mr-2 h-4 w-4" />
             Back
           </Button>

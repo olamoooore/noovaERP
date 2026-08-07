@@ -102,7 +102,7 @@ class SalesOrderController extends Controller
 
     public function show($id)
     {
-        $order = SalesOrder::with(['customer', 'lines.product', 'statusHistory.actor', 'channelReferences', 'invoiceLinks.invoice', 'deliveryOrders.lines'])
+        $order = SalesOrder::with(['customer', 'lines.product', 'statusHistory.actor', 'channelReferences', 'quotation', 'invoices', 'deliveryOrders.lines'])
             ->find($id);
 
         if (! $order) {

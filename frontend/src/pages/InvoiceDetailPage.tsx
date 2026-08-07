@@ -231,6 +231,8 @@ export function InvoiceDetailPage() {
           <Button variant="outline" onClick={() => {
              if (location.state?.from) {
                navigate(location.state.from);
+             } else if (window.history.length > 1) {
+               navigate(-1);
              } else {
                navigate('/invoices');
              }

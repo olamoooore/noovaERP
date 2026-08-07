@@ -178,7 +178,7 @@ export function DeliveryOrderDetailPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/delivery-orders')}>
+          <Button variant="ghost" size="sm" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/delivery-orders'))}>
             <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
             Back
           </Button>
