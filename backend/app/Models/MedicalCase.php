@@ -160,6 +160,11 @@ class MedicalCase extends Model
     }
 
     // Scopes
+    public function getPatientNameAttribute(): ?string
+    {
+        return $this->patient_name_encrypted;
+    }
+
     public function scopeForCustomer($query, $customerId)
     {
         return $query->where('customer_id', $customerId);

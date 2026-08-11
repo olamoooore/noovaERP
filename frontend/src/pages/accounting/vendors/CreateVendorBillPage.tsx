@@ -349,7 +349,10 @@ export const CreateVendorBillPage: React.FC = () => {
   const documentDiscountAmount = discountMode === 'percentage'
     ? subtotal * (discountAmt / 100)
     : discountAmt;
-  const total = subtotal + taxTotal - documentDiscountAmount;
+  const discountedSubtotal = subtotal - documentDiscountAmount;
+  const taxRatio = subtotal > 0 ? discountedSubtotal / subtotal : 1;
+  const adjustedTaxTotal = Math.round(taxTotal * taxRatio * 100) / 100;
+  const total = discountedSubtotal + adjustedTaxTotal;
   const billNumberPreview = billNumber || `BILL-${new Date(billDate).getFullYear()}-XXXX`;
 
   const formatCurrency = (amount: number) =>

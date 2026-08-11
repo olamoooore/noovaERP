@@ -189,8 +189,9 @@ export const QuotationEditPage: React.FC = () => {
     const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
     const discount = line.discount_amount === '' ? 0 : line.discount_amount;
     const base = line.quantity * unitPrice;
-    const tax = base * (taxRate / 100);
-    return base + tax - discount;
+    const discounted = base - discount;
+    const tax = discounted * (taxRate / 100);
+    return discounted + tax;
   };
 
   const subtotal = lines.reduce((sum, line) => {
@@ -200,7 +201,9 @@ export const QuotationEditPage: React.FC = () => {
   const taxTotal = lines.reduce((sum, line) => {
     const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
     const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
-    return sum + line.quantity * unitPrice * (taxRate / 100);
+    const discount = line.discount_amount === '' ? 0 : line.discount_amount;
+    const base = line.quantity * unitPrice;
+    return sum + (base - discount) * (taxRate / 100);
   }, 0);
   const lineDiscounts = lines.reduce((sum, line) => sum + (line.discount_amount === '' ? 0 : line.discount_amount), 0);
   const discountAmt = discountAmount === '' ? 0 : discountAmount;

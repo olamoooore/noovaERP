@@ -20,6 +20,7 @@ export function MedicalCaseCreatePage() {
     requestor_contact_id: '',
     buyer_contact_id: '',
     patient_reference: '',
+    patient_name_encrypted: '',
     case_date: '',
     procedure_date: '',
     location: '',
@@ -109,6 +110,7 @@ export function MedicalCaseCreatePage() {
       doctor_contact_id: formData.doctor_contact_id ? Number(formData.doctor_contact_id) : null,
       requestor_contact_id: formData.requestor_contact_id ? Number(formData.requestor_contact_id) : null,
       buyer_contact_id: formData.buyer_contact_id ? Number(formData.buyer_contact_id) : null,
+      patient_name_encrypted: formData.patient_name_encrypted || null,
       items: items.filter(i => i.product_id && i.sales_order_item_id),
     }
     createMutation.mutate(payload)
@@ -206,6 +208,15 @@ export function MedicalCaseCreatePage() {
                   type="text"
                   value={formData.patient_reference}
                   onChange={(e) => setFormData({ ...formData, patient_reference: e.target.value })}
+                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Patient Name</label>
+                <input
+                  type="text"
+                  value={formData.patient_name_encrypted}
+                  onChange={(e) => setFormData({ ...formData, patient_name_encrypted: e.target.value })}
                   className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
                 />
               </div>

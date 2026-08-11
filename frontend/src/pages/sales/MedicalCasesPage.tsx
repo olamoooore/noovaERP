@@ -120,7 +120,7 @@ export function MedicalCasesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Case No</TableHead>
-                    <TableHead>Customer</TableHead>
+                    <TableHead>Patient Name</TableHead>
                     <TableHead>Case Date</TableHead>
                     <TableHead>Location</TableHead>
                     <TableHead>Status</TableHead>
@@ -131,7 +131,7 @@ export function MedicalCasesPage() {
                   {cases.map((c: any) => (
                     <TableRow key={c.id} className="cursor-pointer" onClick={() => navigate(`/sales/medical-cases/${c.id}`)}>
                       <TableCell className="font-medium">{c.case_no}</TableCell>
-                      <TableCell>{c.customer?.company_name || '-'}</TableCell>
+                      <TableCell>{c.patient_name || '-'}</TableCell>
                       <TableCell>{c.case_date ? formatDate(c.case_date) : '-'}</TableCell>
                       <TableCell>{c.location || '-'}</TableCell>
                       <TableCell>

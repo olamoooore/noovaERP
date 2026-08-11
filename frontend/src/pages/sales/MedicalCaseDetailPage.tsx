@@ -122,13 +122,12 @@ export function MedicalCaseDetailPage() {
 
       {/* Smart Buttons */}
       <div className="flex gap-3 print:hidden">
-        {medicalCase.customer && (
+        {medicalCase.patient_name && (
           <button
-            onClick={() => navigate(`/customers/${medicalCase.customer_id}`)}
             className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-muted transition-colors"
           >
-            <Icon icon="solar:building-bold-duotone" className="h-4 w-4" />
-            {medicalCase.customer.company_name}
+            <Icon icon="solar:user-bold-duotone" className="h-4 w-4" />
+            {medicalCase.patient_name}
           </button>
         )}
         {medicalCase.invoice && (
@@ -163,8 +162,8 @@ export function MedicalCaseDetailPage() {
               <p className="font-medium">{medicalCase.case_no}</p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Customer</p>
-              <p className="font-medium">{medicalCase.customer?.company_name || '-'}</p>
+              <p className="text-sm text-muted-foreground">Patient Name</p>
+              <p className="font-medium">{medicalCase.patient_name || '-'}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Case Date</p>
