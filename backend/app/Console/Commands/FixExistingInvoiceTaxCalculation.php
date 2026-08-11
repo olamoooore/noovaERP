@@ -30,30 +30,31 @@ class FixExistingInvoiceTaxCalculation extends Command
         $skipped = 0;
 
         foreach ($invoices as $invoice) {
-            $changed = false;
-            foreach ($invoice->lines as $line) {
-                $oldTax = $line->tax_amount;
-                $oldTotal = $line->line_total;
+            $oldSubtotal = $invoice->subtotal;
+            $oldTax = $invoice->tax_amount;
+            $oldTotal = $invoice->total;
 
-                // Assume POS/online orders were tax-inclusive if they came from those sources
-                // We detect by checking if the invoice has a related POS order or web order
+            foreach ($invoice->lines as $line) {
+                $oldLineTax = $line->tax_amount;
+                $oldLineTotal = $line->line_total;
+
                 $isTaxInclusive = $this->isLikelyTaxInclusive($invoice);
                 $line->tax_inclusive = $isTaxInclusive;
 
                 $line->calculateTotals();
 
-                if ($line->tax_amount != $oldTax || $line->line_total != $oldTotal) {
-                    $changed = true;
+                if ($line->tax_amount != $oldLineTax || $line->line_total != $oldLineTotal) {
                     if (! $dryRun) {
                         $line->save();
                     }
                 }
             }
 
-            if ($changed) {
-                $invoice->calculateTotals();
+            $invoice->calculateTotals();
+
+            if ($invoice->subtotal != $oldSubtotal || $invoice->tax_amount != $oldTax || $invoice->total != $oldTotal) {
                 $fixed++;
-                $this->line("Fixed invoice {$invoice->invoice_number} (was subtotal: {$invoice->subtotal}, tax: {$invoice->tax_amount}, total: {$invoice->total})");
+                $this->line("Fixed invoice {$invoice->invoice_number} (was subtotal: {$oldSubtotal}, tax: {$oldTax}, total: {$oldTotal} -> subtotal: {$invoice->subtotal}, tax: {$invoice->tax_amount}, total: {$invoice->total})");
             } else {
                 $skipped++;
             }

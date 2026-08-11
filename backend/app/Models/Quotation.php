@@ -162,8 +162,17 @@ class Quotation extends Model
         }
 
         $this->subtotal = round($subtotal, 2);
-        $this->tax_amount = round($taxAmount, 2);
-        $this->total = round($this->subtotal + $this->tax_amount - (float) ($this->discount_amount ?? 0), 2);
+        $discount = (float) ($this->discount_amount ?? 0);
+
+        if ($discount > 0 && $this->subtotal > 0) {
+            $taxableAmount = max($this->subtotal - $discount, 0);
+            $taxRatio = $this->subtotal > 0 ? $taxableAmount / $this->subtotal : 0;
+            $this->tax_amount = round($taxAmount * $taxRatio, 2);
+        } else {
+            $this->tax_amount = round($taxAmount, 2);
+        }
+
+        $this->total = round($this->subtotal - $discount + $this->tax_amount, 2);
         $this->save();
     }
 
