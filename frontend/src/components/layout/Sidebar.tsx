@@ -177,7 +177,7 @@ const baseNavItems: NavItem[] = [
       {
         title: 'Medical Cases',
         href: '/sales/medical-cases',
-        icon: 'solar:medkit-bold-duotone',
+        icon: 'solar:medical-kit-bold-duotone',
       },
       {
         title: 'Bonus Schemes',
@@ -187,7 +187,7 @@ const baseNavItems: NavItem[] = [
       {
         title: 'Scheme Assignments',
         href: '/sales/customer-bonus-schemes',
-        icon: 'solar:users-group-bold-duotone',
+        icon: 'solar:users-group-rounded-bold-duotone',
       },
     ],
   },

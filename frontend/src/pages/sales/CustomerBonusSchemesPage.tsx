@@ -99,7 +99,7 @@ export function CustomerBonusSchemesPage() {
             </div>
           ) : assignments.length === 0 ? (
             <div className="py-12 text-center text-muted-foreground">
-              <Icon icon="solar:users-group-bold-duotone" className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <Icon icon="solar:users-group-rounded-bold-duotone" className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p>No assignments found.</p>
             </div>
           ) : (
