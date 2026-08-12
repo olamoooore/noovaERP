@@ -7,6 +7,7 @@ import { UnitManager } from '@/pages/Products/UnitManager'
 import { AttributeManager } from '@/pages/Products/AttributeManager'
 import { FeatureManager } from '@/pages/Products/FeatureManager'
 import { MetaManager } from '@/pages/Products/MetaManager'
+import { BrandManager } from '@/pages/Products/BrandManager'
 
 export function ProductSettingsPage() {
   return (
@@ -28,8 +29,9 @@ export function ProductSettingsPage() {
       </div>
 
       <Tabs defaultValue="categories" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-6">
           <TabsTrigger value="categories">Categories</TabsTrigger>
+          <TabsTrigger value="brands">Brands</TabsTrigger>
           <TabsTrigger value="units">Units</TabsTrigger>
           <TabsTrigger value="attributes">Attributes</TabsTrigger>
           <TabsTrigger value="features">Features</TabsTrigger>
@@ -38,6 +40,10 @@ export function ProductSettingsPage() {
 
         <TabsContent value="categories" className="mt-4">
           <CategoryManager />
+        </TabsContent>
+
+        <TabsContent value="brands" className="mt-4">
+          <BrandManager />
         </TabsContent>
 
         <TabsContent value="units" className="mt-4">
