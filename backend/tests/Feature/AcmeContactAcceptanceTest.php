@@ -9,6 +9,9 @@ use App\Models\CustomerContact;
 use App\Models\User;
 use App\Services\CustomerContactSyncService;
 use App\Services\AcmeCustomerImportService;
+use Modules\Contact\src\Models\ContactAddress;
+use Modules\Contact\src\Models\ContactGroup;
+use Modules\Contact\src\Models\ContactGroupMember;
 use Modules\Contact\src\Models\ContactImportBatch;
 use Modules\Contact\src\Models\ContactImportStaging;
 use Modules\Contact\src\Models\ContactRelationship;
@@ -519,5 +522,293 @@ class AcmeContactAcceptanceTest extends TenantTestCase
             ->where('is_primary', true)
             ->count();
         $this->assertEquals(1, $primaryCount);
+    }
+
+    // ─── VEN-AT-01b: Combined import — org + doctor + classification ──
+
+    public function test_ven_at_01b_combined_import_org_and_doctor(): void
+    {
+        $csv = "name,code,type,contact_name,contact_category,contact_type,contact_email\n".
+            "Acme Corp,VC100,company,Dr Smith,clinical,doctor,dr.smith@acme.com";
+
+        $stageRes = $this->as($this->admin(), 'post', '/api/v1/customers/import', [
+            'file' => $this->createCsvFile($csv),
+        ]);
+        $batchId = $stageRes->json('batch_id');
+        $commitRes = $this->as($this->admin(), 'post', "/api/v1/customers/import/{$batchId}/commit");
+        $commitRes->assertOk()->assertJsonPath('imported', 1);
+
+        $customer = Customer::where('code', 'VC100')->first();
+        $this->assertNotNull($customer);
+        $this->assertNotNull($customer->core_contact_uuid);
+
+        // ORGANISATION contact exists
+        $org = CoreContact::find($customer->core_contact_uuid);
+        $this->assertNotNull($org);
+        $this->assertEquals('company', $org->contact_type);
+
+        // PERSON contact created
+        $personContact = CustomerContact::where('customer_id', $customer->id)->where('name', 'Dr Smith')->first();
+        $this->assertNotNull($personContact);
+        $this->assertNotNull($personContact->core_contact_uuid);
+
+        // Canonical PERSON exists
+        $person = CoreContact::find($personContact->core_contact_uuid);
+        $this->assertNotNull($person);
+        $this->assertEquals('individual', $person->contact_type);
+
+        // Classification = DOCTOR
+        $classMember = ContactGroupMember::where('tenant_id', $this->tenantUuid)
+            ->where('contact_id', $person->id)
+            ->first();
+        $this->assertNotNull($classMember);
+        $group = ContactGroup::find($classMember->group_id);
+        $this->assertEquals('DOCTOR', $group->group_name);
+
+        // Functional category = CLINICAL
+        $relationship = ContactRelationship::where('tenant_id', $this->tenantUuid)
+            ->where('contact_id', $customer->core_contact_uuid)
+            ->where('related_contact_id', $person->id)
+            ->first();
+        $this->assertNotNull($relationship);
+        $this->assertEquals('CLINICAL', $relationship->functional_category_code);
+    }
+
+    // ─── VEN-AT-05b: Doctor is Requestor → classification stays DOCTOR ──
+
+    public function test_ven_at_05b_doctor_is_requestor_stays_classification(): void
+    {
+        $orgId = \Illuminate\Support\Str::uuid()->toString();
+        $personId = \Illuminate\Support\Str::uuid()->toString();
+
+        CoreContact::create([
+            'id' => $orgId,
+            'tenant_id' => $this->tenantUuid,
+            'display_name' => 'Acme Corp',
+            'contact_type' => 'company',
+        ]);
+
+        $person = CoreContact::create([
+            'id' => $personId,
+            'tenant_id' => $this->tenantUuid,
+            'display_name' => 'Dr Smith',
+            'contact_type' => 'individual',
+        ]);
+
+        $contactMasterService = app(ContactMasterService::class);
+        $contactMasterService->assignClassification($personId, 'DOCTOR', $this->tenantUuid);
+
+        // Simulate transaction-role transform for Requestor
+        $mapped = LegacyContactTypeMapping::transformContactType('Requestor');
+        $this->assertEquals('REQUESTOR', $mapped['transaction_role']);
+        $this->assertNull($mapped['classification']);
+        $this->assertNull($mapped['persistent_role']);
+        $this->assertFalse($mapped['is_primary']);
+
+        // Classification stays DOCTOR
+        $classMember = ContactGroupMember::where('tenant_id', $this->tenantUuid)
+            ->where('contact_id', $personId)
+            ->first();
+        $this->assertNotNull($classMember);
+        $group = ContactGroup::find($classMember->group_id);
+        $this->assertEquals('DOCTOR', $group->group_name);
+
+        // No REQUESTOR role persisted
+        $roles = ContactRole::where('tenant_id', $this->tenantUuid)
+            ->where('contact_id', $personId)
+            ->pluck('role')
+            ->all();
+        $this->assertNotContains('REQUESTOR', $roles);
+    }
+
+    // ─── VEN-AT-08b: Department preserved on association ────────────────
+
+    public function test_ven_at_08b_department_preserved_on_association(): void
+    {
+        $orgId = \Illuminate\Support\Str::uuid()->toString();
+        $personId = \Illuminate\Support\Str::uuid()->toString();
+
+        CoreContact::create([
+            'id' => $orgId,
+            'tenant_id' => $this->tenantUuid,
+            'display_name' => 'Acme Corp',
+            'contact_type' => 'company',
+        ]);
+
+        CoreContact::create([
+            'id' => $personId,
+            'tenant_id' => $this->tenantUuid,
+            'display_name' => 'John Doe',
+            'contact_type' => 'individual',
+        ]);
+
+        $contactMasterService = app(ContactMasterService::class);
+        $relationship = $contactMasterService->addRelationship($orgId, $personId, 'org_person', $this->tenantUuid, [
+            'department_name' => 'Accounts Payable',
+            'functional_category_code' => 'FINANCE',
+        ]);
+
+        $this->assertNotNull($relationship);
+        $this->assertEquals('Accounts Payable', $relationship->department_name);
+        $this->assertEquals('FINANCE', $relationship->functional_category_code);
+
+        // Verify persistence after refresh
+        $relationship->refresh();
+        $this->assertEquals('Accounts Payable', $relationship->department_name);
+    }
+
+    // ─── VEN-AT-09b: Multiple addresses coexist ────────────────────────
+
+    public function test_ven_at_09b_multiple_addresses_coexist(): void
+    {
+        $contactId = \Illuminate\Support\Str::uuid()->toString();
+
+        CoreContact::create([
+            'id' => $contactId,
+            'tenant_id' => $this->tenantUuid,
+            'display_name' => 'Acme Corp',
+            'contact_type' => 'company',
+        ]);
+
+        $contactMasterService = app(ContactMasterService::class);
+
+        $billing = $contactMasterService->addAddress($contactId, [
+            'address_type' => 'billing',
+            'line_1' => '123 Billing St',
+            'city' => 'Singapore',
+            'country' => 'SG',
+            'is_default_billing' => true,
+        ], $this->tenantUuid);
+
+        $shipping = $contactMasterService->addAddress($contactId, [
+            'address_type' => 'shipping',
+            'line_1' => '456 Shipping Ave',
+            'city' => 'Singapore',
+            'country' => 'SG',
+            'is_default_shipping' => true,
+        ], $this->tenantUuid);
+
+        $this->assertNotNull($billing);
+        $this->assertNotNull($shipping);
+        $this->assertTrue($billing->is_default_billing);
+        $this->assertTrue($shipping->is_default_shipping);
+
+        $addresses = ContactAddress::where('tenant_id', $this->tenantUuid)
+            ->where('contact_id', $contactId)
+            ->get();
+        $this->assertCount(2, $addresses);
+    }
+
+    // ─── VEN-AT-11b: Historical document snapshot unchanged ─────────────
+
+    public function test_ven_at_11b_historical_snapshot_unchanged_after_edit(): void
+    {
+        $customer = Customer::create([
+            'code' => 'VC100',
+            'name' => 'Acme Corp',
+            'is_active' => true,
+            'total_outstanding' => 0,
+        ]);
+
+        $contact = $customer->customerContacts()->create([
+            'name' => 'John Doe',
+            'is_primary' => true,
+            'original_legacy_values' => [
+                'contact_type' => 'Primary',
+                'contact_category' => 'clinic',
+                'billing_address' => '123 Old St',
+            ],
+        ]);
+
+        // Simulate editing the contact
+        $contact->update(['name' => 'John Doe (Updated)', 'email' => 'john@new.com']);
+
+        // Historical snapshot preserved
+        $contact->refresh();
+        $this->assertEquals('John Doe (Updated)', $contact->name);
+        $this->assertEquals('john@new.com', $contact->email);
+        $this->assertEquals('Primary', $contact->original_legacy_values['contact_type']);
+        $this->assertEquals('clinic', $contact->original_legacy_values['contact_category']);
+        $this->assertEquals('123 Old St', $contact->original_legacy_values['billing_address']);
+    }
+
+    // ─── VEN-AT-13b: Category differs across orgs ──────────────────────
+
+    public function test_ven_at_13b_category_differs_across_orgs(): void
+    {
+        $orgA_id = \Illuminate\Support\Str::uuid()->toString();
+        $orgB_id = \Illuminate\Support\Str::uuid()->toString();
+        $personId = \Illuminate\Support\Str::uuid()->toString();
+
+        CoreContact::create([
+            'id' => $orgA_id,
+            'tenant_id' => $this->tenantUuid,
+            'display_name' => 'Hospital A',
+            'contact_type' => 'company',
+        ]);
+
+        CoreContact::create([
+            'id' => $orgB_id,
+            'tenant_id' => $this->tenantUuid,
+            'display_name' => 'Hospital B',
+            'contact_type' => 'company',
+        ]);
+
+        CoreContact::create([
+            'id' => $personId,
+            'tenant_id' => $this->tenantUuid,
+            'display_name' => 'Dr Smith',
+            'contact_type' => 'individual',
+        ]);
+
+        $contactMasterService = app(ContactMasterService::class);
+
+        $relA = $contactMasterService->addRelationship($orgA_id, $personId, 'org_person', $this->tenantUuid, [
+            'functional_category_code' => 'CLINICAL',
+        ]);
+
+        $relB = $contactMasterService->addRelationship($orgB_id, $personId, 'org_person', $this->tenantUuid, [
+            'functional_category_code' => 'FINANCE',
+        ]);
+
+        $this->assertNotNull($relA);
+        $this->assertNotNull($relB);
+        $this->assertEquals('CLINICAL', $relA->functional_category_code);
+        $this->assertEquals('FINANCE', $relB->functional_category_code);
+
+        // Same person, different categories per relationship
+        $this->assertNotEquals($relA->functional_category_code, $relB->functional_category_code);
+    }
+
+    // ─── VEN-AT-16b: Concurrent SetPrimaryContact — second wins ────────
+
+    public function test_ven_at_16b_concurrent_set_primary_second_wins(): void
+    {
+        $customer = Customer::create([
+            'code' => 'VC0001',
+            'name' => 'Acme Corp',
+            'is_active' => true,
+            'total_outstanding' => 0,
+        ]);
+
+        $contact1 = $customer->customerContacts()->create(['name' => 'John', 'is_primary' => true]);
+        $contact2 = $customer->customerContacts()->create(['name' => 'Jane', 'is_primary' => false]);
+        $contact3 = $customer->customerContacts()->create(['name' => 'Bob', 'is_primary' => false]);
+
+        $sync = app(CustomerContactSyncService::class);
+
+        // First call: contact2 becomes primary
+        $sync->setPrimaryContact($customer, $contact2->id);
+        $primaryCount1 = CustomerContact::where('customer_id', $customer->id)->where('is_primary', true)->count();
+        $this->assertEquals(1, $primaryCount1);
+
+        // Second call: contact3 becomes primary
+        $sync->setPrimaryContact($customer, $contact3->id);
+        $primaryCount2 = CustomerContact::where('customer_id', $customer->id)->where('is_primary', true)->count();
+        $this->assertEquals(1, $primaryCount2);
+
+        // Only contact3 is primary
+        $primary = CustomerContact::where('customer_id', $customer->id)->where('is_primary', true)->first();
+        $this->assertEquals($contact3->id, $primary->id);
     }
 }

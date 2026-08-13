@@ -104,7 +104,7 @@ class ContactMasterTest extends TenantTestCase
         ]);
 
         $res = $this->as($this->admin(), 'get', "/api/v1/contacts/{$id}");
-        $res->assertOk()->assertJsonPath('data.display_name', 'Show Me');
+        $res->assertOk()->assertJsonPath('data.contact.display_name', 'Show Me');
     }
 
     public function test_update_contact(): void
