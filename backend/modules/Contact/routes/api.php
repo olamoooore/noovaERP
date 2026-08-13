@@ -12,7 +12,13 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::post('/contacts', [$controller, 'store']);
     Route::get('/contacts/search', [$controller, 'search']);
     Route::get('/contacts/duplicates', [$controller, 'duplicates']);
+    Route::get('/contacts/taxonomy', [$controller, 'taxonomy']);
+    Route::put('/contacts/taxonomy/label', [$controller, 'updateTaxonomyLabel']);
     Route::post('/contacts/merge', [$controller, 'merge']);
+    // Relationship-scoped updates registered before /contacts/{id} so the
+    // literal 'relationships' segment is not captured as a contact id.
+    Route::put('/contacts/relationships/{relationshipId}', [$controller, 'updateRelationship']);
+    Route::put('/contacts/relationships/{relationshipId}/roles', [$controller, 'setRelationshipRoles']);
     Route::get('/contacts/{id}', [$controller, 'show']);
     Route::put('/contacts/{id}', [$controller, 'update']);
     Route::delete('/contacts/{id}', [$controller, 'destroy']);
@@ -40,6 +46,11 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     // ─── Relationships ────────────────────────────────────────
     Route::get('/contacts/{contactId}/relationships', [$controller, 'listRelationships']);
     Route::post('/contacts/{contactId}/relationships', [$controller, 'addRelationship']);
+
+    // ─── Classifications (profession/person class) ───────────
+    Route::get('/contacts/{contactId}/classifications', [$controller, 'listClassifications']);
+    Route::post('/contacts/{contactId}/classifications', [$controller, 'assignClassification']);
+    Route::delete('/contacts/{contactId}/classifications/{code}', [$controller, 'removeClassification']);
 
     // ─── Module Profiles ──────────────────────────────────────
     Route::get('/contacts/{contactId}/profiles', [$controller, 'profiles']);

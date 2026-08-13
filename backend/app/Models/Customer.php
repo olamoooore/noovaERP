@@ -16,6 +16,10 @@ class Customer extends Model
     use HasFactory, Notifiable, SoftDeletes;
 
     protected $fillable = [
+        // Canonical Contact Master link (ADR-003A)
+        'core_contact_uuid',
+        'legal_entity_id',
+
         // Basic Info
         'type',
         'code',
@@ -33,6 +37,7 @@ class Customer extends Model
         // Addresses (legacy - use customer_addresses for multiple)
         'billing_address',
         'shipping_address',
+        'billing_party',
 
         // Financial
         'credit_limit',
@@ -72,6 +77,7 @@ class Customer extends Model
         'average_order_value' => 'decimal:2',
         'is_active' => 'boolean',
         'marketing_opt_in' => 'boolean',
+        'billing_party' => 'array',
         'date_of_birth' => 'date',
         'customer_since' => 'date',
         'last_interaction_at' => 'datetime',

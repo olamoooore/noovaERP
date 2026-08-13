@@ -18,7 +18,7 @@ class ContactRole extends Model
     protected $primaryKey = 'id';
 
     protected $fillable = [
-        'id', 'tenant_id', 'contact_id', 'role', 'role_label',
+        'id', 'tenant_id', 'contact_id', 'relationship_id', 'role', 'role_label',
         'entity_id', 'is_primary', 'metadata',
     ];
 
@@ -30,5 +30,10 @@ class ContactRole extends Model
     public function contact()
     {
         return $this->belongsTo(CoreContact::class, 'contact_id');
+    }
+
+    public function relationship()
+    {
+        return $this->belongsTo(ContactRelationship::class, 'relationship_id');
     }
 }

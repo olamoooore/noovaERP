@@ -41,28 +41,3 @@ class ContactGroup extends Model
         return $this->hasMany(self::class, 'parent_group_id');
     }
 }
-
-class ContactGroupMember extends Model
-{
-    use HasFactory;
-
-    protected $table = 'contact_group_members';
-
-    protected $keyType = 'string';
-
-    public $incrementing = false;
-
-    protected $primaryKey = 'id';
-
-    protected $fillable = ['id', 'tenant_id', 'contact_id', 'group_id'];
-
-    public function contact()
-    {
-        return $this->belongsTo(CoreContact::class, 'contact_id');
-    }
-
-    public function group()
-    {
-        return $this->belongsTo(ContactGroup::class, 'group_id');
-    }
-}

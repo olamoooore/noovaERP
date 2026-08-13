@@ -19,8 +19,9 @@ class ContactRelationship extends Model
 
     protected $fillable = [
         'id', 'tenant_id', 'contact_id', 'related_contact_id',
-        'relationship_type', 'relationship_label', 'notes',
-        'is_primary', 'metadata',
+        'relationship_type', 'relationship_label',
+        'functional_category_code', 'department_name', 'department_id',
+        'notes', 'is_primary', 'metadata',
     ];
 
     protected $casts = [

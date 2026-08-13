@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\CustomerCategory;
 use App\Models\CustomerLoyaltyProgram;
+use App\Services\CustomerContactSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Modules\Contact\src\Support\ContactTaxonomyRegistry;
+use Modules\Contact\src\Support\LegacyContactTypeMapping;
 
 class CustomerController extends Controller
 {
@@ -373,6 +376,10 @@ class CustomerController extends Controller
 
     // ==========================================
     // CONTACTS
+    // ADR-003A: canonical persistence lives in the Contact Master
+    // (core_contacts + org-person relationships). customer_contacts is the
+    // CRM customer-to-person association carrying the is_primary attribute
+    // and non-authoritative legacy compatibility fields.
     // ==========================================
 
     public function addContact(Request $request, $id): JsonResponse
@@ -384,6 +391,12 @@ class CustomerController extends Controller
             'job_title' => 'nullable|string|max:100',
             'contact_category' => 'nullable|string|max:100',
             'contact_type' => 'nullable|string|max:100',
+            'department_name' => 'nullable|string|max:150',
+            // Canonical fields (ADR-003A §7.1) take precedence over legacy.
+            'functional_category_code' => 'nullable|string|max:50',
+            'classification_code' => 'nullable|string|max:50',
+            'persistent_role_codes' => 'sometimes|array',
+            'persistent_role_codes.*' => 'string|max:50',
             'email' => 'nullable|email',
             'phone' => self::NUMERIC_PHONE_RULE,
             'mobile' => self::NUMERIC_PHONE_RULE,
@@ -397,7 +410,11 @@ class CustomerController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $contact = $customer->customerContacts()->create($validated);
+        try {
+            [$contact] = $this->syncContact($customer, $validated, null);
+        } catch (\DomainException $e) {
+            throw ValidationException::withMessages(['contact_type' => [$e->getMessage()]]);
+        }
 
         return response()->json($contact, 201);
     }
@@ -412,14 +429,29 @@ class CustomerController extends Controller
             'job_title' => 'nullable|string|max:100',
             'contact_category' => 'nullable|string|max:100',
             'contact_type' => 'nullable|string|max:100',
+            'department_name' => 'nullable|string|max:150',
+            'functional_category_code' => 'nullable|string|max:50',
+            'classification_code' => 'nullable|string|max:50',
+            'persistent_role_codes' => 'sometimes|array',
+            'persistent_role_codes.*' => 'string|max:50',
             'email' => 'nullable|email',
             'phone' => self::NUMERIC_PHONE_RULE,
             'mobile' => self::NUMERIC_PHONE_RULE,
+            'street' => 'nullable|string|max:255',
+            'street2' => 'nullable|string|max:255',
+            'city' => 'nullable|string|max:100',
+            'state' => 'nullable|string|max:100',
+            'zip' => 'nullable|string|max:20',
+            'country' => 'nullable|string|max:100',
             'is_primary' => 'boolean',
             'notes' => 'nullable|string',
         ]);
 
-        $contact->update($validated);
+        try {
+            [$contact] = $this->syncContact($customer, $validated, $contact);
+        } catch (\DomainException $e) {
+            throw ValidationException::withMessages(['contact_type' => [$e->getMessage()]]);
+        }
 
         return response()->json($contact);
     }
@@ -432,6 +464,108 @@ class CustomerController extends Controller
         $contact->delete();
 
         return response()->json(['message' => 'Contact deleted']);
+    }
+
+    /**
+     * ADR-003A CT-VEN-028: atomic SetPrimaryContact(customer, person).
+     * Clears the prior active primary and sets the new one in one protected
+     * operation; the prior contact remains associated and otherwise unchanged.
+     */
+    public function setPrimaryContact(Request $request, $customerId, $contactId): JsonResponse
+    {
+        $customer = Customer::findOrFail($customerId);
+
+        try {
+            $contact = app(CustomerContactSyncService::class)
+                ->setPrimaryContact($customer, (int) $contactId, $request->user()?->id);
+        } catch (\DomainException $e) {
+            throw ValidationException::withMessages(['contact' => [$e->getMessage()]]);
+        }
+
+        return response()->json($contact);
+    }
+
+    /**
+     * Create/update a customer contact and synchronize canonical Contact
+     * Master structures. Returns [CustomerContact, array $canonical].
+     */
+    private function syncContact(Customer $customer, array $data, $existing): array
+    {
+        $sync = app(CustomerContactSyncService::class);
+
+        // Legacy contact_category/contact_type are non-authoritative inputs;
+        // canonical fields win when both are supplied (ADR-003A §7.2).
+        $legacy = $sync->transformLegacyPayload(
+            $data['contact_category'] ?? null,
+            $data['contact_type'] ?? null
+        );
+
+        if (! empty($legacy['unknown_values'])) {
+            // CT-VEN-016: unknown controlled values are never auto-created.
+            throw new \DomainException('UNKNOWN_TAXONOMY_VALUE');
+        }
+
+        $canonical = [
+            'functional_category_code' => $data['functional_category_code'] ?? $legacy['functional_category_code'],
+            'classification_code' => $data['classification_code'] ?? $legacy['classification_code'],
+            'persistent_role_codes' => $data['persistent_role_codes'] ?? $legacy['persistent_role_codes'],
+            'department_name' => $data['department_name'] ?? null,
+        ];
+
+        if ($canonical['functional_category_code'] !== null) {
+            $canonical['functional_category_code'] = ContactTaxonomyRegistry::resolveCode(
+                ContactTaxonomyRegistry::TYPE_FUNCTIONAL_CATEGORY,
+                $canonical['functional_category_code']
+            ) ?? throw new \DomainException('UNKNOWN_TAXONOMY_VALUE');
+        }
+        if ($canonical['classification_code'] !== null) {
+            $canonical['classification_code'] = ContactTaxonomyRegistry::resolveCode(
+                ContactTaxonomyRegistry::TYPE_CLASSIFICATION,
+                $canonical['classification_code']
+            ) ?? throw new \DomainException('UNKNOWN_TAXONOMY_VALUE');
+        }
+        $canonical['persistent_role_codes'] = array_values(array_filter(array_map(
+            fn ($code) => ContactTaxonomyRegistry::resolveCode(ContactTaxonomyRegistry::TYPE_PERSISTENT_ROLE, $code)
+                ?? throw new \DomainException('UNKNOWN_TAXONOMY_VALUE'),
+            (array) $canonical['persistent_role_codes']
+        )));
+
+        $isPrimary = (bool) ($data['is_primary'] ?? false) || $legacy['is_primary'];
+
+        // Deterministic legacy write projection for the compatibility columns.
+        $rowCategory = $canonical['functional_category_code'] ?? $data['contact_category'] ?? null;
+        $rowType = $data['contact_type'] ?? null;
+        if ($legacy['classification_code'] || $legacy['persistent_role_codes'] || $legacy['is_primary']) {
+            $rowType = LegacyContactTypeMapping::projectLegacyContactType(
+                array_filter([$canonical['classification_code']]),
+                $canonical['persistent_role_codes']
+            );
+            if ($legacy['is_primary'] && ! $canonical['classification_code'] && ! $canonical['persistent_role_codes']) {
+                $rowType = $data['contact_type'] ?? null; // Primary only: keep as-is; flag carries it.
+            }
+        }
+
+        $attributes = collect($data)->only([
+            'name', 'job_title', 'email', 'phone', 'mobile',
+            'street', 'street2', 'city', 'state', 'zip', 'country', 'notes',
+        ])->all();
+        $attributes['contact_category'] = $rowCategory;
+        $attributes['contact_type'] = $rowType;
+        $attributes['department_name'] = $canonical['department_name'];
+        // is_primary is never written directly; it is applied atomically below.
+        unset($attributes['is_primary']);
+
+        $contact = $existing
+            ? tap($existing)->update($attributes)
+            : $customer->customerContacts()->create($attributes);
+
+        $personUuid = $sync->syncPersonForCustomerContact($customer, $contact, $canonical);
+
+        if ($isPrimary) {
+            $contact = $sync->setPrimaryContact($customer, $contact->id);
+        }
+
+        return [$contact->fresh(), array_merge($canonical, ['core_contact_uuid' => $personUuid])];
     }
 
     // ==========================================

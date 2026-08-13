@@ -126,6 +126,9 @@ abstract class TenantTestCase extends TestCase
     protected function getTenantMigrationPaths(): array
     {
         return [
+            // Contact module must run first — core tenant migrations
+            // (invoices, etc.) reference core_contacts via foreign keys.
+            'modules/Contact/database/migrations/tenant',
             'database/migrations/tenant',
             'modules/EventManagement/Database/Migrations/tenant',
             'modules/FinancialReporting/database/migrations/tenant',
@@ -139,7 +142,6 @@ abstract class TenantTestCase extends TestCase
             'modules/WebsiteBuilder/database/migrations/tenant',
             'modules/IoT/database/migrations/tenant',
             'modules/Loyalty/database/migrations/tenant',
-            'modules/Contact/database/migrations/tenant',
             'modules/TemplateBuilder/database/migrations/tenant',
         ];
     }

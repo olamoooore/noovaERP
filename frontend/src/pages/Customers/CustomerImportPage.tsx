@@ -17,10 +17,24 @@ import {
 } from '@/components/ui/table'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
-interface ImportResult {
-  created: number
-  updated: number
-  errors: Array<{ row: number; message: string }>
+interface StageResult {
+  batch_id: string
+  total_rows: number
+  counts: {
+    valid: number
+    warning: number
+    duplicate: number
+    candidate: number
+    error: number
+  }
+  code_conflicts: Array<{ row: number; code: string }>
+  status: string
+}
+
+interface CommitResult {
+  imported: number
+  rejected: number
+  batch_id: string
 }
 
 const TEMPLATE_COLUMNS = [
@@ -68,49 +82,68 @@ export function CustomerImportPage() {
 
   const [dragActive, setDragActive] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const [stageResult, setStageResult] = useState<StageResult | null>(null)
+  const [commitResult, setCommitResult] = useState<CommitResult | null>(null)
 
-  const importMutation = useMutation({
+  const stageMutation = useMutation({
     mutationFn: async (file: File) => {
       const fd = new FormData()
       fd.append('file', file)
       const response = await api.post('/customers/import', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      return response.data as ImportResult
+      return response.data as StageResult
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['customers'] })
-      setImportResult(data)
-      const errorCount = data.errors?.length || 0
-      const totalProcessed = data.created + (data.updated || 0)
-      const parts: string[] = []
-      if (data.created > 0) parts.push(`${data.created} created`)
-      if (data.updated > 0) parts.push(`${data.updated} updated`)
-      if (errorCount > 0) parts.push(`${errorCount} errors`)
-      if (totalProcessed > 0 && errorCount === 0) {
+      setStageResult(data)
+      const hasErrors = data.counts.error > 0
+      const hasWarnings = data.counts.warning > 0
+      const commitReady = data.counts.valid + data.counts.duplicate
+
+      if (hasErrors && commitReady === 0) {
         toast({
-          title: 'Import successful!',
-          description: `${parts.join(', ')}.`,
-        })
-      } else if (totalProcessed > 0 && errorCount > 0) {
-        toast({
-          title: 'Import completed with errors',
-          description: `${parts.join(', ')}.`,
-          variant: 'default',
-        })
-      } else if (totalProcessed === 0) {
-        toast({
-          title: 'Import failed',
-          description: 'No customers were imported. Please check the errors below.',
+          title: 'Import validation failed',
+          description: `${data.counts.error} rows have errors. Fix the CSV and try again.`,
           variant: 'destructive',
+        })
+      } else if (hasWarnings) {
+        toast({
+          title: 'Import staged with warnings',
+          description: `${commitReady} rows ready, ${data.counts.warning} rows have unknown values (will be rejected at commit).`,
+        })
+      } else {
+        toast({
+          title: 'Import staged',
+          description: `${commitReady} rows ready to commit.`,
         })
       }
     },
     onError: (error: Error) => {
       toast({
         title: 'Import failed',
-        description: error.message || 'An error occurred during import.',
+        description: error.message || 'An error occurred during staging.',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const commitMutation = useMutation({
+    mutationFn: async (batchId: string) => {
+      const response = await api.post(`/customers/import/${batchId}/commit`)
+      return response.data as CommitResult
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] })
+      setCommitResult(data)
+      toast({
+        title: 'Import committed',
+        description: `${data.imported} customers imported${data.rejected > 0 ? `, ${data.rejected} rejected` : ''}.`,
+      })
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Commit failed',
+        description: error.message || 'An error occurred during commit.',
         variant: 'destructive',
       })
     },
@@ -135,7 +168,8 @@ export function CustomerImportPage() {
       const file = e.dataTransfer.files[0]
       if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
         setSelectedFile(file)
-        setImportResult(null)
+        setStageResult(null)
+        setCommitResult(null)
       } else {
         toast({
           title: 'Invalid file type',
@@ -149,7 +183,8 @@ export function CustomerImportPage() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedFile(e.target.files[0])
-      setImportResult(null)
+      setStageResult(null)
+      setCommitResult(null)
     }
   }
 
@@ -210,16 +245,26 @@ export function CustomerImportPage() {
     })
   }
 
-  const handleImport = () => {
+  const handleStage = () => {
     if (selectedFile) {
-      importMutation.mutate(selectedFile)
+      stageMutation.mutate(selectedFile)
+    }
+  }
+
+  const handleCommit = () => {
+    if (stageResult?.batch_id) {
+      commitMutation.mutate(stageResult.batch_id)
     }
   }
 
   const handleReset = () => {
     setSelectedFile(null)
-    setImportResult(null)
+    setStageResult(null)
+    setCommitResult(null)
   }
+
+  const commitReadyRows = (stageResult?.counts.valid || 0) + (stageResult?.counts.duplicate || 0)
+  const canCommit = stageResult && commitReadyRows > 0 && !commitResult
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -230,7 +275,7 @@ export function CustomerImportPage() {
         </Button>
         <div>
           <h1 className="text-2xl font-bold">Import Customers</h1>
-          <p className="text-muted-foreground">Bulk import customers from a CSV file</p>
+          <p className="text-muted-foreground">Bulk import customers from a CSV file (staged validation)</p>
         </div>
       </div>
 
@@ -293,156 +338,207 @@ export function CustomerImportPage() {
           </Card>
         </div>
 
-        {/* Right Column - Upload */}
+        {/* Right Column - Upload & Results */}
         <div className="space-y-6">
           {/* Upload Card */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Icon icon="solar:upload-minimalistic-bold" className="h-5 w-5 text-primary" />
-                Step 2: Upload CSV File
+                {!stageResult ? 'Step 2: Upload & Validate' : !commitResult ? 'Step 3: Review & Commit' : 'Complete'}
               </CardTitle>
               <CardDescription>
-                Fill in the template and upload it here.
+                {!stageResult
+                  ? 'Fill in the template and upload it here for validation.'
+                  : !commitResult
+                    ? 'Review the validation results and commit to import.'
+                    : 'Import completed successfully.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Dropzone */}
-              <div
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                  dragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'
-                } ${selectedFile ? 'bg-muted/50' : ''}`}
-                onDragEnter={handleDrag}
-                onDragLeave={handleDrag}
-                onDragOver={handleDrag}
-                onDrop={handleDrop}
-              >
-                {selectedFile ? (
-                  <div className="space-y-3">
-                    <Icon icon="solar:file-check-bold" className="h-12 w-12 mx-auto text-green-500" />
-                    <div>
-                      <p className="font-medium">{selectedFile.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {(selectedFile.size / 1024).toFixed(2)} KB
-                      </p>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={handleReset}>
-                      <Icon icon="solar:trash-bin-trash-bold" className="mr-2 h-4 w-4" />
-                      Remove
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <Icon icon="solar:cloud-upload-bold-duotone" className="h-12 w-12 mx-auto text-muted-foreground" />
-                    <div>
-                      <p className="font-medium">Drag and drop your CSV file here</p>
-                      <p className="text-sm text-muted-foreground">or click the button below to browse</p>
-                    </div>
-                    <Button variant="outline" size="sm" asChild>
-                      <label className="cursor-pointer">
-                        <Icon icon="solar:folder-open-bold" className="mr-2 h-4 w-4" />
-                        Browse Files
-                        <input
-                          type="file"
-                          accept=".csv,text/csv"
-                          onChange={handleFileSelect}
-                          className="hidden"
-                        />
-                      </label>
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              {/* Import Button */}
-              {selectedFile && !importResult && (
-                <Button
-                  onClick={handleImport}
-                  className="w-full"
-                  disabled={importMutation.isPending}
+              {!stageResult && (
+                <div
+                  className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                    dragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'
+                  } ${selectedFile ? 'bg-muted/50' : ''}`}
+                  onDragEnter={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDragOver={handleDrag}
+                  onDrop={handleDrop}
                 >
-                  {importMutation.isPending ? (
+                  {selectedFile ? (
+                    <div className="space-y-3">
+                      <Icon icon="solar:file-check-bold" className="h-12 w-12 mx-auto text-green-500" />
+                      <div>
+                        <p className="font-medium">{selectedFile.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {(selectedFile.size / 1024).toFixed(2)} KB
+                        </p>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={handleReset}>
+                        <Icon icon="solar:trash-bin-trash-bold" className="mr-2 h-4 w-4" />
+                        Remove
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <Icon icon="solar:cloud-upload-bold-duotone" className="h-12 w-12 mx-auto text-muted-foreground" />
+                      <div>
+                        <p className="font-medium">Drag and drop your CSV file here</p>
+                        <p className="text-sm text-muted-foreground">or click the button below to browse</p>
+                      </div>
+                      <Button variant="outline" size="sm" asChild>
+                        <label className="cursor-pointer">
+                          <Icon icon="solar:folder-open-bold" className="mr-2 h-4 w-4" />
+                          Browse Files
+                          <input
+                            type="file"
+                            accept=".csv,text/csv"
+                            onChange={handleFileSelect}
+                            className="hidden"
+                          />
+                        </label>
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Stage Button */}
+              {selectedFile && !stageResult && (
+                <Button
+                  onClick={handleStage}
+                  className="w-full"
+                  disabled={stageMutation.isPending}
+                >
+                  {stageMutation.isPending ? (
                     <>
                       <Icon icon="solar:refresh-circle-bold" className="mr-2 h-4 w-4 animate-spin" />
-                      Importing...
+                      Validating...
                     </>
                   ) : (
                     <>
                       <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
-                      Import Customers
+                      Stage & Validate
                     </>
                   )}
                 </Button>
               )}
 
               {/* Progress */}
-              {importMutation.isPending && (
+              {stageMutation.isPending && (
                 <Progress value={undefined} className="w-full" />
               )}
-            </CardContent>
-          </Card>
 
-          {/* Import Results Card */}
-          {importResult && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Icon
-                    icon={(importResult.created > 0 || (importResult.updated || 0) > 0) ? "solar:check-circle-bold" : "solar:close-circle-bold"}
-                    className={`h-5 w-5 ${(importResult.created > 0 || (importResult.updated || 0) > 0) ? 'text-green-500' : 'text-destructive'}`}
-                  />
-                  Import Results
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Summary */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="text-center p-4 bg-green-50 dark:bg-green-950/20 rounded-lg">
-                    <div className="text-2xl font-bold text-green-600">{importResult.created}</div>
-                    <div className="text-sm text-muted-foreground">Created</div>
-                  </div>
-                  <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
-                    <div className="text-2xl font-bold text-blue-600">{importResult.updated || 0}</div>
-                    <div className="text-sm text-muted-foreground">Updated</div>
-                  </div>
-                  <div className="text-center p-4 bg-red-50 dark:bg-red-950/20 rounded-lg">
-                    <div className="text-2xl font-bold text-red-600">{importResult.errors.length}</div>
-                    <div className="text-sm text-muted-foreground">Errors</div>
-                  </div>
-                </div>
-
-                {/* Errors List */}
-                {importResult.errors.length > 0 && (
-                  <Alert variant="destructive">
-                    <Icon icon="solar:danger-triangle-bold" className="h-4 w-4" />
-                    <AlertTitle>Import Errors</AlertTitle>
+              {/* Staging Results */}
+              {stageResult && !commitResult && (
+                <div className="space-y-4">
+                  <Alert>
+                    <Icon icon="solar:info-circle-bold" className="h-4 w-4" />
+                    <AlertTitle>Validation Complete</AlertTitle>
                     <AlertDescription>
-                      <div className="mt-2 max-h-[200px] overflow-y-auto space-y-1 text-sm">
-                        {importResult.errors.map((err, idx) => (
-                          <div key={idx} className="flex gap-2">
-                            <span className="font-medium">Row {err.row}:</span>
-                            <span>{err.message}</span>
-                          </div>
-                        ))}
-                      </div>
+                      {commitReadyRows} rows ready to commit
+                      {stageResult.counts.warning > 0 && `, ${stageResult.counts.warning} with warnings`}
+                      {stageResult.counts.error > 0 && `, ${stageResult.counts.error} with errors`}
+                      {stageResult.counts.candidate > 0 && `, ${stageResult.counts.candidate} candidates for review`}.
                     </AlertDescription>
                   </Alert>
-                )}
 
-                {/* Actions */}
-                <div className="flex gap-3">
-                  <Button variant="outline" onClick={handleReset} className="flex-1">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center p-4 bg-green-50 dark:bg-green-950/20 rounded-lg">
+                      <div className="text-2xl font-bold text-green-600">{stageResult.counts.valid}</div>
+                      <div className="text-sm text-muted-foreground">Valid</div>
+                    </div>
+                    <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg">
+                      <div className="text-2xl font-bold text-yellow-600">{stageResult.counts.warning}</div>
+                      <div className="text-sm text-muted-foreground">Warnings</div>
+                    </div>
+                    <div className="text-center p-4 bg-red-50 dark:bg-red-950/20 rounded-lg">
+                      <div className="text-2xl font-bold text-red-600">{stageResult.counts.error}</div>
+                      <div className="text-sm text-muted-foreground">Errors</div>
+                    </div>
+                  </div>
+
+                  {stageResult.code_conflicts.length > 0 && (
+                    <Alert variant="destructive">
+                      <Icon icon="solar:danger-triangle-bold" className="h-4 w-4" />
+                      <AlertTitle>Code Conflicts</AlertTitle>
+                      <AlertDescription>
+                        <div className="mt-2 max-h-[150px] overflow-y-auto space-y-1 text-sm">
+                          {stageResult.code_conflicts.map((conflict, idx) => (
+                            <div key={idx} className="flex gap-2">
+                              <span className="font-medium">Row {conflict.row}:</span>
+                              <span>Code "{conflict.code}" already exists</span>
+                            </div>
+                          ))}
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  <Button
+                    onClick={handleCommit}
+                    className="w-full"
+                    disabled={!canCommit || commitMutation.isPending}
+                  >
+                    {commitMutation.isPending ? (
+                      <>
+                        <Icon icon="solar:refresh-circle-bold" className="mr-2 h-4 w-4 animate-spin" />
+                        Committing...
+                      </>
+                    ) : (
+                      <>
+                        <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
+                        Commit {commitReadyRows} Rows
+                      </>
+                    )}
+                  </Button>
+
+                  <Button variant="outline" onClick={handleReset} className="w-full">
                     <Icon icon="solar:upload-bold" className="mr-2 h-4 w-4" />
                     Import Another File
                   </Button>
-                  <Button onClick={() => navigate('/customers')} className="flex-1">
-                    <Icon icon="solar:users-bold" className="mr-2 h-4 w-4" />
-                    View Customers
-                  </Button>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              )}
+
+              {/* Commit Results */}
+              {commitResult && (
+                <div className="space-y-4">
+                  <Alert>
+                    <Icon icon="solar:check-circle-bold" className="h-4 w-4 text-green-600" />
+                    <AlertTitle>Import Complete</AlertTitle>
+                    <AlertDescription>
+                      {commitResult.imported} customers imported successfully
+                      {commitResult.rejected > 0 && `, ${commitResult.rejected} rejected`}.
+                    </AlertDescription>
+                  </Alert>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="text-center p-4 bg-green-50 dark:bg-green-950/20 rounded-lg">
+                      <div className="text-2xl font-bold text-green-600">{commitResult.imported}</div>
+                      <div className="text-sm text-muted-foreground">Imported</div>
+                    </div>
+                    <div className="text-center p-4 bg-red-50 dark:bg-red-950/20 rounded-lg">
+                      <div className="text-2xl font-bold text-red-600">{commitResult.rejected}</div>
+                      <div className="text-sm text-muted-foreground">Rejected</div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <Button variant="outline" onClick={handleReset} className="flex-1">
+                      <Icon icon="solar:upload-bold" className="mr-2 h-4 w-4" />
+                      Import Another File
+                    </Button>
+                    <Button onClick={() => navigate('/customers')} className="flex-1">
+                      <Icon icon="solar:users-bold" className="mr-2 h-4 w-4" />
+                      View Customers
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

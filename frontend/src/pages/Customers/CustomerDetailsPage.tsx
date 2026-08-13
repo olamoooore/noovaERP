@@ -1749,19 +1749,45 @@ export function CustomerDetailsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Contact Category</Label>
-                <Input
+                <Select
                   value={contactForm.contact_category || ''}
-                  onChange={(e) => setContactForm({ ...contactForm, contact_category: e.target.value })}
-                  placeholder="e.g. Clinical, Finance"
-                />
+                  onValueChange={(value) => setContactForm({ ...contactForm, contact_category: value || null })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Clinical">Clinical</SelectItem>
+                    <SelectItem value="Finance">Finance</SelectItem>
+                    <SelectItem value="Procurement">Procurement</SelectItem>
+                    <SelectItem value="Operations">Operations</SelectItem>
+                    <SelectItem value="Administration">Administration</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Contact Type</Label>
-                <Input
+                <Select
                   value={contactForm.contact_type || ''}
-                  onChange={(e) => setContactForm({ ...contactForm, contact_type: e.target.value })}
-                  placeholder="e.g. Primary, Billing"
-                />
+                  onValueChange={(value) => setContactForm({ ...contactForm, contact_type: value || null })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Primary">Primary</SelectItem>
+                    <SelectItem value="Doctor">Doctor</SelectItem>
+                    <SelectItem value="Nurse">Nurse</SelectItem>
+                    <SelectItem value="Billing">Billing</SelectItem>
+                    <SelectItem value="Delivery">Delivery</SelectItem>
+                    <SelectItem value="Clinical">Clinical</SelectItem>
+                    <SelectItem value="OT">OT</SelectItem>
+                    <SelectItem value="Admin">Admin</SelectItem>
+                    <SelectItem value="Procurement">Procurement</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="space-y-2">

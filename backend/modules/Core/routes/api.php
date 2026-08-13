@@ -155,6 +155,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::get('customers/statistics', [CustomerController::class, 'statistics']);
     Route::get('customers/search', [CustomerController::class, 'search']);
     Route::post('customers/import', [CustomersController::class, 'import']);
+    Route::post('customers/import/{batch}/commit', [CustomersController::class, 'commitImport']);
     Route::post('customers/bulk-delete', [CustomerController::class, 'bulkDestroy']);
 
     // Customers - resource routes
@@ -173,6 +174,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::post('customers/{customer}/contacts', [CustomerController::class, 'addContact']);
     Route::put('customers/{customer}/contacts/{contact}', [CustomerController::class, 'updateContact']);
     Route::delete('customers/{customer}/contacts/{contact}', [CustomerController::class, 'deleteContact']);
+    // ADR-003A CT-VEN-028: atomic SetPrimaryContact.
+    Route::post('customers/{customer}/contacts/{contact}/set-primary', [CustomerController::class, 'setPrimaryContact']);
 
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
         // Invoices
@@ -487,8 +490,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
         // Customers List
         Route::get('/customers', [CustomersController::class, 'index']);
-        Route::get('/customers/{id}', [CustomersController::class, 'show']);
         Route::post('/customers/import', [CustomersController::class, 'import']);
+        Route::post('/customers/import/{batch}/commit', [CustomersController::class, 'commitImport']);
+        Route::get('/customers/{id}', [CustomersController::class, 'show']);
 
         // Vendor Credit Notes (must be before /vendors/{id} to avoid route conflict)
         Route::get('/vendors/credit-notes', [VendorCreditNotesController::class, 'index']);

@@ -18,7 +18,7 @@ class ContactImportBatch extends Model
     protected $primaryKey = 'id';
 
     protected $fillable = [
-        'id', 'tenant_id', 'user_id', 'file_name', 'file_hash',
+        'id', 'tenant_id', 'user_id', 'file_name', 'file_hash', 'source_system',
         'total_rows', 'valid_rows', 'error_rows', 'duplicate_rows',
         'status', 'error_summary', 'mapping_config', 'imported_at',
     ];

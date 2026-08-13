@@ -12,10 +12,13 @@ class CustomerContact extends Model
 
     protected $fillable = [
         'customer_id',
+        'core_contact_uuid',
         'name',
         'job_title',
         'contact_category',
         'contact_type',
+        'department_name',
+        'original_legacy_values',
         'email',
         'phone',
         'mobile',
@@ -31,6 +34,7 @@ class CustomerContact extends Model
 
     protected $casts = [
         'is_primary' => 'boolean',
+        'original_legacy_values' => 'array',
     ];
 
     public function customer(): BelongsTo

@@ -13,6 +13,8 @@ use Modules\Contact\src\Events\ContactMerged;
 use Modules\Contact\src\Events\ContactRoleChanged;
 use Modules\Contact\src\Events\ContactUpdated;
 use Modules\Contact\src\Models\ContactAddress;
+use Modules\Contact\src\Models\ContactGroup;
+use Modules\Contact\src\Models\ContactGroupMember;
 use Modules\Contact\src\Models\ContactIdentifier;
 use Modules\Contact\src\Models\ContactImportBatch;
 use Modules\Contact\src\Models\ContactImportStaging;
@@ -23,6 +25,7 @@ use Modules\Contact\src\Models\ContactRelationship;
 use Modules\Contact\src\Models\ContactRole;
 use Modules\Contact\src\Models\ContactSearchIndex;
 use Modules\Contact\src\Models\CoreContact;
+use Modules\Contact\src\Support\ContactTaxonomyRegistry;
 
 /**
  * ContactMasterService — shared contact identity service (ADR 000 Pillar 3).
@@ -31,12 +34,19 @@ use Modules\Contact\src\Models\CoreContact;
  * relationships, visibility, hierarchy, duplicate control, search index.
  *
  * Does NOT own: accounting invoices, HR payroll, property units, inventory items.
+ *
+ * ADR-003A extensions: profession classifications, relationship-scoped
+ * functional category/department, relationship-scoped persistent roles.
  */
 class ContactMasterService
 {
     use ApiResponse;
 
     private ?DomainEventDispatcher $eventDispatcher = null;
+
+    public function __construct(
+        private readonly ContactTaxonomyService $taxonomyService = new ContactTaxonomyService,
+    ) {}
 
     public function setEventDispatcher(DomainEventDispatcher $dispatcher): void
     {
@@ -52,7 +62,7 @@ class ContactMasterService
                 'id' => Str::uuid(),
                 'tenant_id' => $tenantId,
                 'entity_id' => $data['entity_id'] ?? null,
-                'contact_type' => $data['contact_type'] ?? 'individual',
+                'contact_type' => self::normalizeEntityType($data['contact_type'] ?? $data['entity_type'] ?? 'individual'),
                 'first_name' => $data['first_name'] ?? null,
                 'last_name' => $data['last_name'] ?? null,
                 'company_name' => $data['company_name'] ?? null,
@@ -93,7 +103,9 @@ class ContactMasterService
 
         $contact->update(array_filter([
             'entity_id' => $data['entity_id'] ?? null,
-            'contact_type' => $data['contact_type'] ?? null,
+            'contact_type' => isset($data['contact_type']) || isset($data['entity_type'])
+                ? self::normalizeEntityType($data['contact_type'] ?? $data['entity_type'])
+                : null,
             'first_name' => $data['first_name'] ?? null,
             'last_name' => $data['last_name'] ?? null,
             'company_name' => $data['company_name'] ?? null,
@@ -192,10 +204,20 @@ class ContactMasterService
             return null;
         }
 
+        // ADR-003A: relationship-scoped roles are persistent relationship
+        // roles and must use reserved taxonomy codes (CT-VEN-005/016).
+        if (! empty($meta['relationship_id'])) {
+            $role = $this->taxonomyService->assertValidCode(
+                ContactTaxonomyRegistry::TYPE_PERSISTENT_ROLE,
+                $role
+            );
+        }
+
         $contactRole = ContactRole::create([
             'id' => Str::uuid(),
             'tenant_id' => $tenantId,
             'contact_id' => $contactId,
+            'relationship_id' => $meta['relationship_id'] ?? null,
             'role' => $role,
             'role_label' => $meta['role_label'] ?? null,
             'entity_id' => $meta['entity_id'] ?? null,
@@ -310,6 +332,14 @@ class ContactMasterService
 
     // ─── Relationships ────────────────────────────────────────────
 
+    /**
+     * Create a contact relationship.
+     *
+     * ADR-003A: for organisation-person associations (relationship_type
+     * 'org_person') the meta may carry functional_category_code,
+     * department_name/department_id and persistent_role_codes[]. Category and
+     * roles are relationship-scoped attributes, never PERSON intrinsics.
+     */
     public function addRelationship(string $contactId, string $relatedId, string $type, string $tenantId, array $meta = []): ?ContactRelationship
     {
         $contact = $this->find($contactId, $tenantId);
@@ -322,17 +352,197 @@ class ContactMasterService
             throw new \DomainException('CONTACT_RELATIONSHIP_CIRCULAR');
         }
 
-        return ContactRelationship::create([
+        $categoryCode = null;
+        if (! empty($meta['functional_category_code'])) {
+            $categoryCode = $this->taxonomyService->assertValidCode(
+                ContactTaxonomyRegistry::TYPE_FUNCTIONAL_CATEGORY,
+                $meta['functional_category_code']
+            );
+        }
+
+        $relationship = ContactRelationship::create([
             'id' => Str::uuid(),
             'tenant_id' => $tenantId,
             'contact_id' => $contactId,
             'related_contact_id' => $relatedId,
             'relationship_type' => $type,
             'relationship_label' => $meta['relationship_label'] ?? null,
+            'functional_category_code' => $categoryCode,
+            'department_name' => $meta['department_name'] ?? null,
+            'department_id' => $meta['department_id'] ?? null,
             'notes' => $meta['notes'] ?? null,
             'is_primary' => $meta['is_primary'] ?? false,
             'metadata' => $meta['metadata'] ?? null,
         ]);
+
+        // ADR-003A: persistent relationship roles are scoped to this
+        // organisation-person association (relationship_id), never PERSON
+        // intrinsics. Codes must be reserved taxonomy codes.
+        foreach ((array) ($meta['persistent_role_codes'] ?? []) as $roleCode) {
+            $this->addRole($relatedId, (string) $roleCode, $tenantId, [
+                'relationship_id' => $relationship->id,
+            ]);
+        }
+
+        return $relationship;
+    }
+
+    /**
+     * ADR-003A: update relationship-scoped attributes (functional category,
+     * department). Category must be a reserved code.
+     */
+    public function updateRelationship(string $relationshipId, string $tenantId, array $data): ?ContactRelationship
+    {
+        $relationship = ContactRelationship::where('tenant_id', $tenantId)
+            ->where('id', $relationshipId)
+            ->first();
+        if (! $relationship) {
+            return null;
+        }
+
+        $updates = [];
+
+        if (array_key_exists('functional_category_code', $data)) {
+            $updates['functional_category_code'] = $data['functional_category_code']
+                ? $this->taxonomyService->assertValidCode(
+                    ContactTaxonomyRegistry::TYPE_FUNCTIONAL_CATEGORY,
+                    $data['functional_category_code']
+                )
+                : null;
+        }
+        if (array_key_exists('department_name', $data)) {
+            $updates['department_name'] = $data['department_name'];
+        }
+        if (array_key_exists('department_id', $data)) {
+            $updates['department_id'] = $data['department_id'];
+        }
+
+        if ($updates) {
+            $relationship->update($updates);
+        }
+
+        return $relationship->fresh();
+    }
+
+    /**
+     * Replace the persistent relationship roles on an organisation-person
+     * association. Unknown codes are rejected (no canonical code invention).
+     */
+    public function setRelationshipRoles(string $relationshipId, array $roleCodes, string $tenantId): array
+    {
+        $relationship = ContactRelationship::where('tenant_id', $tenantId)
+            ->where('id', $relationshipId)
+            ->first();
+        if (! $relationship) {
+            throw new \DomainException('CONTACT_RELATIONSHIP_NOT_FOUND');
+        }
+
+        $personId = $relationship->related_contact_id;
+
+        return DB::transaction(function () use ($relationship, $personId, $roleCodes, $tenantId) {
+            ContactRole::where('tenant_id', $tenantId)
+                ->where('relationship_id', $relationship->id)
+                ->delete();
+
+            $roles = [];
+            foreach ((array) $roleCodes as $code) {
+                $roles[] = $this->addRole($personId, (string) $code, $tenantId, [
+                    'relationship_id' => $relationship->id,
+                ]);
+            }
+
+            return $roles;
+        });
+    }
+
+    // ─── Classifications (profession/person class) ────────────────
+
+    /**
+     * ADR-003A §4.3: classifications are person-level (identity) attributes,
+     * stored via contact_groups with group_type='classification'. P0 codes:
+     * DOCTOR, NURSE, OTHER only. FINANCE_STAFF/PROCUREMENT_STAFF/etc. are
+     * functional categories, not classifications, and are rejected here.
+     */
+    public function assignClassification(string $contactId, string $code, string $tenantId): ContactGroupMember
+    {
+        $contact = $this->find($contactId, $tenantId);
+        if (! $contact) {
+            throw new \DomainException('CONTACT_NOT_FOUND');
+        }
+
+        $resolved = $this->taxonomyService->assertValidCode(
+            ContactTaxonomyRegistry::TYPE_CLASSIFICATION,
+            $code
+        );
+
+        $this->taxonomyService->ensureSystemTaxonomy($tenantId);
+
+        $group = ContactGroup::where('tenant_id', $tenantId)
+            ->where('group_type', ContactTaxonomyService::CLASSIFICATION_GROUP_TYPE)
+            ->where('group_name', $resolved)
+            ->firstOrFail();
+
+        return ContactGroupMember::firstOrCreate(
+            [
+                'tenant_id' => $tenantId,
+                'contact_id' => $contactId,
+                'group_id' => $group->id,
+            ],
+            ['id' => Str::uuid()]
+        );
+    }
+
+    public function removeClassification(string $contactId, string $code, string $tenantId): bool
+    {
+        $resolved = $this->taxonomyService->assertValidCode(
+            ContactTaxonomyRegistry::TYPE_CLASSIFICATION,
+            $code
+        );
+
+        $group = ContactGroup::where('tenant_id', $tenantId)
+            ->where('group_type', ContactTaxonomyService::CLASSIFICATION_GROUP_TYPE)
+            ->where('group_name', $resolved)
+            ->first();
+        if (! $group) {
+            return false;
+        }
+
+        return ContactGroupMember::where('tenant_id', $tenantId)
+            ->where('contact_id', $contactId)
+            ->where('group_id', $group->id)
+            ->delete() > 0;
+    }
+
+    /** @return string[] canonical classification codes assigned to the person */
+    public function classificationCodes(string $contactId, string $tenantId): array
+    {
+        return ContactGroupMember::where('contact_group_members.tenant_id', $tenantId)
+            ->where('contact_group_members.contact_id', $contactId)
+            ->join('contact_groups', 'contact_groups.id', '=', 'contact_group_members.group_id')
+            ->where('contact_groups.group_type', ContactTaxonomyService::CLASSIFICATION_GROUP_TYPE)
+            ->pluck('contact_groups.group_name')
+            ->all();
+    }
+
+    // ─── Entity type normalization ────────────────────────────────
+
+    /**
+     * ADR-003A §4.1: canonical entity types are PERSON / ORGANISATION.
+     * The legacy storage values are individual/company; this maps both
+     * vocabularies onto storage without persisting profession/role as type.
+     */
+    public static function normalizeEntityType(?string $value): string
+    {
+        return match (strtolower(trim((string) $value))) {
+            'person', 'individual', 'human' => 'individual',
+            'organisation', 'organization', 'company', 'org' => 'company',
+            default => 'individual',
+        };
+    }
+
+    public static function canonicalEntityType(string $storageType): string
+    {
+        return $storageType === 'company' ? 'ORGANISATION' : 'PERSON';
     }
 
     // ─── Search ───────────────────────────────────────────────────
@@ -503,6 +713,8 @@ class ContactMasterService
 
         return [
             'contact' => $contact,
+            'entity_type' => self::canonicalEntityType($contact->contact_type),
+            'classifications' => $this->classificationCodes($id, $tenantId),
             'roles' => $contact->roles,
             'identifiers' => $contact->identifiers,
             'addresses' => $contact->addresses,
