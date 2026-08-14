@@ -5,13 +5,18 @@
     "dev:frontend": "cd frontend && npm run dev",
     "dev:queue": "cd backend && php artisan queue:listen --tries=3 --timeout=180",
     "dev:ollama": "ollama serve",
-    "dev": "concurrently -n backend,frontend,queue,ollama -c green,blue,yellow,magenta \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:queue\" \"npm run dev:ollama\""
+    "dev": "concurrently -n backend,frontend,queue,ollama -c green,blue,yellow,magenta \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:queue\" \"npm run dev:ollama\"",
+    "test": "npx playwright test",
+    "test:ui": "npx playwright test --ui",
+    "test:debug": "npx playwright test --debug",
+    "test:report": "npx playwright show-report"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
     "playwright": "^1.61.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "concurrently": "^9.2.0"
   }
 }
