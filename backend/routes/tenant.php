@@ -166,6 +166,45 @@ Route::middleware([
         require $routesFile;
     }
 
+    // ─── Accounting Findings (ACC-RM-006/007) ──────────────────────────────────
+    Route::prefix('accounting/findings')->group(function () {
+        Route::get('/{entityId}', [\App\Http\Controllers\Api\AccountingFindingsController::class, 'index']);
+        Route::get('/{entityId}/summary', [\App\Http\Controllers\Api\AccountingFindingsController::class, 'summary']);
+        Route::post('/', [\App\Http\Controllers\Api\AccountingFindingsController::class, 'store']);
+        Route::get('/detail/{id}', [\App\Http\Controllers\Api\AccountingFindingsController::class, 'show']);
+        Route::post('/{id}/acknowledge', [\App\Http\Controllers\Api\AccountingFindingsController::class, 'acknowledge']);
+        Route::post('/{id}/investigate', [\App\Http\Controllers\Api\AccountingFindingsController::class, 'investigate']);
+        Route::post('/{id}/resolve', [\App\Http\Controllers\Api\AccountingFindingsController::class, 'resolve']);
+        Route::post('/{id}/dismiss', [\App\Http\Controllers\Api\AccountingFindingsController::class, 'dismiss']);
+        Route::post('/{id}/escalate', [\App\Http\Controllers\Api\AccountingFindingsController::class, 'escalate']);
+    });
+
+    // ─── Accounting Import (ACC-RM-018) ──────────────────────────────────────
+    Route::prefix('accounting/import')->group(function () {
+        Route::post('/stage', [\App\Http\Controllers\Api\AccountingImportController::class, 'stage']);
+        Route::get('/{batchId}/status', [\App\Http\Controllers\Api\AccountingImportController::class, 'status']);
+        Route::post('/{batchId}/commit', [\App\Http\Controllers\Api\AccountingImportController::class, 'commit']);
+    });
+
+    // ─── Multi-Step Approval Workflows (ACC-RM-016) ─────────────────────────
+    Route::prefix('approval/workflows')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\ApprovalWorkflowController::class, 'index']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\ApprovalWorkflowController::class, 'show']);
+        Route::post('/initiate', [\App\Http\Controllers\Api\ApprovalWorkflowController::class, 'initiate']);
+        Route::post('/{instanceId}/approve-step', [\App\Http\Controllers\Api\ApprovalWorkflowController::class, 'approveStep']);
+        Route::post('/{instanceId}/reject-step', [\App\Http\Controllers\Api\ApprovalWorkflowController::class, 'rejectStep']);
+        Route::get('/my-pending', [\App\Http\Controllers\Api\ApprovalWorkflowController::class, 'myPending']);
+        Route::get('/active', [\App\Http\Controllers\Api\ApprovalWorkflowController::class, 'active']);
+    });
+
+    // ─── Period Close (ACC-RM-004/005) ─────────────────────────────────────
+    Route::prefix('accounting/periods')->group(function () {
+        Route::get('/{periodId}/summary', [\App\Http\Controllers\Api\PeriodCloseController::class, 'summary']);
+        Route::get('/{periodId}/validate', [\App\Http\Controllers\Api\PeriodCloseController::class, 'validate']);
+        Route::post('/{periodId}/close', [\App\Http\Controllers\Api\PeriodCloseController::class, 'close']);
+        Route::post('/{periodId}/reopen', [\App\Http\Controllers\Api\PeriodCloseController::class, 'reopen']);
+    });
+
     // ─── Approval Workflow ────────────────────────────────────────────────────
     // Tenant-scoped approval requests for POS void/refund/return/discount.
     // Requires auth:sanctum (inherited from outer middleware group).
