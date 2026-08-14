@@ -28,7 +28,7 @@ class PeriodCloseController extends Controller
     /**
      * Validate period before close.
      */
-    public function validate(string $periodId): JsonResponse
+    public function validatePeriod(string $periodId): JsonResponse
     {
         $period = FiscalPeriod::findOrFail($periodId);
         $issues = $this->periodCloseService->validateBeforeClose($period);

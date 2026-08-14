@@ -200,7 +200,7 @@ Route::middleware([
     // ─── Period Close (ACC-RM-004/005) ─────────────────────────────────────
     Route::prefix('accounting/periods')->group(function () {
         Route::get('/{periodId}/summary', [\App\Http\Controllers\Api\PeriodCloseController::class, 'summary']);
-        Route::get('/{periodId}/validate', [\App\Http\Controllers\Api\PeriodCloseController::class, 'validate']);
+        Route::get('/{periodId}/validate', [\App\Http\Controllers\Api\PeriodCloseController::class, 'validatePeriod']);
         Route::post('/{periodId}/close', [\App\Http\Controllers\Api\PeriodCloseController::class, 'close']);
         Route::post('/{periodId}/reopen', [\App\Http\Controllers\Api\PeriodCloseController::class, 'reopen']);
     });
