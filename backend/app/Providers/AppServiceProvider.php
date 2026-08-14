@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\PostingEngine;
+use App\Listeners\PreventDangerousMigrations;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\Sanctum;
@@ -26,6 +28,9 @@ class AppServiceProvider extends ServiceProvider
     {
         // Use custom PersonalAccessToken model that always uses public schema
         Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
+
+        // Log dangerous migrations (migrate:fresh, db:wipe) for audit trail
+        Event::listen(\Illuminate\Console\Events\CommandFinished::class, PreventDangerousMigrations::class);
 
         // --- Superadmin RBAC gates ---
         Gate::define('manage-admin-users', fn (\App\Models\User $user) => $user->role === 'platform_super_admin'
