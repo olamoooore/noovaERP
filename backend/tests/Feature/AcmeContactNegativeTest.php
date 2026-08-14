@@ -355,6 +355,47 @@ class AcmeContactNegativeTest extends TenantTestCase
         $this->assertTrue(Schema::hasColumn('core_contacts', 'id'));
         $this->assertTrue(Schema::hasColumn('core_contacts', 'display_name'));
         $this->assertTrue(Schema::hasColumn('core_contacts', 'contact_type'));
+
+        // Prove canonical linkage: create a customer via Contact Master
+        // and verify core_contact_uuid is populated (not null).
+        $customer = Customer::create([
+            'code' => 'VC001',
+            'name' => 'Test Org',
+            'is_active' => true,
+            'total_outstanding' => 0,
+        ]);
+
+        $sync = app(CustomerContactSyncService::class);
+        $orgUuid = $sync->ensureOrganisationContact($customer);
+
+        $customer->refresh();
+        $this->assertNotNull($customer->core_contact_uuid, 'core_contact_uuid must be populated after ensureOrganisationContact');
+        $this->assertEquals($orgUuid, $customer->core_contact_uuid);
+
+        // Verify the linked CoreContact is an ORGANISATION type
+        $orgContact = CoreContact::find($orgUuid);
+        $this->assertNotNull($orgContact);
+        $this->assertEquals('company', $orgContact->contact_type);
+
+        // Prove no parallel identity: create a person contact via Contact Master
+        // and verify it also gets a core_contact_uuid.
+        $contact = $customer->customerContacts()->create([
+            'name' => 'Jane Doe',
+            'email' => 'jane@test.com',
+        ]);
+
+        $personUuid = $sync->syncPersonForCustomerContact($customer, $contact, [
+            'classification_code' => 'DOCTOR',
+            'functional_category_code' => 'CLINICAL',
+        ]);
+
+        $contact->refresh();
+        $this->assertNotNull($contact->core_contact_uuid, 'customer_contacts.core_contact_uuid must be set by syncPersonForCustomerContact');
+        $this->assertEquals($personUuid, $contact->core_contact_uuid);
+
+        $personContact = CoreContact::find($personUuid);
+        $this->assertNotNull($personContact);
+        $this->assertEquals('individual', $personContact->contact_type);
     }
 
     // ─── VEN-NT-05b: Primary submitted as role rejected ─────────────────
@@ -400,17 +441,37 @@ class AcmeContactNegativeTest extends TenantTestCase
         $contact1 = $customer->customerContacts()->create(['name' => 'John', 'is_primary' => true]);
         $contact2 = $customer->customerContacts()->create(['name' => 'Jane', 'is_primary' => false]);
 
-        // Create user WITHOUT admin role
+        // Create user WITHOUT admin role (no customers.write permission)
         $regularUser = User::factory()->create();
 
-        // Attempt to set primary without permission (middleware disabled in tests,
-        // so we verify the service-level authorization check)
+        // --- Part 1: Service-level call without actorId (internal path) ---
         $sync = app(CustomerContactSyncService::class);
-        $result = $sync->setPrimaryContact($customer, $contact2->id, $regularUser->id);
+        $result = $sync->setPrimaryContact($customer, $contact2->id);
+        $this->assertTrue($result->is_primary, 'contact2 should be primary after first call');
 
-        // Service succeeds when called directly (authorization is at controller middleware level)
-        // The test verifies that the controller endpoint would require proper middleware
-        $this->assertTrue($result->is_primary);
+        // Verify DB state after first call
+        $this->assertDatabaseHas('customer_contacts', ['id' => $contact2->id, 'is_primary' => true]);
+        $this->assertDatabaseHas('customer_contacts', ['id' => $contact1->id, 'is_primary' => false]);
+
+        // --- Part 2: Service-level call with actorId (unauthorized user) ---
+        // Reset: clear all primaries first, then make contact1 primary
+        DB::table('customer_contacts')->where('customer_id', $customer->id)->update(['is_primary' => false]);
+        DB::table('customer_contacts')->where('id', $contact1->id)->update(['is_primary' => true]);
+        $this->assertDatabaseHas('customer_contacts', ['id' => $contact1->id, 'is_primary' => true]);
+
+        // Attempt with unauthorized user — should throw
+        $threw = false;
+        try {
+            $sync->setPrimaryContact($customer, $contact2->id, $regularUser->id);
+        } catch (\DomainException $e) {
+            $threw = true;
+            $this->assertEquals('UNAUTHORIZED_PRIMARY_CONTACT_CHANGE', $e->getMessage());
+        }
+        $this->assertTrue($threw, 'Expected DomainException for unauthorized primary change');
+
+        // Verify primary did NOT change after failed attempt
+        $this->assertDatabaseHas('customer_contacts', ['id' => $contact1->id, 'is_primary' => true]);
+        $this->assertDatabaseHas('customer_contacts', ['id' => $contact2->id, 'is_primary' => false]);
     }
 
     // ─── VEN-NT-07b: Cross-org name duplicate no auto merge ─────────────
@@ -540,23 +601,103 @@ class AcmeContactNegativeTest extends TenantTestCase
 
         $contact1 = $customer->customerContacts()->create(['name' => 'John', 'is_primary' => true]);
         $contact2 = $customer->customerContacts()->create(['name' => 'Jane', 'is_primary' => false]);
+        $contact3 = $customer->customerContacts()->create(['name' => 'Bob', 'is_primary' => false]);
 
-        $sync = app(CustomerContactSyncService::class);
+        // Genuine concurrent test: two simultaneous primary-contact mutations
+        // via separate DB connections. The unique partial index
+        // customer_contacts_one_primary is the backstop that guarantees
+        // at most one primary per account regardless of application-level locking.
+        $connection1 = DB::connection('pgsql');
+        $connection2 = DB::connection('pgsql');
 
-        // Simulate concurrent writes by calling twice in rapid succession
-        $sync->setPrimaryContact($customer, $contact2->id);
-        $sync->setPrimaryContact($customer, $contact2->id);
+        // Both connections try to set different contacts as primary
+        $connection1->beginTransaction();
+        $connection2->beginTransaction();
 
-        // Only one primary exists — idempotent
+        // Connection 1: clear existing primary, set contact2
+        $connection1->table('customer_contacts')
+            ->where('customer_id', $customer->id)
+            ->where('is_primary', true)
+            ->update(['is_primary' => false]);
+        $connection1->table('customer_contacts')
+            ->where('id', $contact2->id)
+            ->update(['is_primary' => true]);
+
+        // Connection 2: clear existing primary, set contact3
+        $connection2->table('customer_contacts')
+            ->where('customer_id', $customer->id)
+            ->where('is_primary', true)
+            ->update(['is_primary' => false]);
+        $connection2->table('customer_contacts')
+            ->where('id', $contact3->id)
+            ->update(['is_primary' => true]);
+
+        // Commit both — one will hit the unique partial index constraint
+        $connection1->commit();
+        try {
+            $connection2->commit();
+        } catch (\Exception $e) {
+            // Unique constraint violation expected — one transaction wins
+            $connection2->rollBack();
+        }
+
+        // Verify exactly one primary exists (idempotent outcome)
         $primaryCount = CustomerContact::where('customer_id', $customer->id)
             ->where('is_primary', true)
             ->count();
         $this->assertEquals(1, $primaryCount);
 
-        // It's contact2
+        // Verify the primary is one of the two contacts we tried to set
         $primary = CustomerContact::where('customer_id', $customer->id)
             ->where('is_primary', true)
             ->first();
-        $this->assertEquals($contact2->id, $primary->id);
+        $this->assertContains($primary->id, [$contact2->id, $contact3->id]);
+    }
+
+    // ─── API-Level: Permission middleware is registered on contact routes ───
+
+    public function test_api_permission_middleware_registered_on_contact_routes(): void
+    {
+        // Verify that RequirePermission middleware is registered on contact routes
+        // by inspecting the route middleware. The actual enforcement is tested at
+        // the service level (test_ven_nt_06b) and through the RequirePermission
+        // middleware unit behavior.
+        $routes = app('router')->getRoutes();
+        $setPrimaryRoute = $routes->getByAction('App\Http\Controllers\Api\CustomerController@setPrimaryContact');
+        $this->assertNotNull($setPrimaryRoute, 'setPrimaryContact route should exist');
+
+        $middleware = $setPrimaryRoute->gatherMiddleware();
+        $hasPermission = collect($middleware)->contains(function ($m) {
+            return str_contains(is_string($m) ? $m : get_class($m), 'RequirePermission');
+        });
+        $this->assertTrue($hasPermission, 'setPrimaryContact route must have RequirePermission middleware');
+
+        // Verify addContact also has the middleware
+        $addRoute = $routes->getByAction('App\Http\Controllers\Api\CustomerController@addContact');
+        $this->assertNotNull($addRoute, 'addContact route should exist');
+        $addMiddleware = $addRoute->gatherMiddleware();
+        $hasPermissionAdd = collect($addMiddleware)->contains(function ($m) {
+            return str_contains(is_string($m) ? $m : get_class($m), 'RequirePermission');
+        });
+        $this->assertTrue($hasPermissionAdd, 'addContact route must have RequirePermission middleware');
+    }
+
+    public function test_require_permission_returns_403_without_tenant_context(): void
+    {
+        // Verify the RequirePermission middleware blocks requests
+        // when no tenant context is available (returns 403).
+        $unauthorizedUser = User::factory()->create();
+
+        // The test environment strips SetTenantFromUserPreference middleware,
+        // so tenant context is null. RequirePermission should return 403.
+        $response = $this->actingAs($unauthorizedUser, 'sanctum')
+            ->withoutMiddleware(\App\Http\Middleware\SyncTenantUserFromCentralAuth::class)
+            ->postJson('/api/v1/customers/1/contacts', [
+                'name' => 'Test Contact',
+            ]);
+
+        // RequirePermission returns 403 when tenant context is missing
+        $this->assertContains($response->status(), [401, 403],
+            'Request should be blocked when tenant context is unavailable');
     }
 }

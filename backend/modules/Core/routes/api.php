@@ -61,6 +61,7 @@ use App\Http\Middleware\EnsureAccountingPostAccess;
 use App\Http\Middleware\EnsureAccountingReverseAccess;
 use App\Http\Middleware\EnsureAccountingWriteAccess;
 use App\Http\Middleware\EnsureEntityAccess;
+use App\Http\Middleware\RequirePermission;
 use App\Http\Middleware\ResolveEntityContext;
 use Illuminate\Support\Facades\Route;
 
@@ -171,11 +172,15 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::post('customers/{customer}/addresses', [CustomerController::class, 'addAddress']);
     Route::put('customers/{customer}/addresses/{address}', [CustomerController::class, 'updateAddress']);
     Route::delete('customers/{customer}/addresses/{address}', [CustomerController::class, 'deleteAddress']);
-    Route::post('customers/{customer}/contacts', [CustomerController::class, 'addContact']);
-    Route::put('customers/{customer}/contacts/{contact}', [CustomerController::class, 'updateContact']);
-    Route::delete('customers/{customer}/contacts/{contact}', [CustomerController::class, 'deleteContact']);
+    Route::post('customers/{customer}/contacts', [CustomerController::class, 'addContact'])
+        ->middleware(RequirePermission::using('customers.write'));
+    Route::put('customers/{customer}/contacts/{contact}', [CustomerController::class, 'updateContact'])
+        ->middleware(RequirePermission::using('customers.write'));
+    Route::delete('customers/{customer}/contacts/{contact}', [CustomerController::class, 'deleteContact'])
+        ->middleware(RequirePermission::using('customers.write'));
     // ADR-003A CT-VEN-028: atomic SetPrimaryContact.
-    Route::post('customers/{customer}/contacts/{contact}/set-primary', [CustomerController::class, 'setPrimaryContact']);
+    Route::post('customers/{customer}/contacts/{contact}/set-primary', [CustomerController::class, 'setPrimaryContact'])
+        ->middleware(RequirePermission::using('customers.write'));
 
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
         // Invoices

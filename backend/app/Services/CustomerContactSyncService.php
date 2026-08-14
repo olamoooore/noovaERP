@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\Customer;
 use App\Models\CustomerContact;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Modules\Contact\src\Models\ContactRelationship;
 use Modules\Contact\src\Models\CoreContact;
@@ -229,9 +231,29 @@ class CustomerContactSyncService
      */
     public function setPrimaryContact(Customer $customer, int $contactId, ?int $actorId = null): CustomerContact
     {
+        // ADR-003A CT-VEN-020: permission enforcement on primary-contact mutation.
+        // When called through the API with an authenticated user, verify the user
+        // has the required permission. Service-level calls with an explicit actorId
+        // (e.g., from import) skip this check as they are internal.
+        if ($actorId !== null) {
+            $actor = User::find($actorId);
+            if ($actor && ! ($actor->is_super_admin ?? false)) {
+                $roleService = app(\App\Services\TenantRoleService::class);
+                $tenantId = tenant()->id ?? '';
+                if (! $roleService->hasPermission($actor->id, $tenantId, 'customers.write')) {
+                    throw new \DomainException('UNAUTHORIZED_PRIMARY_CONTACT_CHANGE');
+                }
+            }
+        }
+
         return DB::transaction(function () use ($customer, $contactId, $actorId) {
             // Serialize concurrent SetPrimaryContact requests per account.
-            $locked = DB::table('customers')->where('id', $customer->id)->lockForUpdate()->first();
+            // Also verify the customer is not soft-deleted (CT-VEN-007).
+            $locked = DB::table('customers')
+                ->where('id', $customer->id)
+                ->whereNull('deleted_at')
+                ->lockForUpdate()
+                ->first();
             if (! $locked) {
                 throw new \DomainException('CUSTOMER_NOT_FOUND');
             }

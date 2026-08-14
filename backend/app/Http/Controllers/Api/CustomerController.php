@@ -189,9 +189,35 @@ class CustomerController extends Controller
             $customer->addresses()->create($address);
         }
 
-        // Create contacts
+        // ADR-003A CT-VEN-003/004: Every customer creation must route through
+        // Contact Master to ensure canonical identity linkage.
+        // Ensure the customer has a canonical ORGANISATION contact.
+        $sync = app(CustomerContactSyncService::class);
+        $sync->ensureOrganisationContact($customer);
+
+        // Create contacts via Contact Master sync (ensures core_contact_uuid is set).
         foreach ($contacts as $contact) {
-            $customer->customerContacts()->create($contact);
+            $syncContactData = $contact;
+            $legacy = $sync->transformLegacyPayload(
+                $contact['contact_category'] ?? null,
+                $contact['contact_type'] ?? null
+            );
+            $canonical = [
+                'functional_category_code' => $contact['functional_category_code'] ?? $legacy['functional_category_code'],
+                'classification_code' => $contact['classification_code'] ?? $legacy['classification_code'],
+                'persistent_role_codes' => $contact['persistent_role_codes'] ?? $legacy['persistent_role_codes'],
+                'department_name' => $contact['department_name'] ?? null,
+            ];
+            $contactModel = $customer->customerContacts()->create(collect($contact)->only([
+                'name', 'job_title', 'email', 'phone', 'mobile',
+                'street', 'street2', 'city', 'state', 'zip', 'country', 'notes',
+                'contact_category', 'contact_type', 'department_name',
+            ])->all());
+            $sync->syncPersonForCustomerContact($customer, $contactModel, $canonical);
+
+            if ((bool) ($contact['is_primary'] ?? false) || $legacy['is_primary']) {
+                $sync->setPrimaryContact($customer, $contactModel->id);
+            }
         }
 
         // Initialize loyalty if program exists

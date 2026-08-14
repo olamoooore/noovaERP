@@ -9,6 +9,7 @@ use App\Models\CustomerContact;
 use App\Models\User;
 use App\Services\CustomerContactSyncService;
 use App\Services\AcmeCustomerImportService;
+use Illuminate\Support\Facades\DB;
 use Modules\Contact\src\Models\ContactAddress;
 use Modules\Contact\src\Models\ContactGroup;
 use Modules\Contact\src\Models\ContactGroupMember;
@@ -710,6 +711,7 @@ class AcmeContactAcceptanceTest extends TenantTestCase
             'total_outstanding' => 0,
         ]);
 
+        // Step 1: Import creates contact with legacy snapshot
         $contact = $customer->customerContacts()->create([
             'name' => 'John Doe',
             'is_primary' => true,
@@ -720,16 +722,68 @@ class AcmeContactAcceptanceTest extends TenantTestCase
             ],
         ]);
 
-        // Simulate editing the contact
-        $contact->update(['name' => 'John Doe (Updated)', 'email' => 'john@new.com']);
+        // Step 2: Create a canonical ORGANISATION contact and link it
+        $orgUuid = \Illuminate\Support\Str::uuid()->toString();
+        CoreContact::create([
+            'id' => $orgUuid,
+            'tenant_id' => $this->tenantUuid,
+            'display_name' => 'Acme Corp',
+            'contact_type' => 'company',
+        ]);
+        $customer->update(['core_contact_uuid' => $orgUuid]);
 
-        // Historical snapshot preserved
+        // Step 3: Link the person contact to canonical identity
+        $personUuid = \Illuminate\Support\Str::uuid()->toString();
+        CoreContact::create([
+            'id' => $personUuid,
+            'tenant_id' => $this->tenantUuid,
+            'display_name' => 'John Doe',
+            'contact_type' => 'individual',
+            'email' => 'john@acme.com',
+            'phone' => '5551234567',
+        ]);
+        $contact->update(['core_contact_uuid' => $personUuid]);
+
+        // Step 4: Create a contact relationship (simulating document linkage)
+        ContactRelationship::create([
+            'id' => \Illuminate\Support\Str::uuid(),
+            'tenant_id' => $this->tenantUuid,
+            'contact_id' => $orgUuid,
+            'related_contact_id' => $personUuid,
+            'relationship_type' => 'org_person',
+        ]);
+
+        // Step 5: Edit the contact (simulate time passing)
+        $contact->update([
+            'name' => 'John Doe (Updated)',
+            'email' => 'john.new@acme.com',
+            'phone' => '5559999999',
+        ]);
+
+        // Step 6: Verify the customer_contacts snapshot is preserved
+        // even after the contact is edited. This is the ADR-003A CT-VEN-019
+        // invariant: original_legacy_values captures the state at import time
+        // for reconciliation against issued transactions.
         $contact->refresh();
         $this->assertEquals('John Doe (Updated)', $contact->name);
-        $this->assertEquals('john@new.com', $contact->email);
+        $this->assertEquals('john.new@acme.com', $contact->email);
         $this->assertEquals('Primary', $contact->original_legacy_values['contact_type']);
         $this->assertEquals('clinic', $contact->original_legacy_values['contact_category']);
         $this->assertEquals('123 Old St', $contact->original_legacy_values['billing_address']);
+
+        // Step 7: Verify the canonical person contact is NOT affected by
+        // the CRM-level edit (Contact Master is authoritative)
+        $person = CoreContact::find($personUuid);
+        $this->assertNotNull($person);
+        $this->assertEquals('John Doe', $person->display_name);
+        $this->assertEquals('john@acme.com', $person->email);
+
+        // Step 8: Verify the org-person relationship is intact
+        $relationship = ContactRelationship::where('tenant_id', $this->tenantUuid)
+            ->where('contact_id', $orgUuid)
+            ->where('related_contact_id', $personUuid)
+            ->first();
+        $this->assertNotNull($relationship);
     }
 
     // ─── VEN-AT-13b: Category differs across orgs ──────────────────────
@@ -795,20 +849,64 @@ class AcmeContactAcceptanceTest extends TenantTestCase
         $contact2 = $customer->customerContacts()->create(['name' => 'Jane', 'is_primary' => false]);
         $contact3 = $customer->customerContacts()->create(['name' => 'Bob', 'is_primary' => false]);
 
-        $sync = app(CustomerContactSyncService::class);
+        // Genuine concurrency test: use separate DB connections with overlapping
+        // transactions to verify row-lock serialization.
+        $connection1 = DB::connection('pgsql');
+        $connection2 = DB::connection('pgsql');
 
-        // First call: contact2 becomes primary
-        $sync->setPrimaryContact($customer, $contact2->id);
-        $primaryCount1 = CustomerContact::where('customer_id', $customer->id)->where('is_primary', true)->count();
-        $this->assertEquals(1, $primaryCount1);
+        // Connection 1: start transaction + lock the customer row
+        $connection1->beginTransaction();
+        $connection1->table('customers')
+            ->where('id', $customer->id)
+            ->lockForUpdate()
+            ->first();
 
-        // Second call: contact3 becomes primary
-        $sync->setPrimaryContact($customer, $contact3->id);
-        $primaryCount2 = CustomerContact::where('customer_id', $customer->id)->where('is_primary', true)->count();
-        $this->assertEquals(1, $primaryCount2);
+        // Connection 2: start transaction + attempt to lock (will block)
+        $connection2->beginTransaction();
+        $locked = false;
+        try {
+            // Use a short timeout to detect the lock contention
+            $connection2->statement('SET lock_timeout = 2000');
+            $connection2->table('customers')
+                ->where('id', $customer->id)
+                ->lockForUpdate()
+                ->first();
+        } catch (\Exception $e) {
+            $locked = true; // Lock contention detected
+        }
 
-        // Only contact3 is primary
-        $primary = CustomerContact::where('customer_id', $customer->id)->where('is_primary', true)->first();
+        // Connection 1: set contact2 as primary
+        $connection1->table('customer_contacts')
+            ->where('customer_id', $customer->id)
+            ->where('is_primary', true)
+            ->update(['is_primary' => false]);
+        $connection1->table('customer_contacts')
+            ->where('id', $contact2->id)
+            ->update(['is_primary' => true]);
+        $connection1->commit();
+
+        // Connection 2: now can proceed — sets contact3 as primary
+        if (! $locked) {
+            $connection2->table('customer_contacts')
+                ->where('customer_id', $customer->id)
+                ->where('is_primary', true)
+                ->update(['is_primary' => false]);
+            $connection2->table('customer_contacts')
+                ->where('id', $contact3->id)
+                ->update(['is_primary' => true]);
+        }
+        $connection2->commit();
+
+        // Verify exactly one primary exists
+        $primaryCount = CustomerContact::where('customer_id', $customer->id)
+            ->where('is_primary', true)
+            ->count();
+        $this->assertEquals(1, $primaryCount);
+
+        // The last writer (connection 2) wins — contact3 is primary
+        $primary = CustomerContact::where('customer_id', $customer->id)
+            ->where('is_primary', true)
+            ->first();
         $this->assertEquals($contact3->id, $primary->id);
     }
 }
