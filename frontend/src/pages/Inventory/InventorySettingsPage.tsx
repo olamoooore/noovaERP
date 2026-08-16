@@ -4,8 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { useSearchParams } from 'react-router-dom'
+import { WarehousesPage } from './WarehousesPage'
 
 interface InventorySettings {
   id: number
@@ -38,6 +41,8 @@ const DEFAULT_SETTINGS: InventorySettings = {
 export function InventorySettingsPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = searchParams.get('tab') || 'settings'
 
   const { data: settings, error, isLoading, refetch } = useQuery<InventorySettings>({
     queryKey: ['inventory-settings'],
@@ -85,7 +90,18 @@ export function InventorySettingsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={(tab) => setSearchParams({ tab }, { replace: true })}
+      >
+        <TabsList>
+          <TabsTrigger value="settings">Inventory Settings</TabsTrigger>
+          <TabsTrigger value="warehouses">Warehouses</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="settings">
+          <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-3xl font-bold">Inventory Settings</h1>
         <p className="text-muted-foreground">Configure inventory behaviour for your business</p>
@@ -270,6 +286,13 @@ export function InventorySettingsPage() {
           </div>
         </CardContent>
       </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="warehouses" className="space-y-4">
+          <WarehousesPage />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

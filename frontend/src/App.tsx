@@ -103,13 +103,9 @@ const BankReconciliationHistoryPage = lazy(() => import('@/pages/accounting/Bank
 const ApSubledgerReconciliationPage = lazy(() => import('@/pages/accounting/ApSubledgerReconciliationPage').then(m => ({ default: m.ApSubledgerReconciliationPage })))
 const AssetsManagementPage = lazy(() => import('@/pages/accounting/AssetsManagementPage'))
 const LockDatesPage = lazy(() => import('@/pages/accounting/LockDatesPage'))
-const MultiCurrencyPage = lazy(() => import('@/pages/accounting/MultiCurrencyPage'))
 const AnalyticAccountsPage = lazy(() => import('@/pages/accounting/AnalyticAccountsPage'))
-const AccountingOnboardingPage = lazy(() => import('@/pages/accounting/AccountingOnboardingPage'))
-const AccountingEntityManagementPage = lazy(() => import('@/pages/accounting/AccountingEntityManagementPage'))
 const CompanySettingsPage = lazy(() => import('@/pages/accounting/CompanySettingsPage'))
 const PaymentTermsPage = lazy(() => import('@/pages/accounting/PaymentTermsPage'))
-const ChartOfAccountsPage = lazy(() => import('@/pages/accounting/ChartOfAccountsPage'))
 const JournalEntriesPage = lazy(() => import('@/pages/accounting/JournalEntriesPage'))
 const JournalsPage = lazy(() => import('@/pages/accounting/JournalsPage'))
 const TaxConfigurationPage = lazy(() => import('@/pages/accounting/TaxConfigurationPage'))
@@ -244,7 +240,6 @@ const PurchaseOrdersPage = lazy(() => import('@/pages/Inventory/PurchaseOrdersPa
 const PurchaseOrderCreatePage = lazy(() => import('@/pages/Inventory/PurchaseOrderCreatePage').then(m => ({ default: m.PurchaseOrderCreatePage })))
 const WarehouseTransfersPage = lazy(() => import('@/pages/Inventory/WarehouseTransfersPage').then(m => ({ default: m.WarehouseTransfersPage })))
 const WarehouseTransferCreatePage = lazy(() => import('@/pages/Inventory/WarehouseTransferCreatePage').then(m => ({ default: m.WarehouseTransferCreatePage })))
-const WarehousesPage = lazy(() => import('@/pages/Inventory/WarehousesPage').then(m => ({ default: m.WarehousesPage })))
 const InventorySettingsPage = lazy(() => import('@/pages/Inventory/InventorySettingsPage').then(m => ({ default: m.InventorySettingsPage })))
 
 // Payment Gateway Pages
@@ -330,7 +325,7 @@ function App() {
                 <Route path="/inventory/purchase-orders/new" element={<PurchaseOrderCreatePage />} />
                 <Route path="/inventory/transfers" element={<WarehouseTransfersPage />} />
                 <Route path="/inventory/transfers/new" element={<WarehouseTransferCreatePage />} />
-                <Route path="/inventory/warehouses" element={<WarehousesPage />} />
+                <Route path="/inventory/warehouses" element={<Navigate to="/inventory/settings?tab=warehouses" replace />} />
                 <Route path="/inventory/suppliers" element={<SuppliersPage />} />
                 <Route path="/inventory/settings" element={<InventorySettingsPage />} />
                 <Route path="/suppliers" element={<SuppliersPage />} />
@@ -413,7 +408,7 @@ function App() {
                 <Route path="/accounting/vendors/transactions" element={<APTransactionsPage />} />
                 
                 {/* Accounting Core Section */}
-                <Route path="/accounting/core/chart-of-accounts" element={<ChartOfAccountsPage />} />
+                <Route path="/accounting/core/chart-of-accounts" element={<Navigate to="/accounting/configuration/company?tab=chart-of-accounts" replace />} />
                 <Route path="/accounting/core/journal-entries" element={<JournalEntriesPage />} />
                 <Route path="/accounting/core/journals" element={<JournalsPage />} />
                 <Route path="/accounting/core/reconciliation" element={<BankReconciliationPage />} />
@@ -421,10 +416,10 @@ function App() {
                 <Route path="/accounting/ap-reconciliation" element={<ApSubledgerReconciliationPage />} />
                 <Route path="/accounting/core/assets" element={<AssetsManagementPage />} />
                 <Route path="/accounting/core/lock-dates" element={<LockDatesPage />} />
-                <Route path="/accounting/core/multi-currency" element={<MultiCurrencyPage />} />
+                <Route path="/accounting/core/multi-currency" element={<Navigate to="/accounting/configuration/company?tab=multi-currency" replace />} />
                 <Route path="/accounting/core/analytic-accounts" element={<AnalyticAccountsPage />} />
-                <Route path="/accounting/core/onboarding" element={<AccountingOnboardingPage />} />
-                <Route path="/accounting/core/entities" element={<AccountingEntityManagementPage />} />
+                <Route path="/accounting/core/onboarding" element={<Navigate to="/accounting/configuration/company?tab=onboarding" replace />} />
+                <Route path="/accounting/core/entities" element={<Navigate to="/accounting/configuration/company?tab=entities" replace />} />
                 
                 {/* Reporting Section */}
                 <Route path="/accounting/reporting" element={<Navigate to="/accounting/reporting/trial-balance" replace />} />
