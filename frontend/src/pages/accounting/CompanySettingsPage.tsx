@@ -18,10 +18,14 @@ import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
 import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
 import { CountryPluginSettings } from '@/pages/Settings/CountryPluginSettings';
+import ChartOfAccountsPage from '@/pages/accounting/ChartOfAccountsPage';
+import MultiCurrencyPage from '@/pages/accounting/MultiCurrencyPage';
+import AccountingOnboardingPage from '@/pages/accounting/AccountingOnboardingPage';
+import AccountingEntityManagementPage from '@/pages/accounting/AccountingEntityManagementPage';
 
 export default function CompanySettingsPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'company');
@@ -305,13 +309,23 @@ export default function CompanySettingsPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
+      <Tabs
+        value={activeTab}
+        onValueChange={(tab) => {
+          setActiveTab(tab);
+          setSearchParams({ tab }, { replace: true });
+        }}
+      >
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
           <TabsTrigger value="company">Company Info</TabsTrigger>
           <TabsTrigger value="fiscal">Fiscal Year</TabsTrigger>
           <TabsTrigger value="currency">Currency & Formats</TabsTrigger>
           <TabsTrigger value="accounts">Default Accounts</TabsTrigger>
           <TabsTrigger value="country">Country Plugin</TabsTrigger>
+          <TabsTrigger value="chart-of-accounts">Chart of Accounts</TabsTrigger>
+          <TabsTrigger value="multi-currency">Multi-Currency</TabsTrigger>
+          <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
+          <TabsTrigger value="entities">Entities</TabsTrigger>
         </TabsList>
 
         {/* Company Info Tab */}
@@ -822,6 +836,22 @@ export default function CompanySettingsPage() {
         {/* Country Plugin Tab */}
         <TabsContent value="country" className="space-y-4">
           <CountryPluginSettings />
+        </TabsContent>
+
+        <TabsContent value="chart-of-accounts" className="space-y-4">
+          <ChartOfAccountsPage embedded />
+        </TabsContent>
+
+        <TabsContent value="multi-currency" className="space-y-4">
+          <MultiCurrencyPage embedded />
+        </TabsContent>
+
+        <TabsContent value="onboarding" className="space-y-4">
+          <AccountingOnboardingPage />
+        </TabsContent>
+
+        <TabsContent value="entities" className="space-y-4">
+          <AccountingEntityManagementPage embedded />
         </TabsContent>
       </Tabs>
     </div>

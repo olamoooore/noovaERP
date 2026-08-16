@@ -25,35 +25,62 @@ const baseNavItems: NavItem[] = [
     icon: 'solar:home-2-bold-duotone',
   },
   {
-    title: 'POS',
-    href: '/pos',
-    icon: 'solar:cash-out-bold-duotone',
-    featureKey: 'pos',
+    title: 'Contacts',
+    href: '/customers',
+    icon: 'solar:users-group-two-rounded-bold-duotone',
     children: [
       {
-        title: 'Open POS',
-        href: '/pos',
-        icon: 'solar:shop-bold-duotone',
+        title: 'Customers',
+        href: '/customers',
+        icon: 'solar:users-group-rounded-bold-duotone',
       },
       {
-        title: 'POS Orders',
-        href: '/pos/orders',
-        icon: 'solar:document-text-bold-duotone',
+        title: 'Vendors',
+        href: '/accounting/vendors',
+        icon: 'solar:users-group-two-rounded-bold-duotone',
       },
       {
-        title: 'Barcodes',
-        href: '/pos/barcodes',
-        icon: 'solar:qr-code-bold-duotone',
-      },
-      {
-        title: 'Reports',
-        href: '/pos/reports',
-        icon: 'solar:chart-2-bold-duotone',
-      },
-      {
-        title: 'POS Settings',
-        href: '/pos/settings',
-        icon: 'solar:settings-bold-duotone',
+        title: 'Employee',
+        href: '/hrm',
+        icon: 'solar:users-group-two-rounded-bold-duotone',
+        featureKey: 'hrm',
+        children: [
+          {
+            title: 'Dashboard',
+            href: '/hrm',
+            icon: 'solar:chart-square-bold-duotone',
+          },
+          {
+            title: 'Employees',
+            href: '/hrm/employees',
+            icon: 'solar:user-id-bold-duotone',
+          },
+          {
+            title: 'Contracts',
+            href: '/hrm/contracts',
+            icon: 'solar:document-text-bold-duotone',
+          },
+          {
+            title: 'Timeshifts',
+            href: '/hrm/timeshifts',
+            icon: 'solar:clock-circle-bold-duotone',
+          },
+          {
+            title: 'Attendance',
+            href: '/hrm/attendance',
+            icon: 'solar:clipboard-list-bold-duotone',
+          },
+          {
+            title: 'Leave Requests',
+            href: '/hrm/leave-requests',
+            icon: 'solar:calendar-bold-duotone',
+          },
+          {
+            title: 'Payroll',
+            href: '/hrm/payroll',
+            icon: 'solar:wallet-money-bold-duotone',
+          },
+        ],
       },
     ],
   },
@@ -63,6 +90,11 @@ const baseNavItems: NavItem[] = [
     icon: 'solar:box-bold-duotone',
     featureKey: 'inventory',
     children: [
+       {
+        title: 'Dashboard',
+        href: '',
+        icon: 'solar:chart-square-bold-duotone',
+      },
       {
         title: 'All Products',
         href: '/products',
@@ -74,12 +106,51 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:add-circle-bold-duotone',
       },
       {
+        title: 'Report',
+        href: '',
+        icon: 'solar:document-text-bold-duotone',
+      },
+      {
         title: 'Product Settings',
         href: '/products/settings',
         icon: 'solar:settings-bold-duotone',
       },
     ],
   },
+  // {
+  //   title: 'POS',
+  //   href: '/pos',
+  //   icon: 'solar:cash-out-bold-duotone',
+  //   featureKey: 'pos',
+  //   children: [
+  //     {
+  //       title: 'Open POS',
+  //       href: '/pos',
+  //       icon: 'solar:shop-bold-duotone',
+  //     },
+  //     {
+  //       title: 'POS Orders',
+  //       href: '/pos/orders',
+  //       icon: 'solar:document-text-bold-duotone',
+  //     },
+  //     {
+  //       title: 'Barcodes',
+  //       href: '/pos/barcodes',
+  //       icon: 'solar:qr-code-bold-duotone',
+  //     },
+  //     {
+  //       title: 'Reports',
+  //       href: '/pos/reports',
+  //       icon: 'solar:chart-2-bold-duotone',
+  //     },
+  //     {
+  //       title: 'POS Settings',
+  //       href: '/pos/settings',
+  //       icon: 'solar:settings-bold-duotone',
+  //     },
+  //   ],
+  // },
+  
   {
     title: 'Inventory',
     href: '/inventory',
@@ -96,16 +167,11 @@ const baseNavItems: NavItem[] = [
         href: '/inventory/stock',
         icon: 'solar:box-bold-duotone',
       },
-      {
-        title: 'Stock Movements',
-        href: '/inventory/movements',
-        icon: 'solar:transfer-horizontal-bold-duotone',
-      },
-      {
-        title: 'Stock Operations',
-        href: '/inventory/operations',
-        icon: 'solar:clipboard-list-bold-duotone',
-      },
+      // {
+      //   title: 'Stock Movements',
+      //   href: '/inventory/movements',
+      //   icon: 'solar:transfer-horizontal-bold-duotone',
+      // },
       {
         title: 'Purchase Orders',
         href: '/inventory/purchase-orders',
@@ -116,15 +182,15 @@ const baseNavItems: NavItem[] = [
         href: '/inventory/transfers',
         icon: 'solar:round-transfer-horizontal-bold-duotone',
       },
+      // {
+      //   title: 'Suppliers',
+      //   href: '/inventory/suppliers',
+      //   icon: 'solar:users-group-two-rounded-bold-duotone',
+      // },
       {
-        title: 'Warehouses',
-        href: '/inventory/warehouses',
-        icon: 'solar:buildings-3-bold-duotone',
-      },
-      {
-        title: 'Suppliers',
-        href: '/inventory/suppliers',
-        icon: 'solar:users-group-two-rounded-bold-duotone',
+        title: 'Report',
+        href: '',
+        icon: 'solar:document-text-bold-duotone',
       },
       {
         title: 'Settings',
@@ -189,6 +255,16 @@ const baseNavItems: NavItem[] = [
         href: '/sales/customer-bonus-schemes',
         icon: 'solar:users-group-rounded-bold-duotone',
       },
+        {
+        title: 'Report',
+        href: '',
+        icon: 'solar:document-text-bold-duotone',
+      },
+      {
+        title: 'Settings',
+        href: '/inventory/settings',
+        icon: 'solar:settings-bold-duotone',
+      },
     ],
   },
   {
@@ -215,127 +291,192 @@ const baseNavItems: NavItem[] = [
     icon: 'solar:chart-2-bold-duotone',
     featureKey: 'accounting',
     children: [
-      {
-        title: 'Onboarding',
-        href: '/accounting/core/onboarding',
-        icon: 'solar:clipboard-check-bold-duotone',
-      },
+      
       {
         title: 'Dashboard',
         href: '/accounting/dashboard',
         icon: 'solar:chart-square-bold-duotone',
       },
       {
-        title: 'Chart of Accounts',
-        href: '/accounting/core/chart-of-accounts',
-        icon: 'solar:notebook-bold-duotone',
-      },
-      {
-        title: 'Journal Entries',
-        href: '/accounting/core/journal-entries',
-        icon: 'solar:document-text-bold-duotone',
-      },
+        title: 'Customers',
+        href: '/customers',
+        icon: 'solar:users-group-rounded-bold-duotone',
+        featureKey: 'customers',
+    children: [
+
       {
         title: 'Customers',
         href: '/customers',
         icon: 'solar:users-group-rounded-bold-duotone',
       },
+
       {
         title: 'Customer Invoices',
         href: '/accounting/customers/bills',
         icon: 'solar:bill-list-bold-duotone',
       },
       {
+        title: 'Credit Notes',
+        href: '/accounting/customers/credit-notes',
+        icon: 'solar:wallet-money-bold-duotone',
+      },
+      {
+        title: 'Payments',
+        href: '/accounting/customers/payments',
+        icon: 'solar:wallet-money-bold-duotone',
+      },
+      {
+        title: 'Batch Payments',
+        href: '/accounting/customers/batch-payments',
+        icon: 'solar:wallet-money-bold-duotone',
+      },
+
+
+    ],
+      },
+      
+      {
+        title: 'Vendors',
+        href: '/accounting/vendors',
+        icon: 'solar:users-group-two-rounded-bold-duotone',
+         featureKey: 'vendors',
+    children: [
+       
+
+       {
         title: 'Vendors',
         href: '/accounting/vendors',
         icon: 'solar:users-group-two-rounded-bold-duotone',
       },
-      {
+
+       {
         title: 'Vendor Bills',
         href: '/accounting/vendors/bills',
         icon: 'solar:clipboard-list-bold-duotone',
+      },
+      {
+        title: 'Debit Notes',
+        href: '/accounting/vendors/debit-notes',
+        icon: 'solar:wallet-money-bold-duotone',
+      },
+      {
+        title: 'Payments',
+        href: '/accounting/vendors/payments',
+        icon: 'solar:wallet-money-bold-duotone',
+      },
+      {
+        title: 'Batch Payments',
+        href: '/accounting/vendors/batch-payments',
+        icon: 'solar:wallet-money-bold-duotone',
+      },
+
+
+
+    ],
+      },
+
+      {
+    title: 'Accounting',
+    href: '',
+    icon: 'solar:chart-2-bold-duotone',
+    featureKey: 'accounting-data',
+    children: [
+         {
+    title: 'Transactions',
+    href: '',
+    icon: 'solar:chart-2-bold-duotone',
+    featureKey: 'transactions',
+    children: [
+{
+        title: 'Journal Entries',
+        href: '/accounting/core/journal-entries',
+        icon: 'solar:document-text-bold-duotone',
+      },
+
+      
+    ],
+      },
+            {
+    title: 'Assets & Liabilities',
+    href: '',
+    icon: 'solar:chart-2-bold-duotone',
+    featureKey: 'assets-liabilities',
+    children: [
+ {
+        title: 'Fixed Assets',
+        href: '/accounting/core/assets',
+        icon: 'solar:buildings-bold-duotone',
+      },
+      {
+        title: 'Loans',
+        href: '/accounting/core/loans',
+        icon: 'solar:document-text-bold-duotone',
       },
       {
         title: 'Bank Accounts',
         href: '/accounting/configuration/bank-accounts',
         icon: 'solar:card-bold-duotone',
       },
-      {
-        title: 'Bank Reconciliation',
+
+      
+    ],
+      },
+                 {
+    title: 'Closing',
+    href: '',
+    icon: 'solar:chart-2-bold-duotone',
+    featureKey: 'closing',
+    children: [
+{
+        title: 'Reconcile',
         href: '/accounting/core/reconciliation',
-        icon: 'solar:safe-2-bold-duotone',
-      },
-      {
-        title: 'Entities',
-        href: '/accounting/core/entities',
-        icon: 'solar:buildings-2-bold-duotone',
-      },
-      {
-        title: 'Fixed Assets',
-        href: '/accounting/core/assets',
-        icon: 'solar:buildings-bold-duotone',
-      },
-      {
-        title: 'Multi-Currency',
-        href: '/accounting/core/multi-currency',
-        icon: 'solar:dollar-bold-duotone',
-      },
-      {
-        title: 'MyInvois E-Invoice',
-        href: '/accounting/reporting/myinvoice',
         icon: 'solar:document-text-bold-duotone',
       },
       {
+        title: 'Tax Returns',
+        href: '/accounting/core/tax-returns',
+        icon: 'solar:document-text-bold-duotone',
+      },
+      {
+        title: 'Lock Dates',
+        href: '/accounting/core/tax-returns',
+        icon: 'solar:document-text-bold-duotone',
+      },
+
+      
+    ],
+      },
+    {
+    title: 'Review',
+    href: '',
+    icon: 'solar:chart-2-bold-duotone',
+    featureKey: 'review',
+    children: [
+{
+        title: 'Journal Items',
+        href: '/accounting/core/journal-items',
+        icon: 'solar:document-text-bold-duotone',
+      },
+      {
+        title: 'Journal Audit',
+        href: '/accounting/core/journal-audit',
+        icon: 'solar:document-text-bold-duotone',
+      },
+
+      
+    ],
+      },
+    {
+    title: 'AI Suites',
+    href: '',
+    icon: 'solar:chart-2-bold-duotone',
+    featureKey: 'ai-suites',
+    children: [
+ {
         title: 'Financial Close',
         href: '/financial-close',
         icon: 'solar:calendar-mark-bold-duotone',
-        children: [
-          {
-            title: 'Dashboard',
-            href: '/financial-close',
-            icon: 'solar:home-2-bold-duotone',
-          },
-          {
-            title: 'Close Cycles',
-            href: '/financial-close/cycles',
-            icon: 'solar:calendar-bold-duotone',
-          },
-          {
-            title: 'My Tasks',
-            href: '/financial-close/tasks',
-            icon: 'solar:list-check-bold-duotone',
-          },
-          {
-            title: 'Review Queue',
-            href: '/financial-close/review-queue',
-            icon: 'solar:inbox-bold-duotone',
-          },
-          {
-            title: 'AI Findings',
-            href: '/financial-close/findings',
-            icon: 'solar:magic-stick-3-bold-duotone',
-          },
-          {
-            title: 'Readiness Cockpit',
-            href: '/financial-close/readiness',
-            icon: 'solar:shield-check-bold-duotone',
-          },
-          {
-            title: 'Forecast',
-            href: '/financial-close/forecast',
-            icon: 'solar:chart-2-bold-duotone',
-          },
-          {
-            title: 'Executive Summary',
-            href: '/financial-close/executive',
-            icon: 'solar:chart-bold-duotone',
-          },
-          {
-            title: 'Audit Trail',
-            href: '/financial-close/audit-trail',
-            icon: 'solar:shield-check-bold-duotone',
-          },
-        ],
+      
       },
       {
         title: 'OCR Bookkeeping',
@@ -343,27 +484,28 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:document-add-bold-duotone',
         featureKey: 'ocr-bookkeeping',
       },
+
+      
+    ],
+      },
+
+
+
+    ],
+      },
+     
+      
+      // {
+      //   title: 'MyInvois E-Invoice',
+      //   href: '/accounting/reporting/myinvoice',
+      //   icon: 'solar:document-text-bold-duotone',
+      // },
+     
       {
         title: 'Configuration',
         href: '/accounting/configuration/company',
         icon: 'solar:settings-bold-duotone',
-        children: [
-          {
-            title: 'Company',
-            href: '/accounting/configuration/company',
-            icon: 'solar:buildings-2-bold-duotone',
-          },
-          {
-            title: 'Country Plugin',
-            href: '/accounting/configuration/country-plugin',
-            icon: 'solar:flag-bold-duotone',
-          },
-          {
-            title: 'MyInvois',
-            href: '/accounting/configuration/company?tab=country',
-            icon: 'solar:document-text-bold-duotone',
-          },
-        ],
+       
       },
     ],
   },
@@ -519,49 +661,6 @@ const baseNavItems: NavItem[] = [
         title: 'Worksheets',
         href: '/field-service/worksheet-templates',
         icon: 'solar:document-text-bold-duotone',
-      },
-    ],
-  },
-  {
-    title: 'HRM',
-    href: '/hrm',
-    icon: 'solar:users-group-rounded-bold-duotone',
-    featureKey: 'hrm',
-    children: [
-      {
-        title: 'Dashboard',
-        href: '/hrm',
-        icon: 'solar:chart-square-bold-duotone',
-      },
-      {
-        title: 'Employees',
-        href: '/hrm/employees',
-        icon: 'solar:user-id-bold-duotone',
-      },
-      {
-        title: 'Contracts',
-        href: '/hrm/contracts',
-        icon: 'solar:document-text-bold-duotone',
-      },
-      {
-        title: 'Timeshifts',
-        href: '/hrm/timeshifts',
-        icon: 'solar:clock-circle-bold-duotone',
-      },
-      {
-        title: 'Attendance',
-        href: '/hrm/attendance',
-        icon: 'solar:clipboard-list-bold-duotone',
-      },
-      {
-        title: 'Leave Requests',
-        href: '/hrm/leave-requests',
-        icon: 'solar:calendar-bold-duotone',
-      },
-      {
-        title: 'Payroll',
-        href: '/hrm/payroll',
-        icon: 'solar:wallet-money-bold-duotone',
       },
     ],
   },
@@ -789,58 +888,144 @@ export function Sidebar() {
     return hasPermission(permission)
   }
 
-  const navItems = baseNavItems.reduce<NavItem[]>((items, item) => {
-    if (!isFeatureEnabled(item.featureKey)) {
-      return items
+  const filterNavItem = (item: NavItem): NavItem | null => {
+    if (!isFeatureEnabled(item.featureKey)) return null
+    if (!canAccessNavItem(item)) return null
+
+    if (!item.children) return item
+
+    const children = item.children
+      .map(filterNavItem)
+      .filter((child): child is NavItem => child !== null)
+
+    if (!item.featureKey && features && item.children.length > 0 && children.length === 0) {
+      return null
     }
 
-    if (!canAccessNavItem(item)) {
-      return items
-    }
+    return { ...item, children }
+  }
 
-    const children = item.children?.filter((child) => {
-      if (!isFeatureEnabled(child.featureKey)) return false
-      return canAccessNavItem(child)
-    })
-
-    if (item.children && !item.featureKey && features && (!children || children.length === 0)) {
-      return items
-    }
-
-    items.push(children ? { ...item, children } : item)
-
-    return items
-  }, [])
+  const navItems = baseNavItems
+    .map(filterNavItem)
+    .filter((item): item is NavItem => item !== null)
 
   const toggleExpand = (title: string) => {
-    setExpandedItems(prev => 
-      prev.includes(title) 
+    setExpandedItems(prev =>
+      prev.includes(title)
         ? prev.filter(t => t !== title)
         : [...prev, title]
     )
   }
 
   const isItemActive = (item: NavItem): boolean => {
-    if (location.pathname === item.href) return true
+    if (item.href && location.pathname === item.href) return true
     // For parent items, check if current route starts with the parent href
     // This catches nested routes like /sales/orders when parent is /sales
-    if (item.href !== '/' && location.pathname.startsWith(item.href + '/')) return true
+    if (item.href && item.href !== '/' && location.pathname.startsWith(item.href + '/')) return true
     if (item.children) {
-      return item.children.some(child =>
-        location.pathname === child.href || location.pathname.startsWith(child.href + '/')
-      )
+      return item.children.some(child => isItemActive(child))
     }
     return false
   }
 
-  // Auto-expand parent items when a child route is active
-  const activeParents = navItems
-    .filter(item => item.children && isItemActive(item))
-    .map(item => item.title)
+  // Auto-expand parent items (at any depth) when a descendant route is active
+  const collectActiveParents = (items: NavItem[]): string[] => {
+    const result: string[] = []
+    for (const item of items) {
+      if (item.children && item.children.length > 0 && isItemActive(item)) {
+        result.push(item.title, ...collectActiveParents(item.children))
+      }
+    }
+    return result
+  }
+
+  const activeParents = collectActiveParents(navItems)
 
   const effectiveExpanded = [...new Set([...expandedItems, ...activeParents])]
 
   const sidebarWidth = isMinimized ? 'w-16' : 'w-64'
+
+  const renderNavItem = (item: NavItem, depth = 0) => {
+    const isActive = isItemActive(item)
+    const isExpanded = effectiveExpanded.includes(item.title)
+    const hasChildren = item.children && item.children.length > 0
+
+    if (hasChildren) {
+      return (
+        <div key={item.title} className="relative">
+          <button
+            onClick={() => {
+              if (isMinimized) return
+              toggleExpand(item.title)
+            }}
+            onMouseEnter={() => isMinimized && setHoveredItem(item.title)}
+            onMouseLeave={() => isMinimized && setHoveredItem(null)}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-lg text-sm font-medium transition-colors',
+              isMinimized ? 'justify-center p-2' : 'px-3 py-2',
+              isActive
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            )}
+          >
+            <Icon icon={item.icon} className={depth === 0 ? 'h-5 w-5 shrink-0' : 'h-4 w-4 shrink-0'} />
+            {!isMinimized && (
+              <>
+                <span className="flex-1 text-left">{item.title}</span>
+                <Icon
+                  icon={isExpanded ? "solar:alt-arrow-up-linear" : "solar:alt-arrow-down-linear"}
+                  className="h-4 w-4"
+                />
+              </>
+            )}
+          </button>
+          {/* Minimized tooltip */}
+          {isMinimized && hoveredItem === item.title && (
+            <div className="absolute left-full top-0 z-50 ml-2 rounded-lg border bg-popover px-3 py-2 text-sm font-medium text-popover-foreground shadow-md whitespace-nowrap">
+              {item.title}
+            </div>
+          )}
+          {/* Expanded children */}
+          {!isMinimized && isExpanded && (
+            <div className="ml-4 mt-1 space-y-1 border-l pl-4">
+              {item.children!.map((child) => renderNavItem(child, depth + 1))}
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    return (
+      <Link
+        key={item.title}
+        to={item.href}
+        onMouseEnter={() => isMinimized && setHoveredItem(item.title)}
+        onMouseLeave={() => isMinimized && setHoveredItem(null)}
+        className={cn(
+          'flex items-center gap-3 rounded-lg text-sm transition-colors relative',
+          depth === 0 ? 'font-medium' : '',
+          isMinimized ? 'justify-center p-2' : 'px-3 py-2',
+          isActive
+            ? 'bg-primary text-primary-foreground'
+            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+        )}
+      >
+        <Icon icon={item.icon} className={depth === 0 ? 'h-5 w-5 shrink-0' : 'h-4 w-4 shrink-0'} />
+        {!isMinimized && <span>{item.title}</span>}
+        {!isMinimized && item.badge && (
+          <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground">
+            {item.badge}
+          </span>
+        )}
+        {/* Minimized tooltip */}
+        {isMinimized && hoveredItem === item.title && (
+          <div className="absolute left-full top-0 z-50 ml-2 rounded-lg border bg-popover px-3 py-2 text-sm font-medium text-popover-foreground shadow-md whitespace-nowrap">
+            {item.title}
+          </div>
+        )}
+      </Link>
+    )
+  }
 
   return (
     <div className={cn('flex h-full flex-col border-r bg-card transition-all duration-300', sidebarWidth)}>
@@ -873,104 +1058,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className={cn('flex-1 space-y-1 overflow-y-auto', isMinimized ? 'p-2' : 'p-4')}>
-        {navItems.map((item) => {
-          const isActive = isItemActive(item)
-          const isExpanded = effectiveExpanded.includes(item.title)
-          const hasChildren = item.children && item.children.length > 0
-
-          return (
-            <div key={item.href} className="relative">
-              {hasChildren ? (
-                <>
-                  <button
-                    onClick={() => {
-                      if (isMinimized) return
-                      toggleExpand(item.title)
-                    }}
-                    onMouseEnter={() => isMinimized && setHoveredItem(item.title)}
-                    onMouseLeave={() => isMinimized && setHoveredItem(null)}
-                    className={cn(
-                      'flex w-full items-center gap-3 rounded-lg text-sm font-medium transition-colors',
-                      isMinimized ? 'justify-center p-2' : 'px-3 py-2',
-                      isActive
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                    )}
-                  >
-                    <Icon icon={item.icon} className="h-5 w-5 shrink-0" />
-                    {!isMinimized && (
-                      <>
-                        <span className="flex-1 text-left">{item.title}</span>
-                        <Icon
-                          icon={isExpanded ? "solar:alt-arrow-up-linear" : "solar:alt-arrow-down-linear"}
-                          className="h-4 w-4"
-                        />
-                      </>
-                    )}
-                  </button>
-                  {/* Minimized tooltip */}
-                  {isMinimized && hoveredItem === item.title && (
-                    <div className="absolute left-full top-0 z-50 ml-2 rounded-lg border bg-popover px-3 py-2 text-sm font-medium text-popover-foreground shadow-md whitespace-nowrap">
-                      {item.title}
-                    </div>
-                  )}
-                  {/* Expanded children */}
-                  {!isMinimized && isExpanded && (
-                    <div className="ml-4 mt-1 space-y-1 border-l pl-4">
-                      {item.children?.map((child) => {
-                        const childActive = location.pathname === child.href
-                        return (
-                          <Link
-                            key={child.href}
-                            to={child.href}
-                            className={cn(
-                              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-                              childActive
-                                ? 'bg-primary text-primary-foreground'
-                                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                            )}
-                          >
-                            <Icon icon={child.icon} className="h-4 w-4" />
-                            <span>{child.title}</span>
-                          </Link>
-                        )
-                      })}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <Link
-                  to={item.href}
-                  onMouseEnter={() => isMinimized && setHoveredItem(item.title)}
-                  onMouseLeave={() => isMinimized && setHoveredItem(null)}
-                  className={cn(
-                    'flex items-center gap-3 rounded-lg text-sm font-medium transition-colors relative',
-                    isMinimized ? 'justify-center p-2' : 'px-3 py-2',
-                    isActive
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                  )}
-                >
-                  <Icon icon={item.icon} className="h-5 w-5 shrink-0" />
-                  {!isMinimized && (
-                    <span>{item.title}</span>
-                  )}
-                  {!isMinimized && item.badge && (
-                    <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground">
-                      {item.badge}
-                    </span>
-                  )}
-                  {/* Minimized tooltip */}
-                  {isMinimized && hoveredItem === item.title && (
-                    <div className="absolute left-full top-0 z-50 ml-2 rounded-lg border bg-popover px-3 py-2 text-sm font-medium text-popover-foreground shadow-md whitespace-nowrap">
-                      {item.title}
-                    </div>
-                  )}
-                </Link>
-              )}
-            </div>
-          )
-        })}
+        {navItems.map((item) => renderNavItem(item, 0))}
       </nav>
 
       {/* User info */}

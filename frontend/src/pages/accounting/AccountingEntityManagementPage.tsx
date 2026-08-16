@@ -87,7 +87,7 @@ function EntitySection({
   );
 }
 
-export default function AccountingEntityManagementPage() {
+export default function AccountingEntityManagementPage({ embedded = false }: { embedded?: boolean }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [dialogType, setDialogType] = useState<DialogType>(null);
@@ -339,13 +339,13 @@ export default function AccountingEntityManagementPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
+    <div className={embedded ? 'space-y-6' : 'p-6 space-y-6'}>
+      {!embedded && <div>
         <h1 className="text-3xl font-bold">Multi-Entity Management</h1>
         <p className="text-muted-foreground mt-1">
           Manage legal entities, branches, books, and group structures.
         </p>
-      </div>
+      </div>}
 
       {isLoading ? (
         <Card className="p-6 text-sm text-muted-foreground">Loading entity configuration...</Card>

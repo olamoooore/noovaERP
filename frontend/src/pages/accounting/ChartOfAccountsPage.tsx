@@ -35,7 +35,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import chartOfAccountsApi, { type ChartOfAccount, type CreateAccountRequest } from '@/lib/chartOfAccountsApi';
 
-export default function ChartOfAccountsPage() {
+export default function ChartOfAccountsPage({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -396,9 +396,9 @@ export default function ChartOfAccountsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className={embedded ? 'space-y-6' : 'p-6 space-y-6'}>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      {!embedded && <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Chart of Accounts</h1>
           <p className="text-muted-foreground mt-1">
@@ -409,7 +409,7 @@ export default function ChartOfAccountsPage() {
           <Icon icon="solar:arrow-left-linear" className="w-4 h-4 mr-2" />
           Back to Accounting
         </Button>
-      </div>
+      </div>}
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>

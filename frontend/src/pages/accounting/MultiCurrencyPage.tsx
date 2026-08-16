@@ -27,7 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import currenciesApi, { type Currency, type CreateCurrencyRequest } from '@/lib/currenciesApi';
 
-export default function MultiCurrencyPage() {
+export default function MultiCurrencyPage({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -147,9 +147,9 @@ export default function MultiCurrencyPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className={embedded ? 'space-y-6' : 'p-6 space-y-6'}>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      {!embedded && <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Multi-currency Management</h1>
           <p className="text-muted-foreground mt-1">
@@ -160,7 +160,7 @@ export default function MultiCurrencyPage() {
           <Icon icon="solar:arrow-left-linear" className="w-4 h-4 mr-2" />
           Back to Accounting
         </Button>
-      </div>
+      </div>}
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
