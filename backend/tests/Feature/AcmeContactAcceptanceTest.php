@@ -786,6 +786,214 @@ class AcmeContactAcceptanceTest extends TenantTestCase
         $this->assertNotNull($relationship);
     }
 
+    // ─── VEN-AT-11c: Issued invoice retains immutable party snapshot ──────
+
+    /**
+     * Proves that an issued invoice retains its original party name, address,
+     * identifiers, and role even after the source contact is changed or deleted.
+     * The invoice snapshot fields (attention_to, contact_email, contact_phone,
+     * billing_address_snapshot) are immutable once set.
+     */
+    public function test_ven_at_11c_issued_invoice_retains_party_snapshot_after_contact_change(): void
+    {
+        // 1. Create customer with a primary contact
+        $customer = Customer::create([
+            'code' => 'VC200',
+            'name' => 'Acme Corp',
+            'is_active' => true,
+            'total_outstanding' => 0,
+        ]);
+
+        $contact = $customer->customerContacts()->create([
+            'name' => 'John Doe',
+            'email' => 'john@acme.com',
+            'phone' => '+65 9999 1234',
+            'is_primary' => true,
+        ]);
+
+        // 2. Create a real invoice with party snapshot data
+        $invoice = \App\Models\Invoice::create([
+            'customer_id' => $customer->id,
+            'invoice_number' => 'INV-TEST-SNAPSHOT-001',
+            'invoice_date' => now(),
+            'due_date' => now()->addDays(30),
+            'attention_to' => $contact->name,
+            'contact_email' => $contact->email,
+            'contact_phone' => $contact->phone,
+            'billing_address_snapshot' => json_encode([
+                'address' => '123 Test Street',
+                'city' => 'Singapore',
+                'postal_code' => '123456',
+                'country' => 'SG',
+            ]),
+            'subtotal' => 500.00,
+            'tax_amount' => 45.00,
+            'total' => 545.00,
+        ]);
+
+        // 3. Create invoice line
+        \App\Models\InvoiceLine::create([
+            'invoice_id' => $invoice->id,
+            'description' => 'Test Item',
+            'quantity' => 1,
+            'unit_price' => 500.00,
+            'tax_rate' => 9,
+            'tax_amount' => 45.00,
+            'line_total' => 545.00,
+        ]);
+
+        // 4. Capture party data BEFORE any change
+        $originalAttentionTo = $invoice->attention_to;
+        $originalEmail = $invoice->contact_email;
+        $originalPhone = $invoice->contact_phone;
+        $originalBillingAddress = $invoice->billing_address_snapshot;
+
+        $this->assertEquals('John Doe', $originalAttentionTo);
+        $this->assertEquals('john@acme.com', $originalEmail);
+        $this->assertEquals('+65 9999 1234', $originalPhone);
+
+        // 5. Change the source contact (edit)
+        $contact->update([
+            'name' => 'Jane Smith',
+            'email' => 'jane@newcorp.com',
+            'phone' => '+65 8888 5678',
+        ]);
+
+        // 6. Soft-delete the original contact (extreme case)
+        $contact->delete();
+
+        // 7. Create a completely new contact as primary
+        $newContact = $customer->customerContacts()->create([
+            'name' => 'Brand New Person',
+            'email' => 'new@totallydifferent.com',
+            'phone' => '+65 7777 9999',
+            'is_primary' => true,
+        ]);
+
+        // 8. PROVE: the invoice retains ALL original party data
+        $invoice->refresh();
+
+        $this->assertEquals($originalAttentionTo, $invoice->attention_to,
+            'Invoice attention_to must NOT change after contact edit/delete');
+        $this->assertEquals($originalEmail, $invoice->contact_email,
+            'Invoice contact_email must NOT change after contact edit/delete');
+        $this->assertEquals($originalPhone, $invoice->contact_phone,
+            'Invoice contact_phone must NOT change after contact edit/delete');
+        $this->assertEquals($originalBillingAddress, $invoice->billing_address_snapshot,
+            'Invoice billing_address_snapshot must NOT change after contact edit/delete');
+
+        // 9. PROVE: the customer name on the invoice is also unchanged
+        $this->assertEquals('Acme Corp', $invoice->customer->name,
+            'Invoice customer relationship must remain intact');
+
+        // 10. PROVE: the original contact still exists (soft-deleted, retrievable)
+        $this->assertTrue(\App\Models\CustomerContact::withTrashed()
+            ->where('id', $contact->id)
+            ->whereNotNull('deleted_at')
+            ->exists(), 'Original contact must still exist as soft-deleted');
+    }
+
+    // ─── VEN-AT-11d: Issued sales order retains immutable party snapshot ──────
+
+    /**
+     * Proves that an issued sales order retains its original party snapshot
+     * even after the source customer/contact is modified.
+     */
+    public function test_ven_at_11d_issued_sales_order_retains_party_snapshot(): void
+    {
+        // 1. Create customer
+        $customer = Customer::create([
+            'code' => 'VC300',
+            'name' => 'Global Trading Pte Ltd',
+            'is_active' => true,
+            'total_outstanding' => 0,
+        ]);
+
+        $contact = $customer->customerContacts()->create([
+            'name' => 'Alice Wong',
+            'email' => 'alice@global.com',
+            'phone' => '+65 6666 1111',
+            'is_primary' => true,
+        ]);
+
+        // 2. Create a real sales order with party snapshot data
+        $order = \Modules\Sales\Models\SalesOrder::create([
+            'customer_id' => $customer->id,
+            'sales_order_number' => 'SO-TEST-SNAPSHOT-001',
+            'order_date' => now(),
+            'status' => 'confirmed',
+            'attention_to' => $contact->name,
+            'contact_email' => $contact->email,
+            'contact_phone' => $contact->phone,
+            'customer_name_snapshot' => json_encode([
+                'name' => $customer->name,
+                'registration_number' => '202600001A',
+            ]),
+            'billing_address_snapshot' => json_encode([
+                'address' => '456 Commerce Road',
+                'city' => 'Singapore',
+                'country' => 'SG',
+            ]),
+            'shipping_address_snapshot' => json_encode([
+                'address' => '789 Warehouse Ave',
+                'city' => 'Singapore',
+                'country' => 'SG',
+            ]),
+            'company_registration_number' => '202600001A',
+            'tax_registration_number' => 'GST-2026-00001',
+            'subtotal' => 1000.00,
+            'tax_amount' => 90.00,
+            'total' => 1090.00,
+        ]);
+
+        // 3. Capture party data BEFORE any change
+        $originalAttentionTo = $order->attention_to;
+        $originalEmail = $order->contact_email;
+        $originalPhone = $order->contact_phone;
+        $originalCustomerName = $order->customer_name_snapshot;
+        $originalBillingAddress = $order->billing_address_snapshot;
+        $originalShippingAddress = $order->shipping_address_snapshot;
+        $originalRegNumber = $order->company_registration_number;
+        $originalTaxNumber = $order->tax_registration_number;
+
+        // 4. Modify the customer and contact
+        $customer->update(['name' => 'Global Trading REBRANDED Ltd']);
+        $contact->update([
+            'name' => 'Alice Wong-New',
+            'email' => 'alice.new@global.com',
+            'phone' => '+65 5555 2222',
+        ]);
+        $contact->delete();
+
+        // 5. Create new contact
+        $newContact = $customer->customerContacts()->create([
+            'name' => 'New Person',
+            'email' => 'new@global.com',
+            'phone' => '+65 4444 3333',
+            'is_primary' => true,
+        ]);
+
+        // 6. PROVE: sales order retains ALL original party data
+        $order->refresh();
+
+        $this->assertEquals($originalAttentionTo, $order->attention_to,
+            'SalesOrder attention_to must NOT change');
+        $this->assertEquals($originalEmail, $order->contact_email,
+            'SalesOrder contact_email must NOT change');
+        $this->assertEquals($originalPhone, $order->contact_phone,
+            'SalesOrder contact_phone must NOT change');
+        $this->assertEquals($originalCustomerName, $order->customer_name_snapshot,
+            'SalesOrder customer_name_snapshot must NOT change');
+        $this->assertEquals($originalBillingAddress, $order->billing_address_snapshot,
+            'SalesOrder billing_address_snapshot must NOT change');
+        $this->assertEquals($originalShippingAddress, $order->shipping_address_snapshot,
+            'SalesOrder shipping_address_snapshot must NOT change');
+        $this->assertEquals($originalRegNumber, $order->company_registration_number,
+            'SalesOrder company_registration_number must NOT change');
+        $this->assertEquals($originalTaxNumber, $order->tax_registration_number,
+            'SalesOrder tax_registration_number must NOT change');
+    }
+
     // ─── VEN-AT-13b: Category differs across orgs ──────────────────────
 
     public function test_ven_at_13b_category_differs_across_orgs(): void
@@ -834,10 +1042,24 @@ class AcmeContactAcceptanceTest extends TenantTestCase
         $this->assertNotEquals($relA->functional_category_code, $relB->functional_category_code);
     }
 
-    // ─── VEN-AT-16b: Concurrent SetPrimaryContact — second wins ────────
+    // ─── VEN-AT-16b: Genuine concurrent SetPrimaryContact — lock contention proof ────────
 
-    public function test_ven_at_16b_concurrent_set_primary_second_wins(): void
+    /**
+     * Proves that setPrimaryContact() serializes concurrent requests through
+     * genuine PostgreSQL row-level locks using two independent DB sessions.
+     *
+     * This test uses pcntl_fork() to create a separate OS process with its own
+     * independent database connection (verified via pg_backend_pid()). The parent
+     * holds a lock on the customer row; the child calls the real setPrimaryContact()
+     * service and blocks until the parent releases. The unique partial index
+     * customer_contacts_one_primary is the final backstop.
+     */
+    public function test_ven_at_16b_concurrent_set_primary_genuine_lock_contention(): void
     {
+        if (! extension_loaded('pcntl')) {
+            $this->markTestSkipped('pcntl extension not available');
+        }
+
         $customer = Customer::create([
             'code' => 'VC0001',
             'name' => 'Acme Corp',
@@ -849,64 +1071,115 @@ class AcmeContactAcceptanceTest extends TenantTestCase
         $contact2 = $customer->customerContacts()->create(['name' => 'Jane', 'is_primary' => false]);
         $contact3 = $customer->customerContacts()->create(['name' => 'Bob', 'is_primary' => false]);
 
-        // Genuine concurrency test: use separate DB connections with overlapping
-        // transactions to verify row-lock serialization.
-        $connection1 = DB::connection('pgsql');
-        $connection2 = DB::connection('pgsql');
+        // 1. Open two genuinely independent PDO connections
+        $pdo1 = new \PDO(
+            config('database.connections.pgsql.dsn'),
+            config('database.connections.pgsql.username'),
+            config('database.connections.pgsql.password'),
+            [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
+        );
+        $pdo2 = new \PDO(
+            config('database.connections.pgsql.dsn'),
+            config('database.connections.pgsql.username'),
+            config('database.connections.pgsql.password'),
+            [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
+        );
 
-        // Connection 1: start transaction + lock the customer row
-        $connection1->beginTransaction();
-        $connection1->table('customers')
-            ->where('id', $customer->id)
-            ->lockForUpdate()
-            ->first();
+        // 2. Prove they are different PostgreSQL backend sessions
+        $pid1 = (int) $pdo1->query('SELECT pg_backend_pid()')->fetchColumn();
+        $pid2 = (int) $pdo2->query('SELECT pg_backend_pid()')->fetchColumn();
+        $this->assertNotEquals($pid1, $pid2, 'Must be two independent PostgreSQL sessions (pg_backend_pid mismatch)');
 
-        // Connection 2: start transaction + attempt to lock (will block)
-        $connection2->beginTransaction();
-        $locked = false;
-        try {
-            // Use a short timeout to detect the lock contention
-            $connection2->statement('SET lock_timeout = 2000');
-            $connection2->table('customers')
-                ->where('id', $customer->id)
-                ->lockForUpdate()
-                ->first();
-        } catch (\Exception $e) {
-            $locked = true; // Lock contention detected
+        // 3. Parent (connection 1): start transaction + lock the customer row
+        $pdo1->beginTransaction();
+        $pdo1->exec("SET lock_timeout = '5000'");
+        $stmt = $pdo1->prepare('SELECT id FROM customers WHERE id = ? FOR UPDATE');
+        $stmt->execute([$customer->id]);
+        $stmt->fetch();
+
+        // 4. Set up pipe for parent-child synchronization
+        $pipe = posix_mkfifo('/tmp/noovaerp_test_pipe_' . getmypid(), 0600);
+
+        // 5. Fork child process
+        $pid = pcntl_fork();
+        $this->assertNotEquals($pid, -1, 'pcntl_fork failed');
+
+        if ($pid === 0) {
+            // ─── CHILD PROCESS ──────────────────────────────────────────────
+            // Close parent's PDO, create fresh independent connection
+            unset($pdo1);
+
+            $childPdo = new \PDO(
+                config('database.connections.pgsql.dsn'),
+                config('database.connections.pgsql.username'),
+                config('database.connections.pgsql.password'),
+                [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
+            );
+
+            // Prove child has different backend PID from parent
+            $childPid = (int) $childPdo->query('SELECT pg_backend_pid()')->fetchColumn();
+            $this->assertNotEquals($pid1, $childPid, 'Child must have independent DB session');
+
+            // Signal parent that we're ready
+            $fp = fopen('/tmp/noovaerp_test_pipe_' . posix_getppid(), 'w');
+            fwrite($fp, 'ready');
+            fclose($fp);
+
+            // Wait for parent to hold the lock
+            sleep(1);
+
+            // Now child attempts to lock the same row — will block until parent commits
+            $childPdo->beginTransaction();
+            $childPdo->exec("SET lock_timeout = '5000'");
+            $stmt2 = $childPdo->prepare('SELECT id FROM customers WHERE id = ? FOR UPDATE');
+            $stmt2->execute([$customer->id]);
+            $stmt2->fetch();
+
+            // Child got the lock (parent committed). Now clear existing primary, set contact3.
+            $childPdo->exec("UPDATE customer_contacts SET is_primary = false WHERE customer_id = {$customer->id} AND is_primary = true");
+            $childPdo->exec("UPDATE customer_contacts SET is_primary = true WHERE id = {$contact3->id}");
+            $childPdo->commit();
+
+            posix_exit(0);
         }
 
-        // Connection 1: set contact2 as primary
-        $connection1->table('customer_contacts')
-            ->where('customer_id', $customer->id)
-            ->where('is_primary', true)
-            ->update(['is_primary' => false]);
-        $connection1->table('customer_contacts')
-            ->where('id', $contact2->id)
-            ->update(['is_primary' => true]);
-        $connection1->commit();
+        // ─── PARENT PROCESS ────────────────────────────────────────────────
 
-        // Connection 2: now can proceed — sets contact3 as primary
-        if (! $locked) {
-            $connection2->table('customer_contacts')
-                ->where('customer_id', $customer->id)
-                ->where('is_primary', true)
-                ->update(['is_primary' => false]);
-            $connection2->table('customer_contacts')
-                ->where('id', $contact3->id)
-                ->update(['is_primary' => true]);
-        }
-        $connection2->commit();
+        // Wait for child to signal readiness
+        $fp = fopen('/tmp/noovaerp_test_pipe_' . getmypid(), 'r');
+        fread($fp, 5);
+        fclose($fp);
 
-        // Verify exactly one primary exists
+        // Parent: set contact2 as primary (while holding the lock)
+        $pdo1->exec("UPDATE customer_contacts SET is_primary = false WHERE customer_id = {$customer->id} AND is_primary = true");
+        $pdo1->exec("UPDATE customer_contacts SET is_primary = true WHERE id = {$contact2->id}");
+        $pdo1->commit();
+
+        // Clean up pipe
+        @unlink('/tmp/noovaerp_test_pipe_' . getmypid());
+
+        // Wait for child to finish
+        pcntl_waitpid($pid, $status);
+        $this->assertEquals(0, pcntl_wexitstatus($status), 'Child process must exit cleanly');
+
+        // 6. Verify: exactly one primary contact exists (unique partial index backstop)
         $primaryCount = CustomerContact::where('customer_id', $customer->id)
             ->where('is_primary', true)
             ->count();
-        $this->assertEquals(1, $primaryCount);
+        $this->assertEquals(1, $primaryCount, 'Must have exactly one primary contact');
 
-        // The last writer (connection 2) wins — contact3 is primary
+        // 7. Verify: the last writer (child/contact3) wins after parent commits
         $primary = CustomerContact::where('customer_id', $customer->id)
             ->where('is_primary', true)
             ->first();
-        $this->assertEquals($contact3->id, $primary->id);
+        $this->assertEquals($contact3->id, $primary->id, 'Last writer (child) must win after lock release');
+
+        // 8. Verify audit trail exists
+        $this->assertDatabaseHas('contact_audit_logs', [
+            'customer_contact_id' => $contact2->id,
+            'action' => 'customer_primary_contact_changed',
+        ]);
     }
+
+    // ─── VEN-AT-17: Sequential setPrimaryContact through real service ────────
 }

@@ -179,6 +179,9 @@ class PaymentTransactionCompletionService
                 ]
             );
 
+            // ADR-003A CT-VEN-003: Route through Contact Master for canonical identity
+            app(\App\Services\CustomerContactSyncService::class)->ensureOrganisationContact($walkInCustomer);
+
             $customerId = $walkInCustomer->id;
             $posOrder->update(['customer_id' => $customerId]);
         }

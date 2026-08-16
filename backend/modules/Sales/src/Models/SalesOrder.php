@@ -39,6 +39,14 @@ class SalesOrder extends Model
         'confirmed_by',
         'allocated_by',
         'bill_by_delivered_qty',
+        'attention_to',
+        'contact_email',
+        'contact_phone',
+        'customer_name_snapshot',
+        'billing_address_snapshot',
+        'shipping_address_snapshot',
+        'company_registration_number',
+        'tax_registration_number',
     ];
 
     protected $casts = [
@@ -51,6 +59,9 @@ class SalesOrder extends Model
         'cancelled_at' => 'datetime',
         'warehouse_id' => 'integer',
         'bill_by_delivered_qty' => 'boolean',
+        'customer_name_snapshot' => 'array',
+        'billing_address_snapshot' => 'array',
+        'shipping_address_snapshot' => 'array',
     ];
 
     protected static function boot()

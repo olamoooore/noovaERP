@@ -4,6 +4,7 @@ namespace Modules\Ecommerce\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Services\CustomerContactSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -61,6 +62,9 @@ class WebAuthController extends Controller
             }
 
             $customer = Customer::create($customerData);
+
+            // ADR-003A CT-VEN-003: Route through Contact Master for canonical identity
+            app(CustomerContactSyncService::class)->ensureOrganisationContact($customer);
         }
 
         // Link guest orders by token

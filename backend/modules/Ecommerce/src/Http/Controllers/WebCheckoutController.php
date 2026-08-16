@@ -5,6 +5,7 @@ namespace Modules\Ecommerce\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Warehouse;
+use App\Services\CustomerContactSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -217,6 +218,9 @@ class WebCheckoutController extends Controller
                         'notes' => 'Created from web shop checkout',
                     ];
                     $systemCustomer = Customer::create($customerData);
+
+                    // ADR-003A CT-VEN-003: Route through Contact Master for canonical identity
+                    app(CustomerContactSyncService::class)->ensureOrganisationContact($systemCustomer);
 
                     Log::info('Created new customer from web checkout', [
                         'customer_id' => $systemCustomer->id,

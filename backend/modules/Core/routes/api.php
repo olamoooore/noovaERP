@@ -155,8 +155,6 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     // Customers - static routes first (before apiResource)
     Route::get('customers/statistics', [CustomerController::class, 'statistics']);
     Route::get('customers/search', [CustomerController::class, 'search']);
-    Route::post('customers/import', [CustomersController::class, 'import']);
-    Route::post('customers/import/{batch}/commit', [CustomersController::class, 'commitImport']);
     Route::post('customers/bulk-delete', [CustomerController::class, 'bulkDestroy']);
 
     // Customers - resource routes
@@ -495,8 +493,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
         // Customers List
         Route::get('/customers', [CustomersController::class, 'index']);
-        Route::post('/customers/import', [CustomersController::class, 'import']);
-        Route::post('/customers/import/{batch}/commit', [CustomersController::class, 'commitImport']);
+        Route::post('/customers/import', [CustomersController::class, 'import'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('customers.write'));
+        Route::post('/customers/import/{batch}/commit', [CustomersController::class, 'commitImport'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('customers.write'));
         Route::get('/customers/{id}', [CustomersController::class, 'show']);
 
         // Vendor Credit Notes (must be before /vendors/{id} to avoid route conflict)

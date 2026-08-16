@@ -588,8 +588,16 @@ class AcmeContactNegativeTest extends TenantTestCase
         $this->assertNull($classMember);
     }
 
-    // ─── VEN-NT-12b: Concurrent primary writes — idempotent ────────────
+    // ─── VEN-NT-12b: Concurrent primary writes — idempotent via unique partial index ────────────
 
+    /**
+     * Proves that when two independent PostgreSQL sessions attempt to set
+     * different contacts as primary simultaneously, the unique partial index
+     * customer_contacts_one_primary ensures at most one primary per account.
+     *
+     * Uses genuine independent PDO connections (verified via pg_backend_pid())
+     * with overlapping uncommitted transactions to prove the constraint backstop.
+     */
     public function test_ven_nt_12b_concurrent_primary_writes_idempotent(): void
     {
         $customer = Customer::create([
@@ -603,55 +611,69 @@ class AcmeContactNegativeTest extends TenantTestCase
         $contact2 = $customer->customerContacts()->create(['name' => 'Jane', 'is_primary' => false]);
         $contact3 = $customer->customerContacts()->create(['name' => 'Bob', 'is_primary' => false]);
 
-        // Genuine concurrent test: two simultaneous primary-contact mutations
-        // via separate DB connections. The unique partial index
-        // customer_contacts_one_primary is the backstop that guarantees
-        // at most one primary per account regardless of application-level locking.
-        $connection1 = DB::connection('pgsql');
-        $connection2 = DB::connection('pgsql');
+        // 1. Open two genuinely independent PDO connections
+        $pdo1 = new \PDO(
+            config('database.connections.pgsql.dsn'),
+            config('database.connections.pgsql.username'),
+            config('database.connections.pgsql.password'),
+            [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
+        );
+        $pdo2 = new \PDO(
+            config('database.connections.pgsql.dsn'),
+            config('database.connections.pgsql.username'),
+            config('database.connections.pgsql.password'),
+            [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
+        );
 
-        // Both connections try to set different contacts as primary
-        $connection1->beginTransaction();
-        $connection2->beginTransaction();
+        // 2. Prove they are different PostgreSQL backend sessions
+        $pid1 = (int) $pdo1->query('SELECT pg_backend_pid()')->fetchColumn();
+        $pid2 = (int) $pdo2->query('SELECT pg_backend_pid()')->fetchColumn();
+        $this->assertNotEquals($pid1, $pid2, 'Must be two independent PostgreSQL sessions (pg_backend_pid mismatch)');
+
+        // 3. Both connections start overlapping transactions
+        $pdo1->beginTransaction();
+        $pdo2->beginTransaction();
 
         // Connection 1: clear existing primary, set contact2
-        $connection1->table('customer_contacts')
-            ->where('customer_id', $customer->id)
-            ->where('is_primary', true)
-            ->update(['is_primary' => false]);
-        $connection1->table('customer_contacts')
-            ->where('id', $contact2->id)
-            ->update(['is_primary' => true]);
+        $pdo1->exec("UPDATE customer_contacts SET is_primary = false WHERE customer_id = {$customer->id} AND is_primary = true");
+        $pdo1->exec("UPDATE customer_contacts SET is_primary = true WHERE id = {$contact2->id}");
 
         // Connection 2: clear existing primary, set contact3
-        $connection2->table('customer_contacts')
-            ->where('customer_id', $customer->id)
-            ->where('is_primary', true)
-            ->update(['is_primary' => false]);
-        $connection2->table('customer_contacts')
-            ->where('id', $contact3->id)
-            ->update(['is_primary' => true]);
+        $pdo2->exec("UPDATE customer_contacts SET is_primary = false WHERE customer_id = {$customer->id} AND is_primary = true");
+        $pdo2->exec("UPDATE customer_contacts SET is_primary = true WHERE id = {$contact3->id}");
 
-        // Commit both — one will hit the unique partial index constraint
-        $connection1->commit();
+        // 4. Commit connection 1 first — it wins
+        $pdo1->commit();
+
+        // 5. Commit connection 2 — hits unique partial index constraint
+        $constraintHit = false;
         try {
-            $connection2->commit();
-        } catch (\Exception $e) {
-            // Unique constraint violation expected — one transaction wins
-            $connection2->rollBack();
+            $pdo2->commit();
+        } catch (\PDOException $e) {
+            // unique partial index violation — exactly one of the two transactions must fail
+            $constraintHit = true;
         }
 
-        // Verify exactly one primary exists (idempotent outcome)
+        $this->assertTrue($constraintHit, 'Second commit must hit unique partial index constraint');
+
+        // 6. Rollback the failed transaction
+        $pdo2->rollBack();
+
+        // 7. Verify exactly one primary exists (idempotent outcome)
         $primaryCount = CustomerContact::where('customer_id', $customer->id)
             ->where('is_primary', true)
             ->count();
-        $this->assertEquals(1, $primaryCount);
+        $this->assertEquals(1, $primaryCount, 'Must have exactly one primary after concurrent writes');
 
-        // Verify the primary is one of the two contacts we tried to set
+        // 8. Verify the winner is connection 1's choice (contact2)
         $primary = CustomerContact::where('customer_id', $customer->id)
             ->where('is_primary', true)
             ->first();
-        $this->assertContains($primary->id, [$contact2->id, $contact3->id]);
+        $this->assertEquals($contact2->id, $primary->id, 'First committer must win; loser rolls back');
+
+        // 9. Verify contact1 (original primary) is no longer primary
+        $contact1->refresh();
+        $this->assertFalse($contact1->is_primary, 'Original primary must be cleared');
     }
 
     // ─── API-Level: Permission middleware is registered on contact routes ───

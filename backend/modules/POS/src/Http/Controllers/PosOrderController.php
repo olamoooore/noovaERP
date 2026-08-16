@@ -1174,6 +1174,8 @@ class PosOrderController extends Controller
                         ['email' => 'walkin@system.local'],
                         ['name' => 'Walk-in Customer', 'notes' => 'System customer for walk-in POS transactions']
                     );
+                    // ADR-003A CT-VEN-003: Route through Contact Master for canonical identity
+                    app(\App\Services\CustomerContactSyncService::class)->ensureOrganisationContact($walkIn);
                     $posOrder->update(['customer_id' => $walkIn->id]);
                 }
 
