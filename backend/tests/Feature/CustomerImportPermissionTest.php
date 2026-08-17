@@ -33,9 +33,13 @@ class CustomerImportPermissionTest extends TenantTestCase
         $this->tenantUuid = \Illuminate\Support\Str::uuid()->toString();
         $this->bindTenantContext($this->tenantUuid);
 
-        Role::firstOrCreate(['name' => 'admin']);
-        Permission::firstOrCreate(['name' => 'customers.write']);
-        Permission::firstOrCreate(['name' => 'customers.view']);
+        try {
+            Role::firstOrCreate(['name' => 'admin']);
+            Permission::firstOrCreate(['name' => 'customers.write']);
+            Permission::firstOrCreate(['name' => 'customers.view']);
+        } catch (\Throwable $e) {
+            // Tables may already exist from central migrations
+        }
     }
 
     private function createCsvFile(string $csv): UploadedFile

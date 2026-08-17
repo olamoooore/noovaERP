@@ -39,7 +39,11 @@ class AcmeContactNegativeTest extends TenantTestCase
 
         $this->tenantUuid = \Illuminate\Support\Str::uuid()->toString();
         $this->bindTenantContext($this->tenantUuid);
-        Role::firstOrCreate(['name' => 'admin']);
+        try {
+            Role::firstOrCreate(['name' => 'admin']);
+        } catch (\Throwable $e) {
+            // Table may already exist from central migrations
+        }
     }
 
     private function admin(): User
