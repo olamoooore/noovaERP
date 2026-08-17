@@ -12,6 +12,8 @@ use Illuminate\Support\Str;
  */
 class CommandEnvelope
 {
+    public string $requestedAt;
+
     public function __construct(
         public readonly string $commandType,
         public readonly string $tenantId,
@@ -28,10 +30,10 @@ class CommandEnvelope
         public readonly ?int $expectedRecordVersion = null,
         public readonly ?string $sourceCapability = null,
         public readonly ?string $sourceReference = null,
-        public readonly ?string $requestedAt = null,
+        ?string $requestedAt = null,
         public readonly array $payload = [],
     ) {
-        $this->requestedAt ??= now()->toIso8601String();
+        $this->requestedAt = $requestedAt ?? now()->toIso8601String();
     }
 
     public static function forAggregate(

@@ -10,6 +10,8 @@ use App\Accounting\Enums\GateResult;
  */
 class GateEvaluationResult
 {
+    public string $evaluatedAt;
+
     public function __construct(
         public readonly string $gateCode,
         public readonly string $gateOwner,
@@ -19,9 +21,9 @@ class GateEvaluationResult
         public readonly ?string $evidenceReference = null,
         public readonly ?string $policyReference = null,
         public readonly ?string $stateVersion = null,
-        public readonly ?string $evaluatedAt = null,
+        ?string $evaluatedAt = null,
     ) {
-        $this->evaluatedAt ??= now()->toIso8601String();
+        $this->evaluatedAt = $evaluatedAt ?? now()->toIso8601String();
     }
 
     public static function pass(string $gateCode, string $gateOwner, ?string $gateVersion = null): self

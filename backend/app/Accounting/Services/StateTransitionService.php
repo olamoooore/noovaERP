@@ -34,7 +34,7 @@ class StateTransitionService
         array $context = [],
     ): StateTransition {
         return StateTransition::create([
-            'tenant_id' => $context['tenant_id'] ?? auth()->user()?->tenant_id ?? 'system',
+            'tenant_id' => $context['tenant_id'] ?? auth()->user()?->tenant_id ?? Str::uuid()->toString(),
             'entity_id' => $context['entity_id'] ?? null,
             'aggregate_type' => $aggregateType,
             'aggregate_id' => (string) $aggregateId,
@@ -44,7 +44,7 @@ class StateTransitionService
             'reason_code' => $context['reason_code'] ?? null,
             'command_id' => $context['command_id'] ?? null,
             'workflow_instance_id' => $context['workflow_instance_id'] ?? null,
-            'actor_id' => $context['actor_id'] ?? (string) (auth()->id() ?? 'system'),
+            'actor_id' => $context['actor_id'] ?? (string) (auth()->id() ?? Str::uuid()->toString()),
             'actor_type' => $context['actor_type'] ?? 'HUMAN',
             'correlation_id' => $context['correlation_id'] ?? null,
             'causation_id' => $context['causation_id'] ?? null,

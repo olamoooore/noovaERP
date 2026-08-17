@@ -10,10 +10,12 @@ use App\Accounting\Enums\ReasonCode;
  */
 class NegativeState
 {
+    public string $reasonCategory;
+
     public function __construct(
         public readonly string $state,
         public readonly ReasonCode $reasonCode,
-        public readonly ?string $reasonCategory = null,
+        ?string $reasonCategory = null,
         public readonly ?string $safeUserMessage = null,
         public readonly ?string $remediationAction = null,
         public readonly ?string $blockingReference = null,
@@ -21,7 +23,7 @@ class NegativeState
         public readonly ?string $resolvedAt = null,
         public readonly array $metadata = [],
     ) {
-        $this->reasonCategory ??= $this->reasonCode->category();
+        $this->reasonCategory = $reasonCategory ?? $this->reasonCode->category();
     }
 
     public static function of(
