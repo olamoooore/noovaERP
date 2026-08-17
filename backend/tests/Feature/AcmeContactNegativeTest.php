@@ -599,31 +599,17 @@ class AcmeContactNegativeTest extends TenantTestCase
      * different contacts as primary simultaneously, the unique partial index
      * customer_contacts_one_primary ensures at most one primary per account.
      *
-     * Uses pcntl_fork() for genuinely independent workers with:
-     * - Explicit synchronization barrier
-     * - Bounded lock timeout (5s)
-     * - Bounded worker timeout (10s)
-     * - Captured worker exceptions
-     * - Guaranteed rollback and cleanup
+     * Uses proc_open() to spawn two completely independent PHP processes that
+     * each boot Laravel fresh with their own DB connections. File-based sync
+     * barrier ensures both workers start simultaneously.
      */
     public function test_ven_nt_12b_concurrent_primary_writes_idempotent(): void
     {
-        if (! extension_loaded('pcntl') || ! function_exists('posix_exit')) {
-            $this->markTestSkipped('pcntl and posix extensions required for fork-based concurrency test');
-        }
+        $tenantId = $this->tenantUuid;
 
-        $customer = Customer::create([
-            'code' => 'VC0001',
-            'name' => 'Acme Corp',
-            'is_active' => true,
-            'total_outstanding' => 0,
-        ]);
-
-        $contact1 = $customer->customerContacts()->create(['name' => 'John', 'is_primary' => true]);
-        $contact2 = $customer->customerContacts()->create(['name' => 'Jane', 'is_primary' => false]);
-        $contact3 = $customer->customerContacts()->create(['name' => 'Bob', 'is_primary' => false]);
-
-        // 1. Construct DSN from committed config
+        // Create test data in a SEPARATE committed transaction so the workers
+        // (independent PHP processes) can see it. RefreshDatabase wraps the
+        // test in an uncommitted transaction, invisible to other connections.
         $dsn = sprintf(
             'pgsql:host=%s;port=%s;dbname=%s',
             config('database.connections.pgsql.host'),
@@ -633,164 +619,135 @@ class AcmeContactNegativeTest extends TenantTestCase
         $username = config('database.connections.pgsql.username');
         $password = config('database.connections.pgsql.password');
 
-        // 2. Set up synchronization barrier via temporary files
-        $barrierDir = sys_get_temp_dir().'/noovaerp_barrier_'.getmypid();
+        $setupPdo = new \PDO($dsn, $username, $password, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+        $schema = 'tenant_' . preg_replace('/[^a-z0-9]/', '', strtolower($tenantId));
+        $setupPdo->exec("SET search_path TO {$schema}, public");
+
+        // Insert customer + contacts via committed SQL
+        $setupPdo->exec("INSERT INTO customers (code, name, is_active, total_outstanding, created_at, updated_at) VALUES ('VC0001', 'Acme Corp', true, 0, NOW(), NOW()) RETURNING id");
+        $customerId = (int) $setupPdo->query("SELECT id FROM customers WHERE code = 'VC0001'")->fetchColumn();
+
+        $setupPdo->exec("INSERT INTO customer_contacts (customer_id, name, is_primary, created_at, updated_at) VALUES ({$customerId}, 'John', true, NOW(), NOW()) RETURNING id");
+        $contact1Id = (int) $setupPdo->query("SELECT id FROM customer_contacts WHERE customer_id = {$customerId} AND name = 'John'")->fetchColumn();
+
+        $setupPdo->exec("INSERT INTO customer_contacts (customer_id, name, is_primary, created_at, updated_at) VALUES ({$customerId}, 'Jane', false, NOW(), NOW()) RETURNING id");
+        $contact2Id = (int) $setupPdo->query("SELECT id FROM customer_contacts WHERE customer_id = {$customerId} AND name = 'Jane'")->fetchColumn();
+
+        $setupPdo->exec("INSERT INTO customer_contacts (customer_id, name, is_primary, created_at, updated_at) VALUES ({$customerId}, 'Bob', false, NOW(), NOW()) RETURNING id");
+        $contact3Id = (int) $setupPdo->query("SELECT id FROM customer_contacts WHERE customer_id = {$customerId} AND name = 'Bob'")->fetchColumn();
+
+        $setupPdo = null;
+
+        // 1. Set up synchronization barrier via temporary files
+        $barrierDir = sys_get_temp_dir() . '/noovaerp_barrier_' . getmypid();
         @mkdir($barrierDir, 0700, true);
-        $worker1Ready = $barrierDir.'/worker1_ready';
-        $worker2Ready = $barrierDir.'/worker2_ready';
-        $goSignal = $barrierDir.'/go';
-        $worker1Result = $barrierDir.'/worker1_result';
-        $worker2Result = $barrierDir.'/worker2_result';
+        $goSignal = $barrierDir . '/go';
+        $resultFile1 = $barrierDir . '/worker1_result';
+        $resultFile2 = $barrierDir . '/worker2_result';
 
-        // 3. Fork Worker 1 (sets contact2 as primary)
-        $pid1 = pcntl_fork();
-        $this->assertNotEquals($pid1, -1, 'pcntl_fork failed for worker 1');
+        // 2. Spawn Worker 1 via proc_open() — sets contact2 as primary
+        $worker1Config = json_encode([
+            'action' => 'set_primary_raw',
+            'customer_id' => $customerId,
+            'contact_id' => $contact2Id,
+            'tenant_id' => $tenantId,
+            'result_file' => $resultFile1,
+            'barrier_file' => $goSignal,
+            'barrier_wait_ms' => 15000,
+        ]);
 
-        if ($pid1 === 0) {
-            // Worker 1
-            try {
-                $pdo = new \PDO($dsn, $username, $password, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+        $desc1 = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $proc1 = proc_open(
+            "php " . base_path('tests/concurrency_worker.php') . " " . escapeshellarg($worker1Config),
+            $desc1,
+            $pipes1
+        );
+        $this->assertNotFalse($proc1, 'proc_open failed for worker 1');
 
-                // Signal ready
-                file_put_contents($worker1Ready, '1');
+        // 3. Spawn Worker 2 via proc_open() — sets contact3 as primary
+        $worker2Config = json_encode([
+            'action' => 'set_primary_raw',
+            'customer_id' => $customerId,
+            'contact_id' => $contact3Id,
+            'tenant_id' => $tenantId,
+            'result_file' => $resultFile2,
+            'barrier_file' => $goSignal,
+            'barrier_wait_ms' => 15000,
+        ]);
 
-                // Wait for go signal with timeout
-                $waitStart = microtime(true);
-                while (! file_exists($goSignal) && (microtime(true) - $waitStart) < 10) {
-                    usleep(50000); // 50ms
-                }
-                if (! file_exists($goSignal)) {
-                    file_put_contents($worker1Result, 'TIMEOUT');
-                    posix_exit(1);
-                }
+        $desc2 = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $proc2 = proc_open(
+            "php " . base_path('tests/concurrency_worker.php') . " " . escapeshellarg($worker2Config),
+            $desc2,
+            $pipes2
+        );
+        $this->assertNotFalse($proc2, 'proc_open failed for worker 2');
 
-                // Begin transaction with lock timeout
-                $pdo->exec("SET lock_timeout = '5000'");
-                $pdo->beginTransaction();
-
-                // Clear existing primary
-                $pdo->exec("UPDATE customer_contacts SET is_primary = false WHERE customer_id = {$customer->id} AND is_primary = true");
-                // Set contact2 as primary
-                $pdo->exec("UPDATE customer_contacts SET is_primary = true WHERE id = {$contact2->id}");
-
-                $pdo->commit();
-                file_put_contents($worker1Result, 'COMMITTED');
-            } catch (\Throwable $e) {
-                @file_put_contents($worker1Result, 'ERROR: '.$e->getMessage());
-                @posix_exit(1);
-            }
-
-            posix_exit(0);
-        }
-
-        // 4. Fork Worker 2 (sets contact3 as primary)
-        $pid2 = pcntl_fork();
-        $this->assertNotEquals($pid2, -1, 'pcntl_fork failed for worker 2');
-
-        if ($pid2 === 0) {
-            // Worker 2
-            try {
-                $pdo = new \PDO($dsn, $username, $password, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
-
-                // Signal ready
-                file_put_contents($worker2Ready, '1');
-
-                // Wait for go signal with timeout
-                $waitStart = microtime(true);
-                while (! file_exists($goSignal) && (microtime(true) - $waitStart) < 10) {
-                    usleep(50000); // 50ms
-                }
-                if (! file_exists($goSignal)) {
-                    file_put_contents($worker2Result, 'TIMEOUT');
-                    posix_exit(1);
-                }
-
-                // Begin transaction with lock timeout
-                $pdo->exec("SET lock_timeout = '5000'");
-                $pdo->beginTransaction();
-
-                // Clear existing primary
-                $pdo->exec("UPDATE customer_contacts SET is_primary = false WHERE customer_id = {$customer->id} AND is_primary = true");
-                // Set contact3 as primary
-                $pdo->exec("UPDATE customer_contacts SET is_primary = true WHERE id = {$contact3->id}");
-
-                $pdo->commit();
-                file_put_contents($worker2Result, 'COMMITTED');
-            } catch (\Throwable $e) {
-                // Expected: unique partial index violation
-                @file_put_contents($worker2Result, 'CONSTRAINT_VIOLATION: '.$e->getMessage());
-                @posix_exit(0);
-            }
-
-            posix_exit(0);
-        }
-
-        // 5. Parent: wait for both workers to be ready
+        // 4. Wait for both workers to signal ready
         $waitStart = microtime(true);
-        while ((! file_exists($worker1Ready) || ! file_exists($worker2Ready)) && (microtime(true) - $waitStart) < 10) {
-            usleep(50000);
+        while ((! file_exists($resultFile1 . '.ready') || ! file_exists($resultFile2 . '.ready')) && (microtime(true) - $waitStart) < 15) {
+            usleep(25000); // 25ms
         }
-        $this->assertFileExists($worker1Ready, 'Worker 1 must become ready within 10s');
-        $this->assertFileExists($worker2Ready, 'Worker 2 must become ready within 10s');
+        $this->assertFileExists($resultFile1 . '.ready', 'Worker 1 must become ready within 15s');
+        $this->assertFileExists($resultFile2 . '.ready', 'Worker 2 must become ready within 15s');
 
-        // 6. Signal both workers to proceed simultaneously
+        // 5. Signal both workers to proceed simultaneously
         file_put_contents($goSignal, '1');
 
-        // 7. Wait for both workers to finish with timeout
-        $workerPids = [$pid1, $pid2];
-        $waitStart = microtime(true);
-        while (count($workerPids) > 0 && (microtime(true) - $waitStart) < 15) {
-            foreach ($workerPids as $key => $wpid) {
-                $res = pcntl_waitpid($wpid, $status, WNOHANG);
-                if ($res > 0 || $res === -1) {
-                    unset($workerPids[$key]);
-                }
-            }
-            if (count($workerPids) > 0) {
-                usleep(50000);
-            }
-        }
+        // 6. Wait for both workers to finish
+        foreach ($pipes1 as $pipe) fclose($pipe);
+        foreach ($pipes2 as $pipe) fclose($pipe);
+        $exit1 = proc_close($proc1);
+        $exit2 = proc_close($proc2);
 
-        // Force kill any hanging workers
-        foreach ($workerPids as $wpid) {
-            posix_kill($wpid, SIGTERM);
-        }
-        usleep(100000); // 100ms grace period
-        foreach ($workerPids as $wpid) {
-            posix_kill($wpid, SIGKILL);
-        }
+        // 7. Read worker results
+        $this->assertFileExists($resultFile1, 'Worker 1 must write a result file');
+        $this->assertFileExists($resultFile2, 'Worker 2 must write a result file');
+        $result1 = json_decode(file_get_contents($resultFile1), true);
+        $result2 = json_decode(file_get_contents($resultFile2), true);
 
-        // 8. Read worker results
-        $result1 = file_exists($worker1Result) ? file_get_contents($worker1Result) : 'NO_RESULT';
-        $result2 = file_exists($worker2Result) ? file_get_contents($worker2Result) : 'NO_RESULT';
+        // 8. At least one worker must have committed
+        $statuses = [$result1['status'] ?? 'none', $result2['status'] ?? 'none'];
+        $this->assertContains('ok', $statuses, 'At least one worker must commit successfully');
 
-        // 9. At least one worker must have committed (or hit constraint)
-        $this->assertStringContainsString('COMMITTED', $result1.$result2,
-            'At least one worker must commit successfully');
-
-        // 10. Verify exactly one primary exists (idempotent outcome)
-        $primaryCount = CustomerContact::where('customer_id', $customer->id)
+        // 9. Verify exactly one primary exists (idempotent outcome)
+        $primaryCount = \App\Models\CustomerContact::where('customer_id', $customerId)
             ->where('is_primary', true)
             ->count();
         $this->assertEquals(1, $primaryCount, 'Must have exactly one primary after concurrent writes');
 
-        // 11. Verify the winner is one of the two contacts (not the original)
-        $primary = CustomerContact::where('customer_id', $customer->id)
+        // 10. Verify the winner is one of the two contacts (not the original)
+        $primary = \App\Models\CustomerContact::where('customer_id', $customerId)
             ->where('is_primary', true)
             ->first();
-        $this->assertContains($primary->id, [$contact2->id, $contact3->id],
+        $this->assertContains($primary->id, [$contact2Id, $contact3Id],
             'Winner must be one of the two concurrent writers');
 
-        // 12. Verify contact1 (original primary) is no longer primary
-        $contact1->refresh();
-        $this->assertFalse($contact1->is_primary, 'Original primary must be cleared');
+        // 11. Verify contact1 (original primary) is no longer primary
+        $contact1 = \App\Models\CustomerContact::find($contact1Id);
+        $this->assertFalse((bool) $contact1->is_primary, 'Original primary must be cleared');
 
-        // 13. Cleanup
-        @unlink($worker1Ready);
-        @unlink($worker2Ready);
+        // 12. Cleanup: remove committed test data
+        $cleanupPdo = new \PDO($dsn, $username, $password, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+        $cleanupPdo->exec("SET search_path TO {$schema}, public");
+        $cleanupPdo->exec("DELETE FROM customer_contacts WHERE customer_id = {$customerId}");
+        $cleanupPdo->exec("DELETE FROM customers WHERE id = {$customerId}");
+        $cleanupPdo = null;
+
+        // 13. Cleanup barrier files
         @unlink($goSignal);
-        @unlink($worker1Result);
-        @unlink($worker2Result);
+        @unlink($resultFile1);
+        @unlink($resultFile2);
+        @unlink($resultFile1 . '.ready');
+        @unlink($resultFile2 . '.ready');
         @rmdir($barrierDir);
     }
 

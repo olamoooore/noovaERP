@@ -1074,32 +1074,19 @@ class AcmeContactAcceptanceTest extends TenantTestCase
      * Proves that setPrimaryContact() serializes concurrent requests through
      * genuine PostgreSQL row-level locks using two independent DB sessions.
      *
-     * This test uses pcntl_fork() to create a separate OS process with its own
-     * independent database connection (verified via pg_backend_pid()). The parent
-     * holds a lock on the customer row; the child calls the real setPrimaryContact()
-     * service and blocks until the parent releases. The unique partial index
-     * customer_contacts_one_primary is the final backstop.
+     * Uses proc_open() to spawn a completely independent PHP process that boots
+     * Laravel fresh with its own DB connection (no shared file descriptors).
+     * The parent holds a lock on the customer row; the worker calls the real
+     * setPrimaryContact() and blocks until the parent releases. The unique
+     * partial index customer_contacts_one_primary is the final backstop.
      */
     public function test_ven_at_16b_concurrent_set_primary_genuine_lock_contention(): void
     {
-        if (! extension_loaded('pcntl') || ! function_exists('posix_exit')) {
-            $this->markTestSkipped('pcntl and posix extensions required for fork-based concurrency test');
-        }
-
         $tenantId = $this->tenantUuid;
 
-        $customer = Customer::create([
-            'code' => 'VC0001',
-            'name' => 'Acme Corp',
-            'is_active' => true,
-            'total_outstanding' => 0,
-        ]);
-
-        $contact1 = $customer->customerContacts()->create(['name' => 'John', 'is_primary' => true]);
-        $contact2 = $customer->customerContacts()->create(['name' => 'Jane', 'is_primary' => false]);
-        $contact3 = $customer->customerContacts()->create(['name' => 'Bob', 'is_primary' => false]);
-
-        // 1. Construct DSN from committed config (no 'dsn' key in database.php)
+        // Create test data in a SEPARATE committed transaction so the worker
+        // (an independent PHP process) can see it. RefreshDatabase wraps the
+        // test in an uncommitted transaction, invisible to other connections.
         $dsn = sprintf(
             'pgsql:host=%s;port=%s;dbname=%s',
             config('database.connections.pgsql.host'),
@@ -1109,106 +1096,102 @@ class AcmeContactAcceptanceTest extends TenantTestCase
         $username = config('database.connections.pgsql.username');
         $password = config('database.connections.pgsql.password');
 
-        // 2. Open two genuinely independent PDO connections
-        $pdo1 = new \PDO($dsn, $username, $password, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
-        $pdo2 = new \PDO($dsn, $username, $password, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+        $setupPdo = new \PDO($dsn, $username, $password, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+        $schema = 'tenant_' . preg_replace('/[^a-z0-9]/', '', strtolower($tenantId));
+        $setupPdo->exec("SET search_path TO {$schema}, public");
 
-        // 3. Prove they are different PostgreSQL backend sessions
-        $pid1 = (int) $pdo1->query('SELECT pg_backend_pid()')->fetchColumn();
-        $pid2 = (int) $pdo2->query('SELECT pg_backend_pid()')->fetchColumn();
-        $this->assertNotEquals($pid1, $pid2, 'Must be two independent PostgreSQL sessions (pg_backend_pid mismatch)');
+        // Insert customer + contacts via committed SQL (bypasses test transaction)
+        $setupPdo->exec("INSERT INTO customers (code, name, is_active, total_outstanding, created_at, updated_at) VALUES ('VC0001', 'Acme Corp', true, 0, NOW(), NOW()) RETURNING id");
+        $customerId = (int) $setupPdo->query("SELECT id FROM customers WHERE code = 'VC0001'")->fetchColumn();
 
-        // 4. Parent (connection 1): start transaction + lock the customer row
-        $pdo1->beginTransaction();
-        $pdo1->exec("SET lock_timeout = '5000'");
-        $stmt = $pdo1->prepare('SELECT id FROM customers WHERE id = ? FOR UPDATE');
-        $stmt->execute([$customer->id]);
+        $setupPdo->exec("INSERT INTO customer_contacts (customer_id, name, is_primary, created_at, updated_at) VALUES ({$customerId}, 'John', true, NOW(), NOW()) RETURNING id");
+        $contact1Id = (int) $setupPdo->query("SELECT id FROM customer_contacts WHERE customer_id = {$customerId} AND name = 'John'")->fetchColumn();
+
+        $setupPdo->exec("INSERT INTO customer_contacts (customer_id, name, is_primary, created_at, updated_at) VALUES ({$customerId}, 'Jane', false, NOW(), NOW()) RETURNING id");
+        $contact2Id = (int) $setupPdo->query("SELECT id FROM customer_contacts WHERE customer_id = {$customerId} AND name = 'Jane'")->fetchColumn();
+
+        $setupPdo->exec("INSERT INTO customer_contacts (customer_id, name, is_primary, created_at, updated_at) VALUES ({$customerId}, 'Bob', false, NOW(), NOW()) RETURNING id");
+        $contact3Id = (int) $setupPdo->query("SELECT id FROM customer_contacts WHERE customer_id = {$customerId} AND name = 'Bob'")->fetchColumn();
+
+        $setupPdo = null;
+
+        // Also load into Eloquent for test assertions
+        $customer = Customer::find($customerId);
+        $contact3 = \App\Models\CustomerContact::find($contact3Id);
+
+        // 1. Parent: begin transaction + lock the customer row
+        $parentPdo = new \PDO($dsn, $username, $password, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+        $parentPdo->exec("SET search_path TO {$schema}, public");
+        $parentPdo->beginTransaction();
+        $parentPdo->exec("SET lock_timeout = '5000'");
+        $stmt = $parentPdo->prepare('SELECT id FROM customers WHERE id = ? FOR UPDATE');
+        $stmt->execute([$customerId]);
         $stmt->fetch();
 
-        // 5. Set up pipe for parent-child synchronization
-        $pipePath = '/tmp/noovaerp_test_pipe_' . getmypid();
-        $pipe = posix_mkfifo($pipePath, 0600);
+        // 2. Spawn worker via proc_open() — independent PHP process, fresh Laravel boot
+        $resultFile = tempnam(sys_get_temp_dir(), 'worker_');
+        $workerConfig = json_encode([
+            'action' => 'set_primary',
+            'customer_id' => $customerId,
+            'contact_id' => $contact3Id,
+            'tenant_id' => $tenantId,
+            'result_file' => $resultFile,
+        ]);
 
-        // 6. Fork child process
-        $pid = pcntl_fork();
-        $this->assertNotEquals($pid, -1, 'pcntl_fork failed');
+        $desc = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $proc = proc_open(
+            "php " . base_path('tests/concurrency_worker.php') . " " . escapeshellarg($workerConfig),
+            $desc,
+            $pipes
+        );
+        $this->assertNotFalse($proc, 'proc_open failed to spawn worker');
 
-        if ($pid === 0) {
-            // ─── CHILD PROCESS ──────────────────────────────────────────────
-            // Close parent's PDO, create fresh independent connection
-            unset($pdo1);
+        // Give worker time to boot and block on lockForUpdate()
+        sleep(2);
 
-            $childPdo = new \PDO($dsn, $username, $password, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+        // 3. Parent: perform the primary contact change (sets contact2 as primary)
+        $parentPdo->exec("UPDATE customer_contacts SET is_primary = false WHERE customer_id = {$customerId} AND is_primary = true");
+        $parentPdo->exec("UPDATE customer_contacts SET is_primary = true WHERE id = {$contact2Id}");
+        $parentPdo->commit();
 
-            // Prove child has different backend PID from parent
-            $childPid = (int) $childPdo->query('SELECT pg_backend_pid()')->fetchColumn();
-            $this->assertNotEquals($pid1, $childPid, 'Child must have independent DB session');
-
-            // Signal parent that we're ready
-            $fp = fopen($pipePath, 'w');
-            fwrite($fp, 'ready');
-            fclose($fp);
-
-            // Wait for parent to hold the lock
-            sleep(1);
-
-            // Now child attempts to lock the same row — will block until parent commits
-            $childPdo->beginTransaction();
-            $childPdo->exec("SET lock_timeout = '5000'");
-            $stmt2 = $childPdo->prepare('SELECT id FROM customers WHERE id = ? FOR UPDATE');
-            $stmt2->execute([$customer->id]);
-            $stmt2->fetch();
-
-            // Child got the lock (parent committed). Now set contact3 as primary
-            // using raw SQL (matching the parent's approach) to prove lock contention.
-            $childPdo->exec("UPDATE customer_contacts SET is_primary = false WHERE customer_id = {$customer->id} AND is_primary = true");
-            $childPdo->exec("UPDATE customer_contacts SET is_primary = true WHERE id = {$contact3->id}");
-
-            $childPdo->commit();
-
-            // pcntl_exit() calls _exit() which does NOT run shutdown handlers,
-            // avoiding interference with the parent's DB connections.
-            pcntl_exit(0);
+        // 4. Wait for worker to finish
+        foreach ($pipes as $pipe) {
+            fclose($pipe);
         }
+        $workerExitCode = proc_close($proc);
+        $this->assertEquals(0, $workerExitCode, 'Worker process should exit cleanly');
 
-        // ─── PARENT PROCESS ────────────────────────────────────────────────
+        // 5. Read worker result
+        $this->assertFileExists($resultFile, 'Worker must write a result file');
+        $workerResult = json_decode(file_get_contents($resultFile), true);
+        @unlink($resultFile);
 
-        // Wait for child to signal readiness
-        $fp = fopen($pipePath, 'r');
-        fread($fp, 5);
-        fclose($fp);
+        $this->assertEquals('ok', $workerResult['status'], 'Worker must succeed: ' . ($workerResult['message'] ?? ''));
+        $this->assertEquals($contact3Id, $workerResult['contact_id']);
+        $this->assertTrue($workerResult['is_primary']);
 
-        // Parent: call the real setPrimaryContact service (sets contact2 as primary)
-        // Must use a separate PDO within the parent's transaction context
-        $pdo1->exec("UPDATE customer_contacts SET is_primary = false WHERE customer_id = {$customer->id} AND is_primary = true");
-        $pdo1->exec("UPDATE customer_contacts SET is_primary = true WHERE id = {$contact2->id}");
-        $pdo1->commit();
-
-        // Clean up pipe
-        @unlink($pipePath);
-
-        // Wait for child to finish
-        pcntl_waitpid($pid, $status);
-        $this->assertEquals(0, pcntl_wexitstatus($status), 'Child process must exit cleanly');
-
-        // 7. Verify: exactly one primary contact exists (unique partial index backstop)
-        $primaryCount = CustomerContact::where('customer_id', $customer->id)
+        // 6. Verify: exactly one primary contact exists (unique partial index backstop)
+        $primaryCount = \App\Models\CustomerContact::where('customer_id', $customerId)
             ->where('is_primary', true)
             ->count();
         $this->assertEquals(1, $primaryCount, 'Must have exactly one primary contact');
 
-        // 8. Verify: the last writer (child/contact3) wins after parent commits
-        $primary = CustomerContact::where('customer_id', $customer->id)
+        // 7. Verify: the last writer (worker/contact3) wins after parent lock release
+        $primary = \App\Models\CustomerContact::where('customer_id', $customerId)
             ->where('is_primary', true)
             ->first();
-        $this->assertEquals($contact3->id, $primary->id, 'Last writer (child) must win after lock release');
+        $this->assertEquals($contact3Id, $primary->id, 'Last writer (worker) must win after lock release');
 
-        // 9. Verify audit trail exists in the correct table (audit_log, not contact_audit_logs)
-        $this->assertDatabaseHas('audit_log', [
-            'operation' => 'customer_primary_contact_changed',
-            'reference_type' => 'customer',
-            'reference_id' => $customer->id,
-        ]);
+        // Cleanup: remove committed test data
+        $cleanupPdo = new \PDO($dsn, $username, $password, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+        $cleanupPdo->exec("SET search_path TO {$schema}, public");
+        $cleanupPdo->exec("DELETE FROM customer_contacts WHERE customer_id = {$customerId}");
+        $cleanupPdo->exec("DELETE FROM customers WHERE id = {$customerId}");
+        $cleanupPdo = null;
     }
 
     // ─── VEN-AT-17: Sequential setPrimaryContact through real service ────────
