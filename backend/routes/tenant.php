@@ -216,6 +216,55 @@ Route::middleware([
         Route::post('/{id}/approve', [\App\Http\Controllers\ApprovalController::class, 'approve']);
         Route::post('/{id}/reject', [\App\Http\Controllers\ApprovalController::class, 'reject']);
     });
+
+    // ─── ADR-005 Reversals (§15.3) ──────────────────────────────────────────
+    Route::prefix('accounting/reversals')->group(function () {
+        Route::post('/full', [\App\Http\Controllers\Api\ReversalController::class, 'fullReversal']);
+        Route::post('/partial', [\App\Http\Controllers\Api\ReversalController::class, 'partialReversal']);
+        Route::post('/schedule-auto', [\App\Http\Controllers\Api\ReversalController::class, 'scheduleAutoReversal']);
+        Route::post('/execute-due', [\App\Http\Controllers\Api\ReversalController::class, 'executeDueAutoReversals']);
+        Route::get('/relationship/{id}', [\App\Http\Controllers\Api\ReversalController::class, 'showRelationship']);
+        Route::get('/original/{journalEntryId}', [\App\Http\Controllers\Api\ReversalController::class, 'forOriginal']);
+    });
+
+    // ─── ADR-005 Document Revisions (§27) ───────────────────────────────────
+    Route::prefix('accounting/revisions')->group(function () {
+        Route::get('/resolve-policy', [\App\Http\Controllers\Api\DocumentRevisionController::class, 'resolvePolicy']);
+        Route::get('/{documentUuid}', [\App\Http\Controllers\Api\DocumentRevisionController::class, 'index']);
+        Route::get('/{documentUuid}/effective', [\App\Http\Controllers\Api\DocumentRevisionController::class, 'effective']);
+        Route::post('/', [\App\Http\Controllers\Api\DocumentRevisionController::class, 'store']);
+        Route::post('/{id}/issue', [\App\Http\Controllers\Api\DocumentRevisionController::class, 'issue']);
+        Route::post('/{id}/supersede', [\App\Http\Controllers\Api\DocumentRevisionController::class, 'supersede']);
+    });
+
+    // ─── ADR-005 Payment Executions (§21) ───────────────────────────────────
+    Route::prefix('accounting/payment-executions')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\PaymentExecutionController::class, 'index']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\PaymentExecutionController::class, 'show']);
+        Route::post('/', [\App\Http\Controllers\Api\PaymentExecutionController::class, 'store']);
+        Route::post('/{id}/submit', [\App\Http\Controllers\Api\PaymentExecutionController::class, 'submit']);
+        Route::post('/{id}/complete', [\App\Http\Controllers\Api\PaymentExecutionController::class, 'complete']);
+        Route::post('/{id}/unknown-outcome', [\App\Http\Controllers\Api\PaymentExecutionController::class, 'markUnknownOutcome']);
+        Route::post('/{id}/fail', [\App\Http\Controllers\Api\PaymentExecutionController::class, 'fail']);
+    });
+
+    // ─── ADR-005 Settlements (§22) ──────────────────────────────────────────
+    Route::prefix('accounting/settlements')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\SettlementController::class, 'index']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\SettlementController::class, 'show']);
+        Route::post('/allocate', [\App\Http\Controllers\Api\SettlementController::class, 'allocate']);
+        Route::post('/{id}/reverse', [\App\Http\Controllers\Api\SettlementController::class, 'reverse']);
+        Route::get('/unapplied-cash/list', [\App\Http\Controllers\Api\SettlementController::class, 'unappliedCash']);
+    });
+
+    // ─── ADR-005 Correction Cases (§56-59) ─────────────────────────────────
+    Route::prefix('accounting/correction-cases')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\CorrectionCaseController::class, 'index']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\CorrectionCaseController::class, 'show']);
+        Route::post('/', [\App\Http\Controllers\Api\CorrectionCaseController::class, 'store']);
+        Route::post('/{id}/advance', [\App\Http\Controllers\Api\CorrectionCaseController::class, 'advance']);
+        Route::post('/{id}/complete', [\App\Http\Controllers\Api\CorrectionCaseController::class, 'complete']);
+    });
 });
 
 // Auditor Portal Routes (standalone with own middleware)

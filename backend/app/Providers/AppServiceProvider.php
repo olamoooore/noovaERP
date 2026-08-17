@@ -4,6 +4,12 @@ namespace App\Providers;
 
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\PostingEngine;
+use App\Accounting\Services\ActionEligibilityEvaluator;
+use App\Accounting\Services\StateTransitionService;
+use App\Accounting\Services\ReversalCorrectionEngine;
+use App\Accounting\Services\PostingPolicyMapper;
+use App\Accounting\Services\RevisionPolicyResolver;
+use App\Accounting\Services\StructuredObservabilityService;
 use App\Listeners\PreventDangerousMigrations;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -19,6 +25,14 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(PostingEngineInterface::class, PostingEngine::class);
         $this->app->register(CompliancePluginServiceProvider::class);
+
+        // ADR-005 Accounting Domain Services
+        $this->app->singleton(StateTransitionService::class);
+        $this->app->singleton(ActionEligibilityEvaluator::class);
+        $this->app->singleton(ReversalCorrectionEngine::class);
+        $this->app->singleton(PostingPolicyMapper::class);
+        $this->app->singleton(RevisionPolicyResolver::class);
+        $this->app->singleton(StructuredObservabilityService::class);
     }
 
     /**
