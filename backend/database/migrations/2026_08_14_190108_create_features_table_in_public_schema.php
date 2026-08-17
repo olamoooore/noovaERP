@@ -9,6 +9,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('features')) {
+            return;
+        }
+
         Schema::connection('pgsql')->create('features', function (Blueprint $table) {
             $table->id();
             $table->string('key')->unique();

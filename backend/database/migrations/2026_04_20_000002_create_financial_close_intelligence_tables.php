@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('fci_ai_findings')) {
+            return;
+        }
+
         Schema::create('fci_ai_findings', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->uuid('tenant_id');

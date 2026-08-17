@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('fco_close_cycles')) {
+            return;
+        }
+
         Schema::create('fco_close_cycles', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->uuid('tenant_id');
