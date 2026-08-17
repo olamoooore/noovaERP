@@ -13,6 +13,8 @@ import { useStripeDevtoolsGuard } from '@/hooks/useStripeDevtoolsGuard'
 
 // Lazy load heavy pages for better initial load performance
 const ProductsPage = lazy(() => import('@/pages/ProductsPage').then(m => ({ default: m.ProductsPage })))
+const ContactsDashboardPage = lazy(() => import('@/pages/ContactsDashboardPage').then(m => ({ default: m.ContactsDashboardPage })))
+const ProductDashboardPage = lazy(() => import('@/pages/Products/ProductDashboardPage').then(m => ({ default: m.ProductDashboardPage })))
 const ProductCreatePage = lazy(() => import('@/pages/Products/ProductCreatePage').then(m => ({ default: m.ProductCreatePage })))
 const ProductImportPage = lazy(() => import('@/pages/Products/ProductImportPage').then(m => ({ default: m.ProductImportPage })))
 const ProductViewPage = lazy(() => import('@/pages/Products/ProductViewPage').then(m => ({ default: m.ProductViewPage })))
@@ -42,8 +44,8 @@ const SettingsPage = lazy(() => import('@/pages/SettingsPage').then(m => ({ defa
 const TenantUsersPage = lazy(() => import('@/pages/TenantUsersPage'))
 const ReceiptBuilderPage = lazy(() => import('@/pages/Settings/ReceiptBuilderPage').then(m => ({ default: m.ReceiptBuilderPage })))
 const CountryPluginSettings = lazy(() => import('@/pages/Settings/CountryPluginSettings').then(m => ({ default: m.CountryPluginSettings })))
-const TemplateListPage = lazy(() => import('@/pages/TemplateBuilder/TemplateListPage'))
 const TemplateEditorPage = lazy(() => import('@/pages/TemplateBuilder/TemplateEditorPage'))
+const SalesSettingsPage = lazy(() => import('@/pages/Sales/SalesSettingsPage').then(m => ({ default: m.SalesSettingsPage })))
 const IoTDevicesPage = lazy(() => import('@/pages/IoT/IoTDevicesPage').then(m => ({ default: m.IoTDevicesPage })))
 const IoTHubPage = lazy(() => import('@/pages/IoTHub').then(m => ({ default: m.IoTHubPage })))
 const ManualsLibraryPage = lazy(() => import('@/pages/Manuals/ManualsLibraryPage').then(m => ({ default: m.ManualsLibraryPage })))
@@ -309,6 +311,8 @@ function App() {
               {/* Main Layout Routes - with sidebar */}
               <Route element={<MainLayout />}>
                 <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/master-contacts" element={<ContactsDashboardPage />} />
+                <Route path="/products/dashboard" element={<ProductDashboardPage />} />
                 <Route path="/products" element={<ProductsPage />} />
                 <Route path="/products/new" element={<ProductCreatePage />} />
                 <Route path="/products/import" element={<ProductImportPage />} />
@@ -351,6 +355,7 @@ function App() {
                 {/* Customer Bonus Scheme Assignments */}
                 <Route path="/sales/customer-bonus-schemes" element={<CustomerBonusSchemesPage />} />
                 <Route path="/sales/customer-bonus-schemes/create" element={<CustomerBonusSchemeCreatePage />} />
+                <Route path="/sales/settings" element={<SalesSettingsPage />} />
 
                 {/* Quotation Routes (new) */}
                 <Route path="/quotations" element={<QuotesPage />} />
@@ -456,6 +461,7 @@ function App() {
                 <Route path="/ocr/documents/:uuid" element={<OCRDocumentReviewPage />} />
                 <Route path="/reports/financial" element={<FinancialReportsPage />} />
                 <Route path="/reports/inventory" element={<InventoryReportsPage />} />
+                <Route path="/products/report" element={<SalesAnalyticsPage productOnly />} />
                 <Route path="/reports/sales-analytics" element={<SalesAnalyticsPage />} />
                 <Route path="/reports/expense-analytics" element={<ExpenseAnalyticsPage />} />
                 <Route path="/dashboards/executive" element={<ExecutiveDashboard />} />
@@ -552,8 +558,8 @@ function App() {
                 {/* Website Builder Index - With sidebar */}
                 <Route path="/website-builder" element={<WebsitesIndex />} />
 
-                {/* Template Builder - list (with sidebar) */}
-                <Route path="/template-builder" element={<TemplateListPage />} />
+                {/* Legacy Template Builder list route */}
+                <Route path="/template-builder" element={<Navigate to="/sales/settings" replace />} />
               </Route>
 
               {/* Website Builder Routes - Full page, no sidebar (still admin-protected) */}

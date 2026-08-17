@@ -13,8 +13,12 @@ import reportApi from '@/lib/reportApi';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
 
-export function SalesAnalyticsPage() {
-  const [activeTab, setActiveTab] = useState('by-product');
+interface SalesAnalyticsPageProps {
+  productOnly?: boolean;
+}
+
+export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPageProps) {
+  const [activeTab, setActiveTab] = useState('by-customer');
   const [filters, setFilters] = useState<ReportFiltersType>({
     start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
       .toISOString()
@@ -32,7 +36,7 @@ export function SalesAnalyticsPage() {
   } = useQuery({
     queryKey: ['sales-by-product', filters],
     queryFn: () => reportApi.getSalesByProduct(filters),
-    enabled: activeTab === 'by-product',
+    enabled: productOnly,
   });
 
   // Sales by Customer Query
@@ -179,6 +183,105 @@ export function SalesAnalyticsPage() {
     },
   ];
 
+  if (productOnly) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">Product Sales Report</h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">
+            Analyze sales performance by product
+          </p>
+        </div>
+
+        <ReportFilters
+          onFilterChange={handleFilterChange}
+          initialFilters={filters}
+          showDateRange
+          showInterval
+        />
+
+        <ReportViewer
+          title="Sales by Product"
+          description={`For the period ${filters.start_date} to ${filters.end_date}`}
+          isLoading={isProductLoading}
+          error={productError?.message || null}
+          onRefresh={refetchProduct}
+          onExport={handleExport}
+          onPrint={handlePrint}
+        >
+          {productData && (
+            <div className="space-y-6">
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold mb-4">Top 10 Products by Revenue</h3>
+                <BarChart
+                  data={(productData?.products ?? []).slice(0, 10).map((p) => ({
+                    name: p.name,
+                    Revenue: p.total_revenue,
+                    Profit: p.total_profit,
+                  }))}
+                  xKey="name"
+                  yKeys={['Revenue', 'Profit']}
+                  colors={['#3b82f6', '#8b5cf6']}
+                  height={350}
+                  formatYAxis="currency"
+                />
+              </Card>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card className="p-4">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                    Total Products Sold
+                  </div>
+                  <div className="text-2xl font-bold">{(productData?.products ?? []).length}</div>
+                </Card>
+                <Card className="p-4 bg-blue-50 dark:bg-blue-900/20">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Revenue</div>
+                  <div className="text-2xl font-bold text-blue-600">
+                    {formatCurrency(
+                      (productData?.products ?? []).reduce((sum, p) => sum + p.total_revenue, 0)
+                    )}
+                  </div>
+                </Card>
+                <Card className="p-4 bg-green-50 dark:bg-green-900/20">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Profit</div>
+                  <div className="text-2xl font-bold text-green-600">
+                    {formatCurrency(
+                      (productData?.products ?? []).reduce((sum, p) => sum + p.total_profit, 0)
+                    )}
+                  </div>
+                </Card>
+                <Card className="p-4 bg-purple-50 dark:bg-purple-900/20">
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                    Avg Profit Margin
+                  </div>
+                  <div className="text-2xl font-bold text-purple-600">
+                    {(productData?.products ?? []).length > 0
+                      ? (
+                          (productData?.products ?? []).reduce(
+                            (sum, p) => sum + p.profit_margin,
+                            0
+                          ) / (productData?.products ?? []).length
+                        ).toFixed(2)
+                      : '0.00'}
+                    %
+                  </div>
+                </Card>
+              </div>
+
+              <ReportTable
+                columns={productColumns}
+                data={productData?.products ?? []}
+                showPagination
+                showSearch
+                pageSize={20}
+              />
+            </div>
+          )}
+        </ReportViewer>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -186,7 +289,7 @@ export function SalesAnalyticsPage() {
         <div>
           <h1 className="text-3xl font-bold">Sales Analytics</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Analyze sales performance by product, customer, and trends
+            Analyze sales performance by customer, category, and trends
           </p>
         </div>
       </div>
@@ -201,11 +304,7 @@ export function SalesAnalyticsPage() {
 
       {/* Analytics Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="by-product">
-            <Icon icon="solar:box-bold" className="mr-2 h-4 w-4" />
-            By Product
-          </TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="by-customer">
             <Icon icon="solar:users-group-rounded-bold" className="mr-2 h-4 w-4" />
             By Customer

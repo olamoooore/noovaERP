@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { toast } from '@/hooks/use-toast'
 import { Plus, Pencil, Copy, Star, Archive, FileText, Download, CheckCircle2 } from 'lucide-react'
 
-export default function TemplateListPage() {
+export default function TemplateListPage({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState<DocumentType | 'all'>('all')
@@ -94,10 +94,10 @@ export default function TemplateListPage() {
   const templates = data?.data ?? []
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6">
+    <div className={embedded ? 'space-y-6' : 'mx-auto max-w-7xl space-y-6 p-6'}>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Template Builder</h1>
+          <h2 className="text-2xl font-bold">Template Builder</h2>
           <p className="text-sm text-muted-foreground">
             Design printable layouts for invoices, quotations, purchase orders and receipts.
           </p>
