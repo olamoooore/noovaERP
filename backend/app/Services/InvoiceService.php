@@ -87,6 +87,9 @@ class InvoiceService
             $invoice->refresh();
             $invoice->calculateTotals();
 
+            // ADR-003A: Populate snapshot fields from authoritative customer/contact records
+            app(DocumentSnapshotService::class)->populateInvoiceSnapshot($invoice);
+
             return $invoice->load(['customer', 'lines.product']);
         });
     }

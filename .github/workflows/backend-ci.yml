@@ -77,37 +77,64 @@ jobs:
         working-directory: backend
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
+      - name: Preflight checks
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          echo "--- Checking bootstrap/cache ---"
+          test -d bootstrap/cache || { echo "FAIL: bootstrap/cache missing"; exit 1; }
+          test -w bootstrap/cache || { echo "FAIL: bootstrap/cache not writable"; exit 1; }
+          echo "bootstrap/cache exists and is writable"
+          echo "--- Checking php extensions ---"
+          php -m | grep -q pdo_pgsql || { echo "FAIL: pdo_pgsql extension missing"; exit 1; }
+          php -m | grep -q pgsql || { echo "FAIL: pgsql extension missing"; exit 1; }
+          echo "PHP extensions OK"
+
       - name: Prepare Laravel environment
         working-directory: backend
         run: |
+          set -euo pipefail
           cp .env.example .env
           php artisan key:generate
 
       - name: Run central migrations
         working-directory: backend
-        run: php artisan migrate --force
+        run: |
+          set -euo pipefail
+          php artisan migrate --force
 
       - name: Run tenancy configuration regression test
         working-directory: backend
-        run: php artisan test tests/Feature/TenancyProvisioningConfigurationTest.php
+        run: |
+          set -euo pipefail
+          php artisan test tests/Feature/TenancyProvisioningConfigurationTest.php
 
       - name: Run PostgreSQL tenant provisioning smoke test
         working-directory: backend
-        run: php scripts/assert_tenant_provisioning.php
+        run: |
+          set -euo pipefail
+          php scripts/assert_tenant_provisioning.php
 
       - name: Run PRD closure gate proof tests
         working-directory: backend
         run: |
+          set -euo pipefail
           php -d memory_limit=256M artisan test --filter "RM001SchedulerMonitoringTest|RM002SalesFulfilmentWarehouseResolutionTest|RM002PosWarehouseCommitmentTest|RM002SubscriptionTierWarehouseModelTest|RM003LoyaltyRewardStockBoundaryTest|LEG001LegacyReservationClosureTest|AR001MutationOwnershipTest|AR002MovementIdempotencyTest|AR003RowLockingConcurrencyTest|AR004PostingEngineBoundaryTest|ENT001PostingNoopSafetyTest|AFM001AccountingFailureModelTest"
 
       - name: Run Feature test suite
         working-directory: backend
-        run: php -d memory_limit=256M artisan test --testsuite=Feature
+        run: |
+          set -euo pipefail
+          php -d memory_limit=256M artisan test --testsuite=Feature
 
       - name: Run OCR test suite
         working-directory: backend
-        run: php -d memory_limit=256M artisan test --testsuite=OCR
+        run: |
+          set -euo pipefail
+          php -d memory_limit=256M artisan test --testsuite=OCR
 
       - name: Run FinancialReporting test suite
         working-directory: backend
-        run: php -d memory_limit=256M artisan test --testsuite=FinancialReporting
+        run: |
+          set -euo pipefail
+          php -d memory_limit=256M artisan test --testsuite=FinancialReporting

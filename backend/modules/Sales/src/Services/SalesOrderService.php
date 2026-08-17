@@ -102,6 +102,9 @@ class SalesOrderService
             $order->refresh();
             $order->calculateTotals();
 
+            // ADR-003A: Populate snapshot fields from authoritative customer/contact records
+            app(\App\Services\DocumentSnapshotService::class)->populateSalesOrderSnapshot($order);
+
             if (! empty($data['channel_reference'])) {
                 $this->createChannelReference($order, $data['channel_reference']);
             }
