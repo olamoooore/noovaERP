@@ -633,6 +633,8 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
                         name: c.category_name,
                         value: c.total_revenue,
                       }))}
+                      nameKey="name"
+                      valueKey="value"
                       height={350}
                       formatValue="currency"
                     />
