@@ -76,7 +76,7 @@ class AcmeContactNegativeTest extends TenantTestCase
         $csv = "name,code,contact_name,contact_type\n".
             "Acme Corp,VC0001,John Doe,UnknownRole";
 
-        $stageRes = $this->as($this->admin(), 'post', '/api/v1/customers/import', [
+        $stageRes = $this->as($this->admin(), 'post', '/api/v1/accounting/customers/import', [
             'file' => $this->createCsvFile($csv),
         ]);
 
@@ -87,7 +87,7 @@ class AcmeContactNegativeTest extends TenantTestCase
         $batchId = $stageRes->json('batch_id');
 
         // COMMIT: row rejected because unknown controlled value
-        $commitRes = $this->as($this->admin(), 'post', "/api/v1/customers/import/{$batchId}/commit");
+        $commitRes = $this->as($this->admin(), 'post', "/api/v1/accounting/customers/import/{$batchId}/commit");
         $commitRes->assertOk();
         $this->assertEquals(0, $commitRes->json('imported'));
         $this->assertEquals(1, $commitRes->json('rejected'));
@@ -100,7 +100,7 @@ class AcmeContactNegativeTest extends TenantTestCase
         $csv = "name,code,contact_name,contact_category\n".
             "Acme Corp,VC0001,John Doe,WeirdCategory";
 
-        $stageRes = $this->as($this->admin(), 'post', '/api/v1/customers/import', [
+        $stageRes = $this->as($this->admin(), 'post', '/api/v1/accounting/customers/import', [
             'file' => $this->createCsvFile($csv),
         ]);
 
@@ -114,7 +114,7 @@ class AcmeContactNegativeTest extends TenantTestCase
     {
         $csv = "name,code\nAcme Corp,VC0001\nBeta Ltd,VC0001";
 
-        $stageRes = $this->as($this->admin(), 'post', '/api/v1/customers/import', [
+        $stageRes = $this->as($this->admin(), 'post', '/api/v1/accounting/customers/import', [
             'file' => $this->createCsvFile($csv),
         ]);
 
@@ -138,7 +138,7 @@ class AcmeContactNegativeTest extends TenantTestCase
 
         $csv = "name,code\nNew Corp,VC0001";
 
-        $stageRes = $this->as($this->admin(), 'post', '/api/v1/customers/import', [
+        $stageRes = $this->as($this->admin(), 'post', '/api/v1/accounting/customers/import', [
             'file' => $this->createCsvFile($csv),
         ]);
 
@@ -152,7 +152,7 @@ class AcmeContactNegativeTest extends TenantTestCase
     {
         $csv = "name,code\n,VC0001";
 
-        $stageRes = $this->as($this->admin(), 'post', '/api/v1/customers/import', [
+        $stageRes = $this->as($this->admin(), 'post', '/api/v1/accounting/customers/import', [
             'file' => $this->createCsvFile($csv),
         ]);
 
@@ -166,7 +166,7 @@ class AcmeContactNegativeTest extends TenantTestCase
     {
         $csv = "name,code\n";
 
-        $res = $this->as($this->admin(), 'post', '/api/v1/customers/import', [
+        $res = $this->as($this->admin(), 'post', '/api/v1/accounting/customers/import', [
             'file' => $this->createCsvFile($csv),
         ]);
 
@@ -178,7 +178,7 @@ class AcmeContactNegativeTest extends TenantTestCase
     public function test_ven_nt_07_commit_unknown_batch_404(): void
     {
         $fakeBatchId = \Illuminate\Support\Str::uuid()->toString();
-        $res = $this->as($this->admin(), 'post', "/api/v1/customers/import/{$fakeBatchId}/commit");
+        $res = $this->as($this->admin(), 'post', "/api/v1/accounting/customers/import/{$fakeBatchId}/commit");
         $res->assertStatus(404);
     }
 
@@ -188,16 +188,16 @@ class AcmeContactNegativeTest extends TenantTestCase
     {
         $csv = "name,code\nAcme Corp,VC0001";
 
-        $stageRes = $this->as($this->admin(), 'post', '/api/v1/customers/import', [
+        $stageRes = $this->as($this->admin(), 'post', '/api/v1/accounting/customers/import', [
             'file' => $this->createCsvFile($csv),
         ]);
         $batchId = $stageRes->json('batch_id');
 
         // First commit
-        $this->as($this->admin(), 'post', "/api/v1/customers/import/{$batchId}/commit")->assertOk();
+        $this->as($this->admin(), 'post', "/api/v1/accounting/customers/import/{$batchId}/commit")->assertOk();
 
         // Second commit
-        $res = $this->as($this->admin(), 'post', "/api/v1/customers/import/{$batchId}/commit");
+        $res = $this->as($this->admin(), 'post', "/api/v1/accounting/customers/import/{$batchId}/commit");
         $res->assertStatus(409);
     }
 
@@ -208,11 +208,11 @@ class AcmeContactNegativeTest extends TenantTestCase
         $csv = "name,code,contact_name,contact_type\n".
             "Acme Corp,VC0001,John Doe,BrandNewRole";
 
-        $stageRes = $this->as($this->admin(), 'post', '/api/v1/customers/import', [
+        $stageRes = $this->as($this->admin(), 'post', '/api/v1/accounting/customers/import', [
             'file' => $this->createCsvFile($csv),
         ]);
         $batchId = $stageRes->json('batch_id');
-        $this->as($this->admin(), 'post', "/api/v1/customers/import/{$batchId}/commit");
+        $this->as($this->admin(), 'post', "/api/v1/accounting/customers/import/{$batchId}/commit");
 
         // Verify no ContactTaxonomy row was created for the unknown code
         $exists = \Modules\Contact\src\Models\ContactTaxonomy::where('tenant_id', $this->tenantUuid)
@@ -295,11 +295,11 @@ class AcmeContactNegativeTest extends TenantTestCase
         $csv = "name,code,contact_name,contact_type\n".
             "Acme Corp,VC0001,John Doe,Requestor";
 
-        $stageRes = $this->as($this->admin(), 'post', '/api/v1/customers/import', [
+        $stageRes = $this->as($this->admin(), 'post', '/api/v1/accounting/customers/import', [
             'file' => $this->createCsvFile($csv),
         ]);
         $batchId = $stageRes->json('batch_id');
-        $this->as($this->admin(), 'post', "/api/v1/customers/import/{$batchId}/commit");
+        $this->as($this->admin(), 'post', "/api/v1/accounting/customers/import/{$batchId}/commit");
 
         $customer = Customer::where('code', 'VC0001')->first();
         $personContact = CustomerContact::where('customer_id', $customer->id)->first();
@@ -409,11 +409,11 @@ class AcmeContactNegativeTest extends TenantTestCase
         $csv = "name,code,contact_name,contact_type\n".
             "Acme Corp,VC0001,John Doe,Primary";
 
-        $stageRes = $this->as($this->admin(), 'post', '/api/v1/customers/import', [
+        $stageRes = $this->as($this->admin(), 'post', '/api/v1/accounting/customers/import', [
             'file' => $this->createCsvFile($csv),
         ]);
         $batchId = $stageRes->json('batch_id');
-        $this->as($this->admin(), 'post', "/api/v1/customers/import/{$batchId}/commit");
+        $this->as($this->admin(), 'post', "/api/v1/accounting/customers/import/{$batchId}/commit");
 
         $customer = Customer::where('code', 'VC0001')->first();
         $personContact = CustomerContact::where('customer_id', $customer->id)->first();
@@ -608,8 +608,8 @@ class AcmeContactNegativeTest extends TenantTestCase
      */
     public function test_ven_nt_12b_concurrent_primary_writes_idempotent(): void
     {
-        if (! extension_loaded('pcntl')) {
-            $this->markTestSkipped('pcntl extension not available');
+        if (! extension_loaded('pcntl') || ! function_exists('posix_exit')) {
+            $this->markTestSkipped('pcntl and posix extensions required for fork-based concurrency test');
         }
 
         $customer = Customer::create([

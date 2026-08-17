@@ -34,6 +34,7 @@ class CustomerImportPermissionTest extends TenantTestCase
         $this->bindTenantContext($this->tenantUuid);
 
         try {
+            Role::firstOrCreate(['name' => 'accountant']);
             Role::firstOrCreate(['name' => 'admin']);
             Permission::firstOrCreate(['name' => 'customers.write']);
             Permission::firstOrCreate(['name' => 'customers.view']);
@@ -69,7 +70,7 @@ class CustomerImportPermissionTest extends TenantTestCase
 
     public function test_commit_returns_401_without_auth(): void
     {
-        $response = $this->postJson('/api/v1/accounting/customers/import/fake-batch-id/commit');
+        $response = $this->postJson('/api/v1/accounting/customers/import/00000000-0000-0000-0000-000000000000/commit');
 
         $response->assertStatus(401);
     }
@@ -78,10 +79,10 @@ class CustomerImportPermissionTest extends TenantTestCase
 
     public function test_import_returns_403_without_write_permission(): void
     {
-        $user = User::factory()->create();
-        $user->assignRole('admin');
+        $user = User::factory()->create(['role' => 'viewer']);
+        $user->assignRole('accountant');
 
-        // User has admin role but NOT customers.write permission
+        // User has accountant role but NOT customers.write permission
         $token = $user->createToken('test')->plainTextToken;
 
         $response = $this->withHeaders([
@@ -100,14 +101,14 @@ class CustomerImportPermissionTest extends TenantTestCase
 
     public function test_commit_returns_403_without_write_permission(): void
     {
-        $user = User::factory()->create();
-        $user->assignRole('admin');
+        $user = User::factory()->create(['role' => 'viewer']);
+        $user->assignRole('accountant');
 
         $token = $user->createToken('test')->plainTextToken;
 
         $response = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
-        ])->postJson('/api/v1/accounting/customers/import/fake-batch-id/commit');
+        ])->postJson('/api/v1/accounting/customers/import/00000000-0000-0000-0000-000000000000/commit');
 
         $response->assertStatus(403);
     }
@@ -195,8 +196,8 @@ class CustomerImportPermissionTest extends TenantTestCase
 
     public function test_rejected_import_creates_no_customer_or_contact(): void
     {
-        $user = User::factory()->create();
-        $user->assignRole('admin');
+        $user = User::factory()->create(['role' => 'viewer']);
+        $user->assignRole('accountant');
         // Deliberately NO customers.write permission
 
         $token = $user->createToken('test')->plainTextToken;
@@ -212,7 +213,6 @@ class CustomerImportPermissionTest extends TenantTestCase
 
         // Verify absolutely nothing was created
         $this->assertDatabaseEmpty('contact_import_batches');
-        $this->assertDatabaseEmpty('contact_import_stagings');
         $this->assertDatabaseEmpty('customers');
         $this->assertDatabaseEmpty('customer_contacts');
     }

@@ -46,6 +46,20 @@ class RequirePermission
             return $next($request);
         }
 
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        // Super-admin bypass
+        if ($user->is_super_admin ?? false) {
+            return $next($request);
+        }
+
+        // Global platform_super_admin bypass (legacy)
+        if ($user->role === 'platform_super_admin') {
+            return $next($request);
+        }
+
         $tenantId = $this->resolveTenantId($request);
 
         if (! $tenantId) {
@@ -57,7 +71,9 @@ class RequirePermission
         // Resolve central user id — user_company_access stores central IDs, not tenant schema IDs
         $centralUserId = $this->resolveCentralUserId($user);
 
-        if ($this->roleService->hasPermission($centralUserId, $tenantId, $permission)) {
+        $hasPerm = $this->roleService->hasPermission($centralUserId, $tenantId, $permission);
+
+        if ($hasPerm) {
             return $next($request);
         }
 
