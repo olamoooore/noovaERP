@@ -12,6 +12,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('features')) {
+            return;
+        }
+
         // In testing, skip - central migrations already created these tables
         if (app()->environment('testing')) {
             return;
