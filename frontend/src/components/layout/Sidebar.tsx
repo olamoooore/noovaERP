@@ -20,15 +20,21 @@ interface NavItem {
 
 const baseNavItems: NavItem[] = [
   {
-    title: 'Dashboard',
+    title: 'Master Dashboard',
     href: '/',
     icon: 'solar:home-2-bold-duotone',
   },
   {
     title: 'Contacts',
-    href: '/customers',
+    href: '/master-contacts',
     icon: 'solar:users-group-two-rounded-bold-duotone',
+    featureKey: 'master-contacts',
     children: [
+       {
+        title: 'Dashboard',
+        href: '/master-contacts',
+        icon: 'solar:chart-square-bold-duotone',
+      },
       {
         title: 'Customers',
         href: '/customers',
@@ -92,7 +98,7 @@ const baseNavItems: NavItem[] = [
     children: [
        {
         title: 'Dashboard',
-        href: '',
+        href: '/products/dashboard',
         icon: 'solar:chart-square-bold-duotone',
       },
       {
@@ -107,7 +113,7 @@ const baseNavItems: NavItem[] = [
       },
       {
         title: 'Report',
-        href: '',
+        href: '/products/report',
         icon: 'solar:document-text-bold-duotone',
       },
       {
@@ -189,8 +195,8 @@ const baseNavItems: NavItem[] = [
       // },
       {
         title: 'Report',
-        href: '',
-        icon: 'solar:document-text-bold-duotone',
+        href: '/reports/inventory',
+        icon: 'solar:box-bold-duotone',
       },
       {
         title: 'Settings',
@@ -257,12 +263,12 @@ const baseNavItems: NavItem[] = [
       },
         {
         title: 'Report',
-        href: '',
-        icon: 'solar:document-text-bold-duotone',
+        href: '/reports/sales-analytics',
+        icon: 'solar:chart-2-bold-duotone',
       },
       {
         title: 'Settings',
-        href: '/inventory/settings',
+        href: '/sales/settings',
         icon: 'solar:settings-bold-duotone',
       },
     ],
@@ -384,7 +390,7 @@ const baseNavItems: NavItem[] = [
          {
     title: 'Transactions',
     href: '',
-    icon: 'solar:chart-2-bold-duotone',
+    icon: 'solar:wallet-2-bold-duotone',
     featureKey: 'transactions',
     children: [
 {
@@ -399,7 +405,7 @@ const baseNavItems: NavItem[] = [
             {
     title: 'Assets & Liabilities',
     href: '',
-    icon: 'solar:chart-2-bold-duotone',
+    icon: 'solar:buildings-2-bold-duotone',
     featureKey: 'assets-liabilities',
     children: [
  {
@@ -424,7 +430,7 @@ const baseNavItems: NavItem[] = [
                  {
     title: 'Closing',
     href: '',
-    icon: 'solar:chart-2-bold-duotone',
+    icon: 'solar:calendar-mark-bold-duotone',
     featureKey: 'closing',
     children: [
 {
@@ -449,7 +455,7 @@ const baseNavItems: NavItem[] = [
     {
     title: 'Review',
     href: '',
-    icon: 'solar:chart-2-bold-duotone',
+    icon: 'solar:checklist-minimalistic-bold-duotone',
     featureKey: 'review',
     children: [
 {
@@ -469,7 +475,7 @@ const baseNavItems: NavItem[] = [
     {
     title: 'AI Suites',
     href: '',
-    icon: 'solar:chart-2-bold-duotone',
+    icon: 'solar:magic-stick-3-bold-duotone',
     featureKey: 'ai-suites',
     children: [
  {
@@ -493,6 +499,49 @@ const baseNavItems: NavItem[] = [
 
     ],
       },
+        {
+    title: 'Reports',
+    href: '/reports/financial',
+    icon: 'solar:document-text-bold-duotone',
+    featureKey: 'financial-reporting',
+    children: [
+      {
+        title: 'Executive Dashboard',
+        href: '/dashboards/executive',
+        icon: 'solar:graph-new-bold-duotone',
+      },
+      {
+        title: 'Financial Reports',
+        href: '/reports/financial',
+        icon: 'solar:dollar-bold-duotone',
+      },
+      {
+        title: 'Trial Balance',
+        href: '/accounting/reporting/trial-balance',
+        icon: 'solar:scale-bold-duotone',
+      },
+      {
+        title: 'Balance Sheet',
+        href: '/accounting/reporting/balance-sheet',
+        icon: 'solar:chart-bold-duotone',
+      },
+      {
+        title: 'Profit & Loss',
+        href: '/accounting/reporting/profit-loss',
+        icon: 'solar:chart-square-bold-duotone',
+      },
+      {
+        title: 'Expense Analytics',
+        href: '/reports/expense-analytics',
+        icon: 'solar:wallet-money-bold-duotone',
+      },
+      {
+        title: 'Compliance Reports',
+        href: '/accounting/reporting/compliance',
+        icon: 'solar:shield-check-bold-duotone',
+      },
+    ],
+  },
      
       
       // {
@@ -502,7 +551,7 @@ const baseNavItems: NavItem[] = [
       // },
      
       {
-        title: 'Configuration',
+        title: 'Settings',
         href: '/accounting/configuration/company',
         icon: 'solar:settings-bold-duotone',
        
@@ -664,59 +713,7 @@ const baseNavItems: NavItem[] = [
       },
     ],
   },
-  {
-    title: 'Reports',
-    href: '/reports/financial',
-    icon: 'solar:document-text-bold-duotone',
-    featureKey: 'financial-reporting',
-    children: [
-      {
-        title: 'Executive Dashboard',
-        href: '/dashboards/executive',
-        icon: 'solar:graph-new-bold-duotone',
-      },
-      {
-        title: 'Financial Reports',
-        href: '/reports/financial',
-        icon: 'solar:dollar-bold-duotone',
-      },
-      {
-        title: 'Trial Balance',
-        href: '/accounting/reporting/trial-balance',
-        icon: 'solar:scale-bold-duotone',
-      },
-      {
-        title: 'Balance Sheet',
-        href: '/accounting/reporting/balance-sheet',
-        icon: 'solar:chart-bold-duotone',
-      },
-      {
-        title: 'Profit & Loss',
-        href: '/accounting/reporting/profit-loss',
-        icon: 'solar:chart-square-bold-duotone',
-      },
-      {
-        title: 'Inventory Reports',
-        href: '/reports/inventory',
-        icon: 'solar:box-bold-duotone',
-      },
-      {
-        title: 'Sales Analytics',
-        href: '/reports/sales-analytics',
-        icon: 'solar:chart-2-bold-duotone',
-      },
-      {
-        title: 'Expense Analytics',
-        href: '/reports/expense-analytics',
-        icon: 'solar:wallet-money-bold-duotone',
-      },
-      {
-        title: 'Compliance Reports',
-        href: '/accounting/reporting/compliance',
-        icon: 'solar:shield-check-bold-duotone',
-      },
-    ],
-  },
+
       {
         title: 'Modules',
         href: '/modules',
@@ -765,11 +762,6 @@ const baseNavItems: NavItem[] = [
         href: '/settings',
         icon: 'solar:settings-bold-duotone',
         requiredPermission: 'settings.view',
-      },
-      {
-        title: 'Template Builder',
-        href: '/template-builder',
-        icon: 'solar:document-text-bold-duotone',
       },
     ]
 
@@ -917,14 +909,36 @@ export function Sidebar() {
     )
   }
 
+  const hasMoreSpecificRouteMatch = (items: NavItem[], href: string): boolean =>
+    items.some(item => {
+      const itemMatches = Boolean(
+        item.href &&
+        item.href.length > href.length &&
+        (location.pathname === item.href || location.pathname.startsWith(item.href + '/'))
+      )
+
+      return itemMatches || Boolean(item.children && hasMoreSpecificRouteMatch(item.children, href))
+    })
+
   const isItemActive = (item: NavItem): boolean => {
     if (item.href && location.pathname === item.href) return true
-    // For parent items, check if current route starts with the parent href
-    // This catches nested routes like /sales/orders when parent is /sales
-    if (item.href && item.href !== '/' && location.pathname.startsWith(item.href + '/')) return true
     if (item.children) {
-      return item.children.some(child => isItemActive(child))
+      if (item.children.some(child => isItemActive(child))) return true
+      // Keep a module parent active for nested routes not represented by a child item.
+      return Boolean(
+        item.href && item.href !== '/' && location.pathname.startsWith(item.href + '/')
+      )
     }
+
+    // A list route remains active on detail pages, unless a more specific menu
+    // item owns that path (for example /products/report over /products).
+    if (
+      item.href &&
+      item.href !== '/' &&
+      location.pathname.startsWith(item.href + '/') &&
+      !hasMoreSpecificRouteMatch(navItems, item.href)
+    ) return true
+
     return false
   }
 

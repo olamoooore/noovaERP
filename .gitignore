@@ -67,3 +67,4 @@ STEERING-PACK-ADDENDUM-REVIEW.md
 
 # OpenClaw implementation pack (local reference only)
 ace-openclaw-implementation-pack/
+*.sql

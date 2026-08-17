@@ -15,6 +15,8 @@ import {
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { MasterReportsTab } from '@/components/dashboard/MasterReportsTab'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
 import api from '@/lib/api'
@@ -137,6 +139,7 @@ function Delta({ value }: { value?: number }) {
 export function DashboardPage() {
   const user = useAuthStore((s) => s.user)
   const [range, setRange] = useState<Range>('30d')
+  const [activeTab, setActiveTab] = useState('view')
 
   const { data: stats } = useQuery({
     queryKey: ['dashboard', range],
@@ -187,6 +190,22 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-slate-950">Master Dashboard</h1>
+        <p className="mt-1 text-sm text-slate-500">Overall system performance, key metrics and decision-ready reporting.</p>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full max-w-sm grid-cols-2">
+          <TabsTrigger value="view"><Icon icon="solar:eye-bold-duotone" className="mr-2 h-4 w-4" />View</TabsTrigger>
+          <TabsTrigger value="reports"><Icon icon="solar:document-text-bold-duotone" className="mr-2 h-4 w-4" />Reports</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {activeTab === 'reports' ? (
+        <MasterReportsTab stats={stats} range={range} onRangeChange={setRange} />
+      ) : (
+        <>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-medium text-slate-500">{today}</p>
@@ -516,6 +535,8 @@ export function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   )
 }
