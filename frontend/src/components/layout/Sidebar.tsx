@@ -428,6 +428,11 @@ const baseNavItems: NavItem[] = [
         href: '/accounting/configuration/findings',
         icon: 'solar:flag-bold-duotone',
       },
+      {
+        title: 'Settlements',
+        href: '/accounting/settlements',
+        icon: 'solar:wallet-bold-duotone',
+      },
 
       
     ],

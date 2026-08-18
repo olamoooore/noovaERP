@@ -197,3 +197,82 @@ export function resolveImageUrl(path: string | null | undefined): string {
 
   return `/storage/${path.replace(/^\//, '')}`
 }
+
+/**
+ * Maps backend error responses to user-friendly toast messages with actionable guidance.
+ * Use this in catch blocks to provide meaningful feedback based on the error type.
+ */
+export function mapCommandError(error: any): { title: string; description: string; variant?: 'destructive' } {
+  const status = error?.response?.status;
+  const message = error?.response?.data?.message || error?.response?.data?.error || '';
+  const msg = message.toLowerCase();
+
+  // Period locked
+  if (msg.includes('locked') || msg.includes('period is closed') || msg.includes('fiscal period')) {
+    return {
+      title: 'Period Locked',
+      description: 'This posting period is locked. Contact an administrator to request an override or reopen the period.',
+      variant: 'destructive',
+    };
+  }
+
+  // Approval required
+  if (msg.includes('approval') || msg.includes('pending approval') || msg.includes('awaiting')) {
+    return {
+      title: 'Approval Required',
+      description: 'This action requires approval before it can proceed. The request has been submitted for review.',
+    };
+  }
+
+  // Concurrency conflict
+  if (msg.includes('conflict') || msg.includes('stale') || msg.includes('version') || status === 409) {
+    return {
+      title: 'Version Conflict',
+      description: 'This record was modified by another user. Please refresh and try again.',
+      variant: 'destructive',
+    };
+  }
+
+  // Validation error
+  if (status === 422) {
+    return {
+      title: 'Validation Error',
+      description: message || 'Please check your input and try again.',
+      variant: 'destructive',
+    };
+  }
+
+  // Permission denied
+  if (status === 403 || msg.includes('permission') || msg.includes('unauthorized')) {
+    return {
+      title: 'Permission Denied',
+      description: 'You do not have permission to perform this action. Contact an administrator.',
+      variant: 'destructive',
+    };
+  }
+
+  // Not found
+  if (status === 404) {
+    return {
+      title: 'Not Found',
+      description: 'The requested resource was not found. It may have been deleted.',
+      variant: 'destructive',
+    };
+  }
+
+  // Generic server error
+  if (status === 500 || status === 502 || status === 503) {
+    return {
+      title: 'Server Error',
+      description: 'An unexpected server error occurred. Please try again later or contact support.',
+      variant: 'destructive',
+    };
+  }
+
+  // Default
+  return {
+    title: 'Error',
+    description: message || 'An unexpected error occurred.',
+    variant: 'destructive',
+  };
+}

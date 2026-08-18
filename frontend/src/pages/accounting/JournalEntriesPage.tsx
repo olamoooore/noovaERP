@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { useAuthStore } from '@/store/authStore';
 import journalEntriesApi, {
   type JournalEntry,
   type JournalEntryLine,
@@ -40,7 +41,7 @@ import journalEntriesApi, {
 } from '@/lib/journalEntriesApi';
 import journalsApi from '@/lib/journalsApi';
 import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, mapCommandError } from '@/lib/utils';
 
 export default function JournalEntriesPage() {
   const navigate = useNavigate();
@@ -57,6 +58,10 @@ export default function JournalEntriesPage() {
   const [partialLineAmounts, setPartialLineAmounts] = useState<{ line_id: number; amount: number }[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
+  const { hasPermission } = useAuthStore();
+  const canPost = hasPermission('accounting.post');
+  const canReverse = hasPermission('accounting.reverse');
+  const canWrite = hasPermission('accounting.write');
   const [formData, setFormData] = useState<CreateJournalEntryRequest>({
     journal_id: undefined,
     entry_date: new Date().toISOString().split('T')[0],
@@ -121,13 +126,8 @@ export default function JournalEntriesPage() {
       resetForm();
     },
     onError: (error: any) => {
-      const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to create entry';
-
-      toast({
-        title: 'Error',
-        description: errorMessage,
-        variant: 'destructive',
-      });
+      const err = mapCommandError(error);
+      toast(err);
     },
   });
 
@@ -140,11 +140,7 @@ export default function JournalEntriesPage() {
       setViewOpen(false);
     },
     onError: (error: any) => {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to post entry',
-        variant: 'destructive',
-      });
+      toast(mapCommandError(error));
     },
   });
 
@@ -160,11 +156,7 @@ export default function JournalEntriesPage() {
       setReverseType('full');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to reverse entry',
-        variant: 'destructive',
-      });
+      toast(mapCommandError(error));
     },
   });
 
@@ -188,11 +180,7 @@ export default function JournalEntriesPage() {
       setPartialLineAmounts([]);
     },
     onError: (error: any) => {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to reverse entry',
-        variant: 'destructive',
-      });
+      toast(mapCommandError(error));
     },
   });
 
@@ -205,11 +193,7 @@ export default function JournalEntriesPage() {
       setViewOpen(false);
     },
     onError: (error: any) => {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to delete entry',
-        variant: 'destructive',
-      });
+      toast(mapCommandError(error));
     },
   });
 
@@ -373,10 +357,12 @@ export default function JournalEntriesPage() {
               onImportComplete={() => queryClient.invalidateQueries({ queryKey: ['journal-entries'] })}
               variant="outline"
             />
-            <Button onClick={() => setFormOpen(true)}>
-              <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
-              New Entry
-            </Button>
+            {canWrite && (
+              <Button onClick={() => setFormOpen(true)}>
+                <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
+                New Entry
+              </Button>
+            )}
           </div>
         </div>
 
@@ -422,15 +408,19 @@ export default function JournalEntriesPage() {
                         <div className="flex justify-end gap-1">
                           {entry.status === 'draft' && (
                             <>
-                              <Button size="sm" variant="ghost" onClick={() => handlePost(entry.id)}>
-                                <Icon icon="solar:check-circle-linear" className="w-4 h-4" />
-                              </Button>
-                              <Button size="sm" variant="ghost" onClick={() => handleDelete(entry.id)}>
-                                <Icon icon="solar:trash-bin-trash-linear" className="w-4 h-4" />
-                              </Button>
+                              {canPost && (
+                                <Button size="sm" variant="ghost" onClick={() => handlePost(entry.id)}>
+                                  <Icon icon="solar:check-circle-linear" className="w-4 h-4" />
+                                </Button>
+                              )}
+                              {canWrite && (
+                                <Button size="sm" variant="ghost" onClick={() => handleDelete(entry.id)}>
+                                  <Icon icon="solar:trash-bin-trash-linear" className="w-4 h-4" />
+                                </Button>
+                              )}
                             </>
                           )}
-                          {entry.status === 'posted' && !entry.is_reversal && (
+                          {entry.status === 'posted' && !entry.is_reversal && canReverse && (
                             <Button size="sm" variant="ghost" onClick={() => handleReverse(entry.id)}>
                               <Icon icon="solar:refresh-linear" className="w-4 h-4" />
                             </Button>
@@ -698,7 +688,7 @@ export default function JournalEntriesPage() {
             </div>
           )}
           <DialogFooter>
-            {selectedEntry?.status === 'draft' && (
+            {selectedEntry?.status === 'draft' && canPost && (
               <Button
                 onClick={() => postMutation.mutate(selectedEntry.id)}
                 disabled={postMutation.isPending}

@@ -139,6 +139,7 @@ const MyInvoiceSubmissionPage = lazy(() => import('@/pages/accounting/MyInvoiceS
 const MyInvoisSettingsPage = lazy(() => import('@/pages/accounting/MyInvoisSettingsPage'))
 const AccountingPoliciesPage = lazy(() => import('@/pages/accounting/AccountingPoliciesPage'))
 const AccountingFindingsPage = lazy(() => import('@/pages/accounting/AccountingFindingsPage'))
+const SettlementsPage = lazy(() => import('@/pages/accounting/SettlementsPage'))
 
 // AI Module Pages
 const AIChatPage = lazy(() => import('@/pages/AI/AIChatPage').then(m => ({ default: m.AIChatPage })))
@@ -445,6 +446,7 @@ function App() {
                 <Route path="/accounting/configuration/company" element={<CompanySettingsPage />} />
                 <Route path="/accounting/configuration/policies" element={<AccountingPoliciesPage />} />
                 <Route path="/accounting/configuration/findings" element={<AccountingFindingsPage />} />
+                <Route path="/accounting/settlements" element={<SettlementsPage />} />
                 <Route path="/accounting/configuration/myinvois" element={<MyInvoisSettingsPage />} />
                 <Route path="/accounting/configuration/payment-terms" element={<PaymentTermsPage />} />
                 <Route path="/accounting/configuration/taxes" element={<TaxConfigurationPage />} />
