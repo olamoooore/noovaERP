@@ -123,39 +123,39 @@ const baseNavItems: NavItem[] = [
       },
     ],
   },
-  // {
-  //   title: 'POS',
-  //   href: '/pos',
-  //   icon: 'solar:cash-out-bold-duotone',
-  //   featureKey: 'pos',
-  //   children: [
-  //     {
-  //       title: 'Open POS',
-  //       href: '/pos',
-  //       icon: 'solar:shop-bold-duotone',
-  //     },
-  //     {
-  //       title: 'POS Orders',
-  //       href: '/pos/orders',
-  //       icon: 'solar:document-text-bold-duotone',
-  //     },
-  //     {
-  //       title: 'Barcodes',
-  //       href: '/pos/barcodes',
-  //       icon: 'solar:qr-code-bold-duotone',
-  //     },
-  //     {
-  //       title: 'Reports',
-  //       href: '/pos/reports',
-  //       icon: 'solar:chart-2-bold-duotone',
-  //     },
-  //     {
-  //       title: 'POS Settings',
-  //       href: '/pos/settings',
-  //       icon: 'solar:settings-bold-duotone',
-  //     },
-  //   ],
-  // },
+  {
+    title: 'POS',
+    href: '/pos',
+    icon: 'solar:cash-out-bold-duotone',
+    featureKey: 'pos',
+    children: [
+      {
+        title: 'Open POS',
+        href: '/pos',
+        icon: 'solar:shop-bold-duotone',
+      },
+      {
+        title: 'POS Orders',
+        href: '/pos/orders',
+        icon: 'solar:document-text-bold-duotone',
+      },
+      {
+        title: 'Barcodes',
+        href: '/pos/barcodes',
+        icon: 'solar:qr-code-bold-duotone',
+      },
+      {
+        title: 'Reports',
+        href: '/pos/reports',
+        icon: 'solar:chart-2-bold-duotone',
+      },
+      {
+        title: 'POS Settings',
+        href: '/pos/settings',
+        icon: 'solar:settings-bold-duotone',
+      },
+    ],
+  },
   
   {
     title: 'Inventory',
