@@ -64,11 +64,11 @@ const MODULES: Array<{
     iconBg: 'bg-emerald-100 text-emerald-700',
   },
   {
-    key: 'pos',
-    label: 'Retail / POS',
-    description: 'Orders, settlements',
-    icon: 'solar:cart-large-2-bold-duotone',
-    to: '/pos',
+    key: 'contacts',
+    label: 'Contacts',
+    description: 'Customers, activity and status',
+    icon: 'solar:users-group-rounded-bold-duotone',
+    to: '/master-contacts',
     accent: 'from-violet-50 to-white',
     iconBg: 'bg-violet-100 text-violet-700',
   },
@@ -91,11 +91,11 @@ const MODULES: Array<{
     iconBg: 'bg-rose-100 text-rose-700',
   },
   {
-    key: 'iot',
-    label: 'IoT Hub',
-    description: 'Printers, scanners, devices',
-    icon: 'solar:smart-speaker-bold-duotone',
-    to: '/iot-hub',
+    key: 'products',
+    label: 'Products',
+    description: 'Catalog, availability and reports',
+    icon: 'solar:box-minimalistic-bold-duotone',
+    to: '/products/dashboard',
     accent: 'from-cyan-50 to-white',
     iconBg: 'bg-cyan-100 text-cyan-700',
   },
@@ -113,7 +113,9 @@ const QUICK_ACTIONS = [
 function normalizeRevenueSeries(points?: RevenuePoint[]) {
   return (points ?? []).map((point) => {
     const rawLabel = point.x ?? point.month ?? ''
-    const label = rawLabel ? new Date(rawLabel).toLocaleDateString(undefined, { month: 'short' }) : ''
+    const label = rawLabel
+      ? new Date(`${String(rawLabel).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      : ''
     return {
       x: label,
       v: Number(point.v ?? point.revenue ?? 0),
@@ -154,7 +156,6 @@ export function DashboardPage() {
   const outstandingCount: number = stats?.outstanding_invoices?.count ?? 0
   const totalCustomers: number = stats?.total_customers ?? 0
   const lowStock: number = stats?.low_stock_products ?? 0
-  const ordersToday: number = stats?.orders_today ?? stats?.pos_orders_today ?? 0
   const totalProducts: number = stats?.total_products ?? 0
 
   const series = useMemo(
@@ -260,12 +261,11 @@ export function DashboardPage() {
           delta={stats?.outstanding_delta_pct}
         />
         <KpiTile
-          label="POS Orders Today"
-          value={ordersToday.toLocaleString()}
-          sub={`${totalCustomers.toLocaleString()} active customers`}
-          icon="solar:cart-large-2-bold-duotone"
+          label="Active Customers"
+          value={totalCustomers.toLocaleString()}
+          sub="Current active customer records"
+          icon="solar:users-group-rounded-bold-duotone"
           iconClass="bg-violet-100 text-violet-700"
-          delta={stats?.orders_delta_pct}
         />
         <KpiTile
           label="Stock Alerts"
@@ -282,7 +282,7 @@ export function DashboardPage() {
           <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
             <div>
               <CardTitle className="text-base font-semibold text-slate-900">Revenue trend</CardTitle>
-              <p className="mt-1 text-xs text-slate-500">Invoice revenue by month</p>
+              <p className="mt-1 text-xs text-slate-500">Daily invoice revenue · {RANGE_LABEL[range]}</p>
             </div>
             <div className="text-right">
               <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Total</p>
