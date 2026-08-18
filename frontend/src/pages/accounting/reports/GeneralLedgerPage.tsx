@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
@@ -27,11 +27,14 @@ import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
 
 export default function GeneralLedgerPage() {
   const navigate = useNavigate();
-  const [accountId, setAccountId] = useState<string>('all');
+  const [searchParams] = useSearchParams();
+  const [accountId, setAccountId] = useState<string>(searchParams.get('account_id') || 'all');
   const [startDate, setStartDate] = useState(
-    new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]
+    searchParams.get('start_date') || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]
   );
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(
+    searchParams.get('end_date') || new Date().toISOString().split('T')[0]
+  );
 
   // Fetch accounts for dropdown
   const { data: accounts = [] } = useQuery({
@@ -184,7 +187,11 @@ export default function GeneralLedgerPage() {
               </TableHeader>
               <TableBody>
                 {ledger.transactions.map((tx: any, index: number) => (
-                  <TableRow key={index}>
+                  <TableRow
+                    key={index}
+                    className={tx.journal_entry_id ? 'cursor-pointer hover:bg-muted/50' : ''}
+                    onClick={() => tx.journal_entry_id && navigate(`/accounting/core/journal-entries?entry_id=${tx.journal_entry_id}`)}
+                  >
                     <TableCell>
                       {tx.date ? new Date(tx.date).toLocaleDateString('en-US', { 
                         year: 'numeric', 

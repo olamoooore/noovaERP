@@ -423,6 +423,11 @@ const baseNavItems: NavItem[] = [
         href: '/accounting/configuration/bank-accounts',
         icon: 'solar:card-bold-duotone',
       },
+      {
+        title: 'Findings',
+        href: '/accounting/configuration/findings',
+        icon: 'solar:flag-bold-duotone',
+      },
 
       
     ],

@@ -521,7 +521,7 @@ class PostingEngine implements PostingEngineInterface
                 'department_id' => $line->departmentId,
                 'project_id' => $line->projectId,
                 'location_id' => $line->locationId,
-                'currency_code' => $line->currencyCode ?? 'USD',
+                'currency_code' => $line->currencyCode ?? \App\Models\Setting::getValue('currency', ['code' => 'SGD'])['code'] ?? 'SGD',
                 'original_amount' => $line->originalAmount,
                 'exchange_rate' => $line->exchangeRate ?? 1.0,
             ];
@@ -642,7 +642,7 @@ class PostingEngine implements PostingEngineInterface
                         'credit' => $line->credit,
                         'description' => $line->description,
                         'reference' => $line->reference,
-                        'currency_code' => $line->currencyCode ?? 'USD',
+                'currency_code' => $line->currencyCode ?? \App\Models\Setting::getValue('currency', ['code' => 'SGD'])['code'] ?? 'SGD',
                         'original_amount' => $line->originalAmount ?? $lineAmount,
                         'exchange_rate' => $line->exchangeRate ?? 1.0,
                         'department_id' => $line->departmentId,

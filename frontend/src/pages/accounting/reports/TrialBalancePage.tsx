@@ -194,7 +194,11 @@ export default function TrialBalancePage() {
               </TableHeader>
               <TableBody>
                 {trialBalance.accounts.map((account: any) => (
-                  <TableRow key={account.id}>
+                  <TableRow
+                    key={account.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => navigate(`/accounting/reporting/general-ledger?account_id=${account.id}&start_date=${new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]}&end_date=${asOfDate}`)}
+                  >
                     <TableCell className="font-mono">{account.code}</TableCell>
                     <TableCell>{account.name}</TableCell>
                     <TableCell className="text-right font-mono">

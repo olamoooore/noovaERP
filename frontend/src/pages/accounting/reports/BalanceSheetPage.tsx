@@ -114,7 +114,11 @@ export default function BalanceSheetPage() {
           </TableCell>
         </TableRow>
         {group.accounts.map((account) => (
-          <TableRow key={account.account_id} className="hover:bg-gray-50">
+          <TableRow
+            key={account.account_id}
+            className="hover:bg-gray-50 cursor-pointer"
+            onClick={() => navigate(`/accounting/reporting/general-ledger?account_id=${account.account_id}&start_date=${new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]}&end_date=${asOfDate}`)}
+          >
             <TableCell className="pl-12">
               <div className="flex items-center gap-2">
                 <Badge className="bg-gray-100 text-gray-600 text-xs">L3</Badge>

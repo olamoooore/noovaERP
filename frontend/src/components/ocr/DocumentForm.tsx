@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +14,7 @@ import {
 } from '@/components/ui/select'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import chartOfAccountsApi from '@/lib/chartOfAccountsApi'
 
 interface DocumentFormProps {
   document: any
@@ -44,6 +46,11 @@ export function DocumentForm({ document, suggestions, onSave, isSaving, readOnly
   })
 
   const [hasChanges, setHasChanges] = useState(false)
+
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['chart-of-accounts'],
+    queryFn: () => chartOfAccountsApi.getAccounts(),
+  })
 
   useEffect(() => {
     setFormData({
@@ -290,9 +297,13 @@ export function DocumentForm({ document, suggestions, onSave, isSaving, readOnly
                     <SelectValue placeholder="Select account" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="14">5000 - Expenses</SelectItem>
-                    <SelectItem value="15">5100 - Cost of Goods Sold</SelectItem>
-                    <SelectItem value="16">5200 - Operating Expenses</SelectItem>
+                    {accounts
+                      .filter((acc: any) => acc.is_active)
+                      .map((acc: any) => (
+                        <SelectItem key={acc.id} value={acc.id.toString()}>
+                          {acc.code} - {acc.name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

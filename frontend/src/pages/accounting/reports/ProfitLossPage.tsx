@@ -206,7 +206,11 @@ export default function ProfitLossPage() {
                   <TableCell></TableCell>
                 </TableRow>
                 {profitLoss.revenue?.accounts?.map((account: any, index: number) => (
-                  <TableRow key={account.account_id || account.id || `revenue-${index}`}>
+                  <TableRow
+                    key={account.account_id || account.id || `revenue-${index}`}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => account.account_id && navigate(`/accounting/reporting/general-ledger?account_id=${account.account_id}&start_date=${startDate}&end_date=${endDate}`)}
+                  >
                     <TableCell className="pl-6">{account.code ? `${account.code} - ` : ''}{account.name}</TableCell>
                     <TableCell className="text-right font-mono">
                       {formatCurrency(account.amount || account.balance || 0)}
@@ -226,7 +230,11 @@ export default function ProfitLossPage() {
                   <TableCell></TableCell>
                 </TableRow>
                 {profitLoss.cost_of_goods_sold?.accounts?.map((account: any, index: number) => (
-                  <TableRow key={account.account_id || account.id || `cogs-${index}`}>
+                  <TableRow
+                    key={account.account_id || account.id || `cogs-${index}`}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => account.account_id && navigate(`/accounting/reporting/general-ledger?account_id=${account.account_id}&start_date=${startDate}&end_date=${endDate}`)}
+                  >
                     <TableCell className="pl-6">{account.code ? `${account.code} - ` : ''}{account.name}</TableCell>
                     <TableCell className="text-right font-mono">
                       {formatCurrency(account.amount || account.balance || 0)}
@@ -258,7 +266,11 @@ export default function ProfitLossPage() {
                       <TableCell></TableCell>
                     </TableRow>
                     {profitLoss.operating_expenses.accounts.map((account: any, index: number) => (
-                      <TableRow key={account.account_id || account.id || `opex-${index}`}>
+                      <TableRow
+                        key={account.account_id || account.id || `opex-${index}`}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => account.account_id && navigate(`/accounting/reporting/general-ledger?account_id=${account.account_id}&start_date=${startDate}&end_date=${endDate}`)}
+                      >
                         <TableCell className="pl-6">{account.code ? `${account.code} - ` : ''}{account.name}</TableCell>
                         <TableCell className="text-right font-mono">
                           {formatCurrency(account.amount || account.balance || 0)}
@@ -292,7 +304,11 @@ export default function ProfitLossPage() {
                       <TableCell></TableCell>
                     </TableRow>
                     {profitLoss.other_expenses.accounts.map((account: any, index: number) => (
-                      <TableRow key={account.account_id || account.id || `other-${index}`}>
+                      <TableRow
+                        key={account.account_id || account.id || `other-${index}`}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => account.account_id && navigate(`/accounting/reporting/general-ledger?account_id=${account.account_id}&start_date=${startDate}&end_date=${endDate}`)}
+                      >
                         <TableCell className="pl-6">{account.code ? `${account.code} - ` : ''}{account.name}</TableCell>
                         <TableCell className="text-right font-mono">
                           {formatCurrency(account.amount || account.balance || 0)}
