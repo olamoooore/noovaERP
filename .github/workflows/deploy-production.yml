@@ -1,0 +1,88 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Commit SHA to deploy (must match a passing CI commit)'
+        required: true
+        type: string
+
+jobs:
+  verify-ci:
+    name: Verify CI Passed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check CI status for commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Checking CI status for commit ${{ inputs.commit_sha }}..."
+          STATUS=$(gh api repos/${{ github.repository }}/commits/${{ inputs.commit_sha }}/check-runs \
+            --jq '[.check_runs[] | select(.name == "Laravel Backend Tests")] | .[0].conclusion // "not_found"')
+          if [ "$STATUS" != "success" ]; then
+            echo "::error::CI has not passed for commit ${{ inputs.commit_sha }} (status: $STATUS)"
+            echo "Deployment blocked. Only commits with passing CI can be deployed."
+            exit 1
+          fi
+          echo "CI passed for commit ${{ inputs.commit_sha }}"
+
+  backup-database:
+    name: Backup Database
+    needs: verify-ci
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Backup production database
+        run: |
+          echo "Creating database backup before deployment..."
+          ssh -o StrictHostKeyChecking=no -i ${{ secrets.DEPLOY_KEY }} root@${{ secrets.SERVER_HOST }} \
+            "pg_dump -U postgres noovaerp > /var/backups/noovaerp_pre_deploy_$(date +%Y%m%d_%H%M%S).sql"
+          echo "Database backup completed"
+
+  deploy:
+    name: Deploy Code
+    needs: backup-database
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+
+      - name: Deploy backend
+        run: |
+          echo "Deploying commit ${{ inputs.commit_sha }} to production..."
+          ssh -o StrictHostKeyChecking=no -i ${{ secrets.DEPLOY_KEY }} root@${{ secrets.SERVER_HOST }} \
+            "cd /var/www/noovaerp/backend && \
+             git fetch origin && \
+             git checkout ${{ inputs.commit_sha }} && \
+             composer install --no-dev --optimize-autoloader && \
+             php artisan migrate --force && \
+             php artisan config:cache && \
+             php artisan route:cache && \
+             php artisan view:cache"
+          echo "Backend deployment completed"
+
+      - name: Deploy frontend
+        run: |
+          echo "Deploying frontend..."
+          ssh -o StrictHostKeyChecking=no -i ${{ secrets.DEPLOY_KEY }} root@${{ secrets.SERVER_HOST }} \
+            "cd /var/www/noovaerp/frontend && \
+             git fetch origin && \
+             git checkout ${{ inputs.commit_sha }} && \
+             npm ci && \
+             npm run build"
+          echo "Frontend deployment completed"
+
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment health..."
+          sleep 10
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.SERVER_HOST }} || echo "000")
+          if [ "$HTTP_STATUS" != "200" ] && [ "$HTTP_STATUS" != "302" ]; then
+            echo "::warning::Health check returned HTTP $HTTP_STATUS — verify manually"
+          else
+            echo "Deployment healthy (HTTP $HTTP_STATUS)"
+          fi
