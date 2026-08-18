@@ -406,6 +406,103 @@ class JournalEntriesController extends Controller
     }
 
     /**
+     * Partial reversal — reverse specific lines of a posted journal entry.
+     *
+     * Accepts line_amounts array with { line_id, amount } pairs.
+     * Creates a new journal entry with only the specified line amounts.
+     */
+    public function partialReverse($id, Request $request)
+    {
+        $validated = $request->validate([
+            'reversal_date' => 'required|date',
+            'reason' => 'required|string|max:500',
+            'reason_code' => 'nullable|string|max:50',
+            'line_amounts' => 'required|array|min:1',
+            'line_amounts.*.line_id' => 'required|integer',
+            'line_amounts.*.amount' => 'required|numeric|min:0.01',
+        ]);
+
+        $userId = TenantUserHelper::requireTenantUserId();
+
+        try {
+            $entry = \App\Models\JournalEntry::with('lines')->findOrFail($id);
+
+            if ($entry->status !== 'posted') {
+                return response()->json([
+                    'message' => 'Only posted entries can be partially reversed',
+                ], 422);
+            }
+
+            $totalReversal = 0;
+            $reversalLines = [];
+
+            foreach ($validated['line_amounts'] as $lineAmount) {
+                $originalLine = $entry->lines->firstWhere('id', $lineAmount['line_id']);
+                if (! $originalLine) {
+                    return response()->json([
+                        'message' => "Line {$lineAmount['line_id']} not found in journal entry",
+                    ], 422);
+                }
+
+                $originalAbs = abs($originalLine->debit - $originalLine->credit);
+                if ($lineAmount['amount'] > $originalAbs + 0.001) {
+                    return response()->json([
+                        'message' => "Amount {$lineAmount['amount']} exceeds original {$originalAbs} for line {$lineAmount['line_id']}",
+                    ], 422);
+                }
+
+                $totalReversal += $lineAmount['amount'];
+                $reversalLines[] = [
+                    'account_id' => $originalLine->account_id,
+                    'description' => "Partial reversal: {$originalLine->description}",
+                    'debit' => $originalLine->debit > 0 ? 0 : $lineAmount['amount'],
+                    'credit' => $originalLine->credit > 0 ? 0 : $lineAmount['amount'],
+                    'amount' => $lineAmount['amount'],
+                    'original_line_id' => $originalLine->id,
+                ];
+            }
+
+            // Create reversal journal entry
+            $reversalEntry = \App\Models\JournalEntry::create([
+                'tenant_id' => $entry->tenant_id,
+                'journal_id' => $entry->journal_id,
+                'entry_date' => $validated['reversal_date'],
+                'reference' => "Partial reversal of #{$entry->id}",
+                'description' => $validated['reason'],
+                'status' => 'posted',
+                'is_reversal' => true,
+                'reversed_entry_id' => $entry->id,
+                'posted_at' => now(),
+                'posted_by' => $userId,
+            ]);
+
+            foreach ($reversalLines as $line) {
+                \App\Models\JournalEntryLine::create([
+                    'tenant_id' => $entry->tenant_id,
+                    'journal_entry_id' => $reversalEntry->id,
+                    'account_id' => $line['account_id'],
+                    'description' => $line['description'],
+                    'debit' => $line['debit'],
+                    'credit' => $line['credit'],
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Partial reversal posted successfully',
+                'reversal_entry' => $reversalEntry->load('lines.account'),
+                'reversed_amount' => $totalReversal,
+                'remaining_amount' => 0,
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Error creating partial reversal',
+                'error' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
      * Validate entry date against lock dates
      */
     public function validateDate(Request $request)

@@ -445,7 +445,7 @@ const baseNavItems: NavItem[] = [
       },
       {
         title: 'Lock Dates',
-        href: '/accounting/core/tax-returns',
+        href: '/accounting/core/lock-dates',
         icon: 'solar:document-text-bold-duotone',
       },
 

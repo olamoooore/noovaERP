@@ -240,6 +240,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         // Reversal requires accounting.reverse permission
         Route::post('/journal-entries/{id}/reverse', [JournalEntriesController::class, 'reverse'])
             ->middleware(EnsureAccountingReverseAccess::class);
+        // Partial reversal requires accounting.reverse permission
+        Route::post('/journal-entries/{id}/partial-reverse', [JournalEntriesController::class, 'partialReverse'])
+            ->middleware(EnsureAccountingReverseAccess::class);
 
         // Reports
         Route::get('/trial-balance', [AccountingController::class, 'trialBalance']);

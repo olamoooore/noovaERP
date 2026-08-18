@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import api, { accountingApi } from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
 import BillCreditNotes from '../components/BillCreditNotes';
 import CreateVendorCreditNoteDialog from '../components/CreateVendorCreditNoteDialog';
 import BillDebitNotes from '../components/BillDebitNotes';
@@ -109,14 +110,6 @@ export const VendorBillDetail: React.FC = () => {
       });
     },
   });
-
-  const formatCurrency = (amount: number | string) => {
-    const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(numAmount || 0);
-  };
 
   const formatDate = (date: string) => {
     if (!date) return '-';

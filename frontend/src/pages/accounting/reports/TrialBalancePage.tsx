@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import reportApi from '@/lib/reportApi';
+import { formatCurrency } from '@/lib/utils';
 import { ComparisonTable } from '@/components/reports/ComparisonTable';
 
 export default function TrialBalancePage() {
@@ -35,13 +36,6 @@ export default function TrialBalancePage() {
   });
 
   const trialBalance = data as any;
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
 
   // Build comparison rows for ComparisonTable
   const comparisonRows = () => {

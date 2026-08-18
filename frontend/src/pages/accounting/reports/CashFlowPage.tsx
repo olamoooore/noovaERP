@@ -22,6 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import reportApi from '@/lib/reportApi';
+import { formatCurrency } from '@/lib/utils';
 
 export default function CashFlowPage() {
   const navigate = useNavigate();
@@ -44,13 +45,6 @@ export default function CashFlowPage() {
 
   // reportApi.getCashFlow() already returns response.data.data
   const cashFlow = data;
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
 
   const renderSection = (title: string, section: any, icon: string) => {
     if (!section) return null;

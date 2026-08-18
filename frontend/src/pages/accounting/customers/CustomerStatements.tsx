@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 
 interface StatementRecord {
@@ -70,13 +71,6 @@ export const CustomerStatements: React.FC = () => {
     });
     return latest;
   }, [history]);
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount || 0);
-  };
 
   const formatDate = (date: string) => {
     if (!date) return '-';

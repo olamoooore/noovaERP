@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import reportApi from '@/lib/reportApi';
+import { formatCurrency } from '@/lib/utils';
 import { ComparisonTable, type ComparisonRow } from '@/components/reports/ComparisonTable';
 
 interface Account {
@@ -81,13 +82,6 @@ export default function BalanceSheetPage() {
   });
 
   const balanceSheet = data as BalanceSheetData | undefined;
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
 
   const normalizeGroups = (items: Array<AccountGroup | Account> = []): AccountGroup[] => {
     return items.map((item, index) => {

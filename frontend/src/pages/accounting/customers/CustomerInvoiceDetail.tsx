@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { formatDate, resolveImageUrl } from '@/lib/utils';
+import { formatDate, resolveImageUrl, formatCurrency } from '@/lib/utils';
 import api from '@/lib/api';
 import InvoiceCreditNotes from '../components/InvoiceCreditNotes';
 import CreateCreditNoteDialog from '../components/CreateCreditNoteDialog';
@@ -160,14 +160,6 @@ export const CustomerInvoiceDetail: React.FC = () => {
       });
     },
   });
-
-  const formatCurrency = (amount: number | string) => {
-    const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(numAmount || 0);
-  };
 
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { variant: any; label: string; icon: string }> = {

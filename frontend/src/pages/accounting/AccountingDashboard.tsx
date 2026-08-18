@@ -7,6 +7,8 @@ import { Icon } from '@iconify/react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import reportApi from '@/lib/reportApi';
+import { formatCurrency } from '@/lib/utils';
+import { useSettingsStore } from '@/store/settingsStore';
 import { LineChart } from '@/components/charts/LineChart';
 import { BarChart } from '@/components/charts/BarChart';
 import { PieChart } from '@/components/charts/PieChart';
@@ -74,21 +76,15 @@ const buildDateFilters = (days: number) => {
   };
 };
 
-const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat('en-US', {
+const formatCompactCurrency = (amount: number) => {
+  const code = (useSettingsStore.getState().currencyCode || 'USD').toUpperCase();
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount || 0);
-
-const formatCompactCurrency = (amount: number) =>
-  new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
+    currency: code,
     notation: 'compact',
     maximumFractionDigits: 1,
   }).format(amount || 0);
+};
 
 const daysSince = (date: string | null) => {
   if (!date) return null;

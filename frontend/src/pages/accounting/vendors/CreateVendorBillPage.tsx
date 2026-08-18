@@ -13,6 +13,7 @@ import {
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { accountingApi } from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
 
 const formatLegacyAddress = (address: string | null | undefined): string => {
   if (!address) return '';
@@ -354,9 +355,6 @@ export const CreateVendorBillPage: React.FC = () => {
   const adjustedTaxTotal = Math.round(taxTotal * taxRatio * 100) / 100;
   const total = discountedSubtotal + adjustedTaxTotal;
   const billNumberPreview = billNumber || `BILL-${new Date(billDate).getFullYear()}-XXXX`;
-
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
   const handleVendorFormSubmit = (event: React.FormEvent) => {
     event.preventDefault();

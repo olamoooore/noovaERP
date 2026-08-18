@@ -2,6 +2,14 @@ import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { useSettingsStore } from '@/store/settingsStore'
 
+/**
+ * React hook that returns the current tenant currency code.
+ * Use this in components instead of hardcoding 'USD' or 'SGD'.
+ */
+export function useCurrencyCode(): string {
+  return useSettingsStore((s) => s.currencyCode ?? 'USD')
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }

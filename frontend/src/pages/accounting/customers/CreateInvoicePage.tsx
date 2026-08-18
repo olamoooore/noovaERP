@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
-import { getApiErrorMessage } from '@/lib/utils';
+import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api';
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
@@ -648,9 +648,6 @@ export const CreateInvoicePage: React.FC = () => {
     : discountAmt;
   const total = subtotal + taxTotal - lineDiscounts - documentDiscountAmount;
   const invoiceNumberPreview = `INV-${new Date(invoiceDate).getFullYear()}-XXXX`;
-
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
   const handleCustomerFormSubmit = (event: React.FormEvent) => {
     event.preventDefault();

@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
 
 export const CustomerFollowupReports: React.FC = () => {
   const [agingPeriod, setAgingPeriod] = useState('all');
@@ -21,13 +22,6 @@ export const CustomerFollowupReports: React.FC = () => {
       return response.data.data?.data || [];
     },
   });
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount || 0);
-  };
 
   const getAgingBadge = (days: number) => {
     if (days <= 30) return <Badge variant="default">Current</Badge>;

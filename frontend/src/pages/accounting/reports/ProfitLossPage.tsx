@@ -15,6 +15,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import reportApi from '@/lib/reportApi';
+import { formatCurrency } from '@/lib/utils';
 import { ComparisonTable } from '@/components/reports/ComparisonTable';
 
 export default function ProfitLossPage() {
@@ -43,13 +44,6 @@ export default function ProfitLossPage() {
 
   // reportApi.getProfitLoss() already returns response.data.data
   const profitLoss = data;
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
 
   return (
     <div className="p-6 space-y-6">

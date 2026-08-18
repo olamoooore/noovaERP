@@ -34,6 +34,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import chartOfAccountsApi, { type ChartOfAccount, type CreateAccountRequest } from '@/lib/chartOfAccountsApi';
+import { formatCurrency } from '@/lib/utils';
 
 export default function ChartOfAccountsPage({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
@@ -352,10 +353,7 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
                 <span className={`font-mono text-sm ${
                   (account.balance || 0) < 0 ? 'text-red-600' : 'text-green-600'
                 }`}>
-                  {account.balance?.toLocaleString('en-US', {
-                    style: 'currency',
-                    currency: 'USD',
-                  })}
+                  {formatCurrency(account.balance || 0)}
                 </span>
               )}
               <div className="flex gap-1">
@@ -550,10 +548,7 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
                         {account.parent?.name || '-'}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {account.balance?.toLocaleString('en-US', {
-                          style: 'currency',
-                          currency: 'USD',
-                        })}
+                        {formatCurrency(account.balance || 0)}
                       </TableCell>
                         <TableCell>
                           <Badge variant={account.is_active ? 'default' : 'secondary'}>

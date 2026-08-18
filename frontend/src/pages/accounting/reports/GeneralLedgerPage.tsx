@@ -22,6 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import reportApi from '@/lib/reportApi';
+import { formatCurrency } from '@/lib/utils';
 import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
 
 export default function GeneralLedgerPage() {
@@ -60,13 +61,6 @@ export default function GeneralLedgerPage() {
 
   // reportApi.getGeneralLedger() already returns response.data.data
   const ledger = data;
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
 
   return (
     <div className="p-6 space-y-6">

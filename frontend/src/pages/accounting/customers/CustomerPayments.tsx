@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
 
 export const CustomerPayments: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -44,13 +45,6 @@ export const CustomerPayments: React.FC = () => {
     },
     enabled: showRecordPayment,
   });
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount || 0);
-  };
 
   const formatDate = (date: string) => {
     if (!date) return '-';
@@ -180,7 +174,7 @@ export const CustomerPayments: React.FC = () => {
                         {payment.reference || '-'}
                       </TableCell>
                       <TableCell className="text-right font-medium">
-                        {formatCurrency(payment.amount)}
+                        {formatCurrency(payment.amount || 0)}
                       </TableCell>
                       <TableCell>
                         {payment.invoice ? (

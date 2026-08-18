@@ -160,13 +160,30 @@ class JournalEntriesApi {
   }
 
   /**
-   * Reverse journal entry
+   * Reverse journal entry (full reversal)
    */
   async reverseJournalEntry(id: number, data?: ReverseJournalEntryRequest): Promise<{
     message: string;
     reversal_entry: JournalEntry;
   }> {
     const response = await api.post(`/accounting/journal-entries/${id}/reverse`, data);
+    return response.data;
+  }
+
+  /**
+   * Partial reversal of specific lines
+   */
+  async partialReverseJournalEntry(id: number, data: {
+    reversal_date: string;
+    reason: string;
+    line_amounts: { line_id: number; amount: number }[];
+  }): Promise<{
+    message: string;
+    reversal_entry: JournalEntry;
+    reversed_amount: number;
+    remaining_amount: number;
+  }> {
+    const response = await api.post(`/accounting/journal-entries/${id}/partial-reverse`, data);
     return response.data;
   }
 

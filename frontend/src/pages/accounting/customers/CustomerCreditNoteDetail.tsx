@@ -7,15 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import api from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
 
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-800',
   posted: 'bg-green-100 text-green-800',
   cancelled: 'bg-red-100 text-red-800',
 };
-
-const formatCurrency = (amount: number | string, currency = 'USD') =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(amount) || 0);
 
 const formatDate = (date: string) =>
   date ? new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-';

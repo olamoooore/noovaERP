@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ImportButton } from '@/components/ImportButton';
 import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
 
 export const VendorPayments: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -44,13 +45,6 @@ export const VendorPayments: React.FC = () => {
     },
     enabled: showRecordPayment,
   });
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount || 0);
-  };
 
   const formatDate = (date: string) => {
     if (!date) return '-';

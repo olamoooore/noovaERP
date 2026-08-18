@@ -40,6 +40,7 @@ import journalEntriesApi, {
 } from '@/lib/journalEntriesApi';
 import journalsApi from '@/lib/journalsApi';
 import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
+import { formatCurrency } from '@/lib/utils';
 
 export default function JournalEntriesPage() {
   const navigate = useNavigate();
@@ -52,6 +53,8 @@ export default function JournalEntriesPage() {
   const [reverseOpen, setReverseOpen] = useState(false);
   const [reverseEntryId, setReverseEntryId] = useState<number | null>(null);
   const [reverseForm, setReverseForm] = useState({ reversal_date: new Date().toISOString().split('T')[0], reason: '' });
+  const [reverseType, setReverseType] = useState<'full' | 'partial'>('full');
+  const [partialLineAmounts, setPartialLineAmounts] = useState<{ line_id: number; amount: number }[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState<CreateJournalEntryRequest>({
@@ -145,14 +148,44 @@ export default function JournalEntriesPage() {
     },
   });
 
-  // Reverse entry mutation
+  // Reverse entry mutation (full)
   const reverseMutation = useMutation({
     mutationFn: ({ id, reversal_date, reason }: { id: number; reversal_date: string; reason: string }) =>
       journalEntriesApi.reverseJournalEntry(id, { reversal_date, reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
       toast({ title: 'Success', description: 'Journal entry reversed successfully' });
-      setViewOpen(false);
+      setReverseOpen(false);
+      setReverseEntryId(null);
+      setReverseType('full');
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to reverse entry',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Partial reversal mutation
+  const partialReverseMutation = useMutation({
+    mutationFn: ({ id, reversal_date, reason, line_amounts }: {
+      id: number;
+      reversal_date: string;
+      reason: string;
+      line_amounts: { line_id: number; amount: number }[];
+    }) => journalEntriesApi.partialReverseJournalEntry(id, { reversal_date, reason, line_amounts }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      toast({
+        title: 'Success',
+        description: `Partial reversal posted. Reversed: ${data.reversed_amount}. Remaining: ${data.remaining_amount}`,
+      });
+      setReverseOpen(false);
+      setReverseEntryId(null);
+      setReverseType('full');
+      setPartialLineAmounts([]);
     },
     onError: (error: any) => {
       toast({
@@ -247,9 +280,23 @@ export default function JournalEntriesPage() {
     }
   };
 
-  const handleReverse = (id: number) => {
+  const handleReverse = async (id: number) => {
     setReverseEntryId(id);
     setReverseForm({ reversal_date: new Date().toISOString().split('T')[0], reason: '' });
+    setReverseType('full');
+    // Load entry lines for partial reversal
+    try {
+      const entry = await journalEntriesApi.getJournalEntry(id);
+      setSelectedEntry(entry);
+      setPartialLineAmounts(
+        (entry.lines || []).map((line: any) => ({
+          line_id: line.id,
+          amount: Math.abs(line.debit || line.credit || 0),
+        }))
+      );
+    } catch {
+      setPartialLineAmounts([]);
+    }
     setReverseOpen(true);
   };
 
@@ -259,9 +306,25 @@ export default function JournalEntriesPage() {
       toast({ title: 'Error', description: 'Reason is required', variant: 'destructive' });
       return;
     }
-    reverseMutation.mutate({ id: reverseEntryId, reversal_date: reverseForm.reversal_date, reason: reverseForm.reason });
-    setReverseOpen(false);
-    setReverseEntryId(null);
+    if (reverseType === 'partial') {
+      const selectedLines = partialLineAmounts.filter(l => l.amount > 0);
+      if (selectedLines.length === 0) {
+        toast({ title: 'Error', description: 'Select at least one line to reverse', variant: 'destructive' });
+        return;
+      }
+      partialReverseMutation.mutate({
+        id: reverseEntryId,
+        reversal_date: reverseForm.reversal_date,
+        reason: reverseForm.reason,
+        line_amounts: selectedLines,
+      });
+    } else {
+      reverseMutation.mutate({
+        id: reverseEntryId,
+        reversal_date: reverseForm.reversal_date,
+        reason: reverseForm.reason,
+      });
+    }
   };
 
   const handleDelete = (id: number) => {
@@ -651,15 +714,91 @@ export default function JournalEntriesPage() {
       </Dialog>
 
       {/* Reversal Dialog */}
-      <Dialog open={reverseOpen} onOpenChange={(open) => { if (!open) { setReverseOpen(false); setReverseEntryId(null); } }}>
-        <DialogContent>
+      <Dialog open={reverseOpen} onOpenChange={(open) => { if (!open) { setReverseOpen(false); setReverseEntryId(null); setReverseType('full'); } }}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Reverse Journal Entry</DialogTitle>
             <DialogDescription>
-              Create a reversing entry for this posted journal entry.
+              Create a reversing entry. Choose full reversal (entire entry) or partial reversal (specific lines).
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {/* Reversal Type Toggle */}
+            <div className="space-y-2">
+              <Label>Reversal Type *</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={reverseType === 'full' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setReverseType('full')}
+                >
+                  Full Reversal
+                </Button>
+                <Button
+                  type="button"
+                  variant={reverseType === 'partial' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setReverseType('partial')}
+                >
+                  Partial Reversal
+                </Button>
+              </div>
+            </div>
+
+            {/* Partial Reversal Line Items */}
+            {reverseType === 'partial' && selectedEntry?.lines && (
+              <div className="space-y-2">
+                <Label>Select lines and amounts to reverse</Label>
+                <div className="border rounded-md max-h-60 overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Account</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead className="text-right">Original</TableHead>
+                        <TableHead className="text-right w-32">Reverse Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedEntry.lines.map((line) => {
+                        const originalAmount = Math.abs(line.debit || line.credit || 0);
+                        const lineAmount = partialLineAmounts.find(l => l.line_id === line.id);
+                        return (
+                          <TableRow key={line.id}>
+                            <TableCell className="text-sm">{line.account_code || line.account_name || `Line ${line.id}`}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{line.description || '-'}</TableCell>
+                            <TableCell className="text-sm text-right">{formatCurrency(originalAmount)}</TableCell>
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                min="0"
+                                max={originalAmount}
+                                step="0.01"
+                                className="w-32 text-right h-8"
+                                value={lineAmount?.amount ?? 0}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  setPartialLineAmounts(prev =>
+                                    prev.map(l =>
+                                      l.line_id === line.id ? { ...l, amount: Math.min(val, originalAmount) } : l
+                                    )
+                                  );
+                                }}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Set amount to 0 to skip a line. Total reversed must not exceed original entry.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="reversal_date">Reversal Date *</Label>
               <Input
@@ -682,21 +821,21 @@ export default function JournalEntriesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setReverseOpen(false); setReverseEntryId(null); }}>
+            <Button variant="outline" onClick={() => { setReverseOpen(false); setReverseEntryId(null); setReverseType('full'); }}>
               Cancel
             </Button>
             <Button
               variant="destructive"
               onClick={handleConfirmReverse}
-              disabled={reverseMutation.isPending || !reverseForm.reason.trim()}
+              disabled={reverseMutation.isPending || partialReverseMutation.isPending || !reverseForm.reason.trim()}
             >
-              {reverseMutation.isPending ? (
+              {(reverseMutation.isPending || partialReverseMutation.isPending) ? (
                 <>
                   <Icon icon="svg-spinners:ring-resize" className="w-4 h-4 mr-2" />
                   Reversing...
                 </>
               ) : (
-                'Confirm Reversal'
+                reverseType === 'partial' ? 'Confirm Partial Reversal' : 'Confirm Full Reversal'
               )}
             </Button>
           </DialogFooter>

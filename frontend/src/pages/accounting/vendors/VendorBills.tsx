@@ -9,6 +9,7 @@ import { DocumentUpload } from '@/components/ocr/DocumentUpload';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api, { accountingApi } from '@/lib/api';
+import { formatCurrency } from '@/lib/utils';
 
 export const VendorBills: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -201,13 +202,6 @@ export const VendorBills: React.FC = () => {
 
     const config = statusConfig[status] || { variant: 'secondary', label: status };
     return <Badge variant={config.variant}>{config.label}</Badge>;
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount || 0);
   };
 
   const formatDate = (date: string) => {
