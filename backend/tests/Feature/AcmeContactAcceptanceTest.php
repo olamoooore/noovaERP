@@ -1130,12 +1130,14 @@ class AcmeContactAcceptanceTest extends TenantTestCase
 
         // 2. Spawn worker via proc_open() — independent PHP process, fresh Laravel boot
         $resultFile = tempnam(sys_get_temp_dir(), 'worker_');
+        $readyFile = $resultFile . '.ready';
         $workerConfig = json_encode([
             'action' => 'set_primary',
             'customer_id' => $customerId,
             'contact_id' => $contact3Id,
             'tenant_id' => $tenantId,
             'result_file' => $resultFile,
+            'ready_file' => $readyFile,
         ]);
 
         $desc = [
@@ -1150,31 +1152,39 @@ class AcmeContactAcceptanceTest extends TenantTestCase
         );
         $this->assertNotFalse($proc, 'proc_open failed to spawn worker');
 
-        // Give worker time to boot and block on lockForUpdate()
-        sleep(2);
+        // 3. PROVE lock contention: wait for worker to signal it's about to call
+        // setPrimaryContact(). This proves the worker has booted, resolved the
+        // customer, and is entering the lockForUpdate() path that will block.
+        $waitStart = microtime(true);
+        while (! file_exists($readyFile) && (microtime(true) - $waitStart) < 10) {
+            usleep(25000); // 25ms
+        }
+        $this->assertFileExists($readyFile, 'Worker must signal readiness (booted + entering lockForUpdate) within 10s');
+        @unlink($readyFile);
 
-        // 3. Parent: perform the primary contact change (sets contact2 as primary)
+        // 4. Parent: perform the primary contact change (sets contact2 as primary)
         $parentPdo->exec("UPDATE customer_contacts SET is_primary = false WHERE customer_id = {$customerId} AND is_primary = true");
         $parentPdo->exec("UPDATE customer_contacts SET is_primary = true WHERE id = {$contact2Id}");
         $parentPdo->commit();
 
-        // 4. Wait for worker to finish
+        // 5. Wait for worker to finish
         foreach ($pipes as $pipe) {
             fclose($pipe);
         }
         $workerExitCode = proc_close($proc);
         $this->assertEquals(0, $workerExitCode, 'Worker process should exit cleanly');
 
-        // 5. Read worker result
+        // 6. Read worker result
         $this->assertFileExists($resultFile, 'Worker must write a result file');
         $workerResult = json_decode(file_get_contents($resultFile), true);
         @unlink($resultFile);
+        @unlink($resultFile . '.pid');
 
         $this->assertEquals('ok', $workerResult['status'], 'Worker must succeed: ' . ($workerResult['message'] ?? ''));
         $this->assertEquals($contact3Id, $workerResult['contact_id']);
         $this->assertTrue($workerResult['is_primary']);
 
-        // 6. Verify: exactly one primary contact exists (unique partial index backstop)
+        // 7. Verify: exactly one primary contact exists (unique partial index backstop)
         $primaryCount = \App\Models\CustomerContact::where('customer_id', $customerId)
             ->where('is_primary', true)
             ->count();
@@ -1194,5 +1204,87 @@ class AcmeContactAcceptanceTest extends TenantTestCase
         $cleanupPdo = null;
     }
 
-    // ─── VEN-AT-17: Sequential setPrimaryContact through real service ────────
+    // ─── VEN-AT-17: Snapshot immutability — finalized documents retain original data ──
+
+    public function test_ven_at_17_snapshot_immutability_finalized_document_not_overwritten(): void
+    {
+        $customer = Customer::factory()->create([
+            'name' => 'Original Corp',
+            'email' => 'original@corp.com',
+            'phone' => '0123456789',
+        ]);
+
+        $contact = \App\Models\CustomerContact::create([
+            'customer_id' => $customer->id,
+            'name' => 'Original Contact',
+            'email' => 'contact@corp.com',
+            'phone' => '0111111111',
+            'is_primary' => true,
+        ]);
+
+        // Create invoice and populate snapshot (simulates document creation)
+        $invoice = \App\Models\Invoice::factory()->create([
+            'customer_id' => $customer->id,
+            'created_by' => \App\Models\User::factory()->create()->id,
+            'status' => 'draft',
+        ]);
+
+        $service = app(DocumentSnapshotService::class);
+        $service->populateInvoiceSnapshot($invoice);
+
+        $invoice->refresh();
+        $this->assertEquals('Original Contact', $invoice->attention_to);
+        $this->assertEquals('contact@corp.com', $invoice->contact_email);
+
+        // Now change the source contact (simulates contact edit)
+        $contact->update(['name' => 'Changed Contact', 'email' => 'changed@corp.com']);
+        $customer->update(['name' => 'Changed Corp']);
+
+        // Re-run populate — must NOT overwrite the snapshot
+        $service->populateInvoiceSnapshot($invoice);
+
+        $invoice->refresh();
+        $this->assertEquals('Original Contact', $invoice->attention_to, 'Snapshot must not be overwritten after finalization');
+        $this->assertEquals('contact@corp.com', $invoice->contact_email, 'Snapshot must not be overwritten after finalization');
+
+        // Cleanup
+        $invoice->delete();
+        $contact->delete();
+        $customer->delete();
+    }
+
+    public function test_ven_at_17b_snapshot_populated_on_fresh_document(): void
+    {
+        $customer = Customer::factory()->create([
+            'name' => 'Fresh Corp',
+            'email' => 'fresh@corp.com',
+        ]);
+
+        $contact = \App\Models\CustomerContact::create([
+            'customer_id' => $customer->id,
+            'name' => 'Fresh Contact',
+            'email' => 'fresh@contact.com',
+            'is_primary' => true,
+        ]);
+
+        $invoice = \App\Models\Invoice::factory()->create([
+            'customer_id' => $customer->id,
+            'created_by' => \App\Models\User::factory()->create()->id,
+            'status' => 'draft',
+        ]);
+
+        $service = app(DocumentSnapshotService::class);
+        $service->populateInvoiceSnapshot($invoice);
+
+        $invoice->refresh();
+        $this->assertEquals('Fresh Contact', $invoice->attention_to);
+        $this->assertEquals('fresh@contact.com', $invoice->contact_email);
+
+        // Cleanup
+        $invoice->delete();
+        $contact->delete();
+        $customer->delete();
+    }
+
+    // ─── VEN-AT-18: Sequential setPrimaryContact through real service ────────
 }

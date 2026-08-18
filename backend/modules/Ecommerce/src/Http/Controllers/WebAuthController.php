@@ -47,7 +47,7 @@ class WebAuthController extends Controller
             ]);
             $customer = $existing;
         } else {
-            // Create new customer
+            // Create new customer via canonical service (transactional)
             $customerData = [
                 'name' => $validated['first_name'].' '.$validated['last_name'],
                 'email' => $validated['email'],
@@ -61,10 +61,7 @@ class WebAuthController extends Controller
                 $customerData['type'] = 'individual';
             }
 
-            $customer = Customer::create($customerData);
-
-            // ADR-003A CT-VEN-003: Route through Contact Master for canonical identity
-            app(CustomerContactSyncService::class)->ensureOrganisationContact($customer);
+            $customer = app(\App\Services\CanonicalCustomerService::class)->create($customerData);
         }
 
         // Link guest orders by token

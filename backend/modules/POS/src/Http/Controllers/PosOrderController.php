@@ -1170,12 +1170,7 @@ class PosOrderController extends Controller
             $invoice = DB::transaction(function () use ($posOrder) {
                 // Ensure customer_id exists (walk-in customer for anonymous POS orders)
                 if (! $posOrder->customer_id) {
-                    $walkIn = \App\Models\Customer::firstOrCreate(
-                        ['email' => 'walkin@system.local'],
-                        ['name' => 'Walk-in Customer', 'notes' => 'System customer for walk-in POS transactions']
-                    );
-                    // ADR-003A CT-VEN-003: Route through Contact Master for canonical identity
-                    app(\App\Services\CustomerContactSyncService::class)->ensureOrganisationContact($walkIn);
+                    $walkIn = app(\App\Services\CanonicalCustomerService::class)->getOrCreateWalkIn();
                     $posOrder->update(['customer_id' => $walkIn->id]);
                 }
 

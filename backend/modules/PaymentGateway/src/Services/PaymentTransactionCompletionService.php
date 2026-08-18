@@ -169,18 +169,7 @@ class PaymentTransactionCompletionService
         $customerId = $posOrder->customer_id;
 
         if (! $customerId) {
-            $walkInCustomer = \App\Models\Customer::firstOrCreate(
-                ['email' => 'walkin@system.local'],
-                [
-                    'name' => 'Walk-in Customer',
-                    'phone' => null,
-                    'address' => null,
-                    'notes' => 'System customer for walk-in POS transactions',
-                ]
-            );
-
-            // ADR-003A CT-VEN-003: Route through Contact Master for canonical identity
-            app(\App\Services\CustomerContactSyncService::class)->ensureOrganisationContact($walkInCustomer);
+            $walkInCustomer = app(\App\Services\CanonicalCustomerService::class)->getOrCreateWalkIn();
 
             $customerId = $walkInCustomer->id;
             $posOrder->update(['customer_id' => $customerId]);

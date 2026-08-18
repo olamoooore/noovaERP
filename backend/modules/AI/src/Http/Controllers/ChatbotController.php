@@ -420,7 +420,7 @@ class ChatbotController extends Controller
             $name = (string) ($authUser->email ?? 'Walk-in Customer');
         }
 
-        $created = Customer::query()->create([
+        $created = app(\App\Services\CanonicalCustomerService::class)->create([
             'name' => $name,
             'email' => $authUser->email,
             'phone' => $authUser->phone ?? null,

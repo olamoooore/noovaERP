@@ -90,6 +90,34 @@ jobs:
           php -m | grep -q pgsql || { echo "FAIL: pgsql extension missing"; exit 1; }
           echo "PHP extensions OK"
 
+      - name: Scan for direct Customer::create() bypasses
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          echo "--- Scanning for direct Customer::create() outside allowed paths ---"
+          # Allowed: CanonicalCustomerService, CustomerController (canonical API with DB::transaction), tests, factories, seeders, migrations
+          VIOLATIONS=$(grep -rn 'Customer::create\|Customer::firstOrCreate\|Customer::query()->create' \
+            --include='*.php' \
+            --exclude-dir=vendor \
+            --exclude-dir=tests \
+            --exclude-dir=database \
+            app/ modules/ \
+            | grep -v 'CanonicalCustomerService.php' \
+            | grep -v 'CustomerController.php' \
+            | grep -v 'Factory.php' \
+            | grep -v 'Seeder.php' \
+            | grep -v 'Migration' \
+            | grep -v 'Tests/' \
+            || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "FAIL: Direct Customer creation found outside CanonicalCustomerService:"
+            echo "$VIOLATIONS"
+            echo ""
+            echo "All production customer creation must go through CanonicalCustomerService."
+            exit 1
+          fi
+          echo "No direct Customer::create() bypasses found"
+
       - name: Prepare Laravel environment
         working-directory: backend
         run: |

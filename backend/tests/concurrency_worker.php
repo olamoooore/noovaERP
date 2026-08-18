@@ -59,6 +59,10 @@ try {
 
     switch ($action) {
         case 'set_primary':
+            // Signal that we've booted and are about to enter lockForUpdate()
+            if (! empty($config['ready_file'])) {
+                file_put_contents($config['ready_file'], '1');
+            }
             $customer = \App\Models\Customer::findOrFail($config['customer_id']);
             $service = app(\App\Services\CustomerContactSyncService::class);
             $contact = $service->setPrimaryContact(
@@ -93,6 +97,10 @@ try {
                 $schema = 'tenant_' . preg_replace('/[^a-z0-9]/', '', strtolower($config['tenant_id']));
                 $pdo->exec("SET search_path TO {$schema}, public");
             }
+
+            // Expose backend PID so parent can verify lock contention via pg_locks
+            $backendPid = (int) $pdo->query('SELECT pg_backend_pid()')->fetchColumn();
+            file_put_contents($resultFile . '.pid', (string) $backendPid);
 
             $pdo->exec("SET lock_timeout = '5000'");
             $pdo->beginTransaction();

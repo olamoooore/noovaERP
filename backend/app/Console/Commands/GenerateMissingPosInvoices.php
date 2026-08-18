@@ -113,16 +113,8 @@ class GenerateMissingPosInvoices extends Command
 
         $this->info("Found {$ordersWithoutInvoices->count()} orders without invoices.");
 
-        // Get or create walk-in customer
-        $walkInCustomer = Customer::firstOrCreate(
-            ['email' => 'walkin@system.local'],
-            [
-                'name' => 'Walk-in Customer',
-                'phone' => null,
-                'address' => null,
-                'notes' => 'System customer for walk-in POS transactions',
-            ]
-        );
+        // Get or create walk-in customer via canonical service
+        $walkInCustomer = app(\App\Services\CanonicalCustomerService::class)->getOrCreateWalkIn();
 
         $bar = $this->output->createProgressBar($ordersWithoutInvoices->count());
         $bar->start();

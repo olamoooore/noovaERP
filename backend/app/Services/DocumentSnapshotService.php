@@ -17,10 +17,22 @@ use Modules\Sales\Models\SalesOrder;
 class DocumentSnapshotService
 {
     /**
+     * Check if snapshot fields are already populated (document is finalized).
+     */
+    private function isSnapshotPopulated($document): bool
+    {
+        return ! empty($document->attention_to) || ! empty($document->contact_email);
+    }
+
+    /**
      * Populate snapshot fields on an Invoice from the customer's primary contact.
      */
     public function populateInvoiceSnapshot(Invoice $invoice, ?int $customerId = null): void
     {
+        if ($this->isSnapshotPopulated($invoice)) {
+            return; // Snapshot already set — immutable, do not overwrite
+        }
+
         $customerId = $customerId ?? $invoice->customer_id;
         $customer = Customer::find($customerId);
         if (! $customer) {
@@ -50,6 +62,10 @@ class DocumentSnapshotService
      */
     public function populateSalesOrderSnapshot(SalesOrder $order, ?int $customerId = null): void
     {
+        if ($this->isSnapshotPopulated($order)) {
+            return; // Snapshot already set — immutable, do not overwrite
+        }
+
         $customerId = $customerId ?? $order->customer_id;
         $customer = Customer::find($customerId);
         if (! $customer) {

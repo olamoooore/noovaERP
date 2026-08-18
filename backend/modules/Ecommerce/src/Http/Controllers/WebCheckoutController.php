@@ -217,10 +217,7 @@ class WebCheckoutController extends Controller
                         'is_active' => true,
                         'notes' => 'Created from web shop checkout',
                     ];
-                    $systemCustomer = Customer::create($customerData);
-
-                    // ADR-003A CT-VEN-003: Route through Contact Master for canonical identity
-                    app(CustomerContactSyncService::class)->ensureOrganisationContact($systemCustomer);
+                    $systemCustomer = app(\App\Services\CanonicalCustomerService::class)->create($customerData);
 
                     Log::info('Created new customer from web checkout', [
                         'customer_id' => $systemCustomer->id,
