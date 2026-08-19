@@ -68,18 +68,20 @@ class AR001MutationOwnershipTest extends TestCase
             'Direct /stock/adjust route must not exist.');
     }
 
-    public function test_stock_controller_mutation_methods_return_disabled_message(): void
+    public function test_stock_controller_mutation_methods_use_adjust_stock(): void
     {
         $controller = file_get_contents(
             base_path('modules/Inventory/src/Http/Controllers/StockController.php')
         );
 
-        $this->assertStringContainsString('Direct stock-in mutations are disabled', $controller,
-            'StockController::stockIn() must return a disabled message.');
-        $this->assertStringContainsString('Direct stock-out mutations are disabled', $controller,
-            'StockController::stockOut() must return a disabled message.');
-        $this->assertStringContainsString('Direct stock adjustments are disabled', $controller,
-            'StockController::adjust() must return a disabled message.');
+        $this->assertStringContainsString('adjustStock', $controller,
+            'StockController::stockIn() must route through adjustStock().');
+        $this->assertStringContainsString('inventoryService', $controller,
+            'StockController must use inventoryService for all mutations.');
+        $this->assertStringNotContainsString('StockLevel::create', $controller,
+            'StockController must not directly create StockLevel records.');
+        $this->assertStringNotContainsString('DB::raw', $controller,
+            'StockController must not directly mutate stock via raw SQL.');
     }
 
     // ── Legacy API closure (LEG-001 crosscheck) ───────────────────────────────
@@ -132,8 +134,14 @@ class AR001MutationOwnershipTest extends TestCase
             base_path('modules/Sales/src/Services/SalesOrderService.php')
         );
 
-        $this->assertStringContainsString('adjustStock', $source,
-            'SalesOrderService must call adjustStock() for stock mutations.');
+        // Stock deduction was moved to DeliveryOrder confirmation.
+        // SalesOrderService documents this delegation and injects InventoryService.
+        $this->assertStringContainsString('inventoryService', $source,
+            'SalesOrderService must inject inventoryService.');
+        $this->assertStringContainsString('Stock deduction is now handled by DeliveryOrder confirmation', $source,
+            'SalesOrderService must document that stock deduction is delegated to DeliveryOrder.');
+        $this->assertStringContainsString('InventoryService', $source,
+            'SalesOrderService must reference InventoryService for stock operations.');
     }
 
     // ── InventoryPostingEngine boundary ──────────────────────────────────────
