@@ -36,9 +36,9 @@ class RM003LoyaltyRewardStockBoundaryTest extends TestCase
             base_path('modules/Loyalty/src/Services/RedemptionService.php')
         );
 
-        $this->assertStringContainsString('if (!$isProductBacked && $reward->reward_quota_quantity !== null)', $source,
+        $this->assertStringContainsString('if (! $isProductBacked && $reward->reward_quota_quantity !== null)', $source,
             'Quota decrement must apply only to non-product rewards.');
-        $this->assertStringContainsString('if (!$isProductBacked && $redemption->reward->reward_quota_quantity !== null)', $source,
+        $this->assertStringContainsString('if (! $isProductBacked && $redemption->reward->reward_quota_quantity !== null)', $source,
             'Quota restoration must apply only to non-product rewards.');
         $this->assertStringContainsString("decrement('reward_quota_quantity')", $source,
             'Non-product reward redemption must decrement reward_quota_quantity.');
