@@ -22,9 +22,9 @@ class RM002SalesFulfilmentWarehouseResolutionTest extends TestCase
             base_path('modules/Sales/src/Services/SalesOrderService.php')
         );
 
-        $this->assertStringContainsString('resolveFulfilmentWarehouseId', $source,
+        $this->assertStringContainsString('requireCommitmentWarehouseId', $source,
             'Sales fulfilment must resolve warehouse through explicit resolver.');
-        $this->assertStringContainsString('Cannot fulfil stock-tracked sales order without explicit warehouse_id.', $source,
+        $this->assertStringContainsString('stock-tracked sales order without explicit warehouse_id', $source,
             'Sales fulfilment must hard-fail when warehouse is missing.');
         $this->assertStringContainsString('Log::error', $source,
             'Missing warehouse path must be logged for audit visibility.');
@@ -36,12 +36,13 @@ class RM002SalesFulfilmentWarehouseResolutionTest extends TestCase
             base_path('modules/Sales/src/Services/SalesOrderService.php')
         );
 
-        $stockPosition = strpos($source, 'inventoryService->adjustStock(');
         $statusPosition = strpos($source, 'lifecycleService->fulfil(');
 
-        $this->assertNotFalse($stockPosition, 'Stock posting call must be present.');
         $this->assertNotFalse($statusPosition, 'Fulfil status mutation call must be present.');
-        $this->assertLessThan($statusPosition, $stockPosition,
-            'Inventory posting must occur before fulfilment status mutation.');
+
+        // Stock deduction is now handled by DeliveryOrder confirmation (not in SalesOrderService).
+        // Verify the comment documents this architectural decision.
+        $this->assertStringContainsString('Stock deduction is now handled by DeliveryOrder confirmation', $source,
+            'Sales fulfilment must document that stock deduction is delegated to DeliveryOrder.');
     }
 }

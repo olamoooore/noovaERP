@@ -37,11 +37,15 @@ class RM002MultiWarehouseCommitmentContractTest extends TestCase
     {
         $service = file_get_contents(base_path('modules/Sales/src/Services/SalesOrderService.php'));
 
-        $guardPos = strpos($service, "requireCommitmentWarehouseId(\$order, 'fulfil')");
-        $adjustPos = strpos($service, '$this->inventoryService->adjustStock(');
+        // Fulfilment requires isAllocated() — warehouse was already set during allocation.
+        $this->assertStringContainsString('isAllocated()', $service,
+            'Fulfilment must require allocated status (warehouse already resolved at allocation).');
+        $this->assertStringContainsString('Stock deduction is now handled by DeliveryOrder confirmation', $service,
+            'Stock delegation to DeliveryOrder must be documented.');
 
-        $this->assertNotFalse($guardPos);
-        $this->assertNotFalse($adjustPos);
-        $this->assertLessThan($adjustPos, $guardPos);
+        // Warehouse guard is called at allocation time (the first stock commitment point).
+        $allocateGuardPos = strpos($service, "requireCommitmentWarehouseId(\$order, 'allocate')");
+        $this->assertNotFalse($allocateGuardPos,
+            'Warehouse guard must be called at allocation (first stock commitment point).');
     }
 }
