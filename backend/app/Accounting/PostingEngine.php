@@ -9,8 +9,13 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\PostingResult;
 use App\Accounting\DTOs\ReversalRequest;
+use App\Accounting\Enums\EligibilityResult;
+use App\Accounting\Enums\StateDimension;
 use App\Accounting\Services\AccountMappingService;
 use App\Accounting\Services\AccountRoleResolver;
+use App\Accounting\Services\ActionEligibilityEvaluator;
+use App\Accounting\Services\StateTransitionService;
+use App\Models\AccountingOutboxEvent;
 use App\Models\Journal;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLink;
@@ -33,6 +38,8 @@ class PostingEngine implements PostingEngineInterface
         private readonly LockDateValidationService $lockDateValidator,
         private readonly FiscalPeriodValidator $fiscalValidator,
         private readonly ApprovalPolicyService $approvalPolicy,
+        private readonly ActionEligibilityEvaluator $eligibilityEvaluator,
+        private readonly StateTransitionService $transitionService,
     ) {}
 
     /**
@@ -117,6 +124,44 @@ class PostingEngine implements PostingEngineInterface
                     implode(', ', $approvalCheck['approver_roles'])
                 );
             }
+        }
+
+        // ── 3c. Authority gate evaluation (ADR-005 §8, §15) ────────
+        $eligibilityResult = $this->eligibilityEvaluator->evaluate(
+            action: 'POST_JOURNAL',
+            recordType: 'JournalEntry',
+            recordId: $request->documentId ?? 'new',
+            context: [
+                'tenant_id' => $request->tenantId ?? tenant()->id ?? null,
+                'entity_id' => $request->legalEntityId,
+                'actor_id' => $userId,
+                'document_type' => $request->documentType,
+                'posting_date' => $request->postingDate,
+                'total_amount' => $totalDebit,
+                'correlation_id' => $request->correlationId,
+            ],
+            requireSnapshot: true,
+        );
+
+        if ($eligibilityResult->isBlocked()) {
+            Log::warning('Posting blocked by authority gate', [
+                'document_type' => $request->documentType,
+                'blocking_reason' => $eligibilityResult->blockingReason?->value,
+                'snapshot_id' => $eligibilityResult->snapshotId,
+            ]);
+
+            return PostingResult::failure(
+                'Posting blocked: '.($eligibilityResult->blockingReason?->value ?? 'UNKNOWN')
+            );
+        }
+
+        if ($eligibilityResult->hasError()) {
+            Log::error('Authority gate evaluation error', [
+                'document_type' => $request->documentType,
+                'snapshot_id' => $eligibilityResult->snapshotId,
+            ]);
+
+            return PostingResult::failure('Authority gate evaluation failed');
         }
 
         // ── 4. Atomic create + post ───────────────────────────
@@ -205,6 +250,52 @@ class PostingEngine implements PostingEngineInterface
                         'correlation_id' => $request->correlationId,
                         'tenant_id' => $request->tenantId,
                         'metadata' => $request->metadata,
+                    ],
+                ]);
+
+                // ── state transition recording (ADR-005 §30) ──
+                $this->transitionService->recordTransition(
+                    aggregateType: 'JournalEntry',
+                    aggregateId: (string) $entry->id,
+                    dimension: StateDimension::JOURNAL_POSTING,
+                    fromState: 'NOT_POSTED',
+                    toState: 'POSTED',
+                    context: [
+                        'tenant_id' => $request->tenantId ?? tenant()->id ?? null,
+                        'actor_id' => (string) $userId,
+                        'actor_type' => 'HUMAN',
+                        'command_id' => $request->requestId,
+                        'correlation_id' => $request->correlationId,
+                        'metadata' => [
+                            'document_type' => $request->documentType,
+                            'document_id' => $request->documentId,
+                            'entry_number' => $entry->entry_number,
+                            'total_debit' => $totalDebit,
+                            'total_credit' => $totalCredit,
+                        ],
+                    ],
+                );
+
+                // ── outbox event (ADR-005 §62) ──
+                AccountingOutboxEvent::create([
+                    'tenant_id' => $request->tenantId ?? tenant()->id ?? Str::uuid()->toString(),
+                    'event_type' => 'JournalPosted',
+                    'event_version' => '1.0',
+                    'aggregate_type' => 'JournalEntry',
+                    'aggregate_id' => (string) $entry->id,
+                    'aggregate_version' => 1,
+                    'source_capability' => 'ACC-002',
+                    'correlation_id' => $request->correlationId,
+                    'causation_id' => $request->requestId,
+                    'event_payload' => [
+                        'journal_entry_id' => $entry->id,
+                        'entry_number' => $entry->entry_number,
+                        'document_type' => $request->documentType,
+                        'document_id' => $request->documentId,
+                        'posting_date' => $request->postingDate,
+                        'total_debit' => $totalDebit,
+                        'total_credit' => $totalCredit,
+                        'posted_by' => $userId,
                     ],
                 ]);
 
@@ -385,6 +476,62 @@ class PostingEngine implements PostingEngineInterface
                         'original_entry_id' => $original->id,
                         'original_entry_number' => $original->entry_number,
                         'reversal_date' => $request->reversalDate,
+                    ],
+                ]);
+
+                // ── state transition recording (ADR-005 §30) ──
+                $this->transitionService->recordTransition(
+                    aggregateType: 'JournalEntry',
+                    aggregateId: (string) $reversalEntry->id,
+                    dimension: StateDimension::JOURNAL_POSTING,
+                    fromState: 'NOT_POSTED',
+                    toState: 'POSTED',
+                    context: [
+                        'actor_id' => (string) $actorId,
+                        'actor_type' => 'HUMAN',
+                        'correlation_id' => $request->correlationId,
+                        'metadata' => [
+                            'original_entry_id' => $original->id,
+                            'reversal_date' => $request->reversalDate,
+                            'reason' => $request->reason,
+                        ],
+                    ],
+                );
+
+                $this->transitionService->recordTransition(
+                    aggregateType: 'JournalEntry',
+                    aggregateId: (string) $original->id,
+                    dimension: StateDimension::JOURNAL_POSTING,
+                    fromState: 'POSTED',
+                    toState: 'REVERSED',
+                    context: [
+                        'actor_id' => (string) $actorId,
+                        'actor_type' => 'HUMAN',
+                        'correlation_id' => $request->correlationId,
+                        'metadata' => [
+                            'reversal_entry_id' => $reversalEntry->id,
+                            'reversal_date' => $request->reversalDate,
+                        ],
+                    ],
+                );
+
+                // ── outbox event (ADR-005 §62) ──
+                AccountingOutboxEvent::create([
+                    'tenant_id' => $originalLink?->tenant_id ?? tenant()->id ?? Str::uuid()->toString(),
+                    'event_type' => 'JournalReversed',
+                    'event_version' => '1.0',
+                    'aggregate_type' => 'JournalEntry',
+                    'aggregate_id' => (string) $reversalEntry->id,
+                    'aggregate_version' => 1,
+                    'source_capability' => 'ACC-002',
+                    'correlation_id' => $request->correlationId,
+                    'causation_id' => $request->journalEntryId,
+                    'event_payload' => [
+                        'reversal_entry_id' => $reversalEntry->id,
+                        'original_entry_id' => $original->id,
+                        'original_entry_number' => $original->entry_number,
+                        'reversal_date' => $request->reversalDate,
+                        'reason' => $request->reason,
                     ],
                 ]);
 

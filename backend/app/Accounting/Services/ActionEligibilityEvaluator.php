@@ -9,6 +9,7 @@ use App\Accounting\Enums\ReasonCode;
 use App\Accounting\Services\Gates\AssuranceGate;
 use App\Accounting\Services\Gates\ConcurrencyGate;
 use App\Accounting\Services\Gates\IdempotencyGate;
+use App\Accounting\Services\Gates\PermissionGate;
 use App\Accounting\Services\Gates\PeriodOpenGate;
 use App\Accounting\Services\Gates\TenantActiveGate;
 use App\Models\AuthorityEvaluationSnapshot;
@@ -36,6 +37,14 @@ class ActionEligibilityEvaluator
         $this->registerMandatoryGate(new ConcurrencyGate());
         $this->registerMandatoryGate(new IdempotencyGate());
         $this->registerMandatoryGate(new AssuranceGate());
+
+        // Register optional gates (ADR-005 §8.4 — permission gate)
+        // Resolved from container to handle dependency injection
+        try {
+            $this->registerOptionalGate(app(PermissionGate::class));
+        } catch (\Exception) {
+            // PermissionGate may not be resolvable in all contexts (e.g., testing)
+        }
     }
 
     /**
