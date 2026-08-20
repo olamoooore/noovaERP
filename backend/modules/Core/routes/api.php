@@ -141,6 +141,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::post('/vendors/import', [VendorsController::class, 'import']);
     Route::get('/vendors/{id}', [VendorsController::class, 'show']);
     Route::put('/vendors/{id}', [VendorsController::class, 'update']);
+    Route::delete('/vendors/{id}', [VendorsController::class, 'destroy']);
     Route::get('/vendors/{vendorId}/balance', [APTransactionsController::class, 'getBalance']);
     // Product variants
     Route::get('/products/{product}/variants', [ProductVariantController::class, 'index']);
@@ -527,6 +528,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::get('/vendors/{id}', [VendorsController::class, 'show']);
         Route::post('/vendors', [VendorsController::class, 'store']);
         Route::put('/vendors/{id}', [VendorsController::class, 'update']);
+        Route::delete('/vendors/{id}', [VendorsController::class, 'destroy']);
         Route::post('/vendors/import', [VendorsController::class, 'import']);
 
         // AR Transactions Ledger

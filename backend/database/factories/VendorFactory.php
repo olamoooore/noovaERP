@@ -12,12 +12,15 @@ class VendorFactory extends Factory
     public function definition(): array
     {
         return [
+            'code' => $this->faker->unique()->bothify('VEN-####'),
             'name' => $this->faker->company(),
             'email' => $this->faker->unique()->companyEmail(),
             'phone' => $this->faker->optional()->phoneNumber(),
             'company' => $this->faker->company(),
             'tax_number' => $this->faker->optional()->bothify('TAX-####'),
             'address' => $this->faker->optional()->address(),
+            'billing_address' => $this->faker->optional()->address(),
+            'shipping_address' => $this->faker->optional()->address(),
             'contact_person' => $this->faker->optional()->name(),
             'website' => $this->faker->optional()->url(),
             'payment_terms' => 30,

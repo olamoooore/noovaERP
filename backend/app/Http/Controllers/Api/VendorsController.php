@@ -7,6 +7,7 @@ use App\Models\Vendor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class VendorsController extends Controller
 {
@@ -23,8 +24,10 @@ class VendorsController extends Controller
             $search = trim((string) $request->get('search', ''));
 
             $query = Vendor::query()
+                ->with('addresses')
                 ->select([
                     'id',
+                    'code',
                     'name',
                     'email',
                     'phone',
@@ -32,6 +35,8 @@ class VendorsController extends Controller
                     'tax_number',
                     'company_registration_number',
                     'address',
+                    'billing_address',
+                    'shipping_address',
                     'contact_person',
                     'website',
                     'payment_terms',
@@ -44,7 +49,8 @@ class VendorsController extends Controller
 
             if ($search !== '') {
                 $query->where(function ($builder) use ($search) {
-                    $builder->where('name', 'ILIKE', "%{$search}%")
+                    $builder->where('code', 'ILIKE', "%{$search}%")
+                        ->orWhere('name', 'ILIKE', "%{$search}%")
                         ->orWhere('email', 'ILIKE', "%{$search}%")
                         ->orWhere('company', 'ILIKE', "%{$search}%")
                         ->orWhere('contact_person', 'ILIKE', "%{$search}%")
@@ -90,7 +96,7 @@ class VendorsController extends Controller
     public function show($id)
     {
         try {
-            $vendor = Vendor::find($id);
+            $vendor = Vendor::with('addresses')->find($id);
 
             if (! $vendor) {
                 return response()->json([
@@ -118,6 +124,12 @@ class VendorsController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
+            'code' => [
+                'nullable',
+                'string',
+                'max:50',
+                Rule::unique('vendors', 'code')->whereNull('deleted_at'),
+            ],
             'name' => 'required|string|max:255',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:50',
@@ -125,14 +137,29 @@ class VendorsController extends Controller
             'tax_number' => 'nullable|string|max:100',
             'company_registration_number' => 'nullable|string|max:100',
             'address' => 'nullable|string',
+            'billing_address' => 'nullable|string',
+            'shipping_address' => 'nullable|string',
             'contact_person' => 'nullable|string|max:255',
             'website' => 'nullable|url|max:255',
             'payment_terms' => 'nullable|integer|min:0|max:365',
             'notes' => 'nullable|string',
             'is_active' => 'boolean',
+            'addresses' => 'sometimes|array',
+            'addresses.*.type' => 'required|in:billing,shipping,other',
+            'addresses.*.label' => 'nullable|string|max:255',
+            'addresses.*.street' => 'required|string|max:255',
+            'addresses.*.street2' => 'nullable|string|max:255',
+            'addresses.*.city' => 'nullable|string|max:150',
+            'addresses.*.state' => 'nullable|string|max:150',
+            'addresses.*.zip' => 'nullable|string|max:30',
+            'addresses.*.country' => 'nullable|string|max:150',
+            'addresses.*.is_default' => 'boolean',
         ]);
 
         try {
+            $addresses = $validated['addresses'] ?? [];
+            unset($validated['addresses']);
+
             $data = [
                 ...$validated,
                 'payment_terms' => $validated['payment_terms'] ?? 30,
@@ -145,11 +172,16 @@ class VendorsController extends Controller
                 unset($data['company_registration_number']);
             }
 
-            $vendor = Vendor::create($data);
+            $vendor = DB::transaction(function () use ($data, $addresses) {
+                $vendor = Vendor::create($data);
+                $this->replaceAddresses($vendor, $addresses);
+
+                return $vendor;
+            });
 
             return response()->json([
                 'message' => 'Vendor created successfully',
-                'data' => $vendor,
+                'data' => $vendor->load('addresses'),
             ], 201);
 
         } catch (\Illuminate\Database\QueryException $e) {
@@ -187,6 +219,12 @@ class VendorsController extends Controller
         }
 
         $validated = $request->validate([
+            'code' => [
+                'nullable',
+                'string',
+                'max:50',
+                Rule::unique('vendors', 'code')->whereNull('deleted_at')->ignore($vendor->id),
+            ],
             'name' => 'sometimes|required|string|max:255',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:50',
@@ -194,19 +232,75 @@ class VendorsController extends Controller
             'tax_number' => 'nullable|string|max:100',
             'company_registration_number' => 'nullable|string|max:100',
             'address' => 'nullable|string',
+            'billing_address' => 'nullable|string',
+            'shipping_address' => 'nullable|string',
             'contact_person' => 'nullable|string|max:255',
             'website' => 'nullable|url|max:255',
             'payment_terms' => 'nullable|integer|min:0|max:365',
             'notes' => 'nullable|string',
             'is_active' => 'boolean',
+            'addresses' => 'sometimes|array',
+            'addresses.*.type' => 'required|in:billing,shipping,other',
+            'addresses.*.label' => 'nullable|string|max:255',
+            'addresses.*.street' => 'required|string|max:255',
+            'addresses.*.street2' => 'nullable|string|max:255',
+            'addresses.*.city' => 'nullable|string|max:150',
+            'addresses.*.state' => 'nullable|string|max:150',
+            'addresses.*.zip' => 'nullable|string|max:30',
+            'addresses.*.country' => 'nullable|string|max:150',
+            'addresses.*.is_default' => 'boolean',
         ]);
 
-        $vendor->update($validated);
+        $addressesSupplied = array_key_exists('addresses', $validated);
+        $addresses = $validated['addresses'] ?? [];
+        unset($validated['addresses']);
+
+        DB::transaction(function () use ($vendor, $validated, $addresses, $addressesSupplied) {
+            $vendor->update($validated);
+            if ($addressesSupplied) {
+                $this->replaceAddresses($vendor, $addresses);
+            }
+        });
 
         return response()->json([
             'message' => 'Vendor updated successfully',
-            'data' => $vendor->fresh(),
+            'data' => $vendor->fresh()->load('addresses'),
         ]);
+    }
+
+    /**
+     * Soft-delete an unused vendor while preserving accounting history.
+     */
+    public function destroy($id)
+    {
+        $vendor = Vendor::find($id);
+
+        if (! $vendor) {
+            return response()->json(['message' => 'Vendor not found'], 404);
+        }
+
+        $dependencies = [
+            'bills' => $vendor->bills()->count(),
+            'payments' => $vendor->payments()->count(),
+            'bill payments' => $vendor->billPayments()->count(),
+        ];
+        $dependencies = array_filter($dependencies);
+
+        if ($dependencies !== []) {
+            $summary = collect($dependencies)
+                ->map(fn ($count, $type) => "{$count} {$type}")
+                ->implode(', ');
+
+            return response()->json([
+                'message' => "Vendor cannot be deleted because it is referenced by {$summary}. Deactivate the vendor instead.",
+                'code' => 'VENDOR_HAS_ACCOUNTING_HISTORY',
+                'dependencies' => $dependencies,
+            ], 409);
+        }
+
+        $vendor->delete();
+
+        return response()->json(['message' => 'Vendor deleted successfully']);
     }
 
     /**
@@ -271,24 +365,41 @@ class VendorsController extends Controller
 
                 try {
                     $vendorData = [
+                        'code' => isset($row['code']) && $row['code'] !== '' ? trim((string) $row['code']) : null,
                         'name' => $name,
                         'email' => isset($row['email']) && $row['email'] !== '' ? trim((string) $row['email']) : null,
                         'phone' => isset($row['phone']) && $row['phone'] !== '' ? trim((string) $row['phone']) : null,
                         'company' => isset($row['company']) && $row['company'] !== '' ? trim((string) $row['company']) : null,
                         'address' => isset($row['address']) && $row['address'] !== '' ? trim((string) $row['address']) : null,
+                        'billing_address' => isset($row['billing_address']) && $row['billing_address'] !== ''
+                            ? trim((string) $row['billing_address'])
+                            : (isset($row['address']) && $row['address'] !== '' ? trim((string) $row['address']) : null),
+                        'shipping_address' => isset($row['shipping_address']) && $row['shipping_address'] !== ''
+                            ? trim((string) $row['shipping_address'])
+                            : (isset($row['address']) && $row['address'] !== '' ? trim((string) $row['address']) : null),
                         'contact_person' => isset($row['contact_person']) && $row['contact_person'] !== '' ? trim((string) $row['contact_person']) : null,
                         'updated_at' => now(),
                     ];
 
                     $existing = DB::table('vendors')
-                        ->where('name', $name)
                         ->whereNull('deleted_at')
+                        ->where(function ($query) use ($vendorData, $name) {
+                            if ($vendorData['code'] !== null) {
+                                $query->where('code', $vendorData['code']);
+                            } else {
+                                $query->where('name', $name);
+                            }
+                        })
                         ->first();
 
                     if ($existing) {
+                        if ($vendorData['code'] === null) {
+                            unset($vendorData['code']);
+                        }
                         DB::table('vendors')->where('id', $existing->id)->update($vendorData);
                         $updated++;
                     } else {
+                        $vendorData['code'] ??= Vendor::generateCode();
                         $vendorData['created_at'] = now();
                         DB::table('vendors')->insert($vendorData);
                         $created++;
@@ -313,5 +424,21 @@ class VendorsController extends Controller
             'updated' => $updated,
             'errors' => $errors,
         ]);
+    }
+
+    private function replaceAddresses(Vendor $vendor, array $addresses): void
+    {
+        $vendor->addresses()->delete();
+        $defaults = [];
+
+        foreach ($addresses as $address) {
+            $type = $address['type'];
+            $isDefault = (bool) ($address['is_default'] ?? false) && ! isset($defaults[$type]);
+            if ($isDefault) {
+                $defaults[$type] = true;
+            }
+
+            $vendor->addresses()->create([...$address, 'is_default' => $isDefault]);
+        }
     }
 }
