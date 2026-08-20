@@ -15,9 +15,9 @@ use Illuminate\Support\Facades\Artisan;
 use Modules\Inventory\Models\PurchaseOrder;
 use Modules\Inventory\Models\PurchaseOrderItem;
 use Modules\Inventory\Models\Supplier;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class VendorBillProcurementLineageTest extends TestCase
+class VendorBillProcurementLineageTest extends TenantTestCase
 {
     protected function setUp(): void
     {

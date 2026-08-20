@@ -18,7 +18,7 @@ use Modules\PaymentGateway\Events\PaymentSuccessful;
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\PaymentGateway\Services\PaymentService;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 class TestPaymentWebhookController extends PaymentWebhookController
 {
@@ -58,7 +58,7 @@ class TestPaymentService extends PaymentService
     }
 }
 
-class PaymentLifecycleHardeningTest extends TestCase
+class PaymentLifecycleHardeningTest extends TenantTestCase
 {
     use DatabaseMigrations;
 

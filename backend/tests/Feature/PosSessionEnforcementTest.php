@@ -3,10 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\Warehouse;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class PosSessionEnforcementTest extends TestCase

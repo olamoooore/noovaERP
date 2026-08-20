@@ -29,7 +29,7 @@ class InvoiceFactory extends Factory
             'balance' => $this->faker->randomFloat(2, 100, 10000),
             'notes' => $this->faker->optional()->sentence(),
             'terms' => $this->faker->optional()->sentence(),
-            'created_by' => 1,
+            'created_by' => \App\Models\User::factory()->create()->id,
             'version_number' => 1,
             'is_active_version' => true,
         ];

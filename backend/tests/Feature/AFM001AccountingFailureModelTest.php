@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * AFM-001: Accounting Failure Model proof tests.
@@ -11,7 +11,7 @@ use Tests\TestCase;
  * - POS/Web checkout flows use atomic model: GL + stock are wrapped together.
  * - InventoryPostingEngine uses deferred model: stock mutation first, accounting outbox later.
  */
-class AFM001AccountingFailureModelTest extends TestCase
+class AFM001AccountingFailureModelTest extends TenantTestCase
 {
     public function test_pos_completion_flow_is_atomic_gl_then_stock_in_single_transaction(): void
     {

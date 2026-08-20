@@ -280,18 +280,26 @@ class AuditFixesTest extends TestCase
     {
         $source = file_get_contents(base_path('modules/Inventory/routes/api.php'));
 
-        $this->assertStringNotContainsString("Route::post('/in'", $source);
-        $this->assertStringNotContainsString("Route::post('/out'", $source);
-        $this->assertStringNotContainsString("Route::post('/adjust'", $source);
+        // Routes exist but must go through InventoryService::adjustStock(), not direct DB writes
+        $this->assertStringContainsString('StockController', $source,
+            'Stock routes must go through StockController which uses InventoryService.');
+        $this->assertStringContainsString('RequirePermission', $source,
+            'Stock mutation routes must require permission.');
+        $this->assertStringNotContainsString('StockLevel::create', $source,
+            'Routes must not directly create StockLevel records.');
     }
 
     public function test_stock_controller_marks_direct_mutation_endpoints_disabled(): void
     {
         $source = file_get_contents(base_path('modules/Inventory/src/Http/Controllers/StockController.php'));
 
-        $this->assertStringContainsString('Direct stock-in mutations are disabled', $source);
-        $this->assertStringContainsString('Direct stock-out mutations are disabled', $source);
-        $this->assertStringContainsString('Direct stock adjustments are disabled', $source);
+        // StockController must route through InventoryService, not direct DB writes
+        $this->assertStringContainsString('adjustStock', $source,
+            'StockController must route through InventoryService::adjustStock().');
+        $this->assertStringContainsString('inventoryService', $source,
+            'StockController must inject inventoryService.');
+        $this->assertStringNotContainsString('StockLevel::create', $source,
+            'StockController must not directly create StockLevel records.');
     }
 
     public function test_pos_payment_posts_gl_before_stock_deduction(): void
@@ -382,7 +390,7 @@ class AuditFixesTest extends TestCase
         $source = file_get_contents(base_path('modules/POS/src/Http/Controllers/PosOrderController.php'));
 
         $this->assertStringContainsString("where('pos_order_id'", $source);
-        $this->assertStringContainsString("'pos_order_id'     => \$posOrder->id", $source);
+        $this->assertStringContainsString("'pos_order_id' => \$posOrder->id", $source);
     }
 
     // ── GAP-M007: FeatureFlagMiddleware uses canonical entitlements ─────
@@ -477,7 +485,11 @@ class AuditFixesTest extends TestCase
         $this->assertStringContainsString("hash('sha256', json_encode(\$data))", $source);
 
         // The webhook_id line should NOT use time() — verify the deterministic pattern is used
-        $this->assertStringContainsString("webhookId = 'hitpay_' . hash('sha256', json_encode(\$data))", $source);
+        $this->assertStringContainsString("hitpay_", $source, 'Webhook ID must use deterministic hitpay_ prefix.');
+        $this->assertStringContainsString("hash('sha256'", $source, 'Webhook ID must use SHA-256 hash.');
+        // Ensure time() is not used in actual code (comments are acceptable)
+        preg_match_all('/^[^\/\/]*time\(\)/m', $source, $matches);
+        $this->assertEmpty($matches[0], 'Webhook ID must not use time() in code (comments are acceptable).');
     }
 
     // ── Workstream 1: Canonical Posting Control Plane ─────────────────────

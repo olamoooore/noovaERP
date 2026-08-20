@@ -8,9 +8,9 @@ use App\Models\User;
 use Illuminate\Support\Facades\Artisan;
 use Modules\Sales\Models\SalesInvoiceLink;
 use Modules\Sales\Models\SalesOrder;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class AdminInvoiceCreationFlowTest extends TestCase
+class AdminInvoiceCreationFlowTest extends TenantTestCase
 {
     protected function setUp(): void
     {

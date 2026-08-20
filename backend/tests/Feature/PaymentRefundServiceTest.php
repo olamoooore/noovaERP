@@ -6,14 +6,12 @@ use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Services\PaymentRefundService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\PaymentTransaction;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class PaymentRefundServiceTest extends TestCase
+class PaymentRefundServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     private PaymentRefundService $service;
 

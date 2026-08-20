@@ -27,7 +27,7 @@ class TenantActiveGate implements AuthorityGate
 
     public function evaluate(array $context): GateEvaluationResult
     {
-        $tenant = $context['tenant'] ?? null;
+        $tenant = $context['tenant'] ?? (function_exists('tenant') ? tenant() : null);
 
         if (!$tenant) {
             return GateEvaluationResult::error($this->gateCode(), $this->gateOwner(), 'TENANT_NOT_FOUND');

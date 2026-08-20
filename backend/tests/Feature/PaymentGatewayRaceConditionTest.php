@@ -2,11 +2,10 @@
 
 namespace Tests\Feature;
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\PaymentGateway\Services\PaymentTransactionCompletionService;
 use Modules\POS\Models\PosOrder;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * CHAN-003: Race condition test for PaymentTransactionCompletionService
@@ -16,9 +15,8 @@ use Tests\TestCase;
  * enter completePosOrderPayment() because the PaymentTransaction lockForUpdate()
  * and the PosPaymentCompletionService order-status check are in separate transactions.
  */
-class PaymentGatewayRaceConditionTest extends TestCase
+class PaymentGatewayRaceConditionTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     /** @test */
     public function concurrent_webhooks_for_same_transaction_do_not_duplicate_payment()

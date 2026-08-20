@@ -120,7 +120,9 @@ class AccountingRouteSnapshotTest extends TestCase
         $routes = collect(Route::getRoutes()->getRoutes());
 
         $logoRoutes = $routes->filter(function ($route) {
-            return str_contains($route->uri(), 'settings/logo');
+            $uri = $route->uri();
+            // Match exact "settings/logo" but not "receipt-settings/logo" or similar
+            return preg_match('#(?:^|/)settings/logo(?:$|/)#', $uri);
         });
 
         $this->assertCount(0, $logoRoutes, 'Logo routes still registered despite missing controller methods');

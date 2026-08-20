@@ -127,23 +127,27 @@ class PostingEngine implements PostingEngineInterface
         }
 
         // ── 3c. Authority gate evaluation (ADR-005 §8, §15) ────────
-        $eligibilityResult = $this->eligibilityEvaluator->evaluate(
-            action: 'POST_JOURNAL',
-            recordType: 'JournalEntry',
-            recordId: $request->documentId ?? 'new',
-            context: [
-                'tenant_id' => $request->tenantId ?? tenant()->id ?? null,
-                'entity_id' => $request->legalEntityId,
-                'actor_id' => $userId,
-                'document_type' => $request->documentType,
-                'posting_date' => $request->postingDate,
-                'total_amount' => $totalDebit,
-                'correlation_id' => $request->correlationId,
-            ],
-            requireSnapshot: true,
-        );
+        $tenantId = $request->tenantId ?? tenant()->id ?? null;
+        $eligibilityResult = null;
+        if ($tenantId) {
+            $eligibilityResult = $this->eligibilityEvaluator->evaluate(
+                action: 'POST_JOURNAL',
+                recordType: 'JournalEntry',
+                recordId: $request->documentId ?? 'new',
+                context: [
+                    'tenant_id' => $tenantId,
+                    'entity_id' => $request->legalEntityId,
+                    'actor_id' => $userId,
+                    'document_type' => $request->documentType,
+                    'posting_date' => $request->postingDate,
+                    'total_amount' => $totalDebit,
+                    'correlation_id' => $request->correlationId,
+                ],
+                requireSnapshot: true,
+            );
+        }
 
-        if ($eligibilityResult->isBlocked()) {
+        if ($eligibilityResult && $eligibilityResult->isBlocked()) {
             Log::warning('Posting blocked by authority gate', [
                 'document_type' => $request->documentType,
                 'blocking_reason' => $eligibilityResult->blockingReason?->value,
@@ -155,7 +159,7 @@ class PostingEngine implements PostingEngineInterface
             );
         }
 
-        if ($eligibilityResult->hasError()) {
+        if ($eligibilityResult && $eligibilityResult->hasError()) {
             Log::error('Authority gate evaluation error', [
                 'document_type' => $request->documentType,
                 'snapshot_id' => $eligibilityResult->snapshotId,
@@ -167,7 +171,7 @@ class PostingEngine implements PostingEngineInterface
         // ── 4. Atomic create + post ───────────────────────────
         try {
             // ✅ ATOMIC
-            return DB::transaction(function () use ($request, $resolvedLines) {
+            return DB::transaction(function () use ($request, $resolvedLines, $totalDebit, $totalCredit) {
                 // Idempotency pre-check inside the transaction to avoid orphan postings
                 $existingLink = JournalEntryLink::where('source_document_type', $request->documentType)
                     ->where('source_document_id', $request->documentId)
@@ -525,7 +529,7 @@ class PostingEngine implements PostingEngineInterface
                     'aggregate_version' => 1,
                     'source_capability' => 'ACC-002',
                     'correlation_id' => $request->correlationId,
-                    'causation_id' => $request->journalEntryId,
+                    'causation_id' => $request->requestId ?? null,
                     'event_payload' => [
                         'reversal_entry_id' => $reversalEntry->id,
                         'original_entry_id' => $original->id,

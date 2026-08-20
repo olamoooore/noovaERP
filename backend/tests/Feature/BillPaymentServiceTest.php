@@ -6,12 +6,10 @@ use App\Models\Bill;
 use App\Models\BillPayment;
 use App\Models\Vendor;
 use App\Services\BillPaymentService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class BillPaymentServiceTest extends TestCase
+class BillPaymentServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     private BillPaymentService $service;
 

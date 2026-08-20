@@ -141,7 +141,9 @@ class ActionEligibilityEvaluator
                 'record_version' => $context['current_record_version'] ?? null,
                 'tenant_id' => $context['tenant_id'] ?? \Illuminate\Support\Str::uuid()->toString(),
                 'entity_id' => $context['entity_id'] ?? null,
-                'actor_id' => $context['actor_id'] ?? \Illuminate\Support\Str::uuid()->toString(),
+                'actor_id' => is_numeric($context['actor_id'] ?? null)
+                    ? \Illuminate\Support\Str::uuid()->toString()
+                    : ($context['actor_id'] ?? \Illuminate\Support\Str::uuid()->toString()),
                 'context_snapshot_hash' => hash('sha256', json_encode($context)),
                 'policy_versions' => $this->buildPolicyVersions(),
                 'state_versions' => $this->buildStateVersions($context),

@@ -5,14 +5,12 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Services\EntityAccessService;
 use App\Services\EntityModuleService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class MultiEntityIntegrationTest extends TestCase
+class MultiEntityIntegrationTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected int $groupId;
 

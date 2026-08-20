@@ -19,7 +19,7 @@ class JournalEntryFactory extends Factory
             'description' => $this->faker->optional()->sentence(),
             'status' => 'draft',
             'lifecycle_status' => 'draft',
-            'created_by' => 1,
+            'created_by' => \App\Models\User::factory()->create()->id,
             'version_number' => 1,
             'is_active_version' => true,
         ];

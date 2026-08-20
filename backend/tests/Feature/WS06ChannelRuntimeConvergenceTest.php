@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 /**
  * WS-06 · Unified Channel Runtime Convergence
@@ -372,8 +372,12 @@ class WS06ChannelRuntimeConvergenceTest extends TestCase
         );
 
         // postPaidOrder (GL) must call PostingEngine::post before deductStock
-        $glPos = strpos($src, 'postingEngine->post(');
-        $stockPos = strpos($src, 'deductStock(');
+        // Extract the postPaidOrder method body to check call ordering
+        $postPaidOrderStart = strpos($src, 'public function postPaidOrder(');
+        $postPaidOrderBody = substr($src, $postPaidOrderStart);
+
+        $glPos = strpos($postPaidOrderBody, 'postingEngine->post(');
+        $stockPos = strpos($postPaidOrderBody, 'deductStock(');
 
         $this->assertNotFalse($glPos, 'WebOrderPostingService must call PostingEngine::post()');
         $this->assertNotFalse($stockPos, 'WebOrderPostingService must have deductStock()');

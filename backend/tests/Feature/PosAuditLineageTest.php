@@ -7,11 +7,11 @@ use App\Models\Customer;
 use App\Models\Product;
 use App\Models\User;
 use App\Services\AuditLogger;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Spatie\Permission\Models\Role;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class PosAuditLineageTest extends TestCase

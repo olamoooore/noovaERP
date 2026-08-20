@@ -5,12 +5,12 @@ namespace Tests\Feature;
 use App\Models\ApprovalRequest;
 use App\Models\User;
 use App\Models\Warehouse;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosPayment;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**

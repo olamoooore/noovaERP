@@ -5,10 +5,10 @@ namespace Tests\Feature;
 use App\Models\Product;
 use App\Models\Tenant;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\POS\Models\PosOfflineQueue;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class PosTenantIsolationTest extends TestCase

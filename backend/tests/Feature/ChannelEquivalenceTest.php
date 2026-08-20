@@ -7,17 +7,15 @@ use App\Models\JournalEntry;
 use App\Models\Product;
 use App\Models\StockMovement;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosPayment;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class ChannelEquivalenceTest extends TestCase
+class ChannelEquivalenceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected User $user;
 

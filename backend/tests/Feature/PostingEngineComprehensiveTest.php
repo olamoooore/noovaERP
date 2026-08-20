@@ -47,7 +47,7 @@ class PostingEngineComprehensiveTest extends TenantTestCase
 
         $request = new PostingRequest(
             documentType: 'manual',
-            documentId: (string) rand(1, 999999),
+            documentId: rand(1, 999999),
             description: 'Test posting',
             postingDate: now()->toDateString(),
             lines: [
@@ -80,7 +80,7 @@ class PostingEngineComprehensiveTest extends TenantTestCase
 
         $request = new PostingRequest(
             documentType: 'manual',
-            documentId: (string) rand(1, 999999),
+            documentId: rand(1, 999999),
             description: 'Unbalanced test',
             postingDate: now()->toDateString(),
             lines: [
@@ -148,7 +148,7 @@ class PostingEngineComprehensiveTest extends TenantTestCase
 
         $postRequest = new PostingRequest(
             documentType: 'manual',
-            documentId: (string) rand(1, 999999),
+            documentId: rand(1, 999999),
             description: 'Original entry',
             postingDate: now()->toDateString(),
             lines: [
@@ -210,7 +210,7 @@ class PostingEngineComprehensiveTest extends TenantTestCase
 
         $postRequest = new PostingRequest(
             documentType: 'manual',
-            documentId: (string) rand(1, 999999),
+            documentId: rand(1, 999999),
             description: 'Double reverse test',
             postingDate: now()->toDateString(),
             lines: [
@@ -258,7 +258,7 @@ class PostingEngineComprehensiveTest extends TenantTestCase
 
         $request = new PostingRequest(
             documentType: 'manual',
-            documentId: (string) rand(1, 999999),
+            documentId: rand(1, 999999),
             description: 'Preview test',
             postingDate: now()->toDateString(),
             lines: [

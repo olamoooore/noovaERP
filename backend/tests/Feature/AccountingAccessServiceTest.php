@@ -26,6 +26,8 @@ class AccountingAccessServiceTest extends TenantTestCase
                 $table->timestamps();
             });
         }
+
+        Feature::query()->truncate();
     }
 
     public function test_is_module_entitled_allows_core_accounting_without_entitlement_snapshot(): void

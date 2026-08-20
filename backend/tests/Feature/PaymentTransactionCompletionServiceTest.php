@@ -5,15 +5,13 @@ namespace Tests\Feature;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Payment;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Modules\PaymentGateway\Services\PaymentTransactionCompletionService;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class PaymentTransactionCompletionServiceTest extends TestCase
+class PaymentTransactionCompletionServiceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     private PaymentTransactionCompletionService $service;
 

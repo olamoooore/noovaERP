@@ -6,7 +6,7 @@ use App\Models\Bill;
 use App\Services\BillService;
 use App\Services\GoodsReceiptService;
 use App\Services\ThreeWayMatchService;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 /**
  * WS-07 · Procurement Backbone Convergence

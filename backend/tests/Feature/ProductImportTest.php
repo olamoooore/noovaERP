@@ -11,9 +11,9 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 use Modules\Inventory\Services\InventoryService;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class ProductImportTest extends TestCase
+class ProductImportTest extends TenantTestCase
 {
     use DatabaseMigrations;
 

@@ -4,12 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\Product;
 use App\Models\Warehouse;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosPayment;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Modules\POS\Services\PosPaymentCompletionService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class PosPaymentIdempotencyTest extends TestCase
