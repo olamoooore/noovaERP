@@ -189,7 +189,7 @@ class GeneralLedgerService extends BaseReportService
             $query->where('je.entity_book_id', $filter->entityBookId);
         }
 
-        return $query->select([
+        $query->select([
             'je.id as journal_entry_id',
             'je.entry_date',
             'je.reference',
@@ -202,8 +202,16 @@ class GeneralLedgerService extends BaseReportService
         ])
             ->orderBy('je.entry_date', 'asc')
             ->orderBy('je.id', 'asc')
-            ->orderBy('jel.id', 'asc')
-            ->paginate($perPage, ['*'], 'page', $page);
+            ->orderBy('jel.id', 'asc');
+
+        if ($perPage <= 0) {
+            $items = $query->get();
+            $total = $items->count();
+
+            return new LengthAwarePaginator($items, $total, max(1, $total), 1);
+        }
+
+        return $query->paginate($perPage, ['*'], 'page', $page);
     }
 
     /**

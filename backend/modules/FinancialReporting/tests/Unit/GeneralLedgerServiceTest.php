@@ -164,6 +164,37 @@ class GeneralLedgerServiceTest extends TenantTestCase
     }
 
     /** @test */
+    public function it_returns_all_filtered_entries_when_pagination_is_disabled()
+    {
+        $account = ChartOfAccount::where('code', '1000')->first();
+
+        foreach (range(1, 3) as $index) {
+            $entry = $this->createJournalEntry([
+                'entry_date' => Carbon::parse("2024-01-{$index}"),
+                'description' => "Entry {$index}",
+            ]);
+
+            JournalEntryLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $account->id,
+                'debit' => 100 * $index,
+                'credit' => 0,
+            ]);
+        }
+
+        $report = $this->service->generate(new ReportFilter(
+            startDate: Carbon::parse('2024-01-01'),
+            endDate: Carbon::parse('2024-01-31'),
+            accountId: $account->id,
+            perPage: 0,
+        ));
+
+        $this->assertCount(3, $report->data);
+        $this->assertSame(3, $report->metadata['pagination']['total']);
+        $this->assertSame(1, $report->metadata['pagination']['last_page']);
+    }
+
+    /** @test */
     public function it_includes_opening_balance()
     {
         $account = ChartOfAccount::where('code', '1000')->first();

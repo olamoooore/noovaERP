@@ -463,7 +463,8 @@ class FinancialReportController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'page' => 'nullable|integer|min:1',
-            'per_page' => 'nullable|integer|min:1|max:100',
+            // 0 explicitly requests every entry in the filtered period.
+            'per_page' => 'nullable|integer|min:0|max:100',
             'summary' => 'nullable|boolean',
             'account_type' => 'nullable|in:asset,liability,equity,revenue,expense',
         ]);

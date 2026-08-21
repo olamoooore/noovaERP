@@ -51,12 +51,14 @@ export default function GeneralLedgerPage() {
         return reportApi.getGeneralLedger({
           start_date: startDate,
           end_date: endDate,
+          per_page: 0,
         });
       }
       return reportApi.getGeneralLedger({
         account_id: parseInt(accountId),
         start_date: startDate,
         end_date: endDate,
+        per_page: 0,
       });
     },
     enabled: !!startDate && !!endDate,

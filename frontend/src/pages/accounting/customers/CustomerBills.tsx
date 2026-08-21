@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 
 /**
  * Customer Invoices Page
@@ -21,6 +22,11 @@ export const CustomerBills: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
+  const [dateFilter, setDateFilter] = useState<'all' | 'yearly' | 'monthly' | 'custom'>('all');
+  const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -44,7 +50,7 @@ export const CustomerBills: React.FC = () => {
 
   // Fetch invoices
   const { data: invoicesData, isLoading, refetch } = useQuery({
-    queryKey: ['customer-bills', statusFilter, searchQuery, customerFilter, agingBucketFilter, page],
+    queryKey: ['customer-bills', statusFilter, searchQuery, customerFilter, agingBucketFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate, page],
     queryFn: async () => {
       if (isAgingDrilldown) {
         const response = await api.get('/accounting/reports/aged-receivables/details', {
@@ -77,6 +83,17 @@ export const CustomerBills: React.FC = () => {
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (searchQuery) params.append('search', searchQuery);
       if (customerFilter) params.append('customer_id', customerFilter);
+      if (dateFilter === 'yearly' && selectedYear) {
+        params.append('start_date', `${selectedYear}-01-01`);
+        params.append('end_date', `${selectedYear}-12-31`);
+      } else if (dateFilter === 'monthly' && selectedMonth) {
+        const [year, month] = selectedMonth.split('-').map(Number);
+        params.append('start_date', `${selectedMonth}-01`);
+        params.append('end_date', `${selectedMonth}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`);
+      } else if (dateFilter === 'custom') {
+        if (customStartDate) params.append('start_date', customStartDate);
+        if (customEndDate) params.append('end_date', customEndDate);
+      }
       
       const response = await api.get(`/invoices?${params.toString()}`);
       return {
@@ -180,6 +197,19 @@ export const CustomerBills: React.FC = () => {
     setStatusFilter(value);
     setPage(1);
     setSelectedIds(new Set());
+  };
+
+  const handleCustomerFilterChange = (value: string) => {
+    setCustomerFilter(value || null);
+    setAgingBucketFilter(null);
+    setPage(1);
+    setSelectedIds(new Set());
+
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set('customer_id', value);
+    else next.delete('customer_id');
+    next.delete('aging_bucket');
+    setSearchParams(next, { replace: true });
   };
 
   const handleUploadComplete = () => {
@@ -320,7 +350,7 @@ export const CustomerBills: React.FC = () => {
       {/* Filters */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-3">
             <select
               value={statusFilter}
               onChange={(e) => handleStatusFilterChange(e.target.value)}
@@ -338,8 +368,64 @@ export const CustomerBills: React.FC = () => {
               placeholder="Search by customer, invoice number..."
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
-              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="min-w-56 flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <div className="w-48 max-w-full">
+              <CustomerSearchCombobox
+                value={customerFilter || ''}
+                onValueChange={handleCustomerFilterChange}
+                placeholder="All Customers"
+              />
+            </div>
+            <select
+              value={dateFilter}
+              onChange={(e) => { setDateFilter(e.target.value as typeof dateFilter); setPage(1); }}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+            >
+              <option value="all">All Dates</option>
+              <option value="yearly">Yearly</option>
+              <option value="monthly">Monthly</option>
+              <option value="custom">Custom Date</option>
+            </select>
+            {dateFilter === 'yearly' && (
+              <input
+                type="number"
+                min="2000"
+                max="2100"
+                value={selectedYear}
+                onChange={(e) => { setSelectedYear(e.target.value); setPage(1); }}
+                aria-label="Invoice year"
+                className="w-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+              />
+            )}
+            {dateFilter === 'monthly' && (
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => { setSelectedMonth(e.target.value); setPage(1); }}
+                aria-label="Invoice month"
+                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+              />
+            )}
+            {dateFilter === 'custom' && (
+              <>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => { setCustomStartDate(e.target.value); setPage(1); }}
+                  aria-label="Invoice start date"
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+                />
+                <input
+                  type="date"
+                  min={customStartDate || undefined}
+                  value={customEndDate}
+                  onChange={(e) => { setCustomEndDate(e.target.value); setPage(1); }}
+                  aria-label="Invoice end date"
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
+                />
+              </>
+            )}
           </div>
         </CardContent>
       </Card>

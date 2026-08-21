@@ -18,6 +18,8 @@ export interface ReportFilters {
   method?: 'direct' | 'indirect';
   interval?: 'day' | 'week' | 'month' | 'year';
   page?: number;
+  /** Use 0 when the report must return every row in the filtered period. */
+  per_page?: number;
 }
 
 // Financial Report Types

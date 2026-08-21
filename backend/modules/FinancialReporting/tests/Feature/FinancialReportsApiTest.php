@@ -133,8 +133,10 @@ class FinancialReportsApiTest extends TenantTestCase
                 'account_id' => $account->id,
                 'start_date' => '2024-01-01',
                 'end_date' => '2024-01-31',
+                'per_page' => 0,
             ]));
 
+        $this->assertNotSame(422, $response->status());
         $this->assertContains($response->status(), [200, 500]);
     }
 

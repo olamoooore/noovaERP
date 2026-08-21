@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 import { useNavigate } from 'react-router-dom'
+import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 
 export function InvoicesPage() {
   const { toast } = useToast()
@@ -17,16 +18,34 @@ export function InvoicesPage() {
 
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [customerFilter, setCustomerFilter] = useState('')
+  const [dateFilter, setDateFilter] = useState<'all' | 'yearly' | 'monthly' | 'custom'>('all')
+  const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()))
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [customStartDate, setCustomStartDate] = useState('')
+  const [customEndDate, setCustomEndDate] = useState('')
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [page, setPage] = useState(1)
   const [perPage] = useState(20)
 
   const { data: response, isLoading } = useQuery({
-    queryKey: ['invoices', page, perPage, statusFilter, searchQuery],
+    queryKey: ['invoices', page, perPage, statusFilter, searchQuery, customerFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
     queryFn: async () => {
       const params: any = { page, per_page: perPage }
       if (statusFilter !== 'all') params.status = statusFilter
       if (searchQuery.trim()) params.search = searchQuery.trim()
+      if (customerFilter) params.customer_id = customerFilter
+      if (dateFilter === 'yearly') {
+        params.start_date = `${selectedYear}-01-01`
+        params.end_date = `${selectedYear}-12-31`
+      } else if (dateFilter === 'monthly' && selectedMonth) {
+        const [year, month] = selectedMonth.split('-').map(Number)
+        params.start_date = `${selectedMonth}-01`
+        params.end_date = `${selectedMonth}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`
+      } else if (dateFilter === 'custom') {
+        if (customStartDate) params.start_date = customStartDate
+        if (customEndDate) params.end_date = customEndDate
+      }
       const res = await api.get('/invoices', { params })
       return res.data
     },
@@ -164,7 +183,7 @@ export function InvoicesPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-3 mb-4">
+          <div className="mb-4 flex flex-wrap gap-3">
             <input
               type="text"
               placeholder="Search invoices..."
@@ -186,6 +205,62 @@ export function InvoicesPage() {
               <option value="overdue">Overdue</option>
               <option value="cancelled">Cancelled</option>
             </select>
+            <div className="w-48 max-w-full">
+              <CustomerSearchCombobox
+                value={customerFilter}
+                onValueChange={(value) => { setCustomerFilter(value); setPage(1) }}
+                placeholder="All Customers"
+              />
+            </div>
+            <select
+              value={dateFilter}
+              onChange={(e) => { setDateFilter(e.target.value as typeof dateFilter); setPage(1) }}
+              className="rounded-md border px-3 py-2 text-sm"
+            >
+              <option value="all">All Dates</option>
+              <option value="yearly">Yearly</option>
+              <option value="monthly">Monthly</option>
+              <option value="custom">Custom Date</option>
+            </select>
+            {dateFilter === 'yearly' && (
+              <input
+                type="number"
+                min="2000"
+                max="2100"
+                value={selectedYear}
+                onChange={(e) => { setSelectedYear(e.target.value); setPage(1) }}
+                aria-label="Invoice year"
+                className="w-28 rounded-md border px-3 py-2 text-sm"
+              />
+            )}
+            {dateFilter === 'monthly' && (
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => { setSelectedMonth(e.target.value); setPage(1) }}
+                aria-label="Invoice month"
+                className="rounded-md border px-3 py-2 text-sm"
+              />
+            )}
+            {dateFilter === 'custom' && (
+              <>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => { setCustomStartDate(e.target.value); setPage(1) }}
+                  aria-label="Invoice start date"
+                  className="rounded-md border px-3 py-2 text-sm"
+                />
+                <input
+                  type="date"
+                  min={customStartDate || undefined}
+                  value={customEndDate}
+                  onChange={(e) => { setCustomEndDate(e.target.value); setPage(1) }}
+                  aria-label="Invoice end date"
+                  className="rounded-md border px-3 py-2 text-sm"
+                />
+              </>
+            )}
           </div>
 
           {isLoading ? (
