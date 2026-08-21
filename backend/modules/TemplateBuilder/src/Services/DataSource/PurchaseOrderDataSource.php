@@ -137,7 +137,7 @@ final class PurchaseOrderDataSource implements DataSourceContract
                 'subtotal' => 6600.00, 'tax' => 396.00, 'discount' => 0.00, 'shipping' => 150.00,
                 'total' => 7146.00, 'balance' => 7146.00,
             ],
-            'meta' => ['currency_code' => 'MYR', 'currency_symbol' => 'RM ', 'number_format' => '1,234.56', 'locale' => 'en'],
+            'meta' => ['currency_code' => 'SGD', 'currency_symbol' => 'S$', 'number_format' => '1,234.56', 'locale' => 'en'],
         ];
     }
 

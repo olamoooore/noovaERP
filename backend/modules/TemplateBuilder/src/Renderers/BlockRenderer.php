@@ -37,7 +37,8 @@ final class BlockRenderer implements TemplateRendererInterface
         $layout = is_array($template->layout_config) ? $template->layout_config : [];
         $blocks = $layout['blocks'] ?? [];
 
-        $body = $this->renderBlocks(is_array($blocks) ? $blocks : [], '');
+        $blocks = is_array($blocks) ? $blocks : [];
+        $body = $this->renderBlocks($blocks, '');
 
         return [
             'html' => $body,
@@ -64,11 +65,12 @@ final class BlockRenderer implements TemplateRendererInterface
             'image' => $this->renderImage($block),
             'columns' => $this->renderColumns($block, $context),
             'table' => $this->renderTable($block),
+            'case_information' => $this->renderInformationTable($block),
             'totals' => $this->renderTotals($block),
             'spacer' => $this->renderSpacer($block),
             'divider' => $this->renderDivider(),
             'header' => $this->renderBlocks($this->children($block), 'header'),
-            'footer' => $this->renderBlocks($this->children($block), 'footer'),
+            'footer' => '<div class="tb-document-footer">'.$this->renderBlocks($this->children($block), 'footer').'</div>',
             'conditional' => $this->renderBlocks($this->children($block), $context),
             default => '',
         };
@@ -141,15 +143,19 @@ final class BlockRenderer implements TemplateRendererInterface
         }
 
         $body = '';
-        foreach ($rows as $row) {
-            $body .= '<tr>';
+        $subtotalField = (string) ($block['subtotal_field'] ?? 'line_total');
+        $lastIndex = array_key_last($rows);
+        foreach ($rows as $index => $row) {
+            $amount = is_numeric($row[$subtotalField] ?? null) ? (float) $row[$subtotalField] : 0.0;
+            $class = $index === $lastIndex ? 'tb-line-row tb-line-row-last' : 'tb-line-row';
+            $body .= '<tr class="'.$class.'" data-tb-line-index="'.((int) $index).'" data-tb-line-amount="'.$amount.'">';
             foreach ($columns as $col) {
                 $body .= '<td style="'.$this->tdStyle($col).'">'.$this->renderCell($col, $row).'</td>';
             }
             $body .= '</tr>';
         }
 
-        return "<table style=\"width:100%;border-collapse:collapse;\"><thead><tr>{$head}</tr></thead><tbody>{$body}</tbody></table>";
+        return "<table class=\"tb-line-items\" style=\"width:100%;border-collapse:collapse;\"><thead><tr>{$head}</tr></thead><tbody>{$body}</tbody></table>";
     }
 
     /** @param array<string,mixed> $block */
@@ -173,6 +179,37 @@ final class BlockRenderer implements TemplateRendererInterface
                 ."<td style=\"padding:5px 10px;text-align:right;{$style}\">{$value}</td></tr>";
         }
         $out .= '</table>';
+
+        return '<div class="tb-document-totals">'.$out.'</div>';
+    }
+
+    /** @param array<string,mixed> $block */
+    private function renderInformationTable(array $block): string
+    {
+        $rows = is_array($block['rows'] ?? null) ? $block['rows'] : [];
+        if ($rows === []) {
+            return '';
+        }
+
+        $title = htmlspecialchars((string) ($block['title'] ?? 'Case Information'), ENT_QUOTES);
+        $out = '<table class="tb-information-table" style="width:100%;border-collapse:collapse;page-break-inside:avoid;">';
+        $out .= '<thead>';
+        if ($title !== '') {
+            $out .= '<tr><th colspan="'.count($rows).'" style="padding:7px 9px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;font-size:11px;text-transform:uppercase;">'.$title.'</th></tr>';
+        }
+        $out .= '<tr>';
+        foreach ($rows as $row) {
+            $label = htmlspecialchars((string) ($row['label'] ?? ''), ENT_QUOTES);
+            $out .= '<th style="padding:6px 9px;border:1px solid #d1d5db;background:#f9fafb;text-align:left;font-weight:600;vertical-align:top;">'.$label.'</th>';
+        }
+        $out .= '</tr></thead><tbody><tr>';
+        foreach ($rows as $row) {
+            $value = $this->resolver->resolveToken((string) ($row['field'] ?? ''));
+            $value = $this->resolver->formatValue($value, $row['format'] ?? null);
+            $value = htmlspecialchars((string) $value, ENT_QUOTES);
+            $out .= '<td style="padding:6px 9px;border:1px solid #d1d5db;text-align:left;vertical-align:top;">'.$value.'</td>';
+        }
+        $out .= '</tr></tbody></table>';
 
         return $out;
     }

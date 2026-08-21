@@ -162,7 +162,7 @@ final class QuotationDataSource implements DataSourceContract
 
     public function sample(): array
     {
-        $base = (new InvoiceDataSource())->sample();
+        $base = (new InvoiceDataSource)->sample();
         $base['invoice']['number'] = 'QT-2026-0001';
         $base['invoice']['status'] = 'draft';
         $base['invoice']['due_date'] = '2026-08-07';

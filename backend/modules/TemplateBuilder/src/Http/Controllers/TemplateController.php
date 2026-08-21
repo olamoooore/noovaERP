@@ -14,6 +14,7 @@ use Modules\TemplateBuilder\Http\Requests\StoreTemplateRequest;
 use Modules\TemplateBuilder\Http\Requests\UpdateTemplateRequest;
 use Modules\TemplateBuilder\Http\Resources\TemplateResource;
 use Modules\TemplateBuilder\Services\DataSource\DataSourceRegistry;
+use Modules\TemplateBuilder\Services\PdfGenerationService;
 
 class TemplateController extends Controller
 {
@@ -168,6 +169,7 @@ class TemplateController extends Controller
                 '80mm' => [0, 0, 226.77, 650], '58mm' => [0, 0, 164.41, 650], default => 'a4',
             };
             $pdf->setPaper($paper, $template->orientation ?: 'portrait');
+            app(PdfGenerationService::class)->configurePhysicalPageDecorations($pdf, $template, $sample);
             $bytes = $pdf->output();
         } catch (\Throwable $e) {
             return response(['message' => 'Render failed: '.$e->getMessage()], 500);

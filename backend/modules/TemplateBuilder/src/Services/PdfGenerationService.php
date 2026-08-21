@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace Modules\TemplateBuilder\Services;
 
 use Barryvdh\DomPDF\Facade\Pdf;
+use DOMElement;
+use Dompdf\Canvas;
+use Dompdf\FontMetrics;
+use Dompdf\Frame;
 use Illuminate\Support\Carbon;
 use Modules\TemplateBuilder\Contracts\DocumentTemplateServiceContract;
 use Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract;
@@ -18,6 +22,7 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         private readonly DataSourceRegistry $dataSources,
         private readonly TemplateRendererService $renderer,
         private readonly DocumentTemplateServiceContract $templates,
+        private readonly MergeFieldResolver $mergeFields,
     ) {}
 
     public function render(string $documentType, string $documentId, array $options = []): array
@@ -87,9 +92,161 @@ final class PdfGenerationService implements PdfGenerationServiceContract
 
         $pdf = Pdf::loadHTML($fullHtml);
         $pdf->setPaper($this->paperSize($renderTemplate), $renderTemplate->orientation ?: 'portrait');
+        $this->configurePhysicalPageDecorations($pdf, $renderTemplate, $data);
         $bytes = $pdf->output();
 
         return ['bytes' => $bytes, 'html' => $fullHtml, 'mime' => 'application/pdf', 'hash' => $hash];
+    }
+
+    /**
+     * Let Dompdf perform normal physical pagination, record the page on which
+     * each complete product row was rendered, then decorate every physical
+     * page using those actual placements.
+     *
+     * @param  array<string,mixed>  $data
+     */
+    public function configurePhysicalPageDecorations(mixed $pdf, DocumentTemplate $template, array $data): void
+    {
+        $config = $this->paginationConfig($template);
+        if ($config === null || ($config['paginate'] ?? true) === false) {
+            return;
+        }
+
+        $pageSubtotals = [];
+        $seenRows = [];
+        $footerTop = null;
+        $totalsPosition = null;
+        $showSubtotal = ($config['show_page_subtotal'] ?? true) !== false;
+        $subtotalLabel = (string) ($config['subtotal_label'] ?? 'Page Subtotal');
+        $subtotalFormat = (string) ($config['subtotal_format'] ?? 'money');
+        $margin = is_array($template->margin) ? $template->margin : config('templatebuilder.defaults.margin_mm');
+        $pointsPerMm = 72 / 25.4;
+
+        $pdf->setCallbacks([
+            [
+                'event' => 'begin_frame',
+                'f' => function (Frame $frame, Canvas $canvas) use (&$footerTop, $margin, $pointsPerMm): void {
+                    $node = $frame->get_node();
+                    if (! $node instanceof DOMElement || ! str_contains(' '.$node->getAttribute('class').' ', ' tb-document-footer ')) {
+                        return;
+                    }
+
+                    $targetY = $canvas->get_height()
+                        - (((float) ($margin['bottom'] ?? 15)) * $pointsPerMm)
+                        - $frame->get_margin_height();
+                    $frame->move(0, $targetY - (float) $frame->get_position('y'));
+                    $footerTop = $targetY;
+                },
+            ],
+            [
+                'event' => 'end_frame',
+                'f' => function (Frame $frame, Canvas $canvas) use (&$pageSubtotals, &$seenRows, &$totalsPosition): void {
+                    $node = $frame->get_node();
+                    if (! $node instanceof DOMElement) {
+                        return;
+                    }
+
+                    if (str_contains(' '.$node->getAttribute('class').' ', ' tb-document-totals ')) {
+                        $totalsPosition = [
+                            'page' => $canvas->get_page_number(),
+                            'y' => (float) $frame->get_position('y'),
+                        ];
+                    }
+
+                    if (! $node->hasAttribute('data-tb-line-index')) {
+                        return;
+                    }
+
+                    $index = $node->getAttribute('data-tb-line-index');
+                    if (isset($seenRows[$index])) {
+                        return;
+                    }
+
+                    $page = $canvas->get_page_number();
+                    $amount = (float) $node->getAttribute('data-tb-line-amount');
+                    $pageSubtotals[$page] = ($pageSubtotals[$page] ?? 0.0) + $amount;
+                    $seenRows[$index] = $page;
+                },
+            ],
+            [
+                'event' => 'end_document',
+                'f' => function (int $pageNumber, int $pageCount, Canvas $canvas, FontMetrics $fontMetrics) use (
+                    &$pageSubtotals,
+                    &$footerTop,
+                    &$totalsPosition,
+                    $data,
+                    $showSubtotal,
+                    $subtotalLabel,
+                    $subtotalFormat,
+                    $margin,
+                    $pointsPerMm
+                ): void {
+                    $font = $fontMetrics->getFont('DejaVu Sans', 'normal');
+                    $bold = $fontMetrics->getFont('DejaVu Sans', 'bold');
+                    $pageWidth = $canvas->get_width();
+                    $pageHeight = $canvas->get_height();
+                    $right = (float) ($margin['right'] ?? 12) * $pointsPerMm;
+                    $top = max(8.0, ((float) ($margin['top'] ?? 15) * $pointsPerMm / 2) - 4);
+                    $number = $pageNumber.'/'.$pageCount;
+                    $numberWidth = $fontMetrics->getTextWidth($number, $font, 8);
+                    $canvas->text($pageWidth - $right - $numberWidth, $top, $number, $font, 8, [0.42, 0.45, 0.50]);
+
+                    if (! $showSubtotal || ! array_key_exists($pageNumber, $pageSubtotals)) {
+                        return;
+                    }
+
+                    $this->mergeFields->with($data);
+                    $value = (string) $this->mergeFields->formatValue($pageSubtotals[$pageNumber], $subtotalFormat);
+                    $size = 9;
+                    // Earlier pages use the reserved bottom decoration band. On the
+                    // final page, use the blank slot immediately above overall totals.
+                    $defaultY = $pageHeight - (((float) ($margin['bottom'] ?? 15) + 4) * $pointsPerMm);
+                    if ($pageNumber === $pageCount && ($totalsPosition['page'] ?? null) === $pageNumber) {
+                        $y = (float) $totalsPosition['y'] + (7 * $pointsPerMm);
+                    } elseif ($footerTop !== null && $pageNumber === $pageCount) {
+                        $y = min($defaultY, $footerTop - (8 * $pointsPerMm));
+                    } else {
+                        $y = $defaultY;
+                    }
+                    $valueWidth = $fontMetrics->getTextWidth($value, $bold, $size);
+                    $labelWidth = $fontMetrics->getTextWidth($subtotalLabel, $bold, $size);
+                    $valueX = $pageWidth - $right - $valueWidth;
+                    $labelX = max($right, $valueX - $labelWidth - 36);
+                    $canvas->line($labelX, $y - 4, $pageWidth - $right, $y - 4, [0.82, 0.84, 0.87], 0.6);
+                    $canvas->text($labelX, $y, $subtotalLabel, $bold, $size, [0.12, 0.16, 0.23]);
+                    $canvas->text($valueX, $y, $value, $bold, $size, [0.12, 0.16, 0.23]);
+                },
+            ],
+        ]);
+    }
+
+    /** @return array<string,mixed>|null */
+    private function paginationConfig(DocumentTemplate $template): ?array
+    {
+        $blocks = is_array($template->layout_config) ? ($template->layout_config['blocks'] ?? []) : [];
+
+        return $this->findPaginatedTable(is_array($blocks) ? $blocks : []);
+    }
+
+    /**
+     * @param  array<int,array<string,mixed>>  $blocks
+     * @return array<string,mixed>|null
+     */
+    private function findPaginatedTable(array $blocks): ?array
+    {
+        foreach ($blocks as $block) {
+            if (($block['type'] ?? null) === 'table' && ($block['paginate'] ?? true) !== false) {
+                return $block;
+            }
+            if (is_array($block['children'] ?? null)) {
+                $found = $this->findPaginatedTable($block['children']);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -124,7 +281,29 @@ final class PdfGenerationService implements PdfGenerationServiceContract
             'font' => $font,
             'margin' => $margin,
             'css' => (string) ($template->css ?? ''),
+            'contentHeightMm' => $this->contentHeightMm($template, $margin),
         ])->render();
+    }
+
+    /** @param array<string,mixed> $margin */
+    private function contentHeightMm(DocumentTemplate $template, array $margin): float
+    {
+        $paperHeight = match ($template->format) {
+            'Letter' => 279.4,
+            'A5' => 210.0,
+            '80mm', '58mm' => 229.3,
+            default => 297.0,
+        };
+
+        if (($template->orientation ?: 'portrait') === 'landscape' && in_array($template->format, ['A4', 'Letter', 'A5'], true)) {
+            $paperHeight = match ($template->format) {
+                'Letter' => 215.9,
+                'A5' => 148.0,
+                default => 210.0,
+            };
+        }
+
+        return max(40, $paperHeight - (float) ($margin['top'] ?? 15) - (float) ($margin['bottom'] ?? 15));
     }
 
     /** @return string|array{0:int,1:int,2:int,3:int} */

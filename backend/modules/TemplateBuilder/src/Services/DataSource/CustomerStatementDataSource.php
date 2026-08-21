@@ -193,7 +193,7 @@ final class CustomerStatementDataSource implements DataSourceContract
                 'days_90_plus' => 0.00,
                 'total' => 9556.00,
             ],
-            'meta' => ['currency_code' => 'MYR', 'currency_symbol' => 'RM ', 'number_format' => '1,234.56', 'locale' => 'en'],
+            'meta' => ['currency_code' => 'SGD', 'currency_symbol' => 'S$', 'number_format' => '1,234.56', 'locale' => 'en'],
         ];
     }
 
