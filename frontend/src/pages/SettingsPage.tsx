@@ -4,9 +4,12 @@ import { FulfillmentSettings } from './Settings/FulfillmentSettings'
 import { MailSettings } from './Settings/MailSettings'
 import { WhatsAppSettings } from './Settings/WhatsAppSettings'
 import { InventorySettingsPage } from './Inventory/InventorySettingsPage'
+import { ModulesPage } from './Modules/ModulesPage'
+import TenantUsersPage from './TenantUsersPage'
 
 // ... existing imports ...
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -81,6 +84,31 @@ const taxTypeOptions: Array<{ value: TaxType; label: string }> = [
 export function SettingsPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const availableTabs = new Set([
+    'general',
+    'tax',
+    'payment-gateways',
+    'fulfillment',
+    'mail',
+    'whatsapp',
+    'inventory',
+    'team',
+    'modules',
+  ])
+  const requestedTab = searchParams.get('tab') || 'general'
+  const activeTab = availableTabs.has(requestedTab) ? requestedTab : 'general'
+
+  const changeTab = (tab: string) => {
+    const next = new URLSearchParams(searchParams)
+    if (tab === 'general') {
+      next.delete('tab')
+    } else {
+      next.set('tab', tab)
+    }
+    setSearchParams(next, { replace: true })
+  }
 
   const currencyCode = useSettingsStore((s) => s.currencyCode)
   const taxConfig = useSettingsStore((s) => s.tax)
@@ -217,7 +245,7 @@ export function SettingsPage() {
         <h1 className="text-3xl font-bold">Settings</h1>
       </div>
 
-      <Tabs defaultValue="general">
+      <Tabs value={activeTab} onValueChange={changeTab}>
         <TabsList>
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="tax">Tax & Currency</TabsTrigger>
@@ -226,6 +254,8 @@ export function SettingsPage() {
           <TabsTrigger value="mail">Email Configuration</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
           <TabsTrigger value="inventory">Inventory</TabsTrigger>
+          <TabsTrigger value="team">Team</TabsTrigger>
+          <TabsTrigger value="modules">Modules</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
@@ -250,6 +280,14 @@ export function SettingsPage() {
 
         <TabsContent value="inventory">
           <InventorySettingsPage />
+        </TabsContent>
+
+        <TabsContent value="team">
+          <TenantUsersPage />
+        </TabsContent>
+
+        <TabsContent value="modules">
+          <ModulesPage />
         </TabsContent>
 
         <TabsContent value="tax">
