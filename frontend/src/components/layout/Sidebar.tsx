@@ -178,11 +178,11 @@ const baseNavItems: NavItem[] = [
       //   href: '/inventory/movements',
       //   icon: 'solar:transfer-horizontal-bold-duotone',
       // },
-      {
-        title: 'Purchase Orders',
-        href: '/inventory/purchase-orders',
-        icon: 'solar:cart-large-4-bold-duotone',
-      },
+      // {
+      //   title: 'Purchase Orders',
+      //   href: '/inventory/purchase-orders',
+      //   icon: 'solar:cart-large-4-bold-duotone',
+      // },
       {
         title: 'Warehouse Transfers',
         href: '/inventory/transfers',
@@ -715,14 +715,10 @@ const baseNavItems: NavItem[] = [
   },
 
       {
-        title: 'Modules',
-        href: '/modules',
-        icon: 'solar:widget-bold-duotone',
-      },
-      {
         title: 'Auditor Portal',
         href: '/auditor',
         icon: 'solar:shield-check-bold-duotone',
+        featureKey: 'auditor-portal',
         children: [
           {
             title: 'Dashboard',
@@ -750,12 +746,6 @@ const baseNavItems: NavItem[] = [
             icon: 'solar:clock-circle-bold-duotone',
           },
         ],
-      },
-      {
-        title: 'Team',
-        href: '/settings/users',
-        icon: 'solar:users-group-rounded-bold-duotone',
-        requiredPermission: 'users.view',
       },
       {
         title: 'Settings',
@@ -809,7 +799,7 @@ export function Sidebar() {
   // Tenant-specific hard blocks for modules that must never appear in navigation.
   const tenantForceDisabledFeatures: Record<string, string[]> = {
     'c194ebd3-a0af-4aca-a9b5-1f3275318228': ['field-service'],
-    '00000000-0000-0000-0000-000000000001': ['ecommerce'],
+    '00000000-0000-0000-0000-000000000001': ['ecommerce', 'crm', 'hrm', 'pos', 'auditor-portal'],
   }
 
   const isFeatureEnabled = (featureKey?: string) => {

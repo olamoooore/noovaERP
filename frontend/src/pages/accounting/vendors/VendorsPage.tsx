@@ -285,6 +285,16 @@ export default function VendorsPage() {
       return;
     }
 
+    const paymentTerms = Number(formData.payment_terms);
+    if (formData.payment_terms.trim() === '' || !Number.isInteger(paymentTerms) || paymentTerms < 0 || paymentTerms > 365) {
+      toast({
+        title: 'Validation Error',
+        description: 'Payment terms must be a whole number between 0 and 365 days',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const billingAddress = addresses.find((address) => address.type === 'billing' && address.is_default)
       || addresses.find((address) => address.type === 'billing');
     const shippingAddress = addresses.find((address) => address.type === 'shipping' && address.is_default)
@@ -303,7 +313,7 @@ export default function VendorsPage() {
       shipping_address: shippingAddress ? formatAddress(shippingAddress) : (formData.shipping_address || null),
       contact_person: formData.contact_person || null,
       website: formData.website || null,
-      payment_terms: parseInt(formData.payment_terms) || 30,
+      payment_terms: paymentTerms,
       notes: formData.notes || null,
       addresses,
     };
@@ -490,6 +500,9 @@ export default function VendorsPage() {
                 <Label>Payment Terms (days)</Label>
                 <Input
                   type="number"
+                  min="0"
+                  max="365"
+                  step="1"
                   value={formData.payment_terms}
                   onChange={(e) => setFormData({ ...formData, payment_terms: e.target.value })}
                   placeholder="30"
