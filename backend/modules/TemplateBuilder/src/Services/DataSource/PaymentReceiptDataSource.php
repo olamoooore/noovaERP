@@ -93,7 +93,7 @@ final class PaymentReceiptDataSource implements DataSourceContract
             'customer' => ['name' => 'Globex Corporation', 'email' => 'ap@globex.example'],
             'company' => CompanyDataSource::sample(),
             'totals' => ['amount' => 8056.00, 'total' => 8056.00],
-            'meta' => ['currency_code' => 'MYR', 'currency_symbol' => 'RM ', 'number_format' => '1,234.56', 'locale' => 'en'],
+            'meta' => ['currency_code' => 'SGD', 'currency_symbol' => 'S$', 'number_format' => '1,234.56', 'locale' => 'en'],
         ];
     }
 }

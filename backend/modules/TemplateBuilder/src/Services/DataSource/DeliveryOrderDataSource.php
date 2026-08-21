@@ -175,7 +175,7 @@ final class DeliveryOrderDataSource implements DataSourceContract
                 ['index' => 1, 'sku' => 'SKU-1001', 'description' => 'Enterprise licence — 50 seats', 'patient_name' => 'Jane Doe', 'quantity_ordered' => 10, 'quantity_delivered' => 10, 'remaining' => 0, 'unit' => 'box', 'unit_price' => 450.00, 'line_total' => 4500.00, 'lot_number' => '', 'batch_number' => ''],
                 ['index' => 2, 'sku' => 'SKU-2099', 'description' => 'On-site training materials', 'patient_name' => 'John Doe', 'quantity_ordered' => 25, 'quantity_delivered' => 25, 'remaining' => 0, 'unit' => 'pcs', 'unit_price' => 49.60, 'line_total' => 1240.00, 'lot_number' => 'LOT-001', 'batch_number' => 'B-2026-07'],
             ],
-            'meta' => ['currency_code' => 'MYR', 'currency_symbol' => 'RM ', 'number_format' => '1,234.56', 'locale' => 'en'],
+            'meta' => ['currency_code' => 'SGD', 'currency_symbol' => 'S$', 'number_format' => '1,234.56', 'locale' => 'en'],
         ];
     }
 

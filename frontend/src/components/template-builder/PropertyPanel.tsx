@@ -10,6 +10,7 @@ import { useTemplateEditorStore } from '@/store/templateEditorStore'
 import type {
   Align,
   Block,
+  CaseInformationBlock,
   ContainerBlock,
   ColumnsBlock,
   DocumentType,
@@ -17,6 +18,7 @@ import type {
   TableColumn,
   TotalsBlock,
   TotalsRow,
+  InformationRow,
 } from '@/types/template-builder'
 import { DOCUMENT_TYPE_LABELS } from '@/types/template-builder'
 import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
@@ -219,6 +221,41 @@ function BlockEditor({ block, updateBlock, documentType }: {
       const setColumns = (columns: TableColumn[]) => updateBlock(block.id, { columns })
       return (
         <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-xs">Paginate line items</Label>
+              <p className="text-[10px] text-muted-foreground">Adds page numbers, per-page subtotals, and final-page footer placement.</p>
+            </div>
+            <Switch checked={t.paginate !== false} onCheckedChange={(value) => updateBlock(block.id, { paginate: value })} />
+          </div>
+          {t.paginate !== false && (
+            <div className="space-y-2 rounded border p-2">
+              <p className="text-[10px] text-muted-foreground">Rows flow according to the actual printable page space. A complete row moves to the next page when it cannot fit.</p>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Show subtotal on every page</Label>
+                <Switch checked={t.show_page_subtotal !== false} onCheckedChange={(value) => updateBlock(block.id, { show_page_subtotal: value })} />
+              </div>
+              {t.show_page_subtotal !== false && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Subtotal label</Label>
+                    <Input className="h-8 text-xs" value={t.subtotal_label ?? 'Page Subtotal'} onChange={(e) => updateBlock(block.id, { subtotal_label: e.target.value })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Line amount field</Label>
+                    <Input className="h-8 text-xs font-mono" value={t.subtotal_field ?? 'line_total'} onChange={(e) => updateBlock(block.id, { subtotal_field: e.target.value })} />
+                  </div>
+                  <LabeledSelect
+                    label="Subtotal format"
+                    value={t.subtotal_format ?? 'money'}
+                    options={FORMAT_OPTIONS}
+                    onChange={(value) => updateBlock(block.id, { subtotal_format: value === 'none' ? undefined : value })}
+                  />
+                </>
+              )}
+            </div>
+          )}
+          <Separator />
           <div className="space-y-1.5">
             <Label className="text-xs">Source</Label>
             <Input className="h-8 text-xs" value={t.source} onChange={(e) => updateBlock(block.id, { source: e.target.value })} />
@@ -293,6 +330,40 @@ function BlockEditor({ block, updateBlock, documentType }: {
       )
     }
 
+    case 'case_information': {
+      const info = block as CaseInformationBlock
+      const setRows = (rows: InformationRow[]) => updateBlock(block.id, { rows })
+      return (
+        <div className="space-y-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Table title</Label>
+            <Input className="h-8 text-xs" value={info.title} onChange={(e) => updateBlock(block.id, { title: e.target.value })} />
+          </div>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">Information rows</Label>
+            <Button size="sm" variant="outline" onClick={() => setRows([...info.rows, { label: 'New field', field: 'invoice.case_number' }])}>
+              <Plus className="mr-1 h-3 w-3" /> Add
+            </Button>
+          </div>
+          {info.rows.map((row, i) => (
+            <div key={i} className="space-y-1.5 rounded border p-2">
+              <div className="flex items-center gap-1">
+                <Input className="h-7 text-xs" placeholder="Label" value={row.label} onChange={(e) => patchInformationRow(setRows, info.rows, i, { label: e.target.value })} />
+                <IconBtn title="Up" onClick={() => swap(info.rows, i, i - 1, setRows)}><ChevronUp className="h-3 w-3" /></IconBtn>
+                <IconBtn title="Down" onClick={() => swap(info.rows, i, i + 1, setRows)}><ChevronDown className="h-3 w-3" /></IconBtn>
+                <IconBtn title="Remove" onClick={() => setRows(info.rows.filter((_, j) => j !== i))}><Trash2 className="h-3 w-3" /></IconBtn>
+              </div>
+              <Input className="h-7 text-xs font-mono" placeholder="Field (e.g. invoice.case_number)" value={row.field} onChange={(e) => patchInformationRow(setRows, info.rows, i, { field: e.target.value })} />
+              <Select value={row.format ?? 'none'} onValueChange={(v) => patchInformationRow(setRows, info.rows, i, { format: v === 'none' ? undefined : v })}>
+                <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Format" /></SelectTrigger>
+                <SelectContent>{FORMAT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          ))}
+        </div>
+      )
+    }
+
     case 'spacer':
       return <LabeledNumber label="Height (px)" value={(block as { height?: number }).height} onChange={(v) => updateBlock(block.id, { height: v })} />
 
@@ -300,8 +371,10 @@ function BlockEditor({ block, updateBlock, documentType }: {
       return <p className="text-xs text-muted-foreground">A horizontal rule. No properties.</p>
 
     case 'header':
+      return <p className="text-xs text-muted-foreground">This block repeats at the top of every generated page. The system page number is added above it.</p>
+
     case 'footer':
-      return <p className="text-xs text-muted-foreground">This block repeats on every printed page. Add child blocks on the canvas.</p>
+      return <p className="text-xs text-muted-foreground">This block is anchored to the bottom of the final PDF page only.</p>
 
     case 'conditional':
       return (
@@ -320,6 +393,9 @@ function patchColumn(setColumns: (c: TableColumn[]) => void, cols: TableColumn[]
   setColumns(cols.map((c, j) => (j === i ? { ...c, ...patch } : c)))
 }
 function patchRow(setRows: (r: TotalsRow[]) => void, rows: TotalsRow[], i: number, patch: Partial<TotalsRow>) {
+  setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+}
+function patchInformationRow(setRows: (r: InformationRow[]) => void, rows: InformationRow[], i: number, patch: Partial<InformationRow>) {
   setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
 }
 function swap<T>(arr: T[], i: number, j: number, set: (a: T[]) => void) {

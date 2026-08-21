@@ -305,18 +305,6 @@ export function QuotationDetailPage() {
 
       {/* Odoo-style smart buttons */}
       <div className="flex gap-3">
-        {quotation.sales_order && (
-          <button
-            onClick={() => navigate(`/sales/orders/${quotation.sales_order.id}`)}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
-          >
-            <Icon icon="solar:cart-large-2-bold-duotone" className="h-5 w-5 text-green-600" />
-            <div className="text-left">
-              <div className="font-bold text-foreground">{quotation.sales_order.sales_order_number}</div>
-              <div className="text-xs text-muted-foreground">Sales Order</div>
-            </div>
-          </button>
-        )}
         {quotation.invoices && quotation.invoices.length > 0 && (
           <button
             onClick={() => setShowInvoicesPanel(!showInvoicesPanel)}

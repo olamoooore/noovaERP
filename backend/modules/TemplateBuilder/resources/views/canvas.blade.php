@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <title>Document</title>
     <style>
-        @page { margin: {{ ($margin['top'] ?? 15) }}mm {{ ($margin['right'] ?? 12) }}mm {{ ($margin['bottom'] ?? 15) }}mm {{ ($margin['left'] ?? 12) }}mm; }
-
         * { box-sizing: border-box; }
 
         html, body {
@@ -19,8 +17,7 @@
 
         body {
             -webkit-font-smoothing: antialiased;
-            /* Screen-friendly padding that matches @page print margins (mm → px: ×3.78) */
-            padding: {{ ($margin['top'] ?? 15) * 3.78 }}px {{ ($margin['right'] ?? 12) * 3.78 }}px {{ ($margin['bottom'] ?? 15) * 3.78 }}px {{ ($margin['left'] ?? 12) * 3.78 }}px;
+            padding: 0;
         }
 
         table { border-collapse: collapse; width: 100%; }
@@ -33,9 +30,33 @@
         .tb-divider { border: none; border-top: 1px solid #e5e7eb; margin: 14px 0; }
         .tb-spacer  { width: 100%; }
 
+        .tb-line-row {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+        }
+        .tb-line-row-last { page-break-after: avoid !important; }
+        .tb-document-totals {
+            padding-top: 12mm;
+            page-break-inside: avoid !important;
+        }
+        .tb-document-footer {
+            width: 100%;
+        }
+
+        @media screen {
+            body {
+                padding: {{ ($margin['top'] ?? 15) * 3.78 }}px {{ ($margin['right'] ?? 12) * 3.78 }}px {{ ($margin['bottom'] ?? 15) * 3.78 }}px {{ ($margin['left'] ?? 12) * 3.78 }}px;
+            }
+            .tb-document-footer { position: static; margin-top: 20px; }
+        }
+
         @if (!empty($css))
             {!! $css !!}
         @endif
+
+        /* Keep the physical pagination safety band authoritative even when a
+           template supplies custom @page CSS. */
+        @page { margin: {{ ($margin['top'] ?? 15) }}mm {{ ($margin['right'] ?? 12) }}mm {{ ($margin['bottom'] ?? 15) + 40 }}mm {{ ($margin['left'] ?? 12) }}mm; }
     </style>
 </head>
 <body>

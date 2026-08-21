@@ -292,18 +292,6 @@ export function InvoiceDetailPage() {
             </div>
           </button>
         )}
-        {invoice.sales_order && (
-          <button
-            onClick={() => navigate(`/sales/orders/${invoice.sales_order!.id}`)}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
-          >
-            <Icon icon="solar:cart-large-2-bold-duotone" className="h-5 w-5 text-green-600" />
-            <div className="text-left">
-              <div className="font-bold text-foreground">{invoice.sales_order.sales_order_number}</div>
-              <div className="text-xs text-muted-foreground">Sales Order</div>
-            </div>
-          </button>
-        )}
         {invoice.delivery_orders && invoice.delivery_orders.length > 0 && invoice.delivery_orders.map((d) => (
           <button
             key={d.id}

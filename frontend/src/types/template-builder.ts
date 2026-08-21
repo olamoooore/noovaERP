@@ -6,6 +6,7 @@ export type BlockType =
   | 'image'
   | 'columns'
   | 'table'
+  | 'case_information'
   | 'totals'
   | 'spacer'
   | 'divider'
@@ -54,6 +55,11 @@ export interface TableBlock extends BlockBase {
   type: 'table'
   source: string
   columns: TableColumn[]
+  paginate?: boolean
+  show_page_subtotal?: boolean
+  subtotal_label?: string
+  subtotal_field?: string
+  subtotal_format?: string
 }
 
 export interface TotalsRow {
@@ -61,6 +67,18 @@ export interface TotalsRow {
   field: string
   format?: string
   bold?: boolean
+}
+
+export interface InformationRow {
+  label: string
+  field: string
+  format?: string
+}
+
+export interface CaseInformationBlock extends BlockBase {
+  type: 'case_information'
+  title: string
+  rows: InformationRow[]
 }
 
 export interface TotalsBlock extends BlockBase {
@@ -88,6 +106,7 @@ export type Block =
   | ImageBlock
   | ColumnsBlock
   | TableBlock
+  | CaseInformationBlock
   | TotalsBlock
   | SpacerBlock
   | DividerBlock

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useDrag } from 'react-dnd'
 import { ChevronUp, ChevronDown, Copy, Trash2, GripVertical } from 'lucide-react'
 import { useTemplateEditorStore } from '@/store/templateEditorStore'
-import type { Block, ContainerBlock, ColumnsBlock, TableBlock, TotalsBlock } from '@/types/template-builder'
+import type { Block, CaseInformationBlock, ContainerBlock, ColumnsBlock, TableBlock, TotalsBlock } from '@/types/template-builder'
 import { DND, type BlockDragItem } from './dnd'
 import { cn } from '@/lib/utils'
 
@@ -11,6 +11,7 @@ const TYPE_LABELS: Record<string, string> = {
   image: 'Image',
   columns: 'Columns',
   table: 'Line Items',
+  case_information: 'Case Information',
   totals: 'Totals',
   spacer: 'Spacer',
   divider: 'Divider',
@@ -123,6 +124,18 @@ export function BlockNode({ block }: { block: Block }) {
           </div>
         )
       }
+      case 'case_information': {
+        const info = block as CaseInformationBlock
+        return (
+          <table className="w-full border-collapse text-[10px]">
+            <thead>
+              <tr><th colSpan={Math.max(info.rows.length, 1)} className="border bg-muted/60 px-2 py-1 text-left uppercase">{info.title || 'Case Information'}</th></tr>
+              <tr>{info.rows.map((row, i) => <th key={i} className="border bg-muted/30 px-2 py-1 text-left">{row.label}</th>)}</tr>
+            </thead>
+            <tbody><tr>{info.rows.map((row, i) => <td key={i} className="border px-2 py-1 font-mono text-muted-foreground">{row.field}</td>)}</tr></tbody>
+          </table>
+        )
+      }
       case 'spacer':
         return <div className="w-full border border-dashed border-muted-foreground/20 text-center text-[9px] text-muted-foreground" style={{ height: block.height || 12 }}>{block.height || 12}px</div>
       case 'divider':
@@ -131,7 +144,11 @@ export function BlockNode({ block }: { block: Block }) {
       case 'footer':
       case 'conditional': {
         const c = block as ContainerBlock
-        const label = block.type === 'conditional' ? `If ${block.condition || '…'}` : `${TYPE_LABELS[block.type]} (repeats)`
+        const label = block.type === 'conditional'
+          ? `If ${block.condition || '…'}`
+          : block.type === 'footer'
+            ? 'Footer (last page bottom)'
+            : 'Header (every page)'
         return (
           <div className="rounded border border-dashed border-primary/30 bg-primary/5">
             <div className="border-b border-primary/20 px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide text-primary">{label}</div>

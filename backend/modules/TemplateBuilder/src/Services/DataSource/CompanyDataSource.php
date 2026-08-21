@@ -45,7 +45,7 @@ final class CompanyDataSource
             'website' => 'https://acme.example',
             'tax_id' => 'MY123456789',
             'registration_number' => '201001000123 (1234567-A)',
-            'currency_code' => 'MYR',
+            'currency_code' => 'SGD',
         ];
     }
 }

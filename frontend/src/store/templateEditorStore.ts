@@ -115,6 +115,11 @@ export function createBlock(type: BlockType): Block {
         id,
         type,
         source: 'lines',
+        paginate: true,
+        show_page_subtotal: true,
+        subtotal_label: 'Page Subtotal',
+        subtotal_field: 'line_total',
+        subtotal_format: 'money',
         columns: [
           { label: '#', field: 'index', width: '4%', align: 'center' },
           { label: 'SKU', field: 'sku', width: '10%' },
@@ -124,6 +129,22 @@ export function createBlock(type: BlockType): Block {
           { label: 'Tax %', field: 'tax_rate', width: '8%', align: 'right' },
           { label: 'Discount', field: 'discount', width: '10%', align: 'right', format: 'money' },
           { label: 'Line Total', field: 'line_total', width: '14%', align: 'right', format: 'money' },
+        ],
+      }
+    case 'case_information':
+      return {
+        id,
+        type,
+        title: 'Case Information',
+        rows: [
+          { label: 'Case Number', field: 'invoice.case_number' },
+          { label: 'Date of Case', field: 'invoice.date_of_case', format: 'date' },
+          { label: 'Case Location', field: 'invoice.case_location' },
+          { label: 'Patient Name', field: 'invoice.patient_name' },
+          { label: 'Doctor', field: 'invoice.doctor' },
+          { label: 'Requestor', field: 'invoice.requestor' },
+          { label: 'Delivery Date', field: 'invoice.delivery_date', format: 'date' },
+          { label: 'PO Number', field: 'invoice.po_number' },
         ],
       }
     case 'totals':

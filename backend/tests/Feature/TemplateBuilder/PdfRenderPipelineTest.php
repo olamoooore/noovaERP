@@ -45,7 +45,7 @@ class PdfRenderPipelineTest extends TenantTestCase
         $this->assertStringContainsString('INV-2026-0001', $result['html']);
         $this->assertStringContainsString('Globex Corporation', $result['html']);
         $this->assertStringContainsString('INVOICE', $result['html']);
-        $this->assertStringContainsString('RM 8,056.00', $result['html']);
+        $this->assertStringContainsString('S$8,056.00', $result['html']);
     }
 
     public function test_render_invoice_sample_to_valid_pdf(): void
@@ -76,7 +76,7 @@ class PdfRenderPipelineTest extends TenantTestCase
         $this->assertStringContainsString('PURCHASE ORDER', $result['html']);
         $this->assertStringContainsString('PO-20260708-0001', $result['html']);
         $this->assertStringContainsString('Initech Supplies', $result['html']);
-        $this->assertStringContainsString('RM 7,146.00', $result['html']);
+        $this->assertStringContainsString('S$7,146.00', $result['html']);
     }
 
     public function test_render_hash_is_stable_for_identical_input(): void

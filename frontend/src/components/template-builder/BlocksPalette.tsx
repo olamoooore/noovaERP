@@ -6,7 +6,7 @@ import type { Block, BlockType } from '@/types/template-builder'
 import { DND, type NewBlockDragItem } from './dnd'
 import {
   Type, Table2, Calculator, Columns2, Image as ImageIcon,
-  Minus, Square, PanelTop, PanelBottom, GitBranch, GripVertical,
+  Minus, Square, PanelTop, PanelBottom, GitBranch, GripVertical, ClipboardList,
 } from 'lucide-react'
 
 interface BlockDef {
@@ -19,13 +19,14 @@ interface BlockDef {
 const BLOCKS: BlockDef[] = [
   { type: 'text', label: 'Text', hint: 'Rich text with merge fields', icon: Type },
   { type: 'table', label: 'Line Items', hint: 'Table bound to document lines', icon: Table2 },
+  { type: 'case_information', label: 'Case Information', hint: 'Case details in a two-column table', icon: ClipboardList },
   { type: 'totals', label: 'Totals', hint: 'Subtotal / tax / total rows', icon: Calculator },
   { type: 'columns', label: 'Columns', hint: 'Side-by-side layout', icon: Columns2 },
   { type: 'image', label: 'Image / Logo', hint: 'Logo or signature', icon: ImageIcon },
   { type: 'divider', label: 'Divider', hint: 'Horizontal rule', icon: Minus },
   { type: 'spacer', label: 'Spacer', hint: 'Vertical whitespace', icon: Square },
-  { type: 'header', label: 'Header', hint: 'Repeating page header', icon: PanelTop },
-  { type: 'footer', label: 'Footer', hint: 'Repeating page footer', icon: PanelBottom },
+  { type: 'header', label: 'Header', hint: 'Repeats at the top of every page', icon: PanelTop },
+  { type: 'footer', label: 'Footer', hint: 'Anchored at the bottom of the final page', icon: PanelBottom },
   { type: 'conditional', label: 'Conditional', hint: 'Show children when condition is true', icon: GitBranch },
 ]
 
