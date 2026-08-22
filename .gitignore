@@ -4,6 +4,9 @@
 .idea/
 .fleet/
 
+# Local dev overrides
+/docker-compose.yml
+
 # Playwright MCP tool artifacts (local screenshots/snapshots/logs)
 .playwright-mcp/
 evidence-screenshots-FC/
