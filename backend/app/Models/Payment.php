@@ -28,6 +28,7 @@ class Payment extends Model
         'received_by',
         'tenant_id',
         'payment_status',
+        'currency',
         'original_payment_id',
         'refund_payment_id',
         'correction_group_id',
@@ -55,7 +56,7 @@ class Payment extends Model
                 $payment->payment_number = static::generatePaymentNumber();
             }
             if (! $payment->payment_status) {
-                $payment->payment_status = 'recorded';
+                $payment->payment_status = 'draft';
             }
         });
 
@@ -106,11 +107,62 @@ class Payment extends Model
         return $this->belongsTo(Tenant::class);
     }
 
+    /**
+     * Draft payments can be freely edited and deleted.
+     * Once a payment has posted to the ledger (journal_entry_id set) it is locked.
+     */
+    public function isEditable(): bool
+    {
+        return $this->payment_status === 'draft' && $this->journal_entry_id === null;
+    }
+
+    public function isDeletable(): bool
+    {
+        return $this->isEditable();
+    }
+
+    public function hasAccountingImpact(): bool
+    {
+        return $this->journal_entry_id !== null;
+    }
+
+    public function scopeDraft($query)
+    {
+        return $query->where('payment_status', 'draft')->whereNull('journal_entry_id');
+    }
+
+    public function scopePosted($query)
+    {
+        return $query->where('payment_status', 'posted')->whereNotNull('journal_entry_id');
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->whereNotIn('payment_status', ['cancelled', 'reversed', 'refunded']);
+    }
+
+    public function scopeForInvoice($query, int $invoiceId)
+    {
+        return $query->where('invoice_id', $invoiceId);
+    }
+
     public static function generatePaymentNumber(): string
     {
-        $latest = static::orderBy('id', 'desc')->first();
-        $number = $latest ? (int) substr($latest->payment_number, -4) + 1 : 1;
+        try {
+            return app(\App\Services\DocumentNumberingService::class)
+                ->generate('payment', 'PAY/{YYYY}/{MM}/{SEQ:3}');
+        } catch (\Throwable $e) {
+            // Fallback if DocumentNumberingService is unavailable
+        }
 
-        return 'PAY-'.date('Y').'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
+        $year = date('Y');
+        $month = date('m');
+        $prefix = "PAY/{$year}/{$month}/";
+        $latest = static::where('payment_number', 'like', $prefix.'%')
+            ->orderByDesc('payment_number')
+            ->first();
+        $number = $latest ? (int) substr($latest->payment_number, -3) + 1 : 1;
+
+        return $prefix.str_pad($number, 3, '0', STR_PAD_LEFT);
     }
 }

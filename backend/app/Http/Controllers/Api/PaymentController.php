@@ -8,6 +8,7 @@ use App\Models\Payment;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PaymentController extends Controller
 {
@@ -17,29 +18,71 @@ class PaymentController extends Controller
     ) {}
 
     /**
-     * List payments.
+     * List payments with full filter / search support.
+     *
+     * Filters:
+     *   - invoice_id, customer_id
+     *   - payment_status (single value or comma-separated)
+     *   - method         (single value or comma-separated)
+     *   - date_from, date_to  (ISO date strings, inclusive bounds)
+     *   - search         (matches payment_number, reference, customer name,
+     *                     and joined invoice.invoice_number)
      */
     public function index(Request $request)
     {
         $query = Payment::with(['customer', 'invoice', 'journalEntry'])
-            ->orderBy('payment_date', 'desc');
+            ->orderBy('payment_date', 'desc')
+            ->orderBy('id', 'desc');
 
-        if ($request->has('invoice_id')) {
+        if ($request->filled('invoice_id')) {
             $query->where('invoice_id', $request->invoice_id);
         }
 
-        if ($request->has('search')) {
-            $search = $request->search;
+        if ($request->filled('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
+        }
+
+        if ($request->filled('payment_status')) {
+            $statuses = array_filter(array_map('trim', explode(',', (string) $request->payment_status)));
+            if (! empty($statuses)) {
+                $query->whereIn('payment_status', $statuses);
+            }
+        }
+
+        if ($request->filled('method')) {
+            $methods = array_filter(array_map('trim', explode(',', (string) $request->method)));
+            if (! empty($methods)) {
+                $query->whereIn('method', $methods);
+            }
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('payment_date', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('payment_date', '<=', $request->date_to);
+        }
+
+        if ($request->filled('search')) {
+            $search = (string) $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('payment_number', 'ILIKE', "%{$search}%")
                     ->orWhere('reference', 'ILIKE', "%{$search}%")
                     ->orWhereHas('customer', function ($cq) use ($search) {
-                        $cq->where('name', 'ILIKE', "%{$search}%");
+                        $cq->where('name', 'ILIKE', "%{$search}%")
+                            ->orWhere('code', 'ILIKE', "%{$search}%");
+                    })
+                    ->orWhereHas('invoice', function ($iq) use ($search) {
+                        $iq->where('invoice_number', 'ILIKE', "%{$search}%");
                     });
             });
         }
 
-        $payments = $query->paginate($request->per_page ?? 20);
+        $perPage = (int) ($request->per_page ?? 20);
+        $perPage = max(1, min($perPage, 200));
+
+        $payments = $query->paginate($perPage);
 
         return response()->json($payments);
     }
@@ -54,7 +97,7 @@ class PaymentController extends Controller
             'customer_id' => 'nullable|integer|exists:customers,id',
         ]);
 
-        $query = \App\Models\Invoice::with('customer')
+        $query = Invoice::with('customer')
             ->whereIn('status', ['posted', 'sent', 'partial'])
             ->where(function ($q) {
                 $q->whereNull('balance')
@@ -164,11 +207,229 @@ class PaymentController extends Controller
         return response()->json($payment->load(['customer', 'invoice', 'journalEntry']));
     }
 
+    /**
+     * Edit a payment.
+     *
+     * Backend rule (mirrors §9 of the spec):
+     *   - Draft payment (no journal_entry_id) → fully editable
+     *   - Posted payment (journal_entry_id set) → LOCKED.
+     *     Corrections must go through the reversal/refund endpoints, not direct
+     *     mutation of historical accounting values.
+     *
+     * If the linked invoice changes, the previous invoice is un-allocated
+     * (paid_amount reduced) and the new invoice is allocated (paid_amount
+     * increased), keeping both invoice balances consistent.
+     */
+    public function update(Request $request, $paymentId)
+    {
+        $payment = Payment::findOrFail($paymentId);
+
+        if (! $payment->isEditable()) {
+            return response()->json([
+                'message' => 'Posted payments cannot be edited directly. Use the refund or reversal endpoint to correct them.',
+                'payment_status' => $payment->payment_status,
+                'has_journal_entry' => $payment->journal_entry_id !== null,
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'payment_date' => 'nullable|date',
+            'invoice_id' => 'nullable|integer|exists:invoices,id',
+            'amount' => 'nullable|numeric|min:0.01',
+            'method' => 'nullable|in:cash,card,bank_transfer,check,other',
+            'reference' => 'nullable|string|max:255',
+            'notes' => 'nullable|string',
+        ]);
+
+        try {
+            DB::transaction(function () use ($payment, $validated) {
+                $previousInvoiceId = $payment->invoice_id;
+                $previousAmount = (float) $payment->amount;
+
+                if (array_key_exists('payment_date', $validated)) {
+                    $payment->payment_date = $validated['payment_date'];
+                }
+                if (array_key_exists('method', $validated)) {
+                    $payment->method = $validated['method'];
+                }
+                if (array_key_exists('reference', $validated)) {
+                    $payment->reference = $validated['reference'];
+                }
+                if (array_key_exists('notes', $validated)) {
+                    $payment->notes = $validated['notes'];
+                }
+
+                $newInvoiceId = array_key_exists('invoice_id', $validated)
+                    ? $validated['invoice_id']
+                    : $previousInvoiceId;
+                $newAmount = array_key_exists('amount', $validated)
+                    ? (float) $validated['amount']
+                    : $previousAmount;
+
+                // When invoice or amount changes we re-allocate so both
+                // invoices stay balanced. Validate the new allocation fits.
+                $invoiceChanged = (int) $newInvoiceId !== (int) $previousInvoiceId;
+                $amountChanged = abs($newAmount - $previousAmount) > 0.005;
+
+                if ($invoiceChanged || $amountChanged) {
+                    if ($newInvoiceId !== null) {
+                        $target = Invoice::findOrFail($newInvoiceId);
+
+                        // Restoring budget when switching away from an invoice
+                        if ($invoiceChanged && $previousInvoiceId !== null) {
+                            $previous = Invoice::find($previousInvoiceId);
+                            if ($previous) {
+                                $restoreAmount = $previousAmount;
+                                $previous->paid_amount = max(0, (float) $previous->paid_amount - $restoreAmount);
+                                $previous->balance = $previous->total - $previous->paid_amount;
+                                $previous->status = $this->resolveInvoiceStatus($previous);
+                                $previous->settlement_status = $previous->paid_amount <= 0 ? 'unpaid' : 'partially_paid';
+                                $previous->save();
+                            }
+                        }
+
+                        if ($newAmount > (float) $target->balance) {
+                            throw new \RuntimeException(
+                                "Payment amount ({$newAmount}) exceeds invoice {$target->invoice_number} balance (".(float) $target->balance.')'
+                            );
+                        }
+
+                        Invoice::where('id', $target->id)->increment('paid_amount', $newAmount);
+                        $target->refresh();
+                        $target->balance = max(0, (float) $target->total - (float) $target->paid_amount);
+                        $target->status = $this->resolveInvoiceStatus($target);
+                        $target->settlement_status = $target->paid_amount <= 0 ? 'unpaid' : ($target->balance <= 0 ? 'paid' : 'partially_paid');
+                        $target->save();
+                    } elseif ($invoiceChanged && $previousInvoiceId !== null) {
+                        // Reverting to a standalone payment — refund the old invoice.
+                        $previous = Invoice::find($previousInvoiceId);
+                        if ($previous) {
+                            $previous->paid_amount = max(0, (float) $previous->paid_amount - $previousAmount);
+                            $previous->balance = $previous->total - $previous->paid_amount;
+                            $previous->status = $this->resolveInvoiceStatus($previous);
+                            $previous->settlement_status = $previous->paid_amount <= 0 ? 'unpaid' : 'partially_paid';
+                            $previous->save();
+                        }
+                    }
+
+                    $payment->invoice_id = $newInvoiceId;
+                    $payment->amount = $newAmount;
+                }
+
+                $payment->save();
+            });
+
+            return response()->json([
+                'message' => 'Payment updated successfully',
+                'data' => $payment->fresh(['customer', 'invoice', 'journalEntry']),
+            ]);
+
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to update payment',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Bulk-delete payments.
+     *
+     * Only draft payments (status='draft' AND no journal_entry_id) are removed.
+     * Posted/recorded payments are reported back as skipped so the UI can show
+     * the user which ones were protected by accounting rules. The backend
+     * enforces this — UI restrictions alone would not satisfy §10.
+     */
+    public function bulkDestroy(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer',
+        ]);
+
+        $ids = $validated['ids'];
+        $deletedIds = [];
+        $skipped = [];
+
+        foreach ($ids as $id) {
+            $payment = Payment::find($id);
+            if (! $payment) {
+                $skipped[] = ['id' => $id, 'reason' => 'Payment not found'];
+                continue;
+            }
+
+            if (! $payment->isDeletable()) {
+                $reason = $payment->journal_entry_id !== null
+                    ? 'Posted payments cannot be deleted. Use refund or reversal.'
+                    : "Payment in status '{$payment->payment_status}' cannot be deleted.";
+                $skipped[] = ['id' => $id, 'reason' => $reason];
+                continue;
+            }
+
+            try {
+                DB::transaction(function () use ($payment) {
+                    if ($payment->invoice_id) {
+                        $invoice = Invoice::find($payment->invoice_id);
+                        if ($invoice) {
+                            $invoice->paid_amount = max(0, (float) $invoice->paid_amount - (float) $payment->amount);
+                            $invoice->balance = $invoice->total - $invoice->paid_amount;
+                            $invoice->status = $this->resolveInvoiceStatus($invoice);
+                            $invoice->settlement_status = $invoice->paid_amount <= 0 ? 'unpaid' : 'partially_paid';
+                            $invoice->save();
+
+                            if ($invoice->customer) {
+                                $invoice->customer->updateOutstanding();
+                            }
+                        }
+                    }
+
+                    $payment->delete();
+                });
+
+                $deletedIds[] = $id;
+            } catch (\Throwable $e) {
+                $skipped[] = ['id' => $id, 'reason' => $e->getMessage()];
+            }
+        }
+
+        return response()->json([
+            'message' => count($deletedIds).' payment(s) deleted.',
+            'deleted' => $deletedIds,
+            'skipped' => $skipped,
+        ]);
+    }
+
     public function destroy($payment)
     {
         $payment = Payment::findOrFail($payment);
 
-        return response()->json(['message' => 'Payments cannot be deleted once posted. Use the cancel endpoint instead.'], 403);
+        if (! $payment->isDeletable()) {
+            return response()->json([
+                'message' => $payment->journal_entry_id !== null
+                    ? 'Posted payments cannot be deleted. Use refund or reversal.'
+                    : "Payment in status '{$payment->payment_status}' cannot be deleted.",
+            ], 403);
+        }
+
+        DB::transaction(function () use ($payment) {
+            if ($payment->invoice_id) {
+                $invoice = Invoice::find($payment->invoice_id);
+                if ($invoice) {
+$invoice->paid_amount = max(0, (float) $invoice->paid_amount - (float) $payment->amount);
+                $invoice->balance = $invoice->total - $invoice->paid_amount;
+                $invoice->status = $this->resolveInvoiceStatus($invoice);
+                $invoice->settlement_status = $invoice->paid_amount <= 0 ? 'unpaid' : 'partially_paid';
+                $invoice->save();
+                }
+            }
+            $payment->delete();
+        });
+
+        return response()->json(['message' => 'Payment deleted successfully']);
     }
 
     /**
@@ -185,7 +446,7 @@ class PaymentController extends Controller
         }
 
         try {
-            \Illuminate\Support\Facades\DB::transaction(function () use ($payment) {
+            DB::transaction(function () use ($payment) {
                 // Unapply from linked invoice if one exists
                 if ($payment->invoice_id) {
                     $invoice = Invoice::find($payment->invoice_id);
@@ -199,7 +460,7 @@ class PaymentController extends Controller
                             $invoice->settlement_status = 'unpaid';
                         } else {
                             $invoice->status = 'partial';
-                            $invoice->settlement_status = 'partial';
+                            $invoice->settlement_status = 'partially_paid';
                         }
                         $invoice->save();
                     }
@@ -222,5 +483,26 @@ class PaymentController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Compute the invoice status string based on the canonical balance math
+     * (single source of truth for "Partially Paid" vs "Paid").
+     */
+    private function resolveInvoiceStatus(Invoice $invoice): string
+    {
+        $paid = (float) $invoice->paid_amount;
+        $total = (float) $invoice->total;
+
+        if ($paid <= 0.005) {
+            // Restore original "sent/posted" state when there were no payments
+            return $invoice->journal_entry_id ? 'posted' : 'draft';
+        }
+
+        if ($paid >= $total - 0.005) {
+            return 'paid';
+        }
+
+        return 'partial';
     }
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,33 +10,112 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 
+interface Payment {
+  id: number;
+  payment_number?: string;
+  payment_date: string;
+  amount: number;
+  method: string;
+  reference?: string;
+  payment_status: string;
+  customer_id?: number;
+  invoice_id?: number;
+  customer?: { id: number; name: string; code?: string };
+  invoice?: { id: number; invoice_number: string };
+  notes?: string;
+  currency?: string;
+  created_at?: string;
+}
+
+interface PaginatedPayments {
+  data: Payment[];
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+}
+
+const PAYMENT_STATUS_OPTIONS = [
+  { value: 'draft', label: 'Draft', icon: 'solar:document-bold-duotone', variant: 'secondary' as const },
+  { value: 'posted', label: 'Posted', icon: 'solar:check-circle-bold-duotone', variant: 'default' as const },
+  { value: 'recorded', label: 'Recorded', icon: 'solar:check-circle-bold', variant: 'default' as const },
+  { value: 'applied', label: 'Applied', icon: 'solar:wallet-bold-duotone', variant: 'default' as const },
+  { value: 'cancelled', label: 'Cancelled', icon: 'solar:close-circle-bold-duotone', variant: 'outline' as const },
+  { value: 'reversed', label: 'Reversed', icon: 'solar:undo-left-round-bold', variant: 'destructive' as const },
+  { value: 'refunded', label: 'Refunded', icon: 'solar:refresh-circle-bold-duotone', variant: 'destructive' as const },
+];
+
+const METHOD_OPTIONS = [
+  { value: 'cash', label: 'Cash', icon: 'solar:wallet-bold-duotone' },
+  { value: 'bank_transfer', label: 'Bank Transfer', icon: 'solar:banknote-bold-duotone' },
+  { value: 'card', label: 'Card', icon: 'solar:card-2-bold-duotone' },
+  { value: 'check', label: 'Check', icon: 'solar:document-bold-duotone' },
+  { value: 'other', label: 'Other', icon: 'solar:question-circle-bold-duotone' },
+];
+
 export const CustomerPayments: React.FC = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const invoiceIdParam = searchParams.get('invoice_id') || '';
   const [showRecordPayment, setShowRecordPayment] = useState(!!invoiceIdParam);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
+  const [statusFilter, setStatusFilter] = useState(searchParams.get('payment_status') || '');
+  const [methodFilter, setMethodFilter] = useState(searchParams.get('method') || '');
+  const [customerFilter, setCustomerFilter] = useState(searchParams.get('customer_id') || '');
+  const [dateFrom, setDateFrom] = useState(searchParams.get('date_from') || '');
+  const [dateTo, setDateTo] = useState(searchParams.get('date_to') || '');
+  const [page, setPage] = useState(Number(searchParams.get('page') || 1));
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Fetch payments
+  // Fetch payments (paginated, filtered)
+  const queryKey = useMemo(
+    () => ['customer-payments', { searchQuery, statusFilter, methodFilter, customerFilter, dateFrom, dateTo, invoiceIdParam, page }],
+    [searchQuery, statusFilter, methodFilter, customerFilter, dateFrom, dateTo, invoiceIdParam, page],
+  );
+
   const { data: payments, isLoading } = useQuery({
-    queryKey: ['customer-payments', searchQuery],
+    queryKey,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (searchQuery) params.append('search', searchQuery);
-      
+      if (statusFilter) params.append('payment_status', statusFilter);
+      if (methodFilter) params.append('method', methodFilter);
+      if (customerFilter) params.append('customer_id', customerFilter);
+      if (dateFrom) params.append('date_from', dateFrom);
+      if (dateTo) params.append('date_to', dateTo);
+      if (invoiceIdParam) params.append('invoice_id', invoiceIdParam);
+      params.append('page', String(page));
+      params.append('per_page', '20');
+
       const response = await api.get(`/payments?${params.toString()}`);
-      return response.data.data || [];
+      return response.data as PaginatedPayments;
     },
   });
 
+  const paymentList = payments?.data || [];
+  const totalPages = payments?.last_page || 1;
+  const totalRecords = payments?.total || 0;
+
   // Fetch unpaid invoices for payment allocation.
-  // Eligible statuses: 'posted' (released to GL, not yet paid), 'sent', 'overdue', 'partial'.
-  // 'draft' invoices are excluded — they have not been released to the GL.
   const { data: unpaidInvoices } = useQuery({
     queryKey: ['unpaid-invoices'],
     queryFn: async () => {
@@ -44,6 +123,16 @@ export const CustomerPayments: React.FC = () => {
       return response.data.data || [];
     },
     enabled: showRecordPayment,
+  });
+
+  // Customer list for the Customer filter dropdown (§7 — recommended filter).
+  // Capped at 200 customers; the search box above already covers full-text lookup.
+  const { data: customers } = useQuery({
+    queryKey: ['customers-filter-list'],
+    queryFn: async () => {
+      const response = await api.get('/customers?per_page=200');
+      return response.data.data || [];
+    },
   });
 
   const formatDate = (date: string) => {
@@ -56,19 +145,76 @@ export const CustomerPayments: React.FC = () => {
   };
 
   const getPaymentMethodBadge = (method: string) => {
-    const icons: Record<string, string> = {
-      cash: 'solar:wallet-bold-duotone',
-      bank: 'solar:card-bold-duotone',
-      card: 'solar:card-2-bold-duotone',
-      check: 'solar:document-bold-duotone',
-    };
-
+    const cfg = METHOD_OPTIONS.find((m) => m.value === method);
     return (
       <Badge variant="outline" className="gap-1">
-        <Icon icon={icons[method] || 'solar:wallet-bold-duotone'} className="h-3 w-3" />
-        {method.charAt(0).toUpperCase() + method.slice(1)}
+        <Icon icon={cfg?.icon || 'solar:wallet-bold-duotone'} className="h-3 w-3" />
+        {cfg?.label || method}
       </Badge>
     );
+  };
+
+  const getStatusBadge = (status: string) => {
+    const cfg = PAYMENT_STATUS_OPTIONS.find((s) => s.value === status) || {
+      value: status,
+      label: status,
+      icon: 'solar:document-bold-duotone',
+      variant: 'secondary' as const,
+    };
+    return (
+      <Badge variant={cfg.variant} className="gap-1">
+        <Icon icon={cfg.icon} className="h-3 w-3" />
+        {cfg.label}
+      </Badge>
+    );
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === paymentList.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(paymentList.map((p) => p.id)));
+    }
+  };
+
+  const draftSelected = paymentList.filter(
+    (p) => selectedIds.has(p.id) && p.payment_status === 'draft',
+  );
+  const lockedSelected = selectedIds.size - draftSelected.length;
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('');
+    setMethodFilter('');
+    setCustomerFilter('');
+    setDateFrom('');
+    setDateTo('');
+    setPage(1);
+    const next = new URLSearchParams(searchParams);
+    next.delete('search');
+    next.delete('payment_status');
+    next.delete('method');
+    next.delete('customer_id');
+    next.delete('date_from');
+    next.delete('date_to');
+    next.delete('page');
+    setSearchParams(next);
+  };
+
+  const updateUrl = (k: string, v: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (v) next.set(k, v);
+    else next.delete(k);
+    setSearchParams(next);
   };
 
   return (
@@ -79,53 +225,190 @@ export const CustomerPayments: React.FC = () => {
           <h1 className="text-3xl font-bold">Customer Payments</h1>
           <p className="text-muted-foreground mt-1">Track payments received from customers</p>
         </div>
-        <Dialog open={showRecordPayment} onOpenChange={setShowRecordPayment}>
-          <DialogTrigger asChild>
-            <Button>
-              <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
-              Record Payment
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Record Customer Payment</DialogTitle>
-            </DialogHeader>
-            <RecordPaymentForm
-              unpaidInvoices={unpaidInvoices || []}
-              initialInvoiceId={invoiceIdParam}
-              onSuccess={() => {
-                setShowRecordPayment(false);
-                queryClient.invalidateQueries({ queryKey: ['customer-payments'] });
-                toast({ title: 'Payment recorded successfully' });
-              }}
-            />
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => window.location.href = '/accounting/customers/payments/import'}>
+            <Icon icon="solar:upload-bold-duotone" className="h-4 w-4 mr-2" />
+            Import
+          </Button>
+          <Dialog open={showRecordPayment} onOpenChange={setShowRecordPayment}>
+            <DialogTrigger asChild>
+              <Button>
+                <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+                Record Payment
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Record Customer Payment</DialogTitle>
+              </DialogHeader>
+              <RecordPaymentForm
+                unpaidInvoices={unpaidInvoices || []}
+                initialInvoiceId={invoiceIdParam}
+                onSuccess={() => {
+                  setShowRecordPayment(false);
+                  queryClient.invalidateQueries({ queryKey: ['customer-payments'] });
+                  toast({ title: 'Payment recorded successfully' });
+                }}
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
-      {/* Search */}
+      {/* Filters */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <input
-              type="text"
-              placeholder="Search by customer, reference number..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+        <CardContent className="pt-6 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="lg:col-span-2">
+              <Label htmlFor="search" className="text-xs">Search</Label>
+              <Input
+                id="search"
+                placeholder="Payment #, reference, customer, invoice..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setPage(1);
+                  updateUrl('search', e.target.value);
+                }}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Status</Label>
+              <Select
+                value={statusFilter || 'all'}
+                onValueChange={(value) => {
+                  setStatusFilter(value === 'all' ? '' : value);
+                  setPage(1);
+                  updateUrl('payment_status', value === 'all' ? '' : value);
+                }}
+              >
+                <SelectTrigger className="mt-1"><SelectValue placeholder="All statuses" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  {PAYMENT_STATUS_OPTIONS.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Method</Label>
+              <Select
+                value={methodFilter || 'all'}
+                onValueChange={(value) => {
+                  setMethodFilter(value === 'all' ? '' : value);
+                  setPage(1);
+                  updateUrl('method', value === 'all' ? '' : value);
+                }}
+              >
+                <SelectTrigger className="mt-1"><SelectValue placeholder="All methods" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All methods</SelectItem>
+                  {METHOD_OPTIONS.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Customer</Label>
+              <Select
+                value={customerFilter || 'all'}
+                onValueChange={(value) => {
+                  setCustomerFilter(value === 'all' ? '' : value);
+                  setPage(1);
+                  updateUrl('customer_id', value === 'all' ? '' : value);
+                }}
+              >
+                <SelectTrigger className="mt-1"><SelectValue placeholder="All customers" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All customers</SelectItem>
+                  {(customers || []).map((c: any) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.code ? `${c.code} — ${c.name}` : c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">From</Label>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => {
+                  setDateFrom(e.target.value);
+                  setPage(1);
+                  updateUrl('date_from', e.target.value);
+                }}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <Label className="text-xs">To</Label>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => {
+                  setDateTo(e.target.value);
+                  setPage(1);
+                  updateUrl('date_to', e.target.value);
+                }}
+                className="mt-1"
+              />
+            </div>
+            <div className="flex items-end">
+              <Button variant="outline" onClick={clearFilters}>
+                <Icon icon="solar:refresh-bold-duotone" className="h-4 w-4 mr-2" />
+                Clear filters
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Bulk actions bar */}
+      {selectedIds.size > 0 && (
+        <Card>
+          <CardContent className="py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Icon icon="solar:check-square-bold" className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium">{selectedIds.size} selected</span>
+              {lockedSelected > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  ({lockedSelected} locked, only drafts can be deleted)
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setShowBulkDeleteDialog(true)}
+                disabled={draftSelected.length === 0}
+              >
+                <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 mr-2" />
+                Delete {draftSelected.length > 0 ? `${draftSelected.length} draft(s)` : ''}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())}>
+                Clear selection
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Payments List */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Payment History</span>
-            {payments && payments.length > 0 && (
+            {totalRecords > 0 && (
               <span className="text-sm font-normal text-muted-foreground">
-                {payments.length} payment(s)
+                Showing {paymentList.length} of {totalRecords} payment(s)
               </span>
             )}
           </CardTitle>
@@ -136,114 +419,429 @@ export const CustomerPayments: React.FC = () => {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
               <p className="text-muted-foreground mt-4">Loading payments...</p>
             </div>
-          ) : !payments || payments.length === 0 ? (
+          ) : paymentList.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Icon icon="solar:wallet-money-bold-duotone" className="h-16 w-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium mb-2">No customer payments recorded yet</p>
-              <p className="text-sm mb-4">Record your first payment to start tracking</p>
-              <Button onClick={() => setShowRecordPayment(true)}>
-                <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
-                Record Payment
-              </Button>
+              <p className="text-lg font-medium mb-2">No customer payments found</p>
+              <p className="text-sm mb-4">
+                {searchQuery || statusFilter || methodFilter || dateFrom || dateTo
+                  ? 'Try adjusting your filters.'
+                  : 'Record your first payment to start tracking.'}
+              </p>
+              {!searchQuery && !statusFilter && !methodFilter && !dateFrom && !dateTo && (
+                <div className="flex justify-center gap-2">
+                  <Button onClick={() => setShowRecordPayment(true)}>
+                    <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-2" />
+                    Record Payment
+                  </Button>
+                  <Button variant="outline" onClick={() => window.location.href = '/accounting/customers/payments/import'}>
+                    <Icon icon="solar:upload-bold-duotone" className="h-4 w-4 mr-2" />
+                    Import from CSV
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Payment #</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Method</TableHead>
-                    <TableHead>Reference</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead>Allocated To</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {payments.map((payment: any) => (
-                    <TableRow key={payment.id} className="hover:bg-accent/50">
-                      <TableCell className="font-medium">
-                        {payment.payment_number || `PAY-${payment.id}`}
-                      </TableCell>
-                      <TableCell>{formatDate(payment.payment_date)}</TableCell>
-                      <TableCell>{payment.customer?.name || payment.customer_name || '-'}</TableCell>
-                      <TableCell>{getPaymentMethodBadge(payment.method)}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {payment.reference || '-'}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(payment.amount || 0)}
-                      </TableCell>
-                      <TableCell>
-                        {payment.invoice ? (
-                          <span className="text-sm">
-                            {payment.invoice.invoice_number}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">Unallocated</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                      </TableCell>
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={selectedIds.size === paymentList.length && paymentList.length > 0}
+                          onCheckedChange={toggleSelectAll}
+                          aria-label="Select all"
+                        />
+                      </TableHead>
+                      <TableHead>Payment #</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Method</TableHead>
+                      <TableHead>Reference</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead>Currency</TableHead>
+                      <TableHead>Allocated To</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {paymentList.map((payment) => {
+                      const editable = payment.payment_status === 'draft';
+                      return (
+                        <TableRow key={payment.id} className="hover:bg-accent/50">
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedIds.has(payment.id)}
+                              onCheckedChange={() => toggleSelect(payment.id)}
+                              aria-label={`Select ${payment.payment_number}`}
+                            />
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {payment.payment_number || `PAY-${payment.id}`}
+                          </TableCell>
+                          <TableCell>{formatDate(payment.payment_date)}</TableCell>
+                          <TableCell>{getStatusBadge(payment.payment_status)}</TableCell>
+                          <TableCell>{payment.customer?.name || '-'}</TableCell>
+                          <TableCell>{getPaymentMethodBadge(payment.method)}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {payment.reference || '-'}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(payment.amount || 0)}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {payment.currency || '-'}
+                          </TableCell>
+                          <TableCell>
+                            {payment.invoice ? (
+                              <span className="text-sm">{payment.invoice.invoice_number}</span>
+                            ) : (
+                              <Badge variant="outline" className="font-normal">Unallocated</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {payment.created_at ? formatDate(payment.created_at) : '-'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setViewingPayment(payment)}
+                                aria-label="View payment"
+                              >
+                                <Icon icon="solar:eye-bold-duotone" className="h-4 w-4" />
+                              </Button>
+                              {editable ? (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setEditingPayment(payment)}
+                                  aria-label="Edit payment"
+                                >
+                                  <Icon icon="solar:pen-bold-duotone" className="h-4 w-4" />
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground self-center px-1">Locked</span>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Page {page} of {totalPages}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setPage((p) => Math.max(1, p - 1)); updateUrl('page', String(Math.max(1, page - 1))); }}
+                      disabled={page <= 1}
+                    >
+                      <Icon icon="solar:arrow-left-bold" className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setPage((p) => Math.min(totalPages, p + 1)); updateUrl('page', String(Math.min(totalPages, page + 1))); }}
+                      disabled={page >= totalPages}
+                    >
+                      Next
+                      <Icon icon="solar:arrow-right-bold" className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
 
-      {/* Quick Stats */}
-      {payments && payments.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Payments</p>
-                  <p className="text-2xl font-bold">{payments.length}</p>
-                </div>
-                <Icon icon="solar:wallet-money-bold-duotone" className="h-8 w-8 text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Amount</p>
-                  <p className="text-2xl font-bold">
-                    {formatCurrency(payments.reduce((sum: number, p: any) => sum + (parseFloat(p.amount) || 0), 0))}
-                  </p>
-                </div>
-                <Icon icon="solar:dollar-bold-duotone" className="h-8 w-8 text-green-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">This Month</p>
-                  <p className="text-2xl font-bold">
-                    {payments.filter((p: any) => {
-                      const paymentDate = new Date(p.payment_date);
-                      const now = new Date();
-                      return paymentDate.getMonth() === now.getMonth() && 
-                             paymentDate.getFullYear() === now.getFullYear();
-                    }).length}
-                  </p>
-                </div>
-                <Icon icon="solar:calendar-bold-duotone" className="h-8 w-8 text-orange-500" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+      {/* Edit Payment Dialog */}
+      {editingPayment && (
+        <EditPaymentDialog
+          payment={editingPayment}
+          onClose={() => setEditingPayment(null)}
+          onSuccess={() => {
+            setEditingPayment(null);
+            queryClient.invalidateQueries({ queryKey: ['customer-payments'] });
+            toast({ title: 'Payment updated' });
+          }}
+        />
       )}
+
+      {/* View Payment Dialog (§7) */}
+      {viewingPayment && (
+        <ViewPaymentDialog
+          payment={viewingPayment}
+          onClose={() => setViewingPayment(null)}
+        />
+      )}
+
+      {/* Bulk Delete Confirmation */}
+      <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {draftSelected.length} draft payment(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {lockedSelected > 0 && (
+                <p className="mb-2 text-amber-600">
+                  {lockedSelected} selected payment(s) are posted/locked and will be skipped.
+                  Use refund or reversal to correct posted payments.
+                </p>
+              )}
+              This action permanently removes the selected draft payments and restores
+              the linked invoice balances. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (draftSelected.length === 0) return;
+                api.post('/payments/bulk-delete', { ids: draftSelected.map((p) => p.id) })
+                  .then((res) => {
+                    const data = res.data;
+                    queryClient.invalidateQueries({ queryKey: ['customer-payments'] });
+                    setSelectedIds(new Set());
+                    setShowBulkDeleteDialog(false);
+                    toast({
+                      title: `${data.deleted?.length || 0} payment(s) deleted`,
+                      description: data.skipped?.length ? `${data.skipped.length} skipped.` : undefined,
+                    });
+                  })
+                  .catch((err) => {
+                    toast({
+                      variant: 'destructive',
+                      title: 'Bulk delete failed',
+                      description: err.response?.data?.message || 'An error occurred',
+                    });
+                  });
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
+  );
+};
+
+// View Payment Dialog (§7 — View payment action)
+const ViewPaymentDialog: React.FC<{
+  payment: Payment;
+  onClose: () => void;
+}> = ({ payment, onClose }) => {
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Icon icon="solar:wallet-money-bold-duotone" className="h-5 w-5 text-primary" />
+            Payment {payment.payment_number}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Status</span>
+            {PAYMENT_STATUS_OPTIONS.find((s) => s.value === payment.payment_status) ? (
+              <Badge variant={PAYMENT_STATUS_OPTIONS.find((s) => s.value === payment.payment_status)?.variant || 'secondary'} className="gap-1">
+                <Icon icon={PAYMENT_STATUS_OPTIONS.find((s) => s.value === payment.payment_status)?.icon || 'solar:document-bold-duotone'} className="h-3 w-3" />
+                {PAYMENT_STATUS_OPTIONS.find((s) => s.value === payment.payment_status)?.label || payment.payment_status}
+              </Badge>
+            ) : (
+              <Badge variant="secondary">{payment.payment_status}</Badge>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 border-t pt-4">
+            <div>
+              <p className="text-xs text-muted-foreground">Payment Date</p>
+              <p className="font-medium">{formatDate(payment.payment_date)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Amount</p>
+              <p className="font-medium text-lg">
+                {payment.currency ? `${payment.currency} ` : ''}
+                {formatCurrency(payment.amount || 0)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Customer</p>
+              <p className="font-medium">{payment.customer?.name || '-'}</p>
+              {payment.customer?.code && (
+                <p className="text-xs font-mono text-muted-foreground">{payment.customer.code}</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Method</p>
+              <p className="font-medium capitalize">{payment.method?.replace(/_/g, ' ')}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Reference</p>
+              <p className="font-medium">{payment.reference || '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Allocated To Invoice</p>
+              {payment.invoice ? (
+                <p className="font-medium">{payment.invoice.invoice_number}</p>
+              ) : (
+                <Badge variant="outline" className="font-normal">Unallocated</Badge>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Created</p>
+              <p className="font-medium">{payment.created_at ? formatDate(payment.created_at) : '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">ID</p>
+              <p className="font-mono text-xs">#{payment.id}</p>
+            </div>
+          </div>
+
+          {payment.notes && (
+            <div className="border-t pt-4">
+              <p className="text-xs text-muted-foreground mb-1">Notes</p>
+              <p className="text-sm whitespace-pre-wrap">{payment.notes}</p>
+            </div>
+          )}
+
+          {payment.payment_status !== 'draft' && (
+            <div className="border-t pt-4 flex items-start gap-2 rounded-md bg-muted/50 p-3">
+              <Icon icon="solar:lock-keyhole-bold-duotone" className="h-4 w-4 text-muted-foreground mt-0.5" />
+              <p className="text-xs text-muted-foreground">
+                This payment is posted. To correct it, use the accounting reversal or refund workflow
+                rather than editing historical accounting values directly.
+              </p>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// Edit Payment Dialog
+const EditPaymentDialog: React.FC<{
+  payment: Payment;
+  onClose: () => void;
+  onSuccess: () => void;
+}> = ({ payment, onClose, onSuccess }) => {
+  const [formData, setFormData] = useState({
+    payment_date: payment.payment_date,
+    amount: String(payment.amount),
+    method: payment.method,
+    reference: payment.reference || '',
+    notes: payment.notes || '',
+  });
+  const { toast } = useToast();
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await api.put(`/payments/${payment.id}`, data);
+      return response.data;
+    },
+    onSuccess: () => onSuccess(),
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to update payment',
+        description: error.response?.data?.message || 'An error occurred',
+      });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateMutation.mutate({
+      payment_date: formData.payment_date,
+      amount: parseFloat(formData.amount),
+      method: formData.method,
+      reference: formData.reference || null,
+      notes: formData.notes || null,
+    });
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Edit Payment {payment.payment_number}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-date">Payment Date</Label>
+              <Input
+                id="edit-date"
+                type="date"
+                value={formData.payment_date}
+                onChange={(e) => setFormData({ ...formData, payment_date: e.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-amount">Amount</Label>
+              <Input
+                id="edit-amount"
+                type="number"
+                step="0.01"
+                value={formData.amount}
+                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                required
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-method">Method</Label>
+            <Select value={formData.method} onValueChange={(value) => setFormData({ ...formData, method: value })}>
+              <SelectTrigger id="edit-method"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {METHOD_OPTIONS.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-ref">Reference</Label>
+            <Input
+              id="edit-ref"
+              value={formData.reference}
+              onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-notes">Notes</Label>
+            <Input
+              id="edit-notes"
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -263,7 +861,6 @@ const RecordPaymentForm: React.FC<{
     notes: '',
   });
 
-  // Preselect invoice from URL param once invoices are loaded
   useEffect(() => {
     if (initialInvoiceId && unpaidInvoices.length > 0 && !formData.invoice_id) {
       const invoice = unpaidInvoices.find((inv) => inv.id === parseInt(initialInvoiceId));
@@ -285,9 +882,7 @@ const RecordPaymentForm: React.FC<{
       const response = await api.post('/payments', data);
       return response.data;
     },
-    onSuccess: () => {
-      onSuccess();
-    },
+    onSuccess: () => onSuccess(),
     onError: (error: any) => {
       toast({
         variant: 'destructive',
@@ -321,9 +916,7 @@ const RecordPaymentForm: React.FC<{
               });
             }}
           >
-            <SelectTrigger>
-              <SelectValue placeholder="Select invoice" />
-            </SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="Select invoice" /></SelectTrigger>
             <SelectContent>
               {unpaidInvoices.length === 0 ? (
                 <div className="px-3 py-4 text-sm text-muted-foreground text-center">
@@ -339,7 +932,6 @@ const RecordPaymentForm: React.FC<{
             </SelectContent>
           </Select>
         </div>
-
         <div className="space-y-2">
           <Label htmlFor="amount">Amount</Label>
           <Input
@@ -357,7 +949,6 @@ const RecordPaymentForm: React.FC<{
           )}
         </div>
       </div>
-
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="payment_date">Payment Date</Label>
@@ -369,27 +960,18 @@ const RecordPaymentForm: React.FC<{
             required
           />
         </div>
-
         <div className="space-y-2">
           <Label htmlFor="method">Payment Method</Label>
-          <Select
-            value={formData.method}
-            onValueChange={(value) => setFormData({ ...formData, method: value })}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
+          <Select value={formData.method} onValueChange={(value) => setFormData({ ...formData, method: value })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="cash">Cash</SelectItem>
-              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-              <SelectItem value="card">Credit/Debit Card</SelectItem>
-              <SelectItem value="check">Check</SelectItem>
-              <SelectItem value="other">Other</SelectItem>
+              {METHOD_OPTIONS.map((m) => (
+                <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
       </div>
-
       <div className="space-y-2">
         <Label htmlFor="reference">Reference Number</Label>
         <Input
@@ -399,17 +981,14 @@ const RecordPaymentForm: React.FC<{
           placeholder="Transaction ID, check number, etc."
         />
       </div>
-
       <div className="space-y-2">
         <Label htmlFor="notes">Notes (Optional)</Label>
         <Input
           id="notes"
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          placeholder="Additional notes..."
         />
       </div>
-
       <div className="flex justify-end gap-2 pt-4">
         <Button type="submit" disabled={recordPaymentMutation.isPending}>
           {recordPaymentMutation.isPending ? 'Recording...' : 'Record Payment'}

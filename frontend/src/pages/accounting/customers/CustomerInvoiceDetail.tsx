@@ -86,6 +86,16 @@ export const CustomerInvoiceDetail: React.FC = () => {
     enabled: !!id,
   });
 
+  // Count payments linked to this invoice for the "Payments (N)" smart button.
+  const { data: paymentsCount } = useQuery({
+    queryKey: ['invoice-payments-count', id],
+    queryFn: async () => {
+      const response = await api.get(`/payments?invoice_id=${id}&per_page=1`);
+      return response.data?.total ?? 0;
+    },
+    enabled: !!id,
+  });
+
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -230,6 +240,13 @@ export const CustomerInvoiceDetail: React.FC = () => {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => navigate(`/accounting/customers/payments?invoice_id=${id}`)}
+          >
+            <Icon icon="solar:wallet-money-bold-duotone" className="h-4 w-4 mr-2" />
+            Payments ({paymentsCount ?? 0})
+          </Button>
           {invoice.status === 'draft' && (
             <>
               <Button variant="default" onClick={() => postMutation.mutate()}>
