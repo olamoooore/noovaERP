@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * WS-05 · Sales Order Backbone Convergence
@@ -13,7 +13,7 @@ use Tests\TestCase;
  *            BEFORE synchronizeInvoiceBookkeeping() runs; no callers do a post-return $invoice->update()
  *  - FIX-03: Parity — POS, Web, and Admin channels all produce a SalesOrder + SalesInvoiceLink
  */
-class WS05SalesOrderConvergenceTest extends TestCase
+class WS05SalesOrderConvergenceTest extends TenantTestCase
 {
     // -------------------------------------------------------------------------
     // FIX-01: InvoiceController no longer bypasses SalesOrderService

@@ -4,11 +4,13 @@ namespace Modules\POS\Models;
 
 use App\Models\Product;
 use App\Models\ProductVariant;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PosOrderItem extends Model
 {
+    use HasFactory;
     protected $table = 'pos_order_items';
 
     protected $fillable = [

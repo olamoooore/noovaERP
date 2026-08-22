@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * WS-06 · Unified Channel Runtime Convergence
@@ -15,7 +15,7 @@ use Tests\TestCase;
  *  - FIX-04: Cross-channel structural parity for completion, return/cancellation,
  *            and idempotency paths
  */
-class WS06ChannelRuntimeConvergenceTest extends TestCase
+class WS06ChannelRuntimeConvergenceTest extends TenantTestCase
 {
     // -------------------------------------------------------------------------
     // FIX-01: POS Return GL Reversal

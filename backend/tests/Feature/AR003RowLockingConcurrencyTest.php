@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * AR-003: Stock-Level Row Locking / Concurrency Safety
@@ -21,7 +21,7 @@ use Tests\TestCase;
  *   - Oversell is rejected when allow_negative_stock is false
  *   - Stock level balance is atomically consistent (old + delta = new)
  */
-class AR003RowLockingConcurrencyTest extends TestCase
+class AR003RowLockingConcurrencyTest extends TenantTestCase
 {
     // ── Structural: lockForUpdate presence ───────────────────────────────────
 

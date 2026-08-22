@@ -5,11 +5,10 @@ namespace Tests\Feature;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class PosBarcodeResolutionTest extends TestCase
+class PosBarcodeResolutionTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected function setUp(): void
     {

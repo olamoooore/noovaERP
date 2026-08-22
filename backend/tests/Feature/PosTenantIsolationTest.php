@@ -9,11 +9,10 @@ use Modules\POS\Models\PosOfflineQueue;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class PosTenantIsolationTest extends TestCase
+class PosTenantIsolationTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected Tenant $tenantA;
 
@@ -83,7 +82,7 @@ class PosTenantIsolationTest extends TestCase
 
         // Tenant A tries to read Tenant B's queue
         $this->tenantA->run(function () {
-            $response = $this->actingAs($this->userA)->getJson('/api/pos/sync/pending');
+            $response = $this->actingAs($this->userA)->getJson('/api/v1/pos/sync/pending');
 
             // Should return empty or only Tenant A's items
             $items = $response->json();
@@ -104,7 +103,7 @@ class PosTenantIsolationTest extends TestCase
         // Create order for Tenant B
         $orderB = null;
         $this->tenantB->run(function () use (&$orderB) {
-            $response = $this->actingAs($this->userB)->postJson('/api/pos/orders', [
+            $response = $this->actingAs($this->userB)->postJson('/api/v1/pos/orders', [
                 'session_id' => $this->sessionB->id,
                 'items' => [
                     [
@@ -119,7 +118,7 @@ class PosTenantIsolationTest extends TestCase
 
         // Tenant A tries to sync Tenant B's order
         $this->tenantA->run(function () use ($orderB) {
-            $response = $this->actingAs($this->userA)->postJson('/api/pos/sync/queue', [
+            $response = $this->actingAs($this->userA)->postJson('/api/v1/pos/sync/queue', [
                 'operation' => 'pay_order',
                 'payload' => [
                     'order_id' => $orderB,
@@ -141,7 +140,7 @@ class PosTenantIsolationTest extends TestCase
         // Create order for Tenant B
         $orderB = null;
         $this->tenantB->run(function () use (&$orderB) {
-            $response = $this->actingAs($this->userB)->postJson('/api/pos/orders', [
+            $response = $this->actingAs($this->userB)->postJson('/api/v1/pos/orders', [
                 'session_id' => $this->sessionB->id,
                 'items' => [
                     [
@@ -156,7 +155,7 @@ class PosTenantIsolationTest extends TestCase
 
         // Tenant A tries to access Tenant B's order
         $this->tenantA->run(function () use ($orderB) {
-            $response = $this->actingAs($this->userA)->getJson("/api/pos/orders/{$orderB}");
+            $response = $this->actingAs($this->userA)->getJson("/api/v1/pos/orders/{$orderB}");
 
             // Should return 403 or 404
             $this->assertContains($response->status(), [403, 404]);
@@ -171,7 +170,7 @@ class PosTenantIsolationTest extends TestCase
         // Create and pay order for Tenant B
         $orderB = null;
         $this->tenantB->run(function () use (&$orderB) {
-            $response = $this->actingAs($this->userB)->postJson('/api/pos/orders', [
+            $response = $this->actingAs($this->userB)->postJson('/api/v1/pos/orders', [
                 'session_id' => $this->sessionB->id,
                 'items' => [
                     [
@@ -183,7 +182,7 @@ class PosTenantIsolationTest extends TestCase
             ]);
             $orderB = $response->json('id');
 
-            $this->actingAs($this->userB)->postJson("/api/pos/orders/{$orderB}/pay", [
+            $this->actingAs($this->userB)->postJson("/api/v1/pos/orders/{$orderB}/pay", [
                 'method' => 'cash',
                 'amount' => 200.00,
             ]);
@@ -191,7 +190,7 @@ class PosTenantIsolationTest extends TestCase
 
         // Tenant A tries to access Tenant B's order (which has payments)
         $this->tenantA->run(function () use ($orderB) {
-            $response = $this->actingAs($this->userA)->getJson("/api/pos/orders/{$orderB}");
+            $response = $this->actingAs($this->userA)->getJson("/api/v1/pos/orders/{$orderB}");
 
             // Should return 403 or 404
             $this->assertContains($response->status(), [403, 404]);
@@ -205,7 +204,7 @@ class PosTenantIsolationTest extends TestCase
     {
         // Tenant A tries to access Tenant B's session
         $this->tenantA->run(function () {
-            $response = $this->actingAs($this->userA)->getJson("/api/pos/sessions/{$this->sessionB->id}");
+            $response = $this->actingAs($this->userA)->getJson("/api/v1/pos/sessions/{$this->sessionB->id}");
 
             // Should return 403 or 404
             $this->assertContains($response->status(), [403, 404]);
@@ -219,7 +218,7 @@ class PosTenantIsolationTest extends TestCase
     {
         // Tenant A tries to access Tenant B's display
         $this->tenantA->run(function () {
-            $response = $this->actingAs($this->userA)->getJson("/api/pos/display/{$this->terminalB->id}");
+            $response = $this->actingAs($this->userA)->getJson("/api/v1/pos/display/{$this->terminalB->id}");
 
             // Should return 403 or 404
             $this->assertContains($response->status(), [403, 404]);
@@ -236,7 +235,7 @@ class PosTenantIsolationTest extends TestCase
         $orderB = null;
 
         $this->tenantA->run(function () use (&$orderA) {
-            $response = $this->actingAs($this->userA)->postJson('/api/pos/orders', [
+            $response = $this->actingAs($this->userA)->postJson('/api/v1/pos/orders', [
                 'session_id' => $this->sessionA->id,
                 'items' => [
                     [
@@ -250,7 +249,7 @@ class PosTenantIsolationTest extends TestCase
         });
 
         $this->tenantB->run(function () use (&$orderB) {
-            $response = $this->actingAs($this->userB)->postJson('/api/pos/orders', [
+            $response = $this->actingAs($this->userB)->postJson('/api/v1/pos/orders', [
                 'session_id' => $this->sessionB->id,
                 'items' => [
                     [
@@ -265,7 +264,7 @@ class PosTenantIsolationTest extends TestCase
 
         // Tenant A fetches order list
         $this->tenantA->run(function () use ($orderA, $orderB) {
-            $response = $this->actingAs($this->userA)->getJson('/api/pos/orders');
+            $response = $this->actingAs($this->userA)->getJson('/api/v1/pos/orders');
 
             $response->assertStatus(200);
             $orders = $response->json('data') ?? $response->json();
@@ -287,7 +286,7 @@ class PosTenantIsolationTest extends TestCase
         // Create and pay order for Tenant B
         $orderB = null;
         $this->tenantB->run(function () use (&$orderB) {
-            $response = $this->actingAs($this->userB)->postJson('/api/pos/orders', [
+            $response = $this->actingAs($this->userB)->postJson('/api/v1/pos/orders', [
                 'session_id' => $this->sessionB->id,
                 'items' => [
                     [
@@ -299,7 +298,7 @@ class PosTenantIsolationTest extends TestCase
             ]);
             $orderB = $response->json('id');
 
-            $this->actingAs($this->userB)->postJson("/api/pos/orders/{$orderB}/pay", [
+            $this->actingAs($this->userB)->postJson("/api/v1/pos/orders/{$orderB}/pay", [
                 'method' => 'cash',
                 'amount' => 200.00,
             ]);
@@ -307,8 +306,8 @@ class PosTenantIsolationTest extends TestCase
 
         // Tenant A tries to void Tenant B's order
         $this->tenantA->run(function () use ($orderB) {
-            $response = $this->actingAs($this->userA)->postJson("/api/pos/orders/{$orderB}/void", [
-                'void_reason' => 'Test void',
+            $response = $this->actingAs($this->userA)->postJson("/api/v1/pos/orders/{$orderB}/void", [
+                'reason' => 'Test void',
             ]);
 
             // Should return 403 or 404
@@ -324,7 +323,7 @@ class PosTenantIsolationTest extends TestCase
         // Create and pay order for Tenant B
         $orderB = null;
         $this->tenantB->run(function () use (&$orderB) {
-            $response = $this->actingAs($this->userB)->postJson('/api/pos/orders', [
+            $response = $this->actingAs($this->userB)->postJson('/api/v1/pos/orders', [
                 'session_id' => $this->sessionB->id,
                 'items' => [
                     [
@@ -336,7 +335,7 @@ class PosTenantIsolationTest extends TestCase
             ]);
             $orderB = $response->json('id');
 
-            $this->actingAs($this->userB)->postJson("/api/pos/orders/{$orderB}/pay", [
+            $this->actingAs($this->userB)->postJson("/api/v1/pos/orders/{$orderB}/pay", [
                 'method' => 'cash',
                 'amount' => 200.00,
             ]);
@@ -344,7 +343,7 @@ class PosTenantIsolationTest extends TestCase
 
         // Tenant A tries to refund Tenant B's order
         $this->tenantA->run(function () use ($orderB) {
-            $response = $this->actingAs($this->userA)->postJson("/api/pos/orders/{$orderB}/refund", [
+            $response = $this->actingAs($this->userA)->postJson("/api/v1/pos/orders/{$orderB}/refund", [
                 'notes' => 'Test refund',
                 'refund_method' => 'cash',
             ]);

@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * WS-04 — Inventory Truth and Mutation Convergence
@@ -13,7 +13,7 @@ use Tests\TestCase;
  *   FIX-03  POS paths do not fall back to Warehouse::getDefault() for warehouse resolution
  *   FIX-04  InventoryService is the exclusive mutation owner; dedup guards are present
  */
-class WS04InventoryMutationTest extends TestCase
+class WS04InventoryMutationTest extends TenantTestCase
 {
     // ── FIX-01 ──────────────────────────────────────────────────────────────────
 

@@ -5,14 +5,13 @@ namespace Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * DEPLOY-001: Migration preflight and rollback safety tests
  */
-class PosMigrationSafetyTest extends TestCase
+class PosMigrationSafetyTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     /** @test */
     public function pos_orders_session_id_is_not_null_after_migration()

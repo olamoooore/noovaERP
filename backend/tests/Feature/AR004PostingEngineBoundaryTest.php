@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * AR-004: Posting Engine Boundary Separation
@@ -16,7 +16,7 @@ use Tests\TestCase;
  *   - InventoryPostingEngine does NOT directly create JournalEntry records
  *   - Boundary is documented and enforced by tests
  */
-class AR004PostingEngineBoundaryTest extends TestCase
+class AR004PostingEngineBoundaryTest extends TenantTestCase
 {
     // ── InventoryPostingEngine existence and structure ────────────────────────
 

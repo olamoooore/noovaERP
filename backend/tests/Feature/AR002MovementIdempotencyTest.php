@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * AR-002: Movement Idempotency Source References
@@ -17,7 +17,7 @@ use Tests\TestCase;
  *   - Duplicate call with same key returns existing movement, no re-mutation
  *   - StockMovement model includes idempotency_key in fillable
  */
-class AR002MovementIdempotencyTest extends TestCase
+class AR002MovementIdempotencyTest extends TenantTestCase
 {
     // ── Schema / structural tests ─────────────────────────────────────────────
 

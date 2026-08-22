@@ -12,6 +12,9 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('products')) {
+            return;
+        }
         if (Schema::hasColumn('products', 'show_on_website')) {
             return;
         }

@@ -135,11 +135,11 @@ class PosPaymentGLReconciliationService
 
         // 3. Check for duplicate GL entries
         $duplicates = DB::table('journal_entry_links')
-            ->select('source_document_type', 'source_document_id', DB::raw('COUNT(*) as count'))
+            ->select('source_document_type', 'source_document_id', DB::raw('COUNT(*) as cnt'))
             ->where('source_document_type', 'pos_order')
             ->where('relation_type', 'post')
             ->groupBy('source_document_type', 'source_document_id')
-            ->having('count', '>', 1)
+            ->havingRaw('COUNT(*) > 1')
             ->get();
 
         foreach ($duplicates as $duplicate) {
@@ -151,8 +151,8 @@ class PosPaymentGLReconciliationService
                 'entity' => 'pos_order',
                 'entity_id' => $duplicate->source_document_id,
                 'order_number' => $order?->order_number ?? 'Unknown',
-                'gl_count' => $duplicate->count,
-                'message' => "POS order has {$duplicate->count} GL entries (expected 1)",
+                'gl_count' => $duplicate->cnt,
+                'message' => "POS order has {$duplicate->cnt} GL entries (expected 1)",
             ];
             $stats['duplicate_gl']++;
         }

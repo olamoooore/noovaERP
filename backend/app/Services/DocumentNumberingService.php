@@ -87,6 +87,11 @@ class DocumentNumberingService
                 'default' => 'DO-{YYYY}-{SEQ:4}',
                 'example' => 'DO-2026-0001',
             ],
+            'payment' => [
+                'current' => $this->getFormat('payment', 'PAY/{YYYY}/{MM}/{SEQ:3}'),
+                'default' => 'PAY/{YYYY}/{MM}/{SEQ:3}',
+                'example' => 'PAY/2026/08/001',
+            ],
         ];
     }
 

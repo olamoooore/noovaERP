@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * AR-001: Central Mutation Ownership
@@ -18,7 +18,7 @@ use Tests\TestCase;
  *   - InventoryPostingEngine is the declared boundary class for engine-level callers
  *   - POS, Ecommerce, and Sales services call adjustStock(), not direct DB/model writes
  */
-class AR001MutationOwnershipTest extends TestCase
+class AR001MutationOwnershipTest extends TenantTestCase
 {
     // ── Product model guards ──────────────────────────────────────────────────
 

@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Stancl\Tenancy\Tenancy;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * WS-02 Runtime Projection Tests
@@ -25,7 +25,7 @@ use Tests\TestCase;
  *
  * Required for WS-02 closure (FIX-04).
  */
-class ControlPlaneProjectionTest extends TestCase
+class ControlPlaneProjectionTest extends TenantTestCase
 {
     private FeatureGateService $featureGate;
 

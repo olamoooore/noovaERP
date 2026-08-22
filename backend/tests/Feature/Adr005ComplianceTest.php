@@ -26,15 +26,14 @@ use App\Accounting\Services\StateTransitionService;
 use App\Models\AuthorityEvaluationSnapshot;
 use App\Models\StateTransition;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * ADR-005 §71 — mandatory negative architecture tests.
  * §73 item 20 — negative-test evidence pack.
  */
-class Adr005ComplianceTest extends TestCase
+class Adr005ComplianceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     // §7 — Command Contract Standard
 

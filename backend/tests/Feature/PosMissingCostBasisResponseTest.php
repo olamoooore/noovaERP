@@ -86,7 +86,7 @@ class PosMissingCostBasisResponseTest extends TenantTestCase
             'created_by' => $user->id,
         ]);
 
-        $request = Request::create("/api/pos/orders/{$order->id}/pay", 'POST', [
+        $request = Request::create("/api/v1/pos/orders/{$order->id}/pay", 'POST', [
             'method' => 'cash',
             'amount' => 22.50,
         ]);

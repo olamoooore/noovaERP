@@ -12,11 +12,10 @@ use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Spatie\Permission\Models\Role;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class PosAuditLineageTest extends TestCase
+class PosAuditLineageTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected User $cashier;
 
@@ -293,7 +292,7 @@ class PosAuditLineageTest extends TestCase
     protected function createAndPayOrder(): PosOrder
     {
         // Create order
-        $response = $this->actingAs($this->cashier)->postJson('/api/pos/orders', [
+        $response = $this->actingAs($this->cashier)->postJson('/api/v1/pos/orders', [
             'session_id' => $this->session->id,
             'customer_id' => $this->customer->id,
             'items' => [
@@ -308,7 +307,7 @@ class PosAuditLineageTest extends TestCase
         $orderId = $response->json('id');
 
         // Pay order
-        $this->actingAs($this->cashier)->postJson("/api/pos/orders/{$orderId}/pay", [
+        $this->actingAs($this->cashier)->postJson("/api/v1/pos/orders/{$orderId}/pay", [
             'method' => 'cash',
             'amount' => 110.00,
         ]);

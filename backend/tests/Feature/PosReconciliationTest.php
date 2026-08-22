@@ -14,11 +14,10 @@ use Modules\POS\Models\PosPayment;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class PosReconciliationTest extends TestCase
+class PosReconciliationTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected User $user;
 
@@ -279,7 +278,7 @@ class PosReconciliationTest extends TestCase
         $order = $this->createAndPayOrder();
 
         // Create refund with GL entry
-        $this->actingAs($this->user)->postJson("/api/pos/orders/{$order->id}/refund", [
+        $this->actingAs($this->user)->postJson("/api/v1/pos/orders/{$order->id}/refund", [
             'notes' => 'Test refund',
             'refund_method' => 'cash',
         ]);
@@ -340,7 +339,7 @@ class PosReconciliationTest extends TestCase
     protected function createAndPayOrder(): PosOrder
     {
         // Create order
-        $response = $this->actingAs($this->user)->postJson('/api/pos/orders', [
+        $response = $this->actingAs($this->user)->postJson('/api/v1/pos/orders', [
             'session_id' => $this->session->id,
             'customer_id' => $this->customer->id,
             'items' => [
@@ -356,7 +355,7 @@ class PosReconciliationTest extends TestCase
         $orderId = $response->json('id');
 
         // Pay order
-        $paymentResponse = $this->actingAs($this->user)->postJson("/api/pos/orders/{$orderId}/pay", [
+        $paymentResponse = $this->actingAs($this->user)->postJson("/api/v1/pos/orders/{$orderId}/pay", [
             'method' => 'cash',
             'amount' => 110.00,
         ]);

@@ -9,11 +9,10 @@ use Mockery;
 use Modules\Inventory\Models\StockLevel;
 use Modules\Inventory\Models\StockReservation;
 use Modules\Inventory\Services\StockReservationService;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class InventoryReservationExpiryCommandTest extends TestCase
+class InventoryReservationExpiryCommandTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected function setUp(): void
     {

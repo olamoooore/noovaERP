@@ -4,9 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\Bill;
 use App\Services\ThreeWayMatchService;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class AuditFixesTest extends TestCase
+class AuditFixesTest extends TenantTestCase
 {
     // ── GAP-C005: PostingEngine idempotency guard exists ─────────────────
 

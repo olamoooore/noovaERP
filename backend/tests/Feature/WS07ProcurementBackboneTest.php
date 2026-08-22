@@ -6,7 +6,7 @@ use App\Models\Bill;
 use App\Services\BillService;
 use App\Services\GoodsReceiptService;
 use App\Services\ThreeWayMatchService;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * WS-07 · Procurement Backbone Convergence
@@ -20,7 +20,7 @@ use Tests\TestCase;
  * Test strategy: source-string structural assertions for backbone invariants +
  * real service-level runtime tests for ThreeWayMatch enforcement (no HTTP fixtures required).
  */
-class WS07ProcurementBackboneTest extends TestCase
+class WS07ProcurementBackboneTest extends TenantTestCase
 {
     // -------------------------------------------------------------------------
     // FIX-01: PurchaseOrderController::receive() delegates to GoodsReceiptService

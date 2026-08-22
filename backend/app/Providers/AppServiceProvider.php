@@ -46,6 +46,16 @@ class AppServiceProvider extends ServiceProvider
         // Log dangerous migrations (migrate:fresh, db:wipe) for audit trail
         Event::listen(\Illuminate\Console\Events\CommandFinished::class, PreventDangerousMigrations::class);
 
+        // Factory resolver for module models
+        \Illuminate\Database\Eloquent\Factories\Factory::guessFactoryNamesUsing(function (string $modelName) {
+            // Modules\POS\Models\PosTerminal -> Database\Factories\Modules\POS\Models\PosTerminalFactory
+            if (str_starts_with($modelName, 'Modules\\')) {
+                return 'Database\\Factories\\Modules\\' . substr($modelName, strlen('Modules\\')) . 'Factory';
+            }
+            // App\Models\User -> Database\Factories\UserFactory (default Laravel convention)
+            return 'Database\\Factories\\' . class_basename($modelName) . 'Factory';
+        });
+
         // --- Superadmin RBAC gates ---
         Gate::define('manage-admin-users', fn (\App\Models\User $user) => $user->role === 'platform_super_admin'
         );

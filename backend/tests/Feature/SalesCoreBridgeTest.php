@@ -2,9 +2,9 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class SalesCoreBridgeTest extends TestCase
+class SalesCoreBridgeTest extends TenantTestCase
 {
     // ── Field-service sales-order bridge ──────────────────────────────────
 

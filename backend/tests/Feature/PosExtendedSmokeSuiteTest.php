@@ -7,15 +7,14 @@ use App\Services\Reconciliation\PosPaymentGLReconciliationService;
 use App\Services\TaxPeriodClosingService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * DEPLOY-003: Extended smoke tests for staging and production go-live
  * Covers audit, tax period, reconciliation, and recovery paths
  */
-class PosExtendedSmokeSuiteTest extends TestCase
+class PosExtendedSmokeSuiteTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     /** @test */
     public function audit_logger_service_resolves_from_container()

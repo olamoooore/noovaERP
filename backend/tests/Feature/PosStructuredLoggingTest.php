@@ -5,14 +5,13 @@ namespace Tests\Feature;
 use App\Services\PosStructuredLogger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * OBS-001: Structured logging with correlation IDs tests
  */
-class PosStructuredLoggingTest extends TestCase
+class PosStructuredLoggingTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     /** @test */
     public function payment_log_contains_required_structured_fields()

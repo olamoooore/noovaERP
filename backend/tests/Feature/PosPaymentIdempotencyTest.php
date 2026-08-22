@@ -10,11 +10,10 @@ use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Modules\POS\Services\PosPaymentCompletionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class PosPaymentIdempotencyTest extends TestCase
+class PosPaymentIdempotencyTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected function setUp(): void
     {

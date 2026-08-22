@@ -2,9 +2,9 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class PosGatewayCompletionTest extends TestCase
+class PosGatewayCompletionTest extends TenantTestCase
 {
     // ── POS gateway completion uses canonical posting path ────────────────
 

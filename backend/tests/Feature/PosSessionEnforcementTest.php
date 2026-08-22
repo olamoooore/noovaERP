@@ -7,11 +7,10 @@ use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class PosSessionEnforcementTest extends TestCase
+class PosSessionEnforcementTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -76,7 +75,7 @@ class PosSessionEnforcementTest extends TestCase
         $terminal = $this->createTerminalWithWarehouse();
         $session = $this->createOpenSession($terminal);
 
-        $response = $this->postJson('/api/pos/orders', [
+        $response = $this->postJson('/api/v1/pos/orders', [
             'terminal_id' => $terminal->id,
             'session_id' => $session->id,
             'items' => [
@@ -92,7 +91,7 @@ class PosSessionEnforcementTest extends TestCase
     {
         $terminal = $this->createTerminalWithWarehouse();
 
-        $response = $this->postJson('/api/pos/orders', [
+        $response = $this->postJson('/api/v1/pos/orders', [
             'terminal_id' => $terminal->id,
             'session_id' => 99999,
             'items' => [
@@ -109,7 +108,7 @@ class PosSessionEnforcementTest extends TestCase
         $terminal = $this->createTerminalWithWarehouse();
         $closedSession = $this->createClosedSession($terminal);
 
-        $response = $this->postJson('/api/pos/orders', [
+        $response = $this->postJson('/api/v1/pos/orders', [
             'terminal_id' => $terminal->id,
             'session_id' => $closedSession->id,
             'items' => [
@@ -134,7 +133,7 @@ class PosSessionEnforcementTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->postJson('/api/pos/orders', [
+        $response = $this->postJson('/api/v1/pos/orders', [
             'terminal_id' => $differentTerminal->id,
             'session_id' => $session->id,
             'items' => [
@@ -154,7 +153,7 @@ class PosSessionEnforcementTest extends TestCase
 
         $session->update(['status' => 'closed', 'closed_at' => now()]);
 
-        $response = $this->postJson("/api/pos/orders/{$order->id}/pay", [
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/pay", [
             'method' => 'cash',
             'amount' => 100.00,
         ]);

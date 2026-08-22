@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * IMP-001: Opening balance/import path tested through approved posting path.
@@ -11,7 +11,7 @@ use Tests\TestCase;
  * posting services, and that opening-balance state is tracked through posted
  * journal-entry evidence.
  */
-class IMP001ImportOpeningBalanceContractTest extends TestCase
+class IMP001ImportOpeningBalanceContractTest extends TenantTestCase
 {
     public function test_import_route_is_declared_under_accounting_write_and_tenant_context(): void
     {

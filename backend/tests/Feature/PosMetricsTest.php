@@ -6,14 +6,13 @@ use App\Services\PosMetricsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * OBS-002: Metrics emission and alert threshold tests
  */
-class PosMetricsTest extends TestCase
+class PosMetricsTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     private PosMetricsService $metrics;
 

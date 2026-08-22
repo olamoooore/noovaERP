@@ -7,15 +7,14 @@ use App\Services\AuditLogger;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * AUDIT-001: Audit trail verification test
  * Verifies void/refund/return audit trail is complete and durable
  */
-class PosAuditTrailVerificationTest extends TestCase
+class PosAuditTrailVerificationTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     private AuditLogger $auditLogger;
 

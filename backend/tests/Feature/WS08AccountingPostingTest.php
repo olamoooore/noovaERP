@@ -30,11 +30,10 @@ use App\Models\LockDate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\OCRBookkeeping\Services\OcrPostingService;
 use Modules\PaymentGateway\Controllers\PaymentController;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
-class WS08AccountingPostingTest extends TestCase
+class WS08AccountingPostingTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     // ──────────────────────────────────────────────────────────────────────────
     // Helpers

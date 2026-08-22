@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * MOB-001: Offline source-of-truth rule enforced.
@@ -10,7 +10,7 @@ use Tests\TestCase;
  * Mobile/offline flow must capture intent and submit for server-side acceptance;
  * authoritative stock/accounting mutations must run through server services.
  */
-class MOB001OfflineSourceOfTruthContractTest extends TestCase
+class MOB001OfflineSourceOfTruthContractTest extends TenantTestCase
 {
     public function test_offline_queue_capture_requires_idempotent_intent_payload(): void
     {

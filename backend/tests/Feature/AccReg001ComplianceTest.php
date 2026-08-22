@@ -18,7 +18,7 @@ use App\Accounting\Services\StateTransitionService;
 use App\Models\AuthorityEvaluationSnapshot;
 use App\Models\StateTransition;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * ACC-REG-001 — Accounting Capability and Ownership Registry compliance tests.
@@ -33,9 +33,8 @@ use Tests\TestCase;
  * - §12: Document identity model
  * - §48: Event envelope
  */
-class AccReg001ComplianceTest extends TestCase
+class AccReg001ComplianceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     // ──────────────────────────────────────────────
     // §3 — Canonical Capability Registry

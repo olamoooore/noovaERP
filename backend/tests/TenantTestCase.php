@@ -6,6 +6,7 @@ use App\Models\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Stancl\Tenancy\Contracts\Tenant as TenantContract;
 use Stancl\Tenancy\Tenancy;
@@ -70,42 +71,73 @@ abstract class TenantTestCase extends TestCase
      */
     protected function runTenantMigrations(): void
     {
-        // Wipe first to avoid stale state from previous runs
-        Artisan::call('db:wipe', ['--force' => true]);
+        // Purge the test database by dropping the 'public' schema and
+        // recreating it, then immediately resetting the connection.
+        // This is the only atomic way to reliably clear a PostgreSQL
+        // database regardless of its prior state.
+        if (config('database.default') === 'pgsql') {
+            $dbName = config('database.connections.pgsql.database');
+            DB::disconnect('pgsql');
+            $pdo = new \PDO(
+                'pgsql:host='.config('database.connections.pgsql.host').';port='.config('database.connections.pgsql.port').';dbname=postgres',
+                config('database.connections.pgsql.username'),
+                config('database.connections.pgsql.password'),
+            );
+            $pdo->exec("DROP DATABASE IF EXISTS \"{$dbName}\"");
+            $pdo->exec("CREATE DATABASE \"{$dbName}\"");
+            $pdo = null;
+            DB::purge('pgsql');
+            DB::reconnect('pgsql');
+            DB::statement('SET search_path TO public');
+        } else {
+            Artisan::call('db:wipe', ['--force' => true]);
+        }
 
-        // Gather the basenames of all tenant migration files so we can exclude
-        // any file from the central directory that shares the same name.
-        // Duplicates cause the tenant copy to be silently skipped (Laravel
-        // records the migration name in the migrations table on first run and
-        // considers it already-ran for subsequent paths).
-        $tenantDir = database_path('migrations/tenant');
-        $tenantFileNames = is_dir($tenantDir)
-            ? array_map('basename', glob($tenantDir.'/*.php'))
+        // Gather central-only migration files (exclude those also in tenant/).
+        $tenantFileNames = is_dir(database_path('migrations/tenant'))
+            ? array_map('basename', glob(database_path('migrations/tenant').'/*.php'))
             : [];
 
-        // Collect only central-only migration files (not duplicated in tenant/).
-        $centralDir = database_path('migrations');
         $centralFiles = array_values(array_filter(
-            glob($centralDir.'/*.php'),
+            glob(database_path('migrations').'/*.php'),
             fn (string $f) => ! in_array(basename($f), $tenantFileNames, true),
         ));
 
-        // Run central migrations (users, tenants, etc.) using individual file
-        // paths + the Communication module's central migration directory.
-        Artisan::call('migrate', [
-            '--path' => array_merge(
-                $centralFiles,
-                [base_path('modules/Communication/database/migrations')],
-            ),
-            '--realpath' => true,
-            '--force' => true,
-        ]);
+        // Copy central-only files into a temp directory so a single
+        // `migrate --path <dir>` call picks them all up without
+        // accidentally scanning the parent directory.
+        $tmpDir = sys_get_temp_dir().'/noovaerp_ctrl_'.getmypid();
+        @mkdir($tmpDir, 0755, true);
+        try {
+            foreach ($centralFiles as $file) {
+                $dest = $tmpDir.'/'.basename($file);
+                file_put_contents($dest, file_get_contents($file));
+            }
 
-        // Tenant migration paths — run sequentially so FK ordering is correct.
-        // Core tenant migrations go first, then module-specific ones.
-        $tenantPaths = $this->getTenantMigrationPaths();
+            Artisan::call('migrate', [
+                '--path' => $tmpDir,
+                '--realpath' => true,
+                '--force' => true,
+            ]);
+        } finally {
+            $tmpFiles = glob($tmpDir.'/*') ?: [];
+            foreach ($tmpFiles as $f) {
+                @unlink($f);
+            }
+            @rmdir($tmpDir);
+        }
 
-        foreach ($tenantPaths as $path) {
+        // Communication module central migrations.
+        $commDir = base_path('modules/Communication/database/migrations');
+        if (is_dir($commDir)) {
+            Artisan::call('migrate', [
+                '--path' => $commDir,
+                '--realpath' => true,
+                '--force' => true,
+            ]);
+        }
+
+        foreach ($this->getTenantMigrationPaths() as $path) {
             $realPath = base_path($path);
             if (is_dir($realPath)) {
                 Artisan::call('migrate', [
@@ -143,6 +175,9 @@ abstract class TenantTestCase extends TestCase
             'modules/IoT/database/migrations/tenant',
             'modules/Loyalty/database/migrations/tenant',
             'modules/TemplateBuilder/database/migrations/tenant',
+            'modules/PaymentGateway/database/migrations/tenant',
+            'modules/Fulfillment/database/migrations/tenant',
+            'modules/WhatsApp/database/migrations/tenant',
         ];
     }
 
@@ -173,6 +208,7 @@ abstract class TenantTestCase extends TestCase
         $this->withoutMiddleware([
             \App\Http\Middleware\SetTenantFromUserPreference::class,
             \App\Http\Middleware\EnsureTenantSearchPath::class,
+            \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
         ]);
     }
 

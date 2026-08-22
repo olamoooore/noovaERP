@@ -5,6 +5,7 @@ namespace Modules\POS\Models;
 use App\Models\Customer;
 use App\Models\JournalEntry;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,7 +14,7 @@ use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PosOrder extends Model
 {
-    use SoftDeletes;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'pos_orders';
 

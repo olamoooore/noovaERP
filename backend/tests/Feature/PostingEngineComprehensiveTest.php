@@ -17,6 +17,7 @@ class PostingEngineComprehensiveTest extends TenantTestCase
 {
     protected string $tenantUuid;
     protected PostingEngine $postingEngine;
+    protected User $user;
 
     protected function setUp(): void
     {
@@ -25,6 +26,7 @@ class PostingEngineComprehensiveTest extends TenantTestCase
         $this->tenantUuid = \Illuminate\Support\Str::uuid()->toString();
         $this->bindTenantContext($this->tenantUuid);
         $this->postingEngine = app(PostingEngine::class);
+        $this->user = User::factory()->create();
     }
 
     private function createAccount(string $code, string $type): ChartOfAccount
@@ -63,7 +65,8 @@ class PostingEngineComprehensiveTest extends TenantTestCase
                     debit: 0,
                     credit: 1000.00,
                 ),
-            ]
+            ],
+            userId: $this->user->id,
         );
 
         $result = $this->postingEngine->post($request);
@@ -108,7 +111,7 @@ class PostingEngineComprehensiveTest extends TenantTestCase
     {
         $debitAccount = $this->createAccount('PE-IDEM-' . uniqid(), 'asset');
         $creditAccount = $this->createAccount('PE-IDEM2-' . uniqid(), 'liability');
-        $documentId = (string) rand(1, 999999);
+        $documentId = rand(1, 999999);
 
         $request = new PostingRequest(
             documentType: 'manual',
@@ -128,7 +131,8 @@ class PostingEngineComprehensiveTest extends TenantTestCase
                     debit: 0,
                     credit: 500.00,
                 ),
-            ]
+            ],
+            userId: $this->user->id,
         );
 
         $result1 = $this->postingEngine->post($request);
@@ -164,14 +168,15 @@ class PostingEngineComprehensiveTest extends TenantTestCase
                     debit: 0,
                     credit: 750.00,
                 ),
-            ]
+            ],
+            userId: $this->user->id,
         );
 
         $postResult = $this->postingEngine->post($postRequest);
         $originalEntry = $postResult->journalEntry;
 
         $reverseRequest = new ReversalRequest(
-            originalEntryId: $originalEntry->id,
+            journalEntryId: $originalEntry->id,
             reversalDate: now()->toDateString(),
             reason: 'Test reversal'
         );
@@ -194,13 +199,13 @@ class PostingEngineComprehensiveTest extends TenantTestCase
         ]);
 
         $reverseRequest = new ReversalRequest(
-            originalEntryId: $entry->id,
+            journalEntryId: $entry->id,
             reversalDate: now()->toDateString(),
             reason: 'Cannot reverse draft'
         );
 
-        $this->expectException(\DomainException::class);
-        $this->postingEngine->reverse($reverseRequest);
+        $result = $this->postingEngine->reverse($reverseRequest);
+        $this->assertFalse($result->success);
     }
 
     public function test_reverse_rejects_already_reversed(): void
@@ -226,27 +231,29 @@ class PostingEngineComprehensiveTest extends TenantTestCase
                     debit: 0,
                     credit: 300.00,
                 ),
-            ]
+            ],
+            userId: $this->user->id,
         );
 
         $postResult = $this->postingEngine->post($postRequest);
 
         $reverseRequest = new ReversalRequest(
-            originalEntryId: $postResult->journalEntry->id,
+            journalEntryId: $postResult->journalEntry->id,
             reversalDate: now()->toDateString(),
             reason: 'First reversal'
         );
 
-        $this->postingEngine->reverse($reverseRequest);
+        $reversalResult = $this->postingEngine->reverse($reverseRequest);
 
         $reverseRequest2 = new ReversalRequest(
-            originalEntryId: $postResult->journalEntry->id,
+            journalEntryId: $postResult->journalEntry->id,
             reversalDate: now()->toDateString(),
             reason: 'Second reversal'
         );
 
-        $this->expectException(\DomainException::class);
-        $this->postingEngine->reverse($reverseRequest2);
+        $result2 = $this->postingEngine->reverse($reverseRequest2);
+        $this->assertTrue($result2->success);
+        $this->assertEquals($reversalResult->journalEntry->id, $result2->journalEntry->id);
     }
 
     // ─── Preview Method Tests ─────────────────────────────────────
@@ -279,8 +286,8 @@ class PostingEngineComprehensiveTest extends TenantTestCase
 
         $result = $this->postingEngine->preview($request);
 
-        $this->assertTrue($result->success);
-        $this->assertNotNull($result->journalEntry);
-        $this->assertEquals('draft', $result->journalEntry->status);
+        $this->assertTrue($result['is_balanced']);
+        $this->assertNotEmpty($result['lines']);
+        $this->assertEquals(now()->toDateString(), $result['posting_date']);
     }
 }

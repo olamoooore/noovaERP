@@ -2,12 +2,12 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * MOB-003..MOB-014 closure contracts for offline/mobile hardening.
  */
-class MOB003toMOB014OfflineHardeningContractTest extends TestCase
+class MOB003toMOB014OfflineHardeningContractTest extends TenantTestCase
 {
     public function test_mob003_offline_idempotency_contract_is_enforced(): void
     {

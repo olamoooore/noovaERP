@@ -11,7 +11,7 @@ use Modules\POS\Models\PosPayment;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
+use Tests\TenantTestCase;
 
 /**
  * POS Void/Refund Governance Tests
@@ -19,9 +19,8 @@ use Tests\TestCase;
  * Tests the entitlement-based approval workflow.
  * NO manager_password — approval is via ApprovalRequest model.
  */
-class PosVoidRefundGovernanceTest extends TestCase
+class PosVoidRefundGovernanceTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected function setUp(): void
     {
@@ -141,7 +140,7 @@ class PosVoidRefundGovernanceTest extends TestCase
         $session = $this->createOpenSession($terminal);
         $order = $this->createPaidOrder($terminal, $session);
 
-        $response = $this->postJson("/api/pos/orders/{$order->id}/void", [
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'reason' => 'Customer changed mind about purchase',
         ]);
 
@@ -161,7 +160,7 @@ class PosVoidRefundGovernanceTest extends TestCase
 
         $approvalRequest = $this->createApprovedRequest($order, 'void', $supervisor);
 
-        $response = $this->postJson("/api/pos/orders/{$order->id}/void", [
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'reason' => 'Customer changed mind about purchase',
             'approval_request_id' => $approvalRequest->id,
         ]);
@@ -193,7 +192,7 @@ class PosVoidRefundGovernanceTest extends TestCase
             'expires_at' => now()->addHours(24),
         ]);
 
-        $response = $this->postJson("/api/pos/orders/{$order->id}/void", [
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'reason' => 'Customer changed mind about purchase',
             'approval_request_id' => $pendingRequest->id,
         ]);
@@ -209,7 +208,7 @@ class PosVoidRefundGovernanceTest extends TestCase
         $session = $this->createOpenSession($terminal);
         $order = $this->createPaidOrder($terminal, $session);
 
-        $response = $this->postJson("/api/pos/orders/{$order->id}/void", []);
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/void", []);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['reason']);
@@ -222,7 +221,7 @@ class PosVoidRefundGovernanceTest extends TestCase
         $session = $this->createOpenSession($terminal);
         $order = $this->createPaidOrder($terminal, $session);
 
-        $response = $this->postJson("/api/pos/orders/{$order->id}/void", [
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'reason' => 'Short',
         ]);
 
@@ -240,7 +239,7 @@ class PosVoidRefundGovernanceTest extends TestCase
 
         $approvalRequest = $this->createApprovedRequest($order, 'void', $supervisor);
 
-        $this->postJson("/api/pos/orders/{$order->id}/void", [
+        $this->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'reason' => 'Customer changed mind about purchase',
             'approval_request_id' => $approvalRequest->id,
         ]);
@@ -263,7 +262,7 @@ class PosVoidRefundGovernanceTest extends TestCase
 
         $approvalRequest = $this->createApprovedRequest($order, 'void', $supervisor);
 
-        $response = $this->postJson("/api/pos/orders/{$order->id}/void", [
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'reason' => 'Customer changed mind about purchase',
             'approval_request_id' => $approvalRequest->id,
         ]);
@@ -283,13 +282,13 @@ class PosVoidRefundGovernanceTest extends TestCase
         $approvalRequest = $this->createApprovedRequest($order, 'void', $supervisor);
 
         // First void
-        $this->postJson("/api/pos/orders/{$order->id}/void", [
+        $this->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'reason' => 'Customer changed mind about purchase',
             'approval_request_id' => $approvalRequest->id,
         ])->assertStatus(200);
 
         // Second void attempt on already-voided order
-        $response = $this->postJson("/api/pos/orders/{$order->id}/void", [
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'reason' => 'Customer changed mind about purchase',
             'approval_request_id' => $approvalRequest->id,
         ]);
@@ -309,7 +308,7 @@ class PosVoidRefundGovernanceTest extends TestCase
         $session = $this->createOpenSession($terminal);
         $order = $this->createPaidOrder($terminal, $session);
 
-        $response = $this->postJson("/api/pos/orders/{$order->id}/refund", [
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/refund", [
             'notes' => 'Customer returned item in good condition',
             'refund_method' => 'cash',
         ]);
@@ -328,7 +327,7 @@ class PosVoidRefundGovernanceTest extends TestCase
 
         $approvalRequest = $this->createApprovedRequest($order, 'refund', $supervisor);
 
-        $response = $this->postJson("/api/pos/orders/{$order->id}/refund", [
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/refund", [
             'notes' => 'Customer returned item in good condition',
             'refund_method' => 'cash',
             'approval_request_id' => $approvalRequest->id,
@@ -348,7 +347,7 @@ class PosVoidRefundGovernanceTest extends TestCase
 
         $approvalRequest = $this->createApprovedRequest($order, 'refund', $supervisor);
 
-        $this->postJson("/api/pos/orders/{$order->id}/refund", [
+        $this->postJson("/api/v1/pos/orders/{$order->id}/refund", [
             'notes' => 'Customer returned item in good condition',
             'refund_method' => 'cash',
             'approval_request_id' => $approvalRequest->id,
@@ -369,7 +368,7 @@ class PosVoidRefundGovernanceTest extends TestCase
         $session = $this->createOpenSession($terminal);
         $order = $this->createPaidOrder($terminal, $session);
 
-        $response = $this->postJson("/api/pos/orders/{$order->id}/refund", [
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/refund", [
             'notes' => 'Short',
             'refund_method' => 'cash',
         ]);
@@ -390,7 +389,7 @@ class PosVoidRefundGovernanceTest extends TestCase
         $order = $this->createPaidOrder($terminal, $session);
         $itemId = $order->items()->first()->id;
 
-        $response = $this->postJson("/api/pos/orders/{$order->id}/return", [
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/return", [
             'items' => [['item_id' => $itemId, 'quantity' => 1]],
             'notes' => 'Customer returned item in good condition',
             'refund_method' => 'cash',
@@ -411,7 +410,7 @@ class PosVoidRefundGovernanceTest extends TestCase
 
         $approvalRequest = $this->createApprovedRequest($order, 'return', $supervisor);
 
-        $response = $this->postJson("/api/pos/orders/{$order->id}/return", [
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/return", [
             'items' => [['item_id' => $itemId, 'quantity' => 1]],
             'notes' => 'Customer returned item in good condition',
             'refund_method' => 'cash',
@@ -430,7 +429,7 @@ class PosVoidRefundGovernanceTest extends TestCase
         $order = $this->createPaidOrder($terminal, $session);
         $itemId = $order->items()->first()->id;
 
-        $response = $this->postJson("/api/pos/orders/{$order->id}/return", [
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/return", [
             'items' => [['item_id' => $itemId, 'quantity' => 1]],
             'refund_method' => 'cash',
         ]);
@@ -450,7 +449,7 @@ class PosVoidRefundGovernanceTest extends TestCase
 
         $approvalRequest = $this->createApprovedRequest($order, 'return', $supervisor);
 
-        $this->postJson("/api/pos/orders/{$order->id}/return", [
+        $this->postJson("/api/v1/pos/orders/{$order->id}/return", [
             'items' => [['item_id' => $itemId, 'quantity' => 1]],
             'notes' => 'Customer returned item in good condition',
             'refund_method' => 'cash',
@@ -473,7 +472,7 @@ class PosVoidRefundGovernanceTest extends TestCase
         $order = $this->createPaidOrder($terminal, $session);
 
         // Sending manager_password should be ignored — system uses approval_request_id
-        $response = $this->postJson("/api/pos/orders/{$order->id}/void", [
+        $response = $this->postJson("/api/v1/pos/orders/{$order->id}/void", [
             'reason' => 'Customer changed mind about purchase',
             'manager_password' => 'any_password_is_ignored',
         ]);
