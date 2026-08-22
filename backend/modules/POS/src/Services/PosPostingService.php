@@ -138,7 +138,7 @@ class PosPostingService
             entityBookId: request()->attributes->get('entity_book_id'),
         ));
 
-        if (! $result->success) {
+        if (!$result->success) {
             throw new \RuntimeException("POS posting failed: {$result->error}");
         }
 
@@ -241,7 +241,7 @@ class PosPostingService
             approvalUserId: null,
         ));
 
-        if (! $result->success) {
+        if (!$result->success) {
             throw new \RuntimeException(
                 "GL reversal failed for POS return of order {$originalOrder->order_number}: {$result->error}"
             );
@@ -309,7 +309,7 @@ class PosPostingService
             entityBookId: request()->attributes->get('entity_book_id'),
         ));
 
-        if (! $result->success) {
+        if (!$result->success) {
             throw new \RuntimeException("Refund payment posting failed: {$result->error}");
         }
 

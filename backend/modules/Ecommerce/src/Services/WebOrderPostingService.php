@@ -297,7 +297,7 @@ class WebOrderPostingService
                 entityBookId: request()->attributes->get('entity_book_id'),
             ));
 
-            if (! $result->success) {
+            if (!$result->success) {
                 throw new \RuntimeException(
                     "GL posting failed for web order {$order->order_number}: {$result->error}"
                 );
@@ -351,7 +351,7 @@ class WebOrderPostingService
                 approvalUserId: null,
             ));
 
-            if (! $result->success) {
+            if (!$result->success) {
                 throw new \RuntimeException(
                     "GL reversal failed for web order {$order->order_number}: {$result->error}"
                 );
