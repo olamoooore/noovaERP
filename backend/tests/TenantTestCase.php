@@ -71,10 +71,10 @@ abstract class TenantTestCase extends TestCase
      */
     protected function runTenantMigrations(): void
     {
-        // Purge the test database by dropping the 'public' schema and
-        // recreating it, then immediately resetting the connection.
-        // This is the only atomic way to reliably clear a PostgreSQL
-        // database regardless of its prior state.
+        // Purge the test database by dropping it and recreating it, then
+        // immediately resetting the connection. This is the only atomic way
+        // to reliably clear a PostgreSQL database regardless of its prior
+        // state.
         if (config('database.default') === 'pgsql') {
             $dbName = config('database.connections.pgsql.database');
             DB::disconnect('pgsql');
@@ -83,6 +83,16 @@ abstract class TenantTestCase extends TestCase
                 config('database.connections.pgsql.username'),
                 config('database.connections.pgsql.password'),
             );
+
+            // Terminate any leftover sessions on the target DB before DROP.
+            // PHPUnit may run multiple test classes in the same process and
+            // prior connections to noovaerp_ci / noovaerp_test can still be
+            // open, causing DROP DATABASE to fail with SQLSTATE[55006].
+            $pdo->exec(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity ".
+                "WHERE datname = ".$pdo->quote($dbName)." AND pid <> pg_backend_pid()"
+            );
+
             $pdo->exec("DROP DATABASE IF EXISTS \"{$dbName}\"");
             $pdo->exec("CREATE DATABASE \"{$dbName}\"");
             $pdo = null;
@@ -137,15 +147,23 @@ abstract class TenantTestCase extends TestCase
             ]);
         }
 
-        foreach ($this->getTenantMigrationPaths() as $path) {
-            $realPath = base_path($path);
-            if (is_dir($realPath)) {
-                Artisan::call('migrate', [
-                    '--path' => [$realPath],
-                    '--realpath' => true,
-                    '--force' => true,
-                ]);
-            }
+        // Run all tenant migration paths in a SINGLE `migrate` invocation
+        // so Laravel manages the connection lifecycle once. Splitting into
+        // per-path Artisan::call() invocations can cause Schema::hasTable()
+        // to return stale results across calls (observed: fulfillment_providers
+        // exists after one path but a later path's CREATE statement fails
+        // with 'relation already exists').
+        $existingTenantPaths = array_values(array_filter(
+            array_map(fn (string $p) => base_path($p), $this->getTenantMigrationPaths()),
+            fn (string $p) => is_dir($p),
+        ));
+
+        if (! empty($existingTenantPaths)) {
+            Artisan::call('migrate', [
+                '--path' => $existingTenantPaths,
+                '--realpath' => true,
+                '--force' => true,
+            ]);
         }
     }
 
