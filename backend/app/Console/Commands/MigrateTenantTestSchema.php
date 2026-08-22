@@ -146,15 +146,20 @@ class MigrateTenantTestSchema extends Command
         }
 
         // Step 4: Tenant migrations in dependency order.
-        foreach ($this->tenantPaths() as $path) {
-            $realPath = base_path($path);
-            if (! is_dir($realPath)) {
-                continue;
-            }
+        // We invoke a single `migrate` call with ALL tenant paths joined so
+        // Laravel manages the connection lifecycle once. Splitting into
+        // per-path Artisan::call() invocations can cause Schema::hasTable()
+        // to return stale results across calls (observed: fulfillment_providers
+        // exists after step 4.1 but Schema::hasTable() returns false in step 4.2).
+        $existingTenantPaths = array_values(array_filter(
+            array_map(fn (string $p) => base_path($p), $this->tenantPaths()),
+            fn (string $p) => is_dir($p),
+        ));
 
-            $this->step("Running tenant migrations: {$path}");
+        if (! empty($existingTenantPaths)) {
+            $this->step('Running tenant migrations (single combined pass)');
             Artisan::call('migrate', [
-                '--path' => [$realPath],
+                '--path' => $existingTenantPaths,
                 '--realpath' => true,
                 '--force' => true,
             ]);
