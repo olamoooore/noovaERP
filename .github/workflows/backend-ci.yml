@@ -152,6 +152,7 @@ jobs:
 
       - name: Run Feature test suite
         working-directory: backend
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           php -d memory_limit=256M artisan test --testsuite=Feature
