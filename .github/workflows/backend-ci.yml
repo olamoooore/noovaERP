@@ -164,6 +164,18 @@ jobs:
           set -euo pipefail
           php -d memory_limit=256M artisan test --filter "RM001SchedulerMonitoringTest|RM002SalesFulfilmentWarehouseResolutionTest|RM002PosWarehouseCommitmentTest|RM002SubscriptionTierWarehouseModelTest|RM003LoyaltyRewardStockBoundaryTest|LEG001LegacyReservationClosureTest|AR001MutationOwnershipTest|AR002MovementIdempotencyTest|AR003RowLockingConcurrencyTest|AR004PostingEngineBoundaryTest|ENT001PostingNoopSafetyTest|AFM001AccountingFailureModelTest"
 
+      # Pre-provision the test database with BOTH central AND tenant migrations
+      # so that Feature tests querying tenant tables (journal_entries,
+      # domain_event_subscriptions, etc.) don't fail in buckets where the first
+      # test class is not a TenantTestCase (and therefore wouldn't trigger the
+      # lazy migration step). Each parallel matrix job has its own postgres
+      # service, so this step must run per-bucket.
+      - name: Provision test database with tenant schema
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          php artisan migrate:tenant-test-schema
+
       - name: Run Feature test suite (bucket ${{ matrix.bucket }}/4)
         working-directory: backend
         run: |
