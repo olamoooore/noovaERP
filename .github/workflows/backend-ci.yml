@@ -17,22 +17,8 @@ on:
 
 jobs:
   backend-tests:
-    name: Laravel Backend Tests (${{ matrix.label }})
+    name: Laravel Backend Tests
     runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        bucket: [1, 2, 3, 4]
-        include:
-          - bucket: 1
-            label: 'Feature 1/4'
-          - bucket: 2
-            label: 'Feature 2/4'
-          - bucket: 3
-            label: 'Feature 3/4'
-          - bucket: 4
-            label: 'Feature 4/4'
 
     services:
       postgres:
@@ -164,46 +150,11 @@ jobs:
           set -euo pipefail
           php -d memory_limit=256M artisan test --filter "RM001SchedulerMonitoringTest|RM002SalesFulfilmentWarehouseResolutionTest|RM002PosWarehouseCommitmentTest|RM002SubscriptionTierWarehouseModelTest|RM003LoyaltyRewardStockBoundaryTest|LEG001LegacyReservationClosureTest|AR001MutationOwnershipTest|AR002MovementIdempotencyTest|AR003RowLockingConcurrencyTest|AR004PostingEngineBoundaryTest|ENT001PostingNoopSafetyTest|AFM001AccountingFailureModelTest"
 
-      # Pre-provision the test database with BOTH central AND tenant migrations
-      # so that Feature tests querying tenant tables (journal_entries,
-      # domain_event_subscriptions, etc.) don't fail in buckets where the first
-      # test class is not a TenantTestCase (and therefore wouldn't trigger the
-      # lazy migration step). Each parallel matrix job has its own postgres
-      # service, so this step must run per-bucket.
-      - name: Provision test database with tenant schema
+      - name: Run Feature test suite
         working-directory: backend
         run: |
           set -euo pipefail
-          php artisan migrate:tenant-test-schema
-
-      - name: Run Feature test suite (bucket ${{ matrix.bucket }}/4)
-        working-directory: backend
-        run: |
-          set -euo pipefail
-
-          # Partition the Feature test files alphabetically into 4 balanced buckets.
-          # Each bucket gets ceil(TOTAL/4) files. Bucket assignment is deterministic
-          # because we sort by absolute path.
-          FEATURE_FILES=$(find tests/Feature modules/HRM/tests/Feature -name "*.php" -type f | LC_ALL=C sort)
-          TOTAL=$(echo "$FEATURE_FILES" | wc -l | tr -d ' ')
-          PER=$(( (TOTAL + 3) / 4 ))
-          START_LINE=$(( (matrix.bucket - 1) * PER + 1 ))
-          END_LINE=$(( matrix.bucket * PER ))
-          if [ "$END_LINE" -gt "$TOTAL" ]; then END_LINE="$TOTAL"; fi
-
-          SELECTED=$(echo "$FEATURE_FILES" | sed -n "${START_LINE},${END_LINE}p")
-
-          if [ -z "$SELECTED" ]; then
-            echo "Bucket ${{ matrix.bucket }} has no assigned files; skipping."
-            exit 0
-          fi
-
-          COUNT=$(echo "$SELECTED" | wc -l | tr -d ' ')
-          echo "Running bucket ${{ matrix.bucket }}/4 — $COUNT files (lines $START_LINE-$END_LINE of $TOTAL):"
-          echo "$SELECTED"
-
-          # shellcheck disable=SC2086
-          php -d memory_limit=256M artisan test $SELECTED
+          php -d memory_limit=256M artisan test --testsuite=Feature
 
       - name: Run OCR test suite
         working-directory: backend
