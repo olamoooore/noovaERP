@@ -131,10 +131,15 @@ class DocumentTemplateServiceTest extends TenantTestCase
         $starters = $this->service->listStarters();
         $types = array_column($starters, 'document_type');
 
-        $this->assertCount(4, $starters);
-        foreach (['invoice', 'quotation', 'purchase_order', 'receipt'] as $type) {
+        // One starter per canonical document type — must stay in sync with
+        // DocumentTemplateService::activeDefaults() and DefaultTemplates::definitions().
+        $this->assertCount(6, $starters);
+        foreach (['invoice', 'quotation', 'purchase_order', 'receipt', 'delivery_order', 'customer_statement'] as $type) {
             $this->assertContains($type, $types);
         }
+
+        // No duplicate document types.
+        $this->assertCount(6, array_unique($types));
     }
 
     public function test_create_from_starter_makes_user_owned_draft(): void
