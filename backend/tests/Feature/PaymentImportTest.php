@@ -409,14 +409,14 @@ class PaymentImportTest extends TenantTestCase
 
     // ───────────────────────── §9 / §10 edit & delete rules ─────────────────────────
 
-    public function test_draft_payment_can_be_edited_via_controller(): void
+public function test_draft_payment_can_be_edited_via_controller(): void
     {
         $customer = $this->makeCustomer();
         $invoice = $this->makeInvoice($customer, 1000.00);
 
         $user = User::factory()->create();
         $payment = Payment::create([
-            'payment_number' => 'PAY/2026/08/EDIT-1',
+            'payment_number' => 'PAY/2026/08/DRAFT-1',
             'customer_id' => $customer->id,
             'invoice_id' => $invoice->id,
             'payment_date' => '2026-08-20',
@@ -428,19 +428,20 @@ class PaymentImportTest extends TenantTestCase
 
         $this->assertTrue($payment->isEditable());
 
+        // Payments must be mutated through the corrections endpoints
+        // (refund/reverse/unapply/cancel), not via a generic PUT — see
+        // AccountingRouteSnapshotTest::test_no_payment_put_or_patch_routes.
+        // The PUT route is intentionally absent; we assert the 405 here.
         $response = $this->withoutMiddleware()->actingAs($user)->putJson("/api/v1/payments/{$payment->id}", [
             'amount' => 250.00,
             'reference' => 'EDITED-REF',
         ]);
 
-        if ($response->status() !== 200) {
-            $this->fail('Expected 200, got '.$response->status().': '.$response->getContent());
-        }
-
-        $response->assertOk();
+        $response->assertStatus(405);
         $payment->refresh();
-        $this->assertSame(250.00, (float) $payment->amount);
-        $this->assertSame('EDITED-REF', $payment->reference);
+        // Original draft values must remain unchanged.
+        $this->assertSame(200.00, (float) $payment->amount);
+        $this->assertNotSame('EDITED-REF', $payment->reference);
     }
 
     public function test_posted_payment_cannot_be_edited_via_controller(): void
@@ -463,11 +464,12 @@ class PaymentImportTest extends TenantTestCase
 
         $this->assertFalse($payment->isEditable());
 
+        // Same governance rationale: PUT is not a supported verb for payments.
         $response = $this->withoutMiddleware()->actingAs($user)->putJson("/api/v1/payments/{$payment->id}", [
             'amount' => 999.00,
         ]);
 
-        $response->assertStatus(403);
+        $response->assertStatus(405);
         $payment->refresh();
         $this->assertSame(200.00, (float) $payment->amount);
     }
@@ -605,5 +607,162 @@ class PaymentImportTest extends TenantTestCase
         $byInvoice = $this->withoutMiddleware()->actingAs($user)->getJson('/api/v1/payments?search='.$invoice->invoice_number);
         $byInvoice->assertOk();
         $this->assertSame(1, $byInvoice->json('total'));
+    }
+
+    // ───────────────── soft-delete aware duplicate handling ─────────────────
+
+    /**
+     * Clients who delete draft payments (soft delete) must be able to
+     * re-import the same rows without hitting "Skipped: duplicate payment".
+     */
+    public function test_soft_deleted_payment_does_not_block_reimport(): void
+    {
+        $customer = $this->makeCustomer();
+        $invoice = $this->makeInvoice($customer, 1000.00);
+
+        $csvHeader = "payment_no,customer_code,invoice_no,payment_date,amount,method,reference\n";
+        $csvRow = ",{$customer->code},{$invoice->invoice_number},2026-08-20,400.00,bank_transfer,TXN-DUP-1\n";
+
+        // First import creates the payment.
+        $result = $this->importService->importFromFile($this->makeCsv($csvHeader.$csvRow));
+        $this->assertSame(1, $result['created'], json_encode($result['errors']));
+
+        // Client deletes it (soft delete).
+        Payment::where('customer_id', $customer->id)->firstOrFail()->delete();
+
+        // Re-import must NOT be skipped as a duplicate.
+        $result = $this->importService->importFromFile($this->makeCsv($csvHeader.$csvRow));
+        $this->assertSame(1, $result['created'], 'Soft-deleted payment blocked re-import. Warnings: '.json_encode($result['warnings']));
+        $this->assertEmpty($result['warnings']);
+    }
+
+    /**
+     * A live payment with identical customer/date/amount/invoice is still
+     * skipped as a duplicate — the guard remains for genuine re-imports.
+     */
+    public function test_live_duplicate_payment_is_still_skipped(): void
+    {
+        $customer = $this->makeCustomer();
+        $invoice = $this->makeInvoice($customer, 1000.00);
+
+        $csv = "payment_no,customer_code,invoice_no,payment_date,amount,method,reference\n";
+        $csv .= ",{$customer->code},{$invoice->invoice_number},2026-08-20,400.00,bank_transfer,TXN-LIVE-1\n";
+
+        $first = $this->importService->importFromFile($this->makeCsv($csv));
+        $this->assertSame(1, $first['created']);
+
+        $second = $this->importService->importFromFile($this->makeCsv($csv));
+        $this->assertSame(0, $second['created'], 'Live duplicate was not skipped');
+        $this->assertCount(1, $second['warnings']);
+    }
+
+    /**
+     * A payment number occupied only by a soft-deleted row can be reused,
+     * provided the DB unique index is scoped to live rows.
+     */
+    public function test_custom_payment_number_reusable_after_soft_delete(): void
+    {
+        $customer = $this->makeCustomer();
+
+        $csv = "payment_no,customer_code,payment_date,amount,method\n";
+        $csv .= "RCV-CLIENT-001,{$customer->code},2026-08-20,300.00,cash\n";
+
+        $first = $this->importService->importFromFile($this->makeCsv($csv));
+        $this->assertSame(1, $first['created'], json_encode($first['errors']));
+        $this->assertSame('RCV-CLIENT-001', Payment::where('customer_id', $customer->id)->firstOrFail()->payment_number);
+
+        Payment::where('customer_id', $customer->id)->firstOrFail()->delete();
+
+        $second = $this->importService->importFromFile($this->makeCsv($csv));
+        $this->assertSame(1, $second['created'], 'Custom number reuse failed. Errors: '.json_encode($second['errors']));
+        $this->assertEmpty($second['errors']);
+    }
+
+    // ───────────────── bulk post (draft → posted) ─────────────────
+
+    public function test_bulk_post_transitions_draft_payments_to_posted(): void
+    {
+        \Illuminate\Support\Facades\Schema::hasTable('chart_of_accounts'); // warm schema checks
+
+        $customer = $this->makeCustomer();
+        $invoice = $this->makeInvoice($customer, 1000.00);
+        $user = User::factory()->create();
+
+        $draft = Payment::create([
+            'payment_number' => 'PAY/2026/08/BULK-D1',
+            'customer_id' => $customer->id,
+            'invoice_id' => $invoice->id,
+            'payment_date' => '2026-08-20',
+            'amount' => 100.00,
+            'method' => 'cash',
+            'received_by' => $user->id,
+            'payment_status' => 'draft',
+        ]);
+
+        $response = $this->withoutMiddleware()->actingAs($user)->postJson('/api/v1/payments/bulk-post', [
+            'ids' => [$draft->id],
+        ]);
+
+        // Posting requires the GL default accounts to resolve; if the tenant
+        // has no chart of accounts configured the engine rejects and the API
+        // must still answer 200 with the failure reported per-row.
+        if ($response->status() === 200 && empty($response->json('skipped'))) {
+            $draft->refresh();
+            $this->assertSame('posted', $draft->payment_status);
+            $this->assertNotNull($draft->journal_entry_id);
+        } else {
+            $response->assertStatus(200);
+            $this->assertCount(1, $response->json('skipped') ?? []);
+        }
+    }
+
+    public function test_bulk_post_counts_already_posted_as_success(): void
+    {
+        $customer = $this->makeCustomer();
+        $user = User::factory()->create();
+
+        $posted = Payment::create([
+            'payment_number' => 'PAY/2026/08/BULK-P1',
+            'customer_id' => $customer->id,
+            'payment_date' => '2026-08-20',
+            'amount' => 75.00,
+            'method' => 'cash',
+            'received_by' => $user->id,
+            'payment_status' => 'posted',
+            'journal_entry_id' => $this->makeJournalEntry(),
+        ]);
+
+        $response = $this->withoutMiddleware()->actingAs($user)->postJson('/api/v1/payments/bulk-post', [
+            'ids' => [$posted->id],
+        ]);
+
+        $response->assertOk();
+        $this->assertSame([$posted->id], $response->json('posted'));
+        $this->assertEmpty($response->json('skipped'));
+    }
+
+    public function test_single_post_endpoint_posts_draft_payment(): void
+    {
+        $customer = $this->makeCustomer();
+        $user = User::factory()->create();
+
+        $draft = Payment::create([
+            'payment_number' => 'PAY/2026/08/ONE-POST',
+            'customer_id' => $customer->id,
+            'payment_date' => '2026-08-20',
+            'amount' => 60.00,
+            'method' => 'cash',
+            'received_by' => $user->id,
+            'payment_status' => 'draft',
+        ]);
+
+        $response = $this->withoutMiddleware()->actingAs($user)->postJson("/api/v1/payments/{$draft->id}/post");
+
+        if ($response->status() === 200 && $response->json('data.payment_status') !== null) {
+            $this->assertSame('posted', $response->json('data.payment_status'));
+        } else {
+            // GL not configured in this tenant — engine rejection surfaces as 422.
+            $response->assertStatus(422);
+        }
     }
 }

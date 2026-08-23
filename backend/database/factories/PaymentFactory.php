@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 class PaymentFactory extends Factory
@@ -22,7 +23,7 @@ class PaymentFactory extends Factory
             'method' => $this->faker->randomElement(['cash', 'check', 'bank_transfer', 'card']),
             'reference' => $this->faker->optional()->word(),
             'notes' => $this->faker->optional()->sentence(),
-            'received_by' => 1,
+            'received_by' => User::factory(),
             'payment_status' => 'recorded',
             'version_number' => 1,
             'is_active_version' => true,

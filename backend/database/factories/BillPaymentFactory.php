@@ -22,7 +22,7 @@ class BillPaymentFactory extends Factory
             'amount' => 500.00,
             'payment_method' => 'bank',
             'created_by' => User::factory(),
-            'payment_status' => 'completed',
+            'payment_status' => 'posted',
         ];
     }
 }

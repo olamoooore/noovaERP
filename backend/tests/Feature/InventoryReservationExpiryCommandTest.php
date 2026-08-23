@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Tenant;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -14,11 +16,37 @@ use Tests\TenantTestCase;
 class InventoryReservationExpiryCommandTest extends TenantTestCase
 {
 
+    protected string $tenantId;
+    protected User $user;
+
     protected function setUp(): void
     {
         parent::setUp();
-        $this->artisan('migrate:fresh');
-        $this->artisan('migrate', ['--path' => 'database/migrations/tenant']);
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+        $this->tenantId = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+        Tenant::withoutEvents(function () {
+            return Tenant::create([
+                'id' => $this->tenantId,
+                'name' => 'Inventory Reservation Test Tenant',
+                'email' => fake()->unique()->safeEmail(),
+                'plan' => 'standard',
+            ]);
+        });
+        $this->bindTenantContext($this->tenantId);
+
+        $this->user = User::factory()->create();
+        DB::table('user_company_access')->insert([
+            'user_id' => $this->user->id,
+            'tenant_id' => $this->tenantId,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        // RefreshDatabase trait (via TenantTestCase) handles all migrations
+        // including the Core module's core_contacts table that
+        // 2026_07_23_000001_add_po_doctor_requestor_to_invoices.php FKs into.
+        // DO NOT call migrate:fresh here — it would drop tenant tables this test depends on.
     }
 
     public function test_expiry_command_expires_overdue_reservation_and_releases_reserved_quantity(): void

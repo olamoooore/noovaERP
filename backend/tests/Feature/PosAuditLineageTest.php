@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Models\AuditLog;
 use App\Models\Customer;
 use App\Models\Product;
+use App\Models\Tenant;
 use App\Models\User;
 use App\Services\AuditLogger;
+use Illuminate\Support\Facades\DB;
 use Modules\POS\Models\PosOrder;
 use Modules\POS\Models\PosSession;
 use Modules\POS\Models\PosTerminal;
@@ -35,16 +37,48 @@ class PosAuditLineageTest extends TenantTestCase
     {
         parent::setUp();
 
+        // Bind tenant context so feature:pos / RequirePermission middleware
+        // resolves correctly. Spatie role names use title case to match
+        // UserRole::spatieName(); otherwise TenantRoleService::findByName
+        // throws "There is no role named `Cashier` for guard `web`".
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+        $tenantId = '88888888-8888-8888-8888-888888888888';
+        Tenant::withoutEvents(function () use ($tenantId) {
+            return Tenant::create([
+                'id' => $tenantId,
+                'name' => 'POS Audit Tenant',
+                'email' => fake()->unique()->safeEmail(),
+                'plan' => 'standard',
+            ]);
+        });
+        $this->bindTenantContext($tenantId);
+
         // Create roles
-        Role::create(['name' => 'cashier']);
-        Role::create(['name' => 'manager']);
+        Role::firstOrCreate(['name' => 'Cashier', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'Manager', 'guard_name' => 'web']);
 
         // Create users
         $this->cashier = User::factory()->create();
-        $this->cashier->assignRole('cashier');
+        $this->cashier->assignRole('Cashier');
 
         $this->manager = User::factory()->create();
-        $this->manager->assignRole('manager');
+        $this->manager->assignRole('Manager');
+
+        // user_company_access rows so RequirePermission middleware resolves
+        // the role for the bound tenant context.
+        foreach ([
+            ['user' => $this->cashier, 'role' => 'cashier'],
+            ['user' => $this->manager, 'role' => 'manager'],
+        ] as $row) {
+            DB::table('user_company_access')->insert([
+                'user_id' => $row['user']->id,
+                'tenant_id' => $tenantId,
+                'role' => $row['role'],
+                'is_default' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
 
         // Create test data
         $this->customer = Customer::factory()->create();
@@ -291,15 +325,17 @@ class PosAuditLineageTest extends TenantTestCase
 
     protected function createAndPayOrder(): PosOrder
     {
-        // Create order
+        // Create order (terminal_id + unit_price required by validator;
+        // track_inventory so stock movement rows are written on payment).
         $response = $this->actingAs($this->cashier)->postJson('/api/v1/pos/orders', [
             'session_id' => $this->session->id,
+            'terminal_id' => $this->terminal->id,
             'customer_id' => $this->customer->id,
             'items' => [
                 [
                     'product_id' => $this->product->id,
                     'quantity' => 1,
-                    'price' => 100.00,
+                    'unit_price' => 100.00,
                 ],
             ],
         ]);

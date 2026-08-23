@@ -37,6 +37,8 @@ interface Payment {
   invoice_id?: number;
   customer?: { id: number; name: string; code?: string };
   invoice?: { id: number; invoice_number: string };
+  journal_entry_id?: number | null;
+  received_by?: number | null;
   notes?: string;
   currency?: string;
   created_at?: string;
@@ -68,6 +70,15 @@ const METHOD_OPTIONS = [
   { value: 'other', label: 'Other', icon: 'solar:question-circle-bold-duotone' },
 ];
 
+const formatDate = (date: string | undefined) => {
+  if (!date) return '-';
+  return new Date(date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
 export const CustomerPayments: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const invoiceIdParam = searchParams.get('invoice_id') || '';
@@ -81,7 +92,6 @@ export const CustomerPayments: React.FC = () => {
   const [page, setPage] = useState(Number(searchParams.get('page') || 1));
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
-  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -135,15 +145,6 @@ export const CustomerPayments: React.FC = () => {
     },
   });
 
-  const formatDate = (date: string) => {
-    if (!date) return '-';
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
-
   const getPaymentMethodBadge = (method: string) => {
     const cfg = METHOD_OPTIONS.find((m) => m.value === method);
     return (
@@ -189,7 +190,36 @@ export const CustomerPayments: React.FC = () => {
   const draftSelected = paymentList.filter(
     (p) => selectedIds.has(p.id) && p.payment_status === 'draft',
   );
+  const postableSelected = paymentList.filter(
+    (p) => selectedIds.has(p.id) && p.payment_status === 'draft' && !p.journal_entry_id,
+  );
   const lockedSelected = selectedIds.size - draftSelected.length;
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['customer-payments'] });
+
+  const bulkPostMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const response = await api.post('/payments/bulk-post', { ids });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      invalidate();
+      setSelectedIds(new Set());
+      toast({
+        title: `${data.posted?.length || 0} payment(s) posted`,
+        description: data.skipped?.length
+          ? `${data.skipped.length} skipped: ${data.skipped[0]?.reason ?? ''}`
+          : 'Ledger entries created for all payments.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Bulk post failed',
+        description: error.response?.data?.message || 'An error occurred',
+      });
+    },
+  });
 
   const clearFilters = () => {
     setSearchQuery('');
@@ -385,6 +415,16 @@ export const CustomerPayments: React.FC = () => {
             </div>
             <div className="flex gap-2">
               <Button
+                size="sm"
+                onClick={() => bulkPostMutation.mutate(postableSelected.map((p) => p.id))}
+                disabled={postableSelected.length === 0 || bulkPostMutation.isPending}
+              >
+                <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 mr-2" />
+                {bulkPostMutation.isPending
+                  ? 'Posting...'
+                  : `Post ${postableSelected.length > 0 ? `${postableSelected.length} draft(s)` : ''}`}
+              </Button>
+              <Button
                 variant="destructive"
                 size="sm"
                 onClick={() => setShowBulkDeleteDialog(true)}
@@ -469,7 +509,8 @@ export const CustomerPayments: React.FC = () => {
                   </TableHeader>
                   <TableBody>
                     {paymentList.map((payment) => {
-                      const editable = payment.payment_status === 'draft';
+                      const editable = payment.payment_status === 'draft' && !payment.journal_entry_id;
+                      const postable = payment.payment_status === 'draft' && !payment.journal_entry_id;
                       return (
                         <TableRow key={payment.id} className="hover:bg-accent/50">
                           <TableCell>
@@ -515,16 +556,19 @@ export const CustomerPayments: React.FC = () => {
                               >
                                 <Icon icon="solar:eye-bold-duotone" className="h-4 w-4" />
                               </Button>
-                              {editable ? (
+                              {postable && (
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  onClick={() => setEditingPayment(payment)}
-                                  aria-label="Edit payment"
+                                  disabled={bulkPostMutation.isPending}
+                                  onClick={() => bulkPostMutation.mutate([payment.id])}
+                                  aria-label="Post payment to ledger"
+                                  title="Post payment to ledger"
                                 >
-                                  <Icon icon="solar:pen-bold-duotone" className="h-4 w-4" />
+                                  <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 text-primary" />
                                 </Button>
-                              ) : (
+                              )}
+                              {!editable && (
                                 <span className="text-xs text-muted-foreground self-center px-1">Locked</span>
                               )}
                             </div>
@@ -568,19 +612,6 @@ export const CustomerPayments: React.FC = () => {
           )}
         </CardContent>
       </Card>
-
-      {/* Edit Payment Dialog */}
-      {editingPayment && (
-        <EditPaymentDialog
-          payment={editingPayment}
-          onClose={() => setEditingPayment(null)}
-          onSuccess={() => {
-            setEditingPayment(null);
-            queryClient.invalidateQueries({ queryKey: ['customer-payments'] });
-            toast({ title: 'Payment updated' });
-          }}
-        />
-      )}
 
       {/* View Payment Dialog (§7) */}
       {viewingPayment && (
@@ -642,85 +673,113 @@ export const CustomerPayments: React.FC = () => {
 };
 
 // View Payment Dialog (§7 — View payment action)
+// Fetches the full record from the API so the details are always complete
+// and current, even if list-row data is stale or trimmed.
 const ViewPaymentDialog: React.FC<{
   payment: Payment;
   onClose: () => void;
 }> = ({ payment, onClose }) => {
+  const { data: full, isLoading, isError } = useQuery({
+    queryKey: ['payment-detail', payment.id],
+    queryFn: async () => {
+      const response = await api.get(`/payments/${payment.id}`);
+      return response.data as Payment;
+    },
+    retry: 1,
+  });
+
+  const detail: Payment | null = full ?? payment;
+
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Icon icon="solar:wallet-money-bold-duotone" className="h-5 w-5 text-primary" />
-            Payment {payment.payment_number}
+            Payment {detail.payment_number || `PAY-${detail.id}`}
           </DialogTitle>
         </DialogHeader>
+        {isLoading ? (
+          <div className="py-8 text-center text-muted-foreground">Loading payment details…</div>
+        ) : isError && !full ? (
+          <div className="py-8 text-center text-muted-foreground">
+            Could not load full details. Showing cached row data.
+          </div>
+        ) : (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Status</span>
-            {PAYMENT_STATUS_OPTIONS.find((s) => s.value === payment.payment_status) ? (
-              <Badge variant={PAYMENT_STATUS_OPTIONS.find((s) => s.value === payment.payment_status)?.variant || 'secondary'} className="gap-1">
-                <Icon icon={PAYMENT_STATUS_OPTIONS.find((s) => s.value === payment.payment_status)?.icon || 'solar:document-bold-duotone'} className="h-3 w-3" />
-                {PAYMENT_STATUS_OPTIONS.find((s) => s.value === payment.payment_status)?.label || payment.payment_status}
+            {PAYMENT_STATUS_OPTIONS.find((s) => s.value === detail.payment_status) ? (
+              <Badge variant={PAYMENT_STATUS_OPTIONS.find((s) => s.value === detail.payment_status)?.variant || 'secondary'} className="gap-1">
+                <Icon icon={PAYMENT_STATUS_OPTIONS.find((s) => s.value === detail.payment_status)?.icon || 'solar:document-bold-duotone'} className="h-3 w-3" />
+                {PAYMENT_STATUS_OPTIONS.find((s) => s.value === detail.payment_status)?.label || detail.payment_status}
               </Badge>
             ) : (
-              <Badge variant="secondary">{payment.payment_status}</Badge>
+              <Badge variant="secondary">{detail.payment_status}</Badge>
             )}
           </div>
 
           <div className="grid grid-cols-2 gap-4 border-t pt-4">
             <div>
               <p className="text-xs text-muted-foreground">Payment Date</p>
-              <p className="font-medium">{formatDate(payment.payment_date)}</p>
+              <p className="font-medium">{formatDate(detail.payment_date)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Amount</p>
               <p className="font-medium text-lg">
-                {payment.currency ? `${payment.currency} ` : ''}
-                {formatCurrency(payment.amount || 0)}
+                {detail.currency ? `${detail.currency} ` : ''}
+                {formatCurrency(detail.amount || 0)}
               </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Customer</p>
-              <p className="font-medium">{payment.customer?.name || '-'}</p>
-              {payment.customer?.code && (
-                <p className="text-xs font-mono text-muted-foreground">{payment.customer.code}</p>
+              <p className="font-medium">{detail.customer?.name || '-'}</p>
+              {detail.customer?.code && (
+                <p className="text-xs font-mono text-muted-foreground">{detail.customer.code}</p>
               )}
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Method</p>
-              <p className="font-medium capitalize">{payment.method?.replace(/_/g, ' ')}</p>
+              <p className="font-medium capitalize">{detail.method?.replace(/_/g, ' ')}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Reference</p>
-              <p className="font-medium">{payment.reference || '-'}</p>
+              <p className="font-medium">{detail.reference || '-'}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Allocated To Invoice</p>
-              {payment.invoice ? (
-                <p className="font-medium">{payment.invoice.invoice_number}</p>
+              {detail.invoice ? (
+                <p className="font-medium">{detail.invoice.invoice_number}</p>
               ) : (
                 <Badge variant="outline" className="font-normal">Unallocated</Badge>
               )}
             </div>
             <div>
+              <p className="text-xs text-muted-foreground">Ledger Entry</p>
+              {detail.journal_entry_id ? (
+                <p className="font-medium font-mono text-sm">JE #{detail.journal_entry_id}</p>
+              ) : (
+                <span className="text-sm text-muted-foreground">Not posted</span>
+              )}
+            </div>
+            <div>
               <p className="text-xs text-muted-foreground">Created</p>
-              <p className="font-medium">{payment.created_at ? formatDate(payment.created_at) : '-'}</p>
+              <p className="font-medium">{detail.created_at ? formatDate(detail.created_at) : '-'}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">ID</p>
-              <p className="font-mono text-xs">#{payment.id}</p>
+              <p className="font-mono text-xs">#{detail.id}</p>
             </div>
           </div>
 
-          {payment.notes && (
+          {detail.notes && (
             <div className="border-t pt-4">
               <p className="text-xs text-muted-foreground mb-1">Notes</p>
-              <p className="text-sm whitespace-pre-wrap">{payment.notes}</p>
+              <p className="text-sm whitespace-pre-wrap">{detail.notes}</p>
             </div>
           )}
 
-          {payment.payment_status !== 'draft' && (
+          {detail.payment_status !== 'draft' && (
             <div className="border-t pt-4 flex items-start gap-2 rounded-md bg-muted/50 p-3">
               <Icon icon="solar:lock-keyhole-bold-duotone" className="h-4 w-4 text-muted-foreground mt-0.5" />
               <p className="text-xs text-muted-foreground">
@@ -730,120 +789,12 @@ const ViewPaymentDialog: React.FC<{
             </div>
           )}
         </div>
+        )}
       </DialogContent>
     </Dialog>
   );
 };
 
-// Edit Payment Dialog
-const EditPaymentDialog: React.FC<{
-  payment: Payment;
-  onClose: () => void;
-  onSuccess: () => void;
-}> = ({ payment, onClose, onSuccess }) => {
-  const [formData, setFormData] = useState({
-    payment_date: payment.payment_date,
-    amount: String(payment.amount),
-    method: payment.method,
-    reference: payment.reference || '',
-    notes: payment.notes || '',
-  });
-  const { toast } = useToast();
-
-  const updateMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const response = await api.put(`/payments/${payment.id}`, data);
-      return response.data;
-    },
-    onSuccess: () => onSuccess(),
-    onError: (error: any) => {
-      toast({
-        variant: 'destructive',
-        title: 'Failed to update payment',
-        description: error.response?.data?.message || 'An error occurred',
-      });
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateMutation.mutate({
-      payment_date: formData.payment_date,
-      amount: parseFloat(formData.amount),
-      method: formData.method,
-      reference: formData.reference || null,
-      notes: formData.notes || null,
-    });
-  };
-
-  return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Edit Payment {payment.payment_number}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-date">Payment Date</Label>
-              <Input
-                id="edit-date"
-                type="date"
-                value={formData.payment_date}
-                onChange={(e) => setFormData({ ...formData, payment_date: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-amount">Amount</Label>
-              <Input
-                id="edit-amount"
-                type="number"
-                step="0.01"
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                required
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-method">Method</Label>
-            <Select value={formData.method} onValueChange={(value) => setFormData({ ...formData, method: value })}>
-              <SelectTrigger id="edit-method"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {METHOD_OPTIONS.map((m) => (
-                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-ref">Reference</Label>
-            <Input
-              id="edit-ref"
-              value={formData.reference}
-              onChange={(e) => setFormData({ ...formData, reference: e.target.value })}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-notes">Notes</Label>
-            <Input
-              id="edit-notes"
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-4">
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? 'Saving...' : 'Save'}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-};
 
 // Record Payment Form Component
 const RecordPaymentForm: React.FC<{

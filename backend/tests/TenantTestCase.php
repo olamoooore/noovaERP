@@ -228,6 +228,10 @@ abstract class TenantTestCase extends TestCase
             \App\Http\Middleware\SetTenantFromUserPreference::class,
             \App\Http\Middleware\EnsureTenantSearchPath::class,
             \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
+            // Disable platform rate limiting (120 req/min) so heavy test
+            // suites that fire many requests in a single second don't
+            // receive 429 responses.
+            \App\Http\Middleware\PlatformRateLimitMiddleware::class,
         ]);
     }
 

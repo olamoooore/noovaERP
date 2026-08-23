@@ -2,10 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Models\AccountMapping;
+use App\Models\ChartOfAccount;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\Tenant;
+use App\Models\User;
 use App\Services\PaymentRefundService;
+use Illuminate\Support\Facades\DB;
 use Modules\PaymentGateway\Models\PaymentGateway;
 use Modules\PaymentGateway\Models\PaymentTransaction;
 use Tests\TenantTestCase;
@@ -15,9 +20,54 @@ class PaymentRefundServiceTest extends TenantTestCase
 
     private PaymentRefundService $service;
 
+    protected string $tenantId;
+    protected User $user;
+    private ChartOfAccount $accountCash;
+    private ChartOfAccount $accountAR;
+    private ChartOfAccount $accountRevenue;
+
     protected function setUp(): void
     {
         parent::setUp();
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+        $this->tenantId = 'aaaa1111-aaaa-1111-aaaa-111111111111';
+        Tenant::withoutEvents(function () {
+            return Tenant::create([
+                'id' => $this->tenantId,
+                'name' => 'Payment Refund Test Tenant',
+                'email' => fake()->unique()->safeEmail(),
+                'plan' => 'standard',
+            ]);
+        });
+        $this->bindTenantContext($this->tenantId);
+
+        $this->user = User::factory()->create();
+        DB::table('user_company_access')->insert([
+            'user_id' => $this->user->id,
+            'tenant_id' => $this->tenantId,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Minimal chart of accounts + mappings so the refund GL posting
+        // can resolve its accounts (revenue / ar / cash).
+        $suffix = uniqid();
+        $this->accountCash = ChartOfAccount::factory()->create([
+            'code' => "1000-{$suffix}", 'name' => 'Cash', 'type' => 'asset', 'is_active' => true,
+        ]);
+        $this->accountAR = ChartOfAccount::factory()->create([
+            'code' => "1100-{$suffix}", 'name' => 'Accounts Receivable', 'type' => 'asset', 'is_active' => true,
+        ]);
+        $this->accountRevenue = ChartOfAccount::factory()->create([
+            'code' => "3000-{$suffix}", 'name' => 'Sales Revenue', 'type' => 'revenue', 'is_active' => true,
+        ]);
+        AccountMapping::create(['mapping_key' => 'sales_revenue', 'account_id' => $this->accountRevenue->id]);
+        AccountMapping::create(['mapping_key' => 'accounts_receivable', 'account_id' => $this->accountAR->id]);
+        AccountMapping::create(['mapping_key' => 'cash', 'account_id' => $this->accountCash->id]);
+        AccountMapping::create(['mapping_key' => 'revenue', 'account_id' => $this->accountRevenue->id]);
+
         $this->service = app(PaymentRefundService::class);
     }
 
@@ -181,7 +231,7 @@ class PaymentRefundServiceTest extends TenantTestCase
             $transaction,
             1000, // Full refund
             'Full refund requested',
-            1,
+            $this->user->id,
         );
 
         $this->assertEquals('refunded', $result['transaction']->status);
@@ -275,11 +325,11 @@ class PaymentRefundServiceTest extends TenantTestCase
         ]);
 
         // First refund
-        $result1 = $this->service->processRefund($transaction, 500, 'First refund', 1);
+$result1 = $this->service->processRefund($transaction, 500, 'First refund', $this->user->id);
+        $this->assertNotNull($result1);
         $this->assertEquals(500, $result1['transaction']->refunded_amount);
 
-        // Second refund of same transaction (should only allow remaining 500)
-        $result2 = $this->service->processRefund($result1['transaction'], 300, 'Second refund', 1);
+        $result2 = $this->service->processRefund($result1['transaction'], 300, 'Second refund', $this->user->id);
         $this->assertEquals(800, $result2['transaction']->refunded_amount);
 
         // Verify invoice balance updated correctly
@@ -289,6 +339,6 @@ class PaymentRefundServiceTest extends TenantTestCase
 
         // Third refund should fail (only 200 available)
         $this->expectException(\InvalidArgumentException::class);
-        $this->service->processRefund($result2['transaction'], 300, 'Third refund', 1);
+        $this->service->processRefund($result2['transaction'], 300, 'Third refund', $this->user->id);
     }
 }

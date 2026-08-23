@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Product;
+use App\Models\Tenant;
 use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Database\Schema\Blueprint;
@@ -20,10 +21,32 @@ class PosWarehouseEnforcementTest extends TenantTestCase
 {
     private User $user;
 
+    protected string $tenantId;
+
     protected function setUp(): void
     {
         parent::setUp();
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+        $this->tenantId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+        Tenant::withoutEvents(function () {
+            return Tenant::create([
+                'id' => $this->tenantId,
+                'name' => 'Warehouse Enforcement Test Tenant',
+                'email' => fake()->unique()->safeEmail(),
+                'plan' => 'standard',
+            ]);
+        });
+        $this->bindTenantContext($this->tenantId);
+
         $this->user = User::factory()->create();
+        DB::table('user_company_access')->insert([
+            'user_id' => $this->user->id,
+            'tenant_id' => $this->tenantId,
+            'role' => 'cashier',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         if (Schema::hasTable('pos_orders') && ! Schema::hasColumn('pos_orders', 'deleted_at')) {
             Schema::table('pos_orders', function (Blueprint $table) {

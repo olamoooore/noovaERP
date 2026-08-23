@@ -129,6 +129,13 @@ final class ModuleManager
         $sorted = [];
         $visited = [];
 
+        // Stable secondary sort: within each group (core vs addon) we want a
+        // deterministic, alphabetical-by-key ordering. Without this, modules
+        // discovered by `scandir` come out in filesystem order, which is
+        // platform-dependent and breaks the module-discovery invariants
+        // exercised by HrmPreservationPropertyTest.
+        usort($modules, fn ($a, $b) => strcmp($a->key, $b->key));
+
         $visit = function (Module $module) use (&$visit, &$sorted, &$visited, $moduleKeys) {
             $key = $module->key;
 

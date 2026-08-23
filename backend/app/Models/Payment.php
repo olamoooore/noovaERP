@@ -56,7 +56,7 @@ class Payment extends Model
                 $payment->payment_number = static::generatePaymentNumber();
             }
             if (! $payment->payment_status) {
-                $payment->payment_status = 'draft';
+                $payment->payment_status = 'recorded';
             }
         });
 

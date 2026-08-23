@@ -17,6 +17,12 @@ class PaymentImportService
         'payment_no' => 'payment_number',
         'payment_number' => 'payment_number',
         'payment_no.' => 'payment_number',
+        'receipt_no' => 'payment_number',
+        'receipt_no.' => 'payment_number',
+        'receipt_number' => 'payment_number',
+        'voucher_no' => 'payment_number',
+        'voucher_no.' => 'payment_number',
+        'voucher_number' => 'payment_number',
         'customer_id' => 'customer_id',
         'customer_code' => 'customer_code',
         'customer_name' => 'customer_name',
@@ -27,16 +33,29 @@ class PaymentImportService
         'invoice' => 'invoice_number',
         'payment_date' => 'payment_date',
         'date' => 'payment_date',
+        'paid_date' => 'payment_date',
+        'received_date' => 'payment_date',
         'amount' => 'amount',
         'payment_amount' => 'amount',
+        'amount_paid' => 'amount',
         'payment_method' => 'method',
         'method' => 'method',
         'reference' => 'reference',
         'ref' => 'reference',
         'transaction_ref' => 'reference',
         'txn_ref' => 'reference',
+        'bank_ref' => 'reference',
+        'bank_reference' => 'reference',
+        'cheque_no' => 'reference',
+        'cheque_no.' => 'reference',
+        'cheque_number' => 'reference',
+        'check_no' => 'reference',
+        'check_no.' => 'reference',
+        'check_number' => 'reference',
         'currency' => 'currency',
         'notes' => 'notes',
+        'note' => 'notes',
+        'remarks' => 'notes',
     ];
 
     /**
@@ -273,7 +292,9 @@ class PaymentImportService
 
     /**
      * Resolve or generate payment number.
-     * Returns null if the imported number is a duplicate (errors[] is populated).
+     * Returns null if the imported number collides with a LIVE payment
+     * (errors[] is populated). Numbers belonging to soft-deleted payments
+     * are reusable — clients routinely delete draft rows and re-import.
      */
     private function resolvePaymentNumber(array $row, int $rowNum, array &$errors): ?string
     {
@@ -282,7 +303,7 @@ class PaymentImportService
             return Payment::generatePaymentNumber();
         }
 
-        $exists = Payment::withTrashed()->where('payment_number', $imported)->exists();
+        $exists = Payment::where('payment_number', $imported)->exists();
         if ($exists) {
             $errors[] = ['row' => $rowNum, 'message' => 'Payment number already exists: '.$imported];
 
@@ -299,6 +320,10 @@ class PaymentImportService
      * reference, invoice_number (FK), payment date, and amount. When the
      * reference is empty we still catch duplicates by invoice + date + amount
      * so that re-imports of the same file are silently skipped.
+     *
+     * Only LIVE (non-deleted) payments count as duplicates. Soft-deleted rows
+     * are ignored so that clients who clean up bad imports can re-import the
+     * same data without hitting "Skipped: duplicate payment" warnings.
      */
     private function checkDuplicate(array $row, int $customerId, ?int $invoiceId): ?Payment
     {
@@ -310,7 +335,7 @@ class PaymentImportService
             return null;
         }
 
-        $query = Payment::withTrashed()
+        $query = Payment::query()
             ->where('customer_id', $customerId)
             ->whereDate('payment_date', $paymentDate)
             ->where('amount', $amount);

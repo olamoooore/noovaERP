@@ -5,15 +5,30 @@ namespace Tests\Feature;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Product;
+use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Tests\TenantTestCase;
 
 class InvoiceImportTest extends TenantTestCase
 {
+    protected string $tenantId;
+
     protected function setUp(): void
     {
         parent::setUp();
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+        $this->tenantId = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+        Tenant::withoutEvents(function () {
+            return Tenant::create([
+                'id' => $this->tenantId,
+                'name' => 'Invoice Import Test Tenant',
+                'email' => fake()->unique()->safeEmail(),
+                'plan' => 'standard',
+            ]);
+        });
+        $this->bindTenantContext($this->tenantId);
 
         $this->assertTenantSchemaReady([
             'chart_of_accounts',

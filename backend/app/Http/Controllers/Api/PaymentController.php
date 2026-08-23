@@ -9,12 +9,14 @@ use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class PaymentController extends Controller
 {
     public function __construct(
         private InvoiceService $invoiceService,
         private LockDateValidationService $lockDateValidator,
+        private \App\Services\PaymentPostingService $paymentPostingService,
     ) {}
 
     /**
@@ -204,7 +206,68 @@ class PaymentController extends Controller
     {
         $payment = Payment::findOrFail($payment);
 
-        return response()->json($payment->load(['customer', 'invoice', 'journalEntry']));
+        return response()->json($payment->load(['customer', 'invoice', 'journalEntry', 'receivedBy']));
+    }
+
+    /**
+     * Bulk-post draft payments to the ledger (draft → posted).
+     *
+     * Idempotent: already-posted payments are counted as success. Payments
+     * with a legacy journal entry but a draft status are repaired. Failures
+     * (e.g. default GL accounts not configured) are reported per-row.
+     */
+    public function bulkPost(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer',
+        ]);
+
+        try {
+            $result = $this->paymentPostingService->postMany($validated['ids']);
+
+            return response()->json([
+                'message' => count($result['posted']).' payment(s) posted.',
+                'posted' => $result['posted'],
+                'skipped' => $result['skipped'],
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Bulk payment posting failed', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'message' => 'Bulk post failed: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Post a single payment to the ledger (draft → posted).
+     */
+    public function post(Request $request, $paymentId)
+    {
+        $payment = Payment::findOrFail($paymentId);
+
+        try {
+            $posted = $this->paymentPostingService->post($payment);
+
+            return response()->json([
+                'message' => 'Payment posted successfully',
+                'data' => $posted,
+            ]);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        } catch (\Exception $e) {
+            \Log::error('Payment posting failed', [
+                'payment_id' => $payment->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to post payment: '.$e->getMessage(),
+            ], 500);
+        }
     }
 
     /**

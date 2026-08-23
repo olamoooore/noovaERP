@@ -26,11 +26,20 @@ class PosMetricsTest extends TenantTestCase
     /** @test */
     public function payment_completed_emits_metric()
     {
+        // The service emits two metrics: pos.payment.completed (counter)
+        // and pos.payment.amount (gauge). Mock both explicitly so
+        // additional unrelated debug calls don't break the expectation.
         Log::shouldReceive('debug')
             ->atLeast()->once()
             ->withArgs(function ($message, $context) {
                 return $message === 'pos.metric'
                     && $context['metric_name'] === 'pos.payment.completed';
+            });
+        Log::shouldReceive('debug')
+            ->zeroOrMoreTimes()
+            ->withArgs(function ($message, $context) {
+                return $message === 'pos.metric'
+                    && $context['metric_name'] === 'pos.payment.amount';
             });
 
         $this->metrics->paymentCompleted('cash', 99.99);

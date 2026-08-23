@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Bill;
 use App\Models\BillPayment;
+use App\Models\JournalEntry;
+use App\Models\User;
 use App\Models\Vendor;
 use App\Services\BillPaymentService;
 use Tests\TenantTestCase;
@@ -12,11 +14,27 @@ class BillPaymentServiceTest extends TenantTestCase
 {
 
     private BillPaymentService $service;
+    private User $user;
 
     protected function setUp(): void
     {
         parent::setUp();
+        $this->user = User::factory()->create();
         $this->service = app(BillPaymentService::class);
+    }
+
+    private function createJournalEntry(): JournalEntry
+    {
+        return JournalEntry::create([
+            'entry_number' => 'JE-'.uniqid(),
+            'entry_date' => now()->toDateString(),
+            'type' => 'payment',
+            'description' => 'Test journal entry',
+            'status' => 'posted',
+            'posted_at' => now(),
+            'posted_by' => $this->user->id,
+            'created_by' => $this->user->id,
+        ]);
     }
 
     /** @test */
@@ -36,7 +54,7 @@ class BillPaymentServiceTest extends TenantTestCase
             'payment_date' => now()->format('Y-m-d'),
             'amount' => 500,
             'payment_method' => 'bank',
-        ], 1);
+        ], $this->user->id);
 
         $this->assertInstanceOf(BillPayment::class, $payment);
         $this->assertNotNull($payment->journal_entry_id);
@@ -69,7 +87,7 @@ class BillPaymentServiceTest extends TenantTestCase
             'payment_date' => now()->format('Y-m-d'),
             'amount' => 500,
             'payment_method' => 'bank',
-        ], 1);
+        ], $this->user->id);
     }
 
     /** @test */
@@ -93,7 +111,7 @@ class BillPaymentServiceTest extends TenantTestCase
             'payment_date' => now()->format('Y-m-d'),
             'amount' => 500,
             'payment_method' => 'bank',
-        ], 1);
+        ], $this->user->id);
     }
 
     /** @test */
@@ -115,7 +133,7 @@ class BillPaymentServiceTest extends TenantTestCase
             'amount' => 500,
             'payment_method' => 'bank',
             'payment_number' => 'PAY-TEST-001',
-        ], 1);
+        ], $this->user->id);
 
         // Check journal entry was created
         $this->assertNotNull($payment1->journal_entry_id);
@@ -131,7 +149,7 @@ class BillPaymentServiceTest extends TenantTestCase
                 'amount' => 500,
                 'payment_method' => 'bank',
                 'payment_number' => 'PAY-TEST-001',
-            ], 1);
+            ], $this->user->id);
             $this->fail('Expected exception for duplicate payment');
         } catch (\Exception $e) {
             // Expected - payment_number must be unique
@@ -172,10 +190,11 @@ class BillPaymentServiceTest extends TenantTestCase
     public function it_throws_exception_when_updating_posted_payment(): void
     {
         $vendor = Vendor::factory()->create();
+        $journalEntry = $this->createJournalEntry();
         $payment = BillPayment::factory()->create([
             'vendor_id' => $vendor->id,
             'amount' => 500,
-            'journal_entry_id' => 1, // Posted
+            'journal_entry_id' => $journalEntry->id, // Posted
         ]);
 
         $this->expectException(\RuntimeException::class);
@@ -204,9 +223,10 @@ class BillPaymentServiceTest extends TenantTestCase
     public function it_throws_exception_when_deleting_posted_payment(): void
     {
         $vendor = Vendor::factory()->create();
+        $journalEntry = $this->createJournalEntry();
         $payment = BillPayment::factory()->create([
             'vendor_id' => $vendor->id,
-            'journal_entry_id' => 1, // Posted
+            'journal_entry_id' => $journalEntry->id, // Posted
         ]);
 
         $this->expectException(\RuntimeException::class);
@@ -233,7 +253,7 @@ class BillPaymentServiceTest extends TenantTestCase
             'payment_date' => now()->format('Y-m-d'),
             'amount' => 1000,
             'payment_method' => 'bank',
-        ], 1);
+        ], $this->user->id);
 
         $bill->refresh();
         $this->assertEquals('paid', $bill->status);

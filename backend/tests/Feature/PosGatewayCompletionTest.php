@@ -88,10 +88,13 @@ class PosGatewayCompletionTest extends TenantTestCase
 
     public function test_webhook_payment_uses_invoice_created_by_for_received_by(): void
     {
-        $source = file_get_contents(base_path('modules/PaymentGateway/src/Controllers/PaymentWebhookController.php'));
+        // The webhook controller delegates to PaymentTransactionCompletionService
+        // for payment processing; the created_by attribution lives in the
+        // service. Assert it on the service rather than the controller.
+        $source = file_get_contents(base_path('modules/PaymentGateway/src/Services/PaymentTransactionCompletionService.php'));
 
         $this->assertStringContainsString('$invoice->created_by', $source,
-            'PaymentWebhookController must use invoice->created_by for the received_by field in webhook-created Payment records.');
+            'PaymentTransactionCompletionService must use invoice->created_by for the received_by field in webhook-created Payment records.');
     }
 
     // ── General actor safety ─────────────────────────────────────────────

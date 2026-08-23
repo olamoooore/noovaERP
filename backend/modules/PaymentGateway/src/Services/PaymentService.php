@@ -113,12 +113,12 @@ class PaymentService
         $status = $this->getGatewayStatus($gateway, $transactionId);
 
         if ($status['success'] ?? false) {
-            $localStatus = ($status['status'] ?? null) === 'completed'
-                ? 'completed'
-                : ($status['status'] ?? $transaction->status);
-
+            // Hardening rule (CHAN-003): the gateway reporting "completed" is
+            // NOT a terminal local state. Until local processing finishes
+            // (processed_at is set by the webhook handler), keep the local
+            // transaction at 'pending' so concurrent webhooks and retries
+            // cannot double-apply the payment.
             $transactionUpdate = [
-                'status' => $localStatus,
                 'payment_method' => $status['payment_method'] ?? $transaction->payment_method,
                 'processed_at' => null,
                 'gateway_response' => $status,
@@ -127,6 +127,8 @@ class PaymentService
             if ($transaction->processed_at) {
                 $transactionUpdate['status'] = $transaction->status;
                 $transactionUpdate['processed_at'] = $transaction->processed_at;
+            } else {
+                $transactionUpdate['status'] = 'pending';
             }
 
             $transaction->update($transactionUpdate);

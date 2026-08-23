@@ -62,7 +62,7 @@ class PaymentLifecycleHardeningTest extends TenantTestCase
 {
     use DatabaseMigrations;
 
-    protected function setUp(): void
+protected function setUp(): void
     {
         parent::setUp();
 
@@ -88,7 +88,14 @@ class PaymentLifecycleHardeningTest extends TenantTestCase
             database_path('migrations/tenant/2024_01_01_200002_create_customers_table.php'),
             database_path('migrations/tenant/2024_01_01_200003_create_invoices_table.php'),
             database_path('migrations/tenant/2024_01_01_200004_create_payments_table.php'),
+            database_path('migrations/tenant/2026_04_19_000003_create_settlement_audit_logs_table.php'),
             database_path('migrations/tenant/2026_04_02_200000_make_invoices_customer_id_nullable.php'),
+            database_path('migrations/tenant/2025_12_29_000001_create_vendors_table.php'),
+            database_path('migrations/tenant/2026_01_05_000001_create_bills_table.php'),
+            database_path('migrations/tenant/2026_04_21_000001_add_correction_fields_to_documents.php'),
+            database_path('migrations/tenant/2025_12_17_000001_create_settings_table.php'),
+            database_path('migrations/tenant/2026_01_06_000006_create_company_settings_table.php'),
+            database_path('migrations/tenant/2026_03_29_000001_add_missing_columns_to_company_settings_table.php'),
             base_path('modules/PaymentGateway/database/migrations/tenant/2025_01_01_000001_create_payment_gateways_table.php'),
             base_path('modules/PaymentGateway/database/migrations/tenant/2025_01_01_000002_create_payment_transactions_table.php'),
             base_path('modules/PaymentGateway/database/migrations/tenant/2025_02_03_000003_add_refund_columns_to_payment_transactions.php'),

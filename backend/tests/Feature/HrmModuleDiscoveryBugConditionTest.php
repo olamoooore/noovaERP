@@ -187,9 +187,12 @@ class HrmModuleDiscoveryBugConditionTest extends TestCase
 
         if ($hrmInEntitlements) {
             $this->assertEquals('hrm', $hrmInEntitlements['key']);
-            $this->assertTrue(
-                $hrmInEntitlements['enabled'],
-                'COUNTEREXAMPLE: HRM feature is in entitlements but enabled=false. '.
+            // `all()` returns shape: ['key' => string, 'source' => string|null, 'name' => string].
+            // Presence in the returned array is itself the "enabled" signal — the feature
+            // is only included when resolved as entitled for the tenant.
+            $this->assertNotEmpty(
+                $hrmInEntitlements['name'] ?? null,
+                'COUNTEREXAMPLE: HRM feature is in entitlements but missing a resolved name. '.
                 'This indicates the entitlement is not being correctly resolved.'
             );
         }

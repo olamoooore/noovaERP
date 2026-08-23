@@ -271,7 +271,13 @@ class InvoiceService
             $paymentData['received_by'] = TenantUserHelper::requireTenantUserId($paymentData['received_by'] ?? Auth::id() ?? $invoice->created_by);
             // bank_account_id is passed through from the caller if provided
 
-            $payment = Payment::create($paymentData);
+            // Generate payment_number explicitly so the boot hook does not query the
+            // payments table inside an already-aborted outer transaction
+            // (which surfaces as SQLSTATE 25P02 from generatePaymentNumber()).
+            $paymentData['payment_number'] = $paymentData['payment_number'] ?? Payment::generatePaymentNumber();
+
+            $payment = new Payment($paymentData);
+            $payment->save();
 
             // Post to accounting ledger via PostingEngine (replaces AccountingService::postPayment)
             $lines = [];

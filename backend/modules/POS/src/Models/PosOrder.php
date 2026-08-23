@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class PosOrder extends Model
@@ -205,11 +206,12 @@ class PosOrder extends Model
     public function createReturn(array $items, ?string $notes = null): PosOrder
     {
         $returnOrder = static::create([
+            'external_id' => (string) Str::uuid(),
             'order_number' => $this->order_number.'-R'.($this->returns()->count() + 1),
             'session_id' => $this->session_id,
             'terminal_id' => $this->terminal_id,
             'customer_id' => $this->customer_id,
-            'status' => 'completed',
+            'status' => 'paid',
             'is_return' => true,
             'original_order_id' => $this->id,
             'created_by' => TenantUserHelper::resolveTenantUserId(),

@@ -2,10 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\Tenant;
 use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -19,9 +21,33 @@ use Tests\TenantTestCase;
 
 class PosMissingCostBasisResponseTest extends TenantTestCase
 {
+    protected string $tenantId;
+    protected User $user;
+
     protected function setUp(): void
     {
         parent::setUp();
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+        $this->tenantId = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+        Tenant::withoutEvents(function () {
+            return Tenant::create([
+                'id' => $this->tenantId,
+                'name' => 'Missing Cost Basis Test Tenant',
+                'email' => fake()->unique()->safeEmail(),
+                'plan' => 'standard',
+            ]);
+        });
+        $this->bindTenantContext($this->tenantId);
+
+        $this->user = User::factory()->create();
+        DB::table('user_company_access')->insert([
+            'user_id' => $this->user->id,
+            'tenant_id' => $this->tenantId,
+            'role' => 'cashier',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         if (! Schema::hasColumn('pos_orders', 'deleted_at')) {
             Schema::table('pos_orders', function (Blueprint $table) {
@@ -51,7 +77,7 @@ class PosMissingCostBasisResponseTest extends TenantTestCase
     /** @test */
     public function pay_returns_422_when_payment_completion_reports_missing_cost_basis(): void
     {
-        $user = User::factory()->create();
+        $user = $this->user;
 
         $warehouse = Warehouse::create([
             'name' => 'POS Warehouse',
