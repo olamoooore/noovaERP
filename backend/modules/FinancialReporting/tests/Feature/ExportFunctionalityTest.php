@@ -3,7 +3,7 @@
 namespace Modules\FinancialReporting\Tests\Feature;
 
 use App\Models\User;
-use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Str;
 use Modules\FinancialReporting\Services\Export\CsvExportService;
 use Modules\FinancialReporting\Services\Export\ExcelExportService;
 use Modules\FinancialReporting\Services\Export\PdfExportService;
@@ -19,10 +19,9 @@ class ExportFunctionalityTest extends TenantTestCase
     {
         parent::setUp();
 
-        Artisan::call('migrate', [
-            '--path' => [database_path('migrations/tenant')],
-            '--realpath' => true,
-        ]);
+        // Export services write under reports/{tenant_id} and refuse to run
+        // without an active tenant context.
+        $this->bindTenantContext((string) Str::uuid());
 
         $this->withoutMiddleware([
             \Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains::class,

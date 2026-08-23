@@ -4,12 +4,22 @@ namespace Modules\FinancialReporting\Tests\Unit;
 
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Modules\FinancialReporting\Jobs\ClearReportCache;
 use Modules\FinancialReporting\Models\ReportCache;
 use Tests\TenantTestCase;
 
 class ClearReportCacheJobTest extends TenantTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // ClearReportCache resolves its tenant scope from the active
+        // tenancy context and refuses to run without one.
+        $this->bindTenantContext((string) Str::uuid());
+    }
+
     /** @test */
     public function it_can_be_dispatched()
     {
@@ -63,7 +73,7 @@ class ClearReportCacheJobTest extends TenantTestCase
 
         $this->assertEquals(5, ReportCache::count());
 
-        ClearReportCache::clearByReportType('profit_loss');
+        ClearReportCache::clearByReportType('profit_loss', $this->boundTestTenant->id);
 
         $this->assertEquals(2, ReportCache::count());
         $this->assertEquals(0, ReportCache::where('report_type', 'profit_loss')->count());
@@ -88,7 +98,7 @@ class ClearReportCacheJobTest extends TenantTestCase
 
         $this->assertEquals(5, ReportCache::count());
 
-        ClearReportCache::clearByDateRange($startDate, $endDate);
+        ClearReportCache::clearByDateRange($startDate, $endDate, $this->boundTestTenant->id);
 
         $this->assertEquals(3, ReportCache::count());
     }

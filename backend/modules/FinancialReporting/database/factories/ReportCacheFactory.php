@@ -13,6 +13,10 @@ class ReportCacheFactory extends Factory
     public function definition(): array
     {
         return [
+            // Production cache rows are always stamped with the owning
+            // tenant (see ReportCacheService::store) — mirror that here so
+            // tenant-scoped queries and cleanup jobs see factory rows.
+            'tenant_id' => tenant()?->id,
             'cache_key' => 'report_'.$this->faker->unique()->uuid(),
             'report_type' => $this->faker->randomElement([
                 'profit_loss',

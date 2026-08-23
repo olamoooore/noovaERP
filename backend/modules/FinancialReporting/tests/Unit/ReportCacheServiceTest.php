@@ -3,6 +3,7 @@
 namespace Modules\FinancialReporting\Tests\Unit;
 
 use Carbon\Carbon;
+use Illuminate\Support\Str;
 use Modules\FinancialReporting\DTOs\ReportData;
 use Modules\FinancialReporting\DTOs\ReportFilter;
 use Modules\FinancialReporting\Models\ReportCache;
@@ -16,6 +17,10 @@ class ReportCacheServiceTest extends TenantTestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // ReportCacheService scopes stored entries to the active tenant.
+        $this->bindTenantContext((string) Str::uuid());
+
         $this->service = new ReportCacheService;
     }
 

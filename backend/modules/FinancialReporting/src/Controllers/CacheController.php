@@ -99,7 +99,16 @@ class CacheController extends Controller
             'report_type' => 'required|string',
         ]);
 
-        ClearReportCache::clearByReportType($request->input('report_type'));
+        $tenantId = $this->currentTenantId();
+
+        if (! $tenantId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tenant context available to clear cache.',
+            ], 403);
+        }
+
+        ClearReportCache::clearByReportType($request->input('report_type'), $tenantId);
 
         return response()->json([
             'success' => true,

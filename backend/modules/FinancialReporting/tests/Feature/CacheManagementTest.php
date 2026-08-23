@@ -3,8 +3,8 @@
 namespace Modules\FinancialReporting\Tests\Feature;
 
 use App\Models\User;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Modules\FinancialReporting\Models\ReportCache;
 use Tests\TenantTestCase;
 
@@ -16,14 +16,9 @@ class CacheManagementTest extends TenantTestCase
     {
         parent::setUp();
 
-        Artisan::call('migrate', [
-            '--path' => [database_path('migrations/tenant')],
-            '--realpath' => true,
-        ]);
-        Artisan::call('migrate', [
-            '--path' => [base_path('modules/FinancialReporting/database/migrations/tenant')],
-            '--realpath' => true,
-        ]);
+        // Cache management endpoints resolve the tenant scope from the
+        // active tenancy context.
+        $this->bindTenantContext((string) Str::uuid());
 
         $this->withoutMiddleware([
             \Stancl\Tenancy\Middleware\PreventAccessFromCentralDomains::class,
