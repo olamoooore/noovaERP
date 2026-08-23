@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Schema;
  *
  * Requirements: 28.1, 28.2, 28.3, 28.4, 28.5
  */
-class CreateApiGovernanceTables extends Migration
+if (! class_exists('CreateApiGovernanceTables')) {
+    class CreateApiGovernanceTables extends Migration
 {
     /**
      * Run the migrations.
@@ -257,4 +258,6 @@ class CreateApiGovernanceTables extends Migration
         Schema::dropIfExists('api_contract_violations');
         Schema::dropIfExists('api_contracts');
     }
+
+}
 }

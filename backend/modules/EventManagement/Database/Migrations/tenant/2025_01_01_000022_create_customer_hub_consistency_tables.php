@@ -13,7 +13,8 @@ use Illuminate\Support\Facades\Schema;
  *
  * Requirements: 26.1, 26.2
  */
-class CreateCustomerHubConsistencyTables extends Migration
+if (! class_exists('CreateCustomerHubConsistencyTables')) {
+    class CreateCustomerHubConsistencyTables extends Migration
 {
     /**
      * Run the migrations.
@@ -341,4 +342,6 @@ class CreateCustomerHubConsistencyTables extends Migration
         Schema::dropIfExists('ticket_validity_registry');
         Schema::dropIfExists('ticket_status_log');
     }
+
+}
 }

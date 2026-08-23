@@ -27,6 +27,7 @@ use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
 use App\Models\JournalEntryLink;
 use App\Models\LockDate;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\OCRBookkeeping\Services\OcrPostingService;
 use Modules\PaymentGateway\Controllers\PaymentController;
@@ -34,6 +35,18 @@ use Tests\TenantTestCase;
 
 class WS08AccountingPostingTest extends TenantTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // The PostingEngine requires a tenant user for audit attribution
+        // (TenantUserHelper::requireTenantUserId) and makePostingRequest
+        // references userId: 1 — seed that user before any posting runs.
+        User::firstOrCreate(
+            ['id' => 1],
+            ['name' => 'WS08 Audit User', 'email' => 'ws08-audit@local', 'password' => bcrypt('password')],
+        );
+    }
 
     // ──────────────────────────────────────────────────────────────────────────
     // Helpers
@@ -101,8 +114,9 @@ class WS08AccountingPostingTest extends TenantTestCase
 
         // JournalEntryLink must exist (idempotency record)
         $this->assertDatabaseHas('journal_entry_links', [
-            'document_type' => 'test_doc',
-            'document_id' => 9001,
+            'source_document_type' => 'test_doc',
+            'source_document_id' => 9001,
+            'relation_type' => 'post',
         ]);
     }
 
@@ -143,8 +157,11 @@ class WS08AccountingPostingTest extends TenantTestCase
             ->get();
 
         $this->assertCount(2, $lines);
-        $this->assertSame('USD', $lines[0]->currency_code);
-        $this->assertSame('USD', $lines[1]->currency_code);
+        // Engine defaults to the tenant currency setting (fallback SGD) —
+        // assert against the resolved default, not a hardcoded code.
+        $expectedCurrency = \App\Models\Setting::getValue('currency', ['code' => 'SGD'])['code'] ?? 'SGD';
+        $this->assertSame($expectedCurrency, $lines[0]->currency_code);
+        $this->assertSame($expectedCurrency, $lines[1]->currency_code);
         $this->assertEqualsWithDelta(125.50, (float) $lines[0]->original_amount, 0.01);
         $this->assertEqualsWithDelta(125.50, (float) $lines[1]->original_amount, 0.01);
         $this->assertEqualsWithDelta(1.0, (float) $lines[0]->exchange_rate, 0.000001);
@@ -183,11 +200,17 @@ class WS08AccountingPostingTest extends TenantTestCase
         // Lock everything up to (and including) last month
         $lockThrough = now()->subMonth()->endOfMonth()->toDateString();
 
+        $lockSetter = User::firstOrCreate(
+            ['email' => 'ws08-locker@local'],
+            ['name' => 'WS08 Locker', 'password' => bcrypt('password')],
+        );
+
         LockDate::create([
             'lock_type' => 'journal_entries',
             'lock_date' => $lockThrough,
             'is_active' => true,
             'reason' => 'WS-08 test lock',
+            'set_by' => $lockSetter->id, // column is NOT NULL + FK to users
         ]);
 
         // Try to post a date that is <= lockThrough → must be rejected

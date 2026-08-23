@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Schema;
  *
  * Requirements: 22.2, 22.5
  */
-class EnhanceArtistEventRelationships extends Migration
+if (! class_exists('EnhanceArtistEventRelationships')) {
+    class EnhanceArtistEventRelationships extends Migration
 {
     /**
      * Run the migrations.
@@ -397,4 +398,6 @@ class EnhanceArtistEventRelationships extends Migration
             ]);
         });
     }
+
+}
 }

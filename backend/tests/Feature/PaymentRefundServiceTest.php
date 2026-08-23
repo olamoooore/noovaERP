@@ -107,7 +107,7 @@ class PaymentRefundServiceTest extends TenantTestCase
             $transaction,
             500,
             'Customer request',
-            1,
+            $this->user->id,
         );
 
         // Assert transaction updated
@@ -158,7 +158,7 @@ class PaymentRefundServiceTest extends TenantTestCase
             $transaction,
             500, // Trying to refund 500 more (only 400 available)
             'Customer request',
-            1,
+            $this->user->id,
         );
     }
 
@@ -191,7 +191,7 @@ class PaymentRefundServiceTest extends TenantTestCase
             $transaction,
             500,
             'Customer request',
-            1,
+            $this->user->id,
         );
     }
 

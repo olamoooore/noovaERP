@@ -157,6 +157,25 @@ class JournalEntriesController extends Controller
             }
         }
 
+        // FIX-01: guard draft creation against closed periods and lock dates
+        // BEFORE any write — a draft dated into a locked period must never
+        // be persisted.
+        $entryDate = $validated['entry_date'];
+
+        $lockResult = $this->lockDateService->validateTransactionDate('journal_entries', $entryDate);
+        if ($lockResult['is_locked']) {
+            return response()->json([
+                'message' => $lockResult['message'] ?? "Entry date {$entryDate} is in a locked period.",
+            ], 422);
+        }
+
+        $periodResult = $this->fiscalValidator->validateDate($entryDate);
+        if (! ($periodResult['allowed'] ?? false)) {
+            return response()->json([
+                'message' => $periodResult['reason'] ?? "No open fiscal period covers {$entryDate}.",
+            ], 422);
+        }
+
         try {
             $draftRequest = $this->getDraftJournalRequest($request);
 

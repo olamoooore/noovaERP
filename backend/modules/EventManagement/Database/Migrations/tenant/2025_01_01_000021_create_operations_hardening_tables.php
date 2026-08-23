@@ -13,7 +13,8 @@ use Illuminate\Support\Facades\Schema;
  *
  * Requirements: 25.1, 25.2, 25.3
  */
-class CreateOperationsHardeningTables extends Migration
+if (! class_exists('CreateOperationsHardeningTables')) {
+    class CreateOperationsHardeningTables extends Migration
 {
     /**
      * Run the migrations.
@@ -317,4 +318,6 @@ class CreateOperationsHardeningTables extends Migration
         Schema::dropIfExists('staff_overrides');
         Schema::dropIfExists('offline_checkin_queue');
     }
+
+}
 }

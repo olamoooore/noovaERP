@@ -6,13 +6,9 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\User;
 use Closure;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Foundation\Testing\DatabaseMigrations;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
-use Illuminate\Support\Facades\Schema;
 use Modules\PaymentGateway\Controllers\PaymentWebhookController;
 use Modules\PaymentGateway\Events\PaymentSuccessful;
 use Modules\PaymentGateway\Models\PaymentGateway;
@@ -60,63 +56,18 @@ class TestPaymentService extends PaymentService
 
 class PaymentLifecycleHardeningTest extends TenantTestCase
 {
-    use DatabaseMigrations;
-
-protected function setUp(): void
+    protected function setUp(): void
     {
         parent::setUp();
 
-        foreach ([
-            database_path('migrations/tenant/2024_01_01_000001_create_users_table.php'),
-            database_path('migrations/tenant/2024_01_01_100001_create_chart_of_accounts_table.php'),
-            database_path('migrations/tenant/2024_01_01_100002_create_journal_entries_table.php'),
-            database_path('migrations/tenant/2025_12_15_150000_fix_journal_balance_trigger.php'),
-            database_path('migrations/tenant/2025_12_23_110001_create_fiscal_periods_table.php'),
-            database_path('migrations/tenant/2026_01_06_000001_create_journals_table.php'),
-            database_path('migrations/tenant/2026_01_06_000003_create_lock_dates_tables.php'),
-            database_path('migrations/tenant/2026_01_06_000004_create_currencies_and_exchange_rates_tables.php'),
-            database_path('migrations/tenant/2026_01_06_000005_create_analytic_accounts_table.php'),
-            database_path('migrations/tenant/2026_01_06_000010_add_analytic_dimensions_to_journal_entry_lines.php'),
-            database_path('migrations/tenant/2026_03_25_000004_create_journal_entry_links_table.php'),
-            database_path('migrations/tenant/2026_03_25_000002_create_account_mappings_table.php'),
-            database_path('migrations/tenant/2026_03_25_000003_create_posting_audit_logs_table.php'),
-            database_path('migrations/tenant/2026_03_29_000012_create_entity_model_tables.php'),
-            database_path('migrations/tenant/2026_03_29_000002_create_account_roles_table.php'),
-            database_path('migrations/tenant/2026_03_29_000003_create_entity_account_roles_table.php'),
-            database_path('migrations/tenant/2026_03_29_000016_add_entity_columns_to_journal_entries.php'),
-            database_path('migrations/tenant/2024_01_01_200001_create_products_table.php'),
-            database_path('migrations/tenant/2024_01_01_200002_create_customers_table.php'),
-            database_path('migrations/tenant/2024_01_01_200003_create_invoices_table.php'),
-            database_path('migrations/tenant/2024_01_01_200004_create_payments_table.php'),
-            database_path('migrations/tenant/2026_04_19_000003_create_settlement_audit_logs_table.php'),
-            database_path('migrations/tenant/2026_04_02_200000_make_invoices_customer_id_nullable.php'),
-            database_path('migrations/tenant/2025_12_29_000001_create_vendors_table.php'),
-            database_path('migrations/tenant/2026_01_05_000001_create_bills_table.php'),
-            database_path('migrations/tenant/2026_04_21_000001_add_correction_fields_to_documents.php'),
-            database_path('migrations/tenant/2025_12_17_000001_create_settings_table.php'),
-            database_path('migrations/tenant/2026_01_06_000006_create_company_settings_table.php'),
-            database_path('migrations/tenant/2026_03_29_000001_add_missing_columns_to_company_settings_table.php'),
-            base_path('modules/PaymentGateway/database/migrations/tenant/2025_01_01_000001_create_payment_gateways_table.php'),
-            base_path('modules/PaymentGateway/database/migrations/tenant/2025_01_01_000002_create_payment_transactions_table.php'),
-            base_path('modules/PaymentGateway/database/migrations/tenant/2025_02_03_000003_add_refund_columns_to_payment_transactions.php'),
-        ] as $migrationPath) {
-            Artisan::call('migrate', [
-                '--path' => $migrationPath,
-                '--realpath' => true,
-                '--force' => true,
-            ]);
-        }
-
-        $this->ensureCustomerSchemaCompatibility();
-    }
-
-    private function ensureCustomerSchemaCompatibility(): void
-    {
-        if (! Schema::hasColumn('customers', 'marketing_opt_in')) {
-            Schema::table('customers', function (Blueprint $table) {
-                $table->boolean('marketing_opt_in')->default(false);
-            });
-        }
+        // NOTE: This class previously used the DatabaseMigrations trait plus
+        // a hand-picked migration list. That conflicts with TenantTestCase's
+        // RefreshDatabase machinery when multiple classes run in one PHPUnit
+        // process (migrate:fresh/rollback races DROP DATABASE mid-run).
+        // TenantTestCase already runs the FULL tenant migration set, which
+        // covers every table these tests need (payments, invoices,
+        // payment_transactions, settings, company_settings, …), so no
+        // additional migration work is required here.
     }
 
     public function test_webhook_retry_with_same_webhook_id_succeeds_after_prior_failure(): void

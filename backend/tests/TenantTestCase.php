@@ -84,17 +84,24 @@ abstract class TenantTestCase extends TestCase
                 config('database.connections.pgsql.password'),
             );
 
-            // Terminate any leftover sessions on the target DB before DROP.
-            // PHPUnit may run multiple test classes in the same process and
-            // prior connections to noovaerp_ci / noovaerp_test can still be
-            // open, causing DROP DATABASE to fail with SQLSTATE[55006].
-            $pdo->exec(
-                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity ".
-                "WHERE (datname = ".$pdo->quote($dbName)." OR datname IS NULL) ".
-                "AND pid <> pg_backend_pid() AND application_name <> 'psql'"
-            );
-
-            $pdo->exec("DROP DATABASE IF EXISTS \"{$dbName}\" WITH (FORCE)");
+            // DROP … WITH (FORCE) (PostgreSQL 13+) terminates lingering
+            // sessions itself, so no pre-emptive pg_terminate_backend sweep
+            // is needed here. A sweep matching `datname IS NULL` also kills
+            // PostgreSQL background workers (checkpointer, WAL writer,
+            // autovacuum launcher, …) which destabilises the cluster and
+            // manifests as 'no connection to the server' / dropped-database
+            // races several test classes later in long PHPUnit runs.
+            try {
+                $pdo->exec("DROP DATABASE IF EXISTS \"{$dbName}\" WITH (FORCE)");
+            } catch (\PDOException $e) {
+                // PostgreSQL < 13: WITH (FORCE) unsupported. Terminate only
+                // sessions of THIS database, then retry a plain drop.
+                $pdo->exec(
+                    'SELECT pg_terminate_backend(pid) FROM pg_stat_activity '.
+                    'WHERE datname = '.$pdo->quote($dbName).' AND pid <> pg_backend_pid()'
+                );
+                $pdo->exec("DROP DATABASE IF EXISTS \"{$dbName}\"");
+            }
             $pdo->exec("CREATE DATABASE \"{$dbName}\"");
             $pdo = null;
             DB::purge('pgsql');

@@ -7,11 +7,11 @@ use App\Models\ChartOfAccount;
 use App\Models\GoodsReceipt;
 use App\Models\GoodsReceiptLine;
 use App\Models\Product;
+use App\Models\Tenant;
 use App\Models\User;
 use App\Models\Vendor;
 use App\Models\Warehouse;
 use App\Services\ThreeWayMatchService;
-use Illuminate\Support\Facades\Artisan;
 use Modules\Inventory\Models\PurchaseOrder;
 use Modules\Inventory\Models\PurchaseOrderItem;
 use Modules\Inventory\Models\Supplier;
@@ -23,54 +23,27 @@ class VendorBillProcurementLineageTest extends TenantTestCase
     {
         parent::setUp();
 
-        Artisan::call('db:wipe', ['--force' => true]);
-        Artisan::call('migrate:install');
-
-        foreach ([
-            database_path('migrations/tenant/2024_01_01_000001_create_users_table.php'),
-            database_path('migrations/tenant/2024_01_01_100001_create_chart_of_accounts_table.php'),
-            database_path('migrations/tenant/2024_01_01_100002_create_journal_entries_table.php'),
-            database_path('migrations/tenant/2025_12_15_150000_fix_journal_balance_trigger.php'),
-            database_path('migrations/tenant/2025_12_17_000001_create_settings_table.php'),
-            database_path('migrations/tenant/2025_12_17_000002_create_taxes_table.php'),
-            database_path('migrations/tenant/2025_12_18_231016_create_warehouses_table.php'),
-            database_path('migrations/tenant/2025_12_15_150010_create_product_categories_table.php'),
-            database_path('migrations/tenant/2024_01_01_200001_create_products_table.php'),
-            database_path('migrations/tenant/2024_01_01_200002_create_customers_table.php'),
-            database_path('migrations/tenant/2024_01_01_200005_create_stock_movements_table.php'),
-            database_path('migrations/tenant/2026_01_01_000001_enhance_inventory_module.php'),
-            database_path('migrations/tenant/2025_01_31_000001_enhance_product_module_comprehensive.php'),
-            database_path('migrations/tenant/2025_01_31_200000_fix_product_audit_logs_columns.php'),
-            database_path('migrations/tenant/2025_12_15_150020_add_category_to_products_table.php'),
-            database_path('migrations/tenant/2026_04_01_080000_backfill_customer_and_pos_tenant_features.php'),
-            database_path('migrations/tenant/2025_12_29_000001_create_vendors_table.php'),
-            database_path('migrations/tenant/2024_01_01_200003_create_invoices_table.php'),
-            database_path('migrations/tenant/2024_01_01_200004_create_payments_table.php'),
-            database_path('migrations/tenant/2026_01_05_000001_create_bills_table.php'),
-            database_path('migrations/tenant/2026_01_05_000002_create_bill_lines_table.php'),
-            database_path('migrations/tenant/2026_01_06_000004_create_currencies_and_exchange_rates_tables.php'),
-            database_path('migrations/tenant/2026_01_08_000001_create_customer_credit_notes_table.php'),
-            database_path('migrations/tenant/2026_01_08_000003_create_vendor_credit_notes_table.php'),
-            database_path('migrations/tenant/2026_03_30_000001_add_partial_status_to_bills.php'),
-            database_path('migrations/tenant/2026_04_02_210000_add_enterprise_document_metadata_fields.php'),
-            database_path('migrations/tenant/2026_04_14_203813_add_procurement_linkage_and_goods_receipts.php'),
-            database_path('migrations/tenant/2026_04_15_000001_add_po_grn_links_to_bill_lines.php'),
-            database_path('migrations/tenant/2026_04_19_000001_add_bill_type_to_bills_table.php'),
-            database_path('migrations/tenant/2026_04_21_000001_add_correction_fields_to_documents.php'),
-        ] as $migrationPath) {
-            Artisan::call('migrate', [
-                '--path' => $migrationPath,
-                '--realpath' => true,
-                '--force' => true,
+        // Bind a tenant so AuditTrailObserver/SystemLog (tenant()->id) and
+        // the vendor-bill API have a tenant context to work with.
+        $tenantId = 'cccc3333-cccc-3333-cccc-333333333333';
+        Tenant::withoutEvents(function () use ($tenantId) {
+            return Tenant::create([
+                'id' => $tenantId,
+                'name' => 'Vendor Bill Lineage Test Tenant',
+                'email' => 'vendor-lineage@example.com',
+                'plan' => 'standard',
             ]);
-        }
-    }
+        });
+        $this->bindTenantContext($tenantId);
 
-    protected function tearDown(): void
-    {
-        Artisan::call('db:wipe', ['--force' => true]);
-
-        parent::tearDown();
+        // NOTE: This class previously wiped the DB and ran a hand-picked
+        // migration list in setUp (plus db:wipe in tearDown). That fought
+        // with TenantTestCase's RefreshDatabase machinery, was extremely
+        // slow (30 sequential migrate calls per test), missed later columns
+        // like vendors.code, and deadlocked long PHPUnit runs.
+        // TenantTestCase already provisions the FULL tenant schema,
+        // including purchase orders, goods receipts, bills, vendors, and
+        // settings — everything these lineage tests need.
     }
 
     public function test_store_rejects_procurement_bill_without_line_level_lineage(): void

@@ -15,9 +15,18 @@ use Illuminate\Support\Facades\Schema;
  * - loyalty_reconciliation_log table for balance reconciliation
  *
  * Requirements: 23.1, 23.2, 23.3
+ *
+ * NOTE: The class name is prefixed "Em" (EventManagement) and guarded with
+ * class_exists because this migration directory can be registered twice in
+ * a single PHP process (e.g. via both 'Database/Migrations' and
+ * 'database/migrations' path spellings on case-insensitive filesystems).
+ * A duplicate include of a named-class migration file is a fatal error;
+ * anonymous-class migrations are unaffected, which is why only this file
+ * needed the guard.
  */
-class CreateLoyaltyAuditabilityTables extends Migration
-{
+if (! class_exists('CreateLoyaltyAuditabilityTables')) {
+    class CreateLoyaltyAuditabilityTables extends Migration
+    {
     /**
      * Run the migrations.
      */
@@ -247,5 +256,6 @@ class CreateLoyaltyAuditabilityTables extends Migration
         Schema::dropIfExists('loyalty_ledger');
         Schema::dropIfExists('eligibility_decisions');
         Schema::dropIfExists('loyalty_rule_versions');
+    }
     }
 }

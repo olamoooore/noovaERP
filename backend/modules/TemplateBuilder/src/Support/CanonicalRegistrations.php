@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Modules\TemplateBuilder\Support;
 
+use Modules\TemplateBuilder\Platform\InteractionType;
+use Modules\TemplateBuilder\Platform\RuntimeMode;
+
 /**
  * Canonical ADR-004 §4.1 template-type registrations for the current
  * delivery scope (Sales, CRM, Accounting).

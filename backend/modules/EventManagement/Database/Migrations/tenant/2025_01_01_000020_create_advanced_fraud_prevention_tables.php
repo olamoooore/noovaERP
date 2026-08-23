@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Schema;
  *
  * Requirements: 24.1, 24.3
  */
-class CreateAdvancedFraudPreventionTables extends Migration
+if (! class_exists('CreateAdvancedFraudPreventionTables')) {
+    class CreateAdvancedFraudPreventionTables extends Migration
 {
     /**
      * Run the migrations.
@@ -260,4 +261,6 @@ class CreateAdvancedFraudPreventionTables extends Migration
         Schema::dropIfExists('risk_scores');
         Schema::dropIfExists('fraud_risk_models');
     }
+
+}
 }

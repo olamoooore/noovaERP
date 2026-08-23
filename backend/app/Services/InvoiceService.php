@@ -474,20 +474,27 @@ class InvoiceService
      */
     public function applyRefundToInvoice(Invoice $invoice, float $refundAmount): Invoice
     {
-        Invoice::where('id', $invoice->id)
-            ->decrement('balance', $refundAmount);
+        // A refund returns money to the customer: paid_amount goes DOWN and
+        // balance (= total − paid) goes UP. Balance must always be derived
+        // from the canonical total/paid pair — mutating it independently
+        // produced negative balances (e.g. −500 instead of +500).
         Invoice::where('id', $invoice->id)
             ->decrement('paid_amount', $refundAmount);
 
         $invoice->refresh();
 
+        $newBalance = max(0, (float) $invoice->total - (float) $invoice->paid_amount);
+
         $status = match (true) {
-            $invoice->paid_amount <= 0 => 'sent',
-            $invoice->balance > 0 && $invoice->paid_amount > 0 => 'partial',
-            default => $invoice->status,
+            (float) $invoice->paid_amount <= 0 => 'sent',
+            $newBalance > 0 => 'partial',
+            default => 'paid',
         };
 
-        Invoice::where('id', $invoice->id)->update(['status' => $status]);
+        Invoice::where('id', $invoice->id)->update([
+            'balance' => $newBalance,
+            'status' => $status,
+        ]);
 
         $invoice->refresh();
 
