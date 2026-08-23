@@ -123,14 +123,14 @@ class DeliveryOrderController extends Controller
             'delivery_date' => 'nullable|date',
             'expected_date' => 'nullable|date',
             'payment_terms' => 'nullable|string|max:255',
+            'invoice_id' => 'nullable|exists:invoices,id',
+            'quotation_id' => 'nullable|exists:quotations,id',
             'carrier' => 'nullable|string|max:100',
             'tracking_number' => 'nullable|string|max:100',
             'shipping_address' => 'nullable|string',
             'po_number' => 'nullable|string|max:100',
             'salesperson' => 'nullable|string|max:255',
             'attention_to' => 'nullable|string|max:255',
-            'invoice_id' => 'nullable|exists:invoices,id',
-            'quotation_id' => 'nullable|exists:quotations,id',
             'notes' => 'nullable|string',
             'lines' => 'required|array|min:1',
             'lines.*.sales_order_line_id' => 'required|exists:sales_order_lines,id',
@@ -199,6 +199,8 @@ class DeliveryOrderController extends Controller
             'delivery_date' => 'nullable|date',
             'expected_date' => 'nullable|date',
             'payment_terms' => 'nullable|string|max:255',
+            'invoice_id' => 'nullable|exists:invoices,id',
+            'quotation_id' => 'nullable|exists:quotations,id',
             'carrier' => 'nullable|string|max:100',
             'tracking_number' => 'nullable|string|max:100',
             'shipping_address' => 'nullable|string',
@@ -220,7 +222,7 @@ class DeliveryOrderController extends Controller
 
         DB::transaction(function () use ($deliveryOrder, $validated) {
             // Update header fields
-            $headerFields = ['warehouse_id', 'delivery_date', 'expected_date', 'payment_terms', 'carrier', 'tracking_number', 'shipping_address', 'po_number', 'salesperson', 'attention_to', 'notes'];
+            $headerFields = ['warehouse_id', 'delivery_date', 'expected_date', 'payment_terms', 'invoice_id', 'quotation_id', 'carrier', 'tracking_number', 'shipping_address', 'po_number', 'salesperson', 'attention_to', 'notes'];
             foreach ($headerFields as $field) {
                 if (array_key_exists($field, $validated)) {
                     $deliveryOrder->{$field} = $validated[$field];

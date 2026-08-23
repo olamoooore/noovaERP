@@ -34,6 +34,8 @@ export function DeliveryOrderEditPage() {
   const [deliveryDate, setDeliveryDate] = useState('')
   const [expectedDate, setExpectedDate] = useState('')
   const [paymentTerms, setPaymentTerms] = useState('')
+  const [invoiceId, setInvoiceId] = useState('')
+  const [quotationId, setQuotationId] = useState('')
   const [carrier, setCarrier] = useState('')
   const [trackingNumber, setTrackingNumber] = useState('')
   const [shippingAddress, setShippingAddress] = useState('')
@@ -73,12 +75,35 @@ export function DeliveryOrderEditPage() {
   })
   const warehouses = Array.isArray(warehousesData) ? warehousesData : []
 
+  const { data: invoicesData } = useQuery({
+    queryKey: ['delivery-order-invoices', deliveryOrder?.customer_id],
+    queryFn: async () => {
+      const res = await api.get('/invoices', { params: { per_page: 200, customer_id: deliveryOrder.customer_id } })
+      return res.data?.data || []
+    },
+    enabled: !!deliveryOrder?.customer_id,
+  })
+
+  const { data: quotationsData } = useQuery({
+    queryKey: ['delivery-order-quotations', deliveryOrder?.customer_id],
+    queryFn: async () => {
+      const res = await api.get('/quotations', { params: { per_page: 200, customer_id: deliveryOrder.customer_id } })
+      return res.data?.data || []
+    },
+    enabled: !!deliveryOrder?.customer_id,
+  })
+
+  const invoices = Array.isArray(invoicesData) ? invoicesData : []
+  const quotations = Array.isArray(quotationsData) ? quotationsData : []
+
   // Populate form when data loads
   useEffect(() => {
     if (deliveryOrder) {
       setDeliveryDate(deliveryOrder.delivery_date?.split('T')[0] || '')
-      setExpectedDate(deliveryOrder.expected_date?.split('T')[0] || '')
+      setExpectedDate((deliveryOrder.expected_date || deliveryOrder.due_date || '').split('T')[0])
       setPaymentTerms(deliveryOrder.payment_terms || '')
+      setInvoiceId(deliveryOrder.invoice_id?.toString() || '')
+      setQuotationId(deliveryOrder.quotation_id?.toString() || '')
       setCarrier(deliveryOrder.carrier || '')
       setTrackingNumber(deliveryOrder.tracking_number || '')
       setShippingAddress(deliveryOrder.shipping_address || '')
@@ -145,6 +170,8 @@ export function DeliveryOrderEditPage() {
       delivery_date: deliveryDate || undefined,
       expected_date: expectedDate || undefined,
       payment_terms: paymentTerms || undefined,
+      invoice_id: invoiceId ? parseInt(invoiceId) : null,
+      quotation_id: quotationId ? parseInt(quotationId) : null,
       carrier: carrier || undefined,
       tracking_number: trackingNumber || undefined,
       shipping_address: shippingAddress || undefined,
@@ -245,6 +272,32 @@ export function DeliveryOrderEditPage() {
             <div>
               <Label>Salesperson</Label>
               <Input value={salesperson} onChange={(e) => setSalesperson(e.target.value)} placeholder="Salesperson name" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>Invoice No.</Label>
+              <Select value={invoiceId || 'none'} onValueChange={(value) => setInvoiceId(value === 'none' ? '' : value)}>
+                <SelectTrigger><SelectValue placeholder="Select invoice" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {invoices.map((invoice: any) => (
+                    <SelectItem key={invoice.id} value={invoice.id.toString()}>{invoice.invoice_number}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Quotation No.</Label>
+              <Select value={quotationId || 'none'} onValueChange={(value) => setQuotationId(value === 'none' ? '' : value)}>
+                <SelectTrigger><SelectValue placeholder="Select quotation" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {quotations.map((quotation: any) => (
+                    <SelectItem key={quotation.id} value={quotation.id.toString()}>{quotation.quotation_number}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div>

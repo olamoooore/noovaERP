@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Modules\TemplateBuilder\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
 use Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract;
+use Modules\TemplateBuilder\Models\DocumentTemplate;
 
 /**
  * DocumentRenderController — the consumer-facing render endpoints.
@@ -49,6 +51,18 @@ class DocumentRenderController extends Controller
     public function deliveryOrderPdf(Request $request, string $id): Response
     {
         return $this->renderDocument('delivery_order', $id, $request, 'do-'.$id.'.pdf');
+    }
+
+    public function deliveryOrderTemplates(): JsonResponse
+    {
+        $templates = DocumentTemplate::query()
+            ->forDocumentType('delivery_order')
+            ->where('status', DocumentTemplate::STATUS_PUBLISHED)
+            ->orderByDesc('is_system_default')
+            ->orderBy('name')
+            ->get(['id', 'name', 'code', 'is_system_default', 'published_version']);
+
+        return response()->json(['data' => $templates]);
     }
 
     public function quotationPdf(Request $request, string $id): Response

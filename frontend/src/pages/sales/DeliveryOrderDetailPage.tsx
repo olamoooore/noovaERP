@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
@@ -8,12 +9,17 @@ import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { formatDate } from '@/lib/utils'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 export function DeliveryOrderDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
 
   const { data: deliveryOrder, isLoading } = useQuery({
     queryKey: ['delivery-order', id],
@@ -23,6 +29,44 @@ export function DeliveryOrderDetailPage() {
     },
     enabled: !!id,
   })
+
+  const { data: pdfTemplates = [], isLoading: templatesLoading } = useQuery({
+    queryKey: ['delivery-order-pdf-templates'],
+    queryFn: async () => {
+      const response = await api.get('/delivery-orders/pdf-templates')
+      return response.data?.data || []
+    },
+    enabled: templateDialogOpen,
+  })
+
+  const downloadPdf = async () => {
+    if (!selectedTemplateId) {
+      toast({ variant: 'destructive', title: 'Please select a template' })
+      return
+    }
+
+    setIsDownloadingPdf(true)
+    try {
+      const response = await api.get(`/delivery-orders/${id}/pdf`, {
+        params: { template: selectedTemplateId },
+        responseType: 'blob',
+      })
+      const blob = new Blob([response.data], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `DO-${deliveryOrder.delivery_order_number}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      setTemplateDialogOpen(false)
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Failed to download PDF' })
+    } finally {
+      setIsDownloadingPdf(false)
+    }
+  }
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
@@ -257,22 +301,7 @@ export function DeliveryOrderDetailPage() {
           )}
           <Button
             variant="outline"
-            onClick={async () => {
-              try {
-                const response = await api.get(`/delivery-orders/${id}/pdf`, { responseType: 'blob' })
-                const blob = new Blob([response.data], { type: 'application/pdf' })
-                const url = window.URL.createObjectURL(blob)
-                const link = document.createElement('a')
-                link.href = url
-                link.download = `DO-${deliveryOrder.delivery_order_number}.pdf`
-                document.body.appendChild(link)
-                link.click()
-                document.body.removeChild(link)
-                window.URL.revokeObjectURL(url)
-              } catch (error) {
-                toast({ variant: 'destructive', title: 'Failed to download PDF' })
-              }
-            }}
+            onClick={() => setTemplateDialogOpen(true)}
           >
             <Icon icon="solar:download-bold" className="h-4 w-4 mr-2" />
             Download PDF
@@ -288,6 +317,37 @@ export function DeliveryOrderDetailPage() {
           )}
         </div>
       </div>
+
+      <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Download Delivery Order PDF</DialogTitle>
+            <DialogDescription>Select the template to use for this PDF.</DialogDescription>
+          </DialogHeader>
+          <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={templatesLoading}>
+            <SelectTrigger>
+              <SelectValue placeholder={templatesLoading ? 'Loading templates...' : 'Select a template'} />
+            </SelectTrigger>
+            <SelectContent>
+              {pdfTemplates.map((template: any) => (
+                <SelectItem key={template.id} value={template.id}>
+                  {template.name}{template.is_system_default ? ' (Default)' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {!templatesLoading && pdfTemplates.length === 0 && (
+            <p className="text-sm text-muted-foreground">No published Delivery Order templates are available.</p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTemplateDialogOpen(false)} disabled={isDownloadingPdf}>Cancel</Button>
+            <Button onClick={downloadPdf} disabled={!selectedTemplateId || isDownloadingPdf || templatesLoading}>
+              <Icon icon="solar:download-bold" className="mr-2 h-4 w-4" />
+              {isDownloadingPdf ? 'Downloading...' : 'Download'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Odoo-style smart buttons */}
       <div className="flex gap-3">

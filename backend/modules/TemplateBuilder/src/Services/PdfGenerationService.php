@@ -28,11 +28,19 @@ final class PdfGenerationService implements PdfGenerationServiceContract
     public function render(string $documentType, string $documentId, array $options = []): array
     {
         $template = isset($options['template_id'])
-            ? ($this->templates->find($options['template_id']) ?? $this->templates->resolveFor($documentType))
+            ? $this->templates->find($options['template_id'])
             : $this->templates->resolveFor($documentType);
 
         if (! $template) {
             throw new \RuntimeException("No template available to render document type '{$documentType}'.");
+        }
+
+        if ($template->document_type !== $documentType) {
+            throw new \RuntimeException("The selected template is not a {$documentType} template.");
+        }
+
+        if (isset($options['template_id']) && $template->status !== DocumentTemplate::STATUS_PUBLISHED) {
+            throw new \RuntimeException('The selected template is not published.');
         }
 
         $data = $this->dataSources->loadPayload($documentType, $documentId);
