@@ -40,6 +40,8 @@ Route::get('/payments/{id}/pdf', [DocumentRenderController::class, 'paymentRecei
     ->middleware($perm('document.view'));
 Route::get('/delivery-orders/{id}/pdf', [DocumentRenderController::class, 'deliveryOrderPdf'])
     ->middleware($perm('document.view'));
+Route::get('/delivery-orders/pdf-templates', [DocumentRenderController::class, 'deliveryOrderTemplates'])
+    ->middleware($perm('document.view'));
 Route::get('/quotations/{id}/pdf', [DocumentRenderController::class, 'quotationPdf'])
     ->middleware($perm('document.view'));
 Route::get('/customer-statements/{id}/pdf', [DocumentRenderController::class, 'customerStatementPdf'])
