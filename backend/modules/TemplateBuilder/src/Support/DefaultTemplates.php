@@ -225,7 +225,7 @@ final class DefaultTemplates
                     ['type' => 'divider'],
                     ['type' => 'columns', 'gap' => 8, 'children' => [
                         ['type' => 'text', 'content' => '<b style="color:#6b7280;font-size:9px;text-transform:uppercase;">Ship To</b><br/><b>{{ customer.name }}</b><br/><span style="font-size:10px;color:#374151;">{{ delivery_order.shipping_address }}</span><br/><span style="font-size:10px;color:#6b7280;">{{ customer.phone }}</span>'],
-                        ['type' => 'text', 'align' => 'right', 'content' => '<b>DO #:</b> {{ delivery_order.number }}<br/><b>Date:</b> {{ delivery_order.delivery_date }}<br/><b>Expected:</b> {{ delivery_order.expected_date }}<br/><b>Carrier:</b> {{ delivery_order.carrier }}<br/><b>Tracking:</b> {{ delivery_order.tracking_number }}<br/><b>Warehouse:</b> {{ warehouse.name }}<br/><b>SO Ref:</b> {{ sales_order.number }}'],
+                        ['type' => 'text', 'align' => 'right', 'content' => '<b>DO #:</b> {{ delivery_order.number }}<br/><b>Date:</b> {{ delivery_order.delivery_date }}<br/><b>Due Date:</b> {{ delivery_order.due_date }}<br/><b>Payment Terms:</b> {{ delivery_order.payment_terms }}<br/><b>Carrier:</b> {{ delivery_order.carrier }}<br/><b>Tracking:</b> {{ delivery_order.tracking_number }}<br/><b>Warehouse:</b> {{ warehouse.name }}<br/><b>SO Ref:</b> {{ sales_order.number }}'],
                     ]],
                     ['type' => 'spacer', 'height' => 12],
                     ['type' => 'table', 'source' => 'lines', 'columns' => [

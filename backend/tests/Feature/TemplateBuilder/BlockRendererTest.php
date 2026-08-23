@@ -88,13 +88,38 @@ class BlockRendererTest extends TestCase
         )['html'];
 
         $this->assertStringContainsString('tb-information-table', $html);
-        $this->assertStringContainsString('Case Information', $html);
+        $this->assertStringNotContainsString('Case Information', $html);
         $this->assertStringContainsString('CASE-2026-001', $html);
         $this->assertStringContainsString('Sample Patient', $html);
-        $this->assertStringContainsString('colspan="3"', $html);
+        $this->assertStringNotContainsString('colspan=', $html);
         $this->assertSame(3, substr_count($html, '<th style='));
         $this->assertSame(3, substr_count($html, '<td style='));
         $this->assertStringContainsString('<table', $html);
+    }
+
+    public function test_renders_delivery_detail_with_default_fields(): void
+    {
+        $html = $this->renderer()->render(
+            $this->template([[
+                'type' => 'delivery_detail',
+                'title' => 'Delivery Detail',
+                'rows' => [
+                    ['label' => 'Salesperson', 'field' => 'delivery_order.salesperson'],
+                    ['label' => 'PO Number', 'field' => 'delivery_order.po_number'],
+                    ['label' => 'Invoice No', 'field' => 'invoice.number'],
+                    ['label' => 'Quotation No', 'field' => 'quotation.number'],
+                    ['label' => 'Payment Terms', 'field' => 'delivery_order.payment_terms'],
+                    ['label' => 'Due Date', 'field' => 'delivery_order.due_date', 'format' => 'date'],
+                ],
+            ]]),
+            (new \Modules\TemplateBuilder\Services\DataSource\DeliveryOrderDataSource)->sample(),
+        )['html'];
+
+        $this->assertStringNotContainsString('Delivery Detail', $html);
+        $this->assertStringContainsString('John Smith', $html);
+        $this->assertStringContainsString('INV-2026-0001', $html);
+        $this->assertStringContainsString('Net 30', $html);
+        $this->assertStringNotContainsString('colspan=', $html);
     }
 
     public function test_conditional_block_shows_when_condition_true(): void

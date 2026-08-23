@@ -19,6 +19,7 @@ class DeliveryOrder extends Model
         'status',
         'delivery_date',
         'expected_date',
+        'payment_terms',
         'completed_at',
         'source',
         'external_reference',

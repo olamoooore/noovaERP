@@ -66,6 +66,7 @@ final class BlockRenderer implements TemplateRendererInterface
             'columns' => $this->renderColumns($block, $context),
             'table' => $this->renderTable($block),
             'case_information' => $this->renderInformationTable($block),
+            'delivery_detail' => $this->renderInformationTable($block),
             'totals' => $this->renderTotals($block),
             'spacer' => $this->renderSpacer($block),
             'divider' => $this->renderDivider(),
@@ -191,12 +192,8 @@ final class BlockRenderer implements TemplateRendererInterface
             return '';
         }
 
-        $title = htmlspecialchars((string) ($block['title'] ?? 'Case Information'), ENT_QUOTES);
         $out = '<table class="tb-information-table" style="width:100%;border-collapse:collapse;page-break-inside:avoid;">';
         $out .= '<thead>';
-        if ($title !== '') {
-            $out .= '<tr><th colspan="'.count($rows).'" style="padding:7px 9px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;font-size:11px;text-transform:uppercase;">'.$title.'</th></tr>';
-        }
         $out .= '<tr>';
         foreach ($rows as $row) {
             $label = htmlspecialchars((string) ($row['label'] ?? ''), ENT_QUOTES);

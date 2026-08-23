@@ -135,7 +135,6 @@ export function createBlock(type: BlockType): Block {
       return {
         id,
         type,
-        title: 'Case Information',
         rows: [
           { label: 'Case Number', field: 'invoice.case_number' },
           { label: 'Date of Case', field: 'invoice.date_of_case', format: 'date' },
@@ -145,6 +144,19 @@ export function createBlock(type: BlockType): Block {
           { label: 'Requestor', field: 'invoice.requestor' },
           { label: 'Delivery Date', field: 'invoice.delivery_date', format: 'date' },
           { label: 'PO Number', field: 'invoice.po_number' },
+        ],
+      }
+    case 'delivery_detail':
+      return {
+        id,
+        type,
+        rows: [
+          { label: 'Salesperson', field: 'delivery_order.salesperson' },
+          { label: 'PO Number', field: 'delivery_order.po_number' },
+          { label: 'Invoice No', field: 'invoice.number' },
+          { label: 'Quotation No', field: 'quotation.number' },
+          { label: 'Payment Terms', field: 'delivery_order.payment_terms' },
+          { label: 'Due Date', field: 'delivery_order.due_date', format: 'date' },
         ],
       }
     case 'totals':

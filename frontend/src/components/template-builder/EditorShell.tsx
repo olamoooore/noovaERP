@@ -150,7 +150,7 @@ export function EditorShell({ templateId }: { templateId: string }) {
 
       {/* Body */}
       <DndProvider backend={HTML5Backend}>
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
           {view === 'edit' ? (
             <>
               <aside className="w-56 shrink-0 border-r bg-background flex flex-col">
@@ -160,8 +160,8 @@ export function EditorShell({ templateId }: { templateId: string }) {
               <main className="flex-1 overflow-hidden">
                 <DocumentCanvas />
               </main>
-              <aside className="w-80 shrink-0 border-l bg-background flex flex-col">
-                <div className="shrink-0 border-b"><PropertyPanel /></div>
+              <aside className="flex min-h-0 w-80 shrink-0 flex-col overflow-hidden border-l bg-background">
+                <div className="min-h-0 flex-1 overflow-hidden border-b"><PropertyPanel /></div>
                 <div className="h-56 shrink-0 border-t"><ValidationPanel /></div>
               </aside>
             </>

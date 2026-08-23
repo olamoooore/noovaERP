@@ -33,6 +33,7 @@ export function DeliveryOrderEditPage() {
 
   const [deliveryDate, setDeliveryDate] = useState('')
   const [expectedDate, setExpectedDate] = useState('')
+  const [paymentTerms, setPaymentTerms] = useState('')
   const [carrier, setCarrier] = useState('')
   const [trackingNumber, setTrackingNumber] = useState('')
   const [shippingAddress, setShippingAddress] = useState('')
@@ -77,6 +78,7 @@ export function DeliveryOrderEditPage() {
     if (deliveryOrder) {
       setDeliveryDate(deliveryOrder.delivery_date?.split('T')[0] || '')
       setExpectedDate(deliveryOrder.expected_date?.split('T')[0] || '')
+      setPaymentTerms(deliveryOrder.payment_terms || '')
       setCarrier(deliveryOrder.carrier || '')
       setTrackingNumber(deliveryOrder.tracking_number || '')
       setShippingAddress(deliveryOrder.shipping_address || '')
@@ -142,6 +144,7 @@ export function DeliveryOrderEditPage() {
       warehouse_id: warehouseId ? parseInt(warehouseId) : undefined,
       delivery_date: deliveryDate || undefined,
       expected_date: expectedDate || undefined,
+      payment_terms: paymentTerms || undefined,
       carrier: carrier || undefined,
       tracking_number: trackingNumber || undefined,
       shipping_address: shippingAddress || undefined,
@@ -211,7 +214,7 @@ export function DeliveryOrderEditPage() {
               <Input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} />
             </div>
             <div>
-              <Label>Expected Date</Label>
+              <Label>Due Date</Label>
               <Input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} />
             </div>
             <div>
@@ -243,6 +246,10 @@ export function DeliveryOrderEditPage() {
               <Label>Salesperson</Label>
               <Input value={salesperson} onChange={(e) => setSalesperson(e.target.value)} placeholder="Salesperson name" />
             </div>
+          </div>
+          <div>
+            <Label>Payment Terms</Label>
+            <Input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="e.g. Net 30" />
           </div>
           <div>
             <Label>Attention To</Label>

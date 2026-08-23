@@ -6,6 +6,7 @@ namespace Tests\Feature\TemplateBuilder;
 
 use Modules\TemplateBuilder\Services\DataSource\DataSourceRegistry;
 use Modules\TemplateBuilder\Services\DataSource\InvoiceDataSource;
+use Modules\TemplateBuilder\Services\DataSource\DeliveryOrderDataSource;
 use Modules\TemplateBuilder\Services\DataSource\PurchaseOrderDataSource;
 use Tests\TestCase;
 
@@ -41,6 +42,22 @@ class DataSourceCatalogTest extends TestCase
         $this->assertNotEmpty($sample['po']['number']);
         $this->assertArrayHasKey('vendor', $sample);
         $this->assertIsArray($sample['lines']);
+    }
+
+    public function test_delivery_order_sample_exposes_canvas_totals_and_new_fields(): void
+    {
+        $dataSource = new DeliveryOrderDataSource;
+        $sample = $dataSource->sample();
+
+        $this->assertArrayHasKey('subtotal', $sample['totals']);
+        $this->assertArrayHasKey('total', $sample['totals']);
+        $this->assertArrayHasKey('due_date', $sample['delivery_order']);
+        $this->assertArrayHasKey('payment_terms', $sample['delivery_order']);
+
+        $tokens = collect($dataSource->fieldCatalog())
+            ->flatMap(fn (array $group) => array_column($group['fields'], 'token'));
+        $this->assertTrue($tokens->contains('totals.subtotal'));
+        $this->assertTrue($tokens->contains('totals.total'));
     }
 
     public function test_registry_resolves_all_registered_document_types(): void
