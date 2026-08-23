@@ -11,6 +11,7 @@ import type {
   Align,
   Block,
   CaseInformationBlock,
+  DeliveryDetailBlock,
   ContainerBlock,
   ColumnsBlock,
   DocumentType,
@@ -61,13 +62,13 @@ export function PropertyPanel() {
   const block = findBlock(template.layout_config?.blocks ?? [], selectedId)
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="border-b px-3 py-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {block ? `Block · ${block.type}` : 'Document'}
         </h3>
       </div>
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-4 p-3">
           {!block ? <DocumentSettings template={template} updateMeta={updateMeta} /> : (
             <BlockEditor block={block} updateBlock={updateBlock} documentType={template.document_type} />
@@ -335,10 +336,6 @@ function BlockEditor({ block, updateBlock, documentType }: {
       const setRows = (rows: InformationRow[]) => updateBlock(block.id, { rows })
       return (
         <div className="space-y-2">
-          <div className="space-y-1.5">
-            <Label className="text-xs">Table title</Label>
-            <Input className="h-8 text-xs" value={info.title} onChange={(e) => updateBlock(block.id, { title: e.target.value })} />
-          </div>
           <div className="flex items-center justify-between">
             <Label className="text-xs">Information rows</Label>
             <Button size="sm" variant="outline" onClick={() => setRows([...info.rows, { label: 'New field', field: 'invoice.case_number' }])}>
@@ -354,6 +351,36 @@ function BlockEditor({ block, updateBlock, documentType }: {
                 <IconBtn title="Remove" onClick={() => setRows(info.rows.filter((_, j) => j !== i))}><Trash2 className="h-3 w-3" /></IconBtn>
               </div>
               <Input className="h-7 text-xs font-mono" placeholder="Field (e.g. invoice.case_number)" value={row.field} onChange={(e) => patchInformationRow(setRows, info.rows, i, { field: e.target.value })} />
+              <Select value={row.format ?? 'none'} onValueChange={(v) => patchInformationRow(setRows, info.rows, i, { format: v === 'none' ? undefined : v })}>
+                <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Format" /></SelectTrigger>
+                <SelectContent>{FORMAT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          ))}
+        </div>
+      )
+    }
+
+    case 'delivery_detail': {
+      const info = block as DeliveryDetailBlock
+      const setRows = (rows: InformationRow[]) => updateBlock(block.id, { rows })
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">Delivery fields</Label>
+            <Button size="sm" variant="outline" onClick={() => setRows([...info.rows, { label: 'New field', field: 'delivery_order.number' }])}>
+              <Plus className="mr-1 h-3 w-3" /> Add
+            </Button>
+          </div>
+          {info.rows.map((row, i) => (
+            <div key={i} className="space-y-1.5 rounded border p-2">
+              <div className="flex items-center gap-1">
+                <Input className="h-7 text-xs" placeholder="Label" value={row.label} onChange={(e) => patchInformationRow(setRows, info.rows, i, { label: e.target.value })} />
+                <IconBtn title="Up" onClick={() => swap(info.rows, i, i - 1, setRows)}><ChevronUp className="h-3 w-3" /></IconBtn>
+                <IconBtn title="Down" onClick={() => swap(info.rows, i, i + 1, setRows)}><ChevronDown className="h-3 w-3" /></IconBtn>
+                <IconBtn title="Remove" onClick={() => setRows(info.rows.filter((_, j) => j !== i))}><Trash2 className="h-3 w-3" /></IconBtn>
+              </div>
+              <Input className="h-7 text-xs font-mono" placeholder="Field" value={row.field} onChange={(e) => patchInformationRow(setRows, info.rows, i, { field: e.target.value })} />
               <Select value={row.format ?? 'none'} onValueChange={(v) => patchInformationRow(setRows, info.rows, i, { format: v === 'none' ? undefined : v })}>
                 <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Format" /></SelectTrigger>
                 <SelectContent>{FORMAT_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>

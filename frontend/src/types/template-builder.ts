@@ -7,6 +7,7 @@ export type BlockType =
   | 'columns'
   | 'table'
   | 'case_information'
+  | 'delivery_detail'
   | 'totals'
   | 'spacer'
   | 'divider'
@@ -77,7 +78,13 @@ export interface InformationRow {
 
 export interface CaseInformationBlock extends BlockBase {
   type: 'case_information'
-  title: string
+  title?: string
+  rows: InformationRow[]
+}
+
+export interface DeliveryDetailBlock extends BlockBase {
+  type: 'delivery_detail'
+  title?: string
   rows: InformationRow[]
 }
 
@@ -107,6 +114,7 @@ export type Block =
   | ColumnsBlock
   | TableBlock
   | CaseInformationBlock
+  | DeliveryDetailBlock
   | TotalsBlock
   | SpacerBlock
   | DividerBlock

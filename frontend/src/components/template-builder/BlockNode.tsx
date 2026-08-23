@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useDrag } from 'react-dnd'
 import { ChevronUp, ChevronDown, Copy, Trash2, GripVertical } from 'lucide-react'
 import { useTemplateEditorStore } from '@/store/templateEditorStore'
-import type { Block, CaseInformationBlock, ContainerBlock, ColumnsBlock, TableBlock, TotalsBlock } from '@/types/template-builder'
+import type { Block, CaseInformationBlock, ContainerBlock, ColumnsBlock, DeliveryDetailBlock, TableBlock, TotalsBlock } from '@/types/template-builder'
 import { DND, type BlockDragItem } from './dnd'
 import { cn } from '@/lib/utils'
 
@@ -12,6 +12,7 @@ const TYPE_LABELS: Record<string, string> = {
   columns: 'Columns',
   table: 'Line Items',
   case_information: 'Case Information',
+  delivery_detail: 'Delivery Detail',
   totals: 'Totals',
   spacer: 'Spacer',
   divider: 'Divider',
@@ -129,7 +130,17 @@ export function BlockNode({ block }: { block: Block }) {
         return (
           <table className="w-full border-collapse text-[10px]">
             <thead>
-              <tr><th colSpan={Math.max(info.rows.length, 1)} className="border bg-muted/60 px-2 py-1 text-left uppercase">{info.title || 'Case Information'}</th></tr>
+              <tr>{info.rows.map((row, i) => <th key={i} className="border bg-muted/30 px-2 py-1 text-left">{row.label}</th>)}</tr>
+            </thead>
+            <tbody><tr>{info.rows.map((row, i) => <td key={i} className="border px-2 py-1 font-mono text-muted-foreground">{row.field}</td>)}</tr></tbody>
+          </table>
+        )
+      }
+      case 'delivery_detail': {
+        const info = block as DeliveryDetailBlock
+        return (
+          <table className="w-full border-collapse text-[10px]">
+            <thead>
               <tr>{info.rows.map((row, i) => <th key={i} className="border bg-muted/30 px-2 py-1 text-left">{row.label}</th>)}</tr>
             </thead>
             <tbody><tr>{info.rows.map((row, i) => <td key={i} className="border px-2 py-1 font-mono text-muted-foreground">{row.field}</td>)}</tr></tbody>

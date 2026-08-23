@@ -341,7 +341,7 @@ export function DeliveryOrderDetailPage() {
                 <div className="font-medium">{deliveryOrder.delivery_date ? formatDate(deliveryOrder.delivery_date) : '-'}</div>
               </div>
               <div>
-                <div className="text-muted-foreground">Expected Date</div>
+                <div className="text-muted-foreground">Due Date</div>
                 <div className="font-medium">{deliveryOrder.expected_date ? formatDate(deliveryOrder.expected_date) : '-'}</div>
               </div>
               <div>

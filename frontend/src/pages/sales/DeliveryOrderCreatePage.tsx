@@ -39,6 +39,9 @@ export function DeliveryOrderCreatePage() {
   const [warehouseId, setWarehouseId] = useState<string>('')
   const [deliveryDate, setDeliveryDate] = useState(new Date().toISOString().split('T')[0])
   const [expectedDate, setExpectedDate] = useState('')
+  const [paymentTerms, setPaymentTerms] = useState('')
+  const [invoiceId, setInvoiceId] = useState('')
+  const [quotationId, setQuotationId] = useState('')
   const [carrier, setCarrier] = useState('')
   const [trackingNumber, setTrackingNumber] = useState('')
   const [shippingAddress, setShippingAddress] = useState('')
@@ -92,6 +95,26 @@ export function DeliveryOrderCreatePage() {
       return response.data
     },
     enabled: !!salesOrderId && mode === 'linked',
+  })
+
+  const referenceCustomerId = mode === 'standalone'
+    ? customerId
+    : String(soData?.sales_order?.customer_id || soData?.customer?.id || '')
+
+  const { data: invoicesData } = useQuery({
+    queryKey: ['delivery-order-invoices', referenceCustomerId],
+    queryFn: async () => {
+      const res = await api.get('/invoices', { params: { per_page: 200, customer_id: referenceCustomerId || undefined } })
+      return res.data?.data || []
+    },
+  })
+
+  const { data: quotationsData } = useQuery({
+    queryKey: ['delivery-order-quotations', referenceCustomerId],
+    queryFn: async () => {
+      const res = await api.get('/quotations', { params: { per_page: 200, customer_id: referenceCustomerId || undefined } })
+      return res.data?.data || []
+    },
   })
 
   const createMutation = useMutation({
@@ -181,6 +204,9 @@ export function DeliveryOrderCreatePage() {
       salesperson: salesperson || undefined,
       attention_to: attentionTo || undefined,
       notes: notes || undefined,
+      payment_terms: paymentTerms || undefined,
+      invoice_id: invoiceId ? parseInt(invoiceId) : undefined,
+      quotation_id: quotationId ? parseInt(quotationId) : undefined,
       lines,
     })
   }
@@ -220,6 +246,9 @@ export function DeliveryOrderCreatePage() {
       salesperson: salesperson || undefined,
       attention_to: attentionTo || undefined,
       notes: notes || undefined,
+      payment_terms: paymentTerms || undefined,
+      invoice_id: invoiceId ? parseInt(invoiceId) : undefined,
+      quotation_id: quotationId ? parseInt(quotationId) : undefined,
       lines: validLines.map((l) => ({
         product_id: l.product_id,
         model_number: l.model_number || null,
@@ -261,6 +290,8 @@ export function DeliveryOrderCreatePage() {
   const customers = Array.isArray(customersData) ? customersData : []
   const products = Array.isArray(productsData) ? productsData : []
   const warehouses = Array.isArray(warehousesData) ? warehousesData : []
+  const invoices = Array.isArray(invoicesData) ? invoicesData : []
+  const quotations = Array.isArray(quotationsData) ? quotationsData : []
 
   return (
     <div className="space-y-6 p-6">
@@ -398,7 +429,7 @@ export function DeliveryOrderCreatePage() {
               <Input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} />
             </div>
             <div>
-              <Label>Expected Date</Label>
+              <Label>Due Date</Label>
               <Input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} />
             </div>
             <div>
@@ -408,6 +439,40 @@ export function DeliveryOrderCreatePage() {
             <div>
               <Label>Tracking #</Label>
               <Input value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} placeholder="Tracking number" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label>Invoice No.</Label>
+              <Select value={invoiceId || 'none'} onValueChange={(value) => setInvoiceId(value === 'none' ? '' : value)}>
+                <SelectTrigger><SelectValue placeholder="Select invoice" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {invoices.map((invoice: any) => (
+                    <SelectItem key={invoice.id} value={invoice.id.toString()}>
+                      {invoice.invoice_number}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Quotation No.</Label>
+              <Select value={quotationId || 'none'} onValueChange={(value) => setQuotationId(value === 'none' ? '' : value)}>
+                <SelectTrigger><SelectValue placeholder="Select quotation" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {quotations.map((quotation: any) => (
+                    <SelectItem key={quotation.id} value={quotation.id.toString()}>
+                      {quotation.quotation_number}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Payment Terms</Label>
+              <Input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="e.g. Net 30" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">

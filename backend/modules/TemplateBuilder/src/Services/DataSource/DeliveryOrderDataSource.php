@@ -53,6 +53,7 @@ final class DeliveryOrderDataSource implements DataSourceContract
                 'status' => $do->status,
                 'delivery_date' => optional($do->delivery_date)->format('Y-m-d'),
                 'expected_date' => optional($do->expected_date)->format('Y-m-d'),
+                'due_date' => optional($do->expected_date)->format('Y-m-d'),
                 'source' => $do->source,
                 'external_reference' => $do->external_reference ?? '',
                 'po_number' => $do->po_number ?? '',
@@ -62,6 +63,11 @@ final class DeliveryOrderDataSource implements DataSourceContract
                 'tracking_number' => $do->tracking_number ?? '',
                 'shipping_address' => $this->formatAddress($do->shipping_address),
                 'notes' => $do->notes ?? '',
+                'payment_terms' => $do->payment_terms ?? '',
+                'total' => (float) ($do->total ?? 0),
+            ],
+            'totals' => [
+                'subtotal' => (float) ($do->total ?? 0),
                 'total' => (float) ($do->total ?? 0),
             ],
             'customer' => [
@@ -98,7 +104,8 @@ final class DeliveryOrderDataSource implements DataSourceContract
                 ['token' => 'delivery_order.number', 'label' => 'DO Number'],
                 ['token' => 'delivery_order.status', 'label' => 'Status'],
                 ['token' => 'delivery_order.delivery_date', 'label' => 'Delivery Date'],
-                ['token' => 'delivery_order.expected_date', 'label' => 'Expected Date'],
+                ['token' => 'delivery_order.due_date', 'label' => 'Due Date'],
+                ['token' => 'delivery_order.payment_terms', 'label' => 'Payment Terms'],
                 ['token' => 'delivery_order.po_number', 'label' => 'PO Number'],
                 ['token' => 'delivery_order.salesperson', 'label' => 'Salesperson'],
                 ['token' => 'delivery_order.attention_to', 'label' => 'Attention To'],
@@ -132,6 +139,10 @@ final class DeliveryOrderDataSource implements DataSourceContract
             ['group' => 'Line Items', 'fields' => [
                 ['token' => 'lines', 'label' => 'Line items table (binds a Table block)'],
             ]],
+            ['group' => 'Totals', 'fields' => [
+                ['token' => 'totals.subtotal', 'label' => 'Subtotal'],
+                ['token' => 'totals.total', 'label' => 'Total'],
+            ]],
         ];
     }
 
@@ -143,6 +154,7 @@ final class DeliveryOrderDataSource implements DataSourceContract
                 'status' => 'confirmed',
                 'delivery_date' => '2026-07-22',
                 'expected_date' => '2026-07-25',
+                'due_date' => '2026-07-25',
                 'source' => 'sales_order',
                 'external_reference' => 'SO-2026-0042',
                 'po_number' => 'PO-2026-0042',
@@ -152,8 +164,10 @@ final class DeliveryOrderDataSource implements DataSourceContract
                 'tracking_number' => '1234567890',
                 'shipping_address' => "Globex Corporation\nWarehouse 7\n1 Infinite Loop\nSan Francisco, CA 94102",
                 'notes' => 'Please deliver between 9am–5pm. Signature required.',
+                'payment_terms' => 'Net 30',
                 'total' => 5740.00,
             ],
+            'totals' => ['subtotal' => 5740.00, 'total' => 5740.00],
             'customer' => [
                 'code' => 'CUST-0001',
                 'name' => 'Globex Corporation',

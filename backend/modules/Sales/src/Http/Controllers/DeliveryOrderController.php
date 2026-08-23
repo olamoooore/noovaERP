@@ -79,6 +79,7 @@ class DeliveryOrderController extends Controller
                 'warehouse_id' => 'required|exists:warehouses,id',
                 'delivery_date' => 'nullable|date',
                 'expected_date' => 'nullable|date',
+                'payment_terms' => 'nullable|string|max:255',
                 'carrier' => 'nullable|string|max:100',
                 'tracking_number' => 'nullable|string|max:100',
                 'shipping_address' => 'nullable|string',
@@ -121,6 +122,7 @@ class DeliveryOrderController extends Controller
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'delivery_date' => 'nullable|date',
             'expected_date' => 'nullable|date',
+            'payment_terms' => 'nullable|string|max:255',
             'carrier' => 'nullable|string|max:100',
             'tracking_number' => 'nullable|string|max:100',
             'shipping_address' => 'nullable|string',
@@ -196,6 +198,7 @@ class DeliveryOrderController extends Controller
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'delivery_date' => 'nullable|date',
             'expected_date' => 'nullable|date',
+            'payment_terms' => 'nullable|string|max:255',
             'carrier' => 'nullable|string|max:100',
             'tracking_number' => 'nullable|string|max:100',
             'shipping_address' => 'nullable|string',
@@ -217,7 +220,7 @@ class DeliveryOrderController extends Controller
 
         DB::transaction(function () use ($deliveryOrder, $validated) {
             // Update header fields
-            $headerFields = ['warehouse_id', 'delivery_date', 'expected_date', 'carrier', 'tracking_number', 'shipping_address', 'po_number', 'salesperson', 'attention_to', 'notes'];
+            $headerFields = ['warehouse_id', 'delivery_date', 'expected_date', 'payment_terms', 'carrier', 'tracking_number', 'shipping_address', 'po_number', 'salesperson', 'attention_to', 'notes'];
             foreach ($headerFields as $field) {
                 if (array_key_exists($field, $validated)) {
                     $deliveryOrder->{$field} = $validated[$field];
