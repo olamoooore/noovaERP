@@ -3,131 +3,59 @@
 namespace Modules\HRM\Tests;
 
 use App\Http\Middleware\SetTenantFromUserPreference;
-use Illuminate\Contracts\Console\Kernel;
-use Illuminate\Foundation\Testing\DatabaseTransactionsManager;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Foundation\Testing\RefreshDatabaseState;
-use Illuminate\Support\Facades\Schema;
-use Tests\TestCase;
+use App\SuperAdmin\Application\FeatureGateService;
+use Illuminate\Support\Str;
+use Tests\TenantTestCase;
 
 /**
  * HRM-specific base test case.
  *
- * The default RefreshDatabase runs `migrate:fresh` against ALL 93+ migrations
- * in database/migrations/tenant/, which includes migrations with cross-table FK
- * ordering bugs (customer_loyalty → customers, product_bundles → product_variants,
- * etc.) that break in the test environment.
+ * Extends the shared TenantTestCase so HRM tests run against the same
+ * full-schema provisioning baseline as every other suite (central +
+ * all module tenant migrations). This replaces the previous bespoke
+ * "db:wipe + two hand-picked migration paths" approach, which drifted
+ * out of sync with the real tenant schema (e.g. missing the
+ * platform_system_logs table that the AuditTrailObserver writes to
+ * whenever Employee/PayrollRun models change).
  *
- * Fix: override refreshTestDatabase() to run migrate:fresh against ONLY two
- * targeted paths:
- *   1. modules/HRM/tests/database/migrations/ — minimal base schema
- *      (users, Sanctum, Spatie permissions, departments, locations)
- *   2. modules/HRM/database/migrations/tenant/ — all HRM tables
- *
- * This gives HRM tests a clean, isolated environment with zero dependency on
- * the rest of the codebase's migration state.
+ * A tenant context is bound for every test because platform observers
+ * (audit trail) stamp tenant_id on log records, and the entitlement
+ * gate is mocked to grant `hrm` so route middleware is exercised
+ * without requiring seeded entitlement rows.
  */
-abstract class HrmTestCase extends TestCase
+abstract class HrmTestCase extends TenantTestCase
 {
-    use RefreshDatabase;
-
-    /**
-     * Bypass middleware that queries central DB tables (user_company_access,
-     * tenants) which are NOT part of our minimal HRM test schema.
-     * Sanctum auth middleware continues to run normally.
-     */
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Bypass middleware that queries central preference tables which are
+        // irrelevant here. Sanctum auth middleware continues to run normally.
         $this->withoutMiddleware(SetTenantFromUserPreference::class);
+
+        $this->bindTenantContext((string) Str::uuid());
+
+        $this->mockFeatureGate(true);
     }
 
-    /**
-     * Override RefreshDatabase's migration step to use only HRM-relevant paths.
-     *
-     * NOTE: migrate:fresh --path does NOT wipe the DB before running. We must
-     * explicitly call db:wipe first to drop all stale tables from previous runs,
-     * then run only our targeted migration paths.
-     */
-    protected function refreshTestDatabase(): void
+    protected function mockFeatureGate(bool $isEntitled): void
     {
-        if (! RefreshDatabaseState::$migrated || ! $this->hrmSchemaIsReady()) {
-            // Drop everything in the test database (removes stale tables from
-            // previous test runs or from running php artisan migrate globally)
-            $this->artisan('db:wipe', ['--force' => true]);
+        $mock = \Mockery::mock(FeatureGateService::class);
+        $mock->shouldReceive('check')
+            ->andReturnUsing(function (string $tenantId, string $key) use ($isEntitled) {
+                return [
+                    'key' => $key,
+                    'is_entitled' => $isEntitled,
+                    'source' => $isEntitled ? 'tier_included' : null,
+                    'name' => strtoupper($key),
+                ];
+            });
 
-            // Run only the migrations HRM tests need — base schema + HRM tables
-            $this->artisan('migrate', [
-                '--force' => true,
-                '--path' => 'modules/HRM/tests/database/migrations',
-            ]);
+        $mock->shouldReceive('all')
+            ->andReturn($isEntitled ? [['key' => 'hrm', 'source' => 'tier_included', 'name' => 'HRM']] : []);
 
-            $this->artisan('migrate', [
-                '--force' => true,
-                '--path' => 'modules/HRM/database/migrations/tenant',
-            ]);
+        $mock->shouldReceive('invalidate')->andReturnNull();
 
-            $this->app[Kernel::class]->setArtisan(null);
-
-            RefreshDatabaseState::$migrated = true;
-        }
-
-        $this->beginDatabaseTransaction();
-    }
-
-    /**
-     * Wrap each test in a transaction that rolls back on teardown.
-     * Copied from RefreshDatabase so we can call it directly here.
-     */
-    public function beginDatabaseTransaction(): void
-    {
-        $database = $this->app->make('db');
-
-        $connections = $this->connectionsToTransact();
-
-        $this->app->instance(
-            'db.transactions',
-            $transactionsManager = new DatabaseTransactionsManager($connections)
-        );
-
-        foreach ($connections as $name) {
-            $connection = $database->connection($name);
-            $connection->setTransactionManager($transactionsManager);
-
-            $dispatcher = $connection->getEventDispatcher();
-            $connection->unsetEventDispatcher();
-            $connection->beginTransaction();
-            $connection->setEventDispatcher($dispatcher);
-        }
-
-        $this->beforeApplicationDestroyed(function () use ($database) {
-            foreach ($this->connectionsToTransact() as $name) {
-                $connection = $database->connection($name);
-                $dispatcher = $connection->getEventDispatcher();
-                $connection->unsetEventDispatcher();
-
-                if ($connection->getPdo() && ! $connection->getPdo()->inTransaction()) {
-                    RefreshDatabaseState::$migrated = false;
-                }
-
-                $connection->rollBack();
-                $connection->setEventDispatcher($dispatcher);
-                $connection->disconnect();
-            }
-        });
-    }
-
-    protected function connectionsToTransact(): array
-    {
-        return property_exists($this, 'connectionsToTransact')
-            ? $this->connectionsToTransact
-            : [null];
-    }
-
-    protected function hrmSchemaIsReady(): bool
-    {
-        return Schema::hasTable('hrm_employees')
-            && Schema::hasTable('hrm_payroll_runs')
-            && Schema::hasTable('hrm_payrolls');
+        app()->instance(FeatureGateService::class, $mock);
     }
 }

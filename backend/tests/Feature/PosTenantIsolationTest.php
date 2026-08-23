@@ -58,9 +58,16 @@ class PosTenantIsolationTest extends TenantTestCase
     {
         if (! RefreshDatabaseState::$migrated || ! $this->tenantSchemaExists()) {
             $this->runTenantMigrations();
-            $this->clonePosTablesIntoTenantSchemas();
             RefreshDatabaseState::$migrated = true;
         }
+
+        // Always (re)create the tenant schemas, even when the schema was
+        // provisioned by an earlier test class in this process — otherwise
+        // `SET search_path` silently falls back to `public` and every
+        // isolation assertion compares rows inside the same shared tables.
+        // The statements below are idempotent DDL executed outside the
+        // per-test transaction.
+        $this->clonePosTablesIntoTenantSchemas();
 
         $this->beginDatabaseTransaction();
     }

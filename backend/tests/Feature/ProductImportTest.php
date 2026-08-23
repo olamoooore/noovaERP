@@ -5,47 +5,17 @@ namespace Tests\Feature;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\Warehouse;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Schema;
 use Modules\Inventory\Services\InventoryService;
 use Tests\TenantTestCase;
 
 class ProductImportTest extends TenantTestCase
 {
-    use DatabaseMigrations;
-
     protected function setUp(): void
     {
         parent::setUp();
 
-        foreach ([
-            database_path('migrations/tenant/2024_01_01_100001_create_chart_of_accounts_table.php'),
-            database_path('migrations/tenant/2024_01_01_200001_create_products_table.php'),
-            database_path('migrations/tenant/2024_01_01_200005_create_stock_movements_table.php'),
-            database_path('migrations/tenant/2026_04_07_000001_drop_unique_barcode_from_products.php'),
-            database_path('migrations/tenant/2025_12_15_150010_create_product_categories_table.php'),
-            database_path('migrations/tenant/2025_12_15_150020_add_category_to_products_table.php'),
-            database_path('migrations/tenant/2025_12_17_000001_create_settings_table.php'),
-            database_path('migrations/tenant/2025_12_17_000002_create_taxes_table.php'),
-            database_path('migrations/tenant/2025_12_17_000003_add_commerce_fields_to_products_table.php'),
-            database_path('migrations/tenant/2025_12_18_231016_create_warehouses_table.php'),
-            database_path('migrations/tenant/2026_01_01_000001_enhance_inventory_module.php'),
-            database_path('migrations/tenant/2026_03_30_000004_add_short_description_to_products.php'),
-        ] as $migrationPath) {
-            Artisan::call('migrate', [
-                '--path' => $migrationPath,
-                '--realpath' => true,
-            ]);
-        }
-
-        if (! Schema::hasColumn('products', 'manufacturer')) {
-            Schema::table('products', function (Blueprint $table) {
-                $table->string('manufacturer')->nullable();
-            });
-        }
+        $this->bindTenantContext('product-import-tenant');
 
         Product::unsetEventDispatcher();
     }

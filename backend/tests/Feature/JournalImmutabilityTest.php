@@ -13,6 +13,7 @@ use Tests\TenantTestCase;
 class JournalImmutabilityTest extends TenantTestCase
 {
     protected string $tenantUuid;
+
     protected int $userId;
 
     protected function setUp(): void
@@ -37,7 +38,7 @@ class JournalImmutabilityTest extends TenantTestCase
             'description' => 'Immutable entry',
             'status' => 'posted',
             'posted_at' => now(),
-            'posted_by' => 1,
+            'posted_by' => $this->userId,
         ]);
 
         $this->expectException(\RuntimeException::class);
