@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\User;
 use App\SuperAdmin\Application\FeatureGateService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Modules\POS\Models\PosOrder;
@@ -67,20 +68,52 @@ class PosRbacTest extends TenantTestCase
         $this->bindTenantContext($this->tenantId);
         $this->mockFeatureGate(true);
 
-        // Create roles
-        Role::create(['name' => 'cashier']);
-        Role::create(['name' => 'manager']);
-        Role::create(['name' => 'supervisor']);
+// Create roles (Spatie role names must match UserRole::spatieName() which
+        // returns title-case labels — otherwise TenantRoleService::findByName() throws).
+        // Also seed the standard ERP permissions via the central seeder so
+        // pos.create, inventory.write etc. exist for the assignment below.
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+        Role::firstOrCreate(['name' => 'Cashier', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'Manager', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'Supervisor', 'guard_name' => 'web']);
+
+        // Create the tenant row (user_company_access has a FK to tenants.id).
+        // The setUp() above only binds the in-process context, not the DB row.
+        \App\Models\Tenant::withoutEvents(function () {
+            return \App\Models\Tenant::create([
+                'id' => $this->tenantId,
+                'name' => 'RBAC Test Tenant',
+                'email' => fake()->unique()->safeEmail(),
+                'plan' => 'standard',
+            ]);
+        });
 
         // Create users with roles
         $this->cashier = User::factory()->create();
-        $this->cashier->assignRole('cashier');
+        $this->cashier->assignRole('Cashier');
 
         $this->manager = User::factory()->create();
-        $this->manager->assignRole('manager');
+        $this->manager->assignRole('Manager');
 
         $this->supervisor = User::factory()->create();
-        $this->supervisor->assignRole('supervisor');
+        $this->supervisor->assignRole('Supervisor');
+
+        // Also insert user_company_access rows — RequirePermission reads
+        // role from this table (TenantRoleService) before checking Spatie.
+        foreach ([
+            ['user' => $this->cashier, 'role' => 'cashier'],
+            ['user' => $this->manager, 'role' => 'manager'],
+            ['user' => $this->supervisor, 'role' => 'manager'],
+        ] as $entry) {
+            DB::table('user_company_access')->insert([
+                'user_id' => $entry['user']->id,
+                'tenant_id' => $this->tenantId,
+                'role' => $entry['role'],
+                'is_default' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
 
         // Create test data
         $this->customer = Customer::factory()->create();

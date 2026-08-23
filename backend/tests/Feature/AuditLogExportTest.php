@@ -3,22 +3,69 @@
 namespace Tests\Feature;
 
 use App\Models\AuditLog;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Models\User;
 use Illuminate\Support\Facades\Artisan;
-use Tests\TestCase;
+use Modules\POS\Models\PosSession;
+use Modules\POS\Models\PosTerminal;
+use Tests\TenantTestCase;
 
 /**
  * AUD-003: Audit log export feature tests
  */
-class AuditLogExportTest extends TestCase
+class AuditLogExportTest extends TenantTestCase
 {
-    use RefreshDatabase;
 
     protected function setUp(): void
     {
         parent::setUp();
+        $this->createDependencies();
         $this->createAuditLogs();
     }
+
+    protected function createDependencies(): void
+    {
+        $actor1 = User::factory()->create(['name' => 'Actor One', 'email' => 'actor1@audit.test']);
+        $actor2 = User::factory()->create(['name' => 'Actor Two', 'email' => 'actor2@audit.test']);
+
+        $terminal1 = PosTerminal::create([
+            'name' => 'Terminal 1',
+            'code' => 'T-001',
+            'is_active' => true,
+        ]);
+        $terminal2 = PosTerminal::create([
+            'name' => 'Terminal 2',
+            'code' => 'T-002',
+            'is_active' => true,
+        ]);
+
+        $session1 = PosSession::create([
+            'terminal_id' => $terminal1->id,
+            'user_id' => $actor1->id,
+            'session_number' => 'S-001',
+            'opening_balance' => 0,
+            'status' => 'open',
+            'opened_at' => now()->subDay(),
+        ]);
+        $session2 = PosSession::create([
+            'terminal_id' => $terminal2->id,
+            'user_id' => $actor2->id,
+            'session_number' => 'S-002',
+            'opening_balance' => 0,
+            'status' => 'open',
+            'opened_at' => now(),
+        ]);
+
+        $this->auditContext = [
+            'actor1_id' => $actor1->id,
+            'actor2_id' => $actor2->id,
+            'terminal1_id' => $terminal1->id,
+            'terminal2_id' => $terminal2->id,
+            'session1_id' => $session1->id,
+            'session2_id' => $session2->id,
+        ];
+    }
+
+    private array $auditContext = [];
 
     protected function createAuditLogs(): void
     {
@@ -27,9 +74,9 @@ class AuditLogExportTest extends TestCase
                 'operation' => 'pos_payment',
                 'reference_type' => 'pos_order',
                 'reference_id' => 1,
-                'actor_id' => 1,
-                'terminal_id' => 1,
-                'session_id' => 1,
+                'actor_id' => $this->auditContext['actor1_id'],
+                'terminal_id' => $this->auditContext['terminal1_id'],
+                'session_id' => $this->auditContext['session1_id'],
                 'source_route' => 'pos.orders.pay',
                 'idempotency_key' => 'payment_1_1',
                 'before_state' => null,
@@ -44,9 +91,9 @@ class AuditLogExportTest extends TestCase
                 'operation' => 'pos_void',
                 'reference_type' => 'pos_order',
                 'reference_id' => 2,
-                'actor_id' => 2,
-                'terminal_id' => 1,
-                'session_id' => 1,
+                'actor_id' => $this->auditContext['actor2_id'],
+                'terminal_id' => $this->auditContext['terminal1_id'],
+                'session_id' => $this->auditContext['session1_id'],
                 'source_route' => 'pos.orders.void',
                 'idempotency_key' => 'void_2',
                 'before_state' => null,
@@ -61,9 +108,9 @@ class AuditLogExportTest extends TestCase
                 'operation' => 'pos_refund',
                 'reference_type' => 'pos_order',
                 'reference_id' => 3,
-                'actor_id' => 1,
-                'terminal_id' => 2,
-                'session_id' => 2,
+                'actor_id' => $this->auditContext['actor1_id'],
+                'terminal_id' => $this->auditContext['terminal2_id'],
+                'session_id' => $this->auditContext['session2_id'],
                 'source_route' => 'pos.orders.refund',
                 'idempotency_key' => 'refund_3_5',
                 'before_state' => null,
@@ -162,7 +209,7 @@ class AuditLogExportTest extends TestCase
 
         Artisan::call('audit:export', [
             '--format' => 'json',
-            '--actor' => 1,
+            '--actor' => $this->auditContext['actor1_id'],
             '--output' => $outputFile,
         ]);
 
@@ -170,7 +217,7 @@ class AuditLogExportTest extends TestCase
         // Actor 1 has payment and refund
         $this->assertCount(2, $data);
         foreach ($data as $entry) {
-            $this->assertEquals(1, $entry['actor_id']);
+            $this->assertEquals($this->auditContext['actor1_id'], $entry['actor_id']);
         }
 
         unlink($outputFile);

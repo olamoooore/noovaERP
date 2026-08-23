@@ -6,6 +6,7 @@ use App\Models\Customer;
 use App\Models\JournalEntry;
 use App\Models\Product;
 use App\Models\StockMovement;
+use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Modules\POS\Models\PosOrder;
@@ -31,12 +32,34 @@ class ChannelEquivalenceTest extends TenantTestCase
     {
         parent::setUp();
 
+        // Bind tenant context so feature:pos and permission middleware
+        // resolve correctly during HTTP requests.
+        $tenant = Tenant::withoutEvents(function () {
+            return Tenant::factory()->create(['id' => '44444444-4444-4444-4444-444444444444']);
+        });
+        $this->bindTenantContext($tenant->id);
+
         $this->user = User::factory()->create();
+
+        // Grant the test user tenant-scoped admin access so the
+        // RequirePermission:pos.create middleware passes (admin is a
+        // super-role that grants all Spatie permissions).
+        DB::table('user_company_access')->insert([
+            'user_id' => $this->user->id,
+            'tenant_id' => $tenant->id,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         $this->customer = Customer::factory()->create();
         $this->product = Product::factory()->create([
             'price' => 100.00,
+            'cost' => 50.00,
             'tax_rate' => 10.00,
             'stock_quantity' => 1000,
+            'track_inventory' => true,
         ]);
 
         $this->terminal = PosTerminal::factory()->create();
@@ -104,16 +127,19 @@ class ChannelEquivalenceTest extends TenantTestCase
         $posTaxLine = $this->getTaxGLLine($posResult['journal_entry_id']);
         $gatewayTaxLine = $this->getTaxGLLine($gatewayResult['journal_entry_id']);
 
+        $this->assertNotNull($posTaxLine, 'POS path must produce a tax GL line');
+        $this->assertNotNull($gatewayTaxLine, 'Gateway path must produce a tax GL line');
+
         $this->assertEquals(
-            $posTaxLine->amount,
-            $gatewayTaxLine->amount,
-            'Tax GL line amounts must be identical'
+            (float) $posTaxLine->credit,
+            (float) $gatewayTaxLine->credit,
+            'Tax GL line credit amounts must be identical'
         );
 
         $this->assertEquals(
-            $posTaxLine->tax_code,
-            $gatewayTaxLine->tax_code,
-            'Tax codes must be identical'
+            $posTaxLine->account_code,
+            $gatewayTaxLine->account_code,
+            'Tax account codes must be identical'
         );
     }
 
@@ -132,15 +158,16 @@ class ChannelEquivalenceTest extends TenantTestCase
         $paymentCount = PosPayment::where('pos_order_id', $result1['order_id'])->count();
         $this->assertEquals(1, $paymentCount, 'Duplicate payment must be prevented');
 
-        // Verify only one GL entry exists
-        $glCount = JournalEntry::where('source_document_id', $result1['order_id'])
+        // Verify only one GL entry exists (linked via journal_entry_links)
+        $glCount = DB::table('journal_entry_links')
             ->where('source_document_type', 'pos_order')
+            ->where('source_document_id', $result1['order_id'])
             ->count();
         $this->assertEquals(1, $glCount, 'Duplicate GL entry must be prevented');
 
         // Verify only one stock movement per product
         $stockCount = StockMovement::where('reference_id', $result1['order_id'])
-            ->where('reference_type', 'pos_order')
+            ->where('reference_type', 'PosOrder')
             ->where('product_id', $this->product->id)
             ->count();
         $this->assertEquals(1, $stockCount, 'Duplicate stock movement must be prevented');
@@ -150,14 +177,15 @@ class ChannelEquivalenceTest extends TenantTestCase
 
     protected function createPosOrder(): array
     {
-        $response = $this->actingAs($this->user)->postJson('/api/pos/orders', [
+        $response = $this->actingAs($this->user)->postJson('/api/v1/pos/orders', [
             'session_id' => $this->session->id,
+            'terminal_id' => $this->terminal->id,
             'customer_id' => $this->customer->id,
             'items' => [
                 [
                     'product_id' => $this->product->id,
                     'quantity' => 1,
-                    'price' => 100.00,
+                    'unit_price' => 100.00,
                 ],
             ],
         ]);
@@ -166,7 +194,7 @@ class ChannelEquivalenceTest extends TenantTestCase
         $orderId = $response->json('id');
 
         // Complete payment
-        $paymentResponse = $this->actingAs($this->user)->postJson("/api/pos/orders/{$orderId}/pay", [
+        $paymentResponse = $this->actingAs($this->user)->postJson("/api/v1/pos/orders/{$orderId}/pay", [
             'method' => 'cash',
             'amount' => 110.00,
         ]);
@@ -179,26 +207,27 @@ class ChannelEquivalenceTest extends TenantTestCase
     protected function createGatewayOrder(): array
     {
         // Create order
-        $response = $this->actingAs($this->user)->postJson('/api/pos/orders', [
+        $response = $this->actingAs($this->user)->postJson('/api/v1/pos/orders', [
             'session_id' => $this->session->id,
+            'terminal_id' => $this->terminal->id,
             'customer_id' => $this->customer->id,
             'items' => [
                 [
                     'product_id' => $this->product->id,
                     'quantity' => 1,
-                    'price' => 100.00,
+                    'unit_price' => 100.00,
                 ],
             ],
         ]);
 
         $orderId = $response->json('id');
 
-        // Simulate gateway confirmation via PaymentTransactionCompletionService
+        // Simulate gateway confirmation via PosPaymentCompletionService
         $order = PosOrder::find($orderId);
         app(\Modules\POS\Services\PosPaymentCompletionService::class)->complete(
             $order,
-            'card',
             110.00,
+            'card',
             'GATEWAY-'.uniqid()
         );
 
@@ -208,14 +237,15 @@ class ChannelEquivalenceTest extends TenantTestCase
     protected function createWebhookOrder(): array
     {
         // Create order
-        $response = $this->actingAs($this->user)->postJson('/api/pos/orders', [
+        $response = $this->actingAs($this->user)->postJson('/api/v1/pos/orders', [
             'session_id' => $this->session->id,
+            'terminal_id' => $this->terminal->id,
             'customer_id' => $this->customer->id,
             'items' => [
                 [
                     'product_id' => $this->product->id,
                     'quantity' => 1,
-                    'price' => 100.00,
+                    'unit_price' => 100.00,
                 ],
             ],
         ]);
@@ -226,8 +256,8 @@ class ChannelEquivalenceTest extends TenantTestCase
         $order = PosOrder::find($orderId);
         app(\Modules\POS\Services\PosPaymentCompletionService::class)->complete(
             $order,
-            'card',
             110.00,
+            'card',
             'WEBHOOK-'.uniqid()
         );
 
@@ -237,14 +267,15 @@ class ChannelEquivalenceTest extends TenantTestCase
     protected function createBackfillOrder(): array
     {
         // Create paid order without invoice (simulating missing invoice scenario)
-        $response = $this->actingAs($this->user)->postJson('/api/pos/orders', [
+        $response = $this->actingAs($this->user)->postJson('/api/v1/pos/orders', [
             'session_id' => $this->session->id,
+            'terminal_id' => $this->terminal->id,
             'customer_id' => $this->customer->id,
             'items' => [
                 [
                     'product_id' => $this->product->id,
                     'quantity' => 1,
-                    'price' => 100.00,
+                    'unit_price' => 100.00,
                 ],
             ],
         ]);
@@ -252,14 +283,18 @@ class ChannelEquivalenceTest extends TenantTestCase
         $orderId = $response->json('id');
 
         // Pay the order
-        $this->actingAs($this->user)->postJson("/api/pos/orders/{$orderId}/pay", [
+        $this->actingAs($this->user)->postJson("/api/v1/pos/orders/{$orderId}/pay", [
             'method' => 'cash',
             'amount' => 110.00,
         ]);
 
-        // Simulate backfill via repair command
+        // Simulate backfill via repair command (re-runs idempotent posting)
         $order = PosOrder::find($orderId);
-        app(\Modules\POS\Services\PosPaymentCompletionService::class)->backfill($order);
+        app(\Modules\POS\Services\PosPaymentCompletionService::class)->backfill(
+            $order,
+            'cash',
+            'BACKFILL-'.uniqid()
+        );
 
         return $this->extractOrderData($orderId);
     }
@@ -271,9 +306,9 @@ class ChannelEquivalenceTest extends TenantTestCase
         try {
             app(\Modules\POS\Services\PosPaymentCompletionService::class)->complete(
                 $order,
-                'cash',
                 110.00,
-                null // Same reference (null for cash)
+                'cash',
+                null // Same reference (null for cash) — should be idempotent
             );
         } catch (\Exception $e) {
             // Expected to fail or be idempotent
@@ -287,13 +322,28 @@ class ChannelEquivalenceTest extends TenantTestCase
         $order = PosOrder::with('payments')->find($orderId);
         $payment = $order->payments->first();
 
-        $journalEntry = JournalEntry::where('source_document_id', $orderId)
+        // Journal entries are linked to source documents via journal_entry_links
+        // (PostingEngine does not write origin_reference_id on the entry itself).
+        $link = DB::table('journal_entry_links')
             ->where('source_document_type', 'pos_order')
+            ->where('source_document_id', $orderId)
+            ->orderBy('id')
             ->first();
 
+        $journalEntry = $link
+            ? JournalEntry::find($link->journal_entry_id)
+            : null;
+
         $stockMovements = StockMovement::where('reference_id', $orderId)
-            ->where('reference_type', 'pos_order')
+            ->where('reference_type', 'PosOrder')
             ->get();
+
+        $totalDebit = 0;
+        if ($journalEntry) {
+            $totalDebit = (float) DB::table('journal_entry_lines')
+                ->where('journal_entry_id', $journalEntry->id)
+                ->sum('debit');
+        }
 
         return [
             'order_id' => $orderId,
@@ -303,7 +353,7 @@ class ChannelEquivalenceTest extends TenantTestCase
             'payment_method' => $payment?->method,
             'payment_amount' => $payment?->amount,
             'journal_entry_id' => $journalEntry?->id,
-            'journal_entry_total' => $journalEntry?->total_debit ?? 0,
+            'journal_entry_total' => $totalDebit,
             'stock_movements_count' => $stockMovements->count(),
             'stock_quantity_change' => $stockMovements->sum('quantity'),
         ];
@@ -320,25 +370,28 @@ class ChannelEquivalenceTest extends TenantTestCase
             'GL entry totals must be identical'
         );
 
-        // Verify GL line structure is identical
-        $lines1 = DB::table('journal_entry_lines')
-            ->where('journal_entry_id', $result1['journal_entry_id'])
-            ->orderBy('account_code')
-            ->get();
-
-        $lines2 = DB::table('journal_entry_lines')
-            ->where('journal_entry_id', $result2['journal_entry_id'])
-            ->orderBy('account_code')
-            ->get();
+        // Verify GL line structure is identical (ordered by account_id for
+        // stable comparison; account code lookup via chart_of_accounts).
+        $lines1 = $this->getJournalLinesSorted($result1['journal_entry_id']);
+        $lines2 = $this->getJournalLinesSorted($result2['journal_entry_id']);
 
         $this->assertEquals($lines1->count(), $lines2->count(), 'GL line counts must match');
 
         foreach ($lines1 as $index => $line1) {
             $line2 = $lines2[$index];
-            $this->assertEquals($line1->account_code, $line2->account_code, 'Account codes must match');
-            $this->assertEquals($line1->debit, $line2->debit, 'Debit amounts must match');
-            $this->assertEquals($line1->credit, $line2->credit, 'Credit amounts must match');
+            $this->assertEquals($line1->account_id, $line2->account_id, 'Account IDs must match');
+            $this->assertEquals((float) $line1->debit, (float) $line2->debit, 'Debit amounts must match');
+            $this->assertEquals((float) $line1->credit, (float) $line2->credit, 'Credit amounts must match');
         }
+    }
+
+    protected function getJournalLinesSorted(int $journalEntryId)
+    {
+        return DB::table('journal_entry_lines')
+            ->where('journal_entry_id', $journalEntryId)
+            ->orderBy('account_id')
+            ->orderBy('id')
+            ->get();
     }
 
     protected function assertEquivalentStockMovements(array $result1, array $result2): void
@@ -370,9 +423,14 @@ class ChannelEquivalenceTest extends TenantTestCase
 
     protected function getTaxGLLine(int $journalEntryId)
     {
-        return DB::table('journal_entry_lines')
-            ->where('journal_entry_id', $journalEntryId)
-            ->where('account_code', 'like', '%tax%')
+        // journal_entry_lines.account_id → chart_of_accounts.code (e.g. 2200 Sales Tax Payable)
+        return DB::table('journal_entry_lines as l')
+            ->join('chart_of_accounts as c', 'l.account_id', '=', 'c.id')
+            ->where('l.journal_entry_id', $journalEntryId)
+            ->where(function ($q) {
+                $q->where('c.name', 'ilike', '%tax%')->orWhere('c.code', 'like', '%tax%');
+            })
+            ->select('l.*', 'c.code as account_code')
             ->first();
     }
 }

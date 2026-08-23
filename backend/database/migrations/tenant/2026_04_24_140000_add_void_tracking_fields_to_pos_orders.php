@@ -13,6 +13,10 @@ return new class extends Migration
         }
 
         Schema::table('pos_orders', function (Blueprint $table) {
+            if (! Schema::hasColumn('pos_orders', 'voided_at')) {
+                $table->timestamp('voided_at')->nullable();
+            }
+
             if (! Schema::hasColumn('pos_orders', 'voided_by')) {
                 $table->unsignedBigInteger('voided_by')->nullable()->after('voided_at');
             }
@@ -34,7 +38,7 @@ return new class extends Migration
         }
 
         Schema::table('pos_orders', function (Blueprint $table) {
-            foreach (['voided_by', 'void_approved_by', 'void_reason'] as $column) {
+            foreach (['voided_at', 'voided_by', 'void_approved_by', 'void_reason'] as $column) {
                 if (Schema::hasColumn('pos_orders', $column)) {
                     $table->dropColumn($column);
                 }

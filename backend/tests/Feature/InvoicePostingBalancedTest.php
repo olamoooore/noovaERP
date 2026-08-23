@@ -8,26 +8,30 @@ use App\Models\JournalEntryLink;
 use App\Models\Product;
 use App\Models\Tenant;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TenantTestCase;
 
 class InvoicePostingBalancedTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     public function test_invoice_posting_creates_balanced_journal_and_link()
     {
-        // Basic setup: tenant and essential entities
-        $tenant = Tenant::factory()->create(['id' => 't-invoice-balanced']);
-        // Initialize tenancy for this test tenant
-        tenancy()->initialize($tenant);
-        // Ensure tenancy is active in the test context
-        // in case tenancy() helper requires it
-
-        // Tenancy bootstrap (if necessary for tests that touch tenant schema)
-        // We rely on existing test harness to bootstrap tenancy; skip manual init here.
+        // Create the test tenant without firing TenantCreated so stancl/tenancy's
+        // CreateDatabase + MigrateDatabase pipeline does not run (it would race
+        // with the in-progress test transaction).
+        $tenant = Tenant::withoutEvents(function () {
+            return Tenant::factory()->create(['id' => '22222222-2222-2222-2222-222222222222']);
+        });
+        $this->bindTenantContext($tenant->id);
 
         $user = User::factory()->create(['name' => 'Invoice Balancer', 'email' => 'balancer@example.local']);
+        DB::table('user_company_access')->insert([
+            'user_id' => $user->id,
+            'tenant_id' => $tenant->id,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $customer = Customer::factory()->create(['name' => 'Balancer Co', 'payment_terms' => 30]);
         $product = Product::factory()->create(['track_inventory' => false, 'name' => 'Balancer Item', 'price' => 100, 'cost' => 60]);
 
@@ -48,12 +52,12 @@ class InvoicePostingBalancedTest extends TenantTestCase
         ];
 
         // Step 1: create draft invoice
-        $response = $this->actingAs($user)->postJson('/api/v1/accounting/invoices', $payload);
+        $response = $this->actingAs($user)->postJson('/api/v1/invoices', $payload);
         $response->assertCreated();
         $invoiceId = $response->json('id');
 
         // Step 2: post to GL
-        $sendResponse = $this->actingAs($user)->postJson('/api/v1/accounting/invoices/'.$invoiceId.'/send');
+        $sendResponse = $this->actingAs($user)->postJson('/api/v1/invoices/'.$invoiceId.'/send');
         $sendResponse->assertOk();
 
         // Step 3: validate DB state

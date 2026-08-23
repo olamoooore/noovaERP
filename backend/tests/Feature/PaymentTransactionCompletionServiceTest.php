@@ -121,7 +121,7 @@ class PaymentTransactionCompletionServiceTest extends TenantTestCase
         ]);
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('No invoice or POS order found for transaction');
+        $this->expectExceptionMessage('No invoice, POS order, or web order found for transaction');
 
         $this->service->complete($transaction, 'card');
     }

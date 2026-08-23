@@ -90,10 +90,11 @@ abstract class TenantTestCase extends TestCase
             // open, causing DROP DATABASE to fail with SQLSTATE[55006].
             $pdo->exec(
                 "SELECT pg_terminate_backend(pid) FROM pg_stat_activity ".
-                "WHERE datname = ".$pdo->quote($dbName)." AND pid <> pg_backend_pid()"
+                "WHERE (datname = ".$pdo->quote($dbName)." OR datname IS NULL) ".
+                "AND pid <> pg_backend_pid() AND application_name <> 'psql'"
             );
 
-            $pdo->exec("DROP DATABASE IF EXISTS \"{$dbName}\"");
+            $pdo->exec("DROP DATABASE IF EXISTS \"{$dbName}\" WITH (FORCE)");
             $pdo->exec("CREATE DATABASE \"{$dbName}\"");
             $pdo = null;
             DB::purge('pgsql');

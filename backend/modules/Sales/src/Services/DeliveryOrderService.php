@@ -2,11 +2,11 @@
 
 namespace Modules\Sales\Services;
 
+use App\Models\Warehouse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\Inventory\Models\StockReservation;
-use Modules\Inventory\Models\Warehouse;
 use Modules\Inventory\Services\InventoryService;
 use Modules\Inventory\Services\StockReservationService;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;

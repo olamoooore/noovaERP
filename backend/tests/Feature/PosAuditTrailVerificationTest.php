@@ -3,10 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\AuditLog;
+use App\Models\User;
 use App\Services\AuditLogger;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
+use Modules\POS\Models\PosSession;
+use Modules\POS\Models\PosTerminal;
 use Tests\TenantTestCase;
 
 /**
@@ -23,6 +26,43 @@ class PosAuditTrailVerificationTest extends TenantTestCase
         parent::setUp();
         $this->ensureAuditLogsTableExists();
         $this->auditLogger = app(AuditLogger::class);
+        $this->seedTerminalAndSessionFixtures();
+    }
+
+    private array $auditContext = [];
+
+    private function seedTerminalAndSessionFixtures(): void
+    {
+        $user = User::factory()->create(['name' => 'Audit Test User', 'email' => 'audit-user@audit-trail.test']);
+
+        $terminal1 = PosTerminal::create(['name' => 'Terminal 1', 'code' => 'AUDIT-T-001', 'is_active' => true]);
+        $terminal2 = PosTerminal::create(['name' => 'Terminal 2', 'code' => 'AUDIT-T-002', 'is_active' => true]);
+        $terminal3 = PosTerminal::create(['name' => 'Terminal 3', 'code' => 'AUDIT-T-003', 'is_active' => true]);
+
+        $session1 = PosSession::create([
+            'terminal_id' => $terminal1->id, 'user_id' => $user->id,
+            'session_number' => 'AUDIT-S-001', 'opening_balance' => 0,
+            'status' => 'open', 'opened_at' => now()->subHour(),
+        ]);
+        $session2 = PosSession::create([
+            'terminal_id' => $terminal2->id, 'user_id' => $user->id,
+            'session_number' => 'AUDIT-S-002', 'opening_balance' => 0,
+            'status' => 'open', 'opened_at' => now()->subHour(),
+        ]);
+        $session3 = PosSession::create([
+            'terminal_id' => $terminal3->id, 'user_id' => $user->id,
+            'session_number' => 'AUDIT-S-003', 'opening_balance' => 0,
+            'status' => 'open', 'opened_at' => now()->subHour(),
+        ]);
+
+        $this->auditContext = [
+            'terminal1_id' => $terminal1->id,
+            'terminal2_id' => $terminal2->id,
+            'terminal3_id' => $terminal3->id,
+            'session1_id' => $session1->id,
+            'session2_id' => $session2->id,
+            'session3_id' => $session3->id,
+        ];
     }
 
     private function ensureAuditLogsTableExists(): void
@@ -61,8 +101,8 @@ class PosAuditTrailVerificationTest extends TenantTestCase
             paymentId: 50,
             method: 'cash',
             amount: 99.99,
-            terminalId: 1,
-            sessionId: 1
+            terminalId: $this->auditContext['terminal1_id'],
+            sessionId: $this->auditContext['session1_id']
         );
 
         $this->assertDatabaseHas('audit_logs', [
@@ -76,8 +116,8 @@ class PosAuditTrailVerificationTest extends TenantTestCase
             ->first();
 
         $this->assertNotNull($log);
-        $this->assertEquals(1, $log->terminal_id);
-        $this->assertEquals(1, $log->session_id);
+        $this->assertEquals($this->auditContext['terminal1_id'], $log->terminal_id);
+        $this->assertEquals($this->auditContext['session1_id'], $log->session_id);
         $this->assertEquals('payment_100_50', $log->idempotency_key);
     }
 
@@ -88,8 +128,8 @@ class PosAuditTrailVerificationTest extends TenantTestCase
             orderId: 200,
             voidReason: 'Customer changed mind',
             approvedBy: 5,
-            terminalId: 2,
-            sessionId: 3
+            terminalId: $this->auditContext['terminal2_id'],
+            sessionId: $this->auditContext['session3_id']
         );
 
         $log = AuditLog::where('operation', 'pos_void')
@@ -97,8 +137,8 @@ class PosAuditTrailVerificationTest extends TenantTestCase
             ->first();
 
         $this->assertNotNull($log);
-        $this->assertEquals(2, $log->terminal_id);
-        $this->assertEquals(3, $log->session_id);
+        $this->assertEquals($this->auditContext['terminal2_id'], $log->terminal_id);
+        $this->assertEquals($this->auditContext['session3_id'], $log->session_id);
         $this->assertNotNull($log->after_state);
         $this->assertEquals('Customer changed mind', $log->after_state['void_reason']);
         $this->assertEquals(5, $log->after_state['approved_by']);
@@ -113,8 +153,8 @@ class PosAuditTrailVerificationTest extends TenantTestCase
             refundAmount: 45.00,
             notes: 'Defective product',
             approvedBy: 6,
-            terminalId: 1,
-            sessionId: 2
+            terminalId: $this->auditContext['terminal1_id'],
+            sessionId: $this->auditContext['session2_id']
         );
 
         $log = AuditLog::where('operation', 'pos_refund')
@@ -139,8 +179,8 @@ class PosAuditTrailVerificationTest extends TenantTestCase
             returnOrderId: 401,
             items: $items,
             approvedBy: 7,
-            terminalId: 1,
-            sessionId: 1
+            terminalId: $this->auditContext['terminal1_id'],
+            sessionId: $this->auditContext['session1_id']
         );
 
         $log = AuditLog::where('operation', 'pos_return')
@@ -159,8 +199,8 @@ class PosAuditTrailVerificationTest extends TenantTestCase
             approvalRequestId: 10,
             operation: 'pos_void',
             referenceId: 200,
-            terminalId: 1,
-            sessionId: 1
+            terminalId: $this->auditContext['terminal1_id'],
+            sessionId: $this->auditContext['session1_id']
         );
 
         $log = AuditLog::where('operation', 'approval_grant')
@@ -180,8 +220,8 @@ class PosAuditTrailVerificationTest extends TenantTestCase
             operation: 'pos_refund',
             referenceId: 300,
             reason: 'Amount exceeds limit',
-            terminalId: 1,
-            sessionId: 1
+            terminalId: $this->auditContext['terminal1_id'],
+            sessionId: $this->auditContext['session1_id']
         );
 
         $log = AuditLog::where('operation', 'approval_reject')
@@ -196,8 +236,8 @@ class PosAuditTrailVerificationTest extends TenantTestCase
     public function audit_records_are_idempotent_on_replay()
     {
         // Log same payment twice
-        $this->auditLogger->logPayment(100, 50, 'cash', 99.99, 1, 1);
-        $this->auditLogger->logPayment(100, 50, 'cash', 99.99, 1, 1);
+        $this->auditLogger->logPayment(100, 50, 'cash', 99.99, $this->auditContext['terminal1_id'], $this->auditContext['session1_id']);
+        $this->auditLogger->logPayment(100, 50, 'cash', 99.99, $this->auditContext['terminal1_id'], $this->auditContext['session1_id']);
 
         $count = AuditLog::where('operation', 'pos_payment')
             ->where('reference_id', 100)
@@ -209,7 +249,7 @@ class PosAuditTrailVerificationTest extends TenantTestCase
     /** @test */
     public function audit_records_cannot_be_modified()
     {
-        $this->auditLogger->logPayment(100, 50, 'cash', 99.99, 1, 1);
+        $this->auditLogger->logPayment(100, 50, 'cash', 99.99, $this->auditContext['terminal1_id'], $this->auditContext['session1_id']);
 
         $log = AuditLog::where('operation', 'pos_payment')->first();
 
@@ -222,7 +262,7 @@ class PosAuditTrailVerificationTest extends TenantTestCase
     /** @test */
     public function audit_records_cannot_be_deleted()
     {
-        $this->auditLogger->logPayment(100, 50, 'cash', 99.99, 1, 1);
+        $this->auditLogger->logPayment(100, 50, 'cash', 99.99, $this->auditContext['terminal1_id'], $this->auditContext['session1_id']);
 
         $log = AuditLog::where('operation', 'pos_payment')->first();
 
@@ -238,13 +278,13 @@ class PosAuditTrailVerificationTest extends TenantTestCase
         $orderId = 500;
 
         // 1. Payment
-        $this->auditLogger->logPayment($orderId, 60, 'card', 150.00, 1, 1);
+        $this->auditLogger->logPayment($orderId, 60, 'card', 150.00, $this->auditContext['terminal1_id'], $this->auditContext['session1_id']);
 
         // 2. Approval granted
-        $this->auditLogger->logApprovalGrant(20, 'pos_void', $orderId, 1, 1);
+        $this->auditLogger->logApprovalGrant(20, 'pos_void', $orderId, $this->auditContext['terminal1_id'], $this->auditContext['session1_id']);
 
         // 3. Void
-        $this->auditLogger->logVoid($orderId, 'Wrong item', 5, 1, 1);
+        $this->auditLogger->logVoid($orderId, 'Wrong item', 5, $this->auditContext['terminal1_id'], $this->auditContext['session1_id']);
 
         $trail = AuditLog::where('reference_id', $orderId)
             ->orWhere(function ($q) use ($orderId) {

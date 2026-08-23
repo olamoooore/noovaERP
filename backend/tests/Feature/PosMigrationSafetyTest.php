@@ -37,11 +37,11 @@ class PosMigrationSafetyTest extends TenantTestCase
     public function stock_movements_has_unique_constraint()
     {
         $indexes = DB::select("
-            SELECT index_name
-            FROM information_schema.statistics
-            WHERE table_name = 'stock_movements'
-            AND non_unique = 0
-            AND index_name LIKE '%reference%'
+            SELECT indexname AS index_name
+            FROM pg_indexes
+            WHERE tablename = 'stock_movements'
+            AND indexname LIKE '%reference%'
+            AND indexdef LIKE '%UNIQUE%'
         ");
 
         if (! empty($indexes)) {

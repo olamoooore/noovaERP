@@ -8,20 +8,37 @@ use App\Models\JournalEntryLink;
 use App\Models\Product;
 use App\Models\Tenant;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TenantTestCase;
 
 class InvoiceIdempotencyTest extends TenantTestCase
 {
-    use RefreshDatabase;
-
     public function test_invoice_posting_is_idempotent()
     {
-        // Setup a tenant context
-        $tenant = Tenant::factory()->create(['id' => 'idem-tenant']);
-        tenancy()->initialize($tenant);
+        // Setup a tenant context. We use withoutEvents to skip the
+        // TenantCreated pipeline (CreateDatabase + MigrateDatabase) because
+        // TenantTestCase already populated the public schema with the same
+        // tables and re-running migrations would race with the in-progress
+        // test transaction.
+        $tenant = Tenant::withoutEvents(function () {
+            return Tenant::factory()->create(['id' => '11111111-1111-1111-1111-111111111111']);
+        });
+        $this->bindTenantContext($tenant->id);
 
         $user = User::factory()->create(['name' => 'Idem User']);
+
+        // Grant tenant-scoped accounting write access for this user.
+        // The accounting middleware (EnsureAccountingWriteAccess) consults
+        // user_company_access when the user is not a Spatie super-admin.
+        DB::table('user_company_access')->insert([
+            'user_id' => $user->id,
+            'tenant_id' => $tenant->id,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         $customer = Customer::factory()->create();
         $product = Product::factory()->create(['track_inventory' => false]);
 
@@ -36,14 +53,14 @@ class InvoiceIdempotencyTest extends TenantTestCase
         ];
 
         // Create invoice (draft)
-        $invoice =
-            $this->actingAs($user)->postJson('/api/v1/accounting/invoices', $payload)
-                ->json();
+        $response = $this->actingAs($user)->postJson('/api/v1/invoices', $payload);
+        $response->assertCreated();
+        $invoice = $response->json();
 
         // First posting to GL
-        $this->actingAs($user)->postJson('/api/v1/accounting/invoices/'.$invoice['id'].'/send')->assertOk();
+        $this->actingAs($user)->postJson('/api/v1/invoices/'.$invoice['id'].'/send')->assertOk();
         // Second posting (should be idempotent)
-        $second = $this->actingAs($user)->postJson('/api/v1/accounting/invoices/'.$invoice['id'].'/send');
+        $second = $this->actingAs($user)->postJson('/api/v1/invoices/'.$invoice['id'].'/send');
         $second->assertOk();
 
         // Verify idempotency at DB level
