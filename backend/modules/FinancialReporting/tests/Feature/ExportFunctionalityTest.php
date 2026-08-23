@@ -3,6 +3,7 @@
 namespace Modules\FinancialReporting\Tests\Feature;
 
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Modules\FinancialReporting\Services\Export\CsvExportService;
 use Modules\FinancialReporting\Services\Export\ExcelExportService;
@@ -50,6 +51,20 @@ class ExportFunctionalityTest extends TenantTestCase
                 'net_profit' => 20000,
             ],
         ];
+    }
+
+    protected function tearDown(): void
+    {
+        // Export services write to the real local disk under
+        // reports/{tenant_id}. Remove this run's directory so repeated
+        // suite runs don't accumulate artifact folders in storage/app.
+        if ($this->boundTestTenant) {
+            Storage::disk('local')->deleteDirectory(
+                'reports/'.$this->boundTestTenant->id
+            );
+        }
+
+        parent::tearDown();
     }
 
     /** @test */

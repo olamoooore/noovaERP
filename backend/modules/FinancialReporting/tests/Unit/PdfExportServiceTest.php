@@ -15,7 +15,20 @@ class PdfExportServiceTest extends TenantTestCase
         parent::setUp();
         $this->bindTenantContext();
         $this->service = new PdfExportService;
-        Storage::fake('local');
+    }
+
+    protected function tearDown(): void
+    {
+        // PdfExportService writes directly to storage/app/reports/{tenant}
+        // via storage_path(), bypassing the Storage facade — remove this
+        // run's directory so artifacts don't accumulate on the real disk.
+        if ($this->boundTestTenant) {
+            Storage::disk('local')->deleteDirectory(
+                'reports/'.$this->boundTestTenant->id
+            );
+        }
+
+        parent::tearDown();
     }
 
     /** @test */

@@ -71,3 +71,6 @@ STEERING-PACK-ADDENDUM-REVIEW.md
 # OpenClaw implementation pack (local reference only)
 ace-openclaw-implementation-pack/
 *.sql
+# Runtime tenant report exports — never commit
+backend/storage/app/reports/*
+!backend/storage/app/reports/.gitkeep

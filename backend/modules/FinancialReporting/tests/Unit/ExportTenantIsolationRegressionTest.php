@@ -2,12 +2,26 @@
 
 namespace Modules\FinancialReporting\Tests\Unit;
 
+use Illuminate\Support\Facades\Storage;
 use Modules\FinancialReporting\Services\Export\CsvExportService;
 use Modules\FinancialReporting\Services\Export\PdfExportService;
 use Tests\TenantTestCase;
 
 class ExportTenantIsolationRegressionTest extends TenantTestCase
 {
+    protected function tearDown(): void
+    {
+        // Exports land on the real local disk — clean up each tenant's
+        // directory after the run.
+        if ($this->boundTestTenant) {
+            Storage::disk('local')->deleteDirectory(
+                'reports/'.$this->boundTestTenant->id
+            );
+        }
+
+        parent::tearDown();
+    }
+
     public function test_csv_exports_write_into_the_current_tenant_directory(): void
     {
         $this->bindTenantContext('tenant-report-a');
