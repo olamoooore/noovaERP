@@ -55,6 +55,9 @@ class BillPayment extends Model
                     'Create a reversing entry to cancel this payment.'
                 );
             }
+
+            // Safety net: clean up any orphaned journal entry links for this bill payment
+            $payment->journalEntryLinks()->delete();
         });
     }
 
@@ -71,6 +74,15 @@ class BillPayment extends Model
     public function journalEntry()
     {
         return $this->belongsTo(JournalEntry::class);
+    }
+
+    /**
+     * Get the journal entry links for this bill payment (source_document_type = 'bill_payment')
+     */
+    public function journalEntryLinks(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(JournalEntryLink::class, 'source_document_id')
+            ->where('source_document_type', 'bill_payment');
     }
 
     public function createdBy()

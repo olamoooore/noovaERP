@@ -69,6 +69,9 @@ class Payment extends Model
                     'Use the refund endpoint to reverse this payment.'
                 );
             }
+
+            // Safety net: clean up any orphaned journal entry links for this payment
+            $payment->journalEntryLinks()->delete();
         });
     }
 
@@ -95,6 +98,15 @@ class Payment extends Model
     public function journalEntry(): BelongsTo
     {
         return $this->belongsTo(JournalEntry::class);
+    }
+
+    /**
+     * Get the journal entry links for this payment (source_document_type = 'payment')
+     */
+    public function journalEntryLinks(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(JournalEntryLink::class, 'source_document_id')
+            ->where('source_document_type', 'payment');
     }
 
     public function receivedBy(): BelongsTo

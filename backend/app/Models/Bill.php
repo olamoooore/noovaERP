@@ -131,6 +131,9 @@ class Bill extends Model
                     'Posted bills must be reversed or credited, not deleted.'
                 );
             }
+
+            // Safety net: clean up any orphaned journal entry links for this bill
+            $bill->journalEntryLinks()->delete();
         });
     }
 
@@ -157,6 +160,15 @@ class Bill extends Model
     public function journalEntry(): BelongsTo
     {
         return $this->belongsTo(JournalEntry::class);
+    }
+
+    /**
+     * Get the journal entry links for this bill (source_document_type = 'bill')
+     */
+    public function journalEntryLinks(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(JournalEntryLink::class, 'source_document_id')
+            ->where('source_document_type', 'bill');
     }
 
     public function payments(): HasMany
