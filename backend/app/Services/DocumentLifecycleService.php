@@ -119,6 +119,24 @@ class DocumentLifecycleService
         $this->recalculateInvoiceState($invoice);
     }
 
+    public function applyPaymentRefund(Invoice $invoice, float $amount): void
+    {
+        $invoice->update([
+            'paid_amount' => max(0, (float) $invoice->paid_amount - $amount),
+        ]);
+
+        $this->recalculateInvoiceState($invoice);
+    }
+
+    public function applyBillPaymentRefund(Bill $bill, float $amount): void
+    {
+        $bill->update([
+            'paid_amount' => max(0, (float) $bill->paid_amount - $amount),
+        ]);
+
+        $this->recalculateBillState($bill);
+    }
+
     public function getDisplayStatus(Invoice|Bill $document): string
     {
         $lifecycle = $document->lifecycle_status;

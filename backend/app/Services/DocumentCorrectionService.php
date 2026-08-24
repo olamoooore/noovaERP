@@ -61,6 +61,7 @@ class DocumentCorrectionService
             reason: $request->reasonText ?? 'Reversal: '.($document instanceof Invoice ? $document->invoice_number : ($document instanceof Bill ? $document->bill_number : $document->entry_number)),
             reasonCode: $request->reasonCode,
             actorUserId: $request->userId,
+            tenantId: tenant()->id ?? null,
         );
 
         $reversalResult = app(\App\Accounting\PostingEngine::class)->reverse($reversalRequest);

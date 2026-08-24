@@ -18,7 +18,8 @@ class DocumentCorrectionEngineTest extends TenantTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->user = User::find(1) ?? User::factory()->create(['id' => 1]);
+        $this->bindTenantContext(\Illuminate\Support\Str::uuid()->toString());
+        $this->user = User::factory()->create();
         Gate::before(static function (User $user, string $ability): ?bool {
             return str_starts_with($ability, 'accounting.') ? true : null;
         });

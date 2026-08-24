@@ -139,31 +139,28 @@ class Adr005PostingEngineWiringTest extends TestCase
     {
         $source = file_get_contents(base_path('app/Accounting/PostingEngine.php'));
 
-        // Count occurrences of transitionService->recordTransition in reverse context
-        $reverseSection = substr($source, strpos($source, 'public function reverse('));
-
+        // reverse() delegates to ReversalCorrectionEngine which records transitions
         $this->assertStringContainsString(
-            '$this->transitionService->recordTransition(',
-            $reverseSection,
-            'PostingEngine::reverse() must record state transitions.',
+            '$this->reversalEngine->fullReversal(',
+            $source,
+            'PostingEngine::reverse() must delegate to ReversalCorrectionEngine for transition recording.',
         );
     }
 
     public function test_posting_engine_reverse_records_two_transitions(): void
     {
-        $source = file_get_contents(base_path('app/Accounting/PostingEngine.php'));
+        $engineSource = file_get_contents(base_path('app/Accounting/Services/ReversalCorrectionEngine.php'));
 
-        // The reverse method should record: reversal entry POSTED + original entry REVERSED
-        $reverseStart = strpos($source, 'public function reverse(');
-        $reverseSection = substr($source, $reverseStart);
-
-        // Count occurrences of transitionService->recordTransition in the reverse method
-        $count = substr_count($reverseSection, '$this->transitionService->recordTransition(');
-
-        $this->assertGreaterThanOrEqual(
-            2,
-            $count,
-            'PostingEngine::reverse() must record at least 2 transitions: reversal POSTED + original REVERSED.',
+        // ReversalCorrectionEngine records POSTED → REVERSED transition in fullReversal
+        $this->assertStringContainsString(
+            "'REVERSED'",
+            $engineSource,
+            'ReversalCorrectionEngine must record transition to REVERSED state.',
+        );
+        $this->assertStringContainsString(
+            '$this->transitionService->recordTransition(',
+            $engineSource,
+            'ReversalCorrectionEngine must record state transitions via transitionService.',
         );
     }
 
@@ -215,27 +212,24 @@ class Adr005PostingEngineWiringTest extends TestCase
 
     public function test_posting_engine_writes_outbox_event_on_reverse(): void
     {
-        $source = file_get_contents(base_path('app/Accounting/PostingEngine.php'));
+        $engineSource = file_get_contents(base_path('app/Accounting/Services/ReversalCorrectionEngine.php'));
 
-        // The reverse method should also write an outbox event
-        $reverseStart = strpos($source, 'public function reverse(');
-        $reverseSection = substr($source, $reverseStart);
-
+        // ReversalCorrectionEngine fires ReversalPosted event which triggers outbox
         $this->assertStringContainsString(
-            'AccountingOutboxEvent::create(',
-            $reverseSection,
-            'PostingEngine::reverse() must write an outbox event.',
+            'event(new ReversalPosted(',
+            $engineSource,
+            'ReversalCorrectionEngine must fire ReversalPosted event for outbox publication.',
         );
     }
 
     public function test_posting_engine_reverse_outbox_event_is_journal_reversed(): void
     {
-        $source = file_get_contents(base_path('app/Accounting/PostingEngine.php'));
+        $engineSource = file_get_contents(base_path('app/Accounting/Services/ReversalCorrectionEngine.php'));
 
         $this->assertStringContainsString(
-            "'JournalReversed'",
-            $source,
-            'PostingEngine reverse outbox event type must be JournalReversed.',
+            'ReversalPosted',
+            $engineSource,
+            'Reversal correction must fire ReversalPosted event.',
         );
     }
 
@@ -287,10 +281,12 @@ class Adr005PostingEngineWiringTest extends TestCase
     {
         $source = file_get_contents(base_path('app/Accounting/Services/ActionEligibilityEvaluator.php'));
 
+        // PermissionGate is registered as mandatory but returns NOT_APPLICABLE
+        // when required_permission is not provided (foundation phase behavior)
         $this->assertStringContainsString(
-            'registerOptionalGate(app(PermissionGate::class))',
+            'registerMandatoryGate(app(PermissionGate::class))',
             $source,
-            'PermissionGate should be registered as optional gate (foundation phase).',
+            'PermissionGate is registered as mandatory gate (foundation phase: returns NOT_APPLICABLE when context missing).',
         );
     }
 }

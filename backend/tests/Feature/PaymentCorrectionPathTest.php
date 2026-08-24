@@ -81,9 +81,9 @@ class PaymentCorrectionPathTest extends TestCase
         $method = $reflection->getMethod('reverse');
         $source = file_get_contents($method->getFileName());
 
-        // Must NOT hard-delete allocations
+        // Must NOT hard-delete allocations (no ->delete() call on Allocation query)
         $this->assertStringNotContainsString(
-            'Allocation::where',
+            '->delete()',
             $source,
             'Settlement reversal must NOT hard-delete allocations'
         );

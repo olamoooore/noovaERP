@@ -411,6 +411,16 @@ class JournalEntriesController extends Controller
                 ], 422);
             }
 
+            // Update lifecycle status on the original journal entry
+            $originalJe = JournalEntry::find($id);
+            if ($originalJe) {
+                $originalJe->update([
+                    'lifecycle_status' => 'reversed',
+                    'correction_type' => 'reverse',
+                    'is_active_version' => false,
+                ]);
+            }
+
             return response()->json([
                 'message' => 'Journal entry reversed successfully',
                 'reversal_entry' => $result->journalEntry->load('lines.account'),

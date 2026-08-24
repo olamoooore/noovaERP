@@ -170,6 +170,10 @@ class AccountingModuleEndToEndTest extends TenantTestCase
             'accounting.post',
             'accounting.reverse',
             'accounting.lock',
+            'accounting.close.read',
+            'accounting.close.manage',
+            'accounting.close.signoff',
+            'accounting.close.task_write',
             'reconciliation.complete',
         ];
         foreach ($permissions as $perm) {
@@ -903,9 +907,13 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         // If reversal succeeds, verify the opposite entry; if rejected, verify original unchanged
         if ($reverseResponse->status() === 200 || $reverseResponse->status() === 201) {
             $originalJe = JournalEntry::with('lines')->find($jeId);
-            $this->assertEquals('reversed', $originalJe->status);
+            $this->assertEquals('reversed', $originalJe->lifecycle_status);
 
-            $reversalJe = JournalEntry::where('reversal_of_id', $jeId)->first();
+            $reversalLink = JournalEntryLink::where('relation_type', 'reversal')
+                ->where('original_journal_entry_id', $jeId)
+                ->first();
+            $this->assertNotNull($reversalLink, 'Reversal link should exist');
+            $reversalJe = JournalEntry::find($reversalLink->journal_entry_id);
             $this->assertNotNull($reversalJe);
             $this->assertJournalBalanced($reversalJe);
         } else {
