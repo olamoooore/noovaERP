@@ -11,6 +11,7 @@ import { Icon } from '@iconify/react'
 import { formatDate } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DeliveryOrderColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 
 export function DeliveryOrderDetailPage() {
   const { id } = useParams()
@@ -500,6 +501,9 @@ export function DeliveryOrderDetailPage() {
           <CardTitle>Shipped Items</CardTitle>
         </CardHeader>
         <CardContent>
+            <DeliveryOrderColumnVisibility tableClass="do-detail-columns" columns={[
+              '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Patient Name', 'Qty Ordered', 'Qty Delivered', 'Unit', 'Unit Price', 'Line Total', 'Lot Number', 'Expiry Date',
+            ].map((label, index) => ({ label, index: index + 1 }))}>
             <Table>
             <TableHeader>
                 <TableRow>
@@ -516,6 +520,7 @@ export function DeliveryOrderDetailPage() {
                   <TableHead className="text-right">Unit Price</TableHead>
                   <TableHead className="text-right">Line Total</TableHead>
                   <TableHead>Lot Number</TableHead>
+                  <TableHead>Expiry Date</TableHead>
                 </TableRow>
               </TableHeader>
             <TableBody>
@@ -534,17 +539,19 @@ export function DeliveryOrderDetailPage() {
                   <TableCell className="text-right">{line.unit_price ? parseFloat(line.unit_price).toFixed(2) : '-'}</TableCell>
                   <TableCell className="text-right font-medium">{line.line_total ? parseFloat(line.line_total).toFixed(2) : '-'}</TableCell>
                   <TableCell>{line.lot_number || '-'}</TableCell>
+                  <TableCell>{line.expiry_date ? formatDate(line.expiry_date) : '-'}</TableCell>
                 </TableRow>
               ))}
               {(!deliveryOrder.lines || deliveryOrder.lines.length === 0) && (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={14} className="text-center text-muted-foreground py-8">
                     No lines in this delivery order.
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
+          </DeliveryOrderColumnVisibility>
           {deliveryOrder.total && (
             <div className="flex justify-end mt-4 pt-4 border-t">
               <div className="text-right">

@@ -11,6 +11,7 @@ import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DeliveryOrderColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 
 interface LineItem {
   product_id: number | null
@@ -23,6 +24,7 @@ interface LineItem {
   unit: string
   unit_price: number | null
   lot_number: string
+  expiry_date: string
 }
 
 export function DeliveryOrderEditPage() {
@@ -124,6 +126,7 @@ export function DeliveryOrderEditPage() {
           unit: l.unit || 'pcs',
           unit_price: l.unit_price ? parseFloat(l.unit_price) : null,
           lot_number: l.lot_number || '',
+          expiry_date: l.expiry_date?.split('T')[0] || '',
         })) || []
       )
     }
@@ -156,7 +159,7 @@ export function DeliveryOrderEditPage() {
   }
 
   const addLine = () => {
-    setLines((prev) => [...prev, { product_id: null, product_name: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' }])
+    setLines((prev) => [...prev, { product_id: null, product_name: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '', expiry_date: '' }])
   }
 
   const removeLine = (index: number) => {
@@ -189,6 +192,7 @@ export function DeliveryOrderEditPage() {
         unit: l.unit,
         unit_price: l.unit_price || undefined,
         lot_number: l.lot_number || undefined,
+        expiry_date: l.expiry_date || undefined,
       })),
     })
   }
@@ -335,6 +339,9 @@ export function DeliveryOrderEditPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <DeliveryOrderColumnVisibility tableClass="do-edit-columns" columns={[
+            'Product', 'Description', 'Product Notes', 'Patient Name', 'Quantity', 'Unit', 'Unit Price', 'Lot Number', 'Expiry Date', 'Actions',
+          ].map((label, index) => ({ label, index: index + 1 }))}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -346,6 +353,7 @@ export function DeliveryOrderEditPage() {
                 <TableHead className="w-[100px]">Unit</TableHead>
                 <TableHead className="text-right w-[120px]">Unit Price</TableHead>
                 <TableHead className="w-[120px]">Lot Number</TableHead>
+                <TableHead className="w-[140px]">Expiry Date</TableHead>
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -385,6 +393,9 @@ export function DeliveryOrderEditPage() {
                     <Input value={line.lot_number} onChange={(e) => updateLine(idx, 'lot_number', e.target.value)} className="w-28" placeholder="Lot #" />
                   </TableCell>
                   <TableCell>
+                    <Input type="date" value={line.expiry_date} onChange={(e) => updateLine(idx, 'expiry_date', e.target.value)} className="w-36" />
+                  </TableCell>
+                  <TableCell>
                     {lines.length > 1 && (
                       <Button variant="ghost" size="sm" onClick={() => removeLine(idx)}>
                         <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4 text-destructive" />
@@ -395,6 +406,7 @@ export function DeliveryOrderEditPage() {
               ))}
             </TableBody>
           </Table>
+          </DeliveryOrderColumnVisibility>
         </CardContent>
       </Card>
 
