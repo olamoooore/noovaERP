@@ -61,6 +61,8 @@ export interface TableBlock extends BlockBase {
   subtotal_label?: string
   subtotal_field?: string
   subtotal_format?: string
+  subtotal_font_size?: number
+  subtotal_gap_mm?: number
 }
 
 export interface TotalsRow {

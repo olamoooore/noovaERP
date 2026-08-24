@@ -123,19 +123,44 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         $pageSubtotals = [];
         $seenRows = [];
         $footerTop = null;
+        $totalsFrame = null;
         $totalsPosition = null;
         $showSubtotal = ($config['show_page_subtotal'] ?? true) !== false;
         $subtotalLabel = (string) ($config['subtotal_label'] ?? 'Page Subtotal');
         $subtotalFormat = (string) ($config['subtotal_format'] ?? 'money');
+        $subtotalFontSize = max(6, min(18, (int) ($config['subtotal_font_size'] ?? 9)));
+        $subtotalGapMm = max(0, min(30, (float) ($config['subtotal_gap_mm'] ?? 3)));
         $margin = is_array($template->margin) ? $template->margin : config('templatebuilder.defaults.margin_mm');
         $pointsPerMm = 72 / 25.4;
 
         $pdf->setCallbacks([
             [
                 'event' => 'begin_frame',
-                'f' => function (Frame $frame, Canvas $canvas) use (&$footerTop, $margin, $pointsPerMm): void {
+                'f' => function (Frame $frame, Canvas $canvas) use (&$footerTop, &$totalsFrame, &$totalsPosition, $margin, $pointsPerMm): void {
                     $node = $frame->get_node();
-                    if (! $node instanceof DOMElement || ! str_contains(' '.$node->getAttribute('class').' ', ' tb-document-footer ')) {
+                    if (! $node instanceof DOMElement) {
+                        return;
+                    }
+
+                    $classes = ' '.$node->getAttribute('class').' ';
+                    if (str_contains($classes, ' tb-document-totals ')) {
+                        $totalsFrame = $frame;
+
+                        if ($footerTop !== null) {
+                            $totalsTargetY = $footerTop
+                                - (3 * $pointsPerMm)
+                                - $frame->get_margin_height();
+                            $frame->move(0, $totalsTargetY - (float) $frame->get_position('y'));
+                            $totalsPosition = [
+                                'page' => $canvas->get_page_number(),
+                                'y' => $totalsTargetY,
+                            ];
+                        }
+
+                        return;
+                    }
+
+                    if (! str_contains($classes, ' tb-document-footer ')) {
                         return;
                     }
 
@@ -144,6 +169,17 @@ final class PdfGenerationService implements PdfGenerationServiceContract
                         - $frame->get_margin_height();
                     $frame->move(0, $targetY - (float) $frame->get_position('y'));
                     $footerTop = $targetY;
+
+                    if ($totalsFrame instanceof Frame) {
+                        $totalsTargetY = $targetY
+                            - (3 * $pointsPerMm)
+                            - $totalsFrame->get_margin_height();
+                        $totalsFrame->move(0, $totalsTargetY - (float) $totalsFrame->get_position('y'));
+                        $totalsPosition = [
+                            'page' => $canvas->get_page_number(),
+                            'y' => $totalsTargetY,
+                        ];
+                    }
                 },
             ],
             [
@@ -186,6 +222,8 @@ final class PdfGenerationService implements PdfGenerationServiceContract
                     $showSubtotal,
                     $subtotalLabel,
                     $subtotalFormat,
+                    $subtotalFontSize,
+                    $subtotalGapMm,
                     $margin,
                     $pointsPerMm
                 ): void {
@@ -193,6 +231,7 @@ final class PdfGenerationService implements PdfGenerationServiceContract
                     $bold = $fontMetrics->getFont('DejaVu Sans', 'bold');
                     $pageWidth = $canvas->get_width();
                     $pageHeight = $canvas->get_height();
+                    $left = (float) ($margin['left'] ?? 12) * $pointsPerMm;
                     $right = (float) ($margin['right'] ?? 12) * $pointsPerMm;
                     $top = max(8.0, ((float) ($margin['top'] ?? 15) * $pointsPerMm / 2) - 4);
                     $number = $pageNumber.'/'.$pageCount;
@@ -205,22 +244,24 @@ final class PdfGenerationService implements PdfGenerationServiceContract
 
                     $this->mergeFields->with($data);
                     $value = (string) $this->mergeFields->formatValue($pageSubtotals[$pageNumber], $subtotalFormat);
-                    $size = 9;
+                    $size = $subtotalFontSize;
                     // Earlier pages use the reserved bottom decoration band. On the
                     // final page, use the blank slot immediately above overall totals.
                     $defaultY = $pageHeight - (((float) ($margin['bottom'] ?? 15) + 4) * $pointsPerMm);
                     if ($pageNumber === $pageCount && ($totalsPosition['page'] ?? null) === $pageNumber) {
-                        $y = (float) $totalsPosition['y'] + (7 * $pointsPerMm);
+                        $y = (float) $totalsPosition['y'] - ($subtotalGapMm * $pointsPerMm);
                     } elseif ($footerTop !== null && $pageNumber === $pageCount) {
                         $y = min($defaultY, $footerTop - (8 * $pointsPerMm));
                     } else {
                         $y = $defaultY;
                     }
                     $valueWidth = $fontMetrics->getTextWidth($value, $bold, $size);
-                    $labelWidth = $fontMetrics->getTextWidth($subtotalLabel, $bold, $size);
-                    $valueX = $pageWidth - $right - $valueWidth;
-                    $labelX = max($right, $valueX - $labelWidth - 36);
-                    $canvas->line($labelX, $y - 4, $pageWidth - $right, $y - 4, [0.82, 0.84, 0.87], 0.6);
+                    $gridRight = $pageWidth - $right;
+                    $gridLeft = $gridRight - (($gridRight - $left) * 0.55);
+                    $cellPadding = 7.5; // Matches the Totals table's 10px cell padding.
+                    $labelX = $gridLeft + $cellPadding;
+                    $valueX = $gridRight - $cellPadding - $valueWidth;
+                    $canvas->line($gridLeft, $y - 4, $gridRight, $y - 4, [0.82, 0.84, 0.87], 0.6);
                     $canvas->text($labelX, $y, $subtotalLabel, $bold, $size, [0.12, 0.16, 0.23]);
                     $canvas->text($valueX, $y, $value, $bold, $size, [0.12, 0.16, 0.23]);
                 },

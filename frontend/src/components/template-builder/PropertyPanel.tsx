@@ -252,6 +252,18 @@ function BlockEditor({ block, updateBlock, documentType }: {
                     options={FORMAT_OPTIONS}
                     onChange={(value) => updateBlock(block.id, { subtotal_format: value === 'none' ? undefined : value })}
                   />
+                  <div className="grid grid-cols-2 gap-2">
+                    <LabeledNumber
+                      label="Font size (pt)"
+                      value={t.subtotal_font_size ?? 9}
+                      onChange={(value) => updateBlock(block.id, { subtotal_font_size: value })}
+                    />
+                    <LabeledNumber
+                      label="Gap above totals (mm)"
+                      value={t.subtotal_gap_mm ?? 3}
+                      onChange={(value) => updateBlock(block.id, { subtotal_gap_mm: value })}
+                    />
+                  </div>
                 </>
               )}
             </div>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exports\InvoicesExport;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Invoice;
@@ -14,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Maatwebsite\Excel\Facades\Excel;
 use Modules\Sales\Services\SalesOrderService;
 
 class InvoiceController extends Controller
@@ -27,21 +29,55 @@ class InvoiceController extends Controller
 
     public function index(Request $request)
     {
-        $query = Invoice::with(['customer', 'lines'])
-            ->orderBy('invoice_date', 'desc');
+        $query = $this->filteredInvoiceQuery($request)
+            ->with(['customer', 'lines']);
 
-        if ($request->has('status')) {
+        $invoices = $query->paginate($request->per_page ?? 20);
+
+        return response()->json($invoices);
+    }
+
+    public function export(Request $request)
+    {
+        $validated = $request->validate([
+            'columns' => ['required', 'array', 'min:1', 'max:'.count(InvoicesExport::COLUMNS)],
+            'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(InvoicesExport::COLUMNS))],
+            'status' => ['nullable', 'string'],
+            'lifecycle_status' => ['nullable', 'string'],
+            'customer_id' => ['nullable'],
+            'start_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            'search' => ['nullable', 'string', 'max:255'],
+            'invoice_ids' => ['nullable', 'array', 'max:1000'],
+            'invoice_ids.*' => ['required', 'integer', 'distinct'],
+        ]);
+
+        $query = $this->filteredInvoiceQuery($request);
+        $filename = 'invoices_'.now()->format('Y-m-d').'.xlsx';
+
+        return Excel::download(new InvoicesExport($query, $validated['columns']), $filename);
+    }
+
+    private function filteredInvoiceQuery(Request $request)
+    {
+        $query = Invoice::query()->orderBy('invoice_date', 'desc')->orderBy('id', 'desc');
+
+        if ($request->filled('status')) {
             $statuses = explode(',', $request->status);
             $query->whereIn('status', $statuses);
         }
 
-        if ($request->has('lifecycle_status')) {
+        if ($request->filled('lifecycle_status')) {
             $lifecycleStatuses = explode(',', $request->lifecycle_status);
             $query->whereIn('lifecycle_status', $lifecycleStatuses);
         }
 
-        if ($request->has('customer_id')) {
+        if ($request->filled('customer_id')) {
             $query->where('customer_id', $request->customer_id);
+        }
+
+        if ($request->filled('invoice_ids')) {
+            $query->whereIn('id', $request->input('invoice_ids', []));
         }
 
         if ($request->filled('start_date')) {
@@ -52,7 +88,7 @@ class InvoiceController extends Controller
             $query->whereDate('invoice_date', '<=', $request->end_date);
         }
 
-        if ($request->has('search')) {
+        if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_number', 'ILIKE', "%{$search}%")
@@ -62,9 +98,7 @@ class InvoiceController extends Controller
             });
         }
 
-        $invoices = $query->paginate($request->per_page ?? 20);
-
-        return response()->json($invoices);
+        return $query;
     }
 
     public function store(Request $request)

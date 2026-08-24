@@ -211,6 +211,8 @@ class BlockRendererTest extends TestCase
         $this->assertSame(5, substr_count($html, 'data-tb-line-index='));
         $this->assertStringContainsString('data-tb-line-amount="50"', $html);
         $this->assertStringContainsString('tb-document-footer', $html);
+        $this->assertStringContainsString('tb-final-summary', $html);
+        $this->assertTrue(strpos($html, 'FINAL FOOTER') < strpos($html, 'Grand Total'));
     }
 
     public function test_single_page_content_does_not_embed_a_synthetic_page_number(): void

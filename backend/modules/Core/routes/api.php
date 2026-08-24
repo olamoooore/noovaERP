@@ -185,6 +185,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
         // Invoices
         Route::post('/invoices/import', [InvoiceController::class, 'import']);
+        Route::get('/invoices/export', [InvoiceController::class, 'export']);
         Route::post('/invoices/bulk-delete', [InvoiceController::class, 'bulkDestroy']);
         Route::post('/invoices/bulk-post', [InvoiceController::class, 'bulkPost']);
         Route::apiResource('invoices', InvoiceController::class);
