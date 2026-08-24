@@ -111,6 +111,10 @@ class JournalEntry extends Model
                     "Cannot delete journal entry #{$entry->entry_number} because one or more lines have been reconciled."
                 );
             }
+
+            // Clean up orphaned related records (no FK cascade for these tables)
+            $entry->links()->delete();
+            $entry->auditLogs()->delete();
         });
     }
 
@@ -160,6 +164,22 @@ class JournalEntry extends Model
     public function reversalEntry(): HasMany
     {
         return $this->hasMany(JournalEntry::class, 'reversed_entry_id');
+    }
+
+    /**
+     * Get the journal entry links (no FK cascade — must be cleaned up manually)
+     */
+    public function links(): HasMany
+    {
+        return $this->hasMany(JournalEntryLink::class);
+    }
+
+    /**
+     * Get the posting audit logs (no FK cascade — must be cleaned up manually)
+     */
+    public function auditLogs(): HasMany
+    {
+        return $this->hasMany(PostingAuditLog::class);
     }
 
     /**

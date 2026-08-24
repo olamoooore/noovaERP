@@ -53,6 +53,10 @@ class Invoice extends Model
                     'Posted invoices must be reversed or credited, not deleted.'
                 );
             }
+
+            // Safety net: clean up any orphaned journal entry links for this invoice
+            // (prevents leftover records if journal_entry_id was null but links exist)
+            $invoice->journalEntryLinks()->delete();
         });
     }
 
@@ -160,6 +164,15 @@ class Invoice extends Model
     public function journalEntry(): BelongsTo
     {
         return $this->belongsTo(JournalEntry::class);
+    }
+
+    /**
+     * Get the journal entry links for this invoice (source_document_type = 'invoice')
+     */
+    public function journalEntryLinks(): HasMany
+    {
+        return $this->hasMany(JournalEntryLink::class, 'source_document_id')
+            ->where('source_document_type', 'invoice');
     }
 
     public function payments(): HasMany
