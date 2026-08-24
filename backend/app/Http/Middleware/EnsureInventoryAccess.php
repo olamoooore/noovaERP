@@ -12,12 +12,14 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * EnsureInventoryAccess
  *
- * Single-path gate for all inventory write operations.
- * Read operations (GET/HEAD/OPTIONS) pass through for all authenticated users.
+ * Single-path gate for all inventory operations.
+ * Read operations (GET/HEAD/OPTIONS) pass through for any authenticated,
+ * tenant-entitled user. Write operations additionally require an inventory
+ * write role or explicit permission.
  *
- * Access hierarchy:
+ * Access hierarchy (applies to every request, including reads):
  *   1. Tenant must have 'inventory' module entitled
- *   2. User must have an inventory write role or explicit permission
+ *   2. Writes only: user must have an inventory write role or explicit permission
  *
  * Mirrors the pattern in EnsureAccountingWriteAccess so the two gates
  * can be evolved consistently.
@@ -39,11 +41,6 @@ class EnsureInventoryAccess
 
     public function handle(Request $request, Closure $next): Response
     {
-        // Read operations pass through for any authenticated user
-        if (in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'])) {
-            return $next($request);
-        }
-
         /** @var User|null $user */
         $user = $request->user();
 
@@ -54,6 +51,8 @@ class EnsureInventoryAccess
         $centralUserId = $this->resolveCentralUserId($user);
 
         // ── 1. Tenant entitlement check (canonical: FeatureGateService + cache) ──
+        // Runs for every request, including reads — a tenant without the inventory
+        // module entitled must not be able to read inventory data either.
         $tenantId = $this->resolveTenantId($request, $user);
         if ($tenantId) {
             $check = $this->featureGate->check((string) $tenantId, 'inventory');
@@ -62,6 +61,11 @@ class EnsureInventoryAccess
                     'message' => 'The inventory module is not enabled for this account.',
                 ], 403);
             }
+        }
+
+        // Read operations pass through for any authenticated, entitled user.
+        if (in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'])) {
+            return $next($request);
         }
 
         // ── 2. Super-admin bypass ────────────────────────────────────────────
