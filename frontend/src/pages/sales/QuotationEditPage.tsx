@@ -8,6 +8,10 @@ import { useToast } from '@/hooks/use-toast';
 import { getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api';
 import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
+import { SalesLineColumnMenu, SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility';
+
+const QUOTATION_EDIT_COLUMNS = ['#', 'Product', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax %', 'Discount', 'Line Total', 'Actions']
+  .map((label, index) => ({ label, index: index + 1 }));
 
 interface QuotationLine {
   product_id: string;
@@ -38,6 +42,7 @@ const emptyLine = (): QuotationLine => ({
 });
 
 export const QuotationEditPage: React.FC = () => {
+  const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>([])
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -501,6 +506,7 @@ export const QuotationEditPage: React.FC = () => {
             <CardTitle className="flex items-center justify-between">
               <span>Line Items</span>
               <div className="flex flex-wrap gap-2">
+                <SalesLineColumnMenu columns={QUOTATION_EDIT_COLUMNS} hidden={hiddenLineColumns} setHidden={setHiddenLineColumns} />
                 <Button type="button" variant="outline" size="sm" onClick={addLine}>
                   <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-1" />
                   Add Line
@@ -510,6 +516,7 @@ export const QuotationEditPage: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
+              <SalesLineColumnVisibility tableClass="quotation-edit-columns" columns={QUOTATION_EDIT_COLUMNS} hiddenColumns={hiddenLineColumns} onHiddenColumnsChange={setHiddenLineColumns} showMenu={false}>
               <table className="w-full text-sm">
                 <thead>
   <tr className="border-b">
@@ -645,6 +652,7 @@ export const QuotationEditPage: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+              </SalesLineColumnVisibility>
             </div>
 
             <div className="mt-6 flex justify-end">
