@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { formatDate } from '@/lib/utils'
+import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 
 export function QuotationDetailPage() {
   const { id } = useParams()
@@ -497,6 +498,9 @@ export function QuotationDetailPage() {
           <CardTitle>Line Items</CardTitle>
         </CardHeader>
         <CardContent>
+          <SalesLineColumnVisibility tableClass="quotation-detail-columns" columns={[
+            '#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax', 'Total',
+          ].map((label, index) => ({ label, index: index + 1 }))}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -529,6 +533,7 @@ export function QuotationDetailPage() {
               ))}
             </TableBody>
           </Table>
+          </SalesLineColumnVisibility>
         </CardContent>
       </Card>
 

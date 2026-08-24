@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 import api from '@/lib/api'
 
 interface Invoice {
@@ -375,6 +376,9 @@ export function InvoiceDetailPage() {
 
           {/* Invoice Lines */}
           <div className="mb-8">
+            <SalesLineColumnVisibility tableClass="invoice-detail-columns" columns={[
+              'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Lot Number', 'Expiry Date', 'Qty', 'Unit Price', 'Tax', 'Total',
+            ].map((label, index) => ({ label, index: index + 1 }))}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -409,6 +413,7 @@ export function InvoiceDetailPage() {
                 ))}
               </TableBody>
             </Table>
+            </SalesLineColumnVisibility>
           </div>
 
           {/* Totals */}
