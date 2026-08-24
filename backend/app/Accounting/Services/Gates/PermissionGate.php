@@ -38,7 +38,7 @@ class PermissionGate implements AuthorityGate
         $tenantId = $context['tenant_id'] ?? null;
 
         if (!$actorId || !$permission) {
-            return GateEvaluationResult::error($this->gateCode(), $this->gateOwner(), 'MISSING_PARAMETERS');
+            return GateEvaluationResult::notApplicable($this->gateCode(), $this->gateOwner());
         }
 
         // Use existing access service for permission check

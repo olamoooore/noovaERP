@@ -20,9 +20,9 @@ class ReversalRelationship extends Model
 
     protected $fillable = [
         'tenant_id',
-        'original_journal_id',
+        'original_journal_entry_id',
         'original_ledger_entry_id',
-        'reversal_journal_id',
+        'reversal_journal_entry_id',
         'reversal_ledger_entry_id',
         'reversal_mode',
         'reversal_basis',

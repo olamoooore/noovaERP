@@ -20,7 +20,7 @@ class ReversalRequest
      * @param  int|null  $approvalUserId  Approver (must differ from actorUserId when overriding a lock)
      * @param  string|null  $requestId  External request ID for idempotency/tracing
      * @param  string|null  $correlationId  Correlation ID for logging/audit
-     * @param  int|null  $tenantId  Tenant context (required for multi-tenant safety)
+     * @param  string|null  $tenantId  Tenant context (required for multi-tenant safety)
      */
     public function __construct(
         public readonly int $journalEntryId,
@@ -31,6 +31,6 @@ class ReversalRequest
         public readonly ?int $approvalUserId = null,
         public readonly ?string $requestId = null,
         public readonly ?string $correlationId = null,
-        public readonly ?int $tenantId = null,
+        public readonly ?string $tenantId = null,
     ) {}
 }

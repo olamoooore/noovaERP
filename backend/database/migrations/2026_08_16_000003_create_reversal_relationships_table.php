@@ -14,7 +14,7 @@ return new class extends Migration
 
             $table->unsignedBigInteger('original_journal_entry_id')->index();
             $table->unsignedBigInteger('original_ledger_entry_id')->nullable();
-            $table->unsignedBigInteger('reversal_journal_entry_id')->index();
+            $table->unsignedBigInteger('reversal_journal_entry_id')->nullable()->index();
             $table->unsignedBigInteger('reversal_ledger_entry_id')->nullable();
 
             $table->string('reversal_mode', 50);

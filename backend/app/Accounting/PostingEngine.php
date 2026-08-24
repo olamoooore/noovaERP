@@ -356,13 +356,14 @@ class PostingEngine implements PostingEngineInterface
         }
 
         // ── Delegate to ReversalCorrectionEngine (ADR-005 §15.3) ──────────
-        $reversalRequestDTO = new \App\Accounting\DTOs\ReversalRequestDTO(
+        $resolvedTenantId = $request->tenantId ?? tenant()->id ?? null;
+        $reversalRequestDTO = new ReversalRequest(
             journalEntryId: $request->journalEntryId,
             reversalDate: $request->reversalDate,
             reason: $request->reason,
             reasonCode: $request->reasonCode,
             actorUserId: (string) $actorId,
-            tenantId: $request->tenantId ? (string) $request->tenantId : null,
+            tenantId: $resolvedTenantId,
             correlationId: $request->correlationId,
         );
 
