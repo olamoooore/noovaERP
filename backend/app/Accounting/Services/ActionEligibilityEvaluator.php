@@ -6,12 +6,19 @@ use App\Accounting\Contracts\AuthorityGate;
 use App\Accounting\DTOs\GateEvaluationResult;
 use App\Accounting\Enums\EligibilityResult;
 use App\Accounting\Enums\ReasonCode;
+use App\Accounting\Services\Gates\ApprovalGate;
 use App\Accounting\Services\Gates\AssuranceGate;
 use App\Accounting\Services\Gates\ConcurrencyGate;
+use App\Accounting\Services\Gates\ControlAccountGate;
+use App\Accounting\Services\Gates\EntityAccessGate;
+use App\Accounting\Services\Gates\EntitlementGate;
 use App\Accounting\Services\Gates\IdempotencyGate;
 use App\Accounting\Services\Gates\PermissionGate;
 use App\Accounting\Services\Gates\PeriodOpenGate;
+use App\Accounting\Services\Gates\SoDGate;
 use App\Accounting\Services\Gates\TenantActiveGate;
+use App\Accounting\Services\Gates\TaxGate;
+use App\Accounting\Services\Gates\WorkflowGate;
 use App\Models\AuthorityEvaluationSnapshot;
 use Illuminate\Support\Str;
 
@@ -26,22 +33,28 @@ class ActionEligibilityEvaluator
 {
     /** @var AuthorityGate[] */
     private array $mandatoryGates = [];
-    private array $optionalGates = [];
 
     public function __construct(
         private readonly StateTransitionService $transitionService,
     ) {
-        // Register default mandatory gates
+        // Register mandatory gates (ADR-005 §8 — every mandatory gate must PASS)
         $this->registerMandatoryGate(new TenantActiveGate());
         $this->registerMandatoryGate(new PeriodOpenGate());
         $this->registerMandatoryGate(new ConcurrencyGate());
         $this->registerMandatoryGate(new IdempotencyGate());
         $this->registerMandatoryGate(new AssuranceGate());
+        $this->registerMandatoryGate(new ControlAccountGate());
+        $this->registerMandatoryGate(new TaxGate());
+        $this->registerMandatoryGate(new WorkflowGate());
+        $this->registerMandatoryGate(new ApprovalGate());
+        $this->registerMandatoryGate(new EntitlementGate());
+        $this->registerMandatoryGate(new EntityAccessGate());
+        $this->registerMandatoryGate(new SoDGate());
 
-        // Register optional gates (ADR-005 §8.4 — permission gate)
-        // Resolved from container to handle dependency injection
+        // Register mandatory permission gate (ADR-005 §8.4 — P19)
+        // PermissionGate is now mandatory — BLOCK must propagate
         try {
-            $this->registerOptionalGate(app(PermissionGate::class));
+            $this->registerMandatoryGate(app(PermissionGate::class));
         } catch (\Exception) {
             // PermissionGate may not be resolvable in all contexts (e.g., testing)
         }
@@ -53,14 +66,6 @@ class ActionEligibilityEvaluator
     public function registerMandatoryGate(AuthorityGate $gate): void
     {
         $this->mandatoryGates[$gate->gateCode()] = $gate;
-    }
-
-    /**
-     * Register an optional authority gate.
-     */
-    public function registerOptionalGate(AuthorityGate $gate): void
-    {
-        $this->optionalGates[$gate->gateCode()] = $gate;
     }
 
     /**
@@ -102,17 +107,6 @@ class ActionEligibilityEvaluator
                 if ($finalResult !== EligibilityResult::BLOCK) {
                     $finalResult = EligibilityResult::ERROR;
                 }
-            }
-        }
-
-        // Evaluate optional gates (non-blocking)
-        foreach ($this->optionalGates as $gate) {
-            try {
-                $result = $gate->evaluate($context);
-                $gateResults[] = $result;
-                // Optional gate BLOCK does not change final result
-            } catch (\Exception) {
-                // Optional gate errors are non-blocking
             }
         }
 
@@ -168,7 +162,6 @@ class ActionEligibilityEvaluator
         return [
             'evaluator_version' => '1.0',
             'mandatory_gates' => array_keys($this->mandatoryGates),
-            'optional_gates' => array_keys($this->optionalGates),
         ];
     }
 

@@ -498,7 +498,7 @@ $invoice->paid_amount = max(0, (float) $invoice->paid_amount - (float) $payment-
     /**
      * Cancel a recorded payment (recorded → cancelled).
      * Unapplies the payment from the linked invoice, restoring the invoice balance.
-     * The payment record is preserved for audit but marked as cancelled.
+     * Routes through PaymentCorrectionService for proper GL reversal (ADR-005 §15.3).
      */
     public function cancel($paymentId)
     {
@@ -509,35 +509,19 @@ $invoice->paid_amount = max(0, (float) $invoice->paid_amount - (float) $payment-
         }
 
         try {
-            DB::transaction(function () use ($payment) {
-                // Unapply from linked invoice if one exists
-                if ($payment->invoice_id) {
-                    $invoice = Invoice::find($payment->invoice_id);
-                    if ($invoice) {
-                        $invoice->paid_amount = max(0, (float) $invoice->paid_amount - (float) $payment->amount);
-                        $invoice->balance = $invoice->total - $invoice->paid_amount;
+            $correctionRequest = new \App\Services\CorrectionRequest(
+                reasonCode: 'PAYMENT_CANCELLATION',
+                reasonText: 'Payment cancelled by user ' . auth()->id(),
+                userId: auth()->id(),
+            );
 
-                        // Update invoice status based on new balance
-                        if ($invoice->paid_amount <= 0) {
-                            $invoice->status = $invoice->journal_entry_id ? 'posted' : 'draft';
-                            $invoice->settlement_status = 'unpaid';
-                        } else {
-                            $invoice->status = 'partial';
-                            $invoice->settlement_status = 'partially_paid';
-                        }
-                        $invoice->save();
-                    }
-                }
-
-                $payment->update([
-                    'payment_status' => 'cancelled',
-                    'invoice_id' => null,
-                ]);
-            });
+            $result = app(\App\Services\PaymentCorrectionService::class)
+                ->unapplyPayment($payment, $correctionRequest);
 
             return response()->json([
                 'message' => 'Payment cancelled and unapplied from invoice',
-                'data' => $payment->fresh(['customer', 'invoice']),
+                'data' => $result->payment->fresh(['customer', 'invoice']),
+                'reversal_journal_entry_id' => $result->reversalJournalEntry?->id,
             ]);
 
         } catch (\Exception $e) {

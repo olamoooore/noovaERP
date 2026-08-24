@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Accounting\DTOs\ReversalRequest;
 use App\Models\Bill;
 use App\Models\Invoice;
 use App\Models\JournalEntry;
@@ -24,13 +25,18 @@ class PaymentCorrectionService
             throw new \RuntimeException('Payment must be linked to an invoice or bill');
         }
 
+        // ── GL reversal through PostingEngine (ADR-005 §15.3) ──────────
         $reversalEntry = null;
         if ($payment->journal_entry_id) {
-            $reversalEntry = app(\App\Accounting\PostingEngine::class)->reverse(
-                $payment->journal_entry_id,
-                $request->reasonText ?? 'Payment reversal',
-                $request->userId
+            $reversalRequest = new ReversalRequest(
+                journalEntryId: (int) $payment->journal_entry_id,
+                reversalDate: now()->toDateString(),
+                reason: $request->reasonText ?? 'Payment reversal',
+                reasonCode: $request->reasonCode,
+                actorUserId: (int) ($request->userId ?? Auth::id()),
             );
+            $result = app(\App\Accounting\PostingEngine::class)->reverse($reversalRequest);
+            $reversalEntry = $result->success ? $result->journalEntry : null;
         }
 
         $reversalPayment = Payment::create([
@@ -58,22 +64,13 @@ class PaymentCorrectionService
             'refund_payment_id' => $reversalPayment->id,
         ]);
 
+        // ── Subledger update through canonical service ──────────────────
         if ($originalInvoice) {
-            $originalInvoice->update([
-                'paid_amount' => max(0, $originalInvoice->paid_amount - $payment->amount),
-                'balance' => $originalInvoice->total - max(0, $originalInvoice->paid_amount - $payment->amount),
-            ]);
-
-            $this->lifecycleService->recalculateInvoiceState($originalInvoice);
+            $this->lifecycleService->applyPaymentReversal($originalInvoice, $payment->amount);
         }
 
         if ($originalBill) {
-            $originalBill->update([
-                'paid_amount' => max(0, $originalBill->paid_amount - $payment->amount),
-                'balance' => $originalBill->total - max(0, $originalBill->paid_amount - $payment->amount),
-            ]);
-
-            $this->lifecycleService->recalculateBillState($originalBill);
+            $this->lifecycleService->applyBillPaymentReversal($originalBill, $payment->amount);
         }
 
         $this->linkService->linkRefund(
@@ -99,13 +96,18 @@ class PaymentCorrectionService
             throw new \RuntimeException('Payment must be linked to an invoice or bill');
         }
 
+        // ── GL reversal through PostingEngine (ADR-005 §15.3) ──────────
         $reversalEntry = null;
         if ($payment->journal_entry_id) {
-            $reversalEntry = app(\App\Accounting\PostingEngine::class)->reverse(
-                $payment->journal_entry_id,
-                $request->reasonText ?? 'Payment refund',
-                $request->userId
+            $reversalRequest = new ReversalRequest(
+                journalEntryId: (int) $payment->journal_entry_id,
+                reversalDate: now()->toDateString(),
+                reason: $request->reasonText ?? 'Payment refund',
+                reasonCode: $request->reasonCode,
+                actorUserId: (int) ($request->userId ?? Auth::id()),
             );
+            $result = app(\App\Accounting\PostingEngine::class)->reverse($reversalRequest);
+            $reversalEntry = $result->success ? $result->journalEntry : null;
         }
 
         $refundPayment = Payment::create([
@@ -134,24 +136,13 @@ class PaymentCorrectionService
             'refund_payment_id' => $refundPayment->id,
         ]);
 
+        // ── Subledger update through canonical service ──────────────────
         if ($originalInvoice) {
-            $originalInvoice->update([
-                'paid_amount' => 0,
-                'balance' => $originalInvoice->total,
-                'settlement_status' => 'refunded',
-            ]);
-
-            $this->lifecycleService->recalculateInvoiceState($originalInvoice);
+            $this->lifecycleService->applyPaymentRefund($originalInvoice, $payment->amount);
         }
 
         if ($originalBill) {
-            $originalBill->update([
-                'paid_amount' => 0,
-                'balance' => $originalBill->total,
-                'settlement_status' => 'refunded',
-            ]);
-
-            $this->lifecycleService->recalculateBillState($originalBill);
+            $this->lifecycleService->applyBillPaymentRefund($originalBill, $payment->amount);
         }
 
         $this->linkService->linkRefund(
@@ -177,35 +168,43 @@ class PaymentCorrectionService
             throw new \RuntimeException('Payment must be linked to an invoice or bill');
         }
 
+        // ── GL reversal through PostingEngine (ADR-005 §15.3) ──────────
+        // Unapplying a payment requires reversing the GL entry to maintain
+        // ledger-subledger consistency
+        $reversalEntry = null;
+        if ($payment->journal_entry_id) {
+            $reversalRequest = new ReversalRequest(
+                journalEntryId: (int) $payment->journal_entry_id,
+                reversalDate: now()->toDateString(),
+                reason: $request->reasonText ?? 'Payment unapplication',
+                reasonCode: $request->reasonCode,
+                actorUserId: (int) ($request->userId ?? Auth::id()),
+            );
+            $result = app(\App\Accounting\PostingEngine::class)->reverse($reversalRequest);
+            $reversalEntry = $result->success ? $result->journalEntry : null;
+        }
+
         $payment->update([
             'payment_status' => 'unapplied',
             'correction_type' => 'unapply_payment',
             'correction_reason_code' => $request->reasonCode,
             'correction_reason_text' => $request->reasonText,
             'unapplied_at' => now(),
+            'reversal_journal_entry_id' => $reversalEntry?->id,
         ]);
 
+        // ── Subledger update through canonical service ──────────────────
         if ($originalInvoice) {
-            $originalInvoice->update([
-                'paid_amount' => max(0, $originalInvoice->paid_amount - $payment->amount),
-                'balance' => $originalInvoice->total - max(0, $originalInvoice->paid_amount - $payment->amount),
-            ]);
-
-            $this->lifecycleService->recalculateInvoiceState($originalInvoice);
+            $this->lifecycleService->applyPaymentReversal($originalInvoice, $payment->amount);
         }
 
         if ($originalBill) {
-            $originalBill->update([
-                'paid_amount' => max(0, $originalBill->paid_amount - $payment->amount),
-                'balance' => $originalBill->total - max(0, $originalBill->paid_amount - $payment->amount),
-            ]);
-
-            $this->lifecycleService->recalculateBillState($originalBill);
+            $this->lifecycleService->applyBillPaymentReversal($originalBill, $payment->amount);
         }
 
         return new PaymentCorrectionResult(
             payment: $payment,
-            reversalJournalEntry: null,
+            reversalJournalEntry: $reversalEntry,
             originalInvoice: $originalInvoice,
             originalBill: $originalBill,
         );

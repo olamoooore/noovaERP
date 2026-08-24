@@ -113,7 +113,8 @@ class SettlementController extends Controller
 
     /**
      * POST /accounting/settlements/{id}/reverse
-     * Reverse a settlement.
+     * Reverse a settlement — creates compensating records instead of hard-deleting
+     * allocations (ADR-005 §15, G8 Immutability).
      */
     public function reverse(int $id, Request $request): JsonResponse
     {
@@ -132,13 +133,40 @@ class SettlementController extends Controller
 
         $reversedAmount = $settlement->allocated_amount;
 
+        // ── Create compensating allocation records (ADR-005 §8 G8) ──────
+        // Instead of hard-deleting allocations, mark them as reversed and
+        // create compensating records that preserve the audit trail
+        $allocations = Allocation::where('settlement_id', $settlement->id)
+            ->whereNull('reversed_at')
+            ->get();
+
+        foreach ($allocations as $allocation) {
+            // Create a compensating allocation with negative amount
+            Allocation::create([
+                'tenant_id' => $settlement->tenant_id,
+                'settlement_id' => $settlement->id,
+                'source_record_type' => $allocation->source_record_type,
+                'source_record_id' => $allocation->source_record_id,
+                'allocated_amount' => -$allocation->allocated_amount,
+                'currency_code' => $allocation->currency_code,
+                'reversal_of_allocation_id' => $allocation->id,
+                'reversal_reason' => $validated['reason'] ?? 'Settlement reversal',
+                'reversed_at' => now(),
+            ]);
+
+            // Mark original allocation as reversed (soft reference, not hard delete)
+            $allocation->update([
+                'reversed_at' => now(),
+                'reversal_reason' => $validated['reason'] ?? 'Settlement reversal',
+            ]);
+        }
+
         $settlement->update([
             'settlement_state' => SettlementState::REVERSED->value,
             'allocated_amount' => 0,
+            'reversed_at' => now(),
+            'reversal_reason' => $validated['reason'] ?? 'Settlement reversal',
         ]);
-
-        // Delete allocations
-        Allocation::where('settlement_id', $settlement->id)->delete();
 
         event(new \App\Accounting\Events\SettlementReversed(
             settlementId: $settlement->id,
@@ -151,6 +179,7 @@ class SettlementController extends Controller
             'success' => true,
             'data' => $settlement,
             'reversed_amount' => $reversedAmount,
+            'compensating_allocations_created' => $allocations->count(),
         ]);
     }
 

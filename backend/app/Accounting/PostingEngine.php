@@ -14,6 +14,7 @@ use App\Accounting\Enums\StateDimension;
 use App\Accounting\Services\AccountMappingService;
 use App\Accounting\Services\AccountRoleResolver;
 use App\Accounting\Services\ActionEligibilityEvaluator;
+use App\Accounting\Services\ReversalCorrectionEngine;
 use App\Accounting\Services\StateTransitionService;
 use App\Models\AccountingOutboxEvent;
 use App\Models\Journal;
@@ -40,6 +41,7 @@ class PostingEngine implements PostingEngineInterface
         private readonly ApprovalPolicyService $approvalPolicy,
         private readonly ActionEligibilityEvaluator $eligibilityEvaluator,
         private readonly StateTransitionService $transitionService,
+        private readonly ReversalCorrectionEngine $reversalEngine,
     ) {}
 
     /**
@@ -319,8 +321,9 @@ class PostingEngine implements PostingEngineInterface
     /**
      * Reverse a previously posted journal entry.
      *
-     * Validates the reversal date against lock + fiscal controls and blocks
-     * self-approval before creating the mirror entry.
+     * Delegates to ReversalCorrectionEngine (ADR-005 §15.3) — the single
+     * authoritative reversal engine. This method provides backward-compatible
+     * API for existing callers while routing through the canonical path.
      */
     public function reverse(ReversalRequest $request): PostingResult
     {
@@ -352,203 +355,24 @@ class PostingEngine implements PostingEngineInterface
             );
         }
 
-        // ── Reversal date: lock-date validation ──────────────────────────────
-        $lockResult = $this->lockDateValidator->validateTransactionDate(
-            'journal_entries',
-            $request->reversalDate,
+        // ── Delegate to ReversalCorrectionEngine (ADR-005 §15.3) ──────────
+        $reversalRequestDTO = new \App\Accounting\DTOs\ReversalRequestDTO(
+            journalEntryId: $request->journalEntryId,
+            reversalDate: $request->reversalDate,
+            reason: $request->reason,
+            reasonCode: $request->reasonCode,
+            actorUserId: (string) $actorId,
+            tenantId: $request->tenantId ? (string) $request->tenantId : null,
+            correlationId: $request->correlationId,
         );
 
-        if ($lockResult['is_locked']) {
-            // Workstream 2 (2026-04-15): Enforce real permission checks for lock overrides
-            if ($request->approvalUserId) {
-                // Validate that the approver has permission to override lock dates
-                if (! $this->lockDateValidator->canOverrideLockDate($request->approvalUserId)) {
-                    return PostingResult::failure(
-                        "Approver (ID: {$request->approvalUserId}) does not have permission to override lock dates. ".
-                        'Required: accounting.lock_date_override permission or admin role.'
-                    );
-                }
+        $result = $this->reversalEngine->fullReversal($reversalRequestDTO);
 
-                // Validate that the actor also has permission
-                if (! $this->lockDateValidator->canOverrideLockDate($actorId)) {
-                    return PostingResult::failure(
-                        "User (ID: {$actorId}) does not have permission to reverse in locked periods. ".
-                        'Required: accounting.lock_date_override permission or admin role.'
-                    );
-                }
-
-                $this->lockDateValidator->logOverride(
-                    $actorId,
-                    'journal_entry',
-                    $request->journalEntryId,
-                    $request->reversalDate,
-                    $request->reason,
-                    $request->approvalUserId,
-                );
-            } else {
-                return PostingResult::failure($lockResult['message']);
-            }
+        if ($result->success) {
+            return PostingResult::success($result->journalEntry->load('lines'), null);
         }
 
-        // ── Reversal date: fiscal-period validation ──────────────────────────
-        $fiscalResult = $this->fiscalValidator->validateDate($request->reversalDate);
-        if (! $fiscalResult['allowed']) {
-            return PostingResult::failure($fiscalResult['reason']);
-        }
-
-        try {
-            // ✅ ATOMIC
-            return DB::transaction(function () use ($request, $actorId, $approvedBy) {
-                $original = JournalEntry::with('lines')->findOrFail($request->journalEntryId);
-
-                if ($original->status !== 'posted') {
-                    throw new \Exception('Can only reverse posted entries');
-                }
-
-                if ($original->is_reversal) {
-                    throw new \Exception('Cannot reverse a reversal entry');
-                }
-
-                if ($original->reversalEntry()->exists()) {
-                    throw new \Exception('Entry has already been reversed');
-                }
-
-                // Perform reversal inline (JournalEntry::reverse() is deprecated)
-                $reversalEntry = JournalEntry::create([
-                    'journal_id' => $original->journal_id,
-                    'entry_number' => JournalEntry::generateEntryNumber(),
-                    'entry_date' => $request->reversalDate,
-                    'type' => $original->type,
-                    'reference' => $original->reference,
-                    'description' => 'REVERSAL: '.($request->reason ?? $original->description),
-                    'status' => 'posted',
-                    'posted_at' => now(),
-                    'posted_by' => $actorId,
-                    'created_by' => $actorId,
-                    'reversed_entry_id' => $original->id,
-                    'is_reversal' => true,
-                    'legal_entity_id' => $original->legal_entity_id,
-                    'entity_book_id' => $original->entity_book_id,
-                ]);
-
-                // Create reversed lines (swap debits and credits)
-                foreach ($original->lines as $line) {
-                    $reversalEntry->lines()->create([
-                        'account_id' => $line->account_id,
-                        'debit' => $line->credit,
-                        'credit' => $line->debit,
-                        'description' => 'REVERSAL: '.$line->description,
-                        'reference' => $line->reference,
-                        'currency_code' => $line->currency_code,
-                        'original_amount' => $line->original_amount ? -$line->original_amount : null,
-                        'exchange_rate' => $line->exchange_rate,
-                        'department_id' => $line->department_id,
-                        'project_id' => $line->project_id,
-                        'location_id' => $line->location_id,
-                    ]);
-                }
-
-                // Find the original document link to propagate source info
-                $originalLink = JournalEntryLink::where('journal_entry_id', $original->id)
-                    ->where('relation_type', 'post')
-                    ->first();
-
-                if ($originalLink) {
-                    $originalLink->update([
-                        'reversal_journal_entry_id' => $reversalEntry->id,
-                    ]);
-
-                    JournalEntryLink::create([
-                        'source_document_type' => $originalLink->source_document_type,
-                        'source_document_id' => $originalLink->source_document_id,
-                        'journal_entry_id' => $reversalEntry->id,
-                        'original_journal_entry_id' => $original->id,
-                        'relation_type' => 'reversal',
-                    ]);
-                }
-
-                // Audit log
-                $auditLog = PostingAuditLog::create([
-                    'document_type' => $originalLink?->source_document_type ?? 'journal_entry',
-                    'document_id' => $originalLink?->source_document_id ?? $original->id,
-                    'journal_entry_id' => $reversalEntry->id,
-                    'action' => 'reverse',
-                    'actor_user_id' => $actorId,
-                    'approval_user_id' => $approvedBy,
-                    'reason_code' => $request->reasonCode ?? $request->reason,
-                    'payload_snapshot' => [
-                        'original_entry_id' => $original->id,
-                        'original_entry_number' => $original->entry_number,
-                        'reversal_date' => $request->reversalDate,
-                    ],
-                ]);
-
-                // ── state transition recording (ADR-005 §30) ──
-                $this->transitionService->recordTransition(
-                    aggregateType: 'JournalEntry',
-                    aggregateId: (string) $reversalEntry->id,
-                    dimension: StateDimension::JOURNAL_POSTING,
-                    fromState: 'NOT_POSTED',
-                    toState: 'POSTED',
-                    context: [
-                        'actor_id' => (string) $actorId,
-                        'actor_type' => 'HUMAN',
-                        'correlation_id' => $request->correlationId,
-                        'metadata' => [
-                            'original_entry_id' => $original->id,
-                            'reversal_date' => $request->reversalDate,
-                            'reason' => $request->reason,
-                        ],
-                    ],
-                );
-
-                $this->transitionService->recordTransition(
-                    aggregateType: 'JournalEntry',
-                    aggregateId: (string) $original->id,
-                    dimension: StateDimension::JOURNAL_POSTING,
-                    fromState: 'POSTED',
-                    toState: 'REVERSED',
-                    context: [
-                        'actor_id' => (string) $actorId,
-                        'actor_type' => 'HUMAN',
-                        'correlation_id' => $request->correlationId,
-                        'metadata' => [
-                            'reversal_entry_id' => $reversalEntry->id,
-                            'reversal_date' => $request->reversalDate,
-                        ],
-                    ],
-                );
-
-                // ── outbox event (ADR-005 §62) ──
-                AccountingOutboxEvent::create([
-                    'tenant_id' => $originalLink?->tenant_id ?? tenant()->id ?? Str::uuid()->toString(),
-                    'event_type' => 'JournalReversed',
-                    'event_version' => '1.0',
-                    'aggregate_type' => 'JournalEntry',
-                    'aggregate_id' => (string) $reversalEntry->id,
-                    'aggregate_version' => 1,
-                    'source_capability' => 'ACC-002',
-                    'correlation_id' => $request->correlationId,
-                    'causation_id' => $request->requestId ?? null,
-                    'event_payload' => [
-                        'reversal_entry_id' => $reversalEntry->id,
-                        'original_entry_id' => $original->id,
-                        'original_entry_number' => $original->entry_number,
-                        'reversal_date' => $request->reversalDate,
-                        'reason' => $request->reason,
-                    ],
-                ]);
-
-                return PostingResult::success($reversalEntry->load('lines'), $auditLog->id);
-            });
-        } catch (\Exception $e) {
-            Log::error('PostingEngine::reverse failed', [
-                'journal_entry_id' => $request->journalEntryId,
-                'error' => $e->getMessage(),
-            ]);
-
-            return PostingResult::failure('Reversal failed: '.$e->getMessage());
-        }
+        return PostingResult::failure($result->reason ?? 'Reversal failed');
     }
 
     /**

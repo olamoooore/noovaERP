@@ -207,6 +207,9 @@ class FinancialCloseCycleService
      * Record a cycle-level sign-off from an authorised user.
      * A cycle must have at least REQUIRED_SIGNOFFS distinct authorised
      * sign-offs AND all tasks completed/resolved before it can be closed.
+     *
+     * Role is resolved server-side from the user's actual roles — the client-submitted
+     * role parameter is ignored to prevent role-spoofing (ADR-005 §41, G22).
      */
     public function signoffCycle(string $tenantId, string $cycleId, string $userId, ?string $role, ?string $notes = null): array
     {
@@ -250,6 +253,16 @@ class FinancialCloseCycleService
             ];
         }
 
+        // ── Resolve role server-side (ADR-005 §41, G22) ──────────────────
+        // Never trust client-submitted role — resolve from actual user roles
+        $resolvedRole = $this->resolveUserRole($userId);
+        if (! $resolvedRole || ! in_array($resolvedRole, self::SIGNOFF_ROLES)) {
+            return [
+                'success' => false,
+                'reason' => 'Insufficient role for sign-off. Required roles: ' . implode(', ', self::SIGNOFF_ROLES) . '. Your role: ' . ($resolvedRole ?? 'none'),
+            ];
+        }
+
         $metadata = is_array($cycle->metadata) ? $cycle->metadata : [];
         $signoffs = $metadata['cycle_signoffs'] ?? [];
 
@@ -261,7 +274,7 @@ class FinancialCloseCycleService
 
         $signoffs[] = [
             'user_id' => $userId,
-            'role' => $role,
+            'role' => $resolvedRole,
             'notes' => $notes,
             'signed_at' => now()->toIso8601String(),
         ];
@@ -275,7 +288,7 @@ class FinancialCloseCycleService
             'action' => 'cycle_signed_off',
             'entity_type' => 'close_cycle',
             'entity_id' => $cycleId,
-            'after' => ['role' => $role, 'signoff_count' => count($signoffs)],
+            'after' => ['role' => $resolvedRole, 'signoff_count' => count($signoffs)],
         ]);
 
         // Re-evaluate readiness after each sign-off
@@ -287,6 +300,39 @@ class FinancialCloseCycleService
             'ready_to_close' => $evaluation['ready_to_close'],
             'evaluation' => $evaluation,
         ];
+    }
+
+    /**
+     * Resolve the user's actual role from their assigned roles (server-side).
+     * Returns null if user has no authorised sign-off role.
+     */
+    private function resolveUserRole(string $userId): ?string
+    {
+        $user = \App\Models\User::find($userId);
+        if (! $user) {
+            return null;
+        }
+
+        // Check Spatie role names
+        if (method_exists($user, 'getRoleNames')) {
+            try {
+                $roles = $user->getRoleNames();
+                foreach ($roles as $role) {
+                    if (in_array($role, self::SIGNOFF_ROLES)) {
+                        return $role;
+                    }
+                }
+            } catch (\Throwable) {
+                // Spatie not configured
+            }
+        }
+
+        // Fallback: check the 'role' column on users table
+        if ($user->role && in_array($user->role, self::SIGNOFF_ROLES)) {
+            return $user->role;
+        }
+
+        return null;
     }
 
     /**
@@ -334,6 +380,7 @@ class FinancialCloseCycleService
      * Conditions:
      *  - All tasks are completed or cancelled (no open/in-progress/submitted/blocked/escalated)
      *  - No open escalation events
+     *  - No open assurance findings that block closure (ADR-005 §39.1)
      *  - At least REQUIRED_SIGNOFFS cycle-level sign-offs from authorised roles
      */
     public function evaluateReadiness(string $tenantId, string $cycleId): array
@@ -358,6 +405,24 @@ class FinancialCloseCycleService
             ->where('status', 'open')
             ->count();
 
+        // ── Check open assurance findings (ADR-005 §39.1) ──────────────
+        // Findings from the canonical ACC-010 model that block closure
+        $openFindings = \App\Models\AccountingFinding::where('tenant_id', $tenantId)
+            ->where('source_record_type', 'close_cycle')
+            ->where('source_record_id', $cycleId)
+            ->whereIn('status', ['OPEN', 'IN_PROGRESS'])
+            ->where('blocking', true)
+            ->count();
+
+        // Also check entity-wide open blocking findings for this cycle's entity
+        $entityWideFindings = \App\Models\AccountingFinding::where('tenant_id', $tenantId)
+            ->where('entity_id', $cycle->entity_id)
+            ->whereIn('status', ['OPEN', 'IN_PROGRESS'])
+            ->where('blocking', true)
+            ->count();
+
+        $totalOpenFindings = $openFindings + $entityWideFindings;
+
         // Count authorised sign-offs
         $metadata = is_array($cycle->metadata) ? $cycle->metadata : [];
         $signoffs = $metadata['cycle_signoffs'] ?? [];
@@ -367,6 +432,7 @@ class FinancialCloseCycleService
 
         $ready = $incompleteTasks === 0
             && $openEscalations === 0
+            && $totalOpenFindings === 0
             && $authorisedSignoffs >= self::REQUIRED_SIGNOFFS;
 
         // Auto-transition to ready_to_close when conditions are met
@@ -382,6 +448,7 @@ class FinancialCloseCycleService
                 'after' => [
                     'incomplete_tasks' => $incompleteTasks,
                     'open_escalations' => $openEscalations,
+                    'open_findings' => $totalOpenFindings,
                     'signoffs' => $authorisedSignoffs,
                 ],
             ]);
@@ -396,6 +463,7 @@ class FinancialCloseCycleService
             'ready_to_close' => $ready,
             'incomplete_tasks' => $incompleteTasks,
             'open_escalations' => $openEscalations,
+            'open_findings' => $totalOpenFindings,
             'authorised_signoffs' => $authorisedSignoffs,
             'required_signoffs' => self::REQUIRED_SIGNOFFS,
         ];
