@@ -11,6 +11,7 @@ import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DeliveryOrderColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 
 interface LineItem {
   product_id: number | null
@@ -24,6 +25,7 @@ interface LineItem {
   unit: string
   unit_price: number | null
   lot_number: string
+  expiry_date: string
 }
 
 export function DeliveryOrderCreatePage() {
@@ -51,12 +53,13 @@ export function DeliveryOrderCreatePage() {
   const [notes, setNotes] = useState('')
   const [lineQuantities, setLineQuantities] = useState<Record<number, number>>({})
   const [lineLotNumbers, setLineLotNumbers] = useState<Record<number, string>>({})
+  const [lineExpiryDates, setLineExpiryDates] = useState<Record<number, string>>({})
   const [linePatientNames, setLinePatientNames] = useState<Record<number, string>>({})
   const [lineProductNotes, setLineProductNotes] = useState<Record<number, string>>({})
 
   // Standalone mode line items
   const [standaloneLines, setStandaloneLines] = useState<LineItem[]>([
-    { product_id: null, product_name: '', sku: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' },
+    { product_id: null, product_name: '', sku: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '', expiry_date: '' },
   ])
 
   // Fetch customers for standalone mode
@@ -183,6 +186,7 @@ export function DeliveryOrderCreatePage() {
         sales_order_line_id: line.sales_order_line_id,
         quantity_delivered: lineQuantities[line.sales_order_line_id] || 0,
         lot_number: lineLotNumbers[line.sales_order_line_id] || undefined,
+        expiry_date: lineExpiryDates[line.sales_order_line_id] || undefined,
         patient_name: linePatientNames[line.sales_order_line_id] || undefined,
         product_notes: lineProductNotes[line.sales_order_line_id] ?? line.product_notes ?? undefined,
       }))
@@ -259,6 +263,7 @@ export function DeliveryOrderCreatePage() {
         unit: l.unit,
         unit_price: l.unit_price || undefined,
         lot_number: l.lot_number || undefined,
+        expiry_date: l.expiry_date || undefined,
       })),
     })
   }
@@ -276,7 +281,7 @@ export function DeliveryOrderCreatePage() {
   }
 
   const addStandaloneLine = () => {
-    setStandaloneLines((prev) => [...prev, { product_id: null, product_name: '', sku: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '' }])
+    setStandaloneLines((prev) => [...prev, { product_id: null, product_name: '', sku: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '', expiry_date: '' }])
   }
 
   const removeStandaloneLine = (index: number) => {
@@ -515,6 +520,9 @@ export function DeliveryOrderCreatePage() {
             <CardTitle>Line Items — Quantities to Deliver</CardTitle>
           </CardHeader>
           <CardContent>
+            <DeliveryOrderColumnVisibility tableClass="do-create-linked-columns" columns={[
+              'Product', 'Description', 'Product Notes', 'Ordered', 'Already Delivered', 'Remaining', 'Deliver Now', 'Patient Name', 'Lot Number', 'Expiry Date',
+            ].map((label, index) => ({ label, index: index + 1 }))}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -527,6 +535,7 @@ export function DeliveryOrderCreatePage() {
                   <TableHead className="text-right">Deliver Now</TableHead>
                   <TableHead>Patient Name</TableHead>
                   <TableHead>Lot Number</TableHead>
+                  <TableHead>Expiry Date</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -579,11 +588,20 @@ export function DeliveryOrderCreatePage() {
                           placeholder="Lot #"
                         />
                       </TableCell>
+                      <TableCell>
+                        <Input
+                          type="date"
+                          value={lineExpiryDates[line.sales_order_line_id] || ''}
+                          onChange={(e) => setLineExpiryDates((prev) => ({ ...prev, [line.sales_order_line_id]: e.target.value }))}
+                          className="w-36"
+                        />
+                      </TableCell>
                     </TableRow>
                   )
                 })}
               </TableBody>
             </Table>
+            </DeliveryOrderColumnVisibility>
           </CardContent>
         </Card>
       )}
@@ -601,6 +619,9 @@ export function DeliveryOrderCreatePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            <DeliveryOrderColumnVisibility tableClass="do-create-standalone-columns" columns={[
+              'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Patient Name', 'Quantity', 'Unit', 'Unit Price', 'Lot Number', 'Expiry Date', 'Actions',
+            ].map((label, index) => ({ label, index: index + 1 }))}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -614,6 +635,7 @@ export function DeliveryOrderCreatePage() {
                   <TableHead className="w-[80px]">Unit</TableHead>
                   <TableHead className="text-right w-[120px]">Unit Price</TableHead>
                   <TableHead className="w-[100px]">Lot Number</TableHead>
+                  <TableHead className="w-[140px]">Expiry Date</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -710,6 +732,9 @@ export function DeliveryOrderCreatePage() {
                       />
                     </TableCell>
                     <TableCell>
+                      <Input type="date" value={line.expiry_date} onChange={(e) => updateStandaloneLine(idx, 'expiry_date', e.target.value)} className="w-36" />
+                    </TableCell>
+                    <TableCell>
                       {standaloneLines.length > 1 && (
                         <Button variant="ghost" size="sm" onClick={() => removeStandaloneLine(idx)}>
                           <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4 text-destructive" />
@@ -720,6 +745,7 @@ export function DeliveryOrderCreatePage() {
                 ))}
               </TableBody>
             </Table>
+            </DeliveryOrderColumnVisibility>
           </CardContent>
         </Card>
       )}

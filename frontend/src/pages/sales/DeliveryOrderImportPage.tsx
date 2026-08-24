@@ -47,6 +47,8 @@ const TEMPLATE_COLUMNS = [
   { name: 'unit', required: false, description: 'Unit of measure. Default: pcs.' },
   { name: 'unit_price', required: false, description: 'Unit price per item.' },
   { name: 'patient_name', required: false, description: 'Patient name for this line item.' },
+  { name: 'lot_number', required: false, description: 'Lot or batch number for this line item.' },
+  { name: 'expiry_date', required: false, description: 'Lot expiry date (M/D/YYYY or YYYY-MM-DD).' },
 ]
 
 const csvValue = (v: string) => {
@@ -123,6 +125,8 @@ export function DeliveryOrderImportPage() {
         case 'unit': return 'pcs'
         case 'unit_price': return '50.00'
         case 'patient_name': return 'Jane Doe'
+        case 'lot_number': return 'LOT-2026-001'
+        case 'expiry_date': return '2027-07-15'
         default: return ''
       }
     })

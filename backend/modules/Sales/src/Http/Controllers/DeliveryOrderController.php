@@ -218,6 +218,7 @@ class DeliveryOrderController extends Controller
             'lines.*.unit' => 'nullable|string|max:20',
             'lines.*.unit_price' => 'nullable|numeric|min:0',
             'lines.*.lot_number' => 'nullable|string|max:100',
+            'lines.*.expiry_date' => 'nullable|date',
         ]);
 
         DB::transaction(function () use ($deliveryOrder, $validated) {
@@ -249,6 +250,7 @@ class DeliveryOrderController extends Controller
                         'unit_price' => $unitPrice,
                         'line_total' => $unitPrice ? $unitPrice * $qty : null,
                         'lot_number' => $lineData['lot_number'] ?? null,
+                        'expiry_date' => $lineData['expiry_date'] ?? null,
                     ]);
                 }
 
@@ -490,6 +492,8 @@ class DeliveryOrderController extends Controller
                         'quantity' => 'quantity_delivered',
                         'unit' => 'unit',
                         'unit_price' => 'unit_price',
+                        'lot_number' => 'lot_number',
+                        'expiry_date' => 'expiry_date',
                     ],
                 ],
                 'transform_header' => function (array $header, array $rows) {
@@ -608,6 +612,14 @@ class DeliveryOrderController extends Controller
                     }
                     $line['quantity_ordered'] = $line['quantity_delivered'] ?? 0;
                     $line['unit'] = $line['unit'] ?? 'pcs';
+
+                    if (! empty($line['expiry_date'])) {
+                        try {
+                            $line['expiry_date'] = \Carbon\Carbon::parse($line['expiry_date'])->format('Y-m-d');
+                        } catch (\Exception $e) {
+                            unset($line['expiry_date']);
+                        }
+                    }
 
                     // Handle unit_price and calculate line_total
                     $unitPrice = isset($line['unit_price']) ? (float) $line['unit_price'] : 0;
@@ -785,6 +797,8 @@ class DeliveryOrderController extends Controller
             ['name' => 'quantity', 'example' => '6', 'description' => 'Quantity to deliver.'],
             ['name' => 'unit', 'example' => 'pcs', 'description' => 'Unit of measure. Default: pcs.'],
             ['name' => 'unit_price', 'example' => '50.00', 'description' => 'Unit price per item.'],
+            ['name' => 'lot_number', 'example' => 'LOT-2026-001', 'description' => 'Lot or batch number.'],
+            ['name' => 'expiry_date', 'example' => '2027-07-15', 'description' => 'Lot expiry date.'],
         ];
 
         return $this->importService->downloadTemplate($columns, 'delivery-order-import-template.csv');

@@ -44,6 +44,7 @@ final class DeliveryOrderDataSource implements DataSourceContract
                 'line_total' => (float) ($line->line_total ?? 0),
                 'lot_number' => $line->lot_number ?? '',
                 'batch_number' => $line->batch_number ?? '',
+                'expiry_date' => optional($line->expiry_date)->format('Y-m-d'),
             ];
         }
 
@@ -186,8 +187,8 @@ final class DeliveryOrderDataSource implements DataSourceContract
             'company' => CompanyDataSource::sample(),
             'warehouse' => ['name' => 'Main Warehouse — KL'],
             'lines' => [
-                ['index' => 1, 'sku' => 'SKU-1001', 'description' => 'Enterprise licence — 50 seats', 'patient_name' => 'Jane Doe', 'quantity_ordered' => 10, 'quantity_delivered' => 10, 'remaining' => 0, 'unit' => 'box', 'unit_price' => 450.00, 'line_total' => 4500.00, 'lot_number' => '', 'batch_number' => ''],
-                ['index' => 2, 'sku' => 'SKU-2099', 'description' => 'On-site training materials', 'patient_name' => 'John Doe', 'quantity_ordered' => 25, 'quantity_delivered' => 25, 'remaining' => 0, 'unit' => 'pcs', 'unit_price' => 49.60, 'line_total' => 1240.00, 'lot_number' => 'LOT-001', 'batch_number' => 'B-2026-07'],
+                ['index' => 1, 'sku' => 'SKU-1001', 'description' => 'Enterprise licence — 50 seats', 'patient_name' => 'Jane Doe', 'quantity_ordered' => 10, 'quantity_delivered' => 10, 'remaining' => 0, 'unit' => 'box', 'unit_price' => 450.00, 'line_total' => 4500.00, 'lot_number' => '', 'batch_number' => '', 'expiry_date' => '2027-07-25'],
+                ['index' => 2, 'sku' => 'SKU-2099', 'description' => 'On-site training materials', 'patient_name' => 'John Doe', 'quantity_ordered' => 25, 'quantity_delivered' => 25, 'remaining' => 0, 'unit' => 'pcs', 'unit_price' => 49.60, 'line_total' => 1240.00, 'lot_number' => 'LOT-001', 'batch_number' => 'B-2026-07', 'expiry_date' => '2027-08-31'],
             ],
             'meta' => ['currency_code' => 'SGD', 'currency_symbol' => 'S$', 'number_format' => '1,234.56', 'locale' => 'en'],
         ];
