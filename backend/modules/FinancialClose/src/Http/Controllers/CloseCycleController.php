@@ -83,8 +83,11 @@ class CloseCycleController extends Controller
         $evaluation = $this->cycleService->evaluateReadiness($tenantId, $cycleId);
 
         if (! $evaluation['ready_to_close']) {
+            // Canonical reason code for the dominant blocker (#39).
+            $reasonCode = $this->blockingReasonCode($evaluation);
             return response()->json([
                 'message' => 'Cycle is not ready to close.',
+                'reason_code' => $reasonCode,
                 'evaluation' => $evaluation,
             ], 422);
         }
@@ -92,10 +95,35 @@ class CloseCycleController extends Controller
         $success = $this->cycleService->closeCycle($tenantId, $cycleId, $userId);
 
         if (! $success) {
-            return response()->json(['message' => 'Cycle cannot be closed.'], 422);
+            return response()->json([
+                'message' => 'Cycle cannot be closed.',
+                'reason_code' => 'CHECKPOINT_NOT_READY',
+            ], 422);
         }
 
         return response()->json(['message' => 'Cycle closed.']);
+    }
+
+    /**
+     * Choose the dominant canonical reason code for a not-ready evaluation (#39).
+     * Order of precedence: blocking findings > escalations > tasks > signoffs.
+     */
+    private function blockingReasonCode(array $evaluation): string
+    {
+        if (($evaluation['blocking_findings'] ?? 0) > 0) {
+            return 'ASSURANCE_BLOCKED';
+        }
+        if (($evaluation['open_escalations'] ?? 0) > 0) {
+            return 'BUSINESS_RULE_VIOLATION';
+        }
+        if (($evaluation['incomplete_tasks'] ?? 0) > 0) {
+            return 'CHECKPOINT_NOT_READY';
+        }
+        if (($evaluation['authorised_signoffs'] ?? 0) < ($evaluation['required_signoffs'] ?? 1)) {
+            return 'CHECKPOINT_NOT_READY';
+        }
+
+        return 'CHECKPOINT_NOT_READY';
     }
 
     /** POST /cycles/{cycleId}/signoff — record cycle-level sign-off */

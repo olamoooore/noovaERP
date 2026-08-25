@@ -405,22 +405,37 @@ class FinancialCloseCycleService
             ->where('status', 'open')
             ->count();
 
-        // ── Check open assurance findings (ADR-005 §39.1) ──────────────
-        // Findings from the canonical ACC-010 model that block closure
-        // P0-3: use correct namespace, lowercase statuses, source_type/source_id columns
-        $openFindings = \App\Models\Accounting\AccountingFinding::where('tenant_id', $tenantId)
-            ->where('source_type', 'close_cycle')
-            ->where('source_id', $cycleId)
+        // ── Blocking-policy-aware open findings check (ADR-005 §39.1, #39) ──
+        // A finding blocks closure when:
+        //   - its status is `open` or `investigating` (canonical unresolved states),
+        //   - AND its severity is `high` or `critical`,
+        //   - AND it is either tied to this cycle (source_type=close_cycle,
+        //     source_id=cycleId) OR it is an entity-wide open finding for the
+        //     cycle's entity.
+        //
+        // This policy is the documented contract: medium/low findings remain
+        // visible but do not by themselves block closure; an admin may override.
+        $blockingFindings = \App\Models\Accounting\AccountingFinding::where('tenant_id', $tenantId)
+            ->where(function ($q) use ($cycleId, $cycle) {
+                $q->where(function ($inner) use ($cycleId) {
+                    $inner->where('source_type', 'close_cycle')
+                        ->where('source_id', $cycleId);
+                })->orWhere('entity_id', $cycle->entity_id);
+            })
             ->whereIn('status', ['open', 'investigating'])
+            ->whereIn('severity', ['high', 'critical'])
             ->count();
 
-        // Also check entity-wide open findings for this cycle's entity
-        $entityWideFindings = \App\Models\Accounting\AccountingFinding::where('tenant_id', $tenantId)
-            ->where('entity_id', $cycle->entity_id)
+        // Total open findings (for reporting visibility, not blocking):
+        $totalOpenFindings = \App\Models\Accounting\AccountingFinding::where('tenant_id', $tenantId)
+            ->where(function ($q) use ($cycleId, $cycle) {
+                $q->where(function ($inner) use ($cycleId) {
+                    $inner->where('source_type', 'close_cycle')
+                        ->where('source_id', $cycleId);
+                })->orWhere('entity_id', $cycle->entity_id);
+            })
             ->whereIn('status', ['open', 'investigating'])
             ->count();
-
-        $totalOpenFindings = $openFindings + $entityWideFindings;
 
         // Count authorised sign-offs
         $metadata = is_array($cycle->metadata) ? $cycle->metadata : [];
@@ -431,7 +446,7 @@ class FinancialCloseCycleService
 
         $ready = $incompleteTasks === 0
             && $openEscalations === 0
-            && $totalOpenFindings === 0
+            && $blockingFindings === 0
             && $authorisedSignoffs >= self::REQUIRED_SIGNOFFS;
 
         // Auto-transition to ready_to_close when conditions are met
@@ -447,6 +462,7 @@ class FinancialCloseCycleService
                 'after' => [
                     'incomplete_tasks' => $incompleteTasks,
                     'open_escalations' => $openEscalations,
+                    'blocking_findings' => $blockingFindings,
                     'open_findings' => $totalOpenFindings,
                     'signoffs' => $authorisedSignoffs,
                 ],
@@ -462,7 +478,14 @@ class FinancialCloseCycleService
             'ready_to_close' => $ready,
             'incomplete_tasks' => $incompleteTasks,
             'open_escalations' => $openEscalations,
+            // #39: split blocking from non-blocking findings; expose the policy.
+            'blocking_findings' => $blockingFindings,
             'open_findings' => $totalOpenFindings,
+            'blocking_policy' => [
+                'severity_threshold' => 'high_or_critical',
+                'unresolved_statuses' => ['open', 'investigating'],
+                'scope' => 'cycle_or_entity',
+            ],
             'authorised_signoffs' => $authorisedSignoffs,
             'required_signoffs' => self::REQUIRED_SIGNOFFS,
         ];
