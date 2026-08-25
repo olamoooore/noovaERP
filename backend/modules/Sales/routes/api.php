@@ -51,26 +51,16 @@ Route::middleware([
         });
 
         // Delivery Orders
-        Route::apiResource('sales/delivery-orders', DeliveryOrderController::class)
-            ->only(['index', 'show'])
-            ->middleware(\App\Http\Middleware\RequirePermission::class.':sales.view');
-        Route::apiResource('sales/delivery-orders', DeliveryOrderController::class)
-            ->only(['store', 'update', 'destroy'])
-            ->middleware(\App\Http\Middleware\RequirePermission::class.':sales.write');
-
-        Route::middleware(\App\Http\Middleware\RequirePermission::class.':sales.write')->group(function () {
-            Route::post('/sales/delivery-orders/{id}/confirm', [DeliveryOrderController::class, 'confirm']);
-            Route::post('/sales/delivery-orders/{id}/complete', [DeliveryOrderController::class, 'complete']);
-            Route::post('/sales/delivery-orders/{id}/reverse', [DeliveryOrderController::class, 'reverse']);
-            Route::post('/sales/delivery-orders/{id}/cancel', [DeliveryOrderController::class, 'cancel']);
-            Route::post('/sales/delivery-orders/{id}/reset-to-draft', [DeliveryOrderController::class, 'resetToDraft']);
-            Route::post('/sales/delivery-orders/bulk-delete', [DeliveryOrderController::class, 'bulkDestroy']);
-            Route::post('/sales/delivery-orders/import', [DeliveryOrderController::class, 'import']);
-        });
-
-        Route::middleware(\App\Http\Middleware\RequirePermission::class.':sales.view')->group(function () {
-            Route::get('/sales/delivery-orders/template', [DeliveryOrderController::class, 'template']);
-            Route::get('/sales/orders/{id}/deliveries', [DeliveryOrderController::class, 'forSalesOrder']);
-        });
+        Route::get('/sales/delivery-orders/export', [DeliveryOrderController::class, 'export']);
+        Route::apiResource('sales/delivery-orders', DeliveryOrderController::class);
+        Route::post('/sales/delivery-orders/{id}/confirm', [DeliveryOrderController::class, 'confirm']);
+        Route::post('/sales/delivery-orders/{id}/complete', [DeliveryOrderController::class, 'complete']);
+        Route::post('/sales/delivery-orders/{id}/reverse', [DeliveryOrderController::class, 'reverse']);
+        Route::post('/sales/delivery-orders/{id}/cancel', [DeliveryOrderController::class, 'cancel']);
+        Route::post('/sales/delivery-orders/{id}/reset-to-draft', [DeliveryOrderController::class, 'resetToDraft']);
+        Route::post('/sales/delivery-orders/bulk-delete', [DeliveryOrderController::class, 'bulkDestroy']);
+        Route::post('/sales/delivery-orders/import', [DeliveryOrderController::class, 'import']);
+        Route::get('/sales/delivery-orders/template', [DeliveryOrderController::class, 'template']);
+        Route::get('/sales/orders/{id}/deliveries', [DeliveryOrderController::class, 'forSalesOrder']);
     });
 });

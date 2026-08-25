@@ -10,6 +10,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 import { useNavigate } from 'react-router-dom'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
+import { INVOICE_EXPORT_COLUMNS, SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
 
 export function InvoicesPage() {
   const { toast } = useToast()
@@ -28,24 +29,29 @@ export function InvoicesPage() {
   const [page, setPage] = useState(1)
   const [perPage] = useState(20)
 
+  const activeFilterParams = () => {
+    const params: Record<string, string> = {}
+    if (statusFilter !== 'all') params.status = statusFilter
+    if (searchQuery.trim()) params.search = searchQuery.trim()
+    if (customerFilter) params.customer_id = customerFilter
+    if (dateFilter === 'yearly') {
+      params.start_date = `${selectedYear}-01-01`
+      params.end_date = `${selectedYear}-12-31`
+    } else if (dateFilter === 'monthly' && selectedMonth) {
+      const [year, month] = selectedMonth.split('-').map(Number)
+      params.start_date = `${selectedMonth}-01`
+      params.end_date = `${selectedMonth}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`
+    } else if (dateFilter === 'custom') {
+      if (customStartDate) params.start_date = customStartDate
+      if (customEndDate) params.end_date = customEndDate
+    }
+    return params
+  }
+
   const { data: response, isLoading } = useQuery({
     queryKey: ['invoices', page, perPage, statusFilter, searchQuery, customerFilter, dateFilter, selectedYear, selectedMonth, customStartDate, customEndDate],
     queryFn: async () => {
-      const params: any = { page, per_page: perPage }
-      if (statusFilter !== 'all') params.status = statusFilter
-      if (searchQuery.trim()) params.search = searchQuery.trim()
-      if (customerFilter) params.customer_id = customerFilter
-      if (dateFilter === 'yearly') {
-        params.start_date = `${selectedYear}-01-01`
-        params.end_date = `${selectedYear}-12-31`
-      } else if (dateFilter === 'monthly' && selectedMonth) {
-        const [year, month] = selectedMonth.split('-').map(Number)
-        params.start_date = `${selectedMonth}-01`
-        params.end_date = `${selectedMonth}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`
-      } else if (dateFilter === 'custom') {
-        if (customStartDate) params.start_date = customStartDate
-        if (customEndDate) params.end_date = customEndDate
-      }
+      const params = { page, per_page: perPage, ...activeFilterParams() }
       const res = await api.get('/invoices', { params })
       return res.data
     },
@@ -145,6 +151,13 @@ export function InvoicesPage() {
           <p className="text-muted-foreground mt-1">All invoices — created from Sales Orders or directly.</p>
         </div>
         <div className="flex gap-2">
+          <SalesDocumentExportMenu
+            endpoint="/invoices/export"
+            filenamePrefix="invoices"
+            columns={INVOICE_EXPORT_COLUMNS}
+            filters={activeFilterParams()}
+            selectedIds={selectedIds}
+          />
           <Button variant="outline" onClick={() => navigate('/invoices/import')}>
             <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
             Import

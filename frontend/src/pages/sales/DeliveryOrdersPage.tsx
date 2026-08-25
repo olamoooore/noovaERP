@@ -9,6 +9,34 @@ import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
 import { formatDate } from '@/lib/utils'
+import { SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
+
+const DELIVERY_ORDER_EXPORT_COLUMNS = [
+  { key: 'delivery_order_number', label: 'Delivery Order No', group: 'Delivery Order', default: true },
+  { key: 'delivery_date', label: 'Delivery Date', group: 'Delivery Order', default: true },
+  { key: 'expected_date', label: 'Due Date', group: 'Delivery Order' },
+  { key: 'customer_name', label: 'Customer', group: 'Delivery Order', default: true },
+  { key: 'customer_code', label: 'Customer Code', group: 'Delivery Order' },
+  { key: 'sales_order_number', label: 'Sales Order No', group: 'Delivery Order' },
+  { key: 'invoice_number', label: 'Invoice No', group: 'Delivery Order' },
+  { key: 'quotation_number', label: 'Quotation No', group: 'Delivery Order' },
+  { key: 'po_number', label: 'PO Number', group: 'Delivery Order' },
+  { key: 'payment_terms', label: 'Payment Terms', group: 'Delivery Order' },
+  { key: 'total', label: 'Total', group: 'Delivery Order' },
+  { key: 'status', label: 'Status', group: 'Delivery Order', default: true },
+  { key: 'product_code', label: 'Product Code', group: 'Product Lines' },
+  { key: 'product_name', label: 'Product', group: 'Product Lines' },
+  { key: 'line_description', label: 'Description', group: 'Product Lines' },
+  { key: 'model_number', label: 'Model Number', group: 'Product Lines' },
+  { key: 'lot_number', label: 'Lot Number', group: 'Product Lines' },
+  { key: 'batch_number', label: 'Batch Number', group: 'Product Lines' },
+  { key: 'expiry_date', label: 'Expiry Date', group: 'Product Lines' },
+  { key: 'quantity_ordered', label: 'Quantity Ordered', group: 'Product Lines' },
+  { key: 'quantity_delivered', label: 'Quantity Delivered', group: 'Product Lines' },
+  { key: 'unit', label: 'Unit', group: 'Product Lines' },
+  { key: 'unit_price', label: 'Unit Price', group: 'Product Lines' },
+  { key: 'line_total', label: 'Line Total', group: 'Product Lines' },
+] as const
 
 export function DeliveryOrdersPage() {
   const navigate = useNavigate()
@@ -106,6 +134,16 @@ export function DeliveryOrdersPage() {
           <p className="text-muted-foreground">Track shipments dispatched from sales orders or standalone.</p>
         </div>
         <div className="flex gap-3">
+          <SalesDocumentExportMenu
+            endpoint="/sales/delivery-orders/export"
+            filenamePrefix="delivery_orders"
+            columns={DELIVERY_ORDER_EXPORT_COLUMNS}
+            filters={{
+              search: searchQuery.trim() || undefined,
+              type: typeFilter !== 'all' ? typeFilter : undefined,
+            }}
+            selectedIds={selectedIds}
+          />
           <Button variant="outline" onClick={() => navigate('/delivery-orders/import')}>
             <Icon icon="solar:upload-bold" className="h-4 w-4 mr-2" />
             Import

@@ -185,6 +185,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
         // Invoices
         Route::post('/invoices/import', [InvoiceController::class, 'import']);
+        Route::get('/invoices/export', [InvoiceController::class, 'export']);
         Route::post('/invoices/bulk-delete', [InvoiceController::class, 'bulkDestroy']);
         Route::post('/invoices/bulk-post', [InvoiceController::class, 'bulkPost']);
         Route::apiResource('invoices', InvoiceController::class);
@@ -194,6 +195,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
         // Quotations
         Route::post('/quotations/import', [QuotationController::class, 'import']);
+        Route::get('/quotations/export', [QuotationController::class, 'export']);
         Route::post('/quotations/bulk-delete', [QuotationController::class, 'bulkDestroy']);
         Route::apiResource('quotations', QuotationController::class);
         Route::post('/quotations/{id}/confirm', [QuotationController::class, 'confirm']);

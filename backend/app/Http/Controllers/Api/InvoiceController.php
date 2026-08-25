@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exports\InvoicesExport;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Invoice;
@@ -14,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Maatwebsite\Excel\Facades\Excel;
 use Modules\Sales\Services\SalesOrderService;
 
 class InvoiceController extends Controller
@@ -27,21 +29,55 @@ class InvoiceController extends Controller
 
     public function index(Request $request)
     {
-        $query = Invoice::with(['customer', 'lines'])
-            ->orderBy('invoice_date', 'desc');
+        $query = $this->filteredInvoiceQuery($request)
+            ->with(['customer', 'lines']);
 
-        if ($request->has('status')) {
+        $invoices = $query->paginate($request->per_page ?? 20);
+
+        return response()->json($invoices);
+    }
+
+    public function export(Request $request)
+    {
+        $validated = $request->validate([
+            'columns' => ['required', 'array', 'min:1', 'max:'.count(InvoicesExport::COLUMNS)],
+            'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(InvoicesExport::COLUMNS))],
+            'status' => ['nullable', 'string'],
+            'lifecycle_status' => ['nullable', 'string'],
+            'customer_id' => ['nullable'],
+            'start_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            'search' => ['nullable', 'string', 'max:255'],
+            'document_ids' => ['nullable', 'array', 'max:1000'],
+            'document_ids.*' => ['required', 'integer', 'distinct'],
+        ]);
+
+        $query = $this->filteredInvoiceQuery($request);
+        $filename = 'invoices_'.now()->format('Y-m-d').'.xlsx';
+
+        return Excel::download(new InvoicesExport($query, $validated['columns']), $filename);
+    }
+
+    private function filteredInvoiceQuery(Request $request)
+    {
+        $query = Invoice::query()->orderBy('invoice_date', 'desc')->orderBy('id', 'desc');
+
+        if ($request->filled('status')) {
             $statuses = explode(',', $request->status);
             $query->whereIn('status', $statuses);
         }
 
-        if ($request->has('lifecycle_status')) {
+        if ($request->filled('lifecycle_status')) {
             $lifecycleStatuses = explode(',', $request->lifecycle_status);
             $query->whereIn('lifecycle_status', $lifecycleStatuses);
         }
 
-        if ($request->has('customer_id')) {
+        if ($request->filled('customer_id')) {
             $query->where('customer_id', $request->customer_id);
+        }
+
+        if ($request->filled('document_ids')) {
+            $query->whereIn('id', $request->input('document_ids', []));
         }
 
         if ($request->filled('start_date')) {
@@ -52,7 +88,7 @@ class InvoiceController extends Controller
             $query->whereDate('invoice_date', '<=', $request->end_date);
         }
 
-        if ($request->has('search')) {
+        if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_number', 'ILIKE', "%{$search}%")
@@ -62,9 +98,7 @@ class InvoiceController extends Controller
             });
         }
 
-        $invoices = $query->paginate($request->per_page ?? 20);
-
-        return response()->json($invoices);
+        return $query;
     }
 
     public function store(Request $request)
@@ -661,7 +695,7 @@ class InvoiceController extends Controller
         // Create a reversal journal entry using raw insert to bypass fillable restrictions
         $reversalId = DB::table('journal_entries')->insertGetId([
             'journal_id' => $journalEntry->journal_id,
-            'entry_number' => $journalEntry->entry_number . '-REV',
+            'entry_number' => $journalEntry->entry_number.'-REV',
             'entry_date' => now()->toDateString(),
             'description' => "Reversal of {$journalEntry->description} (Invoice #{$invoice->invoice_number})",
             'status' => 'posted',
@@ -757,18 +791,21 @@ class InvoiceController extends Controller
             $invoice = Invoice::find($id);
             if (! $invoice) {
                 $skipped[] = ['id' => $id, 'reason' => 'Invoice not found'];
+
                 continue;
             }
 
             // Idempotent: already-posted invoices are counted as success
             if ($invoice->status === 'posted') {
                 $posted[] = $invoice->id;
+
                 continue;
             }
 
             // Only draft invoices can be posted via Bulk Post
             if ($invoice->status !== 'draft') {
                 $skipped[] = ['id' => $id, 'reason' => "Cannot post invoice in status '{$invoice->status}'. Only draft invoices can be posted."];
+
                 continue;
             }
 
@@ -779,6 +816,7 @@ class InvoiceController extends Controller
                     'id' => $id,
                     'reason' => $lockResult['message'] ?? "Date in closed period ({$invoice->invoice_date})",
                 ];
+
                 continue;
             }
 
@@ -957,9 +995,15 @@ class InvoiceController extends Controller
                     $name = trim((string) ($headerRow['customer_name'] ?? ''));
                     $id = trim((string) ($headerRow['customer_id'] ?? ''));
                     $parts = [];
-                    if ($code !== '') $parts[] = "code={$code}";
-                    if ($name !== '') $parts[] = "name={$name}";
-                    if ($id !== '') $parts[] = "id={$id}";
+                    if ($code !== '') {
+                        $parts[] = "code={$code}";
+                    }
+                    if ($name !== '') {
+                        $parts[] = "name={$name}";
+                    }
+                    if ($id !== '') {
+                        $parts[] = "id={$id}";
+                    }
                     $detail = $parts !== '' ? implode(', ', $parts) : 'no customer_code, customer_name, or customer_id provided';
                     throw new \RuntimeException("Customer not found: {$detail}");
                 }
@@ -1233,6 +1277,7 @@ class InvoiceController extends Controller
 
         if ($address) {
             $address->update($addressData);
+
             return;
         }
 
@@ -1263,14 +1308,19 @@ class InvoiceController extends Controller
         if ($category === 'billing') {
             $email = $this->readImportValue($row['contact_email'] ?? null);
             $phone = $this->readImportValue($row['contact_phone'] ?? null);
-            if ($email !== null) $contactData['email'] = $email;
-            if ($phone !== null) $contactData['phone'] = $phone;
+            if ($email !== null) {
+                $contactData['email'] = $email;
+            }
+            if ($phone !== null) {
+                $contactData['phone'] = $phone;
+            }
         }
 
         $contactData = [...$contactData, ...$this->importAddressData($row, $category)];
 
         if ($contact) {
             $contact->update($contactData);
+
             return $contact;
         }
 

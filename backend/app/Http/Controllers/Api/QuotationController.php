@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exports\QuotationsExport;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Invoice;
@@ -17,6 +18,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Maatwebsite\Excel\Facades\Excel;
 use Modules\Sales\Services\SalesOrderService;
 use Modules\TemplateBuilder\Services\DataSource\CompanyDataSource;
 
@@ -31,19 +33,57 @@ class QuotationController extends Controller
 
     public function index(Request $request)
     {
-        $query = Quotation::with(['customer', 'lines'])
-            ->orderBy('quotation_date', 'desc');
+        $query = $this->filteredQuotationQuery($request)->with(['customer', 'lines']);
 
-        if ($request->has('status')) {
+        return response()->json($query->paginate($request->per_page ?? 20));
+    }
+
+    public function export(Request $request)
+    {
+        $validated = $request->validate([
+            'columns' => ['required', 'array', 'min:1', 'max:'.count(QuotationsExport::COLUMNS)],
+            'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(QuotationsExport::COLUMNS))],
+            'status' => ['nullable', 'string'],
+            'customer_id' => ['nullable'],
+            'start_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            'search' => ['nullable', 'string', 'max:255'],
+            'document_ids' => ['nullable', 'array', 'max:1000'],
+            'document_ids.*' => ['required', 'integer', 'distinct'],
+        ]);
+
+        return Excel::download(
+            new QuotationsExport($this->filteredQuotationQuery($request), $validated['columns']),
+            'quotations_'.now()->format('Y-m-d').'.xlsx'
+        );
+    }
+
+    private function filteredQuotationQuery(Request $request)
+    {
+        $query = Quotation::query()->orderBy('quotation_date', 'desc')->orderBy('id', 'desc');
+
+        if ($request->filled('status')) {
             $statuses = explode(',', $request->status);
             $query->whereIn('status', $statuses);
         }
 
-        if ($request->has('customer_id')) {
+        if ($request->filled('customer_id')) {
             $query->where('customer_id', $request->customer_id);
         }
 
-        if ($request->has('search')) {
+        if ($request->filled('document_ids')) {
+            $query->whereIn('id', $request->input('document_ids', []));
+        }
+
+        if ($request->filled('start_date')) {
+            $query->whereDate('quotation_date', '>=', $request->start_date);
+        }
+
+        if ($request->filled('end_date')) {
+            $query->whereDate('quotation_date', '<=', $request->end_date);
+        }
+
+        if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('quotation_number', 'ILIKE', "%{$search}%")
@@ -53,9 +93,7 @@ class QuotationController extends Controller
             });
         }
 
-        $quotations = $query->paginate($request->per_page ?? 20);
-
-        return response()->json($quotations);
+        return $query;
     }
 
     public function store(Request $request)
@@ -538,6 +576,7 @@ class QuotationController extends Controller
                     'line_numbers' => $lineNumbers,
                 ];
                 $errors[] = "Row {$lineNumbers[0]}: Conflicting customers for quotation_number '".($headerRow['quotation_number'] ?? '')."': ".implode(', ', array_keys($customerCodes)).'. Each quotation_number must belong to a single customer.';
+
                 continue;
             }
 
@@ -912,7 +951,7 @@ class QuotationController extends Controller
         }
 
         return response()->json([
-            'message' => count($deletedIds) . ' quotation(s) deleted.',
+            'message' => count($deletedIds).' quotation(s) deleted.',
             'deleted' => $deletedIds,
             'skipped' => $skipped,
         ]);

@@ -99,6 +99,18 @@ function ensureIds(blocks: Block[]): Block[] {
   })
 }
 
+function normalizeFinalSection(blocks: Block[]): Block[] {
+  const totalsIndex = blocks.map((block) => block.type).lastIndexOf('totals')
+  const footerIndex = blocks.map((block) => block.type).lastIndexOf('footer')
+  if (totalsIndex < 0 || footerIndex < 0) return blocks
+
+  const totals = blocks[totalsIndex]
+  const footer = blocks[footerIndex]
+  const remaining = blocks.filter((_, index) => index !== totalsIndex && index !== footerIndex)
+
+  return [...remaining, totals, footer]
+}
+
 /* ── block factory ─────────────────────────────────────────────────── */
 
 export function createBlock(type: BlockType): Block {
@@ -120,6 +132,8 @@ export function createBlock(type: BlockType): Block {
         subtotal_label: 'Page Subtotal',
         subtotal_field: 'line_total',
         subtotal_format: 'money',
+        subtotal_font_size: 9,
+        subtotal_gap_mm: 3,
         columns: [
           { label: '#', field: 'index', width: '4%', align: 'center' },
           { label: 'SKU', field: 'sku', width: '10%' },
@@ -231,7 +245,7 @@ export const useTemplateEditorStore = create<EditorState>((set, get) => {
   const replaceBlocks = (next: Block[], extra: Partial<EditorState> = {}): void => {
     const s = get()
     if (!s.template) return
-    set({ template: { ...s.template, layout_config: { blocks: next } }, dirty: true, ...extra })
+    set({ template: { ...s.template, layout_config: { blocks: normalizeFinalSection(next) } }, dirty: true, ...extra })
   }
 
   return {
@@ -245,7 +259,7 @@ export const useTemplateEditorStore = create<EditorState>((set, get) => {
 
     loadTemplate: (t) => {
       const layout: LayoutConfig = t.layout_config
-        ? { blocks: ensureIds(t.layout_config.blocks ?? []) }
+        ? { blocks: normalizeFinalSection(ensureIds(t.layout_config.blocks ?? [])) }
         : { blocks: [] }
       past = []
       future = []
@@ -263,7 +277,7 @@ export const useTemplateEditorStore = create<EditorState>((set, get) => {
       commit()
       const block = createBlock(type)
       const blocks = s.template.layout_config?.blocks ?? []
-      const next = insertIntoTree(blocks, block, parentId, index)
+      const next = normalizeFinalSection(insertIntoTree(blocks, block, parentId, index))
       set({
         template: { ...s.template, layout_config: { blocks: next } },
         selectedBlockId: block.id,
@@ -275,7 +289,7 @@ export const useTemplateEditorStore = create<EditorState>((set, get) => {
       const s = get()
       if (!s.template?.layout_config) return
       commit()
-      const next = removeFromTree(s.template.layout_config.blocks, id)
+      const next = normalizeFinalSection(removeFromTree(s.template.layout_config.blocks, id))
       set({
         template: { ...s.template, layout_config: { blocks: next } },
         selectedBlockId: s.selectedBlockId === id ? null : s.selectedBlockId,
@@ -328,7 +342,7 @@ export const useTemplateEditorStore = create<EditorState>((set, get) => {
         if ('children' in b && b.children.length) b.children.forEach(reId)
       }
       reId(clone)
-      const next = insertIntoTree(blocks, clone, loc.parentId, loc.index + 1)
+      const next = normalizeFinalSection(insertIntoTree(blocks, clone, loc.parentId, loc.index + 1))
       set({
         template: { ...s.template, layout_config: { blocks: next } },
         selectedBlockId: clone.id,
@@ -370,7 +384,7 @@ export const useTemplateEditorStore = create<EditorState>((set, get) => {
         if ('children' in b && b.children.length) b.children.forEach(reId)
       }
       reId(clone)
-      const next = insertIntoTree(s.template.layout_config.blocks, clone, parentId, index)
+      const next = normalizeFinalSection(insertIntoTree(s.template.layout_config.blocks, clone, parentId, index))
       set({
         template: { ...s.template, layout_config: { blocks: next } },
         selectedBlockId: clone.id,

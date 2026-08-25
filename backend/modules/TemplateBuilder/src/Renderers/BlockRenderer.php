@@ -49,6 +49,25 @@ final class BlockRenderer implements TemplateRendererInterface
     /** @param array<int,array<string,mixed>> $blocks */
     private function renderBlocks(array $blocks, string $context): string
     {
+        if ($context === '') {
+            $totalsIndex = array_key_last(array_filter($blocks, fn ($block) => ($block['type'] ?? null) === 'totals'));
+            $footerIndex = array_key_last(array_filter($blocks, fn ($block) => ($block['type'] ?? null) === 'footer'));
+
+            if ($totalsIndex !== null && $footerIndex !== null) {
+                $totals = $blocks[$totalsIndex];
+                $footer = $blocks[$footerIndex];
+                $remaining = array_values(array_filter(
+                    $blocks,
+                    fn ($block, $index) => $index !== $totalsIndex && $index !== $footerIndex,
+                    ARRAY_FILTER_USE_BOTH,
+                ));
+                $body = $this->renderBlocks($remaining, 'document');
+                $summary = $this->renderBlock($footer, 'document')."\n".$this->renderBlock($totals, 'document');
+
+                return $body."\n".'<div class="tb-final-summary" style="page-break-inside:avoid;">'.$summary.'</div>';
+            }
+        }
+
         return collect($blocks)
             ->filter(fn ($b) => $this->conditionPasses($b))
             ->map(fn ($b) => $this->renderBlock($b, $context))

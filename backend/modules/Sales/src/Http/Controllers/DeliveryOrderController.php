@@ -2,7 +2,7 @@
 
 namespace Modules\Sales\Http\Controllers;
 
-use App\Models\DeliveryOrder as CentralDeliveryOrder;
+use App\Exports\DeliveryOrdersExport;
 use App\Models\MedicalCase;
 use App\Models\MedicalCaseItem;
 use App\Platform\BulkDelete\BulkDeleteService;
@@ -13,6 +13,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Maatwebsite\Excel\Facades\Excel;
 use Modules\Sales\Models\DeliveryOrder;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\DeliveryOrderService;
@@ -28,22 +29,51 @@ class DeliveryOrderController extends Controller
 
     public function index(Request $request)
     {
-        $query = DeliveryOrder::with(['customer', 'salesOrder', 'lines.product', 'invoice', 'quotation'])
-            ->orderBy('created_at', 'desc');
+        $query = $this->filteredDeliveryOrderQuery($request)
+            ->with(['customer', 'salesOrder', 'lines.product', 'invoice', 'quotation']);
 
-        if ($request->has('status')) {
+        return response()->json($query->paginate($request->per_page ?? 20));
+    }
+
+    public function export(Request $request)
+    {
+        $validated = $request->validate([
+            'columns' => ['required', 'array', 'min:1', 'max:'.count(DeliveryOrdersExport::COLUMNS)],
+            'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(DeliveryOrdersExport::COLUMNS))],
+            'status' => ['nullable', 'string'],
+            'type' => ['nullable', 'in:standalone,linked'],
+            'customer_id' => ['nullable'],
+            'sales_order_id' => ['nullable'],
+            'start_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            'search' => ['nullable', 'string', 'max:255'],
+            'document_ids' => ['nullable', 'array', 'max:1000'],
+            'document_ids.*' => ['required', 'integer', 'distinct'],
+        ]);
+
+        return Excel::download(
+            new DeliveryOrdersExport($this->filteredDeliveryOrderQuery($request), $validated['columns']),
+            'delivery_orders_'.now()->format('Y-m-d').'.xlsx'
+        );
+    }
+
+    private function filteredDeliveryOrderQuery(Request $request)
+    {
+        $query = DeliveryOrder::query()->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+
+        if ($request->filled('status')) {
             $query->whereIn('status', explode(',', $request->status));
         }
 
-        if ($request->has('sales_order_id')) {
+        if ($request->filled('sales_order_id')) {
             $query->where('sales_order_id', $request->sales_order_id);
         }
 
-        if ($request->has('customer_id')) {
+        if ($request->filled('customer_id')) {
             $query->where('customer_id', $request->customer_id);
         }
 
-        if ($request->has('type')) {
+        if ($request->filled('type')) {
             if ($request->type === 'standalone') {
                 $query->whereNull('sales_order_id');
             } elseif ($request->type === 'linked') {
@@ -51,7 +81,19 @@ class DeliveryOrderController extends Controller
             }
         }
 
-        if ($request->has('search')) {
+        if ($request->filled('document_ids')) {
+            $query->whereIn('id', $request->input('document_ids', []));
+        }
+
+        if ($request->filled('start_date')) {
+            $query->whereDate('delivery_date', '>=', $request->start_date);
+        }
+
+        if ($request->filled('end_date')) {
+            $query->whereDate('delivery_date', '<=', $request->end_date);
+        }
+
+        if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('delivery_order_number', 'ILIKE', "%{$search}%")
@@ -64,9 +106,7 @@ class DeliveryOrderController extends Controller
             });
         }
 
-        return response()->json(
-            $query->paginate($request->per_page ?? 20)
-        );
+        return $query;
     }
 
     public function store(Request $request)
@@ -570,7 +610,7 @@ class DeliveryOrderController extends Controller
 
                         // Try INV- prefix: 2024/09/027 → INV-2024/09/027
                         if (! $invoice) {
-                            $withPrefix = 'INV-' . $invNum;
+                            $withPrefix = 'INV-'.$invNum;
                             $invoice = \App\Models\Invoice::withoutTrashed()
                                 ->where('invoice_number', $withPrefix)
                                 ->first();
@@ -643,11 +683,13 @@ class DeliveryOrderController extends Controller
             }
             try {
                 $do = DeliveryOrder::where('delivery_order_number', $doNumber)->first();
-                if (!$do) continue;
+                if (! $do) {
+                    continue;
+                }
 
                 $caseNo = $this->buildCaseNo($data['case_no'] ?? null, $doNumber);
                 $bonusSchemeId = null;
-                if (!empty($data['case_tag'])) {
+                if (! empty($data['case_tag'])) {
                     $bonusSchemeId = $this->caseImportService->resolveOrCreateBonusScheme(
                         $data['case_tag'], $do->customer_id, $data['case_date'] ?? null
                     );
@@ -702,14 +744,17 @@ class DeliveryOrderController extends Controller
     {
         $caseData = [];
         $handle = fopen($file->getRealPath(), 'r');
-        if (!$handle) return [];
-
-        $headers = fgetcsv($handle);
-        if (!$headers) {
-            fclose($handle);
+        if (! $handle) {
             return [];
         }
-        $normalizedHeaders = array_map(fn($h) => strtolower(trim(str_replace(' ', '_', $h))), $headers);
+
+        $headers = fgetcsv($handle);
+        if (! $headers) {
+            fclose($handle);
+
+            return [];
+        }
+        $normalizedHeaders = array_map(fn ($h) => strtolower(trim(str_replace(' ', '_', $h))), $headers);
         $caseNoIdx = array_search('case_no', $normalizedHeaders);
         $caseTagIdx = array_search('case_tag', $normalizedHeaders);
         $caseDateIdx = array_search('case_date', $normalizedHeaders);
@@ -720,30 +765,38 @@ class DeliveryOrderController extends Controller
 
         if ($doNumberIdx === false) {
             fclose($handle);
+
             return [];
         }
 
         while (($row = fgetcsv($handle)) !== false) {
-            if (empty(array_filter($row))) continue;
-            $doNumber = trim((string)($row[$doNumberIdx] ?? ''));
-            if ($doNumber === '') continue;
+            if (empty(array_filter($row))) {
+                continue;
+            }
+            $doNumber = trim((string) ($row[$doNumberIdx] ?? ''));
+            if ($doNumber === '') {
+                continue;
+            }
 
             $caseData[$doNumber] = [
-                'case_no' => $caseNoIdx !== false ? trim((string)($row[$caseNoIdx] ?? '')) : '',
-                'case_tag' => $caseTagIdx !== false ? trim((string)($row[$caseTagIdx] ?? '')) : '',
+                'case_no' => $caseNoIdx !== false ? trim((string) ($row[$caseNoIdx] ?? '')) : '',
+                'case_tag' => $caseTagIdx !== false ? trim((string) ($row[$caseTagIdx] ?? '')) : '',
                 'case_date' => $caseDateIdx !== false ? $this->parseDateForCase($row[$caseDateIdx] ?? null) : null,
-                'patient_name' => $patientIdx !== false ? trim((string)($row[$patientIdx] ?? '')) : '',
-                'delivered_to' => $deliveredToIdx !== false ? trim((string)($row[$deliveredToIdx] ?? '')) : '',
-                'other_note' => $otherNoteIdx !== false ? trim((string)($row[$otherNoteIdx] ?? '')) : '',
+                'patient_name' => $patientIdx !== false ? trim((string) ($row[$patientIdx] ?? '')) : '',
+                'delivered_to' => $deliveredToIdx !== false ? trim((string) ($row[$deliveredToIdx] ?? '')) : '',
+                'other_note' => $otherNoteIdx !== false ? trim((string) ($row[$otherNoteIdx] ?? '')) : '',
             ];
         }
         fclose($handle);
+
         return $caseData;
     }
 
     private function parseDateForCase(?string $value): ?string
     {
-        if (!$value) return null;
+        if (! $value) {
+            return null;
+        }
         try {
             return \Carbon\Carbon::parse($value)->format('Y-m-d');
         } catch (\Exception $e) {
@@ -754,19 +807,21 @@ class DeliveryOrderController extends Controller
     private function buildCaseNo(?string $caseNo, string $doNumber): string
     {
         if ($caseNo && trim($caseNo) !== '') {
-            $base = 'DO-' . trim($doNumber) . '-' . trim($caseNo);
+            $base = 'DO-'.trim($doNumber).'-'.trim($caseNo);
             $final = $base;
             $counter = 1;
             while (MedicalCase::withTrashed()->where('case_no', $final)->exists()) {
-                $final = $base . '-' . $counter;
+                $final = $base.'-'.$counter;
                 $counter++;
                 if ($counter > 100) {
-                    return 'DO-CASE-' . $doNumber;
+                    return 'DO-CASE-'.$doNumber;
                 }
             }
+
             return $final;
         }
-        return 'DO-CASE-' . $doNumber;
+
+        return 'DO-CASE-'.$doNumber;
     }
 
     /**
