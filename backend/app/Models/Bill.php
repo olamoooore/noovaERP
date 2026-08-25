@@ -132,8 +132,17 @@ class Bill extends Model
                 );
             }
 
-            // Safety net: clean up any orphaned journal entry links for this bill
-            $bill->journalEntryLinks()->delete();
+            // Safety net: clean up any orphaned journal entry links for this bill.
+            // Issue #47: include soft-deleted JournalEntries (withTrashed) so the
+            // link is not destroyed when its linked JE was soft-deleted — soft
+            // deletion still counts as a present, authoritative traceability row.
+            $bill->journalEntryLinks()->each(function ($link) {
+                if ($link->journal_entry_id
+                    && ! \App\Models\JournalEntry::withTrashed()->whereKey($link->journal_entry_id)->exists()
+                ) {
+                    $link->delete();
+                }
+            });
         });
     }
 

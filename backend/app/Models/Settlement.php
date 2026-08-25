@@ -29,6 +29,8 @@ class Settlement extends Model
         'initiated_by',
         'correlation_id',
         'metadata',
+        'reversed_at',
+        'reversal_reason',
     ];
 
     protected $casts = [
@@ -36,6 +38,7 @@ class Settlement extends Model
         'unapplied_amount' => 'decimal:2',
         'metadata' => 'array',
         'settled_at' => 'datetime',
+        'reversed_at' => 'datetime',
     ];
 
     protected static function booted(): void

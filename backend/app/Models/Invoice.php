@@ -54,9 +54,19 @@ class Invoice extends Model
                 );
             }
 
-            // Safety net: clean up any orphaned journal entry links for this invoice
-            // (prevents leftover records if journal_entry_id was null but links exist)
-            $invoice->journalEntryLinks()->delete();
+            // Safety net: clean up any orphaned journal entry links for this invoice.
+            // Issue #47: a link is orphaned only if its linked JournalEntry has been
+            // physically removed (the SoftDeletes global scope would otherwise hide a
+            // soft-deleted entry, which we still consider authoritative traceability).
+            // We use `forceDelete` semantics via `withTrashed()->withTrashed()->exists()`
+            // so a soft-deleted JournalEntry still counts as present.
+            $invoice->journalEntryLinks()->each(function ($link) {
+                if ($link->journal_entry_id
+                    && ! \App\Models\JournalEntry::withTrashed()->whereKey($link->journal_entry_id)->exists()
+                ) {
+                    $link->delete();
+                }
+            });
         });
     }
 

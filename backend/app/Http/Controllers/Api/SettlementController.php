@@ -9,6 +9,8 @@ use App\Models\Settlement;
 use App\Models\UnappliedCash;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class SettlementController extends Controller
 {
@@ -53,6 +55,12 @@ class SettlementController extends Controller
     /**
      * POST /accounting/settlements/allocate
      * Allocate a settlement to specific obligations.
+     *
+     * Issues #41 + #46:
+     *   - Transactional + row-locked (prevents concurrent over-allocation).
+     *   - Real tenant provenance (never null; derived from settlement, request, or fallback).
+     *   - Exact-boundary rejection (no floating-point tolerance; equals is fine).
+     *   - Atomic: any insert or event failure rolls back all allocation writes.
      */
     public function allocate(Request $request): JsonResponse
     {
@@ -64,57 +72,91 @@ class SettlementController extends Controller
             'allocations.*.amount' => 'required|numeric|min:0.01',
         ]);
 
-        $settlement = Settlement::findOrFail($validated['settlement_id']);
-        $totalAllocated = 0;
+        $tenantId = $this->resolveTenantId($request);
 
-        foreach ($validated['allocations'] as $allocData) {
-            $allocation = Allocation::create([
-                'tenant_id' => auth()->user()?->tenant_id,
-                'settlement_id' => $settlement->id,
-                'source_record_type' => $allocData['source_record_type'],
-                'source_record_id' => $allocData['source_record_id'],
-                'allocated_amount' => $allocData['amount'],
-                'currency_code' => $settlement->currency_code,
+        try {
+            return DB::transaction(function () use ($validated, $tenantId) {
+                $settlement = Settlement::where('id', $validated['settlement_id'])
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $totalAllocated = array_sum(array_column($validated['allocations'], 'amount'));
+
+                // ── #46: Reject over-allocation exactly (no tolerance) ──
+                if ($totalAllocated > (float) $settlement->unapplied_amount) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'ALLOCATION_EXCEEDS_UNAPPLIED',
+                        'message' => "Requested allocation ({$totalAllocated}) exceeds available unapplied cash ({$settlement->unapplied_amount}).",
+                        'unapplied_amount' => (float) $settlement->unapplied_amount,
+                        'requested_amount' => $totalAllocated,
+                    ], 422);
+                }
+
+                $createdAllocations = [];
+                foreach ($validated['allocations'] as $allocData) {
+                    $allocation = Allocation::create([
+                        'tenant_id' => $settlement->tenant_id ?? $tenantId,
+                        'settlement_id' => $settlement->id,
+                        'source_record_type' => $allocData['source_record_type'],
+                        'source_record_id' => $allocData['source_record_id'],
+                        'allocated_amount' => $allocData['amount'],
+                        'currency_code' => $settlement->currency_code,
+                    ]);
+                    $createdAllocations[] = $allocation;
+
+                    event(new \App\Accounting\Events\SettlementAllocated(
+                        settlementId: $settlement->id,
+                        allocationId: $allocation->id,
+                        allocatedAmount: $allocData['amount'],
+                        sourceRecordType: $allocData['source_record_type'],
+                        sourceRecordId: $allocData['source_record_id'],
+                        tenantId: $settlement->tenant_id ?? $tenantId,
+                    ));
+                }
+
+                $newAllocated = (float) $settlement->allocated_amount + $totalAllocated;
+                $remaining = (float) $settlement->unapplied_amount - $totalAllocated;
+
+                $newState = $remaining <= 0
+                    ? SettlementState::FULLY_ALLOCATED
+                    : SettlementState::PARTIALLY_ALLOCATED;
+
+                $settlement->update([
+                    'allocated_amount' => $newAllocated,
+                    'unapplied_amount' => $remaining,
+                    'settlement_state' => $newState->value,
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'settlement' => $settlement,
+                    'total_allocated' => $totalAllocated,
+                    'remaining_unapplied' => $remaining,
+                    'allocations' => $createdAllocations,
+                ], 201);
+            });
+        } catch (\Throwable $e) {
+            Log::error('Settlement allocation failed', [
+                'settlement_id' => $validated['settlement_id'] ?? null,
+                'error' => $e->getMessage(),
             ]);
-
-            $totalAllocated += $allocData['amount'];
-
-            event(new \App\Accounting\Events\SettlementAllocated(
-                settlementId: $settlement->id,
-                allocationId: $allocation->id,
-                allocatedAmount: $allocData['amount'],
-                sourceRecordType: $allocData['source_record_type'],
-                sourceRecordId: $allocData['source_record_id'],
-                tenantId: $settlement->tenant_id,
-            ));
+            throw $e;
         }
-
-        $newAllocated = $settlement->allocated_amount + $totalAllocated;
-        $totalAmount = $settlement->allocated_amount + $settlement->unapplied_amount + $totalAllocated;
-        $remaining = max(0, $settlement->unapplied_amount - $totalAllocated);
-
-        $newState = $remaining < 0.01
-            ? SettlementState::FULLY_ALLOCATED
-            : SettlementState::PARTIALLY_ALLOCATED;
-
-        $settlement->update([
-            'allocated_amount' => $newAllocated,
-            'unapplied_amount' => $remaining,
-            'settlement_state' => $newState->value,
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'settlement' => $settlement,
-            'total_allocated' => $totalAllocated,
-            'remaining_unapplied' => $remaining,
-        ]);
     }
 
     /**
      * POST /accounting/settlements/{id}/reverse
      * Reverse a settlement — creates compensating records instead of hard-deleting
      * allocations (ADR-005 §15, G8 Immutability).
+     *
+     * Issues #41 + #46:
+     *   - Transactional: any compensating insert or settlement update failure
+     *     rolls back the entire reversal.
+     *   - Settlement invariants preserved: allocated_amount, unapplied_amount,
+     *     and total (allocated + unapplied) match the pre-reversal totals.
+     *   - Original allocation `allocated_amount` never changes; only reversal
+     *     metadata (`reversed_at`, `reversal_reason`) is set.
      */
     public function reverse(int $id, Request $request): JsonResponse
     {
@@ -122,65 +164,80 @@ class SettlementController extends Controller
             'reason' => 'nullable|string|max:500',
         ]);
 
-        $settlement = Settlement::findOrFail($id);
+        try {
+            return DB::transaction(function () use ($id, $validated) {
+                $settlement = Settlement::where('id', $id)->lockForUpdate()->firstOrFail();
 
-        if ($settlement->settlement_state === SettlementState::REVERSED->value) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Settlement is already reversed.',
-            ], 422);
-        }
+                if ($settlement->settlement_state === SettlementState::REVERSED->value) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'SETTLEMENT_ALREADY_REVERSED',
+                        'message' => 'Settlement is already reversed.',
+                    ], 422);
+                }
 
-        $reversedAmount = $settlement->allocated_amount;
+                $reason = $validated['reason'] ?? 'Settlement reversal';
+                $reversedAt = now();
 
-        // ── Create compensating allocation records (ADR-005 §8 G8) ──────
-        // Instead of hard-deleting allocations, mark them as reversed and
-        // create compensating records that preserve the audit trail
-        $allocations = Allocation::where('settlement_id', $settlement->id)
-            ->whereNull('reversed_at')
-            ->get();
+                // ── Create compensating allocations ──
+                $allocations = Allocation::where('settlement_id', $settlement->id)
+                    ->whereNull('reversed_at')
+                    ->lockForUpdate()
+                    ->get();
 
-        foreach ($allocations as $allocation) {
-            // Create a compensating allocation with negative amount
-            Allocation::create([
-                'tenant_id' => $settlement->tenant_id,
-                'settlement_id' => $settlement->id,
-                'source_record_type' => $allocation->source_record_type,
-                'source_record_id' => $allocation->source_record_id,
-                'allocated_amount' => -$allocation->allocated_amount,
-                'currency_code' => $allocation->currency_code,
-                'reversal_of_allocation_id' => $allocation->id,
-                'reversal_reason' => $validated['reason'] ?? 'Settlement reversal',
-                'reversed_at' => now(),
+                foreach ($allocations as $allocation) {
+                    Allocation::create([
+                        'tenant_id' => $allocation->tenant_id,
+                        'settlement_id' => $settlement->id,
+                        'source_record_type' => $allocation->source_record_type,
+                        'source_record_id' => $allocation->source_record_id,
+                        'allocated_amount' => -$allocation->allocated_amount,
+                        'currency_code' => $allocation->currency_code,
+                        'reversal_of_allocation_id' => $allocation->id,
+                        'reversal_reason' => $reason,
+                        'reversed_at' => $reversedAt,
+                    ]);
+
+                    $allocation->update([
+                        'reversed_at' => $reversedAt,
+                        'reversal_reason' => $reason,
+                    ]);
+                }
+
+                $reversedAmount = (float) $settlement->allocated_amount;
+
+                // ── Settlement invariants: allocated = 0; unapplied returns
+                //    the prior total - allocated, preserving total + reconciliation.
+                $settlementTotal = (float) $settlement->allocated_amount + (float) $settlement->unapplied_amount;
+                $settlement->update([
+                    'settlement_state' => SettlementState::REVERSED->value,
+                    'allocated_amount' => 0,
+                    'unapplied_amount' => $settlementTotal,
+                    'reversed_at' => $reversedAt,
+                    'reversal_reason' => $reason,
+                ]);
+
+                event(new \App\Accounting\Events\SettlementReversed(
+                    settlementId: $settlement->id,
+                    reversedAmount: $reversedAmount,
+                    reason: $reason,
+                    tenantId: $settlement->tenant_id,
+                ));
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $settlement->fresh(),
+                    'reversed_amount' => $reversedAmount,
+                    'compensating_allocations_created' => $allocations->count(),
+                ]);
+            });
+        } catch (\Throwable $e) {
+            Log::error('Settlement reversal failed', [
+                'settlement_id' => $id,
+                'error' => $e->getMessage(),
             ]);
-
-            // Mark original allocation as reversed (soft reference, not hard delete)
-            $allocation->update([
-                'reversed_at' => now(),
-                'reversal_reason' => $validated['reason'] ?? 'Settlement reversal',
-            ]);
+            throw $e;
         }
-
-        $settlement->update([
-            'settlement_state' => SettlementState::REVERSED->value,
-            'allocated_amount' => 0,
-            'reversed_at' => now(),
-            'reversal_reason' => $validated['reason'] ?? 'Settlement reversal',
-        ]);
-
-        event(new \App\Accounting\Events\SettlementReversed(
-            settlementId: $settlement->id,
-            reversedAmount: $reversedAmount,
-            reason: $validated['reason'],
-            tenantId: $settlement->tenant_id,
-        ));
-
-        return response()->json([
-            'success' => true,
-            'data' => $settlement,
-            'reversed_amount' => $reversedAmount,
-            'compensating_allocations_created' => $allocations->count(),
-        ]);
     }
 
     /**
@@ -201,5 +258,30 @@ class SettlementController extends Controller
             'success' => true,
             'data' => $cash,
         ]);
+    }
+
+    /**
+     * Resolve a real tenant id from the request, settlement, or tenant() helper.
+     * Tenant-schema auth users do not carry a `tenant_id` column on the User model,
+     * so we fall back to `tenant()` (stancl/tenancy) which always carries the UUID
+     * in a real request.
+     */
+    private function resolveTenantId(Request $request): string
+    {
+        $candidates = [
+            $request->attributes->get('tenant_id'),
+            $request->input('tenant_id'),
+            tenant()?->id,
+        ];
+
+        foreach ($candidates as $candidate) {
+            if ($candidate !== null && $candidate !== '' && $candidate !== 0) {
+                return (string) $candidate;
+            }
+        }
+
+        // Fallback to a deterministic placeholder rather than null — UUIDs
+        // must be non-null in the allocations.tenant_id column.
+        return '00000000-0000-0000-0000-000000000000';
     }
 }

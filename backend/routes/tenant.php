@@ -180,7 +180,7 @@ Route::middleware([
     });
 
     // ─── Accounting Import (ACC-RM-018) ──────────────────────────────────────
-    Route::prefix('accounting/import')->group(function () {
+    Route::prefix('accounting/import')->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.write')->group(function () {
         Route::post('/stage', [\App\Http\Controllers\Api\AccountingImportController::class, 'stage']);
         Route::get('/{batchId}/status', [\App\Http\Controllers\Api\AccountingImportController::class, 'status']);
         Route::post('/{batchId}/commit', [\App\Http\Controllers\Api\AccountingImportController::class, 'commit']);
@@ -198,12 +198,16 @@ Route::middleware([
     });
 
     // ─── Period Close (ACC-RM-004/005) ─────────────────────────────────────
-    Route::prefix('accounting/periods')->group(function () {
-        Route::get('/{periodId}/summary', [\App\Http\Controllers\Api\PeriodCloseController::class, 'summary']);
-        Route::get('/{periodId}/validate', [\App\Http\Controllers\Api\PeriodCloseController::class, 'validatePeriod']);
-        Route::post('/{periodId}/close', [\App\Http\Controllers\Api\PeriodCloseController::class, 'close']);
-        Route::post('/{periodId}/reopen', [\App\Http\Controllers\Api\PeriodCloseController::class, 'reopen']);
-    });
+    Route::prefix('accounting/periods')
+        ->middleware([\App\Http\Middleware\ResolveEntityContext::class, \App\Http\Middleware\EnsureEntityAccess::class])
+        ->group(function () {
+            Route::get('/{periodId}/summary', [\App\Http\Controllers\Api\PeriodCloseController::class, 'summary']);
+            Route::get('/{periodId}/validate', [\App\Http\Controllers\Api\PeriodCloseController::class, 'validatePeriod']);
+            Route::post('/{periodId}/close', [\App\Http\Controllers\Api\PeriodCloseController::class, 'close'])
+                ->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.lock');
+            Route::post('/{periodId}/reopen', [\App\Http\Controllers\Api\PeriodCloseController::class, 'reopen'])
+                ->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.lock');
+        });
 
     // ─── Approval Workflow ────────────────────────────────────────────────────
     // Tenant-scoped approval requests for POS void/refund/return/discount.
@@ -249,13 +253,17 @@ Route::middleware([
     });
 
     // ─── ADR-005 Settlements (§22) ──────────────────────────────────────────
-    Route::prefix('accounting/settlements')->group(function () {
-        Route::get('/', [\App\Http\Controllers\Api\SettlementController::class, 'index']);
-        Route::get('/{id}', [\App\Http\Controllers\Api\SettlementController::class, 'show']);
-        Route::post('/allocate', [\App\Http\Controllers\Api\SettlementController::class, 'allocate']);
-        Route::post('/{id}/reverse', [\App\Http\Controllers\Api\SettlementController::class, 'reverse']);
-        Route::get('/unapplied-cash/list', [\App\Http\Controllers\Api\SettlementController::class, 'unappliedCash']);
-    });
+    Route::prefix('accounting/settlements')
+        ->middleware([\App\Http\Middleware\ResolveEntityContext::class, \App\Http\Middleware\EnsureEntityAccess::class])
+        ->group(function () {
+            Route::get('/', [\App\Http\Controllers\Api\SettlementController::class, 'index']);
+            Route::get('/{id}', [\App\Http\Controllers\Api\SettlementController::class, 'show']);
+            Route::post('/allocate', [\App\Http\Controllers\Api\SettlementController::class, 'allocate'])
+                ->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.write');
+            Route::post('/{id}/reverse', [\App\Http\Controllers\Api\SettlementController::class, 'reverse'])
+                ->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.reverse');
+            Route::get('/unapplied-cash/list', [\App\Http\Controllers\Api\SettlementController::class, 'unappliedCash']);
+        });
 
     // ─── ADR-005 Correction Cases (§56-59) ─────────────────────────────────
     Route::prefix('accounting/correction-cases')->group(function () {

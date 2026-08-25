@@ -52,6 +52,16 @@ class RolePermissionSeeder extends Seeder
         'accounting.settings' => [UserRole::OWNER, UserRole::ADMIN],
         'reconciliation.complete' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
 
+        // Financial Close (ACC-011)
+        'accounting.close.read' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
+        'accounting.close.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        'accounting.close.signoff' => [UserRole::OWNER, UserRole::ADMIN, UserRole::ACCOUNTANT],
+        'accounting.close.admin' => [UserRole::OWNER, UserRole::ADMIN],
+        'accounting.close.task_write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        'accounting.close.finding_write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        'accounting.close.escalation_write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        'accounting.close.template_write' => [UserRole::OWNER, UserRole::ADMIN],
+
         // HRM
         'hrm.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::VIEWER],
         'hrm.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],

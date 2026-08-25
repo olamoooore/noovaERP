@@ -69,9 +69,23 @@ class PaymentPostingService
                 $bankGlAccountId = BankAccount::find($payment->bank_account_id)?->gl_account_id;
             }
 
-            $cashMappingKey = match ($payment->method ?? 'cash') {
+            // ── #44: policy-driven payment method → GL account mapping ──
+            $method = $payment->method ?? 'cash';
+
+            $allowedMethods = ['bank_transfer', 'card', 'check', 'cash', 'gateway'];
+            if (! in_array($method, $allowedMethods, true)) {
+                throw new \RuntimeException(
+                    "Unsupported payment method: '{$method}'. ".
+                    'Allowed: '.implode(', ', $allowedMethods)
+                );
+            }
+
+            $cashMappingKey = match ($method) {
                 'bank_transfer' => 'bank',
-                default => 'cash',
+                'card' => 'card_clearing',
+                'check' => 'cheque_clearing',
+                'cash' => 'cash',
+                'gateway' => 'gateway_receivable',
             };
 
             $lines = [

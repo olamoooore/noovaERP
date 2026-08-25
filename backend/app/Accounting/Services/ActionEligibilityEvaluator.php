@@ -52,12 +52,8 @@ class ActionEligibilityEvaluator
         $this->registerMandatoryGate(new SoDGate());
 
         // Register mandatory permission gate (ADR-005 §8.4 — P19)
-        // PermissionGate is now mandatory — BLOCK must propagate
-        try {
-            $this->registerMandatoryGate(app(PermissionGate::class));
-        } catch (\Exception) {
-            // PermissionGate may not be resolvable in all contexts (e.g., testing)
-        }
+        // PermissionGate is mandatory — failure to resolve is fatal
+        $this->registerMandatoryGate(app(PermissionGate::class));
     }
 
     /**
@@ -127,17 +123,38 @@ class ActionEligibilityEvaluator
         // Persist snapshot if required
         $snapshotId = null;
         if ($requireSnapshot) {
+            // FAIL-CLOSED: tenant_id and actor_id must be real, not fabricated.
+            // Missing identity → BLOCK with canonical reason, no silent ALLOW.
+            $tenantId = $context['tenant_id'] ?? null;
+            $actorId = $context['actor_id'] ?? null;
+
+            if (! $tenantId || ! $actorId) {
+                $finalResult = EligibilityResult::BLOCK;
+                $blockingReason = ReasonCode::MISSING_PERMISSION_CONTEXT;
+
+                return new AuthorityEvaluationResult(
+                    result: $finalResult,
+                    gateResults: $gateResults,
+                    blockingReason: $blockingReason,
+                    snapshotId: null,
+                );
+            }
+
+            // Use deterministic UUID v5 for actor_id so it's traceable
+            // (numeric user IDs mapped to UUID column type).
+            $actorUuid = is_numeric($actorId)
+                ? \Ramsey\Uuid\Uuid::uuid5(\Ramsey\Uuid\Uuid::NAMESPACE_URL, 'actor:' . $actorId)->toString()
+                : (string) $actorId;
+
             $snapshot = AuthorityEvaluationSnapshot::create([
                 'action_eligibility_evaluation_id' => Str::uuid()->toString(),
                 'requested_action' => $action,
                 'record_type' => $recordType,
                 'record_id' => $recordId,
                 'record_version' => $context['current_record_version'] ?? null,
-                'tenant_id' => $context['tenant_id'] ?? \Illuminate\Support\Str::uuid()->toString(),
+                'tenant_id' => (string) $tenantId,
                 'entity_id' => $context['entity_id'] ?? null,
-                'actor_id' => is_numeric($context['actor_id'] ?? null)
-                    ? \Illuminate\Support\Str::uuid()->toString()
-                    : ($context['actor_id'] ?? \Illuminate\Support\Str::uuid()->toString()),
+                'actor_id' => $actorUuid,
                 'context_snapshot_hash' => hash('sha256', json_encode($context)),
                 'policy_versions' => $this->buildPolicyVersions(),
                 'state_versions' => $this->buildStateVersions($context),

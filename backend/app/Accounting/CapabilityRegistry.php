@@ -7,15 +7,34 @@ use App\Accounting\Enums\ReasonCode;
 /**
  * ACC-REG-001 — Accounting Capability and Ownership Registry.
  *
- * Canonical bounded capabilities that together form NoovaERP Accounting.
- * This registry establishes enforceable authority for posting, revision,
- * workflow, negative-state semantics, correction behaviour, and AI boundaries.
+ * DOCUMENTATION-ONLY (P1-7, #50): This registry defines canonical bounded
+ * capabilities that together form NoovaERP Accounting. It establishes
+ * intended authority for posting, revision, workflow, negative-state
+ * semantics, correction behaviour, and AI boundaries.
+ *
+ * This class has NO runtime enforcement effect. It is NOT consulted by
+ * any middleware, service, or controller at runtime. It serves as a
+ * single source of truth for architecture documentation and compliance
+ * test assertions only. Cross-boundary violations are NOT prevented by
+ * this class — they are caught only by explicit tests or code review.
+ *
+ * The constant `ENFORCEMENT_MODE === 'documentation-only'` is a stable,
+ * testable marker for CI/architecture tests that this registry is in
+ * documentation mode. If runtime enforcement is desired in the future,
+ * wire this registry into a CI architecture test or a runtime boundary
+ * guard, and update ENFORCEMENT_MODE accordingly.
  *
  * ACC-REG-001 §3 — Canonical Capability Registry.
  * ACC-REG-001 §4 — Mandatory Capability Metadata.
  */
 class CapabilityRegistry
 {
+    /**
+     * Stable marker for #50 compliance: when this constant equals
+     * 'documentation-only', the registry makes no runtime enforcement
+     * claims and CI architecture tests must reflect that fact.
+     */
+    public const ENFORCEMENT_MODE = 'documentation-only';
     /**
      * @var array<string, array{capability_id: string, capability_code: string, capability_name: string, business_purpose: string, classification: string, owned_entities: array<string>, prohibited_responsibilities: array<string>}>
      */

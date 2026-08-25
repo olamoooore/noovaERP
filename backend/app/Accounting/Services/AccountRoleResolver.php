@@ -22,6 +22,9 @@ class AccountRoleResolver
     private const KEY_TO_ROLE = [
         'cash' => 'CASH_MAIN',
         'bank' => 'BANK_MAIN',
+        'card_clearing' => 'CARD_CLEARING',
+        'cheque_clearing' => 'CHEQUE_CLEARING',
+        'gateway_receivable' => 'GATEWAY_RECEIVABLE',
         'accounts_receivable' => 'AR_CONTROL',
         'accounts_payable' => 'AP_CONTROL',
         'inventory' => 'INVENTORY',

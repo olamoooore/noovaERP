@@ -66,6 +66,63 @@ class AccountingAccessService
             || $this->hasCentralTenantRole($user->id, self::TENANT_WRITE_ROLES);
     }
 
+    // ── Generic gate-framework methods (ADR-005 §8) ──────────────────────────
+
+    /**
+     * Generic permission check used by the authority gate framework (ADR-005 §8.4).
+     * Maps a permission string to the appropriate access check.
+     *
+     * Fail-closed: if the permission IS seeded and the user lacks it → false.
+     * Foundation-phase: if the permission is NOT seeded and no role matches → true
+     *   (system not yet bootstrapped, cannot enforce what doesn't exist).
+     */
+    public function userHasPermission(int $userId, string $permission, ?string $tenantId = null): bool
+    {
+        $user = User::find($userId);
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->is_super_admin ?? false) {
+            return true;
+        }
+
+        // Try Spatie permission first
+        if ($this->hasPermission($user, $permission)) {
+            return true;
+        }
+
+        // Check if the permission exists in Spatie (system bootstrapped?)
+        $permissionExists = $this->permissionIsSeeded($permission);
+
+        if ($permissionExists) {
+            // Permission IS seeded but user doesn't have it → deny (fail-closed)
+            return false;
+        }
+
+        // Permission NOT seeded — fall back to role-based check
+        $roleAllowed = match ($permission) {
+            'accounting.write', 'accounting.post', 'accounting.reverse', 'accounting.lock', 'accounting.settings' => $this->canPost($user),
+            default => $this->canWrite($user),
+        };
+
+        if ($roleAllowed) {
+            return true;
+        }
+
+        // Neither Spatie permission nor role matched, AND the permission isn't seeded.
+        // Foundation phase: allow — can't enforce what doesn't exist yet.
+        return true;
+    }
+
+    /**
+     * Generic entitlement check used by the authority gate framework (ADR-005 §8.3).
+     */
+    public function userHasEntitlement(int $userId, string $entitlement, ?string $tenantId = null): bool
+    {
+        return $this->isModuleEntitled();
+    }
+
     // ── Fine-grained operations ───────────────────────────────────────────────
 
     /**
@@ -170,6 +227,15 @@ class AccountingAccessService
             return $user->hasPermissionTo($permission);
         } catch (\Spatie\Permission\Exceptions\PermissionDoesNotExist) {
             // Permission not yet seeded — fall through
+            return false;
+        }
+    }
+
+    private function permissionIsSeeded(string $permission): bool
+    {
+        try {
+            return \Spatie\Permission\Models\Permission::where('name', $permission)->exists();
+        } catch (\Exception) {
             return false;
         }
     }

@@ -48,15 +48,24 @@ class EntitlementGate implements AuthorityGate
             return GateEvaluationResult::error($this->gateCode(), $this->gateOwner(), 'MISSING_ACTOR');
         }
 
-        // If no access service available, pass (foundation phase)
-        if (!$this->accessService) {
-            return GateEvaluationResult::pass($this->gateCode(), $this->gateOwner(), $this->gateVersion());
+        // FAIL-CLOSED: no access service available → BLOCK (not PASS)
+        if (! $this->accessService) {
+            return GateEvaluationResult::block(
+                $this->gateCode(),
+                $this->gateOwner(),
+                'ENTITLEMENT_SERVICE_UNAVAILABLE',
+            );
         }
 
+        // FAIL-CLOSED: service exception → BLOCK (not PASS)
         try {
             $hasEntitlement = $this->accessService->userHasEntitlement($actorId, $entitlement, $tenantId);
         } catch (\Exception) {
-            return GateEvaluationResult::pass($this->gateCode(), $this->gateOwner(), $this->gateVersion());
+            return GateEvaluationResult::block(
+                $this->gateCode(),
+                $this->gateOwner(),
+                'ENTITLEMENT_SERVICE_ERROR',
+            );
         }
 
         if (!$hasEntitlement) {

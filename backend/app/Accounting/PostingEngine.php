@@ -10,6 +10,7 @@ use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\PostingResult;
 use App\Accounting\DTOs\ReversalRequest;
 use App\Accounting\Enums\EligibilityResult;
+use App\Accounting\Enums\ReasonCode;
 use App\Accounting\Enums\StateDimension;
 use App\Accounting\Services\AccountMappingService;
 use App\Accounting\Services\AccountRoleResolver;
@@ -129,27 +130,51 @@ class PostingEngine implements PostingEngineInterface
         }
 
         // ── 3c. Authority gate evaluation (ADR-005 §8, §15) ────────
+        // FAIL-CLOSED: every material posting must be bound to a tenant
+        // context. Without it, evaluation cannot enforce entitlement /
+        // permission / entity isolation, so the posting must be rejected
+        // with a canonical reason instead of silently allowed.
         $tenantId = $request->tenantId ?? tenant()->id ?? null;
         $eligibilityResult = null;
-        if ($tenantId) {
-            $eligibilityResult = $this->eligibilityEvaluator->evaluate(
-                action: 'POST_JOURNAL',
-                recordType: 'JournalEntry',
-                recordId: $request->documentId ?? 'new',
-                context: [
-                    'tenant_id' => $tenantId,
-                    'entity_id' => $request->legalEntityId,
-                    'actor_id' => $userId,
-                    'document_type' => $request->documentType,
-                    'posting_date' => $request->postingDate,
-                    'total_amount' => $totalDebit,
-                    'correlation_id' => $request->correlationId,
-                ],
-                requireSnapshot: true,
+
+        if (! $tenantId) {
+            return PostingResult::failure(
+                'Posting blocked: '.ReasonCode::MISSING_TENANT_CONTEXT->value
             );
         }
 
-        if ($eligibilityResult && $eligibilityResult->isBlocked()) {
+        // Resolve required permission from posting metadata or document type mapping
+        $requiredPermission = $request->requiredPermission
+            ?? ($request->metadata['required_permission'] ?? null)
+            ?? $this->resolvePermissionForDocumentType($request->documentType);
+
+        $eligibilityResult = $this->eligibilityEvaluator->evaluate(
+            action: 'POST_JOURNAL',
+            recordType: 'JournalEntry',
+            recordId: $request->documentId ?? 'new',
+            context: [
+                'tenant_id' => (string) $tenantId,
+                'entity_id' => $request->legalEntityId ? (string) $request->legalEntityId : null,
+                'actor_id' => $userId ? (string) $userId : null,
+                'document_type' => $request->documentType,
+                'posting_date' => $request->postingDate,
+                'total_amount' => $totalDebit,
+                'correlation_id' => $request->correlationId,
+                'required_permission' => $requiredPermission,
+                'required_entitlement' => $request->requiredEntitlement ?? ($request->metadata['required_entitlement'] ?? null),
+                'source_capability' => $request->sourceCapability ?? ($request->metadata['source_capability'] ?? null),
+                'posting_lines' => array_map(fn ($l) => [
+                    'account_mapping_key' => $l->accountMappingKey,
+                    'account_id' => $l->accountId,
+                    'debit' => $l->debit,
+                    'credit' => $l->credit,
+                ], $request->lines),
+                'tax_determination_result' => $request->taxDeterminationResult ?? ($request->metadata['tax_determination_result'] ?? null),
+            ],
+            requireSnapshot: true,
+        );
+
+        if ($eligibilityResult->isBlocked()) {
             Log::warning('Posting blocked by authority gate', [
                 'document_type' => $request->documentType,
                 'blocking_reason' => $eligibilityResult->blockingReason?->value,
@@ -161,7 +186,7 @@ class PostingEngine implements PostingEngineInterface
             );
         }
 
-        if ($eligibilityResult && $eligibilityResult->hasError()) {
+        if ($eligibilityResult->hasError()) {
             Log::error('Authority gate evaluation error', [
                 'document_type' => $request->documentType,
                 'snapshot_id' => $eligibilityResult->snapshotId,
@@ -283,8 +308,14 @@ class PostingEngine implements PostingEngineInterface
                 );
 
                 // ── outbox event (ADR-005 §62) ──
+                // FAIL-CLOSED: outbox tenant id must come from the validated
+                // tenant context above — never fabricated via Str::uuid().
+                $outboxTenantId = $request->tenantId ?? tenant()->id ?? null;
+                if (! $outboxTenantId) {
+                    throw new \RuntimeException('Outbox event requires tenant context; refusing to fabricate UUID');
+                }
                 AccountingOutboxEvent::create([
-                    'tenant_id' => $request->tenantId ?? tenant()->id ?? Str::uuid()->toString(),
+                    'tenant_id' => (string) $outboxTenantId,
                     'event_type' => 'JournalPosted',
                     'event_version' => '1.0',
                     'aggregate_type' => 'JournalEntry',
@@ -746,10 +777,25 @@ class PostingEngine implements PostingEngineInterface
             // For tax receivable (debit), the debit is the tax amount
             $taxAmount = max($line['debit'], $line['credit']);
 
-            // Taxable amount is typically the revenue/expense line, not the tax line
-            // For simplicity, we'll use the tax amount as a proxy
-            // In a full implementation, this would be calculated from related lines
-            $taxableAmount = $taxAmount > 0 ? ($taxAmount / 0.10) : 0; // Assume 10% tax rate for now
+            // Taxable amount derived from real tax determination context (ACC-009)
+            // The tax_determination_result carries the actual rate and taxable base;
+            // when absent, we compute from the tax line and rate if available.
+            $taxRate = $request->taxDeterminationResult['tax_rate']
+                ?? $request->metadata['tax_determination_result']['tax_rate']
+                ?? null;
+            $taxableAmount = 0;
+            if ($taxAmount > 0) {
+                if ($taxRate !== null && $taxRate > 0) {
+                    $taxableAmount = $taxAmount / $taxRate;
+                } else {
+                    // Fallback: log warning, do not fabricate a rate
+                    Log::warning('Tax transaction detail written without resolvable tax rate', [
+                        'journal_entry_id' => $entry->id,
+                        'tax_code' => $line['tax_code'],
+                    ]);
+                    $taxableAmount = 0;
+                }
+            }
 
             DB::table('tax_transaction_details')->insert([
                 'journal_entry_id' => $entry->id,
@@ -772,5 +818,26 @@ class PostingEngine implements PostingEngineInterface
                 'reporting_period' => $reportingPeriod,
             ]);
         }
+    }
+
+    /**
+     * Resolve the required permission string for a given document type.
+     * This maps operational document types to their corresponding
+     * permission-checkable strings for the authority gate framework.
+     */
+    private function resolvePermissionForDocumentType(string $documentType): ?string
+    {
+        return match ($documentType) {
+            'invoice', 'sales_invoice', 'credit_note' => 'accounting.write',
+            'bill', 'purchase_invoice', 'debit_note' => 'accounting.write',
+            'payment', 'bill_payment' => 'accounting.write',
+            'journal_entry' => 'accounting.write',
+            'adjustment' => 'accounting.write',
+            'reversal' => 'accounting.reverse',
+            // POS, bank reconciliation, asset, and other module-specific types
+            // are expected to provide required_permission in metadata or skip
+            // the permission gate via module-level RBAC instead.
+            default => null,
+        };
     }
 }

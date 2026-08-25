@@ -5,8 +5,11 @@ namespace App\Services;
 use App\Models\Accounting\AccountingImportAudit;
 use App\Models\Accounting\AccountingImportBatch;
 use App\Models\Accounting\AccountingImportStaging;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Throwable;
 
 class AccountingImportService
 {
@@ -41,7 +44,7 @@ class AccountingImportService
                 $errors = $this->validateRow($mapped, $importType);
 
                 $status = empty($errors) ? 'valid' : 'error';
-                if (!empty($errors)) {
+                if (! empty($errors)) {
                     $counts['error']++;
                 } else {
                     $counts['valid']++;
@@ -54,7 +57,7 @@ class AccountingImportService
                     'row_number' => $index + 1,
                     'raw_data' => $row,
                     'mapped_data' => $mapped,
-                    'validation_errors' => !empty($errors) ? $errors : null,
+                    'validation_errors' => ! empty($errors) ? $errors : null,
                     'status' => $status,
                     'source_system' => 'accounting_import',
                     'source_payload_hash' => hash('sha256', json_encode($row)),
@@ -107,10 +110,16 @@ class AccountingImportService
 
             foreach ($stagingRows as $staging) {
                 try {
-                    $entity = $this->createEntity($batch->import_type, $staging->mapped_data);
+                    $entity = $this->createEntity($batch->import_type, $staging->mapped_data, $userId);
                     $staging->markImported(get_class($entity), $entity->id);
                     $imported++;
-                } catch (\Exception $e) {
+                } catch (Throwable $e) {
+                    Log::warning('Import row rejected', [
+                        'batch_id' => $batch->id,
+                        'row_number' => $staging->row_number,
+                        'import_type' => $batch->import_type,
+                        'error' => $e->getMessage(),
+                    ]);
                     $staging->markError(['import_error' => $e->getMessage()]);
                     $rejected++;
                 }
@@ -154,6 +163,7 @@ class AccountingImportService
             foreach ($mapping as $target => $sourceColumn) {
                 $mapped[$target] = $row[$sourceColumn] ?? null;
             }
+
             return $mapped;
         }
 
@@ -162,6 +172,10 @@ class AccountingImportService
 
     /**
      * Validate a mapped row based on import type.
+     *
+     * Field names here match the canonical Bill/Invoice/Payment model columns
+     * per #51: subtotal/total (not total_amount/net_amount), customer/vendor
+     * names, currency, etc.
      */
     private function validateRow(array $mapped, string $importType): array
     {
@@ -175,8 +189,9 @@ class AccountingImportService
                 if (empty($mapped['bill_number'])) {
                     $errors[] = 'bill_number is required';
                 }
-                if (empty($mapped['total_amount']) || $mapped['total_amount'] <= 0) {
-                    $errors[] = 'total_amount must be greater than 0';
+                $total = $mapped['total'] ?? $mapped['total_amount'] ?? null;
+                if (empty($total) || $total <= 0) {
+                    $errors[] = 'total (or total_amount) must be greater than 0';
                 }
                 break;
 
@@ -187,13 +202,14 @@ class AccountingImportService
                 if (empty($mapped['invoice_number'])) {
                     $errors[] = 'invoice_number is required';
                 }
-                if (empty($mapped['total_amount']) || $mapped['total_amount'] <= 0) {
-                    $errors[] = 'total_amount must be greater than 0';
+                $total = $mapped['total'] ?? $mapped['total_amount'] ?? null;
+                if (empty($total) || $total <= 0) {
+                    $errors[] = 'total (or total_amount) must be greater than 0';
                 }
                 break;
 
             case 'journal_entry':
-                if (empty($mapped['lines']) || !is_array($mapped['lines'])) {
+                if (empty($mapped['lines']) || ! is_array($mapped['lines'])) {
                     $errors[] = 'lines array is required';
                 } else {
                     $totalDebit = 0;
@@ -212,8 +228,8 @@ class AccountingImportService
                 if (empty($mapped['amount']) || $mapped['amount'] <= 0) {
                     $errors[] = 'amount must be greater than 0';
                 }
-                if (empty($mapped['payment_method'])) {
-                    $errors[] = 'payment_method is required';
+                if (empty($mapped['method']) && empty($mapped['payment_method'])) {
+                    $errors[] = 'method (or payment_method) is required';
                 }
                 break;
         }
@@ -222,61 +238,117 @@ class AccountingImportService
     }
 
     /**
-     * Create an accounting entity from staged data.
+     * Create an accounting entity from staged data via the owning domain service.
+     * This signature uses an actual `Model` instance as the return type, so any
+     * production failure surfaces as a TypeError caught by the row handler.
      */
-    private function createEntity(string $importType, array $data): Model
+    private function createEntity(string $importType, array $data, int $userId): Model
     {
         return match ($importType) {
-            'bill' => $this->createBill($data),
-            'invoice' => $this->createInvoice($data),
+            'bill' => $this->createBill($data, $userId),
+            'invoice' => $this->createInvoice($data, $userId),
             'journal_entry' => $this->createJournalEntry($data),
-            'payment' => $this->createPayment($data),
+            'payment' => $this->createPayment($data, $userId),
             default => throw new \DomainException("Unknown import type: {$importType}"),
         };
     }
 
-    private function createBill(array $data): \App\Models\Bill
+    private function createBill(array $data, int $userId): \App\Models\Bill
     {
-        $bill = \App\Models\Bill::create([
+        // Resolve vendor: by id if present, otherwise look up by name.
+        $vendorId = $data['vendor_id'] ?? null;
+        if (! $vendorId && ! empty($data['vendor_name'])) {
+            $vendor = \App\Models\Vendor::firstOrCreate(
+                ['name' => $data['vendor_name']],
+                ['name' => $data['vendor_name']]
+            );
+            $vendorId = $vendor->id;
+        }
+
+        if (! $vendorId) {
+            throw new \DomainException('Cannot resolve vendor for bill import row');
+        }
+
+        $subtotal = $data['subtotal']
+            ?? ($data['total'] ?? $data['total_amount'] ?? 0)
+                - ($data['tax_amount'] ?? 0);
+        $taxAmount = $data['tax_amount'] ?? 0;
+        $total = $data['total'] ?? $data['total_amount'] ?? ($subtotal + $taxAmount);
+
+        // Route through BillService (owner domain service) when available.
+        if (app()->bound(\App\Services\BillService::class)) {
+            return app(\App\Services\BillService::class)->createBill([
+                'vendor_id' => $vendorId,
+                'bill_number' => $data['bill_number'],
+                'bill_date' => $data['bill_date'] ?? now()->toDateString(),
+                'due_date' => $data['due_date'] ?? null,
+                'subtotal' => $subtotal,
+                'tax_amount' => $taxAmount,
+                'total' => $total,
+                'status' => 'draft',
+                'notes' => $data['notes'] ?? null,
+                'currency_code' => $data['currency_code'] ?? null,
+                'vendor_name' => $data['vendor_name'] ?? null,
+            ], $userId);
+        }
+
+        // Fallback: direct model creation (still typed correctly so failures
+        // surface as TypeError, not as a 500 with a null model).
+        return \App\Models\Bill::create([
+            'vendor_id' => $vendorId,
             'bill_number' => $data['bill_number'],
-            'vendor_id' => $data['vendor_id'] ?? null,
-            'vendor_name' => $data['vendor_name'] ?? null,
-            'total_amount' => $data['total_amount'],
-            'tax_amount' => $data['tax_amount'] ?? 0,
-            'net_amount' => ($data['total_amount'] ?? 0) - ($data['tax_amount'] ?? 0),
-            'currency' => $data['currency'] ?? 'USD',
             'bill_date' => $data['bill_date'] ?? now()->toDateString(),
             'due_date' => $data['due_date'] ?? null,
+            'subtotal' => $subtotal,
+            'tax_amount' => $taxAmount,
+            'total' => $total,
             'status' => 'draft',
             'notes' => $data['notes'] ?? null,
+            'created_by' => $userId,
         ]);
-
-        return $bill;
     }
 
-    private function createInvoice(array $data): \App\Models\Invoice
+    private function createInvoice(array $data, int $userId): \App\Models\Invoice
     {
-        $invoice = \App\Models\Invoice::create([
+        $customerId = $data['customer_id'] ?? null;
+        if (! $customerId && ! empty($data['customer_name'])) {
+            $customer = \App\Models\Customer::firstOrCreate(
+                ['name' => $data['customer_name']],
+                ['name' => $data['customer_name']]
+            );
+            $customerId = $customer->id;
+        }
+
+        if (! $customerId) {
+            throw new \DomainException('Cannot resolve customer for invoice import row');
+        }
+
+        $subtotal = $data['subtotal']
+            ?? ($data['total'] ?? $data['total_amount'] ?? 0)
+                - ($data['tax_amount'] ?? 0);
+        $taxAmount = $data['tax_amount'] ?? 0;
+        $total = $data['total'] ?? $data['total_amount'] ?? ($subtotal + $taxAmount);
+
+        return \App\Models\Invoice::create([
+            'customer_id' => $customerId,
             'invoice_number' => $data['invoice_number'],
-            'customer_id' => $data['customer_id'] ?? null,
-            'customer_name' => $data['customer_name'] ?? null,
-            'total_amount' => $data['total_amount'],
-            'tax_amount' => $data['tax_amount'] ?? 0,
-            'net_amount' => ($data['total_amount'] ?? 0) - ($data['tax_amount'] ?? 0),
-            'currency' => $data['currency'] ?? 'USD',
             'invoice_date' => $data['invoice_date'] ?? now()->toDateString(),
             'due_date' => $data['due_date'] ?? null,
+            'subtotal' => $subtotal,
+            'tax_amount' => $taxAmount,
+            'total' => $total,
             'status' => 'draft',
             'notes' => $data['notes'] ?? null,
+            'currency_code' => $data['currency_code'] ?? null,
+            'customer_name' => $data['customer_name'] ?? null,
+            'created_by' => $userId,
         ]);
-
-        return $invoice;
     }
 
     private function createJournalEntry(array $data): \App\Models\JournalEntry
     {
         $entry = \App\Models\JournalEntry::create([
-            'entry_number' => $data['entry_number'] ?? 'JE-' . Str::random(8),
+            'entry_number' => $data['entry_number'] ?? 'JE-'.Str::random(8),
             'entry_date' => $data['entry_date'] ?? now()->toDateString(),
             'description' => $data['description'] ?? 'Imported journal entry',
             'status' => 'draft',
@@ -296,19 +368,29 @@ class AccountingImportService
         return $entry;
     }
 
-    private function createPayment(array $data): \App\Models\Payment
+    private function createPayment(array $data, int $userId): \App\Models\Payment
     {
-        $payment = \App\Models\Payment::create([
-            'payment_number' => $data['payment_number'] ?? 'PAY-' . Str::random(8),
-            'amount' => $data['amount'],
-            'currency' => $data['currency'] ?? 'USD',
-            'payment_method' => $data['payment_method'],
-            'payment_date' => $data['payment_date'] ?? now()->toDateString(),
-            'status' => 'pending',
-            'notes' => $data['notes'] ?? null,
-        ]);
+        $method = $data['method'] ?? $data['payment_method'] ?? null;
+        if (! $method) {
+            throw new \DomainException('Payment method is required');
+        }
 
-        return $payment;
+        $allowedMethods = ['bank_transfer', 'card', 'check', 'cash', 'gateway'];
+        if (! in_array($method, $allowedMethods, true)) {
+            throw new \DomainException("Unsupported payment method: '{$method}'");
+        }
+
+        return \App\Models\Payment::create([
+            'payment_number' => $data['payment_number'] ?? 'PAY-'.Str::random(8),
+            'amount' => $data['amount'],
+            'currency' => $data['currency'] ?? null,
+            'method' => $method,
+            'payment_date' => $data['payment_date'] ?? now()->toDateString(),
+            'payment_status' => 'draft',
+            'notes' => $data['notes'] ?? null,
+            'customer_id' => $data['customer_id'] ?? null,
+            'received_by' => $userId,
+        ]);
     }
 
     /**

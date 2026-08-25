@@ -56,8 +56,17 @@ class BillPayment extends Model
                 );
             }
 
-            // Safety net: clean up any orphaned journal entry links for this bill payment
-            $payment->journalEntryLinks()->delete();
+            // Safety net: clean up any orphaned journal entry links for this bill payment.
+            // Issue #47: include soft-deleted JournalEntries (withTrashed) so the
+            // link is not destroyed when its linked JE was soft-deleted — soft
+            // deletion still counts as a present, authoritative traceability row.
+            $payment->journalEntryLinks()->each(function ($link) {
+                if ($link->journal_entry_id
+                    && ! \App\Models\JournalEntry::withTrashed()->whereKey($link->journal_entry_id)->exists()
+                ) {
+                    $link->delete();
+                }
+            });
         });
     }
 

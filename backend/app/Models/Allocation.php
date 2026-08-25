@@ -23,11 +23,16 @@ class Allocation extends Model
         'exchange_rate',
         'journal_entry_id',
         'correlation_id',
+        // ── Reversal tracking (P0-5, ACC-005B) ──
+        'reversed_at',
+        'reversal_of_allocation_id',
+        'reversal_reason',
     ];
 
     protected $casts = [
         'allocated_amount' => 'decimal:2',
         'exchange_rate' => 'decimal:8',
+        'reversed_at' => 'datetime',
     ];
 
     // ── Scopes ────────────────────────────────────────
@@ -42,10 +47,20 @@ class Allocation extends Model
         return $query->where('source_record_type', $type)->where('source_record_id', $id);
     }
 
+    public function scopeNotReversed($query)
+    {
+        return $query->whereNull('reversed_at');
+    }
+
     // ── Relationships ──────────────────────────────────
 
     public function settlement()
     {
         return $this->belongsTo(Settlement::class, 'settlement_id');
+    }
+
+    public function originalAllocation()
+    {
+        return $this->belongsTo(Allocation::class, 'reversal_of_allocation_id');
     }
 }

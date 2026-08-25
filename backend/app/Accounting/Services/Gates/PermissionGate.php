@@ -9,6 +9,9 @@ use App\Services\AccountingAccessService;
 /**
  * Verifies the actor has the required permission.
  * ADR-005 §8.4 — actor permission gate.
+ *
+ * FAIL-CLOSED: missing required inputs → BLOCK, not NOT_APPLICABLE.
+ * Service exceptions → BLOCK (not PASS).
  */
 class PermissionGate implements AuthorityGate
 {
@@ -28,7 +31,7 @@ class PermissionGate implements AuthorityGate
 
     public function gateVersion(): string
     {
-        return '1.0';
+        return '2.0';
     }
 
     public function evaluate(array $context): GateEvaluationResult
@@ -37,20 +40,36 @@ class PermissionGate implements AuthorityGate
         $permission = $context['required_permission'] ?? null;
         $tenantId = $context['tenant_id'] ?? null;
 
-        if (!$actorId || !$permission) {
-            return GateEvaluationResult::notApplicable($this->gateCode(), $this->gateOwner());
+        // Missing actor is a blocking condition (fail-closed)
+        if (! $actorId) {
+            return GateEvaluationResult::block(
+                $this->gateCode(),
+                $this->gateOwner(),
+                'MISSING_PERMISSION_CONTEXT',
+            );
         }
 
-        // Use existing access service for permission check
-        // If no access service available, pass by default (foundation phase)
+        // No permission required → gate not applicable (module handles own RBAC)
+        if (! $permission) {
+            return GateEvaluationResult::pass(
+                $this->gateCode(),
+                $this->gateOwner(),
+                $this->gateVersion(),
+            );
+        }
+
+        // FAIL-CLOSED: service exception → BLOCK (not PASS)
         try {
             $hasPermission = $this->accessService->userHasPermission($actorId, $permission, $tenantId);
         } catch (\Exception) {
-            // Fallback: allow during foundation phase
-            return GateEvaluationResult::pass($this->gateCode(), $this->gateOwner(), $this->gateVersion());
+            return GateEvaluationResult::block(
+                $this->gateCode(),
+                $this->gateOwner(),
+                'PERMISSION_SERVICE_ERROR',
+            );
         }
 
-        if (!$hasPermission) {
+        if (! $hasPermission) {
             return GateEvaluationResult::block($this->gateCode(), $this->gateOwner(), 'INSUFFICIENT_PERMISSION');
         }
 

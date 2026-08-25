@@ -9,14 +9,24 @@ use App\Accounting\Services\AccountRoleResolver;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Intercompany transaction support.
+ * QUARANTINED — Intercompany transaction support (#49).
  *
- * When a posting involves accounts across two legal entities,
- * automatically generates balancing intercompany entries using
- * INTERCOMPANY_DUE_FROM / INTERCOMPANY_DUE_TO roles.
+ * @deprecated This service is quarantined (P1-6, ADR-005 reserved-capability boundary).
+ * It contains known defects (idempotency key collision, zero-net-effect balancing
+ * entries, mirror collapsing to source) and has no approved production caller.
+ *
+ * RUNTIME QUARANTINE: every public method throws `INTERCOMPANY_CAPABILITY_QUARANTINED`
+ * before reaching the PostingEngine. This guard is enforced at runtime so any accidental
+ * wiring (controller, listener, queue job, test) fails fast with a canonical reason
+ * code rather than silently posting defective intercompany journals.
+ *
+ * To un-quarantine, file a new ADR with executable contracts covering the listed
+ * defects and update the runtime guard below.
  */
 class IntercompanyPostingService
 {
+    public const QUARANTINE_REASON = 'INTERCOMPANY_CAPABILITY_QUARANTINED';
+
     public function __construct(
         private readonly PostingEngine $postingEngine,
         private readonly AccountRoleResolver $roleResolver,
@@ -25,11 +35,9 @@ class IntercompanyPostingService
     /**
      * Post an intercompany transaction between two legal entities.
      *
-     * Creates:
-     * 1. The original entry in the source entity
-     * 2. A balancing intercompany DUE-FROM entry in the source entity
-     * 3. A balancing intercompany DUE-TO entry in the target entity
-     * 4. The mirror entry in the target entity
+     * RUNTIME QUARANTINE: throws before reaching PostingEngine until the
+     * defects listed in the class docblock are remediated under an
+     * approved ADR (#49).
      */
     public function post(
         PostingRequest $sourceRequest,
@@ -38,6 +46,8 @@ class IntercompanyPostingService
         array $targetLines,
         string $description,
     ): array {
+        $this->enforceQuarantine();
+
         return DB::transaction(function () use ($sourceRequest, $targetEntityId, $targetBookId, $targetLines, $description) {
             // 1. Post original entry in source entity
             $sourceResult = $this->postingEngine->post($sourceRequest);
@@ -126,5 +136,14 @@ class IntercompanyPostingService
                 'target_entry' => $targetResult->journalEntry,
             ];
         });
+    }
+
+    /**
+     * Runtime quarantine guard (#49). Throws a canonical reason code
+     * before any side-effecting work occurs.
+     */
+    private function enforceQuarantine(): void
+    {
+        throw new \DomainException(self::QUARANTINE_REASON);
     }
 }

@@ -26,5 +26,11 @@ class PostingRequest
         public readonly ?string $requestId = null,
         public readonly ?string $correlationId = null,
         public readonly ?int $tenantId = null,
+        // ── Authority gate context (P0-1, ADR-005 §8) ──
+        public readonly ?string $requiredPermission = null,
+        public readonly ?string $requiredEntitlement = null,
+        public readonly ?string $sourceCapability = null,
+        // ── Tax determination context (P0-6, ACC-009) ──
+        public readonly ?array $taxDeterminationResult = null,
     ) {}
 }
