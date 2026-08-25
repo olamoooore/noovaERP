@@ -78,6 +78,32 @@ class AccReg001ComplianceTest extends TenantTestCase
     }
 
     // ──────────────────────────────────────────────
+    // #50 — CapabilityRegistry documentation-only enforcement marker
+    // ──────────────────────────────────────────────
+
+    public function test_capability_registry_is_documentation_only(): void
+    {
+        // Stable marker so CI/architecture tests can rely on this assertion.
+        $this->assertSame('documentation-only', CapabilityRegistry::ENFORCEMENT_MODE);
+    }
+
+    public function test_capability_registry_has_no_runtime_consultation(): void
+    {
+        // The registry must not be autowired into the authority gate framework,
+        // since it has no enforcement effect and would risk misleading future
+        // maintainers into trusting it for runtime guarantees.
+        $evaluator = app(ActionEligibilityEvaluator::class);
+        $reflection = new \ReflectionClass($evaluator);
+        $source = file_get_contents($reflection->getFileName());
+
+        $this->assertStringNotContainsString(
+            'CapabilityRegistry',
+            $source,
+            'ActionEligibilityEvaluator must not import CapabilityRegistry — it has no runtime enforcement effect.'
+        );
+    }
+
+    // ──────────────────────────────────────────────
     // §24 — Canonical Negative-State Metadata
     // ──────────────────────────────────────────────
 

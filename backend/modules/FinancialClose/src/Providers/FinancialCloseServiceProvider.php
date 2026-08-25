@@ -114,6 +114,20 @@ class FinancialCloseServiceProvider extends ServiceProvider
                     ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.close.signoff'));
                 Route::post('/signoffs/{signoffId}/revoke', [\Modules\FinancialClose\Http\Controllers\SignoffController::class, 'revoke'])
                     ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.close.signoff'));
+
+                // ── P0-2: Task mutation routes (checklist, evidence, link-document) require task_write ──
+                Route::post('/tasks/{taskId}/checklist', [\Modules\FinancialClose\Http\Controllers\TaskController::class, 'saveChecklist'])
+                    ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.close.task_write'));
+                Route::post('/tasks/{taskId}/evidence', [\Modules\FinancialClose\Http\Controllers\TaskController::class, 'uploadEvidence'])
+                    ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.close.task_write'));
+                Route::post('/tasks/{taskId}/link-document', [\Modules\FinancialClose\Http\Controllers\TaskController::class, 'linkDocument'])
+                    ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.close.task_write'));
+                Route::delete('/tasks/{taskId}/link-document', [\Modules\FinancialClose\Http\Controllers\TaskController::class, 'unlinkDocument'])
+                    ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.close.task_write'));
+
+                // ── P0-2: Readiness refresh requires task_write ──
+                Route::post('/readiness/{entityId}/{periodId}/refresh', [\Modules\FinancialClose\Http\Controllers\ReadinessController::class, 'refresh'])
+                    ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.close.task_write'));
             });
 
         // Event → Listener bindings

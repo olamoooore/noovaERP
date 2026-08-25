@@ -407,18 +407,17 @@ class FinancialCloseCycleService
 
         // ── Check open assurance findings (ADR-005 §39.1) ──────────────
         // Findings from the canonical ACC-010 model that block closure
-        $openFindings = \App\Models\AccountingFinding::where('tenant_id', $tenantId)
-            ->where('source_record_type', 'close_cycle')
-            ->where('source_record_id', $cycleId)
-            ->whereIn('status', ['OPEN', 'IN_PROGRESS'])
-            ->where('blocking', true)
+        // P0-3: use correct namespace, lowercase statuses, source_type/source_id columns
+        $openFindings = \App\Models\Accounting\AccountingFinding::where('tenant_id', $tenantId)
+            ->where('source_type', 'close_cycle')
+            ->where('source_id', $cycleId)
+            ->whereIn('status', ['open', 'investigating'])
             ->count();
 
-        // Also check entity-wide open blocking findings for this cycle's entity
-        $entityWideFindings = \App\Models\AccountingFinding::where('tenant_id', $tenantId)
+        // Also check entity-wide open findings for this cycle's entity
+        $entityWideFindings = \App\Models\Accounting\AccountingFinding::where('tenant_id', $tenantId)
             ->where('entity_id', $cycle->entity_id)
-            ->whereIn('status', ['OPEN', 'IN_PROGRESS'])
-            ->where('blocking', true)
+            ->whereIn('status', ['open', 'investigating'])
             ->count();
 
         $totalOpenFindings = $openFindings + $entityWideFindings;
