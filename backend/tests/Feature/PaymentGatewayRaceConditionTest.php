@@ -31,7 +31,6 @@ class PaymentGatewayRaceConditionTest extends TenantTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
         $this->tenantId = 'bbbb2222-bbbb-2222-bbbb-222222222222';
         Tenant::withoutEvents(function () {
             return Tenant::create([
@@ -52,6 +51,12 @@ class PaymentGatewayRaceConditionTest extends TenantTestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        // Seed Spatie roles + permissions and assign the user 'Admin' (Title
+        // Case — UserRole::ADMIN->spatieName() returns 'Admin' not 'admin') so
+        // AccountingAccessService::userHasPermission recognises accounting.write
+        // after the fail-closed PermissionGate was introduced (SHA 91d50469).
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+        $this->user->assignRole('Admin');
 
         // Minimal chart-of-accounts + mappings so POS posting can balance its JE.
         $suffix = uniqid();

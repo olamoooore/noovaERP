@@ -124,9 +124,28 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         // by UserRole::spatieName() (title case). Because the test creates
         // Spatie roles with lowercase names, we add title-case aliases so
         // TenantRoleService::findByName('Admin', 'web') succeeds.
+        //
+        // The title-case aliases must carry the same permission assignments as
+        // their lowercase counterparts — TenantRoleService::getRole() maps
+        // user_company_access.role (lowercase) → UserRole::spatieName() (title
+        // case), then looks up the title-case Spatie role's permissions. If
+        // the title-case alias has no permissions, the user is silently treated
+        // as having none and the PermissionGate returns 403 on every mutation
+        // route — which is the pre-existing 403 in
+        // financial_close_cycle_lifecycle fixed at this commit.
         foreach (['Admin', 'Accountant', 'Viewer', 'Cashier', 'Manager', 'Sales'] as $name) {
             Role::firstOrCreate(['name' => $name, 'guard_name' => 'web']);
         }
+        Role::findByName('Admin', 'web')->givePermissionTo([
+            'accounting.write', 'accounting.post', 'accounting.reverse',
+            'accounting.lock', 'accounting.close.read', 'accounting.close.manage',
+            'accounting.close.signoff', 'accounting.close.task_write',
+            'reconciliation.complete',
+        ]);
+        Role::findByName('Accountant', 'web')->givePermissionTo([
+            'accounting.write', 'accounting.post', 'accounting.reverse',
+            'reconciliation.complete',
+        ]);
 
         $roleAssignments = [
             ['user' => $this->adminUser, 'role' => 'admin'],
@@ -1588,6 +1607,21 @@ class AccountingModuleEndToEndTest extends TenantTestCase
 
         $entityId = (string) \Illuminate\Support\Str::uuid();
         $periodId = (string) \Illuminate\Support\Str::uuid();
+
+        // The test binds a NEW tenant id (`$tenantId` above), different from
+        // the one used by setUp() for the user_company_access rows. Without a
+        // matching user_company_access row for the new tenant, the
+        // RequirePermission middleware cannot resolve the admin role for the
+        // currently bound tenant and returns 403 — which was the pre-existing
+        // failure fixed at this commit. Insert the admin row for the new tenant.
+        DB::table('user_company_access')->insert([
+            'user_id' => $this->adminUser->id,
+            'tenant_id' => $tenantId,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         // Create a close cycle via controller (tenant is now bound)
         $cycleResponse = $this->actingAs($this->adminUser)

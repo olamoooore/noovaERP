@@ -260,6 +260,64 @@ abstract class TenantTestCase extends TestCase
         return $tenant;
     }
 
+    /**
+     * Bind a tenant context AND seed the Spatie role + permission matrix
+     * (RolePermissionSeeder) inside that tenant schema, so the test user
+     * can exercise the authority gate framework (ADR-005 §8) end-to-end.
+     *
+     * Required by tests that call services which route through
+     * PostingEngine::post() and trigger PermissionGate::evaluate() —
+     * introduced at SHA 91d50469 when PostingEngine started rejecting
+     * missing tenant context with MISSING_TENANT_CONTEXT.
+     *
+     * If $user is provided, the user is assigned the Spatie role
+     * (which carries accounting.write, accounting.post, accounting.reverse,
+     * and accounting.lock per RolePermissionSeeder::PERMISSION_MATRIX).
+     * Default Spatie role name is 'Admin' — UserRole::ADMIN->spatieName()
+     * returns 'Admin' (Title Case), not 'admin'.
+     *
+     * If $autoAssignRole is true (default), any User model created during the
+     * test (e.g. by Invoice::factory()->create()) is automatically assigned
+     * the Spatie role. This covers tests where the user is created deep in a
+     * service call rather than explicitly in setUp().
+     *
+     * The seeder is idempotent — safe to call repeatedly.
+     */
+    protected function bindTenantContextWithPermissions(
+        string $tenantId = 'test-tenant',
+        ?\App\Models\User $user = null,
+        string $spatieRoleName = 'Admin',
+        bool $autoAssignRole = true,
+        array $attributes = []
+    ): Tenant {
+        $tenant = $this->bindTenantContext($tenantId, $attributes);
+
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+
+        if ($user && method_exists($user, 'assignRole')) {
+            $user->assignRole($spatieRoleName);
+        }
+
+        if ($autoAssignRole) {
+            // Use a one-shot model event listener so any User created during
+            // this test is automatically assigned the Spatie role. The listener
+            // is cleared in tearDown to avoid leaking into other tests.
+            \App\Models\User::created(function (\App\Models\User $createdUser) use ($spatieRoleName) {
+                if (method_exists($createdUser, 'assignRole')) {
+                    try {
+                        $createdUser->assignRole($spatieRoleName);
+                    } catch (\Throwable $e) {
+                        // Spatie role may not exist yet (e.g. listener fires
+                        // before the seeder commits). Ignore — caller can
+                        // assign explicitly.
+                    }
+                }
+            });
+        }
+
+        return $tenant;
+    }
+
     protected function tenantScopedPath(string $path): string
     {
         if (! $this->boundTestTenant) {

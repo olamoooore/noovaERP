@@ -28,6 +28,7 @@ use App\Models\JournalEntryLine;
 use App\Models\JournalEntryLink;
 use App\Models\LockDate;
 use App\Models\User;
+use Illuminate\Support\Str;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\OCRBookkeeping\Services\OcrPostingService;
 use Modules\PaymentGateway\Controllers\PaymentController;
@@ -39,13 +40,22 @@ class WS08AccountingPostingTest extends TenantTestCase
     {
         parent::setUp();
 
-        // The PostingEngine requires a tenant user for audit attribution
+        // Bind a tenant context and seed Spatie roles + permissions so the
+        // PostingEngine::post() calls inside this test's PostingRequest
+        // assertions pass the fail-closed MISSING_TENANT_CONTEXT and
+        // INSUFFICIENT_PERMISSION gates introduced at SHA 91d50469.
+        // authority_evaluation_snapshots.tenant_id is a UUID column — the
+        // default 'test-tenant' placeholder is rejected, so pass a UUID.
+        // The PostingEngine also requires a tenant user for audit attribution
         // (TenantUserHelper::requireTenantUserId) and makePostingRequest
         // references userId: 1 — seed that user before any posting runs.
+        $this->bindTenantContextWithPermissions((string) Str::uuid());
+
         User::firstOrCreate(
             ['id' => 1],
             ['name' => 'WS08 Audit User', 'email' => 'ws08-audit@local', 'password' => bcrypt('password')],
         );
+        User::find(1)?->assignRole('Admin');
     }
 
     // ──────────────────────────────────────────────────────────────────────────

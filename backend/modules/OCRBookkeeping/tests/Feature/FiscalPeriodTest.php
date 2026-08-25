@@ -26,6 +26,14 @@ class FiscalPeriodTest extends TenantTestCase
     {
         parent::setUp();
 
+        // Bind a tenant context and seed Spatie roles + permissions so the
+        // OcrPostingService routing through PostingEngine::post() passes the
+        // fail-closed MISSING_TENANT_CONTEXT and INSUFFICIENT_PERMISSION
+        // gates introduced at SHA 91d50469.
+        // authority_evaluation_snapshots.tenant_id is a UUID column — the
+        // default 'test-tenant' placeholder is rejected, so pass a UUID.
+        $this->bindTenantContextWithPermissions((string) \Illuminate\Support\Str::uuid());
+
         $this->user = User::factory()->create();
 
         // Create admin role and assign fiscal.override permission to it.

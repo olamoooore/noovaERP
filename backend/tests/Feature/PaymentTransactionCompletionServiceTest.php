@@ -18,6 +18,21 @@ class PaymentTransactionCompletionServiceTest extends TenantTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Bind a tenant context and seed Spatie roles + permissions so the
+        // PostingEngine::post() call inside this test's payment flow passes
+        // the fail-closed MISSING_TENANT_CONTEXT and INSUFFICIENT_PERMISSION
+        // gates introduced at SHA 91d50469.
+        // payment_webhook_tenant_lookups.tenant_id is a UUID column with an FK
+        // to public.tenants; both must exist before this test can run.
+        $tenantId = (string) \Illuminate\Support\Str::uuid();
+        \Illuminate\Support\Facades\DB::table('public.tenants')->insertOrIgnore([
+            'id' => $tenantId,
+            'name' => 'Payment Transaction Test Tenant',
+            'email' => $tenantId.'@example.test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->bindTenantContextWithPermissions($tenantId);
         $this->service = app(PaymentTransactionCompletionService::class);
     }
 

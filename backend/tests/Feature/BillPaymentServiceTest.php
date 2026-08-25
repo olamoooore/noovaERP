@@ -19,6 +19,9 @@ class BillPaymentServiceTest extends TenantTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Bind a tenant context so PostingEngine::post() passes the
+        // MISSING_TENANT_CONTEXT gate evaluation introduced at SHA 91d50469.
+        $this->bindTenantContext(\Illuminate\Support\Str::uuid()->toString());
         $this->user = User::factory()->create();
         $this->service = app(BillPaymentService::class);
     }

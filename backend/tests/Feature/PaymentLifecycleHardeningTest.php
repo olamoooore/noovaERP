@@ -60,6 +60,11 @@ class PaymentLifecycleHardeningTest extends TenantTestCase
     {
         parent::setUp();
 
+        // Bind a tenant context and seed Spatie roles + permissions so the
+        // PostingEngine::post() call inside this test's payment flow passes
+        // the fail-closed MISSING_TENANT_CONTEXT and INSUFFICIENT_PERMISSION
+        // gates introduced at SHA 91d50469.
+
         // NOTE: This class previously used the DatabaseMigrations trait plus
         // a hand-picked migration list. That conflicts with TenantTestCase's
         // RefreshDatabase machinery when multiple classes run in one PHPUnit
@@ -68,6 +73,19 @@ class PaymentLifecycleHardeningTest extends TenantTestCase
         // covers every table these tests need (payments, invoices,
         // payment_transactions, settings, company_settings, …), so no
         // additional migration work is required here.
+
+        $tenantId = (string) \Illuminate\Support\Str::uuid();
+        \Illuminate\Support\Facades\DB::table('public.tenants')->insertOrIgnore([
+            'id' => $tenantId,
+            'name' => 'Payment Lifecycle Test Tenant',
+            'email' => $tenantId.'@example.test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->bindTenantContextWithPermissions($tenantId);
+
+        $this->adminUser = \App\Models\User::factory()->create();
+        $this->adminUser->assignRole('Admin');
     }
 
     public function test_webhook_retry_with_same_webhook_id_succeeds_after_prior_failure(): void
@@ -274,6 +292,9 @@ class PaymentLifecycleHardeningTest extends TenantTestCase
     private function createInvoiceTransactionFixture(): array
     {
         $user = User::factory()->create();
+        // The fail-closed PermissionGate (SHA 91d50469) requires the actor
+        // who posts the journal entry to have the Spatie 'Admin' role.
+        $user->assignRole('Admin');
 
         $this->seedAccountingPostingFixtures($user->id);
 
