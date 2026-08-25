@@ -19,8 +19,32 @@ import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
 import { formatDate } from '@/lib/utils'
+import { SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
 
 const PER_PAGE = 20
+const QUOTATION_EXPORT_COLUMNS = [
+  { key: 'quotation_number', label: 'Quotation No', group: 'Quotation', default: true },
+  { key: 'quotation_date', label: 'Date', group: 'Quotation', default: true },
+  { key: 'valid_until', label: 'Valid Until', group: 'Quotation', default: true },
+  { key: 'customer_name', label: 'Customer', group: 'Quotation', default: true },
+  { key: 'customer_code', label: 'Customer Code', group: 'Quotation' },
+  { key: 'customer_reference', label: 'Customer Reference', group: 'Quotation' },
+  { key: 'subtotal', label: 'Subtotal', group: 'Quotation' },
+  { key: 'tax_amount', label: 'Tax', group: 'Quotation' },
+  { key: 'discount_amount', label: 'Discount', group: 'Quotation' },
+  { key: 'total', label: 'Total', group: 'Quotation', default: true },
+  { key: 'status', label: 'Status', group: 'Quotation', default: true },
+  { key: 'product_code', label: 'Product Code', group: 'Product Lines' },
+  { key: 'product_name', label: 'Product', group: 'Product Lines' },
+  { key: 'line_description', label: 'Description', group: 'Product Lines' },
+  { key: 'model_number', label: 'Model Number', group: 'Product Lines' },
+  { key: 'quantity', label: 'Quantity', group: 'Product Lines' },
+  { key: 'unit_price', label: 'Unit Price', group: 'Product Lines' },
+  { key: 'line_discount', label: 'Line Discount', group: 'Product Lines' },
+  { key: 'tax_rate', label: 'Tax Rate', group: 'Product Lines' },
+  { key: 'line_tax_amount', label: 'Line Tax', group: 'Product Lines' },
+  { key: 'line_total', label: 'Line Total', group: 'Product Lines' },
+] as const
 
 export function QuotesPage() {
   const navigate = useNavigate()
@@ -161,6 +185,16 @@ export function QuotesPage() {
         </div>
 
         <div className="flex gap-3">
+          <SalesDocumentExportMenu
+            endpoint="/quotations/export"
+            filenamePrefix="quotations"
+            columns={QUOTATION_EXPORT_COLUMNS}
+            filters={{
+              search: searchQuery.trim() || undefined,
+              status: statusFilter !== 'all' ? statusFilter : undefined,
+            }}
+            selectedIds={selectedIds}
+          />
           <Button variant="outline" onClick={() => navigate('/quotations/import')}>
             <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
             Import

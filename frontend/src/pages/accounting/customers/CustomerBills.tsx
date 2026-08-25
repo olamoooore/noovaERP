@@ -11,6 +11,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
+import { INVOICE_EXPORT_COLUMNS, SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu';
 
 /**
  * Customer Invoices Page
@@ -39,6 +40,27 @@ export const CustomerBills: React.FC = () => {
   // State for drill-down filters
   const [customerFilter, setCustomerFilter] = useState<string | null>(customerIdParam);
   const [agingBucketFilter, setAgingBucketFilter] = useState<string | null>(agingBucketParam);
+
+  const activeExportFilters = () => {
+    const filters: Record<string, string | undefined> = {
+      status: statusFilter !== 'all' ? statusFilter : undefined,
+      search: searchQuery.trim() || undefined,
+      customer_id: customerFilter || undefined,
+    };
+    if (dateFilter === 'yearly' && selectedYear) {
+      filters.start_date = `${selectedYear}-01-01`;
+      filters.end_date = `${selectedYear}-12-31`;
+    } else if (dateFilter === 'monthly' && selectedMonth) {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      filters.start_date = `${selectedMonth}-01`;
+      filters.end_date = `${selectedMonth}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
+    } else if (dateFilter === 'custom') {
+      filters.start_date = customStartDate || undefined;
+      filters.end_date = customEndDate || undefined;
+    }
+
+    return filters;
+  };
 
   // Update filters when URL params change
   useEffect(() => {
@@ -178,9 +200,7 @@ export const CustomerBills: React.FC = () => {
     } else {
       setSelectedIds((current) => {
         const next = new Set(current);
-        invoices.forEach((inv: any) => {
-          if (inv.status === 'draft') next.add(inv.id);
-        });
+        invoices.forEach((inv: any) => next.add(inv.id));
         return next;
       });
     }
@@ -270,7 +290,18 @@ export const CustomerBills: React.FC = () => {
             Manage customer invoices
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
+          <SalesDocumentExportMenu
+            endpoint="/invoices/export"
+            filenamePrefix="customer_invoices"
+            columns={INVOICE_EXPORT_COLUMNS}
+            filters={activeExportFilters()}
+            selectedIds={selectedIds.size > 0
+              ? Array.from(selectedIds)
+              : isAgingDrilldown
+                ? invoices.map((invoice: any) => invoice.id)
+                : []}
+          />
           <Button variant="outline" onClick={() => navigate('/accounting/customers/credit-notes')}>
             <Icon icon="solar:document-add-bold-duotone" className="h-4 w-4 mr-2" />
             Credit Notes
@@ -503,7 +534,7 @@ export const CustomerBills: React.FC = () => {
                         checked={allSelected}
                         ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
                         onChange={toggleSelectAll}
-                        title="Select all drafts on this page"
+                        title="Select all invoices on this page"
                       />
                     </TableHead>
                     <TableHead>Invoice #</TableHead>
@@ -521,13 +552,11 @@ export const CustomerBills: React.FC = () => {
                   {invoices.map((invoice: any) => (
                     <TableRow key={invoice.id} className="hover:bg-accent/50 cursor-pointer">
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        {invoice.status === 'draft' && (
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.has(invoice.id)}
-                            onChange={() => toggleSelect(invoice.id)}
-                          />
-                        )}
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(invoice.id)}
+                          onChange={() => toggleSelect(invoice.id)}
+                        />
                       </TableCell>
                       <TableCell 
                         className="font-medium cursor-pointer hover:text-primary"

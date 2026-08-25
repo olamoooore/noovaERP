@@ -48,8 +48,8 @@ class InvoiceController extends Controller
             'start_date' => ['nullable', 'date'],
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'search' => ['nullable', 'string', 'max:255'],
-            'invoice_ids' => ['nullable', 'array', 'max:1000'],
-            'invoice_ids.*' => ['required', 'integer', 'distinct'],
+            'document_ids' => ['nullable', 'array', 'max:1000'],
+            'document_ids.*' => ['required', 'integer', 'distinct'],
         ]);
 
         $query = $this->filteredInvoiceQuery($request);
@@ -76,8 +76,8 @@ class InvoiceController extends Controller
             $query->where('customer_id', $request->customer_id);
         }
 
-        if ($request->filled('invoice_ids')) {
-            $query->whereIn('id', $request->input('invoice_ids', []));
+        if ($request->filled('document_ids')) {
+            $query->whereIn('id', $request->input('document_ids', []));
         }
 
         if ($request->filled('start_date')) {
@@ -695,7 +695,7 @@ class InvoiceController extends Controller
         // Create a reversal journal entry using raw insert to bypass fillable restrictions
         $reversalId = DB::table('journal_entries')->insertGetId([
             'journal_id' => $journalEntry->journal_id,
-            'entry_number' => $journalEntry->entry_number . '-REV',
+            'entry_number' => $journalEntry->entry_number.'-REV',
             'entry_date' => now()->toDateString(),
             'description' => "Reversal of {$journalEntry->description} (Invoice #{$invoice->invoice_number})",
             'status' => 'posted',
@@ -791,18 +791,21 @@ class InvoiceController extends Controller
             $invoice = Invoice::find($id);
             if (! $invoice) {
                 $skipped[] = ['id' => $id, 'reason' => 'Invoice not found'];
+
                 continue;
             }
 
             // Idempotent: already-posted invoices are counted as success
             if ($invoice->status === 'posted') {
                 $posted[] = $invoice->id;
+
                 continue;
             }
 
             // Only draft invoices can be posted via Bulk Post
             if ($invoice->status !== 'draft') {
                 $skipped[] = ['id' => $id, 'reason' => "Cannot post invoice in status '{$invoice->status}'. Only draft invoices can be posted."];
+
                 continue;
             }
 
@@ -813,6 +816,7 @@ class InvoiceController extends Controller
                     'id' => $id,
                     'reason' => $lockResult['message'] ?? "Date in closed period ({$invoice->invoice_date})",
                 ];
+
                 continue;
             }
 
@@ -991,9 +995,15 @@ class InvoiceController extends Controller
                     $name = trim((string) ($headerRow['customer_name'] ?? ''));
                     $id = trim((string) ($headerRow['customer_id'] ?? ''));
                     $parts = [];
-                    if ($code !== '') $parts[] = "code={$code}";
-                    if ($name !== '') $parts[] = "name={$name}";
-                    if ($id !== '') $parts[] = "id={$id}";
+                    if ($code !== '') {
+                        $parts[] = "code={$code}";
+                    }
+                    if ($name !== '') {
+                        $parts[] = "name={$name}";
+                    }
+                    if ($id !== '') {
+                        $parts[] = "id={$id}";
+                    }
                     $detail = $parts !== '' ? implode(', ', $parts) : 'no customer_code, customer_name, or customer_id provided';
                     throw new \RuntimeException("Customer not found: {$detail}");
                 }
@@ -1267,6 +1277,7 @@ class InvoiceController extends Controller
 
         if ($address) {
             $address->update($addressData);
+
             return;
         }
 
@@ -1297,14 +1308,19 @@ class InvoiceController extends Controller
         if ($category === 'billing') {
             $email = $this->readImportValue($row['contact_email'] ?? null);
             $phone = $this->readImportValue($row['contact_phone'] ?? null);
-            if ($email !== null) $contactData['email'] = $email;
-            if ($phone !== null) $contactData['phone'] = $phone;
+            if ($email !== null) {
+                $contactData['email'] = $email;
+            }
+            if ($phone !== null) {
+                $contactData['phone'] = $phone;
+            }
         }
 
         $contactData = [...$contactData, ...$this->importAddressData($row, $category)];
 
         if ($contact) {
             $contact->update($contactData);
+
             return $contact;
         }
 

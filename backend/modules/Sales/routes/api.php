@@ -40,6 +40,7 @@ Route::middleware([
         Route::post('/sales/orders/{id}/bill-by-delivered', [SalesOrderController::class, 'setBillByDelivered']);
 
         // Delivery Orders
+        Route::get('/sales/delivery-orders/export', [DeliveryOrderController::class, 'export']);
         Route::apiResource('sales/delivery-orders', DeliveryOrderController::class);
         Route::post('/sales/delivery-orders/{id}/confirm', [DeliveryOrderController::class, 'confirm']);
         Route::post('/sales/delivery-orders/{id}/complete', [DeliveryOrderController::class, 'complete']);

@@ -10,36 +10,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 import { useNavigate } from 'react-router-dom'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-
-const EXPORT_COLUMNS = [
-  { key: 'invoice_number', label: 'Invoice No', group: 'Invoice' },
-  { key: 'invoice_date', label: 'Date', group: 'Invoice' },
-  { key: 'customer_name', label: 'Customer', group: 'Invoice' },
-  { key: 'customer_code', label: 'Customer Code', group: 'Invoice' },
-  { key: 'subtotal', label: 'Subtotal', group: 'Invoice' },
-  { key: 'tax_amount', label: 'Tax', group: 'Invoice' },
-  { key: 'total', label: 'Amount', group: 'Invoice' },
-  { key: 'paid_amount', label: 'Paid Amount', group: 'Invoice' },
-  { key: 'balance', label: 'Balance', group: 'Invoice' },
-  { key: 'status', label: 'Status', group: 'Invoice' },
-  { key: 'due_date', label: 'Due Date', group: 'Invoice' },
-  { key: 'product_code', label: 'Product Code', group: 'Product Lines' },
-  { key: 'product_name', label: 'Product', group: 'Product Lines' },
-  { key: 'line_description', label: 'Description', group: 'Product Lines' },
-  { key: 'model_number', label: 'Model Number', group: 'Product Lines' },
-  { key: 'lot_number', label: 'Lot Number', group: 'Product Lines' },
-  { key: 'expiry_date', label: 'Expiry Date', group: 'Product Lines' },
-  { key: 'quantity', label: 'Quantity', group: 'Product Lines' },
-  { key: 'unit_price', label: 'Unit Price', group: 'Product Lines' },
-  { key: 'line_discount', label: 'Line Discount', group: 'Product Lines' },
-  { key: 'tax_rate', label: 'Tax Rate', group: 'Product Lines' },
-  { key: 'line_tax_amount', label: 'Line Tax', group: 'Product Lines' },
-  { key: 'line_total', label: 'Line Total', group: 'Product Lines' },
-] as const
-
-type ExportColumn = typeof EXPORT_COLUMNS[number]['key']
+import { INVOICE_EXPORT_COLUMNS, SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
 
 export function InvoicesPage() {
   const { toast } = useToast()
@@ -57,10 +28,6 @@ export function InvoicesPage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [page, setPage] = useState(1)
   const [perPage] = useState(20)
-  const [exportColumns, setExportColumns] = useState<ExportColumn[]>([
-    'invoice_number', 'invoice_date', 'customer_name', 'total', 'status', 'due_date',
-  ])
-  const [isExporting, setIsExporting] = useState(false)
 
   const activeFilterParams = () => {
     const params: Record<string, string> = {}
@@ -163,40 +130,6 @@ export function InvoicesPage() {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]))
   }
 
-  const exportInvoices = async () => {
-    if (exportColumns.length === 0) return
-    setIsExporting(true)
-    try {
-      const res = await api.get('/invoices/export', {
-        params: {
-          ...activeFilterParams(),
-          columns: exportColumns,
-          ...(selectedIds.length > 0 ? { invoice_ids: selectedIds } : {}),
-        },
-        responseType: 'blob',
-      })
-      const url = window.URL.createObjectURL(new Blob([res.data], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      }))
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `invoices_${new Date().toISOString().slice(0, 10)}.xlsx`
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
-      toast({ title: 'Invoice export downloaded' })
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Failed to export invoices',
-        description: error.response?.data?.message,
-      })
-    } finally {
-      setIsExporting(false)
-    }
-  }
-
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
       draft: 'bg-gray-100 text-gray-800',
@@ -218,47 +151,13 @@ export function InvoicesPage() {
           <p className="text-muted-foreground mt-1">All invoices — created from Sales Orders or directly.</p>
         </div>
         <div className="flex gap-2">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" disabled={isExporting}>
-                <Icon icon={isExporting ? 'solar:refresh-bold' : 'solar:file-download-bold'} className={`mr-2 h-4 w-4 ${isExporting ? 'animate-spin' : ''}`} />
-                {isExporting ? 'Exporting...' : 'Export Excel'}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-64">
-              <p className="font-medium">Select export columns</p>
-              <p className="mb-3 text-xs text-muted-foreground">
-                {selectedIds.length > 0
-                  ? `Exporting ${selectedIds.length} selected invoice row${selectedIds.length === 1 ? '' : 's'}.`
-                  : 'The current filters will be applied.'}
-              </p>
-              <div className="max-h-64 space-y-2 overflow-y-auto">
-                {(['Invoice', 'Product Lines'] as const).map((group) => (
-                  <div key={group}>
-                    <p className="mb-2 mt-3 text-xs font-semibold uppercase text-muted-foreground first:mt-0">{group}</p>
-                    <div className="space-y-2">
-                      {EXPORT_COLUMNS.filter((column) => column.group === group).map((column) => (
-                        <label key={column.key} className="flex cursor-pointer items-center gap-2 text-sm">
-                          <Checkbox
-                            checked={exportColumns.includes(column.key)}
-                            onCheckedChange={(checked) => setExportColumns((current) =>
-                              checked
-                                ? [...current, column.key]
-                                : current.filter((key) => key !== column.key),
-                            )}
-                          />
-                          {column.label}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <Button className="mt-4 w-full" onClick={exportInvoices} disabled={exportColumns.length === 0 || isExporting}>
-                Download {exportColumns.length} column{exportColumns.length === 1 ? '' : 's'}
-              </Button>
-            </PopoverContent>
-          </Popover>
+          <SalesDocumentExportMenu
+            endpoint="/invoices/export"
+            filenamePrefix="invoices"
+            columns={INVOICE_EXPORT_COLUMNS}
+            filters={activeFilterParams()}
+            selectedIds={selectedIds}
+          />
           <Button variant="outline" onClick={() => navigate('/invoices/import')}>
             <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
             Import

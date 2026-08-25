@@ -195,6 +195,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
         // Quotations
         Route::post('/quotations/import', [QuotationController::class, 'import']);
+        Route::get('/quotations/export', [QuotationController::class, 'export']);
         Route::post('/quotations/bulk-delete', [QuotationController::class, 'bulkDestroy']);
         Route::apiResource('quotations', QuotationController::class);
         Route::post('/quotations/{id}/confirm', [QuotationController::class, 'confirm']);
