@@ -21,6 +21,7 @@ class PlatformRateLimitMiddleware
     private const SKIP_PATHS = [
         '/api/v1/webhooks/',
         '/api/v1/health',
+        '/api/v1/auth/',
         '/admin/api/',
     ];
 
