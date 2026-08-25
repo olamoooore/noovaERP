@@ -77,4 +77,31 @@ class CanonicalCustomerService
             return $customer->fresh();
         });
     }
+
+    /**
+     * Get-or-create a customer by name, with canonical identity (#51 import flow).
+     *
+     * Idempotent: if a customer with the given name exists, returns the
+     * existing row; otherwise creates a new one with the canonical Contact
+     * Master link. Used by AccountingImportService so production customer
+     * creation never bypasses this canonical service.
+     */
+    public function getOrCreateByName(string $name, array $additionalAttributes = []): Customer
+    {
+        return DB::transaction(function () use ($name, $additionalAttributes) {
+            $customer = Customer::firstOrCreate(
+                ['name' => $name],
+                array_merge([
+                    'name' => $name,
+                    'phone' => null,
+                    'address' => null,
+                    'notes' => null,
+                ], $additionalAttributes)
+            );
+
+            $this->syncService->ensureOrganisationContact($customer);
+
+            return $customer->fresh();
+        });
+    }
 }

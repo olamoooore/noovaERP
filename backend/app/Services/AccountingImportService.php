@@ -312,10 +312,10 @@ class AccountingImportService
     {
         $customerId = $data['customer_id'] ?? null;
         if (! $customerId && ! empty($data['customer_name'])) {
-            $customer = \App\Models\Customer::firstOrCreate(
-                ['name' => $data['customer_name']],
-                ['name' => $data['customer_name']]
-            );
+            // #51 + CI architecture guard: never bypass CanonicalCustomerService
+            // in production code paths. The canonical service creates the
+            // customer + Contact Master link in one transaction.
+            $customer = app(CanonicalCustomerService::class)->getOrCreateByName($data['customer_name']);
             $customerId = $customer->id;
         }
 
