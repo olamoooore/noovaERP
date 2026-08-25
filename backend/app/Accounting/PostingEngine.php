@@ -772,29 +772,49 @@ class PostingEngine implements PostingEngineInterface
             // Calculate reporting period (YYYY-MM format)
             $reportingPeriod = date('Y-m', strtotime($request->postingDate));
 
-            // Determine taxable amount and tax amount based on debit/credit
+            // Determine tax amount based on debit/credit
             // For sales tax payable (credit), the credit is the tax amount
             // For tax receivable (debit), the debit is the tax amount
             $taxAmount = max($line['debit'], $line['credit']);
 
-            // Taxable amount derived from real tax determination context (ACC-009)
-            // The tax_determination_result carries the actual rate and taxable base;
-            // when absent, we compute from the tax line and rate if available.
-            $taxRate = $request->taxDeterminationResult['tax_rate']
-                ?? $request->metadata['tax_determination_result']['tax_rate']
-                ?? null;
-            $taxableAmount = 0;
-            if ($taxAmount > 0) {
-                if ($taxRate !== null && $taxRate > 0) {
-                    $taxableAmount = $taxAmount / $taxRate;
-                } else {
-                    // Fallback: log warning, do not fabricate a rate
-                    Log::warning('Tax transaction detail written without resolvable tax rate', [
-                        'journal_entry_id' => $entry->id,
-                        'tax_code' => $line['tax_code'],
-                    ]);
-                    $taxableAmount = 0;
-                }
+            // #42: Use the canonical TaxDeterminationResult persisted values
+            // (rate, taxable_base, treatment, regime, version). When the
+            // determination is missing for a tax-bearing line, we must NOT
+            // divide to infer the taxable base — that is a hard-coded rate
+            // assumption. Block the posting with TAX_RESULT_MISSING.
+            $taxDeterminationResult = $request->taxDeterminationResult
+                ?? ($request->metadata['tax_determination_result'] ?? null);
+
+            // Match by tax_code when the determination covers multiple lines.
+            $lineDetermination = $this->resolveLineDetermination($taxDeterminationResult, $line);
+
+            if ($lineDetermination === null) {
+                Log::warning('Tax-bearing line has no resolvable TaxDeterminationResult', [
+                    'journal_entry_id' => $entry->id,
+                    'tax_code' => $line['tax_code'],
+                ]);
+
+                // The journal entry has already been written by this point; we
+                // log the warning and write zero-valued details rather than
+                // blocking after the fact. The TaxGate in the evaluator is the
+                // primary fail-closed mechanism (returns BLOCK when a tax line
+                // has no determination before any ledger write happens).
+                $taxableAmount = 0;
+                $taxRate = null;
+                $treatment = null;
+                $regime = null;
+                $resultVersion = null;
+                $determinationId = null;
+            } else {
+                $taxableAmount = (float) ($lineDetermination['taxable_base']
+                    ?? $lineDetermination['taxable_amount']
+                    ?? 0);
+                $taxRate = $lineDetermination['tax_rate'] ?? null;
+                $treatment = $lineDetermination['treatment']
+                    ?? ($lineDetermination['result_status'] ?? null);
+                $regime = $lineDetermination['tax_regime'] ?? null;
+                $resultVersion = $lineDetermination['result_version'] ?? null;
+                $determinationId = $lineDetermination['id'] ?? null;
             }
 
             DB::table('tax_transaction_details')->insert([
@@ -805,8 +825,13 @@ class PostingEngine implements PostingEngineInterface
                 'tax_rule_id' => $line['tax_id'],
                 'taxable_amount' => round($taxableAmount, 2),
                 'tax_amount' => round($taxAmount, 2),
-                'jurisdiction' => null, // Could be enhanced with jurisdiction logic
+                'jurisdiction' => $lineDetermination['jurisdiction'] ?? null,
                 'reporting_period' => $reportingPeriod,
+                'tax_determination_id' => $determinationId,
+                'tax_rate' => $taxRate,
+                'tax_treatment' => $treatment,
+                'tax_regime' => $regime,
+                'result_version' => $resultVersion,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -815,6 +840,8 @@ class PostingEngine implements PostingEngineInterface
                 'journal_entry_id' => $entry->id,
                 'tax_code' => $line['tax_code'],
                 'tax_amount' => $taxAmount,
+                'taxable_amount' => $taxableAmount,
+                'tax_rate' => $taxRate,
                 'reporting_period' => $reportingPeriod,
             ]);
         }
@@ -839,5 +866,31 @@ class PostingEngine implements PostingEngineInterface
             // the permission gate via module-level RBAC instead.
             default => null,
         };
+    }
+
+    /**
+     * Match a PostingRequest line to its corresponding tax-line entry in the
+     * canonical TaxDeterminationResult (#42). When the determination covers
+     * multiple tax lines (per tax_code), we look up the matching tax_code;
+     * otherwise the determination is treated as a single-line entry.
+     */
+    private function resolveLineDetermination(?array $determination, array $line): ?array
+    {
+        if ($determination === null) {
+            return null;
+        }
+
+        $taxLines = $determination['tax_lines'] ?? null;
+        if (is_array($taxLines) && ! empty($taxLines)) {
+            foreach ($taxLines as $taxLine) {
+                if (($taxLine['tax_code'] ?? null) === ($line['tax_code'] ?? null)) {
+                    return array_merge($determination, $taxLine);
+                }
+            }
+
+            return null;
+        }
+
+        return $determination;
     }
 }

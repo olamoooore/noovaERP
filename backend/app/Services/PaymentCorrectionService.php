@@ -74,11 +74,16 @@ class PaymentCorrectionService
                 $this->lifecycleService->applyBillPaymentReversal($originalBill, $payment->amount);
             }
 
-            $this->linkService->linkRefund(
-                $originalInvoice ?? $originalBill,
-                $reversalPayment,
-                $request
-            );
+            // #45: only link a refund correction when there is a parent document.
+            // Standalone payments (no invoice, no bill) cannot have a refund link;
+            // skip rather than crash with an InvalidArgumentException.
+            if ($originalInvoice || $originalBill) {
+                $this->linkService->linkRefund(
+                    $originalInvoice ?? $originalBill,
+                    $reversalPayment,
+                    $request
+                );
+            }
 
             return new PaymentCorrectionResult(
                 payment: $reversalPayment,
@@ -147,11 +152,14 @@ class PaymentCorrectionService
                 $this->lifecycleService->applyBillPaymentRefund($originalBill, $payment->amount);
             }
 
-            $this->linkService->linkRefund(
-                $originalInvoice ?? $originalBill,
-                $refundPayment,
-                $request
-            );
+            // #45: only link a refund correction when there is a parent document.
+            if ($originalInvoice || $originalBill) {
+                $this->linkService->linkRefund(
+                    $originalInvoice ?? $originalBill,
+                    $refundPayment,
+                    $request
+                );
+            }
 
             return new PaymentCorrectionResult(
                 payment: $refundPayment,
