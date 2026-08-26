@@ -396,6 +396,13 @@ class TenantGuardrailsCommand extends Command
         $issues = 0;
         $fixed = 0;
 
+        // payment_gateways is a tenant-scoped table; the central schema only
+        // has it on deployments that keep a global baseline copy. Skip when it
+        // is absent instead of crashing the pre-push audit.
+        if (! \Illuminate\Support\Facades\Schema::hasTable('payment_gateways')) {
+            return [$issues, $fixed];
+        }
+
         $requiredGateways = config('tenant_guardrails.payment_gateways', []);
         $systemUserId = DB::table('public.users')->min('id') ?? 1;
 
