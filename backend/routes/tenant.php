@@ -62,8 +62,9 @@ Route::middleware([
     Route::get('/web-shop/orders/guest/{token}', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'showGuest']);
 
     // Web shop auth (public - no login required)
-    Route::post('/web-shop/auth/register', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'register']);
-    Route::post('/web-shop/auth/login', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'login']);
+    // Pillar 2 Part 2 §2.3: dedicated brute-force throttle (5/min per IP).
+    Route::post('/web-shop/auth/register', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'register'])->middleware('throttle:5,1');
+    Route::post('/web-shop/auth/login', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'login'])->middleware('throttle:5,1');
 
     // Web shop customer-authenticated routes (uses WebCustomerAuth, NOT auth:sanctum)
     Route::middleware([\Modules\Ecommerce\Http\Middleware\WebCustomerAuth::class])->prefix('web-shop')->group(function () {
