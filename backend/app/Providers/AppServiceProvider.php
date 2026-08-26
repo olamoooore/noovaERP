@@ -102,9 +102,16 @@ class AppServiceProvider extends ServiceProvider
             // Fails silently if DB/Schema checks fail during early boot
         }
 
-        // Disable SSL certificate verification for SMTP (self-signed mail server cert)
-        // This runs for both HTTP requests and queue workers
+        // SMTP TLS certificate verification is opt-out via env var.
+        // Per Pillar 2 Part 3 §1.4: the original code unconditionally
+        // disabled certificate verification, which weakens transport
+        // security (MITM risk on outbound mail). Now the disabling
+        // requires an explicit env var, which is false by default
+        // in production and true only in explicit dev/staging setups.
         $this->app->afterResolving('mail.manager', function ($manager) {
+            if (! (bool) env('MAIL_DISABLE_SMTP_TLS_VERIFY', false)) {
+                return;
+            }
             try {
                 $transport = $manager->mailer('smtp')->getSymfonyTransport();
                 if ($transport instanceof \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport) {
