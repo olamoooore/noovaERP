@@ -246,15 +246,33 @@ class TenantUserController extends Controller
             ], 201);
         }
 
-        // Create new central user
+// Create new central user
+        // Pillar 2 Part 1 §3.4 / Pillar 1 P0-0: previously this row wrote
+        // `'role' => 'platform_super_admin'` — combined with the column
+        // schema default of `'platform_super_admin'`, any
+        // tenant-admin could invite an not-previously-registered email
+        // and the resulting user would silently receive a global SuperAdmin
+        // bypass via RequirePermission's `$user->role === 'platform_super_admin'`
+        // check. Per the report, the fix is to never grant privileged
+        // roles via this flow; the role column is omitted entirely so
+        // it falls through to NULL (per migration 2026_08_26_000001)
+        // and `User::isSuperAdmin()` evaluates to false.
         $tempPassword = \Illuminate\Support\Str::random(16);
         $newUserId = DB::table('public.users')->insertGetId([
             'name' => $name,
             'email' => $email,
             'email_verified_at' => null,
             'password' => \Illuminate\Support\Facades\Hash::make($tempPassword),
-            'role' => 'platform_super_admin',
-            'is_active' => true,
+            // 'role' intentionally NOT set — DO NOT add `'role' => 'platform_super_admin'`
+            // (or any other privileged value) here. Use
+            // `User::assignAdminRole()` from `AdminUserService` if a
+            // privileged role is genuinely required.
+            //
+            // 'is_active' intentionally NOT set — the central public.users
+            // table (per 2025_12_15_160000_create_central_users_table.php)
+            // does not have an is_active column. (The tenant-schema users
+            // table does, but the central one doesn't.) Setting it here
+            // would cause a QueryException.
             'created_at' => now(),
             'updated_at' => now(),
         ]);
