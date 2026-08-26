@@ -21,6 +21,7 @@ use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLink;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TenantTestCase;
 
@@ -187,5 +188,111 @@ class InvoiceResetToDraftReversalDateTest extends TenantTestCase
             ->where('is_reversal', true)
             ->count();
         $this->assertSame(1, $reversalCount);
+    }
+
+    /**
+     * After reset-to-draft, reposting must create a NEW active journal entry,
+     * not re-link to the original (now reversed) one. The P&L must surface the
+     * new posting's revenue while excluding the original + reversal.
+     *
+     * Regression: before the fix, PostingEngine::post()'s idempotency guard
+     * found the leftover `post` JournalEntryLink and returned the OLD JE id,
+     * so the reposted invoice pointed back at the reversed JE — making the new
+     * posting invisible in the P&L while the old revenue stayed counted.
+     */
+    /** @test */
+    public function repost_after_reset_creates_fresh_journal_entry_visible_in_pl(): void
+    {
+        // AR + Revenue accounts reused across postings so the P&L can compare
+        $arAccount = ChartOfAccount::factory()->create(['type' => 'asset', 'is_active' => true]);
+        $revenueAccount = ChartOfAccount::factory()->create(['type' => 'revenue', 'is_active' => true]);
+
+        // Original posting at $1,000 on a past date
+        $originalDate = now()->subMonths(5)->startOfMonth()->toDateString();
+        $invoice = Invoice::factory()->create([
+            'status' => 'cancelled',
+            'lifecycle_status' => 'posted',
+            'invoice_date' => $originalDate,
+            'created_by' => $this->user->id,
+        ]);
+
+        $originalResult = app(PostingEngineInterface::class)->post(new PostingRequest(
+            documentType: 'invoice',
+            documentId: $invoice->id,
+            postingDate: $originalDate,
+            description: 'Original posting',
+            lines: [
+                new PostingRequestLine('accounts_receivable', $arAccount->id, 1000.00, 0.00, 'AR'),
+                new PostingRequestLine('sales_revenue', $revenueAccount->id, 0.00, 1000.00, 'Revenue'),
+            ],
+            userId: $this->user->id,
+        ));
+        $this->assertTrue($originalResult->success);
+        $invoice->update(['journal_entry_id' => $originalResult->journalEntry->id]);
+
+        // Reset to draft — creates reversal and releases the (invoice, 'post') link
+        $this->actingAs($this->user, 'sanctum')
+            ->postJson("/api/v1/invoices/{$invoice->id}/reset-to-draft")
+            ->assertOk();
+
+        $invoice->refresh();
+        $this->assertSame('draft', $invoice->status);
+        $this->assertNull($invoice->journal_entry_id);
+
+        // The (invoice, 'post') link must have been released so a repost can succeed
+        $this->assertSame(
+            0,
+            JournalEntryLink::where('source_document_type', 'invoice')
+                ->where('source_document_id', $invoice->id)
+                ->where('relation_type', 'post')
+                ->count(),
+            'Reset must release the post link so repost can create a new post link',
+        );
+
+        // Repost with a NEW amount — simulate editing then posting again
+        $repostDate = $originalDate; // reposted to the same accounting period for the test
+        $invoice->update(['total' => 100, 'balance' => 100, 'subtotal' => 100, 'tax_amount' => 0]);
+
+        $repostResult = app(PostingEngineInterface::class)->post(new PostingRequest(
+            documentType: 'invoice',
+            documentId: $invoice->id,
+            postingDate: $repostDate,
+            description: 'Reposted posting',
+            lines: [
+                new PostingRequestLine('accounts_receivable', $arAccount->id, 100.00, 0.00, 'AR'),
+                new PostingRequestLine('sales_revenue', $revenueAccount->id, 0.00, 100.00, 'Revenue'),
+            ],
+            userId: $this->user->id,
+        ));
+
+        $this->assertTrue(
+            $repostResult->success,
+            "Repost must produce a fresh JE, not return the old one: {$repostResult->error}",
+        );
+
+        // Repost must produce a NEW JournalEntry (different id from the original)
+        $this->assertNotSame(
+            $originalResult->journalEntry->id,
+            $repostResult->journalEntry->id,
+            'Repost must create a new JE rather than reuse the original (reversed) one',
+        );
+
+        // Invoice is now linked to the reposted JE
+        $invoice->update(['status' => 'posted', 'lifecycle_status' => 'posted', 'journal_entry_id' => $repostResult->journalEntry->id]);
+
+        // P&L query exactly mirrors ProfitLossService::getAmountFromJournal
+        $revenueTotal = DB::table('journal_entry_lines as jel')
+            ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
+            ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
+            ->where('je.status', 'posted')
+            ->where('je.is_active_version', true)
+            ->where('coa.type', 'revenue')
+            ->whereBetween('je.entry_date', [$repostDate, $repostDate])
+            ->sum('jel.credit');
+
+        // Revenue should reflect ONLY the reposted $100 — original $1000 and the
+        // reversal entries are both excluded by the is_active_version filter.
+        $this->assertEqualsWithDelta(100.0, (float) $revenueTotal, 0.01,
+            'P&L must show only the reposted revenue (100), not the original 1000');
     }
 }

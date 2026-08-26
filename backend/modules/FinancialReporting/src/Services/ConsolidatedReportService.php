@@ -180,7 +180,7 @@ class ConsolidatedReportService
         $items = DB::table('journal_entries as je')
             ->join('journal_entry_lines as jel', 'jel.journal_entry_id', '=', 'je.id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
-            ->where('je.status', 'posted')
+            ->where('je.status', 'posted')->where('je.is_active_version', true)
             ->where('je.reference', 'like', 'IC-%')
             ->whereIn('je.legal_entity_id', $entityIds)
             ->whereBetween('je.entry_date', [$filter->startDate, $filter->endDate])
@@ -226,7 +226,7 @@ class ConsolidatedReportService
 
         return DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'jel.journal_entry_id', '=', 'je.id')
-            ->where('je.status', 'posted')
+            ->where('je.status', 'posted')->where('je.is_active_version', true)
             ->whereIn('je.legal_entity_id', $entityIds)
             ->whereIn('jel.account_id', $dueFromAccountIds)
             ->where('je.entry_date', '<=', $filter->asOfDate ?? $filter->endDate)

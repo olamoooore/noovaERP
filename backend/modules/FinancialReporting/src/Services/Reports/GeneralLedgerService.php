@@ -109,7 +109,7 @@ class GeneralLedgerService extends BaseReportService
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->where('jel.account_id', $accountId)
             ->where('je.entry_date', '<', $startDate)
-            ->where('je.status', 'posted');
+            ->where('je.status', 'posted')->where('je.is_active_version', true);
 
         if ($filter?->legalEntityId) {
             $query->where('je.legal_entity_id', $filter->legalEntityId);
@@ -135,7 +135,7 @@ class GeneralLedgerService extends BaseReportService
         $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->where('jel.account_id', $accountId)
-            ->where('je.status', 'posted');
+            ->where('je.status', 'posted')->where('je.is_active_version', true);
 
         if ($endDate) {
             $query->where('je.entry_date', '<=', $endDate);
@@ -171,7 +171,7 @@ class GeneralLedgerService extends BaseReportService
         $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->where('jel.account_id', $accountId)
-            ->where('je.status', 'posted');
+            ->where('je.status', 'posted')->where('je.is_active_version', true);
 
         // Apply date filters
         if ($startDate) {
@@ -259,7 +259,7 @@ class GeneralLedgerService extends BaseReportService
         $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
-            ->where('je.status', 'posted');
+            ->where('je.status', 'posted')->where('je.is_active_version', true);
 
         // Apply date filters
         if ($startDate) {

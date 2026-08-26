@@ -218,6 +218,7 @@ class ProfitLossService extends BaseReportService
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
             ->where('je.status', 'posted')
+            ->where('je.is_active_version', true) // exclude originals after reset/replace and reversal entries
             ->where('coa.type', $accountType)
             ->whereBetween('je.entry_date', [$filter->startDate, $filter->endDate]);
 
@@ -265,6 +266,7 @@ class ProfitLossService extends BaseReportService
                 ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
                 ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
                 ->where('je.status', 'posted')
+                ->where('je.is_active_version', true)
                 ->where('coa.type', $accountType)
                 ->whereBetween('je.entry_date', [$filter->startDate, $filter->endDate])
                 ->select([

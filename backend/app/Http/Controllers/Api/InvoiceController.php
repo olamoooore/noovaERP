@@ -721,6 +721,16 @@ class InvoiceController extends Controller
             'correction_type' => 'reverse',
             'is_active_version' => false,
         ]);
+
+        // Release the (invoice, 'post') link so a fresh repost can create a new
+        // post link + journal entry. Without this, PostingEngine::post()'s
+        // idempotency guard would short-circuit the repost and re-link the
+        // invoice to the (now reversed) original entry — making the new
+        // posting invisible to the P&L.
+        \App\Models\JournalEntryLink::where('source_document_type', 'invoice')
+            ->where('source_document_id', $invoice->id)
+            ->where('relation_type', 'post')
+            ->delete();
     }
 
     /**

@@ -208,8 +208,12 @@ class InvoiceService
 
             // Status transitions to 'posted' (accounting released to GL).
             // The operational 'sent' status is set separately via InvoiceController::send().
+            // lifecycle_status must also be set to 'posted' — resetToDraft leaves
+            // it as 'draft' on the invoice, and Invoice::scopePosted() (used by
+            // any invoice list / report) filters by lifecycle_status, not status.
             $invoice->update([
                 'status' => 'posted',
+                'lifecycle_status' => 'posted',
                 'journal_entry_id' => $result->journalEntryId,
             ]);
 

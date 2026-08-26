@@ -396,6 +396,12 @@ class ReversalCorrectionEngine
             'created_by' => $request->actorUserId,
             'reversed_entry_id' => $original->id,
             'is_reversal' => true,
+            // Reversal postings must not appear in financial reports as an
+            // independent active version — their purpose is to cancel the
+            // original entry. If the original document is reposted, only
+            // the new active-version entry should be counted.
+            'is_active_version' => false,
+            'lifecycle_status' => 'reversed',
             'legal_entity_id' => $original->legal_entity_id,
             'entity_book_id' => $original->entity_book_id,
         ]);
