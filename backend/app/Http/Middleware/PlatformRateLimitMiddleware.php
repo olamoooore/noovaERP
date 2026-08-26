@@ -16,13 +16,20 @@ class PlatformRateLimitMiddleware
     private const RATE_LIMIT_PER_MINUTE = 120;
 
     /**
-     * Skip rate limiting for these paths
+     * Skip rate limiting for these paths.
+     *
+     * Per Pillar 2 Part 2 §2.2: the original `/admin/api/` substring
+     * never matched the real admin path `/api/v1/admin/...` (the
+     * admin/API substring order never occurs), making the exemption
+     * dead code — the admin API was always rate-limited, contrary
+     * to the intent. The new path matches the actual `v1/admin/`
+     * prefix used by `routes/api.php:152` (Route::prefix('v1/admin')).
      */
     private const SKIP_PATHS = [
         '/api/v1/webhooks/',
         '/api/v1/health',
         '/api/v1/auth/',
-        '/admin/api/',
+        '/v1/admin/',
     ];
 
     /**
