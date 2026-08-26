@@ -24,6 +24,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import { useAuthStore } from '@/store/authStore';
+import {
+  PaymentCorrectionDialog,
+  type PaymentCorrectionAction,
+  type PaymentCorrectionOutcome,
+} from '@/components/payment/PaymentCorrectionDialog';
 
 interface Payment {
   id: number;
@@ -42,6 +48,14 @@ interface Payment {
   notes?: string;
   currency?: string;
   created_at?: string;
+  correction_type?: string | null;
+  correction_reason_code?: string | null;
+  correction_reason_text?: string | null;
+  original_payment_id?: number | null;
+  refund_payment_id?: number | null;
+  reversal_journal_entry_id?: number | null;
+  unapplied_at?: string | null;
+  refunded_at?: string | null;
 }
 
 interface PaginatedPayments {
@@ -57,10 +71,21 @@ const PAYMENT_STATUS_OPTIONS = [
   { value: 'posted', label: 'Posted', icon: 'solar:check-circle-bold-duotone', variant: 'default' as const },
   { value: 'recorded', label: 'Recorded', icon: 'solar:check-circle-bold', variant: 'default' as const },
   { value: 'applied', label: 'Applied', icon: 'solar:wallet-bold-duotone', variant: 'default' as const },
+  { value: 'unapplied', label: 'Unapplied', icon: 'solar:link-broken-bold-duotone', variant: 'outline' as const },
   { value: 'cancelled', label: 'Cancelled', icon: 'solar:close-circle-bold-duotone', variant: 'outline' as const },
   { value: 'reversed', label: 'Reversed', icon: 'solar:undo-left-round-bold', variant: 'destructive' as const },
   { value: 'refunded', label: 'Refunded', icon: 'solar:refresh-circle-bold-duotone', variant: 'destructive' as const },
 ];
+
+// Statuses that represent a completed terminal state — no further correction is
+// allowed once a payment reaches one of these. Mirrors the backend guard in
+// PaymentCorrectionService::assertCorrectable().
+const TERMINAL_PAYMENT_STATUSES = ['reversed', 'refunded', 'cancelled', 'unapplied'];
+
+const isCorrectable = (payment: Payment): boolean =>
+  payment.payment_status !== 'draft'
+  && !TERMINAL_PAYMENT_STATUSES.includes(payment.payment_status)
+  && !payment.refund_payment_id;
 
 const METHOD_OPTIONS = [
   { value: 'cash', label: 'Cash', icon: 'solar:wallet-bold-duotone' },
@@ -93,8 +118,15 @@ export const CustomerPayments: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
+  const [correctionTarget, setCorrectionTarget] = useState<{
+    payment: Payment;
+    action: PaymentCorrectionAction;
+  } | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { hasPermission } = useAuthStore();
+  // Correction endpoints (POST /corrections/payments/…) require accounting.post
+  const canCorrect = hasPermission('accounting.post');
 
   // Fetch payments (paginated, filtered)
   const queryKey = useMemo(
@@ -196,6 +228,20 @@ export const CustomerPayments: React.FC = () => {
   const lockedSelected = selectedIds.size - draftSelected.length;
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['customer-payments'] });
+
+  const handleCorrectionSuccess = (outcome: PaymentCorrectionOutcome) => {
+    invalidate();
+    queryClient.invalidateQueries({ queryKey: ['payment-detail'] });
+    queryClient.invalidateQueries({ queryKey: ['unpaid-invoices'] });
+
+    const je = outcome.reversal_journal_entry;
+    toast({
+      title: outcome.message || 'Payment correction completed',
+      description: je?.entry_number
+        ? `Reversal journal entry ${je.entry_number} (${je.entry_date}) was posted to the ledger.`
+        : undefined,
+    });
+  };
 
   const bulkPostMutation = useMutation({
     mutationFn: async (ids: number[]) => {
@@ -511,6 +557,7 @@ export const CustomerPayments: React.FC = () => {
                     {paymentList.map((payment) => {
                       const editable = payment.payment_status === 'draft' && !payment.journal_entry_id;
                       const postable = payment.payment_status === 'draft' && !payment.journal_entry_id;
+                      const correctable = canCorrect && isCorrectable(payment);
                       return (
                         <TableRow key={payment.id} className="hover:bg-accent/50">
                           <TableCell>
@@ -568,7 +615,40 @@ export const CustomerPayments: React.FC = () => {
                                   <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 text-primary" />
                                 </Button>
                               )}
-                              {!editable && (
+                              {correctable && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setCorrectionTarget({ payment, action: 'reverse' })}
+                                    aria-label="Reverse payment"
+                                    title="Reverse payment (creates a reversing journal entry)"
+                                  >
+                                    <Icon icon="solar:undo-left-round-bold" className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setCorrectionTarget({ payment, action: 'refund' })}
+                                    aria-label="Refund payment"
+                                    title="Refund payment to customer"
+                                  >
+                                    <Icon icon="solar:refresh-circle-bold-duotone" className="h-4 w-4 text-amber-600" />
+                                  </Button>
+                                  {payment.invoice && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => setCorrectionTarget({ payment, action: 'unapply' })}
+                                      aria-label="Unapply payment from invoice"
+                                      title="Unapply from invoice (keep payment on account)"
+                                    >
+                                      <Icon icon="solar:link-broken-bold-duotone" className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </>
+                              )}
+                              {!editable && !correctable && !postable && (
                                 <span className="text-xs text-muted-foreground self-center px-1">Locked</span>
                               )}
                             </div>
@@ -618,6 +698,17 @@ export const CustomerPayments: React.FC = () => {
         <ViewPaymentDialog
           payment={viewingPayment}
           onClose={() => setViewingPayment(null)}
+        />
+      )}
+
+      {/* Payment Correction Dialog (reverse / refund / unapply) */}
+      {correctionTarget && (
+        <PaymentCorrectionDialog
+          payment={correctionTarget.payment}
+          action={correctionTarget.action}
+          open={true}
+          onOpenChange={(open) => { if (!open) setCorrectionTarget(null); }}
+          onSuccess={handleCorrectionSuccess}
         />
       )}
 
@@ -763,6 +854,14 @@ const ViewPaymentDialog: React.FC<{
               )}
             </div>
             <div>
+              <p className="text-xs text-muted-foreground">Reversal Entry</p>
+              {detail.reversal_journal_entry_id ? (
+                <p className="font-medium font-mono text-sm">JE #{detail.reversal_journal_entry_id}</p>
+              ) : (
+                <span className="text-sm text-muted-foreground">-</span>
+              )}
+            </div>
+            <div>
               <p className="text-xs text-muted-foreground">Created</p>
               <p className="font-medium">{detail.created_at ? formatDate(detail.created_at) : '-'}</p>
             </div>
@@ -779,12 +878,31 @@ const ViewPaymentDialog: React.FC<{
             </div>
           )}
 
+          {detail.correction_type && (
+            <div className="border-t pt-4 space-y-1 rounded-md bg-destructive/5 p-3">
+              <p className="text-xs font-medium flex items-center gap-1">
+                <Icon icon="solar:pen-bold-duotone" className="h-3 w-3" />
+                Correction recorded
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Type: <span className="font-mono">{detail.correction_type}</span>
+                {detail.correction_reason_code && (
+                  <> · Reason: <span className="font-mono">{detail.correction_reason_code}</span></>
+                )}
+              </p>
+              {detail.correction_reason_text && (
+                <p className="text-xs text-muted-foreground whitespace-pre-wrap">{detail.correction_reason_text}</p>
+              )}
+            </div>
+          )}
+
           {detail.payment_status !== 'draft' && (
             <div className="border-t pt-4 flex items-start gap-2 rounded-md bg-muted/50 p-3">
               <Icon icon="solar:lock-keyhole-bold-duotone" className="h-4 w-4 text-muted-foreground mt-0.5" />
               <p className="text-xs text-muted-foreground">
-                This payment is posted. To correct it, use the accounting reversal or refund workflow
-                rather than editing historical accounting values directly.
+                This payment is posted and cannot be edited or deleted. To correct it, use the
+                Reverse, Refund, or Unapply actions in the payments list — they create proper
+                reversing journal entries instead of altering historical accounting values.
               </p>
             </div>
           )}

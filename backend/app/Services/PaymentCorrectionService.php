@@ -19,6 +19,8 @@ class PaymentCorrectionService
 
     public function reversePayment(Payment $payment, CorrectionRequest $request): PaymentCorrectionResult
     {
+        $this->assertCorrectable($payment, 'reversed');
+
         return DB::transaction(function () use ($payment, $request) {
             $originalInvoice = $payment->invoice;
             $originalBill = $payment->bill ?? null;
@@ -96,6 +98,8 @@ class PaymentCorrectionService
 
     public function refundPayment(Payment $payment, CorrectionRequest $request): PaymentCorrectionResult
     {
+        $this->assertCorrectable($payment, 'refunded');
+
         return DB::transaction(function () use ($payment, $request) {
             $originalInvoice = $payment->invoice;
             $originalBill = $payment->bill ?? null;
@@ -172,6 +176,8 @@ class PaymentCorrectionService
 
     public function unapplyPayment(Payment $payment, CorrectionRequest $request): PaymentCorrectionResult
     {
+        $this->assertCorrectable($payment, 'unapplied');
+
         return DB::transaction(function () use ($payment, $request) {
             $originalInvoice = $payment->invoice;
             $originalBill = $payment->bill ?? null;
@@ -218,6 +224,42 @@ class PaymentCorrectionService
                 originalBill: $originalBill,
             );
         });
+    }
+
+    /**
+     * Guard against repeated / invalid corrections.
+     *
+     * A payment may only be corrected while it is still an active receipt:
+     * drafts are deleted rather than corrected, and payments that are already
+     * reversed / refunded / cancelled / unapplied — or that already carry a
+     * correction record (refund_payment_id) — must not be corrected again.
+     * This is what prevents double refunds / double reversals.
+     */
+    private function assertCorrectable(Payment $payment, string $targetStatus): void
+    {
+        if ($payment->payment_status === 'draft') {
+            throw new \RuntimeException(
+                "Payment {$payment->payment_number} is a draft. Delete it instead of correcting it."
+            );
+        }
+
+        if (in_array($payment->payment_status, ['reversed', 'refunded', 'cancelled'], true)) {
+            throw new \RuntimeException(
+                "Payment {$payment->payment_number} has already been {$payment->payment_status} and cannot be corrected again."
+            );
+        }
+
+        if ($targetStatus === 'unapplied' && $payment->payment_status === 'unapplied') {
+            throw new \RuntimeException(
+                "Payment {$payment->payment_number} is already unapplied from its invoice."
+            );
+        }
+
+        if ($payment->refund_payment_id) {
+            throw new \RuntimeException(
+                "Payment {$payment->payment_number} has already been corrected."
+            );
+        }
     }
 
     private function generatePaymentNumber(string $prefix): string
