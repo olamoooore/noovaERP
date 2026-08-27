@@ -37,7 +37,7 @@ class ExpireReservations extends Command
 
                 $durationMs = (int) round((microtime(true) - $tenantStarted) * 1000);
 
-                Log::info('Reservation expiry per-tenant completed', [
+                Log::info('Reservation expiry command completed', [
                     'command' => 'inventory:expire-reservations',
                     'tenant_id' => $tenant->id,
                     'status' => 'success',
@@ -51,7 +51,7 @@ class ExpireReservations extends Command
             } catch (\Throwable $e) {
                 $durationMs = (int) round((microtime(true) - $tenantStarted) * 1000);
 
-                Log::error('Failed to run reservation expiry per-tenant', [
+                Log::error('Failed to run reservation expiry command', [
                     'command' => 'inventory:expire-reservations',
                     'tenant_id' => $tenant->id,
                     'error' => $e->getMessage(),
