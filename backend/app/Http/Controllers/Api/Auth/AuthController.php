@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\SecurityIncidentService;
 use App\Services\TenantRoleService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -25,6 +26,14 @@ class AuthController extends Controller
         $user = User::where('email', $request->email)->first();
 
         if (! $user || ! Hash::check($request->password, $user->password)) {
+            $incidentService = app(SecurityIncidentService::class);
+            $incidentService->recordFailedLogin($request->email);
+
+            $recentAttempts = $incidentService->getRecentByIp($request->ip());
+            if ($recentAttempts >= 4) {
+                $incidentService->recordBruteForce($recentAttempts + 1, $request->email);
+            }
+
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);

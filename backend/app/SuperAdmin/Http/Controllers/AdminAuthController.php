@@ -6,6 +6,7 @@ namespace App\SuperAdmin\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\SecurityIncidentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -37,6 +38,15 @@ class AdminAuthController extends Controller
                 'email' => $request->email,
                 'ip' => $request->ip(),
             ]);
+
+            $incidentService = app(SecurityIncidentService::class);
+            $incidentService->recordAdminLoginFailed($request->email, 'invalid_credentials');
+
+            $recentAttempts = $incidentService->getRecentByIp($request->ip());
+            if ($recentAttempts >= 4) {
+                $incidentService->recordBruteForce($recentAttempts + 1, $request->email);
+            }
+
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
             ]);
@@ -48,6 +58,13 @@ class AdminAuthController extends Controller
                 'role' => $user->role,
                 'ip' => $request->ip(),
             ]);
+
+            $incidentService = app(SecurityIncidentService::class);
+            $incidentService->recordPrivilegeEscalationAttempt(
+                attemptedRole: $user->role,
+                actorId: $user->id,
+            );
+
             throw ValidationException::withMessages([
                 'email' => ['This account does not have platform admin access.'],
             ]);
