@@ -264,10 +264,28 @@ class PaymentCorrectionService
 
     private function generatePaymentNumber(string $prefix): string
     {
-        $latest = Payment::orderBy('id', 'desc')->first();
-        $number = $latest ? (int) substr($latest->payment_number, -4) + 1 : 1;
+        $year = date('Y');
+        $pattern = "{$prefix}-{$year}-%";
 
-        return $prefix.'-'.date('Y').'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
+        $latest = Payment::where('payment_number', 'like', $pattern)
+            ->orderByRaw("CAST(SUBSTRING(payment_number FROM '[0-9]+$') AS INTEGER) DESC")
+            ->first();
+
+        if ($latest) {
+            $number = (int) substr($latest->payment_number, -4) + 1;
+        } else {
+            $number = 1;
+        }
+
+        $candidate = $prefix.'-'.$year.'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
+
+        // Safety: ensure uniqueness
+        while (Payment::where('payment_number', $candidate)->exists()) {
+            $number++;
+            $candidate = $prefix.'-'.$year.'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
+        }
+
+        return $candidate;
     }
 }
 
