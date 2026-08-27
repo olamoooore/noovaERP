@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Icon } from '@iconify/react';
@@ -107,6 +107,7 @@ const formatDate = (date: string | undefined) => {
 
 export const CustomerPayments: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const invoiceIdParam = searchParams.get('invoice_id') || '';
   const [showRecordPayment, setShowRecordPayment] = useState(!!invoiceIdParam);
 
@@ -597,7 +598,13 @@ export const CustomerPayments: React.FC = () => {
                           </TableCell>
                           <TableCell>
                             {payment.invoice ? (
-                              <span className="text-sm">{payment.invoice.invoice_number}</span>
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/invoices/${payment.invoice!.id}`)}
+                                className="text-sm text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/20 rounded px-1"
+                              >
+                                {payment.invoice.invoice_number}
+                              </button>
                             ) : (
                               <Badge variant="outline" className="font-normal">Unallocated</Badge>
                             )}
@@ -852,7 +859,16 @@ const ViewPaymentDialog: React.FC<{
             <div>
               <p className="text-xs text-muted-foreground">Allocated To Invoice</p>
               {detail.invoice ? (
-                <p className="font-medium">{detail.invoice.invoice_number}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewingPayment(null);
+                    navigate(`/invoices/${detail.invoice!.id}`);
+                  }}
+                  className="text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/20 rounded font-medium text-left"
+                >
+                  {detail.invoice.invoice_number}
+                </button>
               ) : (
                 <Badge variant="outline" className="font-normal">Unallocated</Badge>
               )}
