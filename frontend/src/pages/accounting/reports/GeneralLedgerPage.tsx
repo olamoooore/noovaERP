@@ -28,7 +28,8 @@ import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
 export default function GeneralLedgerPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [accountId, setAccountId] = useState<string>(searchParams.get('account_id') || 'all');
+  const urlAccountId = searchParams.get('account_id');
+  const [accountId, setAccountId] = useState<string>(urlAccountId || 'all');
   const [startDate, setStartDate] = useState(
     searchParams.get('start_date') || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]
   );
@@ -42,11 +43,16 @@ export default function GeneralLedgerPage() {
     queryFn: () => chartOfAccountsApi.getAccounts(),
   });
 
+  // If accountId from URL is not present in the current tenant's chart of accounts,
+  // fall back to "all" instead of crashing with a 422.
+  const accountIdIsValid = accountId === 'all' || accounts.some((a: any) => String(a.id) === accountId);
+  const effectiveAccountId = accountIdIsValid ? accountId : 'all';
+
   // Fetch general ledger
   const { data, isLoading, error } = useQuery({
-    queryKey: ['general-ledger', accountId, startDate, endDate],
+    queryKey: ['general-ledger', effectiveAccountId, startDate, endDate],
     queryFn: () => {
-      if (accountId === 'all') {
+      if (effectiveAccountId === 'all') {
         // Don't pass account_id, backend will return multi-account summary
         return reportApi.getGeneralLedger({
           start_date: startDate,
@@ -55,13 +61,14 @@ export default function GeneralLedgerPage() {
         });
       }
       return reportApi.getGeneralLedger({
-        account_id: parseInt(accountId),
+        account_id: parseInt(effectiveAccountId),
         start_date: startDate,
         end_date: endDate,
         per_page: 0,
       });
     },
     enabled: !!startDate && !!endDate,
+    retry: false,
   });
 
   // reportApi.getGeneralLedger() already returns response.data.data
@@ -88,7 +95,7 @@ export default function GeneralLedgerPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-2">
             <Label htmlFor="account">Account</Label>
-            <Select value={accountId} onValueChange={setAccountId}>
+            <Select value={effectiveAccountId} onValueChange={setAccountId}>
               <SelectTrigger>
                 <SelectValue placeholder="Select account" />
               </SelectTrigger>

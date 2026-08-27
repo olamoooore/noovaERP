@@ -34,7 +34,34 @@ class GeneralLedgerService extends BaseReportService
         $account = $this->getAccountInfo($accountId);
 
         if (! $account) {
-            throw new \InvalidArgumentException("Account with ID {$accountId} not found");
+            // Account not found in this tenant — return empty result instead of crashing.
+            // This commonly happens when cross-tenant links or stale URLs pass account IDs
+            // that don't exist in the current schema.
+            return new ReportData(
+                title: 'General Ledger',
+                data: [],
+                summary: [
+                    'opening_balance' => 0,
+                    'closing_balance' => 0,
+                    'total_debits' => 0,
+                    'total_credits' => 0,
+                    'net_change' => 0,
+                ],
+                metadata: [
+                    'account' => null,
+                    'period' => [
+                        'start_date' => $startDate?->format('Y-m-d'),
+                        'end_date' => $endDate?->format('Y-m-d'),
+                    ],
+                    'pagination' => [
+                        'current_page' => 1,
+                        'per_page' => $perPage,
+                        'total' => 0,
+                        'last_page' => 1,
+                    ],
+                    'generated_at' => now()->toIso8601String(),
+                ]
+            );
         }
 
         // Get opening balance (before start date)
