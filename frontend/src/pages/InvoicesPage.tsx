@@ -11,6 +11,7 @@ import api from '@/lib/api'
 import { useNavigate } from 'react-router-dom'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 import { INVOICE_EXPORT_COLUMNS, SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
+import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 
 export function InvoicesPage() {
   const { toast } = useToast()
@@ -288,6 +289,7 @@ export function InvoicesPage() {
             </div>
           ) : (
             <>
+              <SalesLineColumnVisibility tableClass="invoices-listing-columns" columns={listingColumns(['Select', 'Invoice #', 'Customer', 'Date', 'Created Date', 'Due Date', 'Total', 'Balance', 'Status', 'Actions'])}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -297,6 +299,7 @@ export function InvoicesPage() {
                     <TableHead>Invoice #</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Date</TableHead>
+                    <TableHead>Created Date</TableHead>
                     <TableHead>Due Date</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead className="text-right">Balance</TableHead>
@@ -324,6 +327,7 @@ export function InvoicesPage() {
                         </div>
                       </TableCell>
                       <TableCell>{formatDate(invoice.invoice_date || invoice.created_at)}</TableCell>
+                      <TableCell>{formatDate(invoice.created_at)}</TableCell>
                       <TableCell>{formatDate(invoice.due_date || invoice.invoice_date || invoice.created_at)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(invoice.total)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(invoice.balance)}</TableCell>
@@ -376,6 +380,7 @@ export function InvoicesPage() {
                   ))}
                 </TableBody>
               </Table>
+              </SalesLineColumnVisibility>
 
               {meta.last_page > 1 && (
                 <div className="flex items-center justify-between mt-4">

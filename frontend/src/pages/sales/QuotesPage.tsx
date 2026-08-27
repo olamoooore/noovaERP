@@ -20,6 +20,7 @@ import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
 import { formatDate } from '@/lib/utils'
 import { SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
+import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 
 const PER_PAGE = 20
 const QUOTATION_EXPORT_COLUMNS = [
@@ -262,6 +263,7 @@ export function QuotesPage() {
                 </div>
               )}
               <div className="overflow-x-auto">
+                <SalesLineColumnVisibility tableClass="quotes-listing-columns" columns={listingColumns(['Select', 'Quote #', 'Customer', 'Quote Date', 'Created Date', 'Valid Until', 'Reference', 'Total', 'Status', 'Actions'])}>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -276,6 +278,7 @@ export function QuotesPage() {
                       <TableHead>Quote #</TableHead>
                       <TableHead>Customer</TableHead>
                       <TableHead>Quote Date</TableHead>
+                      <TableHead>Created Date</TableHead>
                       <TableHead>Valid Until</TableHead>
                       <TableHead>Reference</TableHead>
                       <TableHead className="text-right">Total</TableHead>
@@ -306,6 +309,7 @@ export function QuotesPage() {
                           </div>
                         </TableCell>
                         <TableCell>{formatDate(quote.quotation_date || quote.created_at)}</TableCell>
+                        <TableCell>{formatDate(quote.created_at)}</TableCell>
                         <TableCell>{quote.valid_until ? formatDate(quote.valid_until) : '-'}</TableCell>
                         <TableCell>{quote.customer_reference || quote.internal_reference || '-'}</TableCell>
                         <TableCell className="text-right">{formatCurrency(quote.total)}</TableCell>
@@ -350,6 +354,7 @@ export function QuotesPage() {
                     ))}
                   </TableBody>
                 </Table>
+                </SalesLineColumnVisibility>
               </div>
 
               {lastPage > 1 && (

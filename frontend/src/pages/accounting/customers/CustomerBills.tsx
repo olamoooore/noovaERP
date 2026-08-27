@@ -9,9 +9,10 @@ import { DocumentUpload } from '@/components/ocr/DocumentUpload';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatDate } from '@/lib/utils';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { INVOICE_EXPORT_COLUMNS, SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu';
+import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility';
 
 /**
  * Customer Invoices Page
@@ -525,6 +526,7 @@ export const CustomerBills: React.FC = () => {
           ) : (
             <>
             <div className="overflow-x-auto">
+              <SalesLineColumnVisibility tableClass="customer-bills-listing-columns" columns={listingColumns(['Select', 'Invoice #', 'Customer', 'Date', 'Created Date', 'Due Date', 'Total', 'Balance', 'Status', 'Source', 'Actions'])}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -540,6 +542,7 @@ export const CustomerBills: React.FC = () => {
                     <TableHead>Invoice #</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Date</TableHead>
+                    <TableHead>Created Date</TableHead>
                     <TableHead>Due Date</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead className="text-right">Balance</TableHead>
@@ -566,6 +569,7 @@ export const CustomerBills: React.FC = () => {
                       </TableCell>
                       <TableCell>{invoice.customer?.name || invoice.customer_name || '-'}</TableCell>
                       <TableCell>{formatDate(invoice.invoice_date)}</TableCell>
+                      <TableCell>{formatDate(invoice.created_at)}</TableCell>
                       <TableCell>{formatDate(invoice.due_date)}</TableCell>
                       <TableCell className="text-right font-medium">
                         {formatCurrency(invoice.total || invoice.total_amount)}
@@ -612,12 +616,26 @@ export const CustomerBills: React.FC = () => {
                           >
                             <Icon icon="solar:eye-bold-duotone" className="h-4 w-4" />
                           </Button>
+                          {invoice.status === 'draft' && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              title="Edit"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/accounting/customers/bills/${invoice.id}/edit`);
+                              }}
+                            >
+                              <Icon icon="solar:pen-bold" className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              </SalesLineColumnVisibility>
             </div>
 
             {lastPage > 1 && (

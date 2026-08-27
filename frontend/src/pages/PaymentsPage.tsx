@@ -8,6 +8,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 import { RefundDialog } from '@/components/payment/RefundDialog'
 import { Icon } from '@iconify/react'
+import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 
 export function PaymentsPage() {
   const [refundingTransaction, setRefundingTransaction] = useState<any>(null)
@@ -57,6 +58,7 @@ export function PaymentsPage() {
           ) : transactions?.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">No transactions found</div>
           ) : (
+            <SalesLineColumnVisibility tableClass="payments-listing-columns" columns={listingColumns(['Transaction ID', 'Gateway', 'Invoice', 'Customer', 'Payment Date', 'Created Date', 'Payment Method', 'Amount', 'Status', 'Actions'])}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -64,7 +66,8 @@ export function PaymentsPage() {
                   <TableHead>Gateway</TableHead>
                   <TableHead>Invoice</TableHead>
                   <TableHead>Customer</TableHead>
-                  <TableHead>Date</TableHead>
+                  <TableHead>Payment Date</TableHead>
+                  <TableHead>Created Date</TableHead>
                   <TableHead>Payment Method</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Status</TableHead>
@@ -84,6 +87,7 @@ export function PaymentsPage() {
                     </TableCell>
                     <TableCell>{transaction.invoice?.invoice_number || '-'}</TableCell>
                     <TableCell>{transaction.customer?.name || transaction.invoice?.customer?.name || '-'}</TableCell>
+                    <TableCell>{formatDate(transaction.payment_date || transaction.created_at)}</TableCell>
                     <TableCell>{formatDate(transaction.created_at)}</TableCell>
                     <TableCell>
                       {transaction.payment_method ? (
@@ -113,6 +117,7 @@ export function PaymentsPage() {
                 ))}
               </TableBody>
             </Table>
+            </SalesLineColumnVisibility>
           )}
         </CardContent>
       </Card>

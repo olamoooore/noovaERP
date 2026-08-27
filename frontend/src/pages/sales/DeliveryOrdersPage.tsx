@@ -10,6 +10,7 @@ import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
 import { formatDate } from '@/lib/utils'
 import { SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
+import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 
 const DELIVERY_ORDER_EXPORT_COLUMNS = [
   { key: 'delivery_order_number', label: 'Delivery Order No', group: 'Delivery Order', default: true },
@@ -207,6 +208,7 @@ export function DeliveryOrdersPage() {
             </div>
           ) : (
             <>
+              <SalesLineColumnVisibility tableClass="delivery-orders-listing-columns" columns={listingColumns(['Select', 'Delivery #', 'Type', 'Sales Order', 'Customer', 'Delivery Date', 'Created Date', 'Lines', 'Status', 'Actions'])}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -218,6 +220,7 @@ export function DeliveryOrdersPage() {
                     <TableHead>Sales Order</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Delivery Date</TableHead>
+                    <TableHead>Created Date</TableHead>
                     <TableHead>Lines</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
@@ -238,6 +241,7 @@ export function DeliveryOrdersPage() {
                       <TableCell>{do_.sales_order?.sales_order_number || '-'}</TableCell>
                       <TableCell>{do_.customer?.name || '-'}</TableCell>
                       <TableCell>{do_.delivery_date ? formatDate(do_.delivery_date) : '-'}</TableCell>
+                      <TableCell>{formatDate(do_.created_at)}</TableCell>
                       <TableCell>{do_.lines?.length || 0}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className={getStatusBadge(do_.status)}>
@@ -260,6 +264,7 @@ export function DeliveryOrdersPage() {
                   ))}
                 </TableBody>
               </Table>
+              </SalesLineColumnVisibility>
 
               {/* Pagination */}
               {meta.last_page > 1 && (

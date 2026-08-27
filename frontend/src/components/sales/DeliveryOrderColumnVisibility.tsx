@@ -8,6 +8,9 @@ interface ColumnDefinition {
   index: number
 }
 
+export const listingColumns = (labels: string[]): ColumnDefinition[] =>
+  labels.map((label, index) => ({ label, index: index + 1 }))
+
 export function SalesLineColumnMenu({ columns, hidden, setHidden }: {
   columns: ColumnDefinition[]
   hidden: number[]

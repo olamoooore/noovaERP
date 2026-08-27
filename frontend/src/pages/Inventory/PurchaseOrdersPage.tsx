@@ -13,9 +13,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-800',
@@ -93,6 +94,7 @@ export function PurchaseOrdersPage() {
           </div>
         </CardHeader>
         <CardContent>
+          <SalesLineColumnVisibility tableClass="purchase-orders-listing-columns" columns={listingColumns(['PO Number', 'Supplier', 'Warehouse', 'Order Date', 'Created Date', 'Expected', 'Total', 'Status', 'Actions'])}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -100,6 +102,7 @@ export function PurchaseOrdersPage() {
                 <TableHead>Supplier</TableHead>
                 <TableHead>Warehouse</TableHead>
                 <TableHead>Order Date</TableHead>
+                <TableHead>Created Date</TableHead>
                 <TableHead>Expected</TableHead>
                 <TableHead>Total</TableHead>
                 <TableHead>Status</TableHead>
@@ -109,11 +112,11 @@ export function PurchaseOrdersPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">Loading...</TableCell>
+                  <TableCell colSpan={9} className="text-center py-8">Loading...</TableCell>
                 </TableRow>
               ) : orders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                     No purchase orders found
                   </TableCell>
                 </TableRow>
@@ -128,6 +131,7 @@ export function PurchaseOrdersPage() {
                     <TableCell>{order.supplier?.name}</TableCell>
                     <TableCell>{order.warehouse?.name}</TableCell>
                     <TableCell>{new Date(order.order_date).toLocaleDateString()}</TableCell>
+                    <TableCell>{formatDate(order.created_at)}</TableCell>
                     <TableCell>
                       {order.expected_date ? new Date(order.expected_date).toLocaleDateString() : '-'}
                     </TableCell>
@@ -171,6 +175,7 @@ export function PurchaseOrdersPage() {
               )}
             </TableBody>
           </Table>
+          </SalesLineColumnVisibility>
         </CardContent>
       </Card>
     </div>

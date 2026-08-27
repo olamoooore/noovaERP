@@ -260,6 +260,14 @@ class CustomerController extends Controller
         );
     }
 
+    public function invoices(Request $request, $customer): JsonResponse
+    {
+        $customerModel = Customer::findOrFail($customer);
+        $invoices = $customerModel->invoices()->latest()->paginate($request->integer('per_page', 10));
+
+        return response()->json($invoices);
+    }
+
     public function update(Request $request, $id): JsonResponse
     {
         $customer = Customer::findOrFail($id);

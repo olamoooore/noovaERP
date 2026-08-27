@@ -13,8 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
-import { formatCurrency, getApiErrorMessage } from '@/lib/utils'
+import { formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils'
 import api from '@/lib/api'
+import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 
 interface Customer {
   id: number
@@ -121,6 +122,7 @@ export function CustomersPage() {
   const [editMode, setEditMode] = useState(false)
   const [formData, setFormData] = useState<CustomerFormData>(initialFormData)
   const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [customerInvoicesPage, setCustomerInvoicesPage] = useState(1)
 
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -169,6 +171,17 @@ export function CustomersPage() {
     queryFn: async () => {
       if (!selectedCustomer?.id) return null
       const response = await api.get(`/customers/${selectedCustomer.id}`)
+      return response.data
+    },
+    enabled: !!selectedCustomer?.id && detailOpen,
+  })
+
+  const { data: customerInvoicesData, isLoading: customerInvoicesLoading } = useQuery({
+    queryKey: ['customer-invoices', selectedCustomer?.id, customerInvoicesPage],
+    queryFn: async () => {
+      const response = await api.get(`/customers/${selectedCustomer!.id}/invoices`, {
+        params: { page: customerInvoicesPage, per_page: 10 },
+      })
       return response.data
     },
     enabled: !!selectedCustomer?.id && detailOpen,
@@ -284,6 +297,7 @@ export function CustomersPage() {
 
   const openCustomerDetail = (customer: Customer) => {
     setSelectedCustomer(customer)
+    setCustomerInvoicesPage(1)
     setDetailOpen(true)
     setEditMode(false)
   }
@@ -666,7 +680,8 @@ export function CustomersPage() {
                   </Button>
                 </div>
               )}
-            <Table>
+                <SalesLineColumnVisibility tableClass="customers-listing-columns" columns={listingColumns(['Select', 'Code', 'Name', 'Type', 'Email', 'Phone', 'Created Date', 'Outstanding', 'Total Purchases', 'Status', 'Actions'])}>
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[40px]">
@@ -682,6 +697,7 @@ export function CustomersPage() {
                   <TableHead>Type</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Phone</TableHead>
+                  <TableHead>Created Date</TableHead>
                   <TableHead className="text-right">Outstanding</TableHead>
                   <TableHead className="text-right">Total Purchases</TableHead>
                   <TableHead>Status</TableHead>
@@ -691,7 +707,7 @@ export function CustomersPage() {
               <TableBody>
                 {customers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">
                       No customers found
                     </TableCell>
                   </TableRow>
@@ -726,6 +742,7 @@ export function CustomersPage() {
                       </TableCell>
                       <TableCell>{customer.email || '-'}</TableCell>
                       <TableCell>{customer.phone || customer.mobile || '-'}</TableCell>
+                      <TableCell>{formatDate(customer.created_at)}</TableCell>
                       <TableCell className="text-right">
                         {formatCurrency(customer.total_outstanding || 0)}
                       </TableCell>
@@ -767,7 +784,8 @@ export function CustomersPage() {
                   ))
                 )}
               </TableBody>
-            </Table>
+                </Table>
+                </SalesLineColumnVisibility>
             </>
           )}
 
@@ -966,7 +984,9 @@ export function CustomersPage() {
                       <CardTitle className="text-lg">Recent Invoices</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      {customerDetail.invoices?.length > 0 ? (
+                      {customerInvoicesLoading ? (
+                        <p className="text-muted-foreground text-center py-4">Loading invoices...</p>
+                      ) : customerInvoicesData?.data?.length > 0 ? (
                         <Table>
                           <TableHeader>
                             <TableRow>
@@ -977,7 +997,7 @@ export function CustomersPage() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {customerDetail.invoices.map((inv: any) => (
+                            {customerInvoicesData.data.map((inv: any) => (
                               <TableRow key={inv.id}>
                                 <TableCell>{inv.invoice_number}</TableCell>
                                 <TableCell>{inv.issue_date}</TableCell>
@@ -991,6 +1011,21 @@ export function CustomersPage() {
                         </Table>
                       ) : (
                         <p className="text-muted-foreground text-center py-4">No invoices yet</p>
+                      )}
+                      {customerInvoicesData?.last_page > 1 && (
+                        <div className="flex items-center justify-between pt-4">
+                          <span className="text-sm text-muted-foreground">
+                            Page {customerInvoicesData.current_page} of {customerInvoicesData.last_page}
+                          </span>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" disabled={customerInvoicesPage <= 1} onClick={() => setCustomerInvoicesPage((p) => p - 1)}>
+                              Previous
+                            </Button>
+                            <Button size="sm" variant="outline" disabled={customerInvoicesPage >= customerInvoicesData.last_page} onClick={() => setCustomerInvoicesPage((p) => p + 1)}>
+                              Next
+                            </Button>
+                          </div>
+                        </div>
                       )}
                     </CardContent>
                   </Card>

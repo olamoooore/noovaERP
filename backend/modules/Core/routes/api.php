@@ -157,6 +157,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     // Customers - static routes first (before apiResource)
     Route::get('customers/statistics', [CustomerController::class, 'statistics']);
     Route::get('customers/search', [CustomerController::class, 'search']);
+    Route::get('customers/{customer}/invoices', [CustomerController::class, 'invoices']);
     Route::post('customers/bulk-delete', [CustomerController::class, 'bulkDestroy']);
 
     // Customers - resource routes
