@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { InvoiceSearchCombobox, type InvoiceSearchItem } from '@/components/ui/InvoiceSearchCombobox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -922,7 +923,7 @@ const RecordPaymentForm: React.FC<{
 }> = ({ unpaidInvoices, initialInvoiceId, onSuccess }) => {
   const [formData, setFormData] = useState({
     customer_id: '',
-    invoice_id: '',
+    invoice_id: initialInvoiceId || '',
     amount: '',
     payment_date: new Date().toISOString().split('T')[0],
     method: 'bank_transfer',
@@ -930,19 +931,28 @@ const RecordPaymentForm: React.FC<{
     notes: '',
   });
 
+  // When initialInvoiceId is provided (deep-linked from invoice detail page),
+  // fetch that specific invoice and pre-fill customer + amount. This works
+  // regardless of whether the unpaid-invoices list has loaded yet.
+  const { data: preselectedInvoice } = useQuery<InvoiceSearchItem>({
+    queryKey: ['invoice-preselect', initialInvoiceId],
+    queryFn: async () => {
+      const res = await api.get(`/invoices/${initialInvoiceId}`);
+      return res.data;
+    },
+    enabled: !!initialInvoiceId,
+  });
+
   useEffect(() => {
-    if (initialInvoiceId && unpaidInvoices?.length > 0 && !formData.invoice_id) {
-      const invoice = unpaidInvoices.find((inv) => inv.id === parseInt(initialInvoiceId));
-      if (invoice) {
-        setFormData((prev) => ({
-          ...prev,
-          invoice_id: initialInvoiceId,
-          customer_id: invoice.customer_id || '',
-          amount: invoice.balance || invoice.total || '',
-        }));
-      }
+    if (preselectedInvoice && !formData.customer_id) {
+      setFormData((prev) => ({
+        ...prev,
+        invoice_id: String(preselectedInvoice.id),
+        customer_id: String(preselectedInvoice.customer_id || ''),
+        amount: String(preselectedInvoice.balance ?? preselectedInvoice.total ?? ''),
+      }));
     }
-  }, [initialInvoiceId, unpaidInvoices]);
+  }, [preselectedInvoice]);
 
   const { toast } = useToast();
 
@@ -966,40 +976,31 @@ const RecordPaymentForm: React.FC<{
     recordPaymentMutation.mutate(formData);
   };
 
-  const selectedInvoice = unpaidInvoices.find((inv) => inv.id === parseInt(formData.invoice_id));
+  const handleInvoiceChange = (value: string, invoice?: InvoiceSearchItem) => {
+    setFormData({
+      ...formData,
+      invoice_id: value,
+      customer_id: invoice ? String(invoice.customer_id || '') : '',
+      amount: invoice ? String(invoice.balance ?? invoice.total ?? '') : '',
+    });
+  };
+
+  const selectedBalance = formData.invoice_id
+    ? (preselectedInvoice?.id === parseInt(formData.invoice_id)
+        ? preselectedInvoice.balance
+        : unpaidInvoices.find((inv) => inv.id === parseInt(formData.invoice_id))?.balance)
+    : null;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="invoice_id">Invoice</Label>
-          <Select
+          <InvoiceSearchCombobox
             value={formData.invoice_id}
-            onValueChange={(value) => {
-              const invoice = unpaidInvoices.find((inv) => inv.id === parseInt(value));
-              setFormData({
-                ...formData,
-                invoice_id: value,
-                customer_id: invoice?.customer_id || '',
-                amount: invoice?.balance || invoice?.total || '',
-              });
-            }}
-          >
-            <SelectTrigger><SelectValue placeholder="Select invoice" /></SelectTrigger>
-            <SelectContent>
-              {unpaidInvoices.length === 0 ? (
-                <div className="px-3 py-4 text-sm text-muted-foreground text-center">
-                  No eligible invoices found. Only posted, unpaid invoices can be paid.
-                </div>
-              ) : (
-                unpaidInvoices.map((invoice) => (
-                  <SelectItem key={invoice.id} value={invoice.id.toString()}>
-                    {invoice.invoice_number} - {invoice.customer?.name} (${invoice.balance || invoice.total})
-                  </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
+            onValueChange={handleInvoiceChange}
+            placeholder="Search invoice number or customer..."
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor="amount">Amount</Label>
@@ -1011,9 +1012,9 @@ const RecordPaymentForm: React.FC<{
             onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
             required
           />
-          {selectedInvoice && (
+          {selectedBalance != null && (
             <p className="text-xs text-muted-foreground">
-              Invoice balance: ${selectedInvoice.balance || selectedInvoice.total}
+              Invoice balance: ${selectedBalance}
             </p>
           )}
         </div>

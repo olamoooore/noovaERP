@@ -470,12 +470,12 @@ const baseNavItems: NavItem[] = [
     children: [
 {
         title: 'Journal Items',
-        href: '/accounting/core/journal-items',
+        href: '/accounting/core/journal-entries',
         icon: 'solar:document-text-bold-duotone',
       },
       {
         title: 'Journal Audit',
-        href: '/accounting/core/journal-audit',
+        href: '/accounting/core/journal-entries',
         icon: 'solar:document-text-bold-duotone',
       },
 

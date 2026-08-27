@@ -459,7 +459,7 @@ class FinancialReportController extends Controller
     public function generalLedger(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'account_id' => 'nullable|integer|exists:chart_of_accounts,id',  // Made optional
+            'account_id' => 'nullable|integer',  // Made optional
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'page' => 'nullable|integer|min:1',

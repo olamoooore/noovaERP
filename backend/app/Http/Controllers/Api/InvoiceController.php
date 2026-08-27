@@ -394,7 +394,7 @@ class InvoiceController extends Controller
 
     public function show($id)
     {
-        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'salesOrder', 'quotation', 'deliveryOrders'])->find($id);
+        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'salesOrder', 'quotation', 'deliveryOrders'])->withTrashed()->find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
