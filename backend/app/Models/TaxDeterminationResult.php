@@ -74,6 +74,7 @@ class TaxDeterminationResult extends Model
     public function getTotalTaxAmount(): float
     {
         $lines = $this->tax_lines ?? [];
+
         return array_sum(array_column($lines, 'amount'));
     }
 }

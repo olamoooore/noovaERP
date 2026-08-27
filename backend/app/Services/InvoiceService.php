@@ -28,6 +28,7 @@ class InvoiceService
 {
     public function __construct(
         private PostingEngineInterface $postingEngine,
+        private TaxDeterminationService $taxDeterminationService,
         private InventoryService $inventoryService,
     ) {}
 
@@ -114,6 +115,19 @@ class InvoiceService
                 throw new \RuntimeException('Only draft invoices can be posted');
             }
 
+            // ── Tax determination (Issue #42) ─────────────────
+            $taxOverrides = array_filter([
+                'jurisdiction' => $invoice->tax_jurisdiction,
+                'tax_regime' => $invoice->tax_regime,
+                'treatment' => $invoice->tax_treatment,
+            ], fn ($v) => $v !== null);
+
+            $taxDetermination = $this->taxDeterminationService->determineForInvoice(
+                $invoice,
+                $taxOverrides ?: null,
+            );
+            $primaryTaxCode = $taxDetermination['tax_lines'][0]['tax_code'] ?? null;
+
             // ── Build posting lines ──────────────────────────
             $lines = [];
 
@@ -155,6 +169,8 @@ class InvoiceService
                     debit: 0,
                     credit: (float) $invoice->tax_amount,
                     description: "Tax - Invoice {$invoice->invoice_number}",
+                    taxCode: $primaryTaxCode,
+                    taxId: null,
                 );
             }
 
@@ -200,6 +216,7 @@ class InvoiceService
                 lines: $lines,
                 reference: $invoice->invoice_number,
                 userId: TenantUserHelper::requireTenantUserId($invoice->created_by),
+                taxDeterminationResult: $taxDetermination,
             ));
 
             if (! $result->success) {
