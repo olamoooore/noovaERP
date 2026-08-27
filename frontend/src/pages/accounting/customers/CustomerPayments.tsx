@@ -109,6 +109,17 @@ export const CustomerPayments: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const invoiceIdParam = searchParams.get('invoice_id') || '';
   const [showRecordPayment, setShowRecordPayment] = useState(!!invoiceIdParam);
+
+  // Auto-open the Record Payment dialog when arriving with ?invoice_id=X
+  // (from invoice detail page). After opening once, strip the param from the URL
+  // so closing/reopening or navigating away doesn't keep triggering it.
+  useEffect(() => {
+    if (invoiceIdParam && showRecordPayment) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('invoice_id');
+      setSearchParams(next, { replace: true });
+    }
+  }, [invoiceIdParam, showRecordPayment]);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState(searchParams.get('payment_status') || '');
   const [methodFilter, setMethodFilter] = useState(searchParams.get('method') || '');
