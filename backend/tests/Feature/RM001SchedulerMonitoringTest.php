@@ -11,7 +11,7 @@ class RM001SchedulerMonitoringTest extends TestCase
 {
     public function test_expiry_command_logs_structured_success_metrics(): void
     {
-        $source = file_get_contents(base_path('routes/console.php'));
+        $source = file_get_contents(base_path('app/Console/Commands/ExpireReservations.php'));
 
         $this->assertStringContainsString('Reservation expiry command completed', $source,
             'Expiry command must log structured success event.');
@@ -25,7 +25,7 @@ class RM001SchedulerMonitoringTest extends TestCase
 
     public function test_expiry_command_logs_structured_failure_metrics(): void
     {
-        $source = file_get_contents(base_path('routes/console.php'));
+        $source = file_get_contents(base_path('app/Console/Commands/ExpireReservations.php'));
 
         $this->assertStringContainsString('Failed to run reservation expiry command', $source,
             'Failure path must still log command failure.');
