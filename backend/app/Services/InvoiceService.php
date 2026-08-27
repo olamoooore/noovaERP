@@ -104,7 +104,10 @@ class InvoiceService
 
         try {
             // Re-fetch with lock to prevent concurrent posting
-            $invoice = Invoice::where('id', $invoice->id)->lockForUpdate()->firstOrFail();
+            $invoice = Invoice::with(['customer', 'lines.product'])
+                ->where('id', $invoice->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if ($invoice->status === 'posted' && $invoice->journal_entry_id !== null) {
                 // Idempotent: already posted — return the invoice without duplicate posting
