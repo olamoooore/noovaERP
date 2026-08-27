@@ -931,7 +931,7 @@ const RecordPaymentForm: React.FC<{
   });
 
   useEffect(() => {
-    if (initialInvoiceId && unpaidInvoices.length > 0 && !formData.invoice_id) {
+    if (initialInvoiceId && unpaidInvoices?.length > 0 && !formData.invoice_id) {
       const invoice = unpaidInvoices.find((inv) => inv.id === parseInt(initialInvoiceId));
       if (invoice) {
         setFormData((prev) => ({
