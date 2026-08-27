@@ -68,6 +68,70 @@ class Invoice extends Model
                 }
             });
         });
+
+        // ADR-005 §15.5 — date integrity between operational invoice and its
+        // posted journal entry. If a posted invoice's invoice_date changes
+        // (e.g. correction via direct DB write, an older controller revision,
+        // or a future bulk update), the underlying JournalEntry.entry_date
+        // MUST move with it — otherwise the JE keeps reporting the sale/AR
+        // hit in the original period and the P&L is wrong.
+        //
+        // Triggered on EVERY save (Eloquent firing order: saving → updating →
+        // updated → saved → saved (after commit)). We run the JE sync at
+        // 'updated' so the change happens in the same DB transaction as the
+        // invoice update, guaranteeing atomicity (no half-synced state).
+        static::updated(function ($invoice) {
+            // Only act when an active posted JE is linked, and only when the
+            // date actually changed (avoid pointless writes on every update).
+            if (! $invoice->journal_entry_id
+                || ! $invoice->wasChanged('invoice_date')
+                || ! $invoice->getOriginal('invoice_date')
+            ) {
+                return;
+            }
+
+            // Skip draft invoices (no posted JE exists yet).
+            $invoice->refresh();
+            $isPostedStatus = in_array($invoice->status, ['posted', 'sent', 'partial', 'overdue'], true);
+            if (! $isPostedStatus) {
+                return;
+            }
+
+            $newDate = $invoice->invoice_date instanceof \Carbon\Carbon
+                ? $invoice->invoice_date->toDateString()
+                : (string) $invoice->invoice_date;
+
+            $je = \App\Models\JournalEntry::find($invoice->journal_entry_id);
+            if (! $je) {
+                return;
+            }
+
+            $currentJeDate = $je->entry_date instanceof \Carbon\Carbon
+                ? $je->entry_date->toDateString()
+                : (string) $je->entry_date;
+
+            if ($currentJeDate === $newDate) {
+                return;
+            }
+
+            // Bypass the prevent_journal_entry_deletion trigger — it only
+            // blocks DELETE, not UPDATE, but on Postgres the trigger fires
+            // before any UPDATE check; defensive ensure the UPDATE is allowed.
+            try {
+                \Illuminate\Support\Facades\DB::table('journal_entries')
+                    ->where('id', $je->id)
+                    ->update(['entry_date' => $newDate]);
+            } catch (\Throwable $e) {
+                // Re-raise so the caller sees the failure rather than silently
+                // leaving invoice/JE out of sync (the exact bug we're preventing).
+                throw new \RuntimeException(
+                    "Failed to sync JournalEntry #{$je->id} entry_date with invoice #{$invoice->invoice_number} ".
+                    "({$currentJeDate} → {$newDate}): ".$e->getMessage(),
+                    0,
+                    $e
+                );
+            }
+        });
     }
 
     protected $fillable = [
