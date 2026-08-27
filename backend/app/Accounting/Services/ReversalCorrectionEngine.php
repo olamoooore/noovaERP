@@ -538,13 +538,29 @@ class ReversalCorrectionEngine
             ->where('relation_type', 'post')
             ->first();
 
+        $sourceDocumentType = $originalLink?->source_document_type ?? 'journal_entry';
+        $sourceDocumentId = $originalLink?->source_document_id ?? $original->id;
+
         if ($originalLink) {
             $originalLink->update(['reversal_journal_entry_id' => $reversalEntry->id]);
         }
 
+        // Drop any pre-existing reversal link for the same source document.
+        // The composite unique index `journal_entry_links_source_post_unique`
+        // on (source_document_type, source_document_id, relation_type) only
+        // allows ONE reversal link per source document. If a prior reversal
+        // JE exists for this source (e.g. from an earlier cancel→reset cycle
+        // on the same invoice), the previous reversal JE is by construction
+        // already marked is_active_version=false and inactive, so its link
+        // is stale and safe to remove before we register the new one.
+        JournalEntryLink::where('source_document_type', $sourceDocumentType)
+            ->where('source_document_id', $sourceDocumentId)
+            ->where('relation_type', 'reversal')
+            ->delete();
+
         JournalEntryLink::create([
-            'source_document_type' => $originalLink?->source_document_type ?? 'journal_entry',
-            'source_document_id' => $originalLink?->source_document_id ?? $original->id,
+            'source_document_type' => $sourceDocumentType,
+            'source_document_id' => $sourceDocumentId,
             'journal_entry_id' => $reversalEntry->id,
             'original_journal_entry_id' => $original->id,
             'relation_type' => 'reversal',
