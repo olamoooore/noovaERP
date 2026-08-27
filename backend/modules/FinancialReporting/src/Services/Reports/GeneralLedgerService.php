@@ -227,6 +227,10 @@ class GeneralLedgerService extends BaseReportService
             'jel.credit',
             'jel.dimensions',
         ])
+            // Subquery: invoice linked to this journal entry (if any)
+            // Used by the frontend to render the reference as a clickable link
+            // to the invoice detail page.
+            ->addSelect(DB::raw("(SELECT id FROM invoices WHERE journal_entry_id = je.id AND deleted_at IS NULL LIMIT 1) as invoice_id"))
             ->orderBy('je.entry_date', 'asc')
             ->orderBy('je.id', 'asc')
             ->orderBy('jel.id', 'asc');
@@ -268,6 +272,7 @@ class GeneralLedgerService extends BaseReportService
                 'credit' => round($transaction->credit, 2),
                 'balance' => round($runningBalance, 2),
                 'dimensions' => $transaction->dimensions,
+                'invoice_id' => $transaction->invoice_id ?? null,
             ];
         }
 

@@ -202,13 +202,28 @@ export default function GeneralLedgerPage() {
                     onClick={() => tx.journal_entry_id && navigate(`/accounting/core/journal-entries?entry_id=${tx.journal_entry_id}`)}
                   >
                     <TableCell>
-                      {tx.date ? new Date(tx.date).toLocaleDateString('en-US', { 
-                        year: 'numeric', 
-                        month: 'short', 
-                        day: 'numeric' 
+                      {tx.date ? new Date(tx.date).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
                       }) : '-'}
                     </TableCell>
-                    <TableCell className="font-mono">{tx.reference || '-'}</TableCell>
+                    <TableCell className="font-mono">
+                      {tx.invoice_id ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/invoices/${tx.invoice_id}`);
+                          }}
+                          className="text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/20 rounded"
+                        >
+                          {tx.reference || '-'}
+                        </button>
+                      ) : (
+                        tx.reference || '-'
+                      )}
+                    </TableCell>
                     <TableCell>{tx.description}</TableCell>
                     <TableCell className="text-right font-mono">
                       {tx.debit > 0 ? formatCurrency(tx.debit) : '-'}

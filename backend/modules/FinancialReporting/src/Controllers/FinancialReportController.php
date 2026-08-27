@@ -558,6 +558,8 @@ class FinancialReportController extends Controller
                         'debit' => $tx['debit'],
                         'credit' => $tx['credit'],
                         'balance' => $tx['balance'],
+                        'journal_entry_id' => $tx['journal_entry_id'] ?? null,
+                        'invoice_id' => $tx['invoice_id'] ?? null,
                     ];
                 }, $reportData->data),
                 'closing_balance' => $reportData->summary['closing_balance'] ?? 0,
