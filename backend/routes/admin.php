@@ -22,6 +22,7 @@ use App\SuperAdmin\Http\Controllers\AdminTenantNoteController;
 use App\SuperAdmin\Http\Controllers\AdminTenantOperationController;
 use App\SuperAdmin\Http\Controllers\AdminTenantTimelineController;
 use App\SuperAdmin\Http\Controllers\AdminUserController;
+use App\SuperAdmin\Http\Controllers\ImpersonationController;
 use App\SuperAdmin\Http\Middleware\DenyReadonlyRole;
 use App\SuperAdmin\Http\Middleware\EnsureAdminRole;
 use Illuminate\Support\Facades\Route;
@@ -47,6 +48,13 @@ Route::middleware('throttle:5,1')->group(function () {
 Route::middleware(['auth:sanctum', EnsureAdminRole::class])->group(function () {
     Route::get('/auth/me', [AdminAuthController::class, 'me']);
     Route::post('/auth/logout', [AdminAuthController::class, 'logout']);
+
+    // --- Impersonation ---
+    Route::prefix('impersonation')->group(function () {
+        Route::post('/start', [ImpersonationController::class, 'start']);
+        Route::post('/end', [ImpersonationController::class, 'end']);
+        Route::get('/active', [ImpersonationController::class, 'active']);
+    });
 
     Route::get('/dashboard', [AdminDashboardController::class, 'summary']);
 
