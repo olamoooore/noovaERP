@@ -405,7 +405,7 @@ class InvoiceController extends Controller
 
     public function update(Request $request, $id)
     {
-        $invoice = Invoice::find($id);
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
@@ -519,7 +519,7 @@ class InvoiceController extends Controller
 
     public function send($id)
     {
-        $invoice = Invoice::find($id);
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
@@ -584,7 +584,7 @@ class InvoiceController extends Controller
 
     public function destroy($id)
     {
-        $invoice = Invoice::find($id);
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
@@ -607,7 +607,7 @@ class InvoiceController extends Controller
      */
     public function cancel($id)
     {
-        $invoice = Invoice::find($id);
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
@@ -617,7 +617,7 @@ class InvoiceController extends Controller
             return response()->json(['message' => 'Only posted, sent, partial, or overdue invoices can be cancelled'], 403);
         }
 
-        if ($invoice->payments()->exists()) {
+        if ($invoice->payments()->active()->exists()) {
             return response()->json([
                 'message' => 'Cannot cancel an invoice with payments. Void or refund the payments first.',
             ], 422);
@@ -638,7 +638,7 @@ class InvoiceController extends Controller
      */
     public function resetToDraft($id)
     {
-        $invoice = Invoice::find($id);
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
@@ -648,7 +648,7 @@ class InvoiceController extends Controller
             return response()->json(['message' => 'Only cancelled invoices can be reset to draft'], 403);
         }
 
-        if ($invoice->payments()->exists()) {
+        if ($invoice->payments()->active()->exists()) {
             return response()->json([
                 'message' => 'Cannot reset an invoice that has payments. Void or refund the payments first.',
             ], 422);
@@ -793,7 +793,7 @@ class InvoiceController extends Controller
         $skipped = [];
 
         foreach ($ids as $id) {
-            $invoice = Invoice::find($id);
+            $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
             if (! $invoice) {
                 $skipped[] = ['id' => $id, 'reason' => 'Invoice not found'];
 
