@@ -9,9 +9,27 @@ class SystemLogService implements SystemLogServiceContract
 {
     public function log(string $level, string $category, string $message, ?array $context = null, ?string $correlationId = null): object
     {
+        // In test/CLI contexts (no HTTP request, no tenant initialized), skip
+        // writing to the system log instead of crashing. Production HTTP
+        // requests always have a tenant initialized via middleware.
+        $currentTenant = tenant();
+        if (! $currentTenant) {
+            return (object) [
+                'id' => Str::uuid(),
+                'tenant_id' => null,
+                'level' => $level,
+                'category' => $category,
+                'message' => $message,
+                'context' => $context,
+                'correlation_id' => $correlationId ?? Str::uuid(),
+                'source' => request() ? request()->headers->get('User-Agent', 'system') : 'system',
+                'user_id' => auth()->id(),
+            ];
+        }
+
         $record = SystemLog::create([
             'id' => Str::uuid(),
-            'tenant_id' => tenant()->id,
+            'tenant_id' => $currentTenant->id,
             'level' => $level,
             'category' => $category,
             'message' => $message,

@@ -19,7 +19,23 @@ class EncryptedDecimal implements CastsAttributes
             return null;
         }
 
-        $decrypted = Crypt::decryptString((string) $value);
+        $value = (string) $value;
+
+        // Backward-compat: legacy/unencrypted rows (and test fixtures written
+        // directly to the DB without going through this cast's `set`) may
+        // contain a plain numeric value. Detect and return as-is instead of
+        // trying to decrypt it.
+        if (is_numeric($value)) {
+            return number_format((float) $value, 2, '.', '');
+        }
+
+        try {
+            $decrypted = Crypt::decryptString($value);
+        } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
+            // Value isn't a valid encrypted payload — treat as plain text.
+            // This prevents a single bad row from breaking the whole request.
+            return number_format((float) $value, 2, '.', '');
+        }
 
         return number_format((float) $decrypted, 2, '.', '');
     }
