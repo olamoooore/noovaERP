@@ -2,6 +2,7 @@
 
 namespace Modules\HRM\Models;
 
+use App\Casts\EncryptedDecimal;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -30,8 +31,8 @@ class Payroll extends Model
     protected $casts = [
         'period_start' => 'date',
         'period_end' => 'date',
-        'base_monthly_salary' => 'decimal:2',
-        'net_pay' => 'decimal:2',
+        'base_monthly_salary' => EncryptedDecimal::class,
+        'net_pay' => EncryptedDecimal::class,
         'policy_snapshot' => 'array',
     ];
 

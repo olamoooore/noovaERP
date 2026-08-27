@@ -2,6 +2,7 @@
 
 namespace Modules\HRM\Models;
 
+use App\Casts\EncryptedDecimal;
 use App\Models\JournalEntry;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
@@ -43,9 +44,9 @@ class PayrollRun extends Model
         'period_start' => 'date',
         'period_end' => 'date',
         'approved_at' => 'datetime',
-        'total_gross' => 'decimal:2',
-        'total_deductions' => 'decimal:2',
-        'total_net' => 'decimal:2',
+        'total_gross' => EncryptedDecimal::class,
+        'total_deductions' => EncryptedDecimal::class,
+        'total_net' => EncryptedDecimal::class,
     ];
 
     // -------------------------------------------------------------------------

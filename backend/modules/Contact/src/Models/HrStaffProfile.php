@@ -2,6 +2,7 @@
 
 namespace Modules\Contact\src\Models;
 
+use App\Casts\EncryptedDecimal;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -28,9 +29,9 @@ class HrStaffProfile extends Model
     protected $casts = [
         'hire_date' => 'date',
         'termination_date' => 'date',
-        'salary' => 'decimal:2',
+        'salary' => EncryptedDecimal::class,
         'emergency_contacts' => 'array',
-        'bank_details' => 'array',
+        'bank_details' => 'encrypted:array',
         'metadata' => 'array',
     ];
 

@@ -2,6 +2,7 @@
 
 namespace Modules\HRM\Models;
 
+use App\Casts\EncryptedDecimal;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -39,7 +40,7 @@ class Contract extends Model
     ];
 
     protected $casts = [
-        'base_monthly_salary' => 'decimal:2',
+        'base_monthly_salary' => EncryptedDecimal::class,
         'overtime_eligible' => 'boolean',
         'fixed_working_days' => 'integer',
         'paid_leaves' => 'integer',

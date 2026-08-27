@@ -25,6 +25,7 @@ class ContactTaxProfile extends Model
     ];
 
     protected $casts = [
+        'tax_id' => 'encrypted',
         'withholding_tax_rate' => 'decimal:2',
         'is_tax_exempt' => 'boolean',
         'exemption_expiry' => 'date',
