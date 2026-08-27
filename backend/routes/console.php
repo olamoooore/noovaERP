@@ -10,39 +10,8 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Artisan::command('inventory:expire-reservations', function () {
-    $startedAt = microtime(true);
-
-    try {
-        $expiredCount = app(StockReservationService::class)->expireOverdue();
-
-        $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
-
-        Log::info('Reservation expiry command completed', [
-            'command' => 'inventory:expire-reservations',
-            'status' => 'success',
-            'expired_count' => $expiredCount,
-            'duration_ms' => $durationMs,
-        ]);
-
-        $this->info("Expired {$expiredCount} stock reservation(s).");
-
-        return 0;
-    } catch (\Throwable $e) {
-        $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
-
-        Log::error('Failed to run reservation expiry command', [
-            'command' => 'inventory:expire-reservations',
-            'error' => $e->getMessage(),
-            'status' => 'failed',
-            'duration_ms' => $durationMs,
-        ]);
-
-        $this->error('Reservation expiry command failed. Check logs for details.');
-
-        return 1;
-    }
-})->purpose('Expire overdue stock reservations and release reserved quantity.');
+// inventory:expire-reservations is auto-registered by App\Console\Kernel::load().
+// The class App\Console\Commands\ExpireReservations defines the command.
 
 // Financial Reporting Module - Scheduled Jobs
 Schedule::command('reports:process-schedules')

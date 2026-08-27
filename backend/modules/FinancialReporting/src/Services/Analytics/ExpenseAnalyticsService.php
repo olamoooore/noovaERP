@@ -21,7 +21,7 @@ class ExpenseAnalyticsService
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
             ->whereBetween('je.entry_date', [$startDate, $endDate])
-            ->where('je.status', 'posted')
+            ->where('je.status', 'posted')->where('je.is_active_version', true)
             ->where('coa.type', 'expense')
             ->select([
                 'coa.id as account_id',
@@ -153,7 +153,7 @@ class ExpenseAnalyticsService
                 $join->on(DB::raw("(je.dimensions->>'vendor_id')::bigint"), '=', 'v.id');
             })
             ->whereBetween('je.entry_date', [$startDate, $endDate])
-            ->where('je.status', 'posted')
+            ->where('je.status', 'posted')->where('je.is_active_version', true)
             ->where('coa.type', 'expense')
             ->whereNotNull(DB::raw("je.dimensions->>'vendor_id'"))
             ->select([
@@ -254,7 +254,7 @@ class ExpenseAnalyticsService
                 $join->on(DB::raw("(je.dimensions->>'department_id')::bigint"), '=', 'd.id');
             })
             ->whereBetween('je.entry_date', [$startDate, $endDate])
-            ->where('je.status', 'posted')
+            ->where('je.status', 'posted')->where('je.is_active_version', true)
             ->where('coa.type', 'expense')
             ->whereNotNull(DB::raw("je.dimensions->>'department_id'"))
             ->select([
@@ -315,7 +315,7 @@ class ExpenseAnalyticsService
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
             ->whereBetween('je.entry_date', [$startDate, $endDate])
-            ->where('je.status', 'posted')
+            ->where('je.status', 'posted')->where('je.is_active_version', true)
             ->where('coa.type', 'expense')
             ->select([
                 DB::raw("TO_CHAR(je.entry_date, '{$dateFormat}') as period"),

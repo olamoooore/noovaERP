@@ -121,8 +121,11 @@ class DocumentLifecycleService
 
     public function applyPaymentRefund(Invoice $invoice, float $amount): void
     {
+        $paidAmount = max(0, (float) $invoice->paid_amount - $amount);
+
         $invoice->update([
-            'paid_amount' => max(0, (float) $invoice->paid_amount - $amount),
+            'paid_amount' => $paidAmount,
+            'balance' => max(0, (float) $invoice->total - $paidAmount),
         ]);
 
         $this->recalculateInvoiceState($invoice);
@@ -130,8 +133,45 @@ class DocumentLifecycleService
 
     public function applyBillPaymentRefund(Bill $bill, float $amount): void
     {
+        $paidAmount = max(0, (float) $bill->paid_amount - $amount);
+
         $bill->update([
-            'paid_amount' => max(0, (float) $bill->paid_amount - $amount),
+            'paid_amount' => $paidAmount,
+            'balance' => max(0, (float) $bill->total - $paidAmount),
+        ]);
+
+        $this->recalculateBillState($bill);
+    }
+
+    /**
+     * Restore the invoice subledger after a payment reversal/unapplication.
+     *
+     * Reduces paid_amount and restores balance so the canonical invariant
+     * balance = total − paid_amount holds again. Without the balance update
+     * the invoice would show a reduced paid_amount but still zero balance.
+     */
+    public function applyPaymentReversal(Invoice $invoice, float $amount): void
+    {
+        $paidAmount = max(0, (float) $invoice->paid_amount - $amount);
+
+        $invoice->update([
+            'paid_amount' => $paidAmount,
+            'balance' => max(0, (float) $invoice->total - $paidAmount),
+        ]);
+
+        $this->recalculateInvoiceState($invoice);
+    }
+
+    /**
+     * Restore the bill subledger after a bill-payment reversal/unapplication.
+     */
+    public function applyBillPaymentReversal(Bill $bill, float $amount): void
+    {
+        $paidAmount = max(0, (float) $bill->paid_amount - $amount);
+
+        $bill->update([
+            'paid_amount' => $paidAmount,
+            'balance' => max(0, (float) $bill->total - $paidAmount),
         ]);
 
         $this->recalculateBillState($bill);

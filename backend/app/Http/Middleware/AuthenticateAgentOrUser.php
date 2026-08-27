@@ -19,9 +19,12 @@ class AuthenticateAgentOrUser
     {
         $token = $request->bearerToken();
 
+        // Per Pillar 2 Part 3 §4.2: do NOT log token previews. The
+        // previous code logged substr($token, 0, 20), which would
+        // leak partial token material in production logs. Only
+        // log whether a token was present.
         \Log::info('AuthenticateAgentOrUser middleware', [
             'has_token' => ! empty($token),
-            'token_preview' => $token ? substr($token, 0, 20).'...' : null,
             'url' => $request->url(),
         ]);
 
@@ -81,8 +84,14 @@ class AuthenticateAgentOrUser
         // Try agent authentication (for agents)
         // Agents live in the tenant schema — resolve tenant from Host header first.
         $this->initTenantFromHost($request);
+        // Per Pillar 2 Part 3 §4.2: compare SHA-256 hash, not plaintext.
+        // Migration 2026_08_26_000001_add_api_token_hash_to_agents added
+        // the api_token_hash column and backfilled it from the existing
+        // plaintext values. New agents should write to api_token_hash
+        // via their provisioning flow; the plaintext api_token column
+        // is preserved for the migration window.
         $agent = DB::table('agents')
-            ->where('api_token', $token)
+            ->where('api_token_hash', hash('sha256', $token))
             ->first();
 
         if ($agent) {

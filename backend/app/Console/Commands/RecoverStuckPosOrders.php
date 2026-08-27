@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\IteratesTenants;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -11,12 +12,14 @@ use Modules\POS\Models\PosPayment;
 
 class RecoverStuckPosOrders extends Command
 {
+    use IteratesTenants;
+
     protected $signature = 'pos:recover-stuck
                             {--dry-run : Show what would be recovered without making changes}
                             {--minutes=30 : Orders stuck for more than N minutes}
                             {--fix-syncing : Reset stuck syncing queue items back to pending}';
 
-    protected $description = 'Recover POS orders and queue items stuck in intermediate states';
+    protected $description = 'Recover POS orders and queue items stuck in intermediate states (per-tenant)';
 
     public function handle()
     {
@@ -28,16 +31,18 @@ class RecoverStuckPosOrders extends Command
             $this->warn('[DRY RUN] No changes will be made.');
         }
 
-        $this->recoverStuckDraftOrders($dryRun, $minutes);
-        $this->recoverOrphanedPayments($dryRun);
+        return $this->forEachTenant(function ($tenant) use ($dryRun, $minutes, $fixSyncing) {
+            $this->recoverStuckDraftOrders($dryRun, $minutes);
+            $this->recoverOrphanedPayments($dryRun);
 
-        if ($fixSyncing) {
-            $this->recoverStuckSyncingItems($dryRun, $minutes);
-        }
+            if ($fixSyncing) {
+                $this->recoverStuckSyncingItems($dryRun, $minutes);
+            }
 
-        $this->info('Recovery scan complete.');
+            $this->info("[tenant:{$tenant->id}] Recovery scan complete.");
 
-        return 0;
+            return 0;
+        });
     }
 
     /**

@@ -331,7 +331,7 @@ class CashFlowService extends BaseReportService
         $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
-            ->where('je.status', 'posted')
+            ->where('je.status', 'posted')->where('je.is_active_version', true)
             ->where('je.entry_date', '<=', $date);
 
         $this->mappingReader->applyFilter($query, 'CF_CASH');
@@ -354,7 +354,7 @@ class CashFlowService extends BaseReportService
         $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
-            ->where('je.status', 'posted')
+            ->where('je.status', 'posted')->where('je.is_active_version', true)
             ->whereBetween('je.entry_date', [$filter->startDate, $filter->endDate])
             ->where('coa.name', 'like', '%depreciation%');
 
@@ -424,7 +424,7 @@ class CashFlowService extends BaseReportService
         return DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
-            ->where('je.status', 'posted')
+            ->where('je.status', 'posted')->where('je.is_active_version', true)
             ->where('je.entry_date', '<=', $date)
             ->whereBetween('coa.code', [$codeStart, $codeEnd])
             ->sum(DB::raw('jel.debit - jel.credit'));
@@ -532,7 +532,7 @@ class CashFlowService extends BaseReportService
         $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
-            ->where('je.status', 'posted')
+            ->where('je.status', 'posted')->where('je.is_active_version', true)
             ->where('coa.type', $type)
             ->whereBetween('je.entry_date', [$filter->startDate, $filter->endDate]);
 
@@ -560,7 +560,7 @@ class CashFlowService extends BaseReportService
         return DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
-            ->where('je.status', 'posted')
+            ->where('je.status', 'posted')->where('je.is_active_version', true)
             ->whereBetween('je.entry_date', [$filter->startDate, $filter->endDate])
             ->whereBetween('coa.code', [$codeStart, $codeEnd])
             ->sum('jel.debit');
@@ -574,7 +574,7 @@ class CashFlowService extends BaseReportService
         $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
-            ->where('je.status', 'posted')
+            ->where('je.status', 'posted')->where('je.is_active_version', true)
             ->whereBetween('je.entry_date', [$filter->startDate, $filter->endDate]);
 
         $this->mappingReader->applyFilter($query, $tagCode);
@@ -608,7 +608,7 @@ class CashFlowService extends BaseReportService
         $query = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
-            ->where('je.status', 'posted')
+            ->where('je.status', 'posted')->where('je.is_active_version', true)
             ->where('je.entry_date', '<=', $date);
 
         $this->mappingReader->applyFilter($query, $tagCode);

@@ -142,6 +142,7 @@ abstract class BaseReportService
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
             ->where('je.status', 'posted')
+            ->where('je.is_active_version', true) // exclude reversed/replaced entries
             ->select([
                 'coa.id as account_id',
                 'coa.code',

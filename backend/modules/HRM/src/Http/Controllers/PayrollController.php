@@ -95,9 +95,23 @@ class PayrollController extends Controller
             ], 422);
         }
 
+        // Pillar 1 P0-14: SoD check — the approving user must not be the
+        // same user who created/calculated the payroll run. Without
+        // this check, a single authenticated user can create → calculate
+        // → approve → mark-paid (triggering a GL journal posting) in
+        // one unbroken sequence.
+        $currentUserId = TenantUserHelper::resolveTenantUserId();
+        $preparerId = $payrollRun->created_by;
+        if ($preparerId !== null && (int) $preparerId === (int) $currentUserId) {
+            return response()->json([
+                'message' => 'Segregation of duties violation: the user who created or calculated this payroll run cannot also approve it. A different user must perform the approval.',
+                'reason_code' => 'SOD_SELF_APPROVAL',
+            ], 403);
+        }
+
         $payrollRun->update([
             'status' => 'approved',
-            'approved_by' => TenantUserHelper::resolveTenantUserId(),
+            'approved_by' => $currentUserId,
             'approved_at' => now(),
         ]);
 
@@ -124,6 +138,23 @@ class PayrollController extends Controller
             return response()->json([
                 'message' => "Cannot mark paid — payroll run must be 'approved' first (currently '{$payrollRun->status}').",
             ], 422);
+        }
+
+        // Pillar 1 P0-14: SoD check — the user marking paid must not be
+        // the same user who created the run or who approved it. The
+        // GL posting is the most consequential side-effect in the
+        // module; a self-approver could mark their own run as paid
+        // and post the journal entry without a second pair of eyes.
+        $currentUserId = TenantUserHelper::resolveTenantUserId();
+        $involvedIds = array_filter([
+            $payrollRun->created_by,
+            $payrollRun->approved_by,
+        ]);
+        if (in_array((int) $currentUserId, array_map('intval', $involvedIds), true)) {
+            return response()->json([
+                'message' => 'Segregation of duties violation: the user who created or approved this payroll run cannot also mark it as paid. A different user must perform the mark-paid action.',
+                'reason_code' => 'SOD_SELF_PAY',
+            ], 403);
         }
 
         $payrollRun->update(['status' => 'paid']);

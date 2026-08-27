@@ -3,13 +3,11 @@
 namespace App\Accounting\Services;
 
 use App\Accounting\DTOs\ReversalRequest as ReversalRequestDTO;
+use App\Accounting\Enums\ReasonCode;
 use App\Accounting\Enums\ReversalBasis;
 use App\Accounting\Enums\ReversalMode;
-use App\Accounting\Enums\ReasonCode;
 use App\Accounting\Enums\StateDimension;
-use App\Accounting\Events\ReversalFailed;
 use App\Accounting\Events\ReversalPosted;
-use App\Accounting\Events\ReversalRequested;
 use App\Models\AutoReversalInstruction;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
@@ -50,7 +48,7 @@ class ReversalCorrectionEngine
 
             // ── Eligibility gates ──────────────────────────────
             $eligibility = $this->evaluateReversalEligibility($original, ReversalMode::FULL_REVERSAL, null);
-            if (!$eligibility->isAllowed()) {
+            if (! $eligibility->isAllowed()) {
                 return ReversalResult::blocked($eligibility->reasonCode, $eligibility->reason);
             }
 
@@ -72,7 +70,7 @@ class ReversalCorrectionEngine
             ]);
 
             // ── Create reversal posting (mirror lines) ─────────
-            $reversalEntry = $this->createReversalPosting($original, $request, 'FULL REVERSAL');
+            $reversalEntry = $this->createFullReversalPosting($original, $request);
 
             // ── Create component lineage for each line ──────────
             $this->createFullComponentLineage($relationship, $original, $reversalEntry);
@@ -133,7 +131,7 @@ class ReversalCorrectionEngine
 
             // ── Eligibility gates ──────────────────────────────
             $eligibility = $this->evaluateReversalEligibility($original, ReversalMode::PARTIAL_REVERSAL, $lineAmounts);
-            if (!$eligibility->isAllowed()) {
+            if (! $eligibility->isAllowed()) {
                 return ReversalResult::blocked($eligibility->reasonCode, $eligibility->reason);
             }
 
@@ -266,7 +264,7 @@ class ReversalCorrectionEngine
                 $request = new ReversalRequestDTO(
                     journalEntryId: $original->id,
                     reversalDate: now()->toDateString(),
-                    reason: $instruction->reversal_reason_text ?? 'Auto-reversal: ' . $instruction->reversal_reason_code,
+                    reason: $instruction->reversal_reason_text ?? 'Auto-reversal: '.$instruction->reversal_reason_code,
                     reasonCode: $instruction->reversal_reason_code,
                     tenantId: $instruction->tenant_id,
                     correlationId: $instruction->correlation_id ?? null,
@@ -352,6 +350,7 @@ class ReversalCorrectionEngine
     {
         $remaining = $this->calculateTotalRemainingReversible($original);
         $requestedTotal = array_sum(array_column($lineAmounts, 'amount'));
+
         return max(0, $remaining - $requestedTotal);
     }
 
@@ -361,12 +360,12 @@ class ReversalCorrectionEngine
             $lineId = $lineAmount['line_id'] ?? null;
             $amount = $lineAmount['amount'] ?? 0;
 
-            if (!$lineId || $amount <= 0) {
+            if (! $lineId || $amount <= 0) {
                 return 'Each partial reversal line must have a valid line_id and positive amount.';
             }
 
             $line = JournalEntryLine::find($lineId);
-            if (!$line || $line->journal_entry_id !== $original->id) {
+            if (! $line || $line->journal_entry_id !== $original->id) {
                 return "Line {$lineId} does not belong to the original entry.";
             }
 
@@ -390,16 +389,56 @@ class ReversalCorrectionEngine
             'entry_date' => $request->reversalDate,
             'type' => $original->type,
             'reference' => $original->reference,
-            'description' => $descriptionPrefix . ': ' . ($request->reason ?? $original->description),
+            'description' => $descriptionPrefix.': '.($request->reason ?? $original->description),
             'status' => 'posted',
             'posted_at' => now(),
             'posted_by' => $request->actorUserId,
             'created_by' => $request->actorUserId,
             'reversed_entry_id' => $original->id,
             'is_reversal' => true,
+            // Reversal postings must not appear in financial reports as an
+            // independent active version — their purpose is to cancel the
+            // original entry. If the original document is reposted, only
+            // the new active-version entry should be counted.
+            'is_active_version' => false,
+            'lifecycle_status' => 'reversed',
             'legal_entity_id' => $original->legal_entity_id,
             'entity_book_id' => $original->entity_book_id,
         ]);
+
+        return $reversalEntry;
+    }
+
+    /**
+     * Full reversal posting — header plus mirrored lines.
+     *
+     * Every original line is copied with debit/credit swapped so the reversal
+     * is a balanced posting whose net effect against the original is exactly
+     * zero on every account (Revenue, AR, Tax, …). Without the mirrored lines
+     * the reversal would be header-only and the ledger would keep the original
+     * effect — a silent one-sided correction.
+     */
+    private function createFullReversalPosting(
+        JournalEntry $original,
+        ReversalRequestDTO $request,
+    ): JournalEntry {
+        $reversalEntry = $this->createReversalPosting($original, $request, 'FULL REVERSAL');
+
+        foreach ($original->lines as $line) {
+            $reversalEntry->lines()->create([
+                'account_id' => $line->account_id,
+                'debit' => $line->credit,
+                'credit' => $line->debit,
+                'description' => 'FULL REVERSAL: '.$line->description,
+                'reference' => $line->reference,
+                'currency_code' => $line->currency_code,
+                'original_amount' => $line->original_amount !== null ? -$line->original_amount : null,
+                'exchange_rate' => $line->exchange_rate,
+                'department_id' => $line->department_id,
+                'project_id' => $line->project_id,
+                'location_id' => $line->location_id,
+            ]);
+        }
 
         return $reversalEntry;
     }
@@ -423,7 +462,7 @@ class ReversalCorrectionEngine
                 'account_id' => $originalLine->account_id,
                 'debit' => $isDebit ? 0 : $amount,
                 'credit' => $isDebit ? $amount : 0,
-                'description' => 'PARTIAL REVERSAL: ' . $originalLine->description,
+                'description' => 'PARTIAL REVERSAL: '.$originalLine->description,
                 'reference' => $originalLine->reference,
                 'currency_code' => $originalLine->currency_code,
                 'original_amount' => $isDebit ? -$amount : $amount,

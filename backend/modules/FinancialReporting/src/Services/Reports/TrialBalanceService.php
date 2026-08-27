@@ -93,7 +93,7 @@ class TrialBalanceService extends BaseReportService
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
             ->where('je.entry_date', '<=', $asOfDate)
-            ->where('je.status', 'posted');
+            ->where('je.status', 'posted')->where('je.is_active_version', true);
 
         // Apply account type filter if provided
         if ($accountType) {

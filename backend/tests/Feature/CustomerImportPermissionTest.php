@@ -6,6 +6,8 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Modules\Contact\src\Models\ContactImportBatch;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -30,7 +32,16 @@ class CustomerImportPermissionTest extends TenantTestCase
     {
         parent::setUp();
 
-        $this->tenantUuid = \Illuminate\Support\Str::uuid()->toString();
+        $this->tenantUuid = (string) Str::uuid();
+        // Issue #P2-1 — Pillar 2 Part 1 §3.4 fix: insert the central
+        // tenants row before any user_company_access insert (FK target).
+        DB::table('public.tenants')->insertOrIgnore([
+            'id' => $this->tenantUuid,
+            'name' => 'CustomerImport Test Tenant',
+            'email' => $this->tenantUuid.'@example.test',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $this->bindTenantContext($this->tenantUuid);
 
         try {
@@ -120,6 +131,23 @@ class CustomerImportPermissionTest extends TenantTestCase
         $user = User::factory()->create();
         $user->assignRole('admin');
         $user->givePermissionTo('customers.write');
+        // Issue #P2-1 — Pillar 2 Part 1 §3.4: this test previously passed
+        // only because the schema default of `users.role` was
+        // 'platform_super_admin' and RequirePermission's `$user->role === 'platform_super_admin'`
+        // branch acted as a global bypass. Per the fix at SHA P2-1,
+        // that bypass is closed (role defaults to NULL and the column is
+        // removed from $fillable). The test now requires a real
+        // user_company_access row that maps the user to this tenant
+        // with `admin` role so TenantRoleService::hasPermission
+        // returns true for `customers.write`.
+        DB::table('user_company_access')->insert([
+            'user_id' => $user->id,
+            'tenant_id' => $this->tenantUuid,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $token = $user->createToken('test')->plainTextToken;
 
@@ -143,6 +171,15 @@ class CustomerImportPermissionTest extends TenantTestCase
         $user = User::factory()->create();
         $user->assignRole('admin');
         $user->givePermissionTo('customers.write');
+        // See P2-1 fix note in test_import_succeeds_with_write_permission.
+        DB::table('user_company_access')->insert([
+            'user_id' => $user->id,
+            'tenant_id' => $this->tenantUuid,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $token = $user->createToken('test')->plainTextToken;
 

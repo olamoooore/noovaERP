@@ -26,8 +26,9 @@ class AuthenticateAgent
         }
 
         // Check if token exists in agents table
+        // Per Pillar 2 Part 3 §4.2: compare SHA-256 hash, not plaintext.
         $agent = DB::table('agents')
-            ->where('api_token', $token)
+            ->where('api_token_hash', hash('sha256', $token))
             ->first();
 
         if (! $agent) {

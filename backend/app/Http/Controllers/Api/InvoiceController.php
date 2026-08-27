@@ -684,6 +684,14 @@ class InvoiceController extends Controller
     /**
      * Reverse a journal entry by creating a compensating entry.
      * Used when resetting a posted invoice to draft.
+     *
+     * The reversal is dated with the ORIGINAL journal entry's accounting date
+     * (not the current system date) so both movements fall in the same
+     * accounting period and net to zero in Revenue / AR / Tax.
+     *
+     * Routes through PostingEngine::reverse() (the single authoritative
+     * reversal path, ADR-005 §15.3) so JournalEntryLink + PostingAuditLog
+     * records are created and the reversal is idempotent.
      */
     private function reverseJournalEntry(Invoice $invoice): void
     {
@@ -692,46 +700,37 @@ class InvoiceController extends Controller
             return;
         }
 
-        // Create a reversal journal entry using raw insert to bypass fillable restrictions
-        $reversalId = DB::table('journal_entries')->insertGetId([
-            'journal_id' => $journalEntry->journal_id,
-            'entry_number' => $journalEntry->entry_number.'-REV',
-            'entry_date' => now()->toDateString(),
-            'description' => "Reversal of {$journalEntry->description} (Invoice #{$invoice->invoice_number})",
-            'status' => 'posted',
-            'posted_at' => now(),
-            'created_by' => $journalEntry->created_by,
-            'reference' => $journalEntry->reference,
-            'legal_entity_id' => $journalEntry->legal_entity_id,
-            'entity_book_id' => $journalEntry->entity_book_id,
-            'is_reversal' => true,
-            'reversed_entry_id' => $journalEntry->id,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $originalDate = $journalEntry->entry_date instanceof \Carbon\Carbon
+            ? $journalEntry->entry_date->toDateString()
+            : (string) $journalEntry->entry_date;
 
-        // Copy lines with swapped debit/credit
-        $lines = DB::table('journal_entry_lines')
-            ->where('journal_entry_id', $journalEntry->id)
-            ->get();
+        $result = app(\App\Accounting\PostingEngine::class)->reverse(new \App\Accounting\DTOs\ReversalRequest(
+            journalEntryId: $journalEntry->id,
+            reversalDate: $originalDate,
+            reason: "Reset to draft: Invoice #{$invoice->invoice_number}",
+            reasonCode: 'RESET_TO_DRAFT',
+        ));
 
-        foreach ($lines as $line) {
-            DB::table('journal_entry_lines')->insert([
-                'journal_entry_id' => $reversalId,
-                'account_id' => $line->account_id,
-                'debit' => $line->credit,
-                'credit' => $line->debit,
-                'description' => $line->description,
-                'currency_code' => $line->currency_code,
-                'original_amount' => isset($line->original_amount) ? -$line->original_amount : null,
-                'exchange_rate' => $line->exchange_rate,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+        if (! $result->success) {
+            throw new \RuntimeException($result->error ?? 'Failed to create reversal journal entry');
         }
 
-        // Mark original journal entry as reversed (keep status as 'posted' — CHECK constraint only allows draft/posted)
-        $journalEntry->update(['reversed_at' => now()]);
+        // Update lifecycle on the original entry (status stays 'posted' — CHECK constraint)
+        $journalEntry->update([
+            'lifecycle_status' => 'reversed',
+            'correction_type' => 'reverse',
+            'is_active_version' => false,
+        ]);
+
+        // Release the (invoice, 'post') link so a fresh repost can create a new
+        // post link + journal entry. Without this, PostingEngine::post()'s
+        // idempotency guard would short-circuit the repost and re-link the
+        // invoice to the (now reversed) original entry — making the new
+        // posting invisible to the P&L.
+        \App\Models\JournalEntryLink::where('source_document_type', 'invoice')
+            ->where('source_document_id', $invoice->id)
+            ->where('relation_type', 'post')
+            ->delete();
     }
 
     /**

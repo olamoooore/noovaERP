@@ -2,32 +2,26 @@
 
 namespace Modules\FinancialReporting\Console;
 
+use App\Console\Concerns\IteratesTenants;
 use Illuminate\Console\Command;
 use Modules\FinancialReporting\Jobs\ClearReportCache;
 
 /**
- * Console command to clear expired report cache
- * Should be scheduled to run daily
+ * Console command to clear expired report cache.
+ * Should be scheduled to run daily.
+ *
+ * Per the original Pillar 1 review, the dispatched job already
+ * requires an explicit tenant scope. We iterate over tenants so
+ * each tenant's cache is cleared.
  */
 class ClearExpiredCache extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
+    use IteratesTenants;
+
     protected $signature = 'reports:clear-cache {--all : Clear all cache, not just expired}';
 
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
-    protected $description = 'Clear expired report cache entries';
+    protected $description = 'Clear expired report cache entries (per-tenant)';
 
-    /**
-     * Execute the console command.
-     */
     public function handle(): int
     {
         $clearAll = $this->option('all');
@@ -43,11 +37,11 @@ class ClearExpiredCache extends Command
             $this->info('Clearing expired report cache...');
         }
 
-        // Dispatch the job
-        ClearReportCache::dispatch($clearAll);
-
-        $this->info('Cache clearing job dispatched successfully.');
-
-        return Command::SUCCESS;
+        return $this->forEachTenant(function ($tenant) use ($clearAll) {
+            $this->info("[tenant:{$tenant->id}] Dispatching cache-clearing job...");
+            ClearReportCache::dispatch($clearAll);
+            $this->info("[tenant:{$tenant->id}] Cache clearing job dispatched successfully.");
+            return Command::SUCCESS;
+        });
     }
 }

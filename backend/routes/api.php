@@ -135,10 +135,13 @@ Route::get('/health', function () {
 // V1 Auth routes (central, non-tenant)
 Route::prefix('v1/auth')->middleware([\App\Http\Middleware\EnsurePublicSchemaForAuth::class])->group(function () {
     // Tenant signup & management
-    Route::post('/signup', [TenantController::class, 'signup']);
+    Route::post('/signup', [TenantController::class, 'signup'])->middleware('throttle:5,1');
 
-    // Central login (non-tenant)
-    Route::post('/login', [AuthController::class, 'login']);
+    // Central login (non-tenant) — Pillar 2 Part 2 §2.3:
+    // add dedicated brute-force throttle (5/min per IP) since the
+    // global 120/min IP rate limit (PlatformRateLimitMiddleware) is
+    // not credential-guessing-appropriate.
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
     Route::get('/me', [AuthController::class, 'me'])->middleware('auth:sanctum');
 
@@ -172,8 +175,8 @@ Route::prefix('v1/feature-gate')->middleware([
 
 // Legacy auth routes (keep for backwards compatibility)
 Route::prefix('auth')->group(function () {
-    Route::post('/signup', [TenantController::class, 'signup']);
-    Route::post('/login', [AuthController::class, 'login']);
+    Route::post('/signup', [TenantController::class, 'signup'])->middleware('throttle:5,1');
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
     Route::get('/me', [AuthController::class, 'me'])->middleware('auth:sanctum');
     Route::get('/health', fn () => response()->json(['status' => 'ok']));

@@ -119,8 +119,39 @@ class AdminUserService
                 'name' => explode('@', $invitation->email)[0],
                 'email' => $invitation->email,
                 'password' => Hash::make($password),
-                'role' => $invitation->role,
             ]);
+            // Issue #P2-1 — Pillar 2 Part 1 §3.4 / Pillar 1 P0-0:
+            // The `role` column is no longer in $fillable (removed in the
+            // same work-item), so it cannot be mass-assigned via User::create.
+            // Privileged roles must be assigned via the restricted
+            // assignAdminRole() method which logs the actor.
+            //
+            // The actor for the audit log here is the inviting admin
+            // (AdminInvitation::invited_by_admin_user_id), not the invitee
+            // — the invitee has no authenticated session at this point.
+            $invitationRole = $invitation->role;
+            $invitingAdminId = $invitation->invited_by_admin_user_id;
+            if (in_array($invitationRole, User::PRIVILEGED_ROLES, true)) {
+                $user->assignAdminRole(
+                    $invitationRole,
+                    $invitingAdminId,
+                    reason: 'admin invitation accepted (token='.substr($invitation->token, 0, 12).'…)'
+                );
+            } else {
+                // Non-privileged role (e.g. 'platform_ops', 'billing_ops') —
+                // assign via a controlled property-set path (still excluded
+                // from $fillable mass-assignment) and log the actor for
+                // audit parity.
+                $user->role = $invitationRole;
+                $user->save();
+                Log::info('users.role assigned (non-privileged)', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'role' => $invitationRole,
+                    'actor_id' => $invitingAdminId,
+                    'source' => 'admin invitation accepted',
+                ]);
+            }
 
             // Mark accepted — prevents replay (idempotency at token level)
             $invitation->update(['accepted_at' => now()]);
