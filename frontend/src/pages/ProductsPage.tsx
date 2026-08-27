@@ -14,8 +14,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
+import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 
 interface Category {
   id: number
@@ -351,7 +352,8 @@ export function ProductsPage() {
         </CardHeader>
         <CardContent>
           {viewMode === 'list' ? (
-            <Table>
+                <SalesLineColumnVisibility tableClass="products-listing-columns" columns={listingColumns(['Select', 'Product', 'Type', 'Category', 'SKU', 'Created Date', 'Cost', 'Price', 'Stock', 'Status', 'Actions'])}>
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-10">
@@ -364,6 +366,7 @@ export function ProductsPage() {
                   <TableHead>Type</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>SKU</TableHead>
+                  <TableHead>Created Date</TableHead>
                   <TableHead>Cost</TableHead>
                   <TableHead>Price</TableHead>
                   <TableHead>Stock</TableHead>
@@ -426,6 +429,7 @@ export function ProductsPage() {
                     <TableCell className="capitalize">{product.type || '-'}</TableCell>
                     <TableCell>{categoryLabelForProduct(product)}</TableCell>
                     <TableCell>{product.sku}</TableCell>
+                    <TableCell>{formatDate(product.created_at)}</TableCell>
                     <TableCell>{formatCurrency(product.cost)}</TableCell>
                     <TableCell>{formatCurrency(product.price)}</TableCell>
                     <TableCell>{product.stock_quantity ?? '-'}</TableCell>
@@ -463,7 +467,7 @@ export function ProductsPage() {
                 ))}
                 {(!products || products.length === 0) && (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-10 text-muted-foreground">
+                    <TableCell colSpan={11} className="text-center py-10 text-muted-foreground">
                       {productsLoading ? (
                         <div className="flex items-center justify-center gap-2">
                           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
@@ -476,7 +480,8 @@ export function ProductsPage() {
                   </TableRow>
                 )}
               </TableBody>
-            </Table>
+                </Table>
+                </SalesLineColumnVisibility>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {products?.map((product: any) => (

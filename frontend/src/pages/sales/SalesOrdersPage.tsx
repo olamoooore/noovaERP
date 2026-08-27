@@ -10,6 +10,7 @@ import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
 import { formatDate, formatCurrency } from '@/lib/utils'
+import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'All Statuses' },
@@ -153,6 +154,7 @@ export function SalesOrdersPage() {
             </div>
           ) : (
             <>
+              <SalesLineColumnVisibility tableClass="sales-orders-listing-columns" columns={listingColumns(['Order #', 'Customer', 'Channel', 'Date', 'Created Date', 'Total', 'Status', 'Actions'])}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -160,6 +162,7 @@ export function SalesOrdersPage() {
                     <TableHead>Customer</TableHead>
                     <TableHead>Channel</TableHead>
                     <TableHead>Date</TableHead>
+                    <TableHead>Created Date</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
@@ -196,6 +199,7 @@ export function SalesOrdersPage() {
                         <Badge variant="outline" className="capitalize">{order.channel || 'admin'}</Badge>
                       </TableCell>
                       <TableCell>{order.order_date ? formatDate(order.order_date) : '-'}</TableCell>
+                      <TableCell>{formatDate(order.created_at)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(order.total || 0)}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className={getStatusBadge(order.status)}>
@@ -242,6 +246,7 @@ export function SalesOrdersPage() {
                   ))}
                 </TableBody>
               </Table>
+              </SalesLineColumnVisibility>
 
               {/* Pagination */}
               {(meta?.last_page && meta.last_page > 1) && (
