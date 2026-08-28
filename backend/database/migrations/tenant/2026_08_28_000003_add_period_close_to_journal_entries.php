@@ -21,6 +21,15 @@ return new class extends Migration
         }
 
         // Extend the type enum to include 'period_close'
+        $allowedTypes = ['manual', 'invoice', 'payment', 'adjustment', 'opening', 'pos_order', 'credit_note', 'bill', 'vendor_credit_note', 'ocr_document', 'web_order', 'fx_revaluation', 'depreciation', 'asset_disposal', 'bank_adjustment', 'period_close'];
+
+        // Normalize any existing rows whose type is not in the allowed set so the
+        // new CHECK constraint can be applied. This is safe because these rows
+        // already violate the intended enum domain.
+        DB::table('journal_entries')
+            ->whereNotIn('type', $allowedTypes)
+            ->update(['type' => 'manual']);
+
         $existingValues = DB::scalar(
             "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'journal_entries_type_check'"
         );
