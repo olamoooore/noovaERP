@@ -451,76 +451,40 @@ class JournalEntriesController extends Controller
             'line_amounts.*.amount' => 'required|numeric|min:0.01',
         ]);
 
-        $userId = TenantUserHelper::requireTenantUserId();
+        TenantUserHelper::requireTenantUserId();
 
         try {
-            $entry = \App\Models\JournalEntry::with('lines')->findOrFail($id);
+            // Route through the canonical ReversalCorrectionEngine so that all
+            // four lineage tables (ReversalRelationship, ReversalComponent,
+            // JournalEntryLink, PostingAuditLog) and the state-transition
+            // record are written atomically — not via direct model writes
+            // which bypass audit gates.
+            $reversalRequest = new \App\Accounting\DTOs\ReversalRequest(
+                journalEntryId: (int) $id,
+                reversalDate: $validated['reversal_date'],
+                reason: $validated['reason'],
+                reasonCode: $validated['reason_code'] ?? 'PARTIAL_REVERSAL',
+                actorUserId: TenantUserHelper::requireTenantUserId(),
+                tenantId: tenant('id'),
+            );
 
-            if ($entry->status !== 'posted') {
+            $engine = app(\App\Accounting\Services\ReversalCorrectionEngine::class);
+            $result = $engine->partialReversal($reversalRequest, $validated['line_amounts']);
+
+            if (! $result->success) {
                 return response()->json([
-                    'message' => 'Only posted entries can be partially reversed',
+                    'message' => 'Partial reversal failed',
+                    'error' => $result->reason,
+                    'reason_code' => $result->reasonCode?->value,
                 ], 422);
-            }
-
-            $totalReversal = 0;
-            $reversalLines = [];
-
-            foreach ($validated['line_amounts'] as $lineAmount) {
-                $originalLine = $entry->lines->firstWhere('id', $lineAmount['line_id']);
-                if (! $originalLine) {
-                    return response()->json([
-                        'message' => "Line {$lineAmount['line_id']} not found in journal entry",
-                    ], 422);
-                }
-
-                $originalAbs = abs($originalLine->debit - $originalLine->credit);
-                if ($lineAmount['amount'] > $originalAbs + 0.001) {
-                    return response()->json([
-                        'message' => "Amount {$lineAmount['amount']} exceeds original {$originalAbs} for line {$lineAmount['line_id']}",
-                    ], 422);
-                }
-
-                $totalReversal += $lineAmount['amount'];
-                $reversalLines[] = [
-                    'account_id' => $originalLine->account_id,
-                    'description' => "Partial reversal: {$originalLine->description}",
-                    'debit' => $originalLine->debit > 0 ? 0 : $lineAmount['amount'],
-                    'credit' => $originalLine->credit > 0 ? 0 : $lineAmount['amount'],
-                    'amount' => $lineAmount['amount'],
-                    'original_line_id' => $originalLine->id,
-                ];
-            }
-
-            // Create reversal journal entry
-            $reversalEntry = \App\Models\JournalEntry::create([
-                'tenant_id' => $entry->tenant_id,
-                'journal_id' => $entry->journal_id,
-                'entry_date' => $validated['reversal_date'],
-                'reference' => "Partial reversal of #{$entry->id}",
-                'description' => $validated['reason'],
-                'status' => 'posted',
-                'is_reversal' => true,
-                'reversed_entry_id' => $entry->id,
-                'posted_at' => now(),
-                'posted_by' => $userId,
-            ]);
-
-            foreach ($reversalLines as $line) {
-                \App\Models\JournalEntryLine::create([
-                    'tenant_id' => $entry->tenant_id,
-                    'journal_entry_id' => $reversalEntry->id,
-                    'account_id' => $line['account_id'],
-                    'description' => $line['description'],
-                    'debit' => $line['debit'],
-                    'credit' => $line['credit'],
-                ]);
             }
 
             return response()->json([
                 'message' => 'Partial reversal posted successfully',
-                'reversal_entry' => $reversalEntry->load('lines.account'),
-                'reversed_amount' => $totalReversal,
-                'remaining_amount' => 0,
+                'reversal_entry' => $result->journalEntry->load('lines.account'),
+                'reversal_relationship_id' => $result->relationship->id,
+                'reversed_amount' => $result->relationship->reversed_amount_summary,
+                'remaining_reversible' => $result->relationship->remaining_reversible_amount_summary,
             ]);
 
         } catch (\Exception $e) {

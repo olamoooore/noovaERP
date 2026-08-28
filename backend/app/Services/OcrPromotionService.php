@@ -18,6 +18,11 @@ use Modules\OCRBookkeeping\Services\VendorMappingService;
  *
  * Hard rule (EDR §5.3): OCR ingestion IDs can never be used as bill_id, invoice_id,
  * or payment_id. OCR may only promote into canonical documents.
+ *
+ * P1-5: All promotion paths now route through the canonical BillService /
+ * InvoiceService rather than raw DB table inserts. This ensures
+ * three-way-match validation, line normalization, audit trails, and lifecycle
+ * status transitions all run as designed.
  */
 class OcrPromotionService
 {
@@ -34,60 +39,61 @@ class OcrPromotionService
         $this->validatePromotionEligibility($doc);
 
         return DB::transaction(function () use ($doc) {
-            $billTotal = $doc->total_amount ?? 0;
+            $createdBy = TenantUserHelper::resolveTenantUserId() ?? 0;
 
-            $billId = DB::table('bills')->insertGetId([
-                'vendor_id' => $doc->vendor_id,
-                'bill_number' => $doc->document_reference ?? $this->generateBillNumber(),
-                'bill_date' => $doc->document_date,
-                'due_date' => $doc->due_date,
-                'status' => 'draft',
-                'subtotal' => $doc->subtotal ?? 0,
-                'tax_amount' => $doc->tax_amount ?? 0,
-                'discount_amount' => 0,
-                'total' => $billTotal,
-                'paid_amount' => 0,
-                'balance' => $billTotal,
-                'notes' => "Promoted from OCR document {$doc->uuid}",
-                'created_by' => TenantUserHelper::resolveTenantUserId(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
+            // Build canonical bill payload for BillService::createBill.
+            // BillService enforces bill_type, three-way-match rules, line normalization,
+            // and other invariants that the raw insert path silently bypassed.
+            $linesPayload = [];
             if ($doc->line_items && is_array($doc->line_items)) {
                 foreach ($doc->line_items as $item) {
-                    $quantity = $item['quantity'] ?? 1;
-                    $unitPrice = $item['unit_price'] ?? $item['amount'] ?? 0;
-                    $taxAmount = $item['tax_amount'] ?? 0;
-                    $lineTotal = $item['line_total'] ?? $item['amount'] ?? (($quantity * $unitPrice) + $taxAmount);
+                    $quantity = (float) ($item['quantity'] ?? 1);
+                    // Preserve legacy OCR semantics: when unit_price is absent,
+                    // 'amount' means the line total, not the unit price.
+                    if (isset($item['unit_price'])) {
+                        $unitPrice = (float) $item['unit_price'];
+                    } elseif (isset($item['amount']) && $quantity > 0) {
+                        $unitPrice = round((float) $item['amount'] / $quantity, 2);
+                    } else {
+                        $unitPrice = 0;
+                    }
+                    $taxRate = (float) ($item['tax_rate'] ?? 0);
 
-                    DB::table('bill_lines')->insert([
-                        'bill_id' => $billId,
+                    $linesPayload[] = [
                         'product_id' => $item['product_id'] ?? null,
                         'description' => $item['description'] ?? 'Line item',
                         'quantity' => $quantity,
                         'unit_price' => $unitPrice,
-                        'tax_rate' => $item['tax_rate'] ?? 0,
-                        'tax_amount' => $taxAmount,
-                        'line_total' => $lineTotal,
+                        'tax_rate' => $taxRate,
+                        'tax_amount' => (float) ($item['tax_amount'] ?? 0),
+                        'discount_amount' => 0,
                         'account_id' => $item['account_id'] ?? null,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
+                    ];
                 }
             }
 
+            $bill = app(\App\Services\BillService::class)->createBill([
+                'bill_number' => $doc->document_reference ?? $this->generateBillNumber(),
+                'vendor_id' => $doc->vendor_id,
+                'bill_type' => 'expense', // OCR-derived bills default to expense (no PO/GRN lineage)
+                'bill_date' => $doc->document_date,
+                'due_date' => $doc->due_date ?? $doc->document_date,
+                'notes' => "Promoted from OCR document {$doc->uuid}",
+                'lines' => $linesPayload,
+            ], $createdBy);
+
             $doc->update([
                 'status' => 'PROMOTED',
+                'promoted_bill_id' => $bill->id,
             ]);
 
-            Log::info('OCR document promoted to bill', [
+            Log::info('OCR document promoted to bill via BillService', [
                 'ocr_uuid' => $doc->uuid,
-                'bill_id' => $billId,
+                'bill_id' => $bill->id,
             ]);
 
             return [
-                'bill_id' => $billId,
+                'bill_id' => $bill->id,
                 'status' => 'draft',
             ];
         });
@@ -106,60 +112,49 @@ class OcrPromotionService
         $this->validateInvoicePromotionEligibility($doc);
 
         return DB::transaction(function () use ($doc) {
-            $invoiceTotal = $doc->total_amount ?? 0;
+            $createdBy = TenantUserHelper::resolveTenantUserId() ?? 0;
 
-            $invoiceId = DB::table('invoices')->insertGetId([
-                'customer_id' => $doc->customer_id,
-                'invoice_number' => $doc->document_reference ?? $this->generateInvoiceNumber(),
-                'invoice_date' => $doc->document_date,
-                'due_date' => $doc->due_date ?? $doc->document_date ?? now()->toDateString(),
-                'status' => 'draft',
-                'subtotal' => $doc->subtotal ?? 0,
-                'tax_amount' => $doc->tax_amount ?? 0,
-                'discount_amount' => 0,
-                'total' => $invoiceTotal,
-                'paid_amount' => 0,
-                'balance' => $invoiceTotal,
-                'notes' => "Promoted from OCR document {$doc->uuid}",
-                'created_by' => TenantUserHelper::resolveTenantUserId(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
+            // Build canonical invoice payload for InvoiceService.
+            $linesPayload = [];
             if ($doc->line_items && is_array($doc->line_items)) {
                 foreach ($doc->line_items as $item) {
-                    $quantity = $item['quantity'] ?? 1;
-                    $unitPrice = $item['unit_price'] ?? $item['amount'] ?? 0;
-                    $taxAmount = $item['tax_amount'] ?? 0;
-                    $lineTotal = $item['line_total'] ?? $item['amount'] ?? (($quantity * $unitPrice) + $taxAmount);
+                    $quantity = (float) ($item['quantity'] ?? 1);
+                    $unitPrice = (float) ($item['unit_price'] ?? $item['amount'] ?? 0);
 
-                    DB::table('invoice_items')->insert([
-                        'invoice_id' => $invoiceId,
+                    $linesPayload[] = [
                         'product_id' => $item['product_id'] ?? null,
                         'description' => $item['description'] ?? 'Line item',
                         'quantity' => $quantity,
                         'unit_price' => $unitPrice,
-                        'tax_rate' => $item['tax_rate'] ?? 0,
-                        'tax_amount' => $taxAmount,
-                        'discount_amount' => $item['discount_amount'] ?? 0,
-                        'line_total' => $lineTotal,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
+                        'tax_rate' => (float) ($item['tax_rate'] ?? 0),
+                        'tax_amount' => (float) ($item['tax_amount'] ?? 0),
+                        'discount_amount' => 0,
+                    ];
                 }
             }
 
-            $doc->update([
-                'status' => 'PROMOTED',
+            $invoice = app(\App\Services\InvoiceService::class)->createInvoiceInternal([
+                'customer_id' => $doc->customer_id,
+                'invoice_number' => $doc->document_reference ?? $this->generateInvoiceNumber(),
+                'invoice_date' => $doc->document_date,
+                'due_date' => $doc->due_date ?? $doc->document_date,
+                'notes' => "Promoted from OCR document {$doc->uuid}",
+                'lines' => $linesPayload,
+                'created_by' => $createdBy,
             ]);
 
-            Log::info('OCR document promoted to invoice', [
+            $doc->update([
+                'status' => 'PROMOTED',
+                'promoted_invoice_id' => $invoice->id,
+            ]);
+
+            Log::info('OCR document promoted to invoice via InvoiceService', [
                 'ocr_uuid' => $doc->uuid,
-                'invoice_id' => $invoiceId,
+                'invoice_id' => $invoice->id,
             ]);
 
             return [
-                'invoice_id' => $invoiceId,
+                'invoice_id' => $invoice->id,
                 'status' => 'draft',
             ];
         });

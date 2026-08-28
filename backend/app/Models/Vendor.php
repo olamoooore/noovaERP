@@ -12,6 +12,7 @@ class Vendor extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
+        'core_contact_uuid',
         'code',
         'name',
         'email',

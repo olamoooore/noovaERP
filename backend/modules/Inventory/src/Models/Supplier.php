@@ -20,6 +20,7 @@ class Supplier extends Model
     ];
 
     protected $fillable = [
+        'core_contact_uuid',
         'name',
         'code',
         'contact_name',

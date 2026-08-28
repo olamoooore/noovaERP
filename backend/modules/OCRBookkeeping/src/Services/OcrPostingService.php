@@ -44,107 +44,103 @@ class OcrPostingService
      */
     public function postDocument(OcrDocument $document): JournalEntry
     {
-        // Validate document is ready for posting
-        if (!$document->canBePosted()) {
-            throw new \Exception('Document is not ready to be posted');
-        }
-
-        // Validate fiscal period
-        $fiscalValidation = $this->fiscalValidator->validateDate($document->document_date);
-        if (!$fiscalValidation['allowed']) {
-            throw new \Exception($fiscalValidation['reason']);
-        }
-
-        // Log fiscal override if applicable
-        if (isset($fiscalValidation['override']) && $fiscalValidation['override']) {
-            $this->fiscalValidator->logOverride(
-                $fiscalValidation['period'],
-                auth()->user(),
-                "Posted OCR document {$document->uuid}"
-            );
-        }
-
-        // Validate dimensions
-        if ($document->dimensions) {
-            $this->dimensionValidator->validateOrFail($document->dimensions);
-        }
-
-        // NO automatic currency conversion - keep amounts in original currency
-        // Conversion will only happen if explicitly requested by the user
-        $exchangeRate = 1.0;
-        $needsConversion = false;
-
-        DB::beginTransaction();
-
-        try {
-            // Build journal entry lines (NO currency conversion)
-            $rawLines = $this->buildExpenseLines($document, $exchangeRate);
-
-            // Validate balance
-            $this->validateBalance($rawLines);
-
-            // Convert raw lines to PostingRequestLine DTOs
-            $postingLines = array_map(fn(array $line) => new PostingRequestLine(
-                accountMappingKey: 'general_expense', // fallback key, overridden by accountId
-                accountId: $line['account_id'],
-                debit: (float) $line['debit'],
-                credit: (float) $line['credit'],
-                description: $line['description'] ?? null,
-                reference: $line['reference'] ?? null,
-                departmentId: $line['dimensions']['department_id'] ?? null,
-                projectId: $line['dimensions']['project_id'] ?? null,
-                locationId: $line['dimensions']['location_id'] ?? null,
-            ), $rawLines);
-
-            // Post via PostingEngine (handles lock-date + fiscal validation)
-            $result = $this->postingEngine->post(new PostingRequest(
-                documentType: 'ocr_document',
-                documentId: $document->id,
-                postingDate: $document->document_date->toDateString(),
-                description: "OCR Document: {$document->vendor_name} - {$document->file_name}",
-                lines: $postingLines,
-                reference: $document->document_reference ?? "OCR-{$document->uuid}",
-                userId: TenantUserHelper::getTenantUserId(),
-                legalEntityId: $document->legal_entity_id ?? request()->attributes->get('legal_entity_id'),
-                entityBookId: $document->entity_book_id ?? request()->attributes->get('entity_book_id'),
-            ));
-
-            if (!$result->success) {
-                throw new \Exception($result->error);
+        // P1-5: route OCR posting through the canonical Bill flow.
+        // The whole operation is wrapped in a DB transaction so that a failure
+        // leaves the OCR document in its original state (status, journal_entry_id,
+        // posted_at) rather than partially promoted to PROMOTED.
+        return DB::transaction(function () use ($document) {
+            if (! $document->vendor_id) {
+                throw new \Exception('OCR document has no vendor_id; cannot post.');
             }
 
-            $journalEntry = $result->journalEntry;
+            $this->validateDocumentTotals($document);
+            $this->logFiscalPeriodOverrideIfLocked($document);
 
-            // Update inventory if applicable
+            // Promote to canonical Bill (idempotent on already-promoted docs)
+            if ($document->status !== 'PROMOTED' || ! $document->promoted_bill_id) {
+                $promotion = app(\App\Services\OcrPromotionService::class)->promoteToBill($document->id);
+                $billId = $promotion['bill_id'];
+                $document->refresh();
+            } else {
+                $billId = $document->promoted_bill_id;
+            }
+
+            // Post the canonical bill through the standard PostingEngine flow
+            $bill = \App\Models\Bill::findOrFail($billId);
+            $vendorBillService = app(\App\Services\VendorBillService::class);
+            $postingResult = $vendorBillService->postBill($bill);
+
+            if (! $postingResult->success) {
+                throw new \Exception($postingResult->error ?? 'Bill posting failed');
+            }
+
+            $journalEntry = JournalEntry::findOrFail($postingResult->journalEntryId);
+
+            // Preserve inventory impact for SKU-matched OCR documents (legacy behavior)
             $this->updateInventory($document, $journalEntry);
 
-            // Mark document as posted
-            $document->markAsPosted($journalEntry);
-
-            // Dispatch BI update job (if exists)
-            $this->dispatchBIUpdate($journalEntry);
-
-            DB::commit();
-
-            Log::info("OCR document posted successfully", [
-                'document_uuid' => $document->uuid,
+            // Mark OCR document as fully posted
+            $document->update([
+                'status' => 'POSTED',
                 'journal_entry_id' => $journalEntry->id,
-                'total_amount' => $document->total_amount,
-                'currency' => $document->currency_code,
+                'posted_at' => now(),
             ]);
 
             return $journalEntry;
+        });
+    }
 
-        } catch (\Exception $e) {
-            DB::rollBack();
-            
-            Log::error("Failed to post OCR document", [
-                'document_uuid' => $document->uuid,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+    /**
+     * If the document date falls in a locked fiscal period, attempt to log an
+     * override audit record (mirrors the legacy raw-posting path behaviour).
+     */
+    private function logFiscalPeriodOverrideIfLocked(OcrDocument $document): void
+    {
+        $period = \App\Models\FiscalPeriod::where('period_start', '<=', $document->document_date)
+            ->where('period_end', '>=', $document->document_date)
+            ->first();
 
-            throw $e;
+        if (! $period || $period->status !== 'locked') {
+            return;
+        }
+
+        $user = auth()->user();
+        if (! $user) {
+            return;
+        }
+
+        $validator = app(\App\Services\FiscalPeriodValidator::class);
+        $validator->logOverride($period, $user, 'ocr_document_post');
+    }
+
+    /**
+     * Validate that OCR line-item totals are consistent with document totals.
+     */
+    private function validateDocumentTotals(OcrDocument $document): void
+    {
+        $lineTotal = 0;
+        if ($document->line_items && is_array($document->line_items)) {
+            foreach ($document->line_items as $item) {
+                $quantity = (float) ($item['quantity'] ?? 1);
+                $unitPrice = (float) ($item['unit_price'] ?? 0);
+                $amount = (float) ($item['amount'] ?? 0);
+
+                if ($unitPrice > 0) {
+                    $lineTotal += round($unitPrice * $quantity, 2);
+                } else {
+                    $lineTotal += $amount;
+                }
+            }
+        }
+
+        $documentTotal = (float) ($document->total_amount ?? 0);
+        $taxAmount = (float) ($document->tax_amount ?? 0);
+        $expectedTotal = round($lineTotal + $taxAmount, 2);
+
+        if ($documentTotal > 0 && abs($expectedTotal - $documentTotal) > 0.01) {
+            throw new \Exception(
+                "OCR document line totals + tax ({$expectedTotal}) do not match document total ({$documentTotal})."
+            );
         }
     }
 

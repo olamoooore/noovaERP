@@ -263,6 +263,19 @@ class FinancialCloseCycleService
             ];
         }
 
+        // ── SoD check (ADR-005 §41, G22) ──────────────────────────────────
+        // Preparer (cycle creator) cannot also sign off the cycle. This matches
+        // the segregation-of-duties pattern enforced by
+        // FinancialCloseSignoffService::recordSignoff() at the review level.
+        $policyService = app(\Modules\FinancialClose\Services\FinancialClosePolicyService::class);
+        if ($policyService->requiresIndependentReviewer($tenantId, (string) $cycle->created_by, $userId)) {
+            return [
+                'success' => false,
+                'reason' => 'Segregation-of-duties violation: the user who prepared this cycle cannot also sign it off. A different Owner/Admin/Manager must sign off.',
+                'sod_violation' => 'preparer_is_signatory',
+            ];
+        }
+
         $metadata = is_array($cycle->metadata) ? $cycle->metadata : [];
         $signoffs = $metadata['cycle_signoffs'] ?? [];
 

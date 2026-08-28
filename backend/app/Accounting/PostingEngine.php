@@ -163,6 +163,13 @@ class PostingEngine implements PostingEngineInterface
                 'required_permission' => $requiredPermission,
                 'required_entitlement' => $request->requiredEntitlement ?? ($request->metadata['required_entitlement'] ?? null),
                 'source_capability' => $request->sourceCapability ?? ($request->metadata['source_capability'] ?? null),
+                // ── P1-8: Concurrency gate context (ADR-005 §8.5) ──
+                // Caller may supply expectedRecordVersion + currentRecordVersion
+                // to enable optimistic locking on the source aggregate.
+                'expected_record_version' => $request->expectedRecordVersion
+                    ?? ($request->metadata['expected_record_version'] ?? null),
+                'current_record_version' => $request->currentRecordVersion
+                    ?? ($request->metadata['current_record_version'] ?? null),
                 'posting_lines' => array_map(fn ($l) => [
                     'account_mapping_key' => $l->accountMappingKey,
                     'account_id' => $l->accountId,

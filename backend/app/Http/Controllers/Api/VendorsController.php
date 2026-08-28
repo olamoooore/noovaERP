@@ -176,6 +176,19 @@ class VendorsController extends Controller
                 $vendor = Vendor::create($data);
                 $this->replaceAddresses($vendor, $addresses);
 
+                // Link the vendor to its canonical Contact Master entry
+                // (ADR-005 §20.2 / ADR-003A). The sync is idempotent — if the
+                // vendor already has a core_contact_uuid, this is a no-op.
+                try {
+                    app(\App\Services\VendorContactSyncService::class)
+                        ->ensureOrganisationContact($vendor);
+                } catch (\Throwable $e) {
+                    \Log::warning('VendorContactSync failed for vendor', [
+                        'vendor_id' => $vendor->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+
                 return $vendor;
             });
 

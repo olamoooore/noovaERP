@@ -3,11 +3,13 @@
 namespace App\Services;
 
 use App\Accounting\DTOs\PostingResult;
+use App\Accounting\Services\ActionEligibilityEvaluator;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLink;
 use App\Models\PostingAuditLog;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\TenantUserHelper;
 
 /**
  * ManualJournalPostingService
@@ -17,12 +19,18 @@ use Illuminate\Support\Facades\Log;
  *
  * This preserves audit continuity: every reference to the original draft ID
  * (audit logs, UI history, linked documents) remains valid after posting.
+ *
+ * ADR-005 §8, P0-2 / P0-3: prior to transitioning the entry to 'posted',
+ * the action is evaluated through the platform Authority Gates
+ * (PermissionGate, ControlAccountGate, AssuranceGate, EntitlementGate, etc.).
+ * A BLOCK at any mandatory gate fails the post.
  */
 class ManualJournalPostingService
 {
     public function __construct(
         private readonly LockDateValidationService $lockDateValidator,
         private readonly FiscalPeriodValidator $fiscalValidator,
+        private readonly ActionEligibilityEvaluator $eligibilityEvaluator,
     ) {}
 
     /**
@@ -120,7 +128,68 @@ class ManualJournalPostingService
             );
         }
 
-        // ── 4. Atomic transition ─────────────────────────────────────────────
+        // ── 4. Authority-gate evaluation (P0-2 / P0-3) ───────────────────────
+        // P0-2: prevent manual journals from bypassing ControlAccountGate when
+        // they target control accounts from non-whitelisted sources.
+        // P0-3: enforce permission gate on every post. Entitlement gate is
+        // deliberately not enforced here — manual journal posting is a core
+        // accounting capability that is governed by permission, not by a
+        // separately-purchased module entitlement (which would create an
+        // operational blocker for tenants without an explicit entitlement
+        // record).
+        $eligibilityContext = [
+            'tenant_id' => (string) ($entry->tenant_id ?? tenant('id')),
+            'entity_id' => $entry->legal_entity_id ? (string) $entry->legal_entity_id : null,
+            'actor_id' => (string) $userId,
+            'document_type' => 'manual_journal',
+            'posting_date' => $entry->entry_date instanceof \DateTimeInterface
+                ? $entry->entry_date->format('Y-m-d')
+                : (string) $entry->entry_date,
+            'total_amount' => $totalDebit,
+            'correlation_id' => 'manual_journal_'.$entry->id,
+            'required_permission' => 'accounting.write',
+            'source_capability' => 'ACC-002',
+            'posting_lines' => $entry->lines->map(fn ($l) => [
+                'account_mapping_key' => 'manual',
+                'account_id' => $l->account_id,
+                'debit' => (float) $l->debit,
+                'credit' => (float) $l->credit,
+            ])->all(),
+        ];
+
+        $eligibility = $this->eligibilityEvaluator->evaluate(
+            action: 'POST_JOURNAL',
+            recordType: 'JournalEntry',
+            recordId: (string) $entry->id,
+            context: $eligibilityContext,
+        );
+
+        if ($eligibility->isBlocked()) {
+            Log::warning('ManualJournalPostingService blocked by authority gate', [
+                'entry_id' => $entry->id,
+                'blocking_reason' => $eligibility->blockingReason?->value,
+            ]);
+
+            $details = $eligibility->blockingReason?->value ?? 'GATE_BLOCKED';
+
+            return PostingResult::failure(
+                'Posting blocked: '.$details.
+                ' | gate_results='.json_encode(array_map(
+                    fn ($r) => ['code' => $r->gateCode, 'result' => $r->result->value, 'reason' => $r->reasonCode],
+                    $eligibility->gateResults ?? []
+                ))
+            );
+        }
+
+        if ($eligibility->hasError()) {
+            Log::error('ManualJournalPostingService authority gate evaluation error', [
+                'entry_id' => $entry->id,
+            ]);
+
+            return PostingResult::failure('Authority gate evaluation failed for manual journal post.');
+        }
+
+        // ── 5. Atomic transition ─────────────────────────────────────────────
         try {
             return DB::transaction(function () use ($entry, $userId, $overrideReason) {
                 // Transition the EXISTING entry in-place — no delete, no new ID
@@ -160,3 +229,4 @@ class ManualJournalPostingService
         }
     }
 }
+

@@ -32,5 +32,11 @@ class PostingRequest
         public readonly ?string $sourceCapability = null,
         // ── Tax determination context (P0-6, ACC-009) ──
         public readonly ?array $taxDeterminationResult = null,
+        // ── Concurrency context (P1-8, ADR-005 §8.5) ──
+        // Optimistic locking on the source aggregate. When set, ConcurrencyGate
+        // will BLOCK if the current source aggregate version differs from
+        // expectedRecordVersion at commit time.
+        public readonly ?int $expectedRecordVersion = null,
+        public readonly ?int $currentRecordVersion = null,
     ) {}
 }

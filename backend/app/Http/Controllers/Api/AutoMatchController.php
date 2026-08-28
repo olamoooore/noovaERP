@@ -30,7 +30,7 @@ class AutoMatchController extends Controller
     {
         try {
             $validated = $request->validate([
-                'bank_account_id' => 'required|integer|exists:chart_of_accounts,id',
+                'bank_account_id' => 'required|integer|exists:bank_accounts,id',
                 'bank_transactions' => 'required|array|min:1',
                 'bank_transactions.*.id' => 'required|string',
                 'bank_transactions.*.date' => 'required|date',
@@ -79,7 +79,7 @@ class AutoMatchController extends Controller
     {
         try {
             $validated = $request->validate([
-                'bank_account_id' => 'required|integer|exists:chart_of_accounts,id',
+                'bank_account_id' => 'required|integer|exists:bank_accounts,id',
                 'reconciliation_id' => 'required|integer|exists:bank_reconciliations,id',
                 'matches' => 'required|array|min:1',
                 'matches.*.bank_transaction_id' => 'required|string',
@@ -123,7 +123,7 @@ class AutoMatchController extends Controller
     {
         try {
             $validated = $request->validate([
-                'bank_account_id' => 'required|integer|exists:chart_of_accounts,id',
+                'bank_account_id' => 'required|integer|exists:bank_accounts,id',
                 'reconciliation_id' => 'required|integer|exists:bank_reconciliations,id',
                 'bank_transactions' => 'required|array',
                 'min_confidence' => 'nullable|numeric|min:0|max:100|default:90',

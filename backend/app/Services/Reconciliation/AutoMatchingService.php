@@ -16,9 +16,10 @@ use Illuminate\Support\Facades\Log;
 class AutoMatchingService
 {
     /**
-     * Find matching suggestions for bank reconciliation
+     * Find matching suggestions for bank reconciliation.
      *
-     * @param  array  $bankTransactions  Array of bank statement transactions
+     * @param  array  $bankTransactions  Array of bank statement transactions. Each item should
+     *                                   contain id, date, amount, reference, description.
      * @param  string|null  $asOfDate  Optional date cutoff
      * @return array Matching suggestions with confidence scores
      */
@@ -26,11 +27,12 @@ class AutoMatchingService
     {
         $suggestions = [];
 
-        // Get unreconciled GL transactions for this bank account
+        // Get unreconciled GL transactions for this bank account's linked GL account
         $glTransactions = $this->getUnreconciledGLTransactions($bankAccountId, $asOfDate);
 
         foreach ($bankTransactions as $bankTxn) {
             $matches = [];
+            $statementLineId = $bankTxn['id'] ?? null;
 
             // Try exact match first
             $exactMatches = $this->findExactMatches($bankTxn, $glTransactions);
@@ -72,6 +74,9 @@ class AutoMatchingService
                 }
             }
 
+            // Persist match candidates against the durable statement line when possible
+            $this->persistMatchCandidates($statementLineId, $matches);
+
             $suggestions[] = [
                 'bank_transaction' => $bankTxn,
                 'matches' => $matches,
@@ -83,25 +88,58 @@ class AutoMatchingService
     }
 
     /**
-     * Get unreconciled GL transactions for a bank account
+     * Get unreconciled GL transactions for a bank account using its linked GL account.
      */
     private function getUnreconciledGLTransactions(int $bankAccountId, ?string $asOfDate = null): Collection
     {
-        $query = JournalEntryLine::whereHas('account', function ($q) use ($bankAccountId) {
-            $q->where('id', $bankAccountId);
-        })
+        $bankAccount = \App\Models\BankAccount::with('glAccount')->find($bankAccountId);
+        $glAccountId = $bankAccount?->gl_account_id;
+
+        $query = JournalEntryLine::query()
+            ->when($glAccountId, fn ($q) => $q->where('account_id', $glAccountId))
             ->where(function ($q) {
                 $q->where('reconciled', false)
                     ->orWhereNull('reconciled');
             })
             ->whereNull('reconciliation_id')
+            ->whereHas('journalEntry', fn ($q) => $q->where('status', 'posted'))
             ->with(['journalEntry', 'account']);
 
         if ($asOfDate) {
-            $query->where('transaction_date', '<=', $asOfDate);
+            $query->whereHas('journalEntry', fn ($q) => $q->where('entry_date', '<=', $asOfDate));
         }
 
         return $query->get();
+    }
+
+    /**
+     * Persist suggested match candidates against a durable BankStatementLine.
+     */
+    private function persistMatchCandidates(?string $statementLineId, array $matches): void
+    {
+        if (! $statementLineId || ! is_numeric($statementLineId)) {
+            return;
+        }
+
+        $line = \App\Models\BankStatementLine::find($statementLineId);
+        if (! $line) {
+            return;
+        }
+
+        foreach ($matches as $match) {
+            \App\Models\MatchCandidate::updateOrCreate(
+                [
+                    'bank_statement_line_id' => $line->id,
+                    'journal_entry_line_id' => $match['gl_transaction_id'],
+                ],
+                [
+                    'match_type' => $match['match_type'],
+                    'confidence' => $match['confidence'],
+                    'reason' => $match['reason'] ?? null,
+                    'accepted' => false,
+                ]
+            );
+        }
     }
 
     /**
@@ -113,7 +151,8 @@ class AutoMatchingService
 
         foreach ($glTransactions as $glTxn) {
             $amountMatch = $this->amountsMatch($bankTxn['amount'], $glTxn->debit - $glTxn->credit);
-            $dateMatch = $this->datesMatch($bankTxn['date'], $glTxn->transaction_date, 0);
+            $glDate = $glTxn->transaction_date ?? $glTxn->journalEntry?->entry_date?->format('Y-m-d');
+            $dateMatch = $this->datesMatch($bankTxn['date'], $glDate, 0);
             $referenceMatch = $this->referencesMatch(
                 $bankTxn['reference'] ?? '',
                 $glTxn->reference ?? '',
@@ -136,13 +175,14 @@ class AutoMatchingService
         $matches = [];
 
         foreach ($glTransactions as $glTxn) {
-            $amountMatch = $this->amountsMatch($bankTxn['amount'], $glTxn->debit - $glTxn->credit);
+            $amountMatch = $this->amountsMatch($bankTxn['amount'], (float) $glTxn->debit - (float) $glTxn->credit);
 
             if (! $amountMatch) {
                 continue;
             }
 
-            $dateDiff = $this->dateDifference($bankTxn['date'], $glTxn->transaction_date);
+            $glDate = $glTxn->transaction_date ?? $glTxn->journalEntry?->entry_date?->format('Y-m-d');
+            $dateDiff = $this->dateDifference($bankTxn['date'], $glDate);
 
             // Only consider if within 3 days
             if ($dateDiff > 3) {
@@ -184,13 +224,14 @@ class AutoMatchingService
         $matches = [];
 
         foreach ($glTransactions as $glTxn) {
-            $amountMatch = $this->amountsMatch($bankTxn['amount'], $glTxn->debit - $glTxn->credit);
+            $amountMatch = $this->amountsMatch($bankTxn['amount'], (float) $glTxn->debit - (float) $glTxn->credit);
 
             if (! $amountMatch) {
                 continue;
             }
 
-            $dateDiff = $this->dateDifference($bankTxn['date'], $glTxn->transaction_date);
+            $glDate = $glTxn->transaction_date ?? $glTxn->journalEntry?->entry_date?->format('Y-m-d');
+            $dateDiff = $this->dateDifference($bankTxn['date'], $glDate);
 
             // Only consider if within 7 days
             if ($dateDiff > 7) {
@@ -293,12 +334,12 @@ class AutoMatchingService
     {
         return [
             'id' => $glTxn->id,
-            'transaction_date' => $glTxn->transaction_date,
+            'transaction_date' => $glTxn->transaction_date ?? $glTxn->journalEntry?->entry_date?->format('Y-m-d'),
             'description' => $glTxn->description,
             'reference' => $glTxn->reference,
             'debit' => $glTxn->debit,
             'credit' => $glTxn->credit,
-            'net_amount' => $glTxn->debit - $glTxn->credit,
+            'net_amount' => (float) $glTxn->debit - (float) $glTxn->credit,
             'journal_entry_id' => $glTxn->journal_entry_id,
             'account_id' => $glTxn->account_id,
         ];
