@@ -268,24 +268,46 @@ export function createImageEditorModal(editor: Editor, options: ImageEditorOptio
   // Load image
   const loadImage = (src: string | File) => {
     const img = new Image()
-    img.crossOrigin = 'anonymous'
-    
+    // Only set crossOrigin for non-data-URL sources; data URLs are same-origin
+    // and forcing 'anonymous' on them has caused silent decode failures for
+    // some PNGs in Chrome/Safari.
+    // (crossOrigin is left unset for data URLs below.)
+
     const onImageLoad = () => {
       originalImage = img
       canvas.width = img.width
       canvas.height = img.height
+      // PNG (and other formats with transparency) need an alpha-capable canvas
+      // context. We always use 'willReadFrequently' for perf + alpha-aware
+      // composite in the edit pipeline.
       renderImage()
     }
-    
+
+    const onImageError = (e: Event) => {
+      console.error('Image decode failed:', e)
+      const reason = src instanceof File
+        ? `Could not decode "${src.name}". The file may be corrupt or in an unsupported sub-format (e.g. CMYK PNG, 16-bit PNG, animated APNG).`
+        : 'Could not decode the image.'
+      alert(reason)
+      closeModal()
+    }
+
     if (src instanceof File) {
       const reader = new FileReader()
       reader.onload = (e) => {
         img.onload = onImageLoad
+        img.onerror = onImageError
+        // Do NOT set img.crossOrigin for data URLs — same-origin already.
         img.src = e.target?.result as string
       }
+      reader.onerror = onImageError
       reader.readAsDataURL(src)
     } else {
+      // Remote URL — set crossOrigin so the canvas isn't tainted (tainted
+      // canvases throw SecurityError on toDataURL).
+      img.crossOrigin = 'anonymous'
       img.onload = onImageLoad
+      img.onerror = onImageError
       img.src = src
     }
   }
@@ -658,7 +680,20 @@ export function createImageEditorModal(editor: Editor, options: ImageEditorOptio
   
   // Save image
   modal.querySelector('.img-save-btn')?.addEventListener('click', () => {
-    const dataUrl = canvas.toDataURL('image/png')
+    // Preserve the original image's MIME type so transparency is kept (PNG)
+    // and the data URL matches the file extension. Falls back to PNG for
+    // unknown / SVG sources where alpha may matter.
+    let outMime = 'image/png'
+    if (typeof image === 'object' && 'type' in image) {
+      const t = (image as File).type
+      if (t === 'image/jpeg') outMime = 'image/jpeg'
+      else if (t === 'image/webp') outMime = 'image/webp'
+      // PNG/GIF/SVG → keep PNG (preserves alpha)
+    } else if (typeof image === 'string' && image.startsWith('data:')) {
+      const m = /^data:image\/([a-z]+);/.exec(image)
+      if (m && ['jpeg', 'jpg', 'webp'].includes(m[1])) outMime = `image/${m[1]}`
+    }
+    const dataUrl = canvas.toDataURL(outMime)
     modal.remove()
     styles.remove()
     onSave(dataUrl)
@@ -671,26 +706,36 @@ export function createImageEditorModal(editor: Editor, options: ImageEditorOptio
 // Setup asset manager with image editor integration
 export function setupImageUpload(editor: Editor) {
   const am = editor.AssetManager
-  
+
   // Custom upload handler - this is the main function that handles file uploads
   const handleUpload = (files: FileList) => {
-    const file = Array.from(files).find(f => f.type.startsWith('image/'))
+    // Accept any image/* MIME type, but also fall back to extension-based
+    // detection because some browsers (notably older Safari and some mobile
+    // uploaders) report empty `f.type` for PNG/WebP files.
+    const acceptedExt = /\.(png|jpe?g|gif|webp|bmp|svg)$/i
+    const file = Array.from(files).find(
+      (f) => f.type.startsWith('image/') || (f.name && acceptedExt.test(f.name))
+    )
     if (!file) return
-    
+
     // Open image editor
     createImageEditorModal(editor, {
       image: file,
       onSave: (dataUrl) => {
-        // Add to asset manager
-        am.add({ src: dataUrl, type: 'image', name: file.name })
-        
+        // Add to asset manager. Use the data URL's MIME type (not a hard-coded
+        // 'image') so downstream consumers (page renderer, asset manager
+        // thumbnail, published HTML) pick the correct format.
+        const mimeMatch = /^data:([^;]+);/.exec(dataUrl)
+        const mime = mimeMatch ? mimeMatch[1] : (file.type || 'image/png')
+        am.add({ src: dataUrl, type: mime, name: file.name })
+
         // If there's a selected image component, update it
         const selected = editor.getSelected()
         if (selected && selected.get('tagName')?.toUpperCase() === 'IMG') {
           selected.set('src', dataUrl)
           selected.addAttributes({ src: dataUrl })
         }
-        
+
         // Close modal and refresh
         editor.Modal.close()
       },
@@ -754,15 +799,18 @@ export function setupImageUpload(editor: Editor) {
           createImageEditorModal(editor, {
             image: file,
             onSave: (dataUrl) => {
-              // Add to asset manager
-              am.add({ src: dataUrl, type: 'image', name: file.name })
-              
+              // Add to asset manager — use the data URL's MIME, not a
+              // hard-coded 'image', so PNG/JPG/WebP are all handled.
+              const mimeMatch = /^data:([^;]+);/.exec(dataUrl)
+              const mime = mimeMatch ? mimeMatch[1] : (file.type || 'image/png')
+              am.add({ src: dataUrl, type: mime, name: file.name })
+
               // Apply to selected component's background-image
               const selected = editor.getSelected()
               if (selected) {
                 selected.addStyle({ 'background-image': `url(${dataUrl})` })
               }
-              
+
               // Refresh the bg image button UI
               const container = document.querySelector('.bg-image-upload-container')
               if (container) {
