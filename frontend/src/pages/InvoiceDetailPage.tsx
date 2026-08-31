@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { ChatterDialog } from '@/components/chatter'
 import api from '@/lib/api'
 
 interface Invoice {
@@ -141,6 +142,8 @@ export function InvoiceDetailPage() {
     },
     enabled: !!id,
   })
+
+  const [chatterOpen, setChatterOpen] = useState(false)
 
   const postMutation = useMutation({
     mutationFn: async () => {
@@ -276,6 +279,17 @@ export function InvoiceDetailPage() {
               Record Payment
             </Button>
           )}
+          <ChatterDialog
+            open={chatterOpen}
+            onOpenChange={setChatterOpen}
+            subjectType="App\\Models\\Invoice"
+            subjectId={id as string}
+            documentLabel={invoice.invoice_number}
+          />
+          <Button variant="outline" onClick={() => setChatterOpen(true)}>
+            <Icon icon="solar:chat-round-dots-bold-duotone" className="mr-2 h-4 w-4" />
+            Chatter
+          </Button>
         </div>
       </div>
 

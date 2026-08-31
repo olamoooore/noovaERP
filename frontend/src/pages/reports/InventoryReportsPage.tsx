@@ -1,17 +1,20 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReportViewer } from '@/components/reports/ReportViewer';
-import { ReportFilters } from '@/components/reports/ReportFilters';
+import { CompactReportFilters } from '@/components/reports/CompactReportFilters';
 import { ReportTable, Column } from '@/components/reports/ReportTable';
+import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
 
 export function InventoryReportsPage() {
   const [activeTab, setActiveTab] = useState('valuation');
+  const queryClient = useQueryClient();
+  useReportAutoRefresh();
   const [filters, setFilters] = useState<ReportFiltersType>({
     start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
       .toISOString()
@@ -29,6 +32,7 @@ export function InventoryReportsPage() {
     queryKey: ['stock-valuation', filters],
     queryFn: () => reportApi.getStockValuation(filters),
     enabled: activeTab === 'valuation',
+    staleTime: 15 * 1000,
   });
 
   // Stock Movement Query
@@ -41,6 +45,7 @@ export function InventoryReportsPage() {
     queryKey: ['stock-movement', filters],
     queryFn: () => reportApi.getStockMovement(filters),
     enabled: activeTab === 'movement',
+    staleTime: 15 * 1000,
   });
 
   // Reorder Query
@@ -53,6 +58,7 @@ export function InventoryReportsPage() {
     queryKey: ['reorder-report', filters],
     queryFn: () => reportApi.getReorderReport(filters),
     enabled: activeTab === 'reorder',
+    staleTime: 15 * 1000,
   });
 
   // Inventory Aging Query
@@ -65,6 +71,7 @@ export function InventoryReportsPage() {
     queryKey: ['inventory-aging', filters],
     queryFn: () => reportApi.getInventoryAging(filters),
     enabled: activeTab === 'aging',
+    staleTime: 15 * 1000,
   });
 
   // Inventory Turnover Query
@@ -77,6 +84,7 @@ export function InventoryReportsPage() {
     queryKey: ['inventory-turnover', filters],
     queryFn: () => reportApi.getInventoryTurnover(filters),
     enabled: activeTab === 'turnover',
+    staleTime: 15 * 1000,
   });
 
   const handleFilterChange = (newFilters: ReportFiltersType) => {
@@ -407,10 +415,18 @@ export function InventoryReportsPage() {
       </div>
 
       {/* Filters */}
-      <ReportFilters
+      <CompactReportFilters
         onFilterChange={handleFilterChange}
         initialFilters={filters}
         showDateRange
+        showRefresh
+        onRefresh={() => {
+          queryClient.invalidateQueries({ queryKey: ['stock-valuation'] });
+          queryClient.invalidateQueries({ queryKey: ['stock-movement'] });
+          queryClient.invalidateQueries({ queryKey: ['reorder-report'] });
+          queryClient.invalidateQueries({ queryKey: ['inventory-aging'] });
+          queryClient.invalidateQueries({ queryKey: ['inventory-turnover'] });
+        }}
       />
 
       {/* Reports Tabs */}

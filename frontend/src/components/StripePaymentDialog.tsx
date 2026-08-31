@@ -256,7 +256,7 @@ export function StripePaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose} modal={true}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md" enableFullscreen>
         <DialogHeader>
           <DialogTitle>Card Payment</DialogTitle>
           <DialogDescription>

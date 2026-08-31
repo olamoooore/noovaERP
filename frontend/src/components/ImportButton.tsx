@@ -215,7 +215,7 @@ export const ImportButton: React.FC<ImportButtonProps> = ({
       </Button>
 
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" enableFullscreen>
           <DialogHeader>
             <DialogTitle>Import {importLabels[importType]}</DialogTitle>
             <DialogDescription>

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
+import { ChatterDialog } from '@/components/chatter'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { formatDate } from '@/lib/utils'
@@ -21,6 +22,7 @@ export function DeliveryOrderDetailPage() {
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
+  const [chatterOpen, setChatterOpen] = useState(false)
 
   const { data: deliveryOrder, isLoading } = useQuery({
     queryKey: ['delivery-order', id],
@@ -243,6 +245,17 @@ export function DeliveryOrderDetailPage() {
         </div>
 
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setChatterOpen(true)}>
+            <Icon icon="solar:chat-round-dots-bold-duotone" className="mr-2 h-4 w-4" />
+            Chatter
+          </Button>
+          <ChatterDialog
+            open={chatterOpen}
+            onOpenChange={setChatterOpen}
+            subjectType="Modules\\Sales\\src\\Models\\DeliveryOrder"
+            subjectId={id as string}
+            documentLabel={deliveryOrder.delivery_order_number}
+          />
           {deliveryOrder.status === 'draft' && (
             <>
               <Button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}>

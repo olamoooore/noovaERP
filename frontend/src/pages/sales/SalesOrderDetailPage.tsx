@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
@@ -6,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { ChatterDialog } from '@/components/chatter'
 import api from '@/lib/api'
 
 interface SalesOrder {
@@ -60,6 +62,7 @@ interface SalesOrderLine {
 
 export function SalesOrderDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const [chatterOpen, setChatterOpen] = useState(false)
   const navigate = useNavigate()
 
   const { data: order, isLoading } = useQuery({
@@ -129,6 +132,17 @@ export function SalesOrderDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           {getStatusBadge(order.status)}
+          <Button variant="outline" onClick={() => setChatterOpen(true)}>
+            <Icon icon="solar:chat-round-dots-bold-duotone" className="mr-2 h-4 w-4" />
+            Chatter
+          </Button>
+          <ChatterDialog
+            open={chatterOpen}
+            onOpenChange={setChatterOpen}
+            subjectType="Modules\\Sales\\src\\Models\\SalesOrder"
+            subjectId={id as string}
+            documentLabel={order.sales_order_number}
+          />
         </div>
       </div>
 

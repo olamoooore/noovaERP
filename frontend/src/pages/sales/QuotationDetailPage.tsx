@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
+import { ChatterDialog } from '@/components/chatter'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { formatDate } from '@/lib/utils'
@@ -134,6 +135,7 @@ export function QuotationDetailPage() {
 
   const [isDownloading, setIsDownloading] = useState(false)
   const [showInvoicesPanel, setShowInvoicesPanel] = useState(false)
+  const [chatterOpen, setChatterOpen] = useState(false)
   const handleDownloadPdf = async () => {
     setIsDownloading(true)
     try {
@@ -220,6 +222,17 @@ export function QuotationDetailPage() {
             <Icon icon="solar:download-minimistic-bold-duotone" className="mr-2 h-4 w-4" />
             {isDownloading ? 'Preparing...' : 'Download PDF'}
           </Button>
+          <Button variant="outline" onClick={() => setChatterOpen(true)}>
+            <Icon icon="solar:chat-round-dots-bold-duotone" className="mr-2 h-4 w-4" />
+            Chatter
+          </Button>
+          <ChatterDialog
+            open={chatterOpen}
+            onOpenChange={setChatterOpen}
+            subjectType="App\\Models\\Quotation"
+            subjectId={id as string}
+            documentLabel={quotation.quotation_number}
+          />
           {quotation.status === 'draft' && (
             <>
               <Button

@@ -1,19 +1,22 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReportViewer } from '@/components/reports/ReportViewer';
-import { ReportFilters } from '@/components/reports/ReportFilters';
+import { CompactReportFilters } from '@/components/reports/CompactReportFilters';
 import { ReportTable, Column } from '@/components/reports/ReportTable';
 import { BarChart } from '@/components/charts/BarChart';
 import { PieChart } from '@/components/charts/PieChart';
+import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
 
 export function ExpenseAnalyticsPage() {
   const [activeTab, setActiveTab] = useState('by-category');
+  const queryClient = useQueryClient();
+  useReportAutoRefresh();
   const [filters, setFilters] = useState<ReportFiltersType>({
     start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
       .toISOString()
@@ -31,6 +34,7 @@ export function ExpenseAnalyticsPage() {
     queryKey: ['expenses-by-category', filters],
     queryFn: () => reportApi.getExpensesByCategory(filters),
     enabled: activeTab === 'by-category',
+    staleTime: 15 * 1000,
   });
 
   // Expenses by Vendor Query
@@ -43,6 +47,7 @@ export function ExpenseAnalyticsPage() {
     queryKey: ['expenses-by-vendor', filters],
     queryFn: () => reportApi.getExpensesByVendor(filters),
     enabled: activeTab === 'by-vendor',
+    staleTime: 15 * 1000,
   });
 
   // Expenses by Department Query
@@ -55,6 +60,7 @@ export function ExpenseAnalyticsPage() {
     queryKey: ['expenses-by-department', filters],
     queryFn: () => reportApi.getExpensesByDepartment(filters),
     enabled: activeTab === 'by-department',
+    staleTime: 15 * 1000,
   });
 
   const handleFilterChange = (newFilters: ReportFiltersType) => {
@@ -209,10 +215,16 @@ export function ExpenseAnalyticsPage() {
       </div>
 
       {/* Filters */}
-      <ReportFilters
+      <CompactReportFilters
         onFilterChange={handleFilterChange}
         initialFilters={filters}
         showDateRange
+        showRefresh
+        onRefresh={() => {
+          queryClient.invalidateQueries({ queryKey: ['expenses-by-category'] });
+          queryClient.invalidateQueries({ queryKey: ['expenses-by-vendor'] });
+          queryClient.invalidateQueries({ queryKey: ['expenses-by-department'] });
+        }}
       />
 
       {/* Analytics Tabs */}

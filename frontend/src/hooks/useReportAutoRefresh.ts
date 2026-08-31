@@ -27,7 +27,7 @@ export function useReportAutoRefresh() {
       'sales-trends',
       'stock-valuation',
       'stock-movement',
-      'reorder',
+      'reorder-report',
       'aged-receivables',
       'aged-payables',
       'executive-dashboard',

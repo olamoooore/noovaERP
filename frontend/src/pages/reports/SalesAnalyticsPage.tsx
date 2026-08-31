@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReportViewer } from '@/components/reports/ReportViewer';
-import { ReportFilters } from '@/components/reports/ReportFilters';
+import { CompactReportFilters } from '@/components/reports/CompactReportFilters';
 import { ReportTable, Column } from '@/components/reports/ReportTable';
 import { BarChart } from '@/components/charts/BarChart';
 import { LineChart } from '@/components/charts/LineChart';
 import { PieChart } from '@/components/charts/PieChart';
+import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
@@ -19,6 +20,8 @@ interface SalesAnalyticsPageProps {
 
 export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPageProps) {
   const [activeTab, setActiveTab] = useState('by-customer');
+  const queryClient = useQueryClient();
+  useReportAutoRefresh();
   const [filters, setFilters] = useState<ReportFiltersType>({
     start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
       .toISOString()
@@ -37,6 +40,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     queryKey: ['sales-by-product', filters],
     queryFn: () => reportApi.getSalesByProduct(filters),
     enabled: productOnly,
+    staleTime: 15 * 1000,
   });
 
   // Sales by Customer Query
@@ -49,6 +53,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     queryKey: ['sales-by-customer', filters],
     queryFn: () => reportApi.getSalesByCustomer(filters),
     enabled: activeTab === 'by-customer',
+    staleTime: 15 * 1000,
   });
 
   // Sales Trends Query
@@ -61,6 +66,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     queryKey: ['sales-trends', filters],
     queryFn: () => reportApi.getSalesTrends(filters),
     enabled: activeTab === 'trends',
+    staleTime: 15 * 1000,
   });
 
   // Sales by Category Query
@@ -73,6 +79,7 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
     queryKey: ['sales-by-category', filters],
     queryFn: () => reportApi.getSalesByCategory(filters),
     enabled: activeTab === 'by-category',
+    staleTime: 15 * 1000,
   });
 
   const handleFilterChange = (newFilters: ReportFiltersType) => {
@@ -193,11 +200,18 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
           </p>
         </div>
 
-        <ReportFilters
+        <CompactReportFilters
           onFilterChange={handleFilterChange}
           initialFilters={filters}
           showDateRange
           showInterval
+          showRefresh
+          onRefresh={() => {
+            queryClient.invalidateQueries({ queryKey: ['sales-by-product'] });
+            queryClient.invalidateQueries({ queryKey: ['sales-by-customer'] });
+            queryClient.invalidateQueries({ queryKey: ['sales-trends'] });
+            queryClient.invalidateQueries({ queryKey: ['sales-by-category'] });
+          }}
         />
 
         <ReportViewer
@@ -295,11 +309,18 @@ export function SalesAnalyticsPage({ productOnly = false }: SalesAnalyticsPagePr
       </div>
 
       {/* Filters */}
-      <ReportFilters
+      <CompactReportFilters
         onFilterChange={handleFilterChange}
         initialFilters={filters}
         showDateRange
         showInterval
+        showRefresh
+        onRefresh={() => {
+          queryClient.invalidateQueries({ queryKey: ['sales-by-product'] });
+          queryClient.invalidateQueries({ queryKey: ['sales-by-customer'] });
+          queryClient.invalidateQueries({ queryKey: ['sales-trends'] });
+          queryClient.invalidateQueries({ queryKey: ['sales-by-category'] });
+        }}
       />
 
       {/* Analytics Tabs */}
