@@ -130,19 +130,30 @@ class DeliveryOrderController extends Controller
                 'quotation_id' => 'nullable|exists:quotations,id',
                 'notes' => 'nullable|string',
                 'lines' => 'required|array|min:1',
-                'lines.*.product_id' => 'required|exists:products,id',
+                'lines.*.line_type' => 'nullable|in:product,note,section',
+                'lines.*.sequence' => 'nullable|integer|min:0',
+                'lines.*.product_id' => 'nullable|exists:products,id',
                 'lines.*.model_number' => 'nullable|string|max:100',
                 'lines.*.description' => 'nullable|string',
                 'lines.*.product_notes' => 'nullable|string',
                 'lines.*.patient_name' => 'nullable|string|max:255',
-                'lines.*.quantity_delivered' => 'required|numeric|min:0.0001',
-                'lines.*.quantity' => 'nullable|numeric|min:0.0001',
+                'lines.*.quantity_delivered' => 'nullable|numeric|min:0',
+                'lines.*.quantity' => 'nullable|numeric|min:0',
                 'lines.*.unit' => 'nullable|string|max:20',
                 'lines.*.unit_price' => 'nullable|numeric|min:0',
                 'lines.*.lot_number' => 'nullable|string|max:100',
                 'lines.*.batch_number' => 'nullable|string|max:100',
                 'lines.*.expiry_date' => 'nullable|date',
             ]);
+
+            foreach ($validated['lines'] as $index => $line) {
+                if (($line['line_type'] ?? 'product') === 'product' && (empty($line['product_id']) || (float) ($line['quantity_delivered'] ?? 0) <= 0)) {
+                    return response()->json([
+                        'message' => 'Product lines require a product and quantity greater than zero.',
+                        'errors' => ["lines.{$index}" => ['Select a product and enter a delivery quantity.']],
+                    ], 422);
+                }
+            }
 
             try {
                 $deliveryOrder = $this->deliveryService->createStandaloneDeliveryOrder($validated);
@@ -249,7 +260,9 @@ class DeliveryOrderController extends Controller
             'attention_to' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
             'lines' => 'nullable|array',
-            'lines.*.product_id' => 'required_with:lines|exists:products,id',
+            'lines.*.line_type' => 'nullable|in:product,note,section',
+            'lines.*.sequence' => 'nullable|integer|min:0',
+            'lines.*.product_id' => 'nullable|exists:products,id',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'nullable|string',
             'lines.*.product_notes' => 'nullable|string',
@@ -278,6 +291,8 @@ class DeliveryOrderController extends Controller
                     $qty = (float) ($lineData['quantity_delivered'] ?? 0);
                     $unitPrice = isset($lineData['unit_price']) ? (float) $lineData['unit_price'] : null;
                     \Modules\Sales\Models\DeliveryOrderLine::create([
+                        'line_type' => $lineData['line_type'] ?? 'product',
+                        'sequence' => $lineData['sequence'] ?? 0,
                         'delivery_order_id' => $deliveryOrder->id,
                         'product_id' => $lineData['product_id'] ?? null,
                         'model_number' => $lineData['model_number'] ?? null,

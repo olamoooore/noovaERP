@@ -771,6 +771,7 @@ export function Sidebar() {
   const [isMinimized, setIsMinimized] = useState(() => localStorage.getItem('sidebar_minimized') === 'true')
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
   const tenantId = localStorage.getItem('tenant_id') || 'default'
+  const isAcmeTenant = tenantId === '00000000-0000-0000-0000-000000000001'
 
   const toggleMinimize = () => {
     setIsMinimized(prev => {
@@ -881,6 +882,7 @@ export function Sidebar() {
   }
 
   const filterNavItem = (item: NavItem): NavItem | null => {
+    if (isAcmeTenant && item.title === 'Orders' && item.href === '/sales/orders') return null
     if (!isFeatureEnabled(item.featureKey)) return null
     if (!canAccessNavItem(item)) return null
 

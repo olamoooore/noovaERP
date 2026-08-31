@@ -23,6 +23,7 @@ class DeliveryOrdersExport extends SalesDocumentExport
         'product_code' => ['heading' => 'Product Code', 'type' => 'text', 'line' => true],
         'product_name' => ['heading' => 'Product', 'type' => 'text', 'line' => true],
         'line_description' => ['heading' => 'Line Description', 'type' => 'text', 'line' => true],
+        'line_type' => ['heading' => 'Line Type', 'type' => 'text', 'line' => true],
         'model_number' => ['heading' => 'Model Number', 'type' => 'text', 'line' => true],
         'lot_number' => ['heading' => 'Lot Number', 'type' => 'text', 'line' => true],
         'batch_number' => ['heading' => 'Batch Number', 'type' => 'text', 'line' => true],
@@ -57,9 +58,10 @@ class DeliveryOrdersExport extends SalesDocumentExport
             'product_code' => $line?->product?->sku,
             'product_name' => $line?->product?->name,
             'line_description' => $line?->description,
+            'line_type' => $line?->line_type ?? 'product',
             'model_number', 'lot_number', 'batch_number', 'unit' => $line?->{$column},
             'expiry_date' => $line?->expiry_date ? Date::dateTimeToExcel($line->expiry_date) : null,
-            'quantity_ordered', 'quantity_delivered', 'unit_price', 'line_total' => $line ? (float) $line->{$column} : null,
+            'quantity_ordered', 'quantity_delivered', 'unit_price', 'line_total' => $line && ($line->line_type ?? 'product') === 'product' ? (float) $line->{$column} : null,
             default => $deliveryOrder->{$column},
         };
     }

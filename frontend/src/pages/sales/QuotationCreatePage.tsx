@@ -9,11 +9,14 @@ import { getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api';
 import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 import { SalesLineColumnMenu, SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility';
+import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
+import { DocumentTextLineRow, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 
 const QUOTATION_CREATE_COLUMNS = ['#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax %', 'Line Total', 'Actions']
   .map((label, index) => ({ label, index: index + 1 }));
 
 interface QuotationLine {
+  line_type?: 'product' | 'note' | 'section';
   product_id: string;
   sku: string;
   model_number: string;
@@ -35,6 +38,7 @@ interface CustomerRecord {
 }
 
 const emptyLine = (): QuotationLine => ({
+  line_type: 'product',
   product_id: '',
   sku: '',
   model_number: '',
@@ -48,6 +52,7 @@ const emptyLine = (): QuotationLine => ({
 
 export const QuotationCreatePage: React.FC = () => {
   const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>([])
+  const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null)
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -131,6 +136,8 @@ export const QuotationCreatePage: React.FC = () => {
   };
 
   const addLine = () => setLines([...lines, emptyLine()]);
+  const addTextLine = (line_type: 'note' | 'section') => setLines([...lines, { ...emptyLine(), line_type, quantity: 0, unit_price: 0, tax_rate: 0, discount_amount: 0 }]);
+  const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => { const next = [...lines]; selected.forEach(({ product, quantity }) => { const existing = next.find((line) => line.line_type === 'product' && line.product_id === String(product.id)); if (existing) existing.quantity += quantity; else next.push({ ...emptyLine(), product_id: String(product.id), sku: product.sku || '', description: product.name || '', unit_price: Number(product.price || 0), quantity }); }); setLines(next); };
 
   const duplicateLine = (index: number) => {
     const targetLine = lines[index];
@@ -218,6 +225,8 @@ export const QuotationCreatePage: React.FC = () => {
     lines: lines
       .filter((line) => line.description || line.product_id)
       .map((line) => ({
+        line_type: line.line_type || 'product',
+        sequence: lines.indexOf(line),
         product_id: line.product_id ? parseInt(line.product_id, 10) : null,
         model_number: line.model_number || null,
         description: line.description || 'Item',
@@ -458,6 +467,9 @@ export const QuotationCreatePage: React.FC = () => {
             <CardTitle className="flex items-center justify-between">
               <span>Line Items</span>
               <div className="flex flex-wrap gap-2">
+                <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} />
+                <Button type="button" variant="outline" size="sm" onClick={() => addTextLine('section')}>Add Section</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => addTextLine('note')}>Add Note</Button>
                 <SalesLineColumnMenu columns={QUOTATION_CREATE_COLUMNS} hidden={hiddenLineColumns} setHidden={setHiddenLineColumns} />
                 <Button type="button" variant="outline" size="sm" onClick={addLine}>
                   <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-1" />
@@ -492,6 +504,7 @@ export const QuotationCreatePage: React.FC = () => {
                 <tbody>
                   {lines.map((line, index) => (
                     <tr key={index} className="border-b">
+                      {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={11} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
                       <td className="py-2 px-2 text-sm font-medium text-slate-500">{index + 1}</td>
                       <td className="py-2 px-2 w-[200px] max-w-[200px] overflow-hidden">
                         <ProductSearchCombobox
@@ -604,6 +617,7 @@ export const QuotationCreatePage: React.FC = () => {
                           )}
                         </div>
                       </td>
+                      </>}
                     </tr>
                   ))}
                 </tbody>

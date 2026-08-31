@@ -119,7 +119,7 @@ export function createBlock(type: BlockType): Block {
     case 'text':
       return { id, type, content: 'New text block' }
     case 'image':
-      return { id, type, url: '{{ company.logo_url }}', width: 120, align: 'left' }
+      return { id, type, url: '{{ company.logo_url }}', width: 120, align: 'left', offset_x: 0 }
     case 'columns':
       return { id, type, gap: 8, children: [] }
     case 'table':
@@ -171,6 +171,21 @@ export function createBlock(type: BlockType): Block {
           { label: 'Quotation No', field: 'quotation.number' },
           { label: 'Payment Terms', field: 'delivery_order.payment_terms' },
           { label: 'Due Date', field: 'delivery_order.due_date', format: 'date' },
+        ],
+      }
+    case 'quotation_detail':
+      return {
+        id,
+        type,
+        rows: [
+          { label: 'Quotation No', field: 'quotation.number' },
+          { label: 'Quotation Date', field: 'quotation.issue_date', format: 'date' },
+          { label: 'Valid Until', field: 'quotation.valid_until', format: 'date' },
+          { label: 'Customer Reference', field: 'quotation.customer_reference' },
+          { label: 'Salesperson', field: 'quotation.salesperson' },
+          { label: 'Delivery Lead Time', field: 'quotation.delivery_lead_time' },
+          { label: 'Shipping Method', field: 'quotation.shipping_method' },
+          { label: 'Validity', field: 'quotation.validity' },
         ],
       }
     case 'totals':

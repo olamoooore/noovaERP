@@ -9,11 +9,14 @@ import { getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api';
 import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 import { SalesLineColumnMenu, SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility';
+import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
+import { DocumentTextLineRow } from '@/components/sales/DocumentTextLineRow';
 
 const QUOTATION_EDIT_COLUMNS = ['#', 'Product', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax %', 'Discount', 'Line Total', 'Actions']
   .map((label, index) => ({ label, index: index + 1 }));
 
 interface QuotationLine {
+  line_type?: 'product' | 'note' | 'section';
   product_id: string;
   model_number: string;
   description: string;
@@ -31,6 +34,7 @@ interface CustomerRecord {
 }
 
 const emptyLine = (): QuotationLine => ({
+  line_type: 'product',
   product_id: '',
   model_number: '',
   description: '',
@@ -43,6 +47,7 @@ const emptyLine = (): QuotationLine => ({
 
 export const QuotationEditPage: React.FC = () => {
   const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>([])
+  const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null)
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -118,6 +123,7 @@ export const QuotationEditPage: React.FC = () => {
     setValidity(quotation.validity || '');
 
     const mappedLines = (quotation.lines || []).map((line: any): QuotationLine => ({
+      line_type: line.line_type || 'product',
       product_id: line.product_id ? String(line.product_id) : '',
       model_number: line.model_number || '',
       description: line.description || '',
@@ -166,6 +172,17 @@ export const QuotationEditPage: React.FC = () => {
   };
 
   const addLine = () => setLines([...lines, emptyLine()]);
+  const addNote = () => setLines([...lines, { ...emptyLine(), line_type: 'note', description: '', quantity: 0, unit_price: 0, tax_rate: 0, discount_amount: 0 }]);
+  const addSection = () => setLines([...lines, { ...emptyLine(), line_type: 'section', description: '', quantity: 0, unit_price: 0, tax_rate: 0, discount_amount: 0 }]);
+  const addCatalogProducts = (items: Array<{ product: any; quantity: number }>) => {
+    const updated = [...lines];
+    items.forEach(({ product, quantity }) => {
+      const existing = updated.find((line) => line.line_type !== 'note' && line.product_id === String(product.id));
+      if (existing) existing.quantity += quantity;
+      else updated.push({ ...emptyLine(), product_id: String(product.id), description: product.name || '', unit_price: Number(product.price || product.selling_price || 0), quantity });
+    });
+    setLines(updated);
+  };
 
   const duplicateLine = (index: number) => {
     const targetLine = lines[index];
@@ -190,6 +207,7 @@ export const QuotationEditPage: React.FC = () => {
   };
 
   const getLineTotal = (line: QuotationLine) => {
+    if (line.line_type === 'note' || line.line_type === 'section') return 0;
     const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
     const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
     const discount = line.discount_amount === '' ? 0 : line.discount_amount;
@@ -247,6 +265,7 @@ export const QuotationEditPage: React.FC = () => {
   lines: lines
     .filter((line) => line.description || line.product_id)
     .map((line) => ({
+      line_type: line.line_type || 'product',
       product_id: line.product_id ? parseInt(line.product_id, 10) : null,
       model_number: line.model_number || null,
       description: line.description || 'Item',
@@ -534,8 +553,10 @@ export const QuotationEditPage: React.FC = () => {
   </tr>
                 </thead>
                 <tbody>
+                  <tr><td colSpan={11} className="py-2"><div className="flex gap-2"><ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} /><Button type="button" variant="outline" onClick={addSection}>Add Section</Button><Button type="button" variant="outline" onClick={addNote}>Add Note</Button></div></td></tr>
                   {lines.map((line, index) => (
-                    <tr key={index} className="border-b">
+                    <tr key={index} className="border-b" draggable onDragStart={() => setDraggedLineIndex(index)} onDragOver={(e) => e.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) { const reordered = [...lines]; const [dragged] = reordered.splice(draggedLineIndex, 1); reordered.splice(index, 0, dragged); setLines(reordered); } setDraggedLineIndex(null) }}>
+                      {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={11} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) { const reordered = [...lines]; const [dragged] = reordered.splice(draggedLineIndex, 1); reordered.splice(index, 0, dragged); setLines(reordered); } setDraggedLineIndex(null); }} /> : <>
                       <td className="py-2 px-2 text-sm font-medium text-slate-500">{index + 1}</td>
                       <td className="py-2 px-2">
                         <ProductSearchCombobox
@@ -648,6 +669,7 @@ export const QuotationEditPage: React.FC = () => {
                           )}
                         </div>
                       </td>
+                      </>}
                     </tr>
                   ))}
                 </tbody>

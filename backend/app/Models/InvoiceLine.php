@@ -64,6 +64,16 @@ class InvoiceLine extends Model
 
     public function calculateTotals(): void
     {
+        if (in_array($this->line_type, ['note', 'section'], true)) {
+            $this->product_id = null;
+            $this->quantity = 0;
+            $this->unit_price = 0;
+            $this->tax_rate = 0;
+            $this->tax_amount = 0;
+            $this->discount_amount = 0;
+            $this->line_total = 0;
+            return;
+        }
         $gross = $this->quantity * $this->unit_price;
         $discount = $this->discount_amount ?? 0;
 

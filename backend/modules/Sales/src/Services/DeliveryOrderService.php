@@ -206,8 +206,9 @@ class DeliveryOrderService
             ]);
 
             foreach ($lines as $lineData) {
+                $lineType = $lineData['line_type'] ?? 'product';
                 $quantityDelivered = (float) ($lineData['quantity_delivered'] ?? $lineData['quantity'] ?? 0);
-                if ($quantityDelivered <= 0) {
+                if ($lineType === 'product' && $quantityDelivered <= 0) {
                     throw new \Exception('Each line must have a quantity greater than 0.');
                 }
 
@@ -228,6 +229,8 @@ class DeliveryOrderService
                 }
 
                 DeliveryOrderLine::create([
+                    'line_type' => $lineType,
+                    'sequence' => $lineData['sequence'] ?? 0,
                     'delivery_order_id' => $deliveryOrder->id,
                     'sales_order_line_id' => null,
                     'product_id' => $lineData['product_id'] ?? null,

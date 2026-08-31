@@ -12,6 +12,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { ChatterDialog } from '@/components/chatter'
 import api from '@/lib/api'
+import { useAuthStore } from '@/store/authStore'
 
 interface Invoice {
   id: number
@@ -132,6 +133,7 @@ export function InvoiceDetailPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { toast } = useToast()
+  const isAcmeTenant = useAuthStore((state) => state.tenantId) === '00000000-0000-0000-0000-000000000001'
   const queryClient = useQueryClient()
 
   const { data: invoice, isLoading } = useQuery({
@@ -412,6 +414,7 @@ export function InvoiceDetailPage() {
               <TableBody>
                 {invoice.lines?.map((line) => (
                   <TableRow key={line.id}>
+                    {line.line_type === 'note' || line.line_type === 'section' ? <TableCell colSpan={11} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}>{line.description}</TableCell> : <>
                     <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.product?.sku || '-'}</TableCell>
                     <TableCell>{line.description || '-'}</TableCell>
@@ -423,6 +426,7 @@ export function InvoiceDetailPage() {
                     <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(line.tax_amount)}</TableCell>
                     <TableCell className="text-right font-medium">{formatCurrency(line.line_total)}</TableCell>
+                    </>}
                   </TableRow>
                 ))}
               </TableBody>
@@ -643,9 +647,9 @@ export function InvoiceDetailPage() {
           )}
 
           {/* Notes & Terms */}
-          {(invoice.notes || invoice.terms) && (
+          {(invoice.terms || (!isAcmeTenant && invoice.notes)) && (
             <div className="grid grid-cols-2 gap-8">
-              {invoice.notes && (
+              {!isAcmeTenant && invoice.notes && (
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase mb-2">Notes</h3>
                   <p className="text-sm whitespace-pre-wrap">{invoice.notes}</p>

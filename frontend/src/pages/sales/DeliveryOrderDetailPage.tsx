@@ -539,6 +539,7 @@ export function DeliveryOrderDetailPage() {
             <TableBody>
               {deliveryOrder.lines?.map((line: any, index: number) => (
                 <TableRow key={line.id}>
+                  {line.line_type === 'note' || line.line_type === 'section' ? <TableCell colSpan={14} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}>{line.description}</TableCell> : <>
                   <TableCell>{index + 1}</TableCell>
                   <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
                   <TableCell className="text-muted-foreground">{line.product?.sku || '-'}</TableCell>
@@ -553,6 +554,7 @@ export function DeliveryOrderDetailPage() {
                   <TableCell className="text-right font-medium">{line.line_total ? parseFloat(line.line_total).toFixed(2) : '-'}</TableCell>
                   <TableCell>{line.lot_number || '-'}</TableCell>
                   <TableCell>{line.expiry_date ? formatDate(line.expiry_date) : '-'}</TableCell>
+                  </>}
                 </TableRow>
               ))}
               {(!deliveryOrder.lines || deliveryOrder.lines.length === 0) && (

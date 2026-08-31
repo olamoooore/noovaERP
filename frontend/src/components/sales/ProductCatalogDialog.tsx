@@ -1,0 +1,14 @@
+import { useMemo, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+
+export type CatalogProduct = { id: number; name?: string; sku?: string | null; description?: string | null; price?: number | string | null; unit?: string | null; category?: { name?: string } | string | null; image_url?: string | null }
+
+export function ProductCatalogDialog({ products = [], onAdd }: { products?: CatalogProduct[]; onAdd: (items: Array<{ product: CatalogProduct; quantity: number }>) => void }) {
+  const [open, setOpen] = useState(false); const [search, setSearch] = useState(''); const [quantities, setQuantities] = useState<Record<number, number>>({})
+  const filtered = useMemo(() => products.filter((p) => `${p.name || ''} ${p.sku || ''} ${p.description || ''}`.toLowerCase().includes(search.toLowerCase())), [products, search])
+  const selected = products.filter((p) => (quantities[p.id] || 0) > 0)
+  const confirm = () => { onAdd(selected.map((product) => ({ product, quantity: quantities[product.id] }))); setQuantities({}); setSearch(''); setOpen(false) }
+  return <><Button type="button" variant="outline" onClick={() => setOpen(true)}>Open Product Catalog</Button><Dialog open={open} onOpenChange={setOpen}><DialogContent className="max-w-4xl"><DialogHeader><DialogTitle>Notes &amp; Product Catalog</DialogTitle></DialogHeader><Input placeholder="Search products by name, SKU, or description" value={search} onChange={(e) => setSearch(e.target.value)} /><div className="max-h-[55vh] overflow-y-auto space-y-2">{filtered.map((p) => <div key={p.id} className="flex items-center gap-3 rounded border p-3">{p.image_url ? <img src={p.image_url} alt="" className="h-12 w-12 rounded object-cover" /> : <div className="h-12 w-12 rounded bg-muted" />}<div className="min-w-0 flex-1"><div className="font-medium">{p.name || 'Unnamed product'}</div><div className="text-xs text-muted-foreground">{p.sku || 'No SKU'} · {p.unit || 'Unit'} · {typeof p.category === 'object' ? p.category?.name : p.category || 'Uncategorized'}</div><div className="truncate text-xs text-muted-foreground">{p.description || 'No description'}</div></div><div className="text-sm">{p.price ?? '—'}</div><Input className="w-20" type="number" min={0} placeholder="Qty" value={quantities[p.id] || ''} onChange={(e) => setQuantities((q) => ({ ...q, [p.id]: Math.max(0, Number(e.target.value) || 0) }))} /></div>)}{!filtered.length && <div className="py-8 text-center text-muted-foreground">No products found.</div>}</div><DialogFooter><span className="mr-auto text-sm text-muted-foreground">{selected.length} product(s) selected</span><Button type="button" onClick={confirm} disabled={!selected.length}>Add Selected Products</Button></DialogFooter></DialogContent></Dialog></>
+}

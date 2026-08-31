@@ -21,6 +21,7 @@ const BLOCKS: BlockDef[] = [
   { type: 'table', label: 'Line Items', hint: 'Table bound to document lines', icon: Table2 },
   { type: 'case_information', label: 'Case Information', hint: 'Case details in a two-column table', icon: ClipboardList },
   { type: 'delivery_detail', label: 'Delivery Detail', hint: 'Delivery references and terms', icon: ClipboardList },
+  { type: 'quotation_detail', label: 'Quotation Detail', hint: 'Quotation references, validity, and terms', icon: ClipboardList },
   { type: 'totals', label: 'Totals', hint: 'Subtotal / tax / total rows', icon: Calculator },
   { type: 'columns', label: 'Columns', hint: 'Side-by-side layout', icon: Columns2 },
   { type: 'image', label: 'Image / Logo', hint: 'Logo or signature', icon: ImageIcon },

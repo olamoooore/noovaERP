@@ -12,8 +12,11 @@ import { Icon } from '@iconify/react'
 import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DeliveryOrderColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog'
+import { DocumentTextLineRow, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow'
 
 interface LineItem {
+  line_type?: 'product' | 'note' | 'section'
   product_id: number | null
   product_name: string
   sku: string
@@ -61,6 +64,7 @@ export function DeliveryOrderCreatePage() {
   const [standaloneLines, setStandaloneLines] = useState<LineItem[]>([
     { product_id: null, product_name: '', sku: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '', expiry_date: '' },
   ])
+  const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null)
 
   // Fetch customers for standalone mode
   const { data: customersData } = useQuery({
@@ -226,13 +230,13 @@ export function DeliveryOrderCreatePage() {
       return
     }
 
-    const validLines = standaloneLines.filter((l) => l.quantity > 0)
+    const validLines = standaloneLines.filter((l) => l.line_type === 'note' || l.line_type === 'section' || l.quantity > 0)
     if (validLines.length === 0) {
       toast({ variant: 'destructive', title: 'Please add at least one line with quantity > 0' })
       return
     }
 
-    const linesWithoutProduct = validLines.filter((l) => !l.product_id)
+    const linesWithoutProduct = validLines.filter((l) => (l.line_type ?? 'product') === 'product' && !l.product_id)
     if (linesWithoutProduct.length > 0) {
       toast({ variant: 'destructive', title: 'Each line must have a product selected' })
       return
@@ -254,6 +258,8 @@ export function DeliveryOrderCreatePage() {
       invoice_id: invoiceId ? parseInt(invoiceId) : undefined,
       quotation_id: quotationId ? parseInt(quotationId) : undefined,
       lines: validLines.map((l) => ({
+        line_type: l.line_type || 'product',
+        sequence: validLines.indexOf(l),
         product_id: l.product_id,
         model_number: l.model_number || null,
         description: l.description,
@@ -283,6 +289,8 @@ export function DeliveryOrderCreatePage() {
   const addStandaloneLine = () => {
     setStandaloneLines((prev) => [...prev, { product_id: null, product_name: '', sku: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '', expiry_date: '' }])
   }
+  const addStandaloneTextLine = (line_type: 'note' | 'section') => setStandaloneLines((prev) => [...prev, { line_type, product_id: null, product_name: '', sku: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 0, unit: '', unit_price: null, lot_number: '', expiry_date: '' }])
+  const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => setStandaloneLines((prev) => [...prev, ...selected.map(({ product, quantity }) => ({ line_type: 'product' as const, product_id: product.id, product_name: product.name || '', sku: product.sku || '', model_number: product.manufacturer_part_number || '', description: product.name || '', product_notes: '', patient_name: '', quantity, unit: product.unit || 'pcs', unit_price: Number(product.price || 0), lot_number: '', expiry_date: '' }))])
 
   const removeStandaloneLine = (index: number) => {
     setStandaloneLines((prev) => prev.filter((_, i) => i !== index))
@@ -612,10 +620,10 @@ export function DeliveryOrderCreatePage() {
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               Line Items
-              <Button variant="outline" size="sm" onClick={addStandaloneLine}>
+              <div className="flex gap-2"><ProductCatalogDialog products={productsData || []} onAdd={addCatalogProducts} /><Button variant="outline" size="sm" onClick={() => addStandaloneTextLine('section')}>Add Section</Button><Button variant="outline" size="sm" onClick={() => addStandaloneTextLine('note')}>Add Note</Button><Button variant="outline" size="sm" onClick={addStandaloneLine}>
                 <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-1" />
                 Add Line
-              </Button>
+              </Button></div>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -641,7 +649,8 @@ export function DeliveryOrderCreatePage() {
               </TableHeader>
               <TableBody>
                 {standaloneLines.map((line, idx) => (
-                  <TableRow key={idx}>
+                  <TableRow key={idx} draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(idx)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== idx) setStandaloneLines(reorderDocumentLines(standaloneLines, draggedLineIndex, idx)); setDraggedLineIndex(null); }}>
+                    {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={12} onChange={(text) => updateStandaloneLine(idx, 'description', text)} onDelete={() => removeStandaloneLine(idx)} onDragStart={() => setDraggedLineIndex(idx)} onDrop={() => { if (draggedLineIndex !== null) setStandaloneLines(reorderDocumentLines(standaloneLines, draggedLineIndex, idx)); setDraggedLineIndex(null); }} /> : <>
                     <TableCell>
                       <ProductSearchCombobox
                         value={line.product_id?.toString() || ''}
@@ -741,6 +750,7 @@ export function DeliveryOrderCreatePage() {
                         </Button>
                       )}
                     </TableCell>
+                    </>}
                   </TableRow>
                 ))}
               </TableBody>

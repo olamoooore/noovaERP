@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class QuotationLine extends Model
 {
     protected $fillable = [
+        'line_type',
+        'sequence',
         'quotation_id',
         'product_id',
         'model_number',
@@ -22,6 +24,7 @@ class QuotationLine extends Model
     ];
 
     protected $casts = [
+        'sequence' => 'integer',
         'quantity' => 'integer',
         'unit_price' => 'decimal:2',
         'tax_rate' => 'decimal:2',
@@ -57,6 +60,16 @@ class QuotationLine extends Model
      */
     public function calculateLineTotals(): void
     {
+        if (in_array($this->line_type, ['note', 'section'], true)) {
+            $this->product_id = null;
+            $this->quantity = 0;
+            $this->unit_price = 0;
+            $this->tax_rate = 0;
+            $this->tax_amount = 0;
+            $this->discount_amount = 0;
+            $this->line_total = 0;
+            return;
+        }
         $gross = (float) $this->quantity * (float) $this->unit_price;
         $discount = (float) ($this->discount_amount ?? 0);
 

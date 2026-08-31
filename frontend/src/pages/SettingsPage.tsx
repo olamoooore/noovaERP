@@ -6,6 +6,7 @@ import { WhatsAppSettings } from './Settings/WhatsAppSettings'
 import { InventorySettingsPage } from './Inventory/InventorySettingsPage'
 import { ModulesPage } from './Modules/ModulesPage'
 import TenantUsersPage from './TenantUsersPage'
+import { useAuthStore } from '@/store/authStore'
 
 // ... existing imports ...
 import { useEffect, useMemo, useState } from 'react'
@@ -85,18 +86,22 @@ export function SettingsPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
+  const tenantId = useAuthStore((state) => state.tenantId)
+  const isAcmeTenant = tenantId === '00000000-0000-0000-0000-000000000001'
 
   const availableTabs = new Set([
     'general',
     'tax',
-    'payment-gateways',
-    'fulfillment',
     'mail',
-    'whatsapp',
     'inventory',
     'team',
     'modules',
   ])
+  if (!isAcmeTenant) {
+    availableTabs.add('payment-gateways')
+    availableTabs.add('fulfillment')
+    availableTabs.add('whatsapp')
+  }
   const requestedTab = searchParams.get('tab') || 'general'
   const activeTab = availableTabs.has(requestedTab) ? requestedTab : 'general'
 
@@ -249,10 +254,10 @@ export function SettingsPage() {
         <TabsList>
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="tax">Tax & Currency</TabsTrigger>
-          <TabsTrigger value="payment-gateways">Payment Gateways</TabsTrigger>
-          <TabsTrigger value="fulfillment">Fulfillment</TabsTrigger>
+          {!isAcmeTenant && <TabsTrigger value="payment-gateways">Payment Gateways</TabsTrigger>}
+          {!isAcmeTenant && <TabsTrigger value="fulfillment">Fulfillment</TabsTrigger>}
           <TabsTrigger value="mail">Email Configuration</TabsTrigger>
-          <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+          {!isAcmeTenant && <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>}
           <TabsTrigger value="inventory">Inventory</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
           <TabsTrigger value="modules">Modules</TabsTrigger>

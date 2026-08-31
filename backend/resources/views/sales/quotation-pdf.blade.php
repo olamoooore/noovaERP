@@ -100,6 +100,11 @@
             @php $i = 0; @endphp
             @foreach($quotation->lines as $line)
                 @php $i++; @endphp
+                @if(in_array($line->line_type ?? 'product', ['note', 'section'], true))
+                <tr>
+                    <td colspan="6" style="{{ ($line->line_type ?? '') === 'section' ? 'font-weight:bold;background:#f3f4f6;' : 'color:#6b7280;font-style:italic;' }}">{{ $line->description }}</td>
+                </tr>
+                @else
                 <tr>
                     <td>{{ $i }}</td>
                     <td>
@@ -111,6 +116,7 @@
                     <td class="num">{{ number_format((float) $line->tax_rate, 2) }}%</td>
                     <td class="num">{{ number_format((float) $line->line_total, 2) }}</td>
                 </tr>
+                @endif
             @endforeach
         </tbody>
     </table>
