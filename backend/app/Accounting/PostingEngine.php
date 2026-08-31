@@ -357,6 +357,97 @@ class PostingEngine implements PostingEngineInterface
     }
 
     /**
+     * Post via DomainPostingRequest — the controlled contract for operational
+     * capabilities (ACC-003 AR, ACC-004 AP, ACC-005A payments, ACC-006 banking,
+     * ACC-007 assets, ACC-008 FX, ACC-009 tax, ACC-011 close).
+     *
+     * ADR-005 §12 — operational domains may NOT submit unrestricted debit/credit
+     * lines. Instead they submit business values (account roles + amounts) and
+     * the PostingPolicyMapper resolves them into controlled ledger lines via a
+     * versioned posting profile.
+     *
+     * This method exists alongside post(PostingRequest) so existing callers
+     * keep working during migration. New operational services should call
+     * domainPosting() with a DomainPostingRequest.
+     */
+    public function domainPosting(\App\Accounting\DTOs\DomainPostingRequest $request): PostingResult
+    {
+        // ── 1. Idempotency guard ─────────────────────────────
+        $existingLink = \App\Models\JournalEntryLink::where('source_document_type', $request->sourceRecordType)
+            ->where('source_document_id', $request->sourceRecordId)
+            ->where('relation_type', 'post')
+            ->first();
+
+        if ($existingLink) {
+            Log::info('PostingEngine::domainPosting — duplicate posting prevented', [
+                'source_record_type' => $request->sourceRecordType,
+                'source_record_id' => $request->sourceRecordId,
+                'entry_id' => $existingLink->journal_entry_id,
+                'request_id' => $request->postingRequestId,
+            ]);
+
+            return PostingResult::success(
+                JournalEntry::find($existingLink->journal_entry_id),
+                null,
+            );
+        }
+
+        // ── 2. Resolve via PostingPolicyMapper ────────────────
+        $policyMapper = app(\App\Accounting\Services\PostingPolicyMapper::class);
+        $resolution = $policyMapper->resolve($request);
+
+        if (! $resolution->success) {
+            return PostingResult::failure('Posting policy resolution failed: ' . ($resolution->error ?? 'unknown'));
+        }
+
+        // ── 3. Verify all resolved lines have account_id ──────
+        $unresolvedLines = [];
+        foreach ($resolution->ledgerLines as $idx => $line) {
+            if (empty($line['account_id'])) {
+                $unresolvedLines[] = ($line['account_role'] ?? 'unknown') . " (line {$idx})";
+            }
+        }
+
+        if (! empty($unresolvedLines)) {
+            return PostingResult::failure(
+                'Account role(s) could not be resolved to a chart_of_accounts.id: ' .
+                implode(', ', $unresolvedLines) .
+                '. Configure via Entity Account Roles or update the posting profile.'
+            );
+        }
+
+        // ── 4. Build PostingRequest from resolved lines ───────
+        $postingRequestLines = [];
+        foreach ($resolution->ledgerLines as $line) {
+            $postingRequestLines[] = new PostingRequestLine(
+                accountMappingKey: $line['account_role'] ?? 'unknown',
+                accountId: $line['account_id'],
+                debit: (float) $line['debit'],
+                credit: (float) $line['credit'],
+                description: $line['description'] ?? "Posting profile {$request->postingProfileCode}",
+                currencyCode: $line['currency_code'] ?? $request->currencyCode,
+            );
+        }
+
+        $postingRequest = new PostingRequest(
+            documentType: $request->sourceRecordType,
+            documentId: is_numeric($request->sourceRecordId) ? (int) $request->sourceRecordId : null,
+            postingDate: $request->postingDate,
+            description: "Domain posting: {$request->sourceCapability}/{$request->postingProfileCode}",
+            lines: $postingRequestLines,
+            reference: $request->idempotencyKey,
+            currencyCode: $request->currencyCode,
+            exchangeRate: $request->exchangeRate,
+            requestId: $request->postingRequestId,
+            tenantId: null, // tenancy resolved by middleware
+            sourceCapability: $request->sourceCapability,
+        );
+
+        // ── 5. Delegate to canonical post() path ──────────────
+        return $this->post($postingRequest);
+    }
+
+    /**
      * Reverse a previously posted journal entry.
      *
      * Delegates to ReversalCorrectionEngine (ADR-005 §15.3) — the single

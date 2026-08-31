@@ -4,17 +4,25 @@ namespace App\Accounting\Services;
 
 use App\Accounting\DTOs\DomainPostingLine;
 use App\Accounting\DTOs\DomainPostingRequest;
+use App\Accounting\Services\AccountRoleResolver;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Posting Policy Mapper — prevents operational domains from inventing
  * arbitrary accounting treatment.
  * ADR-005 §12 — deterministic and versioned.
  *
- * Maps business values through posting profiles to produce controlled
- * ledger lines with validation and control-account requirements.
+ * Maps business values through posting profiles (persisted in
+ * accounting_posting_profiles) to produce controlled ledger lines with
+ * validation and control-account requirements. Falls back to built-in
+ * defaults when no DB row is present.
  */
 class PostingPolicyMapper
 {
+    public function __construct(
+        private readonly AccountRoleResolver $roleResolver,
+    ) {}
+
     /**
      * Resolve a DomainPostingRequest into concrete ledger lines.
      *
@@ -66,15 +74,45 @@ class PostingPolicyMapper
         );
     }
 
+    /**
+     * Resolve a posting profile from the database catalog. Falls back to
+     * built-in defaults when no active DB row is found (back-compat).
+     *
+     * The catalog lives in the `public` schema (global across tenants),
+     * so we always query `public.accounting_posting_profiles` to avoid
+     * being shadowed by an empty per-tenant table.
+     */
     private function resolvePostingProfile(string $capability, string $profileCode): ?array
     {
-        // In production, this would query AccountingPostingProfile table
-        // For now, use built-in profile mappings
+        try {
+            $row = DB::table('public.accounting_posting_profiles')
+                ->where('source_capability', $capability)
+                ->where('posting_profile_code', $profileCode)
+                ->where('is_active', true)
+                ->orderByDesc('version')
+                ->first();
+            if ($row) {
+                return [
+                    'id' => $row->id,
+                    'version' => $row->version,
+                    'mappings' => json_decode($row->mappings, true) ?? [],
+                    'control_account_requirements' => json_decode($row->control_account_requirements ?? '{}', true) ?? [],
+                ];
+            }
+        } catch (\Throwable $e) {
+            // Table may not exist yet (migration not run) — fall through to built-in
+        }
+
+        // Back-compat fallback for tests / environments without the catalog
         $profiles = $this->getBuiltInProfiles();
 
         return $profiles[$capability][$profileCode] ?? null;
     }
 
+    /**
+     * Map a business-value line into a concrete ledger line. Account IDs
+     * are resolved via AccountRoleResolver using company_settings defaults.
+     */
     private function mapLineThroughProfile(DomainPostingLine $line, array $profile, DomainPostingRequest $request): ?array
     {
         $mapping = $profile['mappings'][$line->accountRole] ?? null;
@@ -83,9 +121,20 @@ class PostingPolicyMapper
             return null;
         }
 
+        // Resolve concrete account_id via AccountRoleResolver (uses
+        // entity_account_roles mapped to chart_of_accounts). If the
+        // resolver is not available, leave account_id null and let the
+        // PostingEngine reject the line if no account can be resolved.
+        $accountId = null;
+        try {
+            $accountId = $this->roleResolver->resolveId($line->accountRole);
+        } catch (\Throwable $e) {
+            // No-op — leave null, PostingEngine will surface error
+        }
+
         return [
             'account_role' => $line->accountRole,
-            'account_id' => $mapping['account_id'],
+            'account_id' => $accountId,
             'debit' => $mapping['direction'] === 'debit' ? $line->amount : 0,
             'credit' => $mapping['direction'] === 'credit' ? $line->amount : 0,
             'description' => $line->description,
@@ -138,28 +187,45 @@ class PostingPolicyMapper
 
     private function getBuiltInProfiles(): array
     {
-        // Built-in posting profile mappings
-        // In production, these would be stored in AccountingPostingProfile table
+        // Built-in posting profile mappings (fallback only). Account role
+        // keys are the canonical names from AccountRoleResolver::KEY_TO_ROLE
+        // so resolution works via the role-based pipeline.
         return [
             'ACC-003' => [
-                'AR_POSTING' => [
-                    'id' => 'AR_POSTING',
+                'AR_INVOICE_POST' => [
+                    'id' => 'AR_INVOICE_POST',
                     'version' => '1.0',
                     'mappings' => [
-                        'RECEIVABLE' => ['account_id' => null, 'direction' => 'debit'],
-                        'REVENUE' => ['account_id' => null, 'direction' => 'credit'],
-                        'TAX_COLLECTED' => ['account_id' => null, 'direction' => 'credit'],
+                        'accounts_receivable' => ['account_id' => null, 'direction' => 'debit'],
+                        'sales_revenue' => ['account_id' => null, 'direction' => 'credit'],
+                        'sales_tax_payable' => ['account_id' => null, 'direction' => 'credit'],
+                    ],
+                ],
+                'AR_PAYMENT_RECEIPT' => [
+                    'id' => 'AR_PAYMENT_RECEIPT',
+                    'version' => '1.0',
+                    'mappings' => [
+                        'bank' => ['account_id' => null, 'direction' => 'debit'],
+                        'accounts_receivable' => ['account_id' => null, 'direction' => 'credit'],
                     ],
                 ],
             ],
             'ACC-004' => [
-                'AP_POSTING' => [
-                    'id' => 'AP_POSTING',
+                'AP_BILL_POST' => [
+                    'id' => 'AP_BILL_POST',
                     'version' => '1.0',
                     'mappings' => [
-                        'EXPENSE' => ['account_id' => null, 'direction' => 'debit'],
-                        'TAX_INPUT' => ['account_id' => null, 'direction' => 'debit'],
-                        'PAYABLE' => ['account_id' => null, 'direction' => 'credit'],
+                        'general_expense' => ['account_id' => null, 'direction' => 'debit'],
+                        'input_tax' => ['account_id' => null, 'direction' => 'debit'],
+                        'accounts_payable' => ['account_id' => null, 'direction' => 'credit'],
+                    ],
+                ],
+                'AP_VENDOR_PAYMENT' => [
+                    'id' => 'AP_VENDOR_PAYMENT',
+                    'version' => '1.0',
+                    'mappings' => [
+                        'accounts_payable' => ['account_id' => null, 'direction' => 'debit'],
+                        'bank' => ['account_id' => null, 'direction' => 'credit'],
                     ],
                 ],
             ],
@@ -168,8 +234,77 @@ class PostingPolicyMapper
                     'id' => 'PAYMENT_EXECUTION',
                     'version' => '1.0',
                     'mappings' => [
-                        'PAYABLE' => ['account_id' => null, 'direction' => 'debit'],
-                        'BANK' => ['account_id' => null, 'direction' => 'credit'],
+                        'accounts_payable' => ['account_id' => null, 'direction' => 'debit'],
+                        'accounts_receivable' => ['account_id' => null, 'direction' => 'debit'],
+                        'bank' => ['account_id' => null, 'direction' => 'credit'],
+                    ],
+                ],
+                'PAYMENT_REFUND' => [
+                    'id' => 'PAYMENT_REFUND',
+                    'version' => '1.0',
+                    'mappings' => [
+                        'accounts_receivable' => ['account_id' => null, 'direction' => 'debit'],
+                        'accounts_payable' => ['account_id' => null, 'direction' => 'credit'],
+                        'bank' => ['account_id' => null, 'direction' => 'credit'],
+                    ],
+                ],
+            ],
+            'ACC-006' => [
+                'BANK_RECEIPT' => [
+                    'id' => 'BANK_RECEIPT',
+                    'version' => '1.0',
+                    'mappings' => [
+                        'bank' => ['account_id' => null, 'direction' => 'debit'],
+                        'cash' => ['account_id' => null, 'direction' => 'debit'],
+                    ],
+                ],
+            ],
+            'ACC-007' => [
+                'ASSET_DEPRECIATION' => [
+                    'id' => 'ASSET_DEPRECIATION',
+                    'version' => '1.0',
+                    'mappings' => [
+                        'depreciation_expense' => ['account_id' => null, 'direction' => 'debit'],
+                        'accumulated_depreciation' => ['account_id' => null, 'direction' => 'credit'],
+                    ],
+                ],
+                'ASSET_CAPITALISATION' => [
+                    'id' => 'ASSET_CAPITALISATION',
+                    'version' => '1.0',
+                    'mappings' => [
+                        'inventory' => ['account_id' => null, 'direction' => 'debit'],
+                        'cash' => ['account_id' => null, 'direction' => 'credit'],
+                    ],
+                ],
+            ],
+            'ACC-008' => [
+                'FX_REVALUATION' => [
+                    'id' => 'FX_REVALUATION',
+                    'version' => '1.0',
+                    'mappings' => [
+                        'unrealized_fx_gain_loss' => ['account_id' => null, 'direction' => 'debit'],
+                        'realized_fx_gain_loss' => ['account_id' => null, 'direction' => 'credit'],
+                    ],
+                ],
+            ],
+            'ACC-009' => [
+                'TAX_ADJUSTMENT' => [
+                    'id' => 'TAX_ADJUSTMENT',
+                    'version' => '1.0',
+                    'mappings' => [
+                        'sales_tax_payable' => ['account_id' => null, 'direction' => 'debit'],
+                        'input_tax' => ['account_id' => null, 'direction' => 'credit'],
+                    ],
+                ],
+            ],
+            'ACC-011' => [
+                'CLOSE_PERIODIC' => [
+                    'id' => 'CLOSE_PERIODIC',
+                    'version' => '1.0',
+                    'mappings' => [
+                        'sales_revenue' => ['account_id' => null, 'direction' => 'debit'],
+                        'general_expense' => ['account_id' => null, 'direction' => 'credit'],
+                        'retained_earnings' => ['account_id' => null, 'direction' => 'credit'],
                     ],
                 ],
             ],
