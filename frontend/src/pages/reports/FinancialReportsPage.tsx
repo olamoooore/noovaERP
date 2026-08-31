@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { ReportViewer } from '@/components/reports/ReportViewer';
-import { ReportFilters } from '@/components/reports/ReportFilters';
+import { CompactReportFilters } from '@/components/reports/CompactReportFilters';
 import { ReportTable, Column } from '@/components/reports/ReportTable';
+import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
 
 export function FinancialReportsPage() {
   const [activeTab, setActiveTab] = useState('profit-loss');
+  const queryClient = useQueryClient();
+  useReportAutoRefresh(); // auto-refresh reports after any tracked mutation
   const [filters, setFilters] = useState<ReportFiltersType>({
     start_date: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
       .toISOString()
@@ -20,7 +23,7 @@ export function FinancialReportsPage() {
     end_date: new Date().toISOString().split('T')[0],
   });
 
-  // Profit & Loss Query
+  // Profit & Loss Query — short staleTime ensures real-time data on revisit
   const {
     data: profitLossData,
     isLoading: isPLLoading,
@@ -30,6 +33,7 @@ export function FinancialReportsPage() {
     queryKey: ['profit-loss', filters],
     queryFn: () => reportApi.getProfitLoss(filters),
     enabled: activeTab === 'profit-loss',
+    staleTime: 15 * 1000,
   });
 
   // Balance Sheet Query
@@ -42,6 +46,7 @@ export function FinancialReportsPage() {
     queryKey: ['balance-sheet', filters],
     queryFn: () => reportApi.getBalanceSheet(filters),
     enabled: activeTab === 'balance-sheet',
+    staleTime: 15 * 1000,
   });
 
   // Cash Flow Query
@@ -54,6 +59,7 @@ export function FinancialReportsPage() {
     queryKey: ['cash-flow', filters],
     queryFn: () => reportApi.getCashFlow(filters),
     enabled: activeTab === 'cash-flow',
+    staleTime: 15 * 1000,
   });
 
   // Trial Balance Query
@@ -66,6 +72,7 @@ export function FinancialReportsPage() {
     queryKey: ['trial-balance', filters],
     queryFn: () => reportApi.getTrialBalance(filters),
     enabled: activeTab === 'trial-balance',
+    staleTime: 15 * 1000,
   });
 
   // General Ledger Query
@@ -78,6 +85,7 @@ export function FinancialReportsPage() {
     queryKey: ['general-ledger', filters],
     queryFn: () => reportApi.getGeneralLedger(filters),
     enabled: activeTab === 'general-ledger',
+    staleTime: 15 * 1000,
   });
 
   const handleFilterChange = (newFilters: ReportFiltersType) => {
@@ -239,13 +247,21 @@ export function FinancialReportsPage() {
         </div>
       </div>
 
-      {/* Filters */}
-      <ReportFilters
+      {/* Filters — compact toolbar (no large filter card) */}
+      <CompactReportFilters
         onFilterChange={handleFilterChange}
         initialFilters={filters}
         showDateRange
         showComparePeriod
         showDepartment
+        showRefresh
+        onRefresh={() => {
+          queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
+          queryClient.invalidateQueries({ queryKey: ['balance-sheet'] });
+          queryClient.invalidateQueries({ queryKey: ['cash-flow'] });
+          queryClient.invalidateQueries({ queryKey: ['trial-balance'] });
+          queryClient.invalidateQueries({ queryKey: ['general-ledger'] });
+        }}
       />
 
       {/* Reports Tabs */}

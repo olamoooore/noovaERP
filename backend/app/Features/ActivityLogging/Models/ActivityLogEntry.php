@@ -9,7 +9,11 @@ class ActivityLogEntry extends Model
 {
     protected $table = 'activity_log';
 
+    public $timestamps = true;
+
     protected $fillable = [
+        'log_name',
+        'description',
         'causer_type',
         'causer_id',
         'subject_type',

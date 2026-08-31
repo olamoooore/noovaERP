@@ -103,6 +103,16 @@ Route::middleware([
     \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
     \Illuminate\Routing\Middleware\SubstituteBindings::class,
 ])->prefix('api/v1')->group(function () {
+    // Chatter (Odoo-style activity log + messages + activities + attachments)
+    Route::prefix('chatter')->group(function () {
+        Route::get('/{subjectType}/{subjectId}', [\App\Http\Controllers\Api\ChatterController::class, 'show']);
+        Route::post('/{subjectType}/{subjectId}/messages', [\App\Http\Controllers\Api\ChatterController::class, 'addMessage']);
+        Route::post('/{subjectType}/{subjectId}/activities', [\App\Http\Controllers\Api\ChatterController::class, 'addActivity']);
+        Route::post('/{subjectType}/{subjectId}/activities/{activityId}/done', [\App\Http\Controllers\Api\ChatterController::class, 'markActivityDone']);
+        Route::post('/{subjectType}/{subjectId}/attachments', [\App\Http\Controllers\Api\ChatterController::class, 'uploadAttachment']);
+        Route::delete('/{subjectType}/{subjectId}/attachments/{attachmentId}', [\App\Http\Controllers\Api\ChatterController::class, 'deleteAttachment']);
+    });
+
     // Document correction endpoints
     Route::prefix('corrections')->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.post')->group(function () {
         // Invoice corrections
