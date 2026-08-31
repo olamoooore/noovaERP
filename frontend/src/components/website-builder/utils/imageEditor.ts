@@ -2,6 +2,7 @@
 // Modern design with Iconify Solar icons
 
 import { Editor } from 'grapesjs'
+import { compressImage } from '@/lib/imageCompression'
 
 // Solar icons SVGs
 const icons = {
@@ -718,29 +719,49 @@ export function setupImageUpload(editor: Editor) {
     )
     if (!file) return
 
-    // Open image editor
-    createImageEditorModal(editor, {
-      image: file,
-      onSave: (dataUrl) => {
-        // Add to asset manager. Use the data URL's MIME type (not a hard-coded
-        // 'image') so downstream consumers (page renderer, asset manager
-        // thumbnail, published HTML) pick the correct format.
-        const mimeMatch = /^data:([^;]+);/.exec(dataUrl)
-        const mime = mimeMatch ? mimeMatch[1] : (file.type || 'image/png')
-        am.add({ src: dataUrl, type: mime, name: file.name })
+    // SVG files are vector — never compress those, the file is already small.
+    const isSvg = /svg/i.test(file.type) || /\.svg$/i.test(file.name)
 
-        // If there's a selected image component, update it
-        const selected = editor.getSelected()
-        if (selected && selected.get('tagName')?.toUpperCase() === 'IMG') {
-          selected.set('src', dataUrl)
-          selected.addAttributes({ src: dataUrl })
-        }
+    const openEditor = (fileToEdit: File) => {
+      createImageEditorModal(editor, {
+        image: fileToEdit,
+        onSave: (dataUrl) => {
+          // Add to asset manager. Use the data URL's MIME type (not a hard-coded
+          // 'image') so downstream consumers (page renderer, asset manager
+          // thumbnail, published HTML) pick the correct format.
+          const mimeMatch = /^data:([^;]+);/.exec(dataUrl)
+          const mime = mimeMatch ? mimeMatch[1] : (fileToEdit.type || 'image/png')
+          am.add({ src: dataUrl, type: mime, name: fileToEdit.name })
 
-        // Close modal and refresh
-        editor.Modal.close()
-      },
-      onCancel: () => {}
-    })
+          // If there's a selected image component, update it
+          const selected = editor.getSelected()
+          if (selected && selected.get('tagName')?.toUpperCase() === 'IMG') {
+            selected.set('src', dataUrl)
+            selected.addAttributes({ src: dataUrl })
+          }
+
+          // Close modal and refresh
+          editor.Modal.close()
+        },
+        onCancel: () => {}
+      })
+    }
+
+    if (isSvg) {
+      openEditor(file)
+      return
+    }
+
+    // Compress large images at upload time so the saved page state stays
+    // well under the server's post_max_size (default 8 MB). 5 MB+ PNGs
+    // routinely blow past that limit when embedded as base64.
+    compressImage(file, {
+      maxWidthOrHeight: 1920,
+      quality: 0.85,
+      convertToWebp: true,
+      targetMimeType: 'image/webp',
+      alwaysRecompress: false,
+    }).then(openEditor).catch(() => openEditor(file))
   }
   
   // Add command to open image editor for existing images

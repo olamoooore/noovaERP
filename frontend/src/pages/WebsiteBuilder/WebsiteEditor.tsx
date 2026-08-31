@@ -10,6 +10,10 @@ import { useToast } from '@/hooks/use-toast'
 import { GrapesEditor } from '@/components/website-builder/GrapesEditor'
 import { generateFullHtml } from '@/components/website-builder/utils/renderStyles'
 import { getShopPageDefaultContent } from '@/components/website-builder/shopPresets'
+import {
+  compressGrapesJsComponents,
+  compressInlineImagesInHtml,
+} from '@/lib/imageCompression'
 import '@/components/website-builder/grapes-custom.css'
 import {
   DropdownMenu,
@@ -108,6 +112,12 @@ const colorPresets = [
   { name: 'Indigo', primary: '#6366f1', hover: '#4f46e5', light: '#eef2ff' },
 ]
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+}
+
 export function WebsiteEditor() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -118,6 +128,7 @@ export function WebsiteEditor() {
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null)
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isCompressingImages, setIsCompressingImages] = useState(false)
   const [activeDevice, setActiveDevice] = useState<string>('Desktop')
   
   // Shop settings state
@@ -479,17 +490,51 @@ export function WebsiteEditor() {
     })
   }, [saveMutation, headerJs, bodyJs])
 
-  // Manual save trigger
-  const triggerSave = useCallback(() => {
+  // Manual save trigger — compresses inline images before sending so the
+  // request body stays well below PHP's post_max_size even with multiple
+  // large PNGs on the page.
+  const triggerSave = useCallback(async () => {
     if (!editorInstance || !selectedPageId) return
-    
+
+    setIsCompressingImages(true)
+    let compressedComponents: any = editorInstance.getComponents()
+    let html: string = editorInstance.getHtml()
+    let bytesBefore = 0
+    let bytesAfter = 0
+    let compressedCount = 0
+
+    try {
+      const treeResult = await compressGrapesJsComponents(compressedComponents)
+      compressedComponents = treeResult.components
+      compressedCount += treeResult.compressedCount
+      bytesBefore += treeResult.bytesBefore
+      bytesAfter += treeResult.bytesAfter
+
+      const htmlResult = await compressInlineImagesInHtml(html)
+      html = htmlResult.html
+      compressedCount += htmlResult.compressedCount
+      bytesBefore += htmlResult.bytesBefore
+      bytesAfter += htmlResult.bytesAfter
+    } catch (err) {
+      console.warn('[WebsiteEditor] image compression failed; saving raw', err)
+    } finally {
+      setIsCompressingImages(false)
+    }
+
+    if (compressedCount > 0) {
+      toast({
+        title: 'Optimizing images',
+        description: `Compressed ${compressedCount} inline image(s); ${formatBytes(bytesBefore)} → ${formatBytes(bytesAfter)}.`,
+      })
+    }
+
     handleSave({
-      html: editorInstance.getHtml(),
+      html,
       css: editorInstance.getCss() || '',
-      components: editorInstance.getComponents(),
+      components: compressedComponents,
       styles: editorInstance.getStyle(),
     })
-  }, [editorInstance, handleSave, selectedPageId])
+  }, [editorInstance, handleSave, selectedPageId, toast])
 
   // Handle page change
   const handlePageChange = (pageId: string) => {

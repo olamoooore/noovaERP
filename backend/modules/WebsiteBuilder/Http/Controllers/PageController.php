@@ -115,6 +115,25 @@ class PageController extends Controller
     public function update(Request $request, $page): JsonResponse
     {
         $page = Page::findOrFail($page);
+
+        // Hard ceiling on the size of the JSON payload. Pillar 2 review §3:
+        // the original 413 came from a single page whose inline base64 images
+        // totalled >8 MB and PHP's post_max_size (now 64 MB after Pillar 2
+        // §3 fix) rejected the request before validation even ran. This guard
+        // turns a silent truncation into a clear 413 message.
+        $maxBytes = (int) config('website_builder.max_page_bytes', 50 * 1024 * 1024);
+        $payloadSize = strlen((string) $request->getContent());
+        if ($payloadSize > $maxBytes) {
+            return response()->json([
+                'success' => false,
+                'message' => sprintf(
+                    'Page payload is %s, exceeding the %s limit. The page likely contains uncompressed images — compress them client-side before saving.',
+                    self::humanBytes($payloadSize),
+                    self::humanBytes($maxBytes),
+                ),
+            ], 413);
+        }
+
         $validated = $request->validate([
             'title' => 'sometimes|string|max:255',
             'slug' => 'sometimes|string|max:100',
@@ -139,6 +158,18 @@ class PageController extends Controller
         }
 
         return response()->json(new PageResource($page->fresh(['currentVersion', 'website'])));
+    }
+
+    private static function humanBytes(int $bytes): string
+    {
+        if ($bytes < 1024) {
+            return $bytes.' B';
+        }
+        if ($bytes < 1024 * 1024) {
+            return round($bytes / 1024, 1).' KB';
+        }
+
+        return round($bytes / 1024 / 1024, 2).' MB';
     }
 
     /**
