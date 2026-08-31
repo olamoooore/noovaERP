@@ -8,6 +8,7 @@ export type BlockType =
   | 'table'
   | 'case_information'
   | 'delivery_detail'
+  | 'quotation_detail'
   | 'totals'
   | 'spacer'
   | 'divider'
@@ -36,6 +37,7 @@ export interface ImageBlock extends BlockBase {
   url: string
   width?: number
   align?: Align
+  offset_x?: number
 }
 
 export interface ColumnsBlock extends BlockBase {
@@ -90,6 +92,12 @@ export interface DeliveryDetailBlock extends BlockBase {
   rows: InformationRow[]
 }
 
+export interface QuotationDetailBlock extends BlockBase {
+  type: 'quotation_detail'
+  title?: string
+  rows: InformationRow[]
+}
+
 export interface TotalsBlock extends BlockBase {
   type: 'totals'
   rows: TotalsRow[]
@@ -117,6 +125,7 @@ export type Block =
   | TableBlock
   | CaseInformationBlock
   | DeliveryDetailBlock
+  | QuotationDetailBlock
   | TotalsBlock
   | SpacerBlock
   | DividerBlock

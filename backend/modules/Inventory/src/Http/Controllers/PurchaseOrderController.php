@@ -68,10 +68,12 @@ class PurchaseOrderController extends Controller
             'notes' => 'nullable|string',
             'internal_notes' => 'nullable|string',
             'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.line_type' => 'nullable|in:product,note,section',
+            'items.*.sequence' => 'nullable|integer|min:0',
+            'items.*.product_id' => 'nullable|exists:products,id',
             'items.*.description' => 'nullable|string',
-            'items.*.quantity_ordered' => 'required|integer|min:1',
-            'items.*.unit_cost' => 'required|numeric|min:0',
+            'items.*.quantity_ordered' => 'nullable|integer|min:0',
+            'items.*.unit_cost' => 'nullable|numeric|min:0',
             'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'items.*.discount_percent' => 'nullable|numeric|min:0|max:100',
         ]);
@@ -94,10 +96,12 @@ class PurchaseOrderController extends Controller
 
             foreach ($validated['items'] as $itemData) {
                 $item = new PurchaseOrderItem([
-                    'product_id' => $itemData['product_id'],
+                    'line_type' => $itemData['line_type'] ?? 'product',
+                    'sequence' => $itemData['sequence'] ?? 0,
+                    'product_id' => $itemData['product_id'] ?? null,
                     'description' => $itemData['description'] ?? null,
-                    'quantity_ordered' => $itemData['quantity_ordered'],
-                    'unit_cost' => $itemData['unit_cost'],
+                    'quantity_ordered' => $itemData['quantity_ordered'] ?? 0,
+                    'unit_cost' => $itemData['unit_cost'] ?? 0,
                     'tax_rate' => $itemData['tax_rate'] ?? 0,
                     'discount_percent' => $itemData['discount_percent'] ?? 0,
                 ]);

@@ -39,15 +39,17 @@ final class QuotationDataSource implements DataSourceContract
         $lines = [];
         $salesperson = $q->customer?->salesperson?->name ?? $q->salesperson ?? '';
         foreach ($q->lines as $i => $line) {
+            $isProduct = ($line->line_type ?? 'product') === 'product';
             $lines[] = [
+                'line_type' => $line->line_type ?? 'product',
                 'index' => $i + 1,
                 'sku' => $line->product?->sku ?? '',
                 'description' => $line->description ?? '',
-                'quantity' => (float) $line->quantity,
-                'unit_price' => (float) $line->unit_price,
+                'quantity' => $isProduct ? (float) $line->quantity : null,
+                'unit_price' => $isProduct ? (float) $line->unit_price : null,
                 'tax_rate' => (float) $line->tax_rate,
                 'discount' => (float) ($line->discount_amount ?? 0),
-                'line_total' => (float) $line->line_total,
+                'line_total' => $isProduct ? (float) $line->line_total : null,
                 'salesperson' => $salesperson,
                 'attention_to' => $q->attention_to ?? '',
                 'po_number' => $q->customer_reference ?? '',
@@ -63,6 +65,22 @@ final class QuotationDataSource implements DataSourceContract
         $q->refresh();
 
         return [
+            'quotation' => [
+                'number' => $q->quotation_number,
+                'issue_date' => optional($q->quotation_date)->format('Y-m-d'),
+                'valid_until' => optional($q->valid_until)->format('Y-m-d'),
+                'status' => $q->status,
+                'customer_reference' => $q->customer_reference ?? '',
+                'internal_reference' => $q->internal_reference ?? '',
+                'attention_to' => $q->attention_to ?? '',
+                'salesperson' => $q->salesperson ?? '',
+                'delivery_lead_time' => $q->delivery_lead_time ?? '',
+                'shipping_method' => $q->shipping_method ?? '',
+                'shipping_terms' => $q->shipping_terms ?? '',
+                'validity' => $q->validity ?? '',
+                'notes' => $q->notes ?? '',
+                'terms' => $q->terms ?? '',
+            ],
             // Map quotation fields into 'invoice' namespace so existing block
             // templates designed for invoices work without modification.
             'invoice' => [
@@ -171,6 +189,22 @@ final class QuotationDataSource implements DataSourceContract
         $base['invoice']['delivery_lead_time'] = '2-3 weeks';
         $base['invoice']['billing_contact_name'] = 'Dr. Sarah Chen';
         $base['invoice']['shipping_contact_name'] = 'Dr. Sarah Chen';
+        $base['quotation'] = [
+            'number' => 'QT-2026-0001',
+            'issue_date' => '2026-07-08',
+            'valid_until' => '2026-08-07',
+            'status' => 'draft',
+            'customer_reference' => 'RFQ-1001',
+            'internal_reference' => 'SALES-2026-01',
+            'attention_to' => 'Dr. Sarah Chen',
+            'salesperson' => 'John Smith',
+            'delivery_lead_time' => '2-3 weeks',
+            'shipping_method' => 'Courier',
+            'shipping_terms' => 'Delivered Duty Paid',
+            'validity' => '30 days',
+            'notes' => 'Sample quotation note',
+            'terms' => 'Standard terms apply',
+        ];
 
         return $base;
     }

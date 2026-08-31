@@ -17,8 +17,11 @@ import api from '@/lib/api';
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
+import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
+import { DocumentTextLineRow, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 
 interface InvoiceLine {
+  line_type?: 'product' | 'note' | 'section';
   product_id: string;
   sku: string;
   model_number: string;
@@ -109,6 +112,7 @@ interface InvoiceDocumentSnapshot {
 }
 
 const emptyLine = (): InvoiceLine => ({
+  line_type: 'product',
   product_id: '',
   sku: '',
   model_number: '',
@@ -272,6 +276,7 @@ export const CreateInvoicePage: React.FC = () => {
   const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
   const [discountAmount, setDiscountAmount] = useState<number | ''>('');
   const [lines, setLines] = useState<InvoiceLine[]>([emptyLine()]);
+  const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null);
   const [documentSnapshot, setDocumentSnapshot] = useState<InvoiceDocumentSnapshot>(emptyDocumentSnapshot);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [customerDialogMode, setCustomerDialogMode] = useState<'create' | 'edit'>('create');
@@ -408,6 +413,7 @@ export const CreateInvoicePage: React.FC = () => {
 
     const mappedLines = (existingInvoice.lines || []).map((line: any): InvoiceLine => ({
       product_id: line.product_id ? String(line.product_id) : '',
+      line_type: line.line_type || 'product',
       sku: line.product?.sku || '',
       model_number: line.model_number || line.product?.manufacturer_part_number || '',
       description: line.description || '',
@@ -564,6 +570,8 @@ export const CreateInvoicePage: React.FC = () => {
   };
 
   const addLine = () => setLines([...lines, emptyLine()]);
+  const addTextLine = (line_type: 'note' | 'section') => setLines([...lines, { ...emptyLine(), line_type, quantity: 0, unit_price: 0, tax_rate: 0, discount_amount: 0 }]);
+  const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => { const next = [...lines]; selected.forEach(({ product, quantity }) => { const existing = next.find((line) => line.line_type === 'product' && line.product_id === String(product.id)); if (existing) existing.quantity += quantity; else next.push({ ...emptyLine(), product_id: String(product.id), sku: product.sku || '', description: product.name || '', unit_price: Number(product.price || 0), quantity }); }); setLines(next); };
 
   const duplicateLine = (index: number) => {
     const targetLine = lines[index];
@@ -710,6 +718,8 @@ export const CreateInvoicePage: React.FC = () => {
       lines: lines
         .filter((line) => line.description || line.product_id)
         .map((line) => ({
+          line_type: line.line_type || 'product',
+          sequence: lines.indexOf(line),
           product_id: line.product_id ? parseInt(line.product_id, 10) : null,
           model_number: line.model_number || null,
           description: line.description || 'Item',
@@ -1188,6 +1198,9 @@ export const CreateInvoicePage: React.FC = () => {
               <CardTitle className="flex items-center justify-between">
                 <span>Line Items</span>
                 <div className="flex flex-wrap gap-2">
+                  <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} />
+                  <Button type="button" variant="outline" size="sm" onClick={() => addTextLine('section')}>Add Section</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => addTextLine('note')}>Add Note</Button>
                   <details className="relative">
                     <summary className="list-none cursor-pointer rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-accent">
                       <Icon icon="solar:settings-bold-duotone" className="inline h-4 w-4 mr-1" />
@@ -1239,7 +1252,8 @@ export const CreateInvoicePage: React.FC = () => {
                   </thead>
                   <tbody>
                     {lines.map((line, index) => (
-                      <tr key={index} className="border-b">
+                      <tr key={index} className="border-b" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
+                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={12} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
                         <td className="py-2 px-2 text-sm font-medium text-slate-500">{index + 1}</td>
                         <td className="py-2 px-2 w-[200px] max-w-[200px] overflow-hidden">
                           <ProductSearchCombobox
@@ -1352,6 +1366,7 @@ export const CreateInvoicePage: React.FC = () => {
                             )}
                           </div>
                         </td>
+                        </>}
                       </tr>
                     ))}
                   </tbody>

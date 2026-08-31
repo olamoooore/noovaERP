@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useDrag } from 'react-dnd'
 import { ChevronUp, ChevronDown, Copy, Trash2, GripVertical } from 'lucide-react'
 import { useTemplateEditorStore } from '@/store/templateEditorStore'
-import type { Block, CaseInformationBlock, ContainerBlock, ColumnsBlock, DeliveryDetailBlock, TableBlock, TotalsBlock } from '@/types/template-builder'
+import type { Block, CaseInformationBlock, ContainerBlock, ColumnsBlock, DeliveryDetailBlock, QuotationDetailBlock, TableBlock, TotalsBlock } from '@/types/template-builder'
 import { DND, type BlockDragItem } from './dnd'
 import { cn } from '@/lib/utils'
 
@@ -13,6 +13,7 @@ const TYPE_LABELS: Record<string, string> = {
   table: 'Line Items',
   case_information: 'Case Information',
   delivery_detail: 'Delivery Detail',
+  quotation_detail: 'Quotation Detail',
   totals: 'Totals',
   spacer: 'Spacer',
   divider: 'Divider',
@@ -61,7 +62,7 @@ export function BlockNode({ block }: { block: Block }) {
         const url = block.url || ''
         const isToken = url.includes('{{')
         return (
-          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <div className="relative flex items-center gap-2 text-[11px] text-muted-foreground" style={{ justifyContent: block.align === 'right' ? 'flex-end' : block.align === 'center' ? 'center' : 'flex-start', left: block.offset_x ?? 0 }}>
             {!isToken && url ? (
               <img src={url} alt="" className="h-10 w-10 rounded border object-contain" />
             ) : (
@@ -146,6 +147,10 @@ export function BlockNode({ block }: { block: Block }) {
             <tbody><tr>{info.rows.map((row, i) => <td key={i} className="border px-2 py-1 font-mono text-muted-foreground">{row.field}</td>)}</tr></tbody>
           </table>
         )
+      }
+      case 'quotation_detail': {
+        const info = block as QuotationDetailBlock
+        return <table className="w-full border-collapse text-[10px]"><thead><tr>{info.rows.map((row, i) => <th key={i} className="border bg-muted/30 px-2 py-1 text-left">{row.label}</th>)}</tr></thead><tbody><tr>{info.rows.map((row, i) => <td key={i} className="border px-2 py-1 font-mono text-muted-foreground">{row.field}</td>)}</tr></tbody></table>
       }
       case 'spacer':
         return <div className="w-full border border-dashed border-muted-foreground/20 text-center text-[9px] text-muted-foreground" style={{ height: block.height || 12 }}>{block.height || 12}px</div>

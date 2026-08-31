@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class DeliveryOrderLine extends Model
 {
     protected $fillable = [
+        'line_type',
+        'sequence',
         'delivery_order_id',
         'sales_order_line_id',
         'product_id',
@@ -26,6 +28,7 @@ class DeliveryOrderLine extends Model
     ];
 
     protected $casts = [
+        'sequence' => 'integer',
         'quantity_ordered' => 'decimal:4',
         'quantity_delivered' => 'decimal:4',
         'unit_price' => 'decimal:2',
@@ -50,6 +53,7 @@ class DeliveryOrderLine extends Model
 
     public function getRemainingQuantityAttribute(): float
     {
+        if (in_array($this->line_type, ['note', 'section'], true)) return 0;
         return (float) $this->quantity_ordered - (float) $this->quantity_delivered;
     }
 }

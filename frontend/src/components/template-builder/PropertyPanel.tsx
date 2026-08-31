@@ -12,6 +12,7 @@ import type {
   Block,
   CaseInformationBlock,
   DeliveryDetailBlock,
+  QuotationDetailBlock,
   ContainerBlock,
   ColumnsBlock,
   DocumentType,
@@ -206,6 +207,8 @@ function BlockEditor({ block, updateBlock, documentType }: {
             <LabeledNumber label="Width (px)" value={(block as { width?: number }).width} onChange={(v) => updateBlock(block.id, { width: v })} />
             <LabeledSelect label="Align" value={(block as { align?: string }).align ?? 'left'} options={ALIGN_OPTIONS} onChange={(v) => updateBlock(block.id, { align: v as Align })} />
           </div>
+          <LabeledNumber label="Horizontal offset (px)" value={(block as { offset_x?: number }).offset_x ?? 0} onChange={(v) => updateBlock(block.id, { offset_x: v })} />
+          <p className="text-[10px] text-muted-foreground">Use a negative value when the uploaded logo contains transparent space on its left edge.</p>
         </>
       )
 
@@ -373,14 +376,16 @@ function BlockEditor({ block, updateBlock, documentType }: {
       )
     }
 
-    case 'delivery_detail': {
-      const info = block as DeliveryDetailBlock
+    case 'delivery_detail':
+    case 'quotation_detail': {
+      const isQuotation = block.type === 'quotation_detail'
+      const info = block as DeliveryDetailBlock | QuotationDetailBlock
       const setRows = (rows: InformationRow[]) => updateBlock(block.id, { rows })
       return (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <Label className="text-xs">Delivery fields</Label>
-            <Button size="sm" variant="outline" onClick={() => setRows([...info.rows, { label: 'New field', field: 'delivery_order.number' }])}>
+            <Label className="text-xs">{isQuotation ? 'Quotation fields' : 'Delivery fields'}</Label>
+            <Button size="sm" variant="outline" onClick={() => setRows([...info.rows, { label: 'New field', field: isQuotation ? 'quotation.number' : 'delivery_order.number' }])}>
               <Plus className="mr-1 h-3 w-3" /> Add
             </Button>
           </div>

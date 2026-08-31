@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class PurchaseOrderItem extends Model
 {
     protected $fillable = [
+        'line_type',
+        'sequence',
         'purchase_order_id',
         'product_id',
         'description',
@@ -22,6 +24,7 @@ class PurchaseOrderItem extends Model
     ];
 
     protected $casts = [
+        'sequence' => 'integer',
         'quantity_ordered' => 'integer',
         'quantity_received' => 'integer',
         'unit_cost' => 'decimal:2',
@@ -43,6 +46,16 @@ class PurchaseOrderItem extends Model
 
     public function calculateLineTotal(): void
     {
+        if (in_array($this->line_type, ['note', 'section'], true)) {
+            $this->product_id = null;
+            $this->quantity_ordered = 0;
+            $this->unit_cost = 0;
+            $this->tax_rate = 0;
+            $this->tax_amount = 0;
+            $this->discount_percent = 0;
+            $this->line_total = 0;
+            return;
+        }
         $subtotal = $this->quantity_ordered * $this->unit_cost;
         $discount = $subtotal * ($this->discount_percent / 100);
         $afterDiscount = $subtotal - $discount;

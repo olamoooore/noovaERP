@@ -31,15 +31,17 @@ final class PurchaseOrderDataSource implements DataSourceContract
 
         $lines = [];
         foreach ($po->items as $i => $item) {
+            $isProduct = ($item->line_type ?? 'product') === 'product';
             $lines[] = [
+                'line_type' => $item->line_type ?? 'product',
                 'index' => $i + 1,
                 'sku' => $item->product?->sku ?? '',
                 'description' => $item->description ?? '',
-                'quantity' => (float) $item->quantity_ordered,
-                'received' => (float) $item->quantity_received,
-                'unit_price' => (float) $item->unit_cost,
-                'tax_rate' => (float) $item->tax_rate,
-                'line_total' => (float) $item->line_total,
+                'quantity' => $isProduct ? (float) $item->quantity_ordered : null,
+                'received' => $isProduct ? (float) $item->quantity_received : null,
+                'unit_price' => $isProduct ? (float) $item->unit_cost : null,
+                'tax_rate' => $isProduct ? (float) $item->tax_rate : null,
+                'line_total' => $isProduct ? (float) $item->line_total : null,
             ];
         }
 

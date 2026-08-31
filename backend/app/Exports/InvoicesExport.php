@@ -22,6 +22,7 @@ class InvoicesExport extends SalesDocumentExport
         'product_code' => ['heading' => 'Product Code', 'type' => 'text', 'line' => true],
         'product_name' => ['heading' => 'Product', 'type' => 'text', 'line' => true],
         'line_description' => ['heading' => 'Line Description', 'type' => 'text', 'line' => true],
+        'line_type' => ['heading' => 'Line Type', 'type' => 'text', 'line' => true],
         'model_number' => ['heading' => 'Model Number', 'type' => 'text', 'line' => true],
         'lot_number' => ['heading' => 'Lot Number', 'type' => 'text', 'line' => true],
         'expiry_date' => ['heading' => 'Expiry Date', 'type' => 'date', 'line' => true],
@@ -48,11 +49,12 @@ class InvoicesExport extends SalesDocumentExport
             'product_code' => $line?->product?->sku,
             'product_name' => $line?->product?->name,
             'line_description' => $line?->description,
+            'line_type' => $line?->line_type ?? 'product',
             'model_number', 'lot_number' => $line?->{$column},
             'expiry_date' => $line?->expiry_date ? Date::dateTimeToExcel($line->expiry_date) : null,
-            'quantity', 'unit_price', 'tax_rate', 'line_total' => $line ? (float) $line->{$column} : null,
-            'line_discount' => $line ? (float) $line->discount_amount : null,
-            'line_tax_amount' => $line ? (float) $line->tax_amount : null,
+            'quantity', 'unit_price', 'tax_rate', 'line_total' => $line && ($line->line_type ?? 'product') === 'product' ? (float) $line->{$column} : null,
+            'line_discount' => $line && ($line->line_type ?? 'product') === 'product' ? (float) $line->discount_amount : null,
+            'line_tax_amount' => $line && ($line->line_type ?? 'product') === 'product' ? (float) $line->tax_amount : null,
             default => $invoice->{$column},
         };
     }

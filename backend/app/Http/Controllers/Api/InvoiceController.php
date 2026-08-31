@@ -135,14 +135,15 @@ class InvoiceController extends Controller
             'billing_contact_name' => 'nullable|string|max:255',
             'shipping_contact_name' => 'nullable|string|max:255',
             'lines' => 'required|array|min:1',
+            'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.product_id' => 'nullable|exists:products,id',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
             'lines.*.lot_number' => 'nullable|string|max:100',
             'lines.*.expiry_date' => 'nullable|date',
-            'lines.*.quantity' => 'required|integer|min:1',
-            'lines.*.unit_price' => 'required|numeric|min:0',
+            'lines.*.quantity' => 'nullable|integer|min:0',
+            'lines.*.unit_price' => 'required_if:lines.*.line_type,product|nullable|numeric|min:0',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ]);
@@ -160,6 +161,7 @@ class InvoiceController extends Controller
 
         // Reject document discount exceeding the line subtotal
         $subtotal = array_reduce($validated['lines'], function ($sum, $line) {
+            if (in_array($line['line_type'] ?? 'product', ['note', 'section'], true)) return $sum;
             $qty = (int) ($line['quantity'] ?? 0);
             $price = (float) ($line['unit_price'] ?? 0);
             $lineDiscount = (float) ($line['discount_amount'] ?? 0);
@@ -269,6 +271,8 @@ class InvoiceController extends Controller
             // Recreate lines
             foreach ($data['lines'] as $line) {
                 $existingInvoice->lines()->create([
+                    'line_type' => $line['line_type'] ?? 'product',
+                    'sequence' => $line['sequence'] ?? 0,
                     'product_id' => $line['product_id'] ?? null,
                     'model_number' => $line['model_number'] ?? null,
                     'description' => $line['description'],
@@ -290,6 +294,8 @@ class InvoiceController extends Controller
 
         // For new invoices, create via SalesOrder lifecycle
         $salesLines = array_map(fn ($line) => [
+            'line_type' => $line['line_type'] ?? 'product',
+            'sequence' => $line['sequence'] ?? 0,
             'product_id' => $line['product_id'] ?? null,
             'model_number' => $line['model_number'] ?? null,
             'description' => $line['description'],
@@ -444,14 +450,15 @@ class InvoiceController extends Controller
             'billing_contact_name' => 'nullable|string|max:255',
             'shipping_contact_name' => 'nullable|string|max:255',
             'lines' => 'sometimes|array|min:1',
+            'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.product_id' => 'nullable|exists:products,id',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
             'lines.*.lot_number' => 'nullable|string|max:100',
             'lines.*.expiry_date' => 'nullable|date',
-            'lines.*.quantity' => 'required|integer|min:1',
-            'lines.*.unit_price' => 'required|numeric|min:0',
+            'lines.*.quantity' => 'nullable|integer|min:0',
+            'lines.*.unit_price' => 'required_if:lines.*.line_type,product|nullable|numeric|min:0',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ]);
@@ -466,8 +473,9 @@ class InvoiceController extends Controller
         }
 
         // Reject document discount exceeding the line subtotal
-        $subtotal = isset($validated['lines'])
+            $subtotal = isset($validated['lines'])
             ? array_reduce($validated['lines'], function ($sum, $line) {
+                if (in_array($line['line_type'] ?? 'product', ['note', 'section'], true)) return $sum;
                 return $sum + ($line['quantity'] * $line['unit_price']) - ($line['discount_amount'] ?? 0);
             }, 0)
             : $invoice->lines->reduce(function ($sum, $line) {
@@ -490,6 +498,8 @@ class InvoiceController extends Controller
                 $invoice->lines()->delete();
                 foreach ($lines as $line) {
                     $invoice->lines()->create([
+                        'line_type' => $line['line_type'] ?? 'product',
+                        'sequence' => $line['sequence'] ?? 0,
                         'product_id' => $line['product_id'] ?? null,
                         'model_number' => $line['model_number'] ?? null,
                         'description' => $line['description'],

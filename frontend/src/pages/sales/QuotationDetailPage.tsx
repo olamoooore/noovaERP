@@ -519,6 +519,11 @@ export function QuotationDetailPage() {
               <TableBody>
                 {quotation.lines?.map((line: any, index: number) => (
                   <TableRow key={line.id}>
+                    {line.line_type === 'note' || line.line_type === 'section' ? (
+                      <TableCell colSpan={10} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}>
+                        {line.description}
+                      </TableCell>
+                    ) : (<>
                     <TableCell>{index + 1}</TableCell>
                     <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.product?.sku || '-'}</TableCell>
@@ -529,6 +534,7 @@ export function QuotationDetailPage() {
                   <TableCell className="text-right">{formatCurrency(line.unit_price)}</TableCell>
                   <TableCell className="text-right">{line.tax_rate}%</TableCell>
                   <TableCell className="text-right font-medium">{formatCurrency(line.line_total)}</TableCell>
+                    </>)}
                 </TableRow>
               ))}
             </TableBody>

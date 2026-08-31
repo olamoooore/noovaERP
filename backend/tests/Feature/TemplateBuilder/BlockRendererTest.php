@@ -55,6 +55,28 @@ class BlockRendererTest extends TestCase
         $this->assertStringContainsString('<th', $html);
     }
 
+    public function test_renders_note_and_section_as_full_width_rows_without_index_cells(): void
+    {
+        $data = (new InvoiceDataSource)->sample();
+        $data['lines'] = [
+            ['line_type' => 'section', 'index' => 1, 'description' => 'Optional Accessories'],
+            ['line_type' => 'note', 'index' => 2, 'description' => 'Prices valid for thirty days'],
+        ];
+        $html = $this->renderer()->render($this->template([[
+            'type' => 'table', 'source' => 'lines',
+            'columns' => [
+                ['label' => '#', 'field' => 'index'],
+                ['label' => 'Description', 'field' => 'description'],
+                ['label' => 'Amount', 'field' => 'line_total'],
+            ],
+        ]]), $data)['html'];
+
+        $this->assertStringContainsString('tb-line-row-section', $html);
+        $this->assertStringContainsString('tb-line-row-note', $html);
+        $this->assertSame(2, substr_count($html, 'colspan="3"'));
+        $this->assertStringNotContainsString('data-tb-line-index', $html);
+    }
+
     public function test_renders_totals_block(): void
     {
         $html = $this->renderer()->render(

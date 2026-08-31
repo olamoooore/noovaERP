@@ -86,6 +86,7 @@ final class BlockRenderer implements TemplateRendererInterface
             'table' => $this->renderTable($block),
             'case_information' => $this->renderInformationTable($block),
             'delivery_detail' => $this->renderInformationTable($block),
+            'quotation_detail' => $this->renderInformationTable($block),
             'totals' => $this->renderTotals($block),
             'spacer' => $this->renderSpacer($block),
             'divider' => $this->renderDivider(),
@@ -119,8 +120,9 @@ final class BlockRenderer implements TemplateRendererInterface
         }
         $width = (int) ($block['width'] ?? 0);
         $align = $block['align'] ?? 'left';
+        $offsetX = (int) ($block['offset_x'] ?? 0);
         $w = $width > 0 ? " width=\"{$width}\"" : '';
-        $style = " style=\"text-align:{$align}\"";
+        $style = " style=\"text-align:{$align};position:relative;left:{$offsetX}px\"";
 
         return "<div{$style}><img src=\"{$url}\"{$w} style=\"max-width:100%\"/></div>";
     }
@@ -166,6 +168,15 @@ final class BlockRenderer implements TemplateRendererInterface
         $subtotalField = (string) ($block['subtotal_field'] ?? 'line_total');
         $lastIndex = array_key_last($rows);
         foreach ($rows as $index => $row) {
+            $lineType = (string) ($row['line_type'] ?? 'product');
+            if (in_array($lineType, ['note', 'section'], true)) {
+                $description = htmlspecialchars((string) ($row['description'] ?? ''), ENT_QUOTES);
+                $textStyle = $lineType === 'section'
+                    ? 'font-weight:700;background:#f3f4f6;color:#111827;'
+                    : 'font-style:italic;background:#f9fafb;color:#6b7280;';
+                $body .= '<tr class="tb-line-row tb-line-row-'.$lineType.'"><td colspan="'.count($columns).'" style="'.$this->tdStyle([]).$textStyle.'">'.$description.'</td></tr>';
+                continue;
+            }
             $amount = is_numeric($row[$subtotalField] ?? null) ? (float) $row[$subtotalField] : 0.0;
             $class = $index === $lastIndex ? 'tb-line-row tb-line-row-last' : 'tb-line-row';
             $body .= '<tr class="'.$class.'" data-tb-line-index="'.((int) $index).'" data-tb-line-amount="'.$amount.'">';

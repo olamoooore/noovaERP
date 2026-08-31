@@ -120,12 +120,13 @@ class QuotationController extends Controller
             'terms' => 'nullable|string',
             'discount_amount' => 'nullable|numeric|min:0',
             'lines' => 'required|array|min:1',
-            'lines.*.product_id' => 'required|exists:products,id',
+            'lines.*.line_type' => 'nullable|in:product,note,section',
+            'lines.*.product_id' => 'nullable|exists:products,id',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required|string',
             'lines.*.product_notes' => 'nullable|string',
-            'lines.*.quantity' => 'required|integer|min:0',
-            'lines.*.unit_price' => 'required|numeric|min:0',
+            'lines.*.quantity' => 'required_if:lines.*.line_type,product|nullable|integer|min:0',
+            'lines.*.unit_price' => 'required_if:lines.*.line_type,product|nullable|numeric|min:0',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ]);
@@ -159,7 +160,13 @@ class QuotationController extends Controller
                 $quotation = Quotation::create($data);
 
                 foreach ($validated['lines'] as $lineData) {
+                    $lineType = $lineData['line_type'] ?? 'product';
+                    if ($lineType === 'product' && empty($lineData['product_id'])) {
+                        throw new \InvalidArgumentException('Product lines require a product.');
+                    }
                     $quotation->lines()->create([
+                        'line_type' => $lineType,
+                        'sequence' => $lineData['sequence'] ?? 0,
                         'product_id' => $lineData['product_id'] ?? null,
                         'model_number' => $lineData['model_number'] ?? null,
                         'description' => $lineData['description'],
@@ -235,12 +242,14 @@ class QuotationController extends Controller
             'terms' => 'nullable|string',
             'discount_amount' => 'nullable|numeric|min:0',
             'lines' => 'nullable|array|min:1',
-            'lines.*.product_id' => 'required_with:lines|exists:products,id',
+            'lines.*.line_type' => 'nullable|in:product,note,section',
+            'lines.*.sequence' => 'nullable|integer|min:0',
+            'lines.*.product_id' => 'nullable|exists:products,id',
             'lines.*.model_number' => 'nullable|string|max:100',
             'lines.*.description' => 'required_with:lines|string',
             'lines.*.product_notes' => 'nullable|string',
-            'lines.*.quantity' => 'required_with:lines|integer|min:0',
-            'lines.*.unit_price' => 'required_with:lines|numeric|min:0',
+            'lines.*.quantity' => 'nullable|integer|min:0',
+            'lines.*.unit_price' => 'nullable|numeric|min:0',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ]);
@@ -251,12 +260,14 @@ class QuotationController extends Controller
             $quotation->lines()->delete();
             foreach ($request->lines as $lineData) {
                 $quotation->lines()->create([
-                    'product_id' => $lineData['product_id'],
+                    'line_type' => $lineData['line_type'] ?? 'product',
+                    'sequence' => $lineData['sequence'] ?? 0,
+                    'product_id' => $lineData['product_id'] ?? null,
                     'model_number' => $lineData['model_number'] ?? null,
                     'description' => $lineData['description'],
                     'product_notes' => $lineData['product_notes'] ?? null,
-                    'quantity' => $lineData['quantity'],
-                    'unit_price' => $lineData['unit_price'],
+                    'quantity' => $lineData['quantity'] ?? 0,
+                    'unit_price' => $lineData['unit_price'] ?? 0,
                     'tax_rate' => $lineData['tax_rate'] ?? 0,
                     'discount_amount' => $lineData['discount_amount'] ?? 0,
                 ]);
@@ -333,6 +344,8 @@ class QuotationController extends Controller
             $quotation = DB::transaction(function () use ($quotation) {
                 // Build SalesOrder lines from quotation lines
                 $salesLines = $quotation->lines->map(fn ($line) => [
+                    'line_type' => $line->line_type ?? 'product',
+                    'sequence' => $line->sequence ?? 0,
                     'product_id' => $line->product_id,
                     'description' => $line->description,
                     'quantity' => $line->quantity,

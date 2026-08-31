@@ -71,14 +71,16 @@ class InvoiceService
 
             foreach ($lines as $lineData) {
                 $invoice->lines()->create([
+                    'line_type' => $lineData['line_type'] ?? 'product',
+                    'sequence' => $lineData['sequence'] ?? 0,
                     'product_id' => $lineData['product_id'] ?? null,
                     'model_number' => $lineData['model_number'] ?? null,
                     'description' => $lineData['description'],
                     'product_notes' => $lineData['product_notes'] ?? null,
                     'lot_number' => $lineData['lot_number'] ?? null,
                     'expiry_date' => $lineData['expiry_date'] ?? null,
-                    'quantity' => $lineData['quantity'],
-                    'unit_price' => $lineData['unit_price'],
+                    'quantity' => $lineData['quantity'] ?? 0,
+                    'unit_price' => $lineData['unit_price'] ?? 0,
                     'tax_rate' => $lineData['tax_rate'] ?? 0,
                     'discount_amount' => $lineData['discount_amount'] ?? 0,
                 ]);
@@ -161,6 +163,7 @@ class InvoiceService
             // ── COGS lines for inventory items ───────────────
             $totalCogs = 0;
             foreach ($invoice->lines as $line) {
+                if (($line->line_type ?? 'product') !== 'product') continue;
                 if ($line->product && $line->product->track_inventory) {
                     $unitCost = (float) ($line->product->cost ?? 0);
                     $lineCogs = $unitCost * $line->quantity;

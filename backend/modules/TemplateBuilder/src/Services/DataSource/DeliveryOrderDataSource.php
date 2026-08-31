@@ -31,17 +31,19 @@ final class DeliveryOrderDataSource implements DataSourceContract
 
         $lines = [];
         foreach ($do->lines as $i => $line) {
+            $isProduct = ($line->line_type ?? 'product') === 'product';
             $lines[] = [
-                'index' => $i + 1,
+                'line_type' => $line->line_type ?? 'product',
+                'index' => $isProduct ? $i + 1 : null,
                 'sku' => $line->product?->sku ?? '',
                 'description' => $line->description ?? '',
                 'patient_name' => $line->patient_name ?? '',
-                'quantity_ordered' => (float) $line->quantity_ordered,
-                'quantity_delivered' => (float) $line->quantity_delivered,
-                'remaining' => (float) $line->remaining_quantity,
-                'unit' => $line->unit ?? 'pcs',
-                'unit_price' => (float) ($line->unit_price ?? 0),
-                'line_total' => (float) ($line->line_total ?? 0),
+                'quantity_ordered' => $isProduct ? (float) $line->quantity_ordered : null,
+                'quantity_delivered' => $isProduct ? (float) $line->quantity_delivered : null,
+                'remaining' => $isProduct ? (float) $line->remaining_quantity : null,
+                'unit' => $isProduct ? ($line->unit ?? 'pcs') : null,
+                'unit_price' => $isProduct ? (float) ($line->unit_price ?? 0) : null,
+                'line_total' => $isProduct ? (float) ($line->line_total ?? 0) : null,
                 'lot_number' => $line->lot_number ?? '',
                 'batch_number' => $line->batch_number ?? '',
                 'expiry_date' => optional($line->expiry_date)->format('Y-m-d'),

@@ -21,6 +21,7 @@ import { formatDate, resolveImageUrl, formatCurrency } from '@/lib/utils';
 import api from '@/lib/api';
 import InvoiceCreditNotes from '../components/InvoiceCreditNotes';
 import CreateCreditNoteDialog from '../components/CreateCreditNoteDialog';
+import { useAuthStore } from '@/store/authStore';
 
 const formatSnapshotAddress = (snapshot: string | null | undefined): string => {
   if (!snapshot) return '';
@@ -48,6 +49,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
   const location = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isAcmeTenant = useAuthStore((state) => state.tenantId) === '00000000-0000-0000-0000-000000000001';
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
@@ -349,7 +351,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
               <p className="text-xl font-bold text-green-600">{formatCurrency(invoice.balance)}</p>
             </div>
           </div>
-          {invoice.notes && (
+          {!isAcmeTenant && invoice.notes && (
             <div className="mt-6 pt-6 border-t">
               <p className="text-sm text-muted-foreground mb-1">Notes</p>
               <p className="text-sm">{invoice.notes}</p>
@@ -532,6 +534,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
                 {invoice.lines && invoice.lines.length > 0 ? (
                   invoice.lines.map((line: any, index: number) => (
                     <TableRow key={index}>
+                      {line.line_type === 'note' || line.line_type === 'section' ? <TableCell colSpan={12} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}>{line.description}</TableCell> : <>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           {line.product?.image ? (
@@ -561,6 +564,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
                       <TableCell className="text-right">{line.tax_rate}%</TableCell>
                       <TableCell className="text-right">{formatCurrency(line.tax_amount)}</TableCell>
                       <TableCell className="text-right font-medium">{formatCurrency(line.line_total)}</TableCell>
+                      </>}
                     </TableRow>
                   ))
                 ) : (

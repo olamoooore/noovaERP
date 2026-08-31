@@ -76,13 +76,15 @@ class SalesOrderService
 
             foreach ($lines as $lineData) {
                 $line = $order->lines()->create([
+                    'line_type' => $lineData['line_type'] ?? 'product',
+                    'sequence' => $lineData['sequence'] ?? 0,
                     'product_id' => $lineData['product_id'] ?? null,
                     'model_number' => $lineData['model_number'] ?? null,
                     'product_notes' => $lineData['product_notes'] ?? null,
                     'variant_id' => $lineData['variant_id'] ?? null,
                     'description' => $lineData['description'] ?? '',
                     'sku' => $lineData['sku'] ?? null,
-                    'quantity' => $lineData['quantity'] ?? 1,
+                    'quantity' => $lineData['quantity'] ?? (($lineData['line_type'] ?? 'product') === 'product' ? 1 : 0),
                     'unit' => $lineData['unit'] ?? 'pcs',
                     'unit_price' => $lineData['unit_price'] ?? 0,
                     'list_price' => $lineData['list_price'] ?? null,
@@ -242,6 +244,18 @@ class SalesOrderService
             $totalInvoiceableQty = 0;
 
             foreach ($order->lines as $line) {
+                if (in_array($line->line_type ?? 'product', ['note', 'section'], true)) {
+                    $lines[] = [
+                        'line_type' => $line->line_type,
+                        'sequence' => $line->sequence ?? 0,
+                        'description' => $line->description,
+                        'quantity' => 0,
+                        'unit_price' => 0,
+                        'tax_rate' => 0,
+                        'discount_amount' => 0,
+                    ];
+                    continue;
+                }
                 $policy = $line->invoicing_policy ?? 'ordered_qty';
                 $ordered = (float) $line->quantity;
                 $delivered = (float) $line->quantity_delivered;
@@ -263,6 +277,8 @@ class SalesOrderService
                 );
 
                 $lines[] = [
+                    'line_type' => 'product',
+                    'sequence' => $line->sequence ?? 0,
                     'product_id' => $line->product_id,
                     'model_number' => $line->model_number,
                     'product_notes' => $line->product_notes,

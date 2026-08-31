@@ -34,15 +34,17 @@ class InvoiceDataSource implements DataSourceContract
         $doctor = $invoice->doctor?->full_name ?? $invoice->doctor?->display_name ?? '';
         $requestor = $invoice->requestor?->full_name ?? $invoice->requestor?->display_name ?? '';
         foreach ($invoice->lines as $i => $line) {
+            $isProduct = ($line->line_type ?? 'product') === 'product';
             $lines[] = [
+                'line_type' => $line->line_type ?? 'product',
                 'index' => $i + 1,
                 'sku' => $line->product?->sku ?? '',
                 'description' => $line->description ?? '',
-                'quantity' => (float) $line->quantity,
-                'unit_price' => (float) $line->unit_price,
+                'quantity' => $isProduct ? (float) $line->quantity : null,
+                'unit_price' => $isProduct ? (float) $line->unit_price : null,
                 'tax_rate' => (float) $line->tax_rate,
                 'discount' => (float) ($line->discount_amount ?? 0),
-                'line_total' => (float) $line->line_total,
+                'line_total' => $isProduct ? (float) $line->line_total : null,
                 'salesperson' => $salesperson,
                 'doctor' => $doctor,
                 'requestor' => $requestor,

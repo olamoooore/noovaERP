@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class SalesOrderLine extends Model
 {
     protected $fillable = [
+        'line_type',
+        'sequence',
         'sales_order_id',
         'product_id',
         'model_number',
@@ -38,6 +40,7 @@ class SalesOrderLine extends Model
     ];
 
     protected $casts = [
+        'sequence' => 'integer',
         'quantity' => 'decimal:4',
         'quantity_allocated' => 'decimal:4',
         'quantity_fulfilled' => 'decimal:4',
@@ -86,6 +89,16 @@ class SalesOrderLine extends Model
 
     public function calculateLineTotal(): void
     {
+        if (in_array($this->line_type, ['note', 'section'], true)) {
+            $this->product_id = null;
+            $this->quantity = 0;
+            $this->unit_price = 0;
+            $this->tax_rate = 0;
+            $this->tax_amount = 0;
+            $this->discount_amount = 0;
+            $this->line_total = 0;
+            return;
+        }
         $baseTotal = $this->quantity * $this->unit_price;
 
         // When a discount_value is explicitly provided (percentage or fixed),

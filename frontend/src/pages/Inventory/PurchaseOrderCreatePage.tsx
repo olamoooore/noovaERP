@@ -17,6 +17,7 @@ import {
 import { formatCurrency } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog'
 
 interface Product {
   id: number
@@ -36,6 +37,7 @@ interface Warehouse {
 }
 
 interface OrderItem {
+  line_type?: 'product' | 'note' | 'section'
   product_id: string
   product_name: string
   quantity_ordered: number
@@ -94,7 +96,10 @@ export function PurchaseOrderCreatePage() {
         expected_date: expectedDate || null,
         notes: notes || null,
         items: items.map(item => ({
-          product_id: parseInt(item.product_id),
+          line_type: item.line_type || 'product',
+          sequence: items.indexOf(item),
+          product_id: item.product_id ? parseInt(item.product_id) : null,
+          description: item.line_type === 'note' ? item.product_name : undefined,
           quantity_ordered: item.quantity_ordered,
           unit_cost: item.unit_cost,
           tax_rate: item.tax_rate,
@@ -140,6 +145,17 @@ export function PurchaseOrderCreatePage() {
     setSelectedProductId('')
     setQuantity('')
     setUnitCost('')
+  }
+
+  const addNote = () => setItems([...items, { line_type: 'note', product_id: '', product_name: '', quantity_ordered: 0, unit_cost: 0, tax_rate: 0, line_total: 0 }])
+  const addCatalogItems = (selected: Array<{ product: any; quantity: number }>) => {
+    const next = [...items]
+    selected.forEach(({ product, quantity }) => {
+      const existing = next.find((item) => item.line_type !== 'note' && item.product_id === String(product.id))
+      if (existing) { existing.quantity_ordered += quantity; existing.line_total = existing.quantity_ordered * existing.unit_cost }
+      else next.push({ product_id: String(product.id), product_name: product.name || '', quantity_ordered: quantity, unit_cost: Number(product.cost || product.price || 0), tax_rate: 0, line_total: quantity * Number(product.cost || product.price || 0) })
+    })
+    setItems(next)
   }
 
   const removeItem = (index: number) => {
@@ -232,6 +248,7 @@ export function PurchaseOrderCreatePage() {
                 <CardTitle>Order Items</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="flex gap-2 items-end"><ProductCatalogDialog products={products || []} onAdd={addCatalogItems} /><Button type="button" variant="outline" onClick={addNote}>Add Note</Button></div>
                 <div className="flex gap-2 items-end">
                   <div className="flex-1 space-y-2">
                     <label className="text-sm font-medium">Product</label>
@@ -272,7 +289,7 @@ export function PurchaseOrderCreatePage() {
                   <TableBody>
                     {items.map((item, index) => (
                       <TableRow key={index}>
-                        <TableCell>{item.product_name}</TableCell>
+                        {item.line_type === 'note' ? <TableCell colSpan={4} className="bg-muted/40"><Input placeholder="Note text" value={item.product_name} onChange={(e) => setItems(items.map((x, i) => i === index ? { ...x, product_name: e.target.value } : x))} /></TableCell> : <><TableCell>{item.product_name}</TableCell>
                         <TableCell className="text-right">{item.quantity_ordered}</TableCell>
                         <TableCell className="text-right">{formatCurrency(item.unit_cost)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(item.line_total)}</TableCell>
@@ -280,7 +297,7 @@ export function PurchaseOrderCreatePage() {
                           <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(index)}>
                             <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 text-red-500" />
                           </Button>
-                        </TableCell>
+                        </TableCell></>}
                       </TableRow>
                     ))}
                     {items.length === 0 && (

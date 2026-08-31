@@ -12,8 +12,11 @@ import { Icon } from '@iconify/react'
 import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DeliveryOrderColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog'
+import { DocumentTextLineRow, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow'
 
 interface LineItem {
+  line_type?: 'product' | 'note' | 'section'
   product_id: number | null
   product_name: string
   model_number: string
@@ -47,6 +50,7 @@ export function DeliveryOrderEditPage() {
   const [notes, setNotes] = useState('')
   const [warehouseId, setWarehouseId] = useState('')
   const [lines, setLines] = useState<LineItem[]>([])
+  const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null)
 
   // Fetch existing delivery order
   const { data: deliveryOrder, isLoading } = useQuery({
@@ -116,6 +120,7 @@ export function DeliveryOrderEditPage() {
       setWarehouseId(deliveryOrder.warehouse_id?.toString() || '')
       setLines(
         deliveryOrder.lines?.map((l: any) => ({
+          line_type: l.line_type || 'product',
           product_id: l.product_id,
           product_name: l.product?.name || '',
           model_number: l.model_number || '',
@@ -161,13 +166,16 @@ export function DeliveryOrderEditPage() {
   const addLine = () => {
     setLines((prev) => [...prev, { product_id: null, product_name: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null, lot_number: '', expiry_date: '' }])
   }
+  const addNote = () => setLines((prev) => [...prev, { line_type: 'note', product_id: null, product_name: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 0, unit: '', unit_price: null, lot_number: '', expiry_date: '' }])
+  const addSection = () => setLines((prev) => [...prev, { line_type: 'section', product_id: null, product_name: '', model_number: '', description: '', product_notes: '', patient_name: '', quantity: 0, unit: '', unit_price: null, lot_number: '', expiry_date: '' }])
+  const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => setLines((prev) => [...prev, ...selected.map(({ product, quantity }) => ({ line_type: 'product' as const, product_id: product.id, product_name: product.name || '', model_number: '', description: product.name || '', product_notes: '', patient_name: '', quantity, unit: product.unit || 'pcs', unit_price: Number(product.price || 0), lot_number: '', expiry_date: '' }))])
 
   const removeLine = (index: number) => {
     setLines((prev) => prev.filter((_, i) => i !== index))
   }
 
   const handleSubmit = () => {
-    const validLines = lines.filter((l) => l.quantity > 0)
+    const validLines = lines.filter((l) => l.line_type === 'note' || l.line_type === 'section' || l.quantity > 0)
     updateMutation.mutate({
       warehouse_id: warehouseId ? parseInt(warehouseId) : undefined,
       delivery_date: deliveryDate || undefined,
@@ -183,6 +191,8 @@ export function DeliveryOrderEditPage() {
       attention_to: attentionTo || undefined,
       notes: notes || undefined,
       lines: validLines.map((l) => ({
+        line_type: l.line_type || 'product',
+        sequence: validLines.indexOf(l),
         product_id: l.product_id,
         model_number: l.model_number || null,
         description: l.description,
@@ -332,6 +342,7 @@ export function DeliveryOrderEditPage() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             Line Items
+            <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} /><Button variant="outline" size="sm" onClick={addSection}>Add Section</Button><Button variant="outline" size="sm" onClick={addNote}>Add Note</Button>
             <Button variant="outline" size="sm" onClick={addLine}>
               <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-1" />
               Add Line
@@ -359,7 +370,8 @@ export function DeliveryOrderEditPage() {
             </TableHeader>
             <TableBody>
               {lines.map((line, idx) => (
-                <TableRow key={idx}>
+                <TableRow key={idx} draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(idx)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== idx) setLines(reorderDocumentLines(lines, draggedLineIndex, idx)); setDraggedLineIndex(null); }}>
+                  {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={10} onChange={(text) => updateLine(idx, 'description', text)} onDelete={() => removeLine(idx)} onDragStart={() => setDraggedLineIndex(idx)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, idx)); setDraggedLineIndex(null); }} /> : <>
                   <TableCell>
                     <ProductSearchCombobox
                       value={line.product_id?.toString() || ''}
@@ -402,6 +414,7 @@ export function DeliveryOrderEditPage() {
                       </Button>
                     )}
                   </TableCell>
+                  </>}
                 </TableRow>
               ))}
             </TableBody>
