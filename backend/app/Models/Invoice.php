@@ -76,6 +76,7 @@ class Invoice extends Model
         'invoice_date',
         'due_date',
         'case_number',
+        'pr_no', 'contract_no', 'buyer_contact_id', 'plant_code', 'company_code',
         'date_of_case',
         'case_location',
         'patient_name',
@@ -233,6 +234,11 @@ class Invoice extends Model
     public function requestor()
     {
         return $this->belongsTo(\Modules\Contact\src\Models\CoreContact::class, 'requestor_contact_id');
+    }
+
+    public function buyer(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Contact\src\Models\CoreContact::class, 'buyer_contact_id');
     }
 
     public function billingContact()

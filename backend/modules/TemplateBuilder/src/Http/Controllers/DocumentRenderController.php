@@ -65,6 +65,15 @@ class DocumentRenderController extends Controller
         return response()->json(['data' => $templates]);
     }
 
+    public function invoiceTemplates(): JsonResponse
+    {
+        $templates = DocumentTemplate::query()->forDocumentType('invoice')
+            ->where('status', DocumentTemplate::STATUS_PUBLISHED)
+            ->orderByDesc('is_system_default')->orderBy('name')
+            ->get(['id', 'name', 'code', 'is_system_default', 'published_version']);
+        return response()->json(['data' => $templates]);
+    }
+
     public function quotationPdf(Request $request, string $id): Response
     {
         return $this->renderDocument('quotation', $id, $request, 'quotation-'.$id.'.pdf');

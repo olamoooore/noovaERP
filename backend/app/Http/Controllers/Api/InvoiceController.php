@@ -108,6 +108,9 @@ class InvoiceController extends Controller
             'invoice_date' => 'nullable|date',
             'due_date' => 'nullable|date',
             'case_number' => 'nullable|string|max:100',
+            'pr_no' => 'nullable|string|max:100', 'contract_no' => 'nullable|string|max:100',
+            'plant_code' => 'nullable|string|max:100', 'company_code' => 'nullable|string|max:100',
+            'buyer_contact_id' => 'nullable|exists:core_contacts,id',
             'date_of_case' => 'nullable|date',
             'case_location' => 'nullable|string|max:255',
             'patient_name' => 'nullable|string|max:255',
@@ -247,6 +250,9 @@ class InvoiceController extends Controller
                 'invoice_date' => $data['invoice_date'] ?? null,
                 'due_date' => $data['due_date'] ?? null,
                 'case_number' => $data['case_number'] ?? null,
+                'pr_no' => $data['pr_no'] ?? null, 'contract_no' => $data['contract_no'] ?? null,
+                'plant_code' => $data['plant_code'] ?? null, 'company_code' => $data['company_code'] ?? null,
+                'buyer_contact_id' => $data['buyer_contact_id'] ?? null,
                 'date_of_case' => $data['date_of_case'] ?? null,
                 'case_location' => $data['case_location'] ?? null,
                 'patient_name' => $data['patient_name'] ?? null,
@@ -346,6 +352,11 @@ class InvoiceController extends Controller
             'invoice_date' => $data['invoice_date'] ?? null,
             'due_date' => $data['due_date'] ?? null,
             'case_number' => $data['case_number'] ?? null,
+            'pr_no' => $data['pr_no'] ?? null,
+            'contract_no' => $data['contract_no'] ?? null,
+            'plant_code' => $data['plant_code'] ?? null,
+            'company_code' => $data['company_code'] ?? null,
+            'buyer_contact_id' => $data['buyer_contact_id'] ?? null,
             'date_of_case' => $data['date_of_case'] ?? null,
             'case_location' => $data['case_location'] ?? null,
             'patient_name' => $data['patient_name'] ?? null,
@@ -371,7 +382,7 @@ class InvoiceController extends Controller
         // Pass contact IDs through the invoice overrides now that contacts
         // are properly persisted (UTF-8 sanitization in resolveOrCreateContact
         // prevents silent INSERT failures that caused FK violations).
-        foreach (['doctor_contact_id', 'requestor_contact_id', 'billing_contact_id', 'shipping_contact_id'] as $contactKey) {
+        foreach (['doctor_contact_id', 'requestor_contact_id', 'buyer_contact_id', 'billing_contact_id', 'shipping_contact_id'] as $contactKey) {
             if (($data[$contactKey] ?? null) !== null) {
                 $invoiceOverrides[$contactKey] = $data[$contactKey];
             }
@@ -397,7 +408,7 @@ class InvoiceController extends Controller
 
     public function show($id)
     {
-        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'salesOrder', 'quotation', 'deliveryOrders'])->find($id);
+        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders'])->find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
@@ -423,6 +434,9 @@ class InvoiceController extends Controller
             'invoice_date' => 'date',
             'due_date' => 'date',
             'case_number' => 'nullable|string|max:100',
+            'pr_no' => 'nullable|string|max:100', 'contract_no' => 'nullable|string|max:100',
+            'plant_code' => 'nullable|string|max:100', 'company_code' => 'nullable|string|max:100',
+            'buyer_contact_id' => 'nullable|exists:core_contacts,id',
             'date_of_case' => 'nullable|date',
             'case_location' => 'nullable|string|max:255',
             'patient_name' => 'nullable|string|max:255',
@@ -518,7 +532,7 @@ class InvoiceController extends Controller
             $invoice->calculateTotals();
         });
 
-        return response()->json($invoice->fresh(['customer', 'lines', 'doctor', 'requestor', 'billingContact', 'shippingContact']));
+        return response()->json($invoice->fresh(['customer', 'lines', 'doctor', 'requestor', 'buyer', 'billingContact', 'shippingContact']));
     }
 
     public function send($id)
@@ -929,6 +943,7 @@ class InvoiceController extends Controller
             'delivery_date' => 'delivery_date',
             'doctor' => 'doctor_name',
             'requestor' => 'requestor_name',
+            'buyer' => 'buyer_name',
             'billing_contact' => 'billing_contact_name',
             'shipping_contact' => 'shipping_contact_name',
             'delivery_contact' => 'shipping_contact_name',
@@ -1080,7 +1095,7 @@ class InvoiceController extends Controller
                     'billing_address_snapshot', 'shipping_address_snapshot',
                     'company_registration_number', 'tax_registration_number',
                     'notes', 'terms', 'discount_amount',
-                    'po_number', 'case_number', 'date_of_case', 'case_location', 'patient_name',
+                    'po_number', 'case_number', 'pr_no', 'contract_no', 'plant_code', 'company_code', 'date_of_case', 'case_location', 'patient_name', 'buyer_contact_id',
                     'cost_center_id', 'delivery_date',
                 ] as $field) {
                     $value = $this->readImportValue($headerRow[$field] ?? null);
@@ -1110,6 +1125,10 @@ class InvoiceController extends Controller
                     $this->resolveOrCreateImportCustomerContact($customer, $requestorName, 'requestor', $headerRow);
                     $data['requestor_contact_id'] = $this->resolveOrCreateContact($requestorName, 'person', 'import_invoice');
                     $data['_requestor_name'] = $requestorName;
+                }
+                $buyerName = $this->readImportValue($headerRow['buyer_name'] ?? $headerRow['buyer'] ?? null);
+                if ($buyerName !== null) {
+                    $data['buyer_contact_id'] = $this->resolveOrCreateContact($buyerName, 'person', 'import_invoice');
                 }
                 $billingContactName = $this->readImportValue($headerRow['billing_contact_name'] ?? $headerRow['billing_contact'] ?? null);
                 if ($billingContactName !== null) {

@@ -129,7 +129,7 @@ final class ReferenceTemplateSeeder extends Seeder
                         ['type' => 'text', 'align' => 'right', 'content' => '<b>Quote #:</b> {{ quotation.number }}<br/><b>Date:</b> {{ quotation.issue_date }}<br/><b>Valid Until:</b> {{ quotation.valid_until }}<br/><b>Reference:</b> {{ quotation.reference }}'],
                     ]],
                     ['type' => 'spacer', 'height' => 12],
-                    ['type' => 'table', 'source' => 'lines', 'columns' => [
+                    ['type' => 'table', 'source' => 'lines', 'paginate' => true, 'show_page_subtotal' => true, 'subtotal_label' => 'Page Subtotal', 'subtotal_field' => 'line_total', 'subtotal_format' => 'money', 'columns' => [
                         ['label' => '#', 'field' => 'index', 'width' => '6%', 'align' => 'center'],
                         ['label' => 'Description', 'field' => 'description', 'width' => '46%'],
                         ['label' => 'Qty', 'field' => 'quantity', 'width' => '12%', 'align' => 'right'],
