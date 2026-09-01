@@ -76,13 +76,15 @@ export function PostingConfirmationDialog({
       })
     })
   } else {
-    // Fallback single expense line
+    // ACC-UI-RM-007: never hardcode a GL account. Surface a clear
+    // "needs assignment" indicator so the user must pick from the
+    // authoritative Chart of Accounts before posting.
     journalEntryLines.push({
       type: 'debit',
-      account: '5000 - Operating Expenses',
-      description: `Expense - ${document.vendor_name}`,
+      account: '⚠ Account not assigned — please choose from Chart of Accounts',
+      description: `Expense - ${document.vendor_name || 'Unknown vendor'}`,
       amount: parseFloat(document.subtotal || document.total_amount) || 0,
-      hasAccount: true,
+      hasAccount: false,
     })
   }
 
@@ -90,20 +92,20 @@ export function PostingConfirmationDialog({
   if (document.tax_amount && document.tax_amount > 0) {
     journalEntryLines.push({
       type: 'debit',
-      account: '2200 - Tax Payable',
+      account: '⚠ Tax account not assigned — please choose from Chart of Accounts',
       description: 'Tax',
       amount: parseFloat(document.tax_amount) || 0,
-      hasAccount: true,
+      hasAccount: false,
     })
   }
 
   // Credit: Accounts Payable
   journalEntryLines.push({
     type: 'credit',
-    account: '2100 - Accounts Payable',
-    description: `AP - ${document.vendor_name}`,
+    account: '⚠ AP account not assigned — please choose from Chart of Accounts',
+    description: `AP - ${document.vendor_name || 'Unknown vendor'}`,
     amount: parseFloat(document.total_amount) || 0,
-    hasAccount: true,
+    hasAccount: false,
   })
 
   const totalDebits = journalEntryLines

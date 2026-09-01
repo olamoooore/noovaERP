@@ -287,6 +287,21 @@ export const VendorBills: React.FC = () => {
         </Card>
       )}
 
+      {/* ACC-UI-RM-003: OCR is a source-capture/AI digitalization workflow,
+          NOT a second Bill authority. The vendor bill list below is the
+          canonical record. */}
+      <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg p-3 flex items-start gap-2 text-sm">
+        <Icon icon="solar:info-circle-bold-duotone" className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+        <div>
+          <p className="font-medium text-blue-900 dark:text-blue-200">OCR documents are not vendor bills</p>
+          <p className="text-blue-800 dark:text-blue-300 text-xs mt-1">
+            Uploaded files are extracted and reviewed, then promoted to the canonical vendor-bill
+            record you see below. Once promoted, only the bill here is the authoritative accounting
+            document — not the uploaded file, not the OCR preview.
+          </p>
+        </div>
+      </div>
+
       <Card>
         <CardContent className="pt-6">
           <div className="flex gap-4">

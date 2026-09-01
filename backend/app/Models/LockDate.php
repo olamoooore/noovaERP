@@ -21,6 +21,8 @@ class LockDate extends Model
         'set_at',
         'reason',
         'is_active',
+        'legal_entity_id',
+        'accounting_book_id',
     ];
 
     protected $casts = [

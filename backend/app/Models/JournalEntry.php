@@ -87,11 +87,42 @@ class JournalEntry extends Model
             if (! $entry->created_by) {
                 $entry->created_by = TenantUserHelper::requireTenantUserId();
             }
+            // ADR-005 §11.5: default all four state dimensions on create
+            if (! $entry->journal_business_state) {
+                $entry->journal_business_state = 'DRAFT';
+            }
+            if (! $entry->workflow_state) {
+                $entry->workflow_state = 'NONE';
+            }
+            if (! $entry->approval_state) {
+                $entry->approval_state = 'NOT_REQUIRED';
+            }
+            if (! $entry->posting_state) {
+                $entry->posting_state = 'NOT_POSTED';
+            }
         });
 
         static::saving(function ($entry) {
             if ($entry->status === 'posted' && ! $entry->posted_by) {
                 $entry->posted_by = TenantUserHelper::requireTenantUserId();
+            }
+            // ADR-005 §11.5: keep posting_state in sync with status for
+            // legacy callers that still write `status` directly.
+            if ($entry->isDirty('status') && ! $entry->isDirty('posting_state')) {
+                $entry->posting_state = match ($entry->status) {
+                    'posted' => 'POSTED',
+                    'reversed' => 'REVERSED',
+                    'posting_failed' => 'POSTING_FAILED',
+                    'posting' => 'POSTING',
+                    default => 'NOT_POSTED',
+                };
+            }
+            if ($entry->isDirty('status') && ! $entry->isDirty('journal_business_state')) {
+                $entry->journal_business_state = match ($entry->status) {
+                    'draft' => 'DRAFT',
+                    'cancelled' => 'CANCELLED',
+                    default => 'SUBMITTED',
+                };
             }
         });
 

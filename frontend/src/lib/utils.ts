@@ -207,11 +207,17 @@ export function mapCommandError(error: any): { title: string; description: strin
   const message = error?.response?.data?.message || error?.response?.data?.error || '';
   const msg = message.toLowerCase();
 
-  // Period locked
+  // Period locked — ACC-UI-RM-002
   if (msg.includes('locked') || msg.includes('period is closed') || msg.includes('fiscal period')) {
+    const reasonCode = error?.response?.data?.errors?.reason_code
+      || error?.response?.data?.reason_code
+      || 'PERIOD_CLOSED';
     return {
       title: 'Period Locked',
-      description: 'This posting period is locked. Contact an administrator to request an override or reopen the period.',
+      description:
+        `This posting period is locked (reason: ${reasonCode}). ` +
+        'Only a user with accounting.close.admin permission can request a `LockDateOverride`. ' +
+        'Use the override workflow under Accounting → Close → Period Overrides.',
       variant: 'destructive',
     };
   }

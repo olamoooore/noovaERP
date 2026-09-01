@@ -131,76 +131,82 @@ class FinancialCloseCycleService
      */
     public function closeCycle(string $tenantId, string $cycleId, string $userId): bool
     {
-        $cycle = $this->getCycle($tenantId, $cycleId);
-
-        if (! $cycle || $cycle->status !== 'ready_to_close') {
-            Log::warning('FinancialClose: cycle not ready to close', [
-                'cycle_id' => $cycleId,
-                'status' => $cycle?->status,
-            ]);
-
-            return false;
-        }
-
-        $cycle->update([
-            'status' => 'closed',
-            'closed_at' => now(),
-        ]);
-
-        // ── Lock the fiscal period ──────────────────────────
-        $periodCode = $cycle->period_id;
-        $period = FiscalPeriod::where('code', $periodCode)->first();
-
-        if ($period && ! $period->isLocked()) {
-            $period->lock();
-
-            Log::info('FinancialClose: fiscal period locked on cycle close', [
-                'period_code' => $periodCode,
-                'cycle_id' => $cycleId,
-            ]);
-        }
-
-        // ── Also create a lock_date record for transaction-type enforcement ──
-        // Use the period end date as the lock date (last day of the period)
-        $lockDateValue = $period?->period_end ?? now();
-        if ($period) {
-            // Deactivate any existing 'all' lock_date that's older
-            LockDate::where('lock_type', 'all')
-                ->where('is_active', true)
-                ->where('lock_date', '<', $lockDateValue)
-                ->update(['is_active' => false]);
-
-            // Create or update the lock_date record
-            $existingLock = LockDate::where('lock_type', 'all')
-                ->where('lock_date', $lockDateValue)
+        // ── ADR-005 §9: Close-cycle state + period lock + lock authority
+        // evidence must transition atomically. All-or-nothing.
+        return DB::transaction(function () use ($tenantId, $cycleId, $userId) {
+            $cycle = CloseCycle::where('tenant_id', $tenantId)
+                ->where('id', $cycleId)
+                ->lockForUpdate()
                 ->first();
 
-            if (! $existingLock) {
-                LockDate::create([
-                    'lock_type' => 'all',
-                    'lock_date' => $lockDateValue,
-                    'set_by' => $userId,
-                    'reason' => "Financial Close cycle {$cycleId} closed for period {$periodCode}",
-                    'is_active' => true,
+            if (! $cycle || $cycle->status !== 'ready_to_close') {
+                Log::warning('FinancialClose: cycle not ready to close', [
+                    'cycle_id' => $cycleId,
+                    'status' => $cycle?->status,
+                ]);
+
+                return false;
+            }
+
+            $cycle->update([
+                'status' => 'closed',
+                'closed_at' => now(),
+            ]);
+
+            // ── Lock the fiscal period ──────────────────────────
+            $periodCode = $cycle->period_id;
+            $period = FiscalPeriod::where('code', $periodCode)->lockForUpdate()->first();
+
+            if ($period && ! $period->isLocked()) {
+                $period->lock();
+
+                Log::info('FinancialClose: fiscal period locked on cycle close', [
+                    'period_code' => $periodCode,
+                    'cycle_id' => $cycleId,
                 ]);
             }
-        }
 
-        AuditLog::create([
-            'tenant_id' => $tenantId,
-            'actor_id' => $userId,
-            'action' => 'cycle_closed',
-            'entity_type' => 'close_cycle',
-            'entity_id' => $cycleId,
-            'after' => [
-                'period_locked' => $period?->code,
-                'lock_date' => $lockDateValue instanceof \Carbon\Carbon
-                    ? $lockDateValue->format('Y-m-d')
-                    : $lockDateValue,
-            ],
-        ]);
+            // ── Also create a lock_date record for transaction-type enforcement ──
+            $lockDateValue = $period?->period_end ?? now();
+            if ($period) {
+                // Deactivate any existing 'all' lock_date that's older
+                LockDate::where('lock_type', 'all')
+                    ->where('is_active', true)
+                    ->where('lock_date', '<', $lockDateValue)
+                    ->update(['is_active' => false]);
 
-        return true;
+                // Create or update the lock_date record
+                $existingLock = LockDate::where('lock_type', 'all')
+                    ->where('lock_date', $lockDateValue)
+                    ->first();
+
+                if (! $existingLock) {
+                    LockDate::create([
+                        'lock_type' => 'all',
+                        'lock_date' => $lockDateValue,
+                        'set_by' => $userId,
+                        'reason' => "Financial Close cycle {$cycleId} closed for period {$periodCode}",
+                        'is_active' => true,
+                    ]);
+                }
+            }
+
+            AuditLog::create([
+                'tenant_id' => $tenantId,
+                'actor_id' => $userId,
+                'action' => 'cycle_closed',
+                'entity_type' => 'close_cycle',
+                'entity_id' => $cycleId,
+                'after' => [
+                    'period_locked' => $period?->code,
+                    'lock_date' => $lockDateValue instanceof \Carbon\Carbon
+                        ? $lockDateValue->format('Y-m-d')
+                        : $lockDateValue,
+                ],
+            ]);
+
+            return true;
+        });
     }
 
     /**
@@ -213,6 +219,8 @@ class FinancialCloseCycleService
      */
     public function signoffCycle(string $tenantId, string $cycleId, string $userId, ?string $role, ?string $notes = null): array
     {
+        // ADR-005 §9: sign-off transitions must be atomic with audit log
+        return DB::transaction(function () use ($tenantId, $cycleId, $userId, $role, $notes) {
         $cycle = $this->getCycle($tenantId, $cycleId);
 
         if (! $cycle) {
@@ -313,6 +321,7 @@ class FinancialCloseCycleService
             'ready_to_close' => $evaluation['ready_to_close'],
             'evaluation' => $evaluation,
         ];
+        });
     }
 
     /**

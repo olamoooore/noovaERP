@@ -409,11 +409,30 @@ export default function AuditorQueriesPage() {
               </div>
               <div>
                 <Label>Source ID</Label>
+                {/* ACC-UI-RM-006: canonical resource linkage. Source ID must
+                    resolve to an authoritative record. The free-text input
+                    is deprecated; the resource picker is being introduced
+                    per source_type below. For now, validate format here. */}
                 <Input
                   value={createForm.source_id}
-                  onChange={(e) => setCreateForm({ ...createForm, source_id: e.target.value })}
-                  placeholder="e.g., Invoice #12345"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    // Numeric IDs only (resource primary keys are bigint).
+                    // Free-text invoice numbers should use the
+                    // invoice_number field on the invoice record itself.
+                    const numeric = /^[0-9]+$/.test(val) || val === '';
+                    if (numeric) {
+                      setCreateForm({ ...createForm, source_id: val });
+                    }
+                  }}
+                  placeholder={createForm.source_type === 'account'
+                    ? 'e.g., 1001 (account code)'
+                    : `e.g., 42 (${createForm.source_type} ID)`}
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Must be a numeric ID of an existing {createForm.source_type.replace('_', ' ')}.
+                  The full resource picker is tracked under ACC-UI-RM-006.
+                </p>
               </div>
             </div>
             <div>

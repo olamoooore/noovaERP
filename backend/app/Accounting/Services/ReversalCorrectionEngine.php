@@ -181,11 +181,14 @@ class ReversalCorrectionEngine
             $this->createAuditLog($original, $reversalEntry, $request, 'partial_reversal');
 
             // ── State transition ────────────────────────────────
+            // ADR-005 §11: posted entries remain in POSTED; the partial
+            // reversal is recorded on the REVERSAL dimension, not the
+            // JOURNAL_POSTING dimension.
             $this->transitionService->recordTransition(
                 aggregateType: 'JournalEntry',
                 aggregateId: (string) $original->id,
-                dimension: StateDimension::JOURNAL_POSTING,
-                fromState: 'POSTED',
+                dimension: StateDimension::REVERSAL,
+                fromState: 'NONE',
                 toState: 'PARTIALLY_REVERSED',
                 context: [
                     'actor_id' => (string) $request->actorUserId,
@@ -193,7 +196,9 @@ class ReversalCorrectionEngine
                     'correlation_id' => $request->correlationId,
                     'metadata' => [
                         'reversal_journal_entry_id' => $reversalEntry->id,
+                        'reversal_relationship_id' => (string) $relationship->id,
                         'reversed_amount' => $totalReversed,
+                        'remaining_reversible' => $remainingAfter,
                     ],
                 ],
             );

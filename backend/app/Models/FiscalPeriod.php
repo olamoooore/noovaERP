@@ -20,6 +20,8 @@ class FiscalPeriod extends Model
 
     protected $fillable = [
         'name',
+        'legal_entity_id',
+        'accounting_book_id',
         'code',
         'period_start',
         'period_end',
