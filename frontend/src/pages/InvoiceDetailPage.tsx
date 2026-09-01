@@ -13,6 +13,8 @@ import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColum
 import { ChatterDialog } from '@/components/chatter'
 import api from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface Invoice {
   id: number
@@ -39,6 +41,11 @@ interface Invoice {
   terms: string
   date_of_case?: string
   case_number?: string
+  pr_no?: string
+  contract_no?: string
+  buyer?: { id: string; display_name?: string; full_name?: string; name?: string }
+  plant_code?: string
+  company_code?: string
   case_location?: string
   patient_name?: string
   cost_center_id?: string
@@ -135,6 +142,10 @@ export function InvoiceDetailPage() {
   const { toast } = useToast()
   const isAcmeTenant = useAuthStore((state) => state.tenantId) === '00000000-0000-0000-0000-000000000001'
   const queryClient = useQueryClient()
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
+  const { data: pdfTemplates = [], isLoading: templatesLoading } = useQuery({ queryKey: ['invoice-pdf-templates'], queryFn: async () => (await api.get('/template-builder/templates', { params: { document_type: 'invoice', status: 'published', per_page: 100 } })).data?.data || [], enabled: templateDialogOpen })
 
   const { data: invoice, isLoading } = useQuery({
     queryKey: ['invoice', id],
@@ -183,8 +194,10 @@ export function InvoiceDetailPage() {
   }
 
   const handleDownload = async () => {
+    if (!selectedTemplateId) return
+    setIsDownloadingPdf(true)
     try {
-      const response = await api.get(`/invoices/${id}/pdf`, { responseType: 'blob' })
+      const response = await api.get(`/invoices/${id}/pdf`, { params: { template: selectedTemplateId }, responseType: 'blob' })
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement('a')
       link.href = url
@@ -192,13 +205,14 @@ export function InvoiceDetailPage() {
       document.body.appendChild(link)
       link.click()
       link.remove()
+      setTemplateDialogOpen(false)
     } catch (error) {
       toast({
         variant: 'destructive',
         title: 'Download failed',
         description: 'Could not download the PDF. Please try again.',
       })
-    }
+    } finally { setIsDownloadingPdf(false) }
   }
 
   if (isLoading) {
@@ -271,7 +285,7 @@ export function InvoiceDetailPage() {
             <Icon icon="material-symbols:print" className="mr-2 h-4 w-4" />
             Print
           </Button>
-          <Button variant="outline" onClick={handleDownload}>
+          <Button variant="outline" onClick={() => setTemplateDialogOpen(true)}>
             <Icon icon="material-symbols:download" className="mr-2 h-4 w-4" />
             Download PDF
           </Button>
@@ -475,6 +489,13 @@ export function InvoiceDetailPage() {
             </div>
           </div>
 
+          <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+            <DialogContent><DialogHeader><DialogTitle>Download Invoice PDF</DialogTitle><DialogDescription>Select the template to use.</DialogDescription></DialogHeader>
+              <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={templatesLoading}><SelectTrigger><SelectValue placeholder={templatesLoading ? 'Loading templates...' : 'Select a template'} /></SelectTrigger><SelectContent>{pdfTemplates.map((t: any) => <SelectItem key={t.id} value={String(t.id)}>{t.name}{t.is_system_default ? ' (Default)' : ''}</SelectItem>)}</SelectContent></Select>
+              <DialogFooter><Button variant="outline" onClick={() => setTemplateDialogOpen(false)}>Cancel</Button><Button onClick={handleDownload} disabled={!selectedTemplateId || isDownloadingPdf || templatesLoading}>{isDownloadingPdf ? 'Downloading...' : 'Download'}</Button></DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           {/* Payment History */}
           {invoice.payments && invoice.payments.length > 0 && (
             <div className="mb-8">
@@ -505,7 +526,7 @@ export function InvoiceDetailPage() {
           )}
 
           {/* Case Information */}
-          {(invoice.case_number || invoice.date_of_case || invoice.case_location || invoice.patient_name || invoice.cost_center_id || invoice.delivery_date || invoice.po_number || invoice.doctor || invoice.requestor) && (
+          {(invoice.case_number || invoice.pr_no || invoice.contract_no || invoice.buyer || invoice.plant_code || invoice.company_code || invoice.date_of_case || invoice.case_location || invoice.patient_name || invoice.cost_center_id || invoice.delivery_date || invoice.po_number || invoice.doctor || invoice.requestor) && (
             <div className="mt-6 pt-6 border-t">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase mb-3">Case Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -515,6 +536,11 @@ export function InvoiceDetailPage() {
                     <p className="text-sm font-medium">{invoice.case_number}</p>
                   </div>
                 )}
+                {invoice.pr_no && <div><span className="text-xs text-muted-foreground">PR No</span><p className="text-sm font-medium">{invoice.pr_no}</p></div>}
+                {invoice.contract_no && <div><span className="text-xs text-muted-foreground">Contract No</span><p className="text-sm font-medium">{invoice.contract_no}</p></div>}
+                {invoice.buyer && <div><span className="text-xs text-muted-foreground">Buyer</span><p className="text-sm font-medium">{invoice.buyer.display_name || invoice.buyer.full_name || invoice.buyer.name || '-'}</p></div>}
+                {invoice.plant_code && <div><span className="text-xs text-muted-foreground">Plant Code</span><p className="text-sm font-medium">{invoice.plant_code}</p></div>}
+                {invoice.company_code && <div><span className="text-xs text-muted-foreground">Company Code</span><p className="text-sm font-medium">{invoice.company_code}</p></div>}
                 {invoice.date_of_case && (
                   <div>
                     <span className="text-xs text-muted-foreground">Date of Case</span>

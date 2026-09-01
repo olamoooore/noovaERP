@@ -259,6 +259,11 @@ export const CreateInvoicePage: React.FC = () => {
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
   const [caseNumber, setCaseNumber] = useState('');
+  const [prNo, setPrNo] = useState('');
+  const [contractNo, setContractNo] = useState('');
+  const [buyerContactId, setBuyerContactId] = useState('');
+  const [plantCode, setPlantCode] = useState('');
+  const [companyCode, setCompanyCode] = useState('');
   const [dateOfCase, setDateOfCase] = useState('');
   const [caseLocation, setCaseLocation] = useState('');
   const [patientName, setPatientName] = useState('');
@@ -385,6 +390,11 @@ export const CreateInvoicePage: React.FC = () => {
     setInvoiceDate(existingInvoice.invoice_date ? String(existingInvoice.invoice_date).split('T')[0] : '');
     setDueDate(existingInvoice.due_date ? String(existingInvoice.due_date).split('T')[0] : '');
     setCaseNumber(existingInvoice.case_number || '');
+    setPrNo(existingInvoice.pr_no || '');
+    setContractNo(existingInvoice.contract_no || '');
+    setPlantCode(existingInvoice.plant_code || '');
+    setCompanyCode(existingInvoice.company_code || '');
+    setBuyerContactId(existingInvoice.buyer_contact_id ? String(existingInvoice.buyer_contact_id) : '');
     setDateOfCase(existingInvoice.date_of_case ? String(existingInvoice.date_of_case).split('T')[0] : '');
     setCaseLocation(existingInvoice.case_location || '');
     setPatientName(existingInvoice.patient_name || '');
@@ -691,6 +701,9 @@ export const CreateInvoicePage: React.FC = () => {
       invoice_date: invoiceDate,
       due_date: dueDate,
       case_number: caseNumber || undefined,
+      pr_no: prNo || undefined, contract_no: contractNo || undefined,
+      buyer_contact_id: buyerContactId.includes('-') ? buyerContactId : null,
+      plant_code: plantCode || undefined, company_code: companyCode || undefined,
       date_of_case: dateOfCase || undefined,
       case_location: caseLocation || undefined,
       patient_name: patientName || undefined,
@@ -1120,6 +1133,7 @@ export const CreateInvoicePage: React.FC = () => {
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
                   />
                 </div>
+                {([['PR No', prNo, setPrNo], ['Contract No', contractNo, setContractNo], ['Plant Code', plantCode, setPlantCode], ['Company Code', companyCode, setCompanyCode]] as const).map(([label, value, setter]) => <div key={label}><label className="block text-sm font-medium mb-1">{label}</label><input type="text" value={value} onChange={(event) => setter(event.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm" /></div>)}
                 <div>
                   <label className="block text-sm font-medium mb-1">Location</label>
                   <input
@@ -1189,6 +1203,7 @@ export const CreateInvoicePage: React.FC = () => {
                     source="customer_contacts"
                   />
                 </div>
+                <div><label className="block text-sm font-medium mb-1">Buyer</label><ContactSearchCombobox value={buyerContactId} onValueChange={setBuyerContactId} placeholder="Select buyer..." customerId={customerId} source="customer_contacts" /></div>
               </div>
             </CardContent>
           </Card>
@@ -1254,7 +1269,7 @@ export const CreateInvoicePage: React.FC = () => {
                     {lines.map((line, index) => (
                       <tr key={index} className="border-b" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
                         {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={12} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
-                        <td className="py-2 px-2 text-sm font-medium text-slate-500">{index + 1}</td>
+                        <td className="py-2 px-2 text-sm font-medium text-slate-500">{lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}</td>
                         <td className="py-2 px-2 w-[200px] max-w-[200px] overflow-hidden">
                           <ProductSearchCombobox
                             value={line.product_id}

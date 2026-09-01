@@ -59,7 +59,7 @@ final class DefaultTemplates
                         ['type' => 'text', 'align' => 'right', 'content' => '{{ invoice.shipping_method }}'],
                     ]],
                     ['type' => 'spacer', 'height' => 12],
-                    ['type' => 'table', 'source' => 'lines', 'columns' => [
+                    ['type' => 'table', 'source' => 'lines', 'paginate' => true, 'show_page_subtotal' => true, 'subtotal_label' => 'Page Subtotal', 'subtotal_field' => 'line_total', 'subtotal_format' => 'money', 'columns' => [
                         ['label' => '#', 'field' => 'index', 'width' => '6%', 'align' => 'center'],
                         ['label' => 'Description', 'field' => 'description', 'width' => '46%'],
                         ['label' => 'Qty', 'field' => 'quantity', 'width' => '12%', 'align' => 'right'],

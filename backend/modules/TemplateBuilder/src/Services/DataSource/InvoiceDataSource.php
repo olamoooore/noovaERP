@@ -18,7 +18,7 @@ class InvoiceDataSource implements DataSourceContract
 
     public function load(string $documentId): self
     {
-        $this->invoice = Invoice::with(['customer.salesperson', 'lines.product', 'doctor', 'requestor', 'billingContact', 'shippingContact'])->findOrFail($documentId);
+        $this->invoice = Invoice::with(['customer.salesperson', 'lines.product', 'doctor', 'requestor', 'buyer', 'billingContact', 'shippingContact'])->findOrFail($documentId);
 
         return $this;
     }
@@ -33,11 +33,13 @@ class InvoiceDataSource implements DataSourceContract
         $salesperson = $invoice->customer?->salesperson?->name ?? '';
         $doctor = $invoice->doctor?->full_name ?? $invoice->doctor?->display_name ?? '';
         $requestor = $invoice->requestor?->full_name ?? $invoice->requestor?->display_name ?? '';
+        $productIndex = 0;
         foreach ($invoice->lines as $i => $line) {
             $isProduct = ($line->line_type ?? 'product') === 'product';
+            if ($isProduct) $productIndex++;
             $lines[] = [
                 'line_type' => $line->line_type ?? 'product',
-                'index' => $i + 1,
+                'index' => $isProduct ? $productIndex : null,
                 'sku' => $line->product?->sku ?? '',
                 'description' => $line->description ?? '',
                 'quantity' => $isProduct ? (float) $line->quantity : null,
@@ -51,6 +53,9 @@ class InvoiceDataSource implements DataSourceContract
                 'attention_to' => $invoice->attention_to ?? '',
                 'po_number' => $invoice->po_number ?? '',
                 'case_number' => $invoice->case_number ?? '',
+                'pr_no' => $invoice->pr_no ?? '', 'contract_no' => $invoice->contract_no ?? '',
+                'buyer' => $invoice->buyer?->full_name ?? $invoice->buyer?->display_name ?? '',
+                'plant_code' => $invoice->plant_code ?? '', 'company_code' => $invoice->company_code ?? '',
                 'date_of_case' => optional($invoice->date_of_case)->format('Y-m-d') ?? '',
                 'case_location' => $invoice->case_location ?? '',
                 'patient_name' => $invoice->patient_name ?? '',
@@ -70,6 +75,11 @@ class InvoiceDataSource implements DataSourceContract
                 'reference' => $invoice->customer_reference,
                 'po_number' => $invoice->po_number ?? '',
                 'case_number' => $invoice->case_number ?? '',
+                'pr_no' => $invoice->pr_no ?? '',
+                'contract_no' => $invoice->contract_no ?? '',
+                'buyer' => $invoice->buyer?->full_name ?? $invoice->buyer?->display_name ?? '',
+                'plant_code' => $invoice->plant_code ?? '',
+                'company_code' => $invoice->company_code ?? '',
                 'billing_address' => $this->formatAddress($invoice->billing_address_snapshot),
                 'shipping_address' => $this->formatAddress($invoice->shipping_address_snapshot),
                 'notes' => $invoice->notes ?? '',
@@ -124,6 +134,7 @@ class InvoiceDataSource implements DataSourceContract
                 ['token' => 'invoice.reference', 'label' => 'Customer Reference'],
                 ['token' => 'invoice.po_number', 'label' => 'PO Number'],
                 ['token' => 'invoice.case_number', 'label' => 'Case Number'],
+                ['token' => 'invoice.pr_no', 'label' => 'PR No'], ['token' => 'invoice.contract_no', 'label' => 'Contract No'], ['token' => 'invoice.buyer', 'label' => 'Buyer'], ['token' => 'invoice.plant_code', 'label' => 'Plant Code'], ['token' => 'invoice.company_code', 'label' => 'Company Code'],
                 ['token' => 'invoice.date_of_case', 'label' => 'Date of Case'],
                 ['token' => 'invoice.case_location', 'label' => 'Case Location'],
                 ['token' => 'invoice.patient_name', 'label' => 'Patient Name'],
@@ -182,9 +193,15 @@ class InvoiceDataSource implements DataSourceContract
                 'reference' => 'PO-0042',
                 'po_number' => 'PO-0042',
                 'case_number' => 'CASE-2026-001',
+                'pr_no' => 'PR-2026-001',
+                'contract_no' => 'CONTRACT-2026-001',
+                'buyer' => 'Ms. Emily Park',
+                'plant_code' => 'PLANT-01',
+                'company_code' => 'COMP-01',
                 'date_of_case' => '2026-07-07',
                 'case_location' => 'Main Operating Theatre',
                 'patient_name' => 'Sample Patient',
+                'delivery_date' => '2026-07-20',
                 'billing_address' => "Globex Corporation\n1 Infinite Loop\nSan Francisco, CA 94102",
                 'shipping_address' => "Globex Corporation\n1 Infinite Loop\nSan Francisco, CA 94102",
                 'notes' => 'Thank you for your business.',

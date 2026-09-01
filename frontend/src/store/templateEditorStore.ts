@@ -151,6 +151,11 @@ export function createBlock(type: BlockType): Block {
         type,
         rows: [
           { label: 'Case Number', field: 'invoice.case_number' },
+          { label: 'PR No', field: 'invoice.pr_no' },
+          { label: 'Contract No', field: 'invoice.contract_no' },
+          { label: 'Buyer', field: 'invoice.buyer' },
+          { label: 'Plant Code', field: 'invoice.plant_code' },
+          { label: 'Company Code', field: 'invoice.company_code' },
           { label: 'Date of Case', field: 'invoice.date_of_case', format: 'date' },
           { label: 'Case Location', field: 'invoice.case_location' },
           { label: 'Patient Name', field: 'invoice.patient_name' },

@@ -7,6 +7,11 @@ use PhpOffice\PhpSpreadsheet\Shared\Date;
 
 class InvoicesExport extends SalesDocumentExport
 {
+    protected function relations(): array
+    {
+        return ['customer', 'buyer', 'lines.product'];
+    }
+
     public const COLUMNS = [
         'invoice_number' => ['heading' => 'Invoice No', 'type' => 'text'],
         'invoice_date' => ['heading' => 'Date', 'type' => 'date'],
@@ -19,6 +24,8 @@ class InvoicesExport extends SalesDocumentExport
         'balance' => ['heading' => 'Balance', 'type' => 'amount'],
         'status' => ['heading' => 'Status', 'type' => 'text'],
         'due_date' => ['heading' => 'Due Date', 'type' => 'date'],
+        'pr_no' => ['heading' => 'PR No', 'type' => 'text'], 'contract_no' => ['heading' => 'Contract No', 'type' => 'text'],
+        'buyer_name' => ['heading' => 'Buyer', 'type' => 'text'], 'plant_code' => ['heading' => 'Plant Code', 'type' => 'text'], 'company_code' => ['heading' => 'Company Code', 'type' => 'text'],
         'product_code' => ['heading' => 'Product Code', 'type' => 'text', 'line' => true],
         'product_name' => ['heading' => 'Product', 'type' => 'text', 'line' => true],
         'line_description' => ['heading' => 'Line Description', 'type' => 'text', 'line' => true],
@@ -42,7 +49,7 @@ class InvoicesExport extends SalesDocumentExport
     protected function value($invoice, $line, string $column): mixed
     {
         return match ($column) {
-            'customer_name' => $invoice->customer?->name,
+            'customer_name' => $invoice->customer?->name, 'buyer_name' => $invoice->buyer?->full_name ?? $invoice->buyer?->display_name,
             'customer_code' => $invoice->customer?->code,
             'invoice_date', 'due_date' => $invoice->{$column} ? Date::dateTimeToExcel($invoice->{$column}) : null,
             'subtotal', 'tax_amount', 'total', 'paid_amount', 'balance' => (float) $invoice->{$column},
