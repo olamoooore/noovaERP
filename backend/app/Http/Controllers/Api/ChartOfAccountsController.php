@@ -4,11 +4,116 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChartOfAccount;
+use App\Platform\Import\ImportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ChartOfAccountsController extends Controller
 {
+    public function __construct(private readonly ImportService $importService) {}
+
+    public function import(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['file' => 'required|file|mimes:csv,txt|max:10240']);
+
+        $result = $this->importService->importCSV('chart_of_accounts', $validated['file'], [
+            'code' => 'code', 'account_code' => 'code', 'name' => 'name', 'account_name' => 'name',
+            'type' => 'type', 'subtype' => 'subtype', 'description' => 'description',
+            'is_active' => 'is_active', 'opening_balance' => 'opening_balance',
+        ], [
+            'upsert' => true,
+            'upsert_key' => 'code',
+            'rules' => [
+                'code' => ['required' => null, 'max' => 20],
+                'name' => ['required' => null, 'max' => 255],
+                'type' => ['required' => null, 'in' => ['asset', 'liability', 'equity', 'revenue', 'expense']],
+            ],
+            'transform' => function (array $record): array {
+                $record['code'] = trim((string) ($record['code'] ?? ''));
+                $record['name'] = trim((string) ($record['name'] ?? ''));
+                $record['type'] = strtolower(trim((string) ($record['type'] ?? '')));
+                $record['is_active'] = filter_var($record['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true;
+                $record['opening_balance'] = is_numeric($record['opening_balance'] ?? null) ? $record['opening_balance'] : 0;
+                $record['updated_at'] = now();
+                if (! ChartOfAccount::where('code', $record['code'])->exists()) $record['created_at'] = now();
+
+                return $record;
+            },
+        ]);
+
+        $result['errors'] = array_merge($result['errors'], $this->applyImportedParents($validated['file']));
+
+        return response()->json($result + [
+            'count' => $result['created'] + $result['updated'],
+            'message' => 'Chart of Accounts import completed.',
+        ]);
+    }
+
+    /** Resolve optional parent_code values after every account has been upserted. */
+    private function applyImportedParents(UploadedFile $file): array
+    {
+        $handle = fopen($file->getPathname(), 'r');
+        if (! $handle) return [];
+        $headers = array_map(fn ($value) => strtolower(trim(preg_replace('/[^a-z0-9]+/i', '_', (string) $value), '_')), fgetcsv($handle) ?: []);
+        $codeIndex = array_search('code', $headers, true);
+        if ($codeIndex === false) $codeIndex = array_search('account_code', $headers, true);
+        $parentIndex = array_search('parent_code', $headers, true);
+        if ($codeIndex === false || $parentIndex === false) { fclose($handle); return []; }
+
+        $errors = [];
+        $rowNumber = 1;
+        while (($row = fgetcsv($handle)) !== false) {
+            $rowNumber++;
+            $code = trim((string) ($row[$codeIndex] ?? ''));
+            $parentCode = trim((string) ($row[$parentIndex] ?? ''));
+            if ($code === '' || $parentCode === '') continue;
+            if ($code === $parentCode) { $errors[] = ['row' => $rowNumber, 'field' => 'parent_code', 'message' => 'An account cannot be its own parent']; continue; }
+            $account = ChartOfAccount::where('code', $code)->first();
+            $parent = ChartOfAccount::where('code', $parentCode)->first();
+            if (! $account || ! $parent) { $errors[] = ['row' => $rowNumber, 'field' => 'parent_code', 'message' => "Parent account {$parentCode} was not found"]; continue; }
+            $account->update(['parent_id' => $parent->id]);
+        }
+        fclose($handle);
+
+        return $errors;
+    }
+
+    public function importTemplate(): StreamedResponse
+    {
+        return $this->importService->downloadTemplate([
+            ['name' => 'code', 'example' => '1010'], ['name' => 'name', 'example' => 'Cash at Bank'],
+            ['name' => 'type', 'example' => 'asset'], ['name' => 'subtype', 'example' => 'current_asset'], ['name' => 'parent_code', 'example' => '1000'],
+            ['name' => 'description', 'example' => 'Operating bank account'], ['name' => 'is_active', 'example' => 'true'],
+            ['name' => 'opening_balance', 'example' => '0.00'],
+        ], 'chart-of-accounts-import-template.csv');
+    }
+
+    public function export(Request $request): StreamedResponse
+    {
+        $query = ChartOfAccount::with('parent')->orderBy('code');
+        if ($request->filled('type') && $request->type !== 'all') $query->where('type', $request->type);
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(fn ($q) => $q->where('code', 'ILIKE', "%{$search}%")->orWhere('name', 'ILIKE', "%{$search}%"));
+        }
+
+        return response()->streamDownload(function () use ($query) {
+            $handle = fopen('php://output', 'w');
+            fwrite($handle, "\xEF\xBB\xBF");
+            fputcsv($handle, ['code', 'name', 'type', 'subtype', 'parent_code', 'description', 'is_active', 'is_system', 'opening_balance']);
+            $query->chunk(500, function ($accounts) use ($handle) {
+                foreach ($accounts as $account) fputcsv($handle, [
+                    $account->code, $account->name, $account->type, $account->subtype,
+                    $account->parent?->code, $account->description, $account->is_active ? 'true' : 'false',
+                    $account->is_system ? 'true' : 'false', $account->opening_balance,
+                ]);
+            });
+            fclose($handle);
+        }, 'chart-of-accounts-'.now()->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
     /**
      * Get all accounts
      */

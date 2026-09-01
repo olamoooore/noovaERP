@@ -6,7 +6,6 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ImportButton } from '@/components/ImportButton';
 import {
   Select,
   SelectContent,
@@ -35,10 +34,28 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import chartOfAccountsApi, { type ChartOfAccount, type CreateAccountRequest } from '@/lib/chartOfAccountsApi';
 import { formatCurrency } from '@/lib/utils';
+import api from '@/lib/api';
 
 export default function ChartOfAccountsPage({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const handleExport = async () => {
+    try {
+      const response = await api.get('/accounting/chart-of-accounts/export', {
+        params: { search: searchTerm || undefined, type: typeFilter !== 'all' ? typeFilter : undefined },
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `chart-of-accounts-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: 'Export failed', description: 'Could not export the Chart of Accounts.', variant: 'destructive' });
+    }
+  };
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('list');
   const [formOpen, setFormOpen] = useState(false);
@@ -83,6 +100,14 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
       search: searchTerm, 
       type: typeFilter === 'all' ? undefined : typeFilter 
     }),
+  });
+
+  // Parent choices must not depend on the list search/type filters. Imported
+  // accounts are valid choices too, even when their code does not imply a
+  // conventional parent level.
+  const { data: parentAccounts = [] } = useQuery({
+    queryKey: ['chart-of-accounts-parent-options'],
+    queryFn: () => chartOfAccountsApi.getAccounts(),
   });
 
   // Fetch account tree
@@ -385,7 +410,7 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
           </div>
           {hasChildren && isExpanded && (
             <div className={isParent ? 'ml-4' : 'ml-2'}>
-              {renderAccountTree(account.children, level + 1)}
+              {renderAccountTree(account.children ?? [], level + 1)}
             </div>
           )}
         </div>
@@ -440,11 +465,14 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
                     <SelectItem value="expense">Expense</SelectItem>
                   </SelectContent>
                 </Select>
-                <ImportButton 
-                  importType="chart-of-accounts"
-                  onImportComplete={() => queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] })}
-                  variant="outline"
-                />
+                <Button variant="outline" onClick={() => navigate('/accounting/core/chart-of-accounts/import')}>
+                  <Icon icon="solar:import-bold-duotone" className="w-4 h-4 mr-2" />
+                  Import CSV
+                </Button>
+                <Button variant="outline" onClick={handleExport}>
+                  <Icon icon="solar:export-bold-duotone" className="w-4 h-4 mr-2" />
+                  Export CSV
+                </Button>
                 <Button onClick={() => handleOpenForm()}>
                   <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
                   Add Account
@@ -763,8 +791,8 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">None</SelectItem>
-                    {accounts
-                      .filter((a) => a.id !== editingAccount?.id && a.id && a.can_be_parent)
+                    {parentAccounts
+                      .filter((a) => a.id !== editingAccount?.id && a.id)
                       .map((account) => (
                         <SelectItem key={account.id} value={account.id.toString()}>
                           {account.code} - {account.name}

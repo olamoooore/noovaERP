@@ -55,8 +55,8 @@ export const ImportButton: React.FC<ImportButtonProps> = ({
       const selectedFile = e.target.files[0];
       
       // Determine expected file type based on import type
-      const usesCSV = ['customers', 'vendors', 'products'].includes(importType);
-      const usesExcel = ['chart-of-accounts', 'journal-entries', 'vendor-bills', 'payments'].includes(importType);
+      const usesCSV = ['chart-of-accounts', 'customers', 'vendors', 'products'].includes(importType);
+      const usesExcel = ['journal-entries', 'vendor-bills', 'payments'].includes(importType);
       
       // Validate file type
       if (usesCSV) {
@@ -124,6 +124,8 @@ export const ImportButton: React.FC<ImportButtonProps> = ({
     // For specific entity imports, use their dedicated endpoints
     if (importType === 'products') {
       endpoint = '/products/import';
+    } else if (importType === 'chart-of-accounts') {
+      endpoint = '/accounting/chart-of-accounts/import';
     } else if (importType === 'customers') {
       endpoint = '/accounting/customers/import';
     } else if (importType === 'vendors') {
@@ -161,7 +163,7 @@ export const ImportButton: React.FC<ImportButtonProps> = ({
       setProgress({ current: 100, total: 100, message: 'Import complete!' });
 
       // Get the count from response (different fields for different endpoints)
-      const count = response.data.created || response.data.count || 0;
+      const count = response.data.count ?? ((response.data.created || 0) + (response.data.updated || 0));
       const errors = response.data.errors || [];
 
       toast({
@@ -221,7 +223,7 @@ export const ImportButton: React.FC<ImportButtonProps> = ({
             <DialogDescription>
               {isLegacyImportType
                 ? `${importLabels[importType]} import is no longer available from this deprecated endpoint.`
-                : `Upload an Excel file to import ${importLabels[importType].toLowerCase()} into the system`}
+                : `Upload a ${['chart-of-accounts', 'customers', 'vendors', 'products'].includes(importType) ? 'CSV' : 'Excel'} file to import ${importLabels[importType].toLowerCase()} into the system`}
             </DialogDescription>
           </DialogHeader>
 
@@ -235,13 +237,13 @@ export const ImportButton: React.FC<ImportButtonProps> = ({
             {/* File Upload */}
             <div className="space-y-2">
               <Label htmlFor="file">
-                {['customers', 'vendors', 'products'].includes(importType) ? 'CSV File' : 'Excel File'}
+                {['chart-of-accounts', 'customers', 'vendors', 'products'].includes(importType) ? 'CSV File' : 'Excel File'}
               </Label>
               <div className="flex items-center gap-2">
                 <input
                   id="file"
                   type="file"
-                  accept={['customers', 'vendors', 'products'].includes(importType) ? '.csv,.txt' : '.xlsx,.xls'}
+                  accept={['chart-of-accounts', 'customers', 'vendors', 'products'].includes(importType) ? '.csv,.txt' : '.xlsx,.xls'}
                   onChange={handleFileChange}
                   disabled={loading || isLegacyImportType}
                   className="flex-1 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 file:cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
@@ -280,7 +282,7 @@ export const ImportButton: React.FC<ImportButtonProps> = ({
                 <div className="text-sm text-blue-700 dark:text-blue-300">
                   <p className="font-medium mb-1">File Requirements</p>
                   <ul className="list-disc list-inside space-y-1 text-xs">
-                    {['customers', 'vendors', 'products'].includes(importType) ? (
+                    {['chart-of-accounts', 'customers', 'vendors', 'products'].includes(importType) ? (
                       <>
                         <li>CSV format (.csv)</li>
                         <li>Maximum file size: 10MB</li>
@@ -305,12 +307,18 @@ export const ImportButton: React.FC<ImportButtonProps> = ({
               <Button
                 variant="link"
                 size="sm"
-                onClick={() => {
-                  // TODO: Implement template download
-                  toast({
-                    title: 'Coming soon',
-                    description: 'Template download will be available soon',
-                  });
+                onClick={async () => {
+                  if (importType === 'chart-of-accounts') {
+                    const response = await api.get('/accounting/chart-of-accounts/import-template', { responseType: 'blob' });
+                    const url = URL.createObjectURL(response.data);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = 'chart-of-accounts-import-template.csv';
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  } else {
+                    toast({ title: 'Coming soon', description: 'Template download will be available soon' });
+                  }
                 }}
               >
                 <Icon icon="solar:download-bold-duotone" className="h-4 w-4 mr-2" />

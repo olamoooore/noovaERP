@@ -13,9 +13,11 @@ use App\Models\CustomerCreditNote;
 use App\Models\Invoice;
 use App\Models\VendorDebitNote;
 use Illuminate\Contracts\Auth\Access\Gate as GateContract;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Excel as ExcelFormat;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\Response;
@@ -881,8 +883,8 @@ class ComplianceController extends Controller
             ]);
         }
 
-        $creds = $config->api_credentials ?? [];
-        $settings = $config->settings ?? [];
+        $creds = $this->readEncryptedConfigArray($config, 'api_credentials');
+        $settings = $this->readEncryptedConfigArray($config, 'settings');
         $merged = array_merge($settings, $creds);
 
         // Check completeness before masking so we can inspect raw secret presence.
@@ -981,7 +983,10 @@ class ComplianceController extends Controller
         $existing = [];
         $current = $this->complianceService->getCountryConfig($countryCode);
         if ($current) {
-            $existing = array_merge($current->settings ?? [], $current->api_credentials ?? []);
+            $existing = array_merge(
+                $this->readEncryptedConfigArray($current, 'settings'),
+                $this->readEncryptedConfigArray($current, 'api_credentials'),
+            );
         }
 
         $secretKeys = [
@@ -1010,6 +1015,27 @@ class ComplianceController extends Controller
 
         // Return the masked representation (same as getConfig).
         return $this->getConfig($countryCode);
+    }
+
+    /**
+     * Read an encrypted array without preventing credential recovery when a
+     * legacy row was encrypted with another APP_KEY or stored as plaintext.
+     */
+    private function readEncryptedConfigArray(CountryConfiguration $config, string $attribute): array
+    {
+        try {
+            $value = $config->getAttribute($attribute);
+
+            return is_array($value) ? $value : [];
+        } catch (DecryptException $exception) {
+            Log::warning('Unreadable encrypted country configuration; awaiting replacement', [
+                'configuration_id' => $config->id,
+                'country_code' => $config->country_code,
+                'attribute' => $attribute,
+            ]);
+
+            return [];
+        }
     }
 
     /**

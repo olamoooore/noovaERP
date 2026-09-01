@@ -224,6 +224,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
         // Chart of Accounts
         Route::get('/chart-of-accounts', [ChartOfAccountsController::class, 'index']);
+        Route::get('/chart-of-accounts/export', [ChartOfAccountsController::class, 'export']);
+        Route::get('/chart-of-accounts/import-template', [ChartOfAccountsController::class, 'importTemplate']);
+        Route::post('/chart-of-accounts/import', [ChartOfAccountsController::class, 'import']);
         Route::get('/chart-of-accounts/hierarchy/tree', [ChartOfAccountsController::class, 'tree']);
         Route::get('/chart-of-accounts/{id}', [ChartOfAccountsController::class, 'show']);
         Route::post('/chart-of-accounts', [ChartOfAccountsController::class, 'store']);

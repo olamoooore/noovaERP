@@ -110,6 +110,7 @@ const AssetsManagementPage = lazy(() => import('@/pages/accounting/AssetsManagem
 const LockDatesPage = lazy(() => import('@/pages/accounting/LockDatesPage'))
 const AnalyticAccountsPage = lazy(() => import('@/pages/accounting/AnalyticAccountsPage'))
 const CompanySettingsPage = lazy(() => import('@/pages/accounting/CompanySettingsPage'))
+const ChartOfAccountsImportPage = lazy(() => import('@/pages/accounting/ChartOfAccountsImportPage'))
 const PaymentTermsPage = lazy(() => import('@/pages/accounting/PaymentTermsPage'))
 const JournalEntriesPage = lazy(() => import('@/pages/accounting/JournalEntriesPage'))
 const JournalsPage = lazy(() => import('@/pages/accounting/JournalsPage'))
@@ -414,6 +415,7 @@ function App() {
                 
                 {/* Accounting Core Section */}
                 <Route path="/accounting/core/chart-of-accounts" element={<Navigate to="/accounting/configuration/company?tab=chart-of-accounts" replace />} />
+                <Route path="/accounting/core/chart-of-accounts/import" element={<ChartOfAccountsImportPage />} />
                 <Route path="/accounting/core/journal-entries" element={<JournalEntriesPage />} />
                 <Route path="/accounting/core/journals" element={<JournalsPage />} />
                 <Route path="/accounting/core/reconciliation" element={<BankReconciliationPage />} />
