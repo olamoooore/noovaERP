@@ -535,7 +535,40 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         ]);
     }
 
-    /** @test — TEST-COA-002: Deactivate account with historical transactions */
+    /** @test — TEST-COA-002: Reuse a code after its account is soft deleted */
+    public function accountant_can_reuse_a_soft_deleted_account_code(): void
+    {
+        $deletedAccount = ChartOfAccount::create([
+            'code' => '3051',
+            'name' => 'Discontinued Revenue',
+            'type' => 'revenue',
+            'subtype' => 'operating_revenue',
+            'is_active' => false,
+        ]);
+        $deletedAccount->delete();
+
+        $response = $this->actingAs($this->accountantUser)
+            ->postJson('/api/v1/accounting/chart-of-accounts', [
+                'code' => '3051',
+                'name' => 'Replacement Revenue',
+                'type' => 'revenue',
+                'subtype' => 'operating_revenue',
+                'is_active' => true,
+            ]);
+
+        $response->assertCreated();
+        $this->assertSoftDeleted('chart_of_accounts', [
+            'id' => $deletedAccount->id,
+            'code' => '3051',
+        ]);
+        $this->assertDatabaseHas('chart_of_accounts', [
+            'code' => '3051',
+            'name' => 'Replacement Revenue',
+            'deleted_at' => null,
+        ]);
+    }
+
+    /** @test — TEST-COA-003: Deactivate account with historical transactions */
     public function deactivating_account_blocks_new_transactions_but_preserves_history(): void
     {
         // First, use the account in a posted journal
@@ -568,7 +601,7 @@ class AccountingModuleEndToEndTest extends TenantTestCase
         ]);
     }
 
-    /** @test — TEST-COA-003: Account mapping for posting engine */
+    /** @test — TEST-COA-004: Account mapping for posting engine */
     public function posting_engine_uses_account_mappings_for_gl_lines(): void
     {
         $invoice = $this->createAndPostInvoice();

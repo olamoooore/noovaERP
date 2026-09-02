@@ -8,6 +8,7 @@ use App\Platform\Import\ImportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ChartOfAccountsController extends Controller
@@ -251,7 +252,12 @@ class ChartOfAccountsController extends Controller
     {
         try {
             $validated = $request->validate([
-                'code' => 'required|string|max:20|unique:chart_of_accounts,code',
+                'code' => [
+                    'required',
+                    'string',
+                    'max:20',
+                    Rule::unique('chart_of_accounts', 'code')->whereNull('deleted_at'),
+                ],
                 'name' => 'required|string|max:255',
                 'type' => 'required|in:asset,liability,equity,revenue,expense',
                 'subtype' => 'nullable|string|max:50',
@@ -308,7 +314,14 @@ class ChartOfAccountsController extends Controller
             }
 
             $validated = $request->validate([
-                'code' => 'required|string|max:20|unique:chart_of_accounts,code,'.$id,
+                'code' => [
+                    'required',
+                    'string',
+                    'max:20',
+                    Rule::unique('chart_of_accounts', 'code')
+                        ->whereNull('deleted_at')
+                        ->ignore($id),
+                ],
                 'name' => 'required|string|max:255',
                 'type' => 'required|in:asset,liability,equity,revenue,expense',
                 'subtype' => 'nullable|string|max:50',
