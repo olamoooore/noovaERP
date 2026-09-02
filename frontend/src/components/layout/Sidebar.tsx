@@ -1055,19 +1055,23 @@ export function Sidebar() {
           />
         )}
         <button
+          type="button"
           onClick={toggleMinimize}
           className={cn(
-            'flex items-center justify-center rounded-lg transition-colors',
-            isMinimized
-              ? 'h-8 w-8 text-foreground/70 hover:bg-accent hover:text-foreground'
-              : 'h-8 w-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            'flex h-9 w-9 shrink-0 items-center justify-center',
+            'rounded-md border border-border/60',
+            'bg-background text-foreground',
+            'shadow-sm transition-all hover:bg-accent hover:text-accent-foreground',
+            'hover:shadow-md focus-visible:outline-2 focus-visible:outline-ring',
+            'active:scale-95'
           )}
+          aria-label={isMinimized ? 'Expand sidebar' : 'Minimize sidebar'}
           title={isMinimized ? 'Expand sidebar' : 'Minimize sidebar'}
         >
           {isMinimized ? (
-            <PanelLeftOpen className="h-5 w-5" />
+            <PanelLeftOpen className="h-[18px] w-[18px]" />
           ) : (
-            <PanelLeftClose className="h-5 w-5" />
+            <PanelLeftClose className="h-[18px] w-[18px]" />
           )}
         </button>
       </div>
