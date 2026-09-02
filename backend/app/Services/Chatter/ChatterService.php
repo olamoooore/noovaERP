@@ -174,7 +174,10 @@ class ChatterService
 
     public function uploadAttachment(string $subjectType, int|string $subjectId, UploadedFile $file): ChatterAttachment
     {
-        $disk = config('chatter.disk', 'local');
+        // Default to 'public' disk so attachments are reachable via the
+        // /storage/... URL. The 'local' disk has no public url() method
+        // by design, which previously made every chatter attachment 404.
+        $disk = config('chatter.disk', 'public');
         $path = sprintf(
             'chatter/%s/%s/%s_%s.%s',
             str_replace('\\', '_', $subjectType),
@@ -203,9 +206,10 @@ class ChatterService
             'checksum' => hash_file('sha256', $file->getRealPath()),
         ]);
 
-        $this->logEvent($subjectType, (int) $subjectId, 'attachment_uploaded', 'Attachment uploaded', [
+        $this->logEvent($subjectType, (int) $subjectId, 'attachment_uploaded', "Uploaded {$attachment->filename}", [
             'attachment_id' => $attachment->id,
             'filename' => $attachment->filename,
+            'size' => (int) $attachment->size,
         ]);
 
         return $attachment->fresh(['uploadedBy']);

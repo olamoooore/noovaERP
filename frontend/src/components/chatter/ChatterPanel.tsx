@@ -334,6 +334,23 @@ function EmptyHint({ text }: { text: string }) {
 function LogItem({ entry }: { entry: ChatterLogEntry }) {
   const icon = eventIcons[entry.event] ?? eventIcons.updated
   const color = eventColors[entry.event] ?? eventColors.updated
+
+  // Internal IDs (message_id, attachment_id, etc.) and the activity_type
+  // are useful to the backend but not to a human reading the log.
+  // Filter them out so the log row shows just the description + a clean
+  // summary of any user-meaningful properties (filename, status, due_date).
+  const INTERNAL_KEYS = new Set([
+    'message_id',
+    'activity_id',
+    'attachment_id',
+    'activity_type',
+  ])
+  const meaningfulProps = entry.properties
+    ? Object.entries(entry.properties).filter(
+        ([k, v]) => !INTERNAL_KEYS.has(k) && v !== null && v !== undefined
+      )
+    : []
+
   return (
     <div className="flex gap-3">
       <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${color}`}>
@@ -347,14 +364,25 @@ function LogItem({ entry }: { entry: ChatterLogEntry }) {
         <p className="text-sm text-foreground/80 mt-0.5">
           {entry.description || readableEvent(entry.event)}
         </p>
-        {entry.properties && Object.keys(entry.properties).length > 0 && (
-          <pre className="mt-1 rounded bg-muted px-2 py-1 text-[11px] text-muted-foreground overflow-x-auto">
-            {JSON.stringify(entry.properties, null, 2)}
-          </pre>
+        {meaningfulProps.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+            {meaningfulProps.map(([k, v]) => (
+              <span key={k} className="inline-flex items-center gap-1">
+                <span className="font-medium">{humanPropLabel(k)}:</span>
+                {String(v)}
+              </span>
+            ))}
+          </div>
         )}
       </div>
     </div>
   )
+}
+
+function humanPropLabel(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/^./, (c) => c.toUpperCase())
 }
 
 function MessageItem({ entry }: { entry: ChatterMessageEntry }) {

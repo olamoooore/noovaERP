@@ -37,8 +37,15 @@ class ChatterAttachment extends Model
 
     public function getUrlAttribute(): string
     {
-        $disk = $this->storage_disk ?: 'local';
+        // For the public disk, build the URL via Storage::url so the
+        // application's ASSET_URL/APP_URL is respected and the storage
+        // symlink (public/storage -> storage/app/public) serves the file.
+        $disk = $this->storage_disk ?: 'public';
 
-        return \Storage::disk($disk)->url($this->storage_path);
+        try {
+            return \Storage::disk($disk)->url($this->storage_path);
+        } catch (\Throwable $e) {
+            return asset('storage/' . $this->storage_path);
+        }
     }
 }
