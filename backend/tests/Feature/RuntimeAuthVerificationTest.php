@@ -160,7 +160,7 @@ class RuntimeAuthVerificationTest extends TenantTestCase
     // ─────────────────────────────────────────────────────────────────────
     // CLAIM 2 — Period close/reopen have no permission gate
     // ─────────────────────────────────────────────────────────────────────
-    public function test_claim2_viewer_can_close_and_reopen_fiscal_period_with_no_permission_gate(): void
+    public function test_claim2_viewer_cannot_close_or_reopen_fiscal_period_permission_gate_enforced(): void
     {
         $period = FiscalPeriod::create([
             'name' => 'Runtime Audit Period',
@@ -181,10 +181,12 @@ class RuntimeAuthVerificationTest extends TenantTestCase
         ]);
         fwrite(STDERR, "\n[CLAIM2-reopen] status=".$reopenResponse->getStatusCode()." body=".$reopenResponse->getContent()."\n");
 
-        $this->assertNotEquals(403, $closeResponse->getStatusCode(), 'CLAIM2 REFUTED if 403: a permission gate exists on close().');
-        $this->assertNotEquals(401, $closeResponse->getStatusCode());
-        $this->assertNotEquals(403, $reopenResponse->getStatusCode(), 'CLAIM2 REFUTED if 403: a permission gate exists on reopen().');
-        $this->assertNotEquals(401, $reopenResponse->getStatusCode());
+        // Inverted from the original claim: the close/reopen endpoints now
+        // enforce accounting.close / accounting.reopen, so a Viewer with no
+        // such permission must receive 403. If 200/500 is returned, the gate
+        // has regressed.
+        $this->assertEquals(403, $closeResponse->getStatusCode(), 'REGRESSION: close endpoint returned '.$closeResponse->getStatusCode().'; accounting.close permission gate expected');
+        $this->assertEquals(403, $reopenResponse->getStatusCode(), 'REGRESSION: reopen endpoint returned '.$reopenResponse->getStatusCode().'; accounting.reopen permission gate expected');
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -300,11 +302,16 @@ class RuntimeAuthVerificationTest extends TenantTestCase
     // CLAIM 6 — POST /vendor-bills/{id}/post is gated by accounting.write
     // (includes Sales) instead of accounting.post (excludes Sales)
     // ─────────────────────────────────────────────────────────────────────
-    public function test_claim6_sales_role_can_post_vendor_bill_to_gl(): void
+    public function test_claim6_sales_role_is_blocked_from_posting_vendor_bills_to_gl(): void
     {
-        $this->assertTrue(
+        // Per RolePermissionSeeder, Sales does NOT have accounting.write or
+        // accounting.post. The posting gate (accounting.post) must therefore
+        // block them with 403. The original claim was the gate was too
+        // permissive — the inversion now asserts the gate correctly blocks
+        // low-privilege roles.
+        $this->assertFalse(
             $this->salesUser->hasPermissionTo('accounting.write'),
-            'Setup sanity check failed: Sales role unexpectedly lacks accounting.write.'
+            'Setup sanity check failed: Sales role unexpectedly has accounting.write.'
         );
         $this->assertFalse(
             $this->salesUser->hasPermissionTo('accounting.post'),
@@ -337,11 +344,11 @@ class RuntimeAuthVerificationTest extends TenantTestCase
 
         fwrite(STDERR, "\n[CLAIM6] status=".$response->getStatusCode()." body=".$response->getContent()."\n");
 
-        $this->assertNotEquals(403, $response->getStatusCode(), 'CLAIM6 REFUTED if 403: Sales is correctly blocked from posting.');
-        $this->assertNotEquals(401, $response->getStatusCode());
+        // Sales must be blocked (403) — gate enforces accounting.post which they lack.
+        $this->assertEquals(403, $response->getStatusCode(), 'REGRESSION: Sales role can post vendor bills; expected 403 (gate uses accounting.write or accounting.post, neither of which Sales has).');
 
         $bill->refresh();
-        fwrite(STDERR, "\n[CLAIM6] bill status after attempted post = {$bill->status}, journal_entry_id = ".($bill->journal_entry_id ?? 'null')."\n");
+        $this->assertEquals('draft', $bill->status, 'Bill should remain draft after blocked post');
     }
 
     // ─────────────────────────────────────────────────────────────────────

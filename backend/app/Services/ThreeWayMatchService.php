@@ -53,9 +53,11 @@ class ThreeWayMatchService
         $errors = [];
         $warnings = [];
 
+        $lineIndex = 0;
         foreach ($bill->lines as $billLine) {
+            $lineIndex++;
             if (! $billLine->purchase_order_item_id) {
-                $errors[] = "Bill line {$billLine->id} is missing purchase order lineage for PO {$purchaseOrder->po_number}.";
+                $errors[] = "Bill line {$lineIndex} is missing purchase order lineage for PO {$purchaseOrder->po_number}.";
 
                 continue;
             }
