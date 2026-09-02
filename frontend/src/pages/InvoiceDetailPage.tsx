@@ -320,15 +320,6 @@ export function InvoiceDetailPage() {
         </div>
       </div>
 
-      {/* Odoo-style inline Chatter — opens below the header, never blocks the record */}
-      <ChatterDock
-        subjectType={String.raw`App\Models\Invoice`}
-        subjectId={id as string}
-        documentLabel={invoice.invoice_number}
-        defaultOpen={chatterOpen}
-        onOpenChange={setChatterOpen}
-      />
-
       {/* Smart Buttons */}
       <div className="flex gap-3 print:hidden">
         {invoice.quotation && (
@@ -716,6 +707,15 @@ export function InvoiceDetailPage() {
       <div className="text-center text-sm text-muted-foreground print:hidden">
         <p>Thank you for your business!</p>
       </div>
+
+      {/* Odoo-style inline Chatter — sticky at bottom of viewport, click header to expand */}
+      <ChatterDock
+        subjectType={String.raw`App\Models\Invoice`}
+        subjectId={id as string}
+        documentLabel={invoice.invoice_number}
+        open={chatterOpen}
+        onOpenChange={setChatterOpen}
+      />
     </div>
   )
 }

@@ -286,6 +286,73 @@ class FixedAssetsController extends Controller
     }
 
     /**
+     * Generate the full multi-period depreciation schedule for one asset
+     * (POST /api/v1/assets/{id}/generate-schedule).
+     *
+     * For a straight-line, 3-year, monthly asset this creates 36
+     * depreciation_schedule rows + 36 journal entries, one per period
+     * starting from asset.depreciation_start_date. Idempotent: existing
+     * period entries are skipped, not duplicated.
+     *
+     * When a period has no fiscal period open, the schedule row is created
+     * (is_posted=false) and the error is reported in the response so the
+     * user can call postPendingSchedules once the fiscal period is opened.
+     */
+    public function generateSchedule($id)
+    {
+        try {
+            $result = $this->depreciationService->generateScheduleForAsset((int) $id);
+
+            return response()->json([
+                'success' => true,
+                'data' => $result,
+                'message' => sprintf(
+                    'Generated %d depreciation entries (skipped %d existing, %d pending fiscal period, stopped at salvage for %d).',
+                    $result['generated'],
+                    $result['skipped_existing'],
+                    $result['pending_posting'] ?? 0,
+                    $result['stopped_salvage']
+                ),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate schedule',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Post all schedule rows that exist but have no journal entry yet
+     * (e.g. created by generateScheduleForAsset before the fiscal period
+     * was opened). Call this after creating the missing fiscal periods.
+     */
+    public function postPendingSchedules($id)
+    {
+        try {
+            $result = $this->depreciationService->postPendingScheduleEntries((int) $id);
+
+            return response()->json([
+                'success' => true,
+                'data' => $result,
+                'message' => sprintf(
+                    'Posted %d pending schedule entries (%d failed, %d skipped).',
+                    $result['posted'],
+                    count($result['errors']),
+                    $result['skipped_no_entry'] ?? 0
+                ),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to post pending schedules',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Calculate and run depreciation for a period
      */
     public function calculateDepreciation(Request $request)

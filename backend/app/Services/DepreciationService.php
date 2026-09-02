@@ -149,6 +149,221 @@ class DepreciationService
     }
 
     /**
+     * Generate the full depreciation schedule for a single asset and create
+     * a journal entry for each period.
+     *
+     * For a 3-year life with monthly depreciation this produces 36 entries;
+     * with annual posting 3 entries; with weekly posting 156 entries. The
+     * period frequency is taken from $asset->depreciation_frequency
+     * ('monthly' | 'annually' | 'weekly' | 'daily'), defaulting to 'monthly'.
+     *
+     * Behaviour:
+     *  - One DepreciationSchedule row per period (idempotent: existing
+     *    period entries are skipped, not duplicated)
+     *  - One JournalEntry per period, linked to the schedule row
+     *  - Asset.accumulated_depreciation and asset.book_value are advanced
+     *    cumulatively, exactly the same as a real period run
+     *  - Stops at salvage value (no entry can drive book_value below it)
+     *
+     * @return array summary of generated/skipped entries
+     */
+    public function generateScheduleForAsset(int $assetId): array
+    {
+        $asset = FixedAsset::findOrFail($assetId);
+        $startDate = $asset->depreciation_start_date
+            ? Carbon::parse($asset->depreciation_start_date)->startOfDay()
+            : ($asset->acquisition_date ? Carbon::parse($asset->acquisition_date)->startOfDay() : Carbon::now()->startOfDay());
+
+        $periodsTotal = $this->expectedPeriodCount($asset);
+        $frequency = $asset->depreciation_frequency ?? 'monthly';
+        $results = [
+            'asset_id' => $asset->id,
+            'asset_name' => $asset->name,
+            'method' => $asset->depreciation_method,
+            'frequency' => $frequency,
+            'periods_planned' => $periodsTotal,
+            'generated' => 0,
+            'skipped_existing' => 0,
+            'stopped_salvage' => 0,
+            'pending_posting' => 0,
+            'errors' => [],
+        ];
+
+        $cumulative = (float) $asset->accumulated_depreciation;
+        $bookValue = (float) $asset->book_value;
+
+        for ($i = 0; $i < $periodsTotal; $i++) {
+            $periodDate = $this->advancePeriod($startDate, $frequency, $i);
+
+            // Skip if already posted for this period
+            $existing = DepreciationSchedule::where('asset_id', $asset->id)
+                ->where('period_date', $periodDate->format('Y-m-d'))
+                ->first();
+
+            if ($existing) {
+                $results['skipped_existing']++;
+                continue;
+            }
+
+            // Stop once accumulated reaches the depreciable base (cost - salvage)
+            $depreciableBase = (float) $asset->purchase_cost - (float) $asset->salvage_value;
+            $remaining = $depreciableBase - $cumulative;
+
+            if ($remaining <= 0.01) {
+                $results['stopped_salvage']++;
+                break;
+            }
+
+            try {
+                $amount = $this->calculateDepreciationAmount($asset, $periodDate);
+
+                // Do not depreciate past the depreciable base on the final entry
+                if ($amount > $remaining) {
+                    $amount = round($remaining, 2);
+                }
+
+                if ($amount <= 0) {
+                    continue;
+                }
+
+                $cumulative = round($cumulative + $amount, 2);
+                $bookValue = round((float) $asset->purchase_cost - $cumulative, 2);
+
+                $schedule = DepreciationSchedule::create([
+                    'asset_id' => $asset->id,
+                    'period_date' => $periodDate->format('Y-m-d'),
+                    'depreciation_amount' => $amount,
+                    'accumulated_depreciation' => $cumulative,
+                    'book_value' => $bookValue,
+                    'is_posted' => false,
+                ]);
+
+                // Posting the JE can legitimately fail when no fiscal period is
+                // open for the date (e.g. a 3-year asset projected into 2028).
+                // In that case keep the schedule row unposted so a later
+                // manual run (or a fiscal-period backfill) can post it.
+                try {
+                    $journalEntry = $this->createDepreciationJournalEntry($asset, $schedule, $periodDate);
+                    $schedule->update([
+                        'journal_entry_id' => $journalEntry->id,
+                        'is_posted' => true,
+                    ]);
+                    $results['generated']++;
+                } catch (\Throwable $je) {
+                    $results['pending_posting'] = ($results['pending_posting'] ?? 0) + 1;
+                    $results['errors'][] = [
+                        'period' => $periodDate->format('Y-m-d'),
+                        'message' => $je->getMessage(),
+                        'schedule_id' => $schedule->id,
+                        'retry_endpoint' => "/api/v1/assets/{$asset->id}/post-schedule",
+                    ];
+                }
+            } catch (\Throwable $e) {
+                $results['errors'][] = [
+                    'period' => $periodDate->format('Y-m-d'),
+                    'message' => $e->getMessage(),
+                ];
+            }
+        }
+
+        // Persist final running totals on the asset
+        $asset->update([
+            'accumulated_depreciation' => $cumulative,
+            'book_value' => max($bookValue, (float) $asset->salvage_value),
+            'last_depreciation_date' => optional($this->advancePeriod($startDate, $frequency, $results['generated'] - 1))->format('Y-m-d'),
+        ]);
+
+        return $results;
+    }
+
+    /**
+     * Post all DepreciationSchedule rows that have no journal entry yet
+     * for a given asset. Typically called after generateScheduleForAsset
+     * when fiscal periods are later opened for those dates.
+     *
+     * @return array{posted:int, errors:array, skipped_no_entry:int}
+     */
+    public function postPendingScheduleEntries(int $assetId): array
+    {
+        $asset = FixedAsset::findOrFail($assetId);
+
+        $pending = DepreciationSchedule::where('asset_id', $asset->id)
+            ->whereNull('journal_entry_id')
+            ->orderBy('period_date')
+            ->get();
+
+        $result = [
+            'posted' => 0,
+            'errors' => [],
+            'skipped_no_entry' => 0,
+        ];
+
+        foreach ($pending as $schedule) {
+            try {
+                $periodDate = Carbon::parse($schedule->period_date);
+                $journalEntry = $this->createDepreciationJournalEntry($asset, $schedule, $periodDate);
+                $schedule->update([
+                    'journal_entry_id' => $journalEntry->id,
+                    'is_posted' => true,
+                ]);
+                $result['posted']++;
+            } catch (\Throwable $e) {
+                $result['errors'][] = [
+                    'schedule_id' => $schedule->id,
+                    'period' => $schedule->period_date,
+                    'message' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Compute the number of schedule periods an asset is expected to
+     * produce over its useful life given its depreciation frequency.
+     */
+    protected function expectedPeriodCount(FixedAsset $asset): int
+    {
+        $years = (float) $asset->useful_life_years;
+        $frequency = $asset->depreciation_frequency ?? 'monthly';
+
+        switch ($frequency) {
+            case 'annually':
+            case 'yearly':
+                return (int) ceil($years);
+            case 'weekly':
+                return (int) ceil($years * 52);
+            case 'daily':
+                return (int) ceil($years * 365);
+            case 'monthly':
+            default:
+                return (int) ceil($years * 12);
+        }
+    }
+
+    /**
+     * Advance a starting Carbon date by N periods of the given frequency.
+     */
+    protected function advancePeriod(Carbon $start, string $frequency, int $periodIndex): Carbon
+    {
+        $date = $start->copy();
+
+        switch ($frequency) {
+            case 'annually':
+            case 'yearly':
+                return $date->addYears($periodIndex);
+            case 'weekly':
+                return $date->addWeeks($periodIndex);
+            case 'daily':
+                return $date->addDays($periodIndex);
+            case 'monthly':
+            default:
+                return $date->addMonths($periodIndex);
+        }
+    }
+
+    /**
      * Calculate depreciation amount based on method
      */
     protected function calculateDepreciationAmount(FixedAsset $asset, Carbon $periodDate): float
@@ -236,13 +451,18 @@ class DepreciationService
             ),
         ];
 
+        // Use the schedule row id (not the asset id) as the document_id so each
+        // period produces its own journal entry. The previous implementation
+        // passed $asset->id, which the posting engine's idempotency guard then
+        // treated as "already posted" for every subsequent period — producing
+        // one shared JE for all periods in a multi-period schedule run.
         $result = $this->postingEngine->post(new PostingRequest(
             documentType: 'depreciation',
-            documentId: $asset->id,
+            documentId: $schedule->id,
             postingDate: $periodDate->format('Y-m-d'),
             description: "Depreciation for {$asset->name} - ".$periodDate->format('M Y'),
             lines: $lines,
-            reference: $asset->asset_number,
+            reference: $asset->asset_number.' - '.$periodDate->format('Y-m'),
             userId: TenantUserHelper::resolveTenantUserId(),
         ));
 

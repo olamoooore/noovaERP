@@ -132,15 +132,17 @@ export function ChatterDock({
     )
   }
 
-  // Inline (default): a collapsible panel directly under the page header
+  // Inline (default): a collapsible panel mounted at the bottom of the page
+  // (Odoo-style — chatter lives below the form, not above it).
   return (
-    <div className={cn('border rounded-lg bg-card overflow-hidden', className)}>
+    <div className={cn('border-t bg-card', className)}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex w-full items-center justify-between px-4 py-3',
-          'hover:bg-muted/50 transition-colors text-left',
+          'sticky bottom-0 z-20 flex w-full items-center justify-between',
+          'bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/75',
+          'border-b px-4 py-3 hover:bg-muted/40 transition-colors text-left',
           open && 'border-b'
         )}
         aria-expanded={open}
@@ -160,13 +162,17 @@ export function ChatterDock({
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>{open ? 'Hide' : 'Show'}</span>
           <Icon
-            icon={open ? 'solar:alt-arrow-up-linear' : 'solar:alt-arrow-down-linear'}
+            icon={
+              open
+                ? 'solar:alt-arrow-down-linear'
+                : 'solar:alt-arrow-up-linear'
+            }
             className="h-5 w-5"
           />
         </div>
       </button>
       {open && (
-        <div className="h-[500px] max-h-[60vh]">
+        <div className="h-[500px] max-h-[60vh] border-b">
           <ChatterPanel
             subjectType={subjectType}
             subjectId={subjectId}

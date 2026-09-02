@@ -25,6 +25,7 @@ class FixedAsset extends Model
         'vendor_id',
         'invoice_reference',
         'depreciation_method',
+        'depreciation_frequency',
         'useful_life_years',
         'useful_life_units',
         'salvage_value',

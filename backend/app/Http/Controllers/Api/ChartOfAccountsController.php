@@ -299,6 +299,8 @@ class ChartOfAccountsController extends Controller
                     'is_active' => 'boolean',
                 ]);
 
+                $validated = $this->normalizeEmptyStrings($validated);
+
                 $account->update($validated);
 
                 return response()->json([
@@ -316,6 +318,10 @@ class ChartOfAccountsController extends Controller
                 'description' => 'nullable|string',
                 'is_active' => 'boolean',
             ]);
+
+            // Normalize empty strings from frontend placeholder select values
+            // to null so the database CHECK constraints accept them.
+            $validated = $this->normalizeEmptyStrings($validated);
 
             // Prevent setting self as parent
             if (! empty($validated['parent_id']) && (int) $validated['parent_id'] === (int) $id) {
@@ -387,6 +393,24 @@ class ChartOfAccountsController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Convert empty-string fields to null so the DB CHECK constraints
+     * (which expect NULL for unset enum-typed columns) accept the payload.
+     * The frontend uses Radix Select with value 'none' mapped to '' for
+     * "no selection" placeholders; that empty string would violate the
+     * chart_of_accounts_subtype_check / type_check constraints.
+     */
+    private function normalizeEmptyStrings(array $values): array
+    {
+        foreach ($values as $key => $value) {
+            if ($value === '' || $value === 'none') {
+                $values[$key] = null;
+            }
+        }
+
+        return $values;
     }
 
     /**

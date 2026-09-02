@@ -333,6 +333,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::delete('/assets/{id}', [FixedAssetsController::class, 'destroy']);
         Route::get('/assets/{id}/depreciation', [FixedAssetsController::class, 'getDepreciationSchedule']);
         Route::post('/assets/{id}/dispose', [FixedAssetsController::class, 'dispose']);
+        Route::post('/assets/{id}/generate-schedule', [FixedAssetsController::class, 'generateSchedule']);
+        Route::post('/assets/{id}/post-pending-schedules', [FixedAssetsController::class, 'postPendingSchedules']);
         Route::post('/assets/calculate-depreciation', [FixedAssetsController::class, 'calculateDepreciation']);
 
         // Lock Dates
