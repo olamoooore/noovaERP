@@ -288,8 +288,12 @@ export function QuotesPage() {
                   </TableHeader>
                   <TableBody>
                     {quotes.map((quote: any) => (
-                      <TableRow key={quote.id} className="hover:bg-accent/50">
-                        <TableCell>
+                      <TableRow
+                        key={quote.id}
+                        className="hover:bg-accent/50 cursor-pointer"
+                        onClick={() => navigate(`/quotations/${quote.id}`)}
+                      >
+                        <TableCell onClick={(event) => event.stopPropagation()}>
                           {['draft', 'sent', 'confirmed'].includes(quote.status) && (
                             <input
                               type="checkbox"
@@ -318,7 +322,7 @@ export function QuotesPage() {
                             {quote.status}
                           </Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell onClick={(event) => event.stopPropagation()}>
                           <div className="flex justify-end gap-2">
                             <Button size="sm" variant="outline" onClick={() => navigate(`/quotations/${quote.id}`)} title="View">
                               <Icon icon="solar:eye-bold" className="h-3 w-3" />

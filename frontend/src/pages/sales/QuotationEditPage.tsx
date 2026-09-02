@@ -526,10 +526,6 @@ export const QuotationEditPage: React.FC = () => {
               <span>Line Items</span>
               <div className="flex flex-wrap gap-2">
                 <SalesLineColumnMenu columns={QUOTATION_EDIT_COLUMNS} hidden={hiddenLineColumns} setHidden={setHiddenLineColumns} />
-                <Button type="button" variant="outline" size="sm" onClick={addLine}>
-                  <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-1" />
-                  Add Line
-                </Button>
               </div>
             </CardTitle>
           </CardHeader>
@@ -553,7 +549,6 @@ export const QuotationEditPage: React.FC = () => {
   </tr>
                 </thead>
                 <tbody>
-                  <tr><td colSpan={11} className="py-2"><div className="flex gap-2"><ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} /><Button type="button" variant="outline" onClick={addSection}>Add Section</Button><Button type="button" variant="outline" onClick={addNote}>Add Note</Button></div></td></tr>
                   {lines.map((line, index) => (
                     <tr key={index} className="border-b" draggable onDragStart={() => setDraggedLineIndex(index)} onDragOver={(e) => e.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) { const reordered = [...lines]; const [dragged] = reordered.splice(draggedLineIndex, 1); reordered.splice(index, 0, dragged); setLines(reordered); } setDraggedLineIndex(null) }}>
                       {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={11} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) { const reordered = [...lines]; const [dragged] = reordered.splice(draggedLineIndex, 1); reordered.splice(index, 0, dragged); setLines(reordered); } setDraggedLineIndex(null); }} /> : <>
@@ -675,6 +670,16 @@ export const QuotationEditPage: React.FC = () => {
                 </tbody>
               </table>
               </SalesLineColumnVisibility>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} />
+              <Button type="button" variant="outline" size="sm" onClick={addLine}>
+                <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-1" />
+                Add Line
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={addSection}>Add Section</Button>
+              <Button type="button" variant="outline" size="sm" onClick={addNote}>Add Note</Button>
             </div>
 
             <div className="mt-6 flex justify-end">

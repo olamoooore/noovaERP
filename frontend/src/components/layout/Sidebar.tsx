@@ -241,11 +241,11 @@ const baseNavItems: NavItem[] = [
         href: '/invoices',
         icon: 'solar:bill-list-bold-duotone',
       },
-      {
-        title: 'Payments',
-        href: '/payments',
-        icon: 'solar:wallet-money-bold-duotone',
-      },
+      // {
+      //   title: 'Payments',
+      //   href: '/payments',
+      //   icon: 'solar:wallet-money-bold-duotone',
+      // },
       {
         title: 'Medical Cases',
         href: '/sales/medical-cases',
@@ -331,11 +331,11 @@ const baseNavItems: NavItem[] = [
         href: '/accounting/customers/payments',
         icon: 'solar:wallet-money-bold-duotone',
       },
-      {
-        title: 'Batch Payments',
-        href: '/accounting/customers/batch-payments',
-        icon: 'solar:wallet-money-bold-duotone',
-      },
+      // {
+      //   title: 'Batch Payments',
+      //   href: '/accounting/customers/batch-payments',
+      //   icon: 'solar:wallet-money-bold-duotone',
+      // },
 
 
     ],
@@ -370,11 +370,11 @@ const baseNavItems: NavItem[] = [
         href: '/accounting/vendors/payments',
         icon: 'solar:wallet-money-bold-duotone',
       },
-      {
-        title: 'Batch Payments',
-        href: '/accounting/vendors/batch-payments',
-        icon: 'solar:wallet-money-bold-duotone',
-      },
+      // {
+      //   title: 'Batch Payments',
+      //   href: '/accounting/vendors/batch-payments',
+      //   icon: 'solar:wallet-money-bold-duotone',
+      // },
 
 
 
@@ -413,11 +413,11 @@ const baseNavItems: NavItem[] = [
         href: '/accounting/core/assets',
         icon: 'solar:buildings-bold-duotone',
       },
-      {
-        title: 'Loans',
-        href: '/accounting/core/loans',
-        icon: 'solar:document-text-bold-duotone',
-      },
+      // {
+      //   title: 'Loans',
+      //   href: '/accounting/core/loans',
+      //   icon: 'solar:document-text-bold-duotone',
+      // },
       {
         title: 'Bank Accounts',
         href: '/accounting/configuration/bank-accounts',
@@ -448,11 +448,11 @@ const baseNavItems: NavItem[] = [
         href: '/accounting/core/reconciliation',
         icon: 'solar:document-text-bold-duotone',
       },
-      {
-        title: 'Tax Returns',
-        href: '/accounting/core/tax-returns',
-        icon: 'solar:document-text-bold-duotone',
-      },
+      // {
+      //   title: 'Tax Returns',
+      //   href: '/accounting/core/tax-returns',
+      //   icon: 'solar:document-text-bold-duotone',
+      // },
       {
         title: 'Lock Dates',
         href: '/accounting/core/lock-dates',
@@ -462,26 +462,26 @@ const baseNavItems: NavItem[] = [
       
     ],
       },
-    {
-    title: 'Review',
-    href: '',
-    icon: 'solar:checklist-minimalistic-bold-duotone',
-    featureKey: 'review',
-    children: [
-{
-        title: 'Journal Items',
-        href: '/accounting/core/journal-entries',
-        icon: 'solar:document-text-bold-duotone',
-      },
-      {
-        title: 'Journal Audit',
-        href: '/accounting/core/journal-entries',
-        icon: 'solar:document-text-bold-duotone',
-      },
+//     {
+//     title: 'Review',
+//     href: '',
+//     icon: 'solar:checklist-minimalistic-bold-duotone',
+//     featureKey: 'review',
+//     children: [
+// {
+//         title: 'Journal Items',
+//         href: '/accounting/core/journal-entries',
+//         icon: 'solar:document-text-bold-duotone',
+//       },
+//       {
+//         title: 'Journal Audit',
+//         href: '/accounting/core/journal-entries',
+//         icon: 'solar:document-text-bold-duotone',
+//       },
 
       
-    ],
-      },
+//     ],
+//       },
     {
     title: 'AI Suites',
     href: '',
@@ -554,11 +554,11 @@ const baseNavItems: NavItem[] = [
   },
      
       
-      {
-        title: 'MyInvois E-Invoice',
-        href: '/accounting/reporting/myinvoice',
-        icon: 'solar:document-text-bold-duotone',
-      },
+      // {
+      //   title: 'MyInvois E-Invoice',
+      //   href: '/accounting/reporting/myinvoice',
+      //   icon: 'solar:document-text-bold-duotone',
+      // },
      
       {
         title: 'Settings',
