@@ -340,14 +340,7 @@ export function DeliveryOrderEditPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            Line Items
-            <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} /><Button variant="outline" size="sm" onClick={addSection}>Add Section</Button><Button variant="outline" size="sm" onClick={addNote}>Add Note</Button>
-            <Button variant="outline" size="sm" onClick={addLine}>
-              <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-1" />
-              Add Line
-            </Button>
-          </CardTitle>
+          <CardTitle>Line Items</CardTitle>
         </CardHeader>
         <CardContent>
           <DeliveryOrderColumnVisibility tableClass="do-edit-columns" columns={[
@@ -420,6 +413,15 @@ export function DeliveryOrderEditPage() {
             </TableBody>
           </Table>
           </DeliveryOrderColumnVisibility>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} />
+            <Button variant="outline" size="sm" onClick={addLine}>
+              <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-1" />
+              Add Line
+            </Button>
+            <Button variant="outline" size="sm" onClick={addSection}>Add Section</Button>
+            <Button variant="outline" size="sm" onClick={addNote}>Add Note</Button>
+          </div>
         </CardContent>
       </Card>
 

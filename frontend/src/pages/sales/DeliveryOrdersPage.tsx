@@ -228,8 +228,12 @@ export function DeliveryOrdersPage() {
                 </TableHeader>
                 <TableBody>
                   {deliveryOrders.map((do_: any) => (
-                    <TableRow key={do_.id}>
-                      <TableCell>
+                    <TableRow
+                      key={do_.id}
+                      className="cursor-pointer"
+                      onClick={() => navigate(`/delivery-orders/${do_.id}`)}
+                    >
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                         <input type="checkbox" checked={selectedIds.includes(do_.id)} onChange={() => toggleSelect(do_.id)} />
                       </TableCell>
                       <TableCell className="font-medium">{do_.delivery_order_number}</TableCell>
@@ -248,7 +252,7 @@ export function DeliveryOrdersPage() {
                           {do_.status}
                         </Badge>
                       </TableCell>
-                      <TableCell>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
                         <div className="flex gap-1">
                           <Button variant="ghost" size="sm" onClick={() => navigate(`/delivery-orders/${do_.id}`)}>
                             View

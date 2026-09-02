@@ -1213,9 +1213,6 @@ export const CreateInvoicePage: React.FC = () => {
               <CardTitle className="flex items-center justify-between">
                 <span>Line Items</span>
                 <div className="flex flex-wrap gap-2">
-                  <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} />
-                  <Button type="button" variant="outline" size="sm" onClick={() => addTextLine('section')}>Add Section</Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => addTextLine('note')}>Add Note</Button>
                   <details className="relative">
                     <summary className="list-none cursor-pointer rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-accent">
                       <Icon icon="solar:settings-bold-duotone" className="inline h-4 w-4 mr-1" />
@@ -1234,10 +1231,6 @@ export const CreateInvoicePage: React.FC = () => {
                       ))}
                     </div>
                   </details>
-                  <Button type="button" variant="outline" size="sm" onClick={addLine}>
-                    <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-1" />
-                    Add Line
-                  </Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => duplicateLine(lines.length - 1)} disabled={lines.length === 0}>
                     <Icon icon="solar:copy-bold-duotone" className="h-4 w-4 mr-1" />
                     Duplicate Last
@@ -1386,6 +1379,16 @@ export const CreateInvoicePage: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} />
+                <Button type="button" variant="outline" size="sm" onClick={addLine}>
+                  <Icon icon="solar:add-circle-bold-duotone" className="h-4 w-4 mr-1" />
+                  Add Line
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => addTextLine('section')}>Add Section</Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => addTextLine('note')}>Add Note</Button>
               </div>
 
               <div className="mt-6 flex justify-end">

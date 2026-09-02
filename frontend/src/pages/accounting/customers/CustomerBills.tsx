@@ -553,7 +553,11 @@ export const CustomerBills: React.FC = () => {
                 </TableHeader>
                 <TableBody>
                   {invoices.map((invoice: any) => (
-                    <TableRow key={invoice.id} className="hover:bg-accent/50 cursor-pointer">
+                    <TableRow
+                      key={invoice.id}
+                      className="hover:bg-accent/50 cursor-pointer"
+                      onClick={() => navigate(`/accounting/customers/bills/${invoice.id}`)}
+                    >
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
@@ -591,7 +595,7 @@ export const CustomerBills: React.FC = () => {
                           </Badge>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex gap-1 justify-end">
                           {invoice.status === 'draft' && (
                             <Button

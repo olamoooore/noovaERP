@@ -618,13 +618,7 @@ export function DeliveryOrderCreatePage() {
       {mode === 'standalone' && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              Line Items
-              <div className="flex gap-2"><ProductCatalogDialog products={productsData || []} onAdd={addCatalogProducts} /><Button variant="outline" size="sm" onClick={() => addStandaloneTextLine('section')}>Add Section</Button><Button variant="outline" size="sm" onClick={() => addStandaloneTextLine('note')}>Add Note</Button><Button variant="outline" size="sm" onClick={addStandaloneLine}>
-                <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-1" />
-                Add Line
-              </Button></div>
-            </CardTitle>
+            <CardTitle>Line Items</CardTitle>
           </CardHeader>
           <CardContent>
             <DeliveryOrderColumnVisibility tableClass="do-create-standalone-columns" columns={[
@@ -756,6 +750,15 @@ export function DeliveryOrderCreatePage() {
               </TableBody>
             </Table>
             </DeliveryOrderColumnVisibility>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <ProductCatalogDialog products={productsData || []} onAdd={addCatalogProducts} />
+              <Button variant="outline" size="sm" onClick={addStandaloneLine}>
+                <Icon icon="solar:add-circle-bold" className="h-4 w-4 mr-1" />
+                Add Line
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => addStandaloneTextLine('section')}>Add Section</Button>
+              <Button variant="outline" size="sm" onClick={() => addStandaloneTextLine('note')}>Add Note</Button>
+            </div>
           </CardContent>
         </Card>
       )}
