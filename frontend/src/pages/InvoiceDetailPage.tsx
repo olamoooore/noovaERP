@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
-import { ChatterDialog } from '@/components/chatter'
+import { ChatterDock } from '@/components/chatter'
 import api from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -145,6 +145,7 @@ export function InvoiceDetailPage() {
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
+  const [chatterOpen, setChatterOpen] = useState(false)
   const { data: pdfTemplates = [], isLoading: templatesLoading } = useQuery({ queryKey: ['invoice-pdf-templates'], queryFn: async () => (await api.get('/template-builder/templates', { params: { document_type: 'invoice', status: 'published', per_page: 100 } })).data?.data || [], enabled: templateDialogOpen })
 
   const { data: invoice, isLoading } = useQuery({
@@ -155,8 +156,6 @@ export function InvoiceDetailPage() {
     },
     enabled: !!id,
   })
-
-  const [chatterOpen, setChatterOpen] = useState(false)
 
   const postMutation = useMutation({
     mutationFn: async () => {
@@ -295,19 +294,40 @@ export function InvoiceDetailPage() {
               Record Payment
             </Button>
           )}
-          <ChatterDialog
-            open={chatterOpen}
-            onOpenChange={setChatterOpen}
-            subjectType="App\\Models\\Invoice"
-            subjectId={id as string}
-            documentLabel={invoice.invoice_number}
-          />
-          <Button variant="outline" onClick={() => setChatterOpen(true)}>
-            <Icon icon="solar:chat-round-dots-bold-duotone" className="mr-2 h-4 w-4" />
+          <Button
+            variant={chatterOpen ? 'default' : 'outline'}
+            onClick={() => setChatterOpen((v) => !v)}
+            aria-pressed={chatterOpen}
+          >
+            <Icon
+              icon={
+                chatterOpen
+                  ? 'solar:chat-round-dots-bold'
+                  : 'solar:chat-round-dots-bold-duotone'
+              }
+              className="mr-2 h-4 w-4"
+            />
             Chatter
+            <Icon
+              icon={
+                chatterOpen
+                  ? 'solar:alt-arrow-up-linear'
+                  : 'solar:alt-arrow-down-linear'
+              }
+              className="ml-2 h-4 w-4"
+            />
           </Button>
         </div>
       </div>
+
+      {/* Odoo-style inline Chatter — opens below the header, never blocks the record */}
+      <ChatterDock
+        subjectType={String.raw`App\Models\Invoice`}
+        subjectId={id as string}
+        documentLabel={invoice.invoice_number}
+        defaultOpen={chatterOpen}
+        onOpenChange={setChatterOpen}
+      />
 
       {/* Smart Buttons */}
       <div className="flex gap-3 print:hidden">
