@@ -17,9 +17,15 @@ class ChatterService
 {
     public function bundle(string $subjectType, int|string $subjectId): array
     {
+        // Normalize subject_id: cast to int for queries against bigint columns
+        // (activity_log.subject_id, chatter_*.subject_id). The route param
+        // arrives as a string from the URL; PostgreSQL refuses to compare
+        // varchar to bigint without an explicit cast.
+        $normalizedId = (int) $subjectId;
+
         $logs = ActivityLogEntry::query()
             ->where('subject_type', $subjectType)
-            ->where('subject_id', $subjectId)
+            ->where('subject_id', $normalizedId)
             ->with('causer')
             ->orderByDesc('created_at')
             ->limit(200)
@@ -38,7 +44,7 @@ class ChatterService
 
         $messages = ChatterMessage::query()
             ->where('subject_type', $subjectType)
-            ->where('subject_id', $subjectId)
+            ->where('subject_id', (string) $normalizedId)
             ->with('author')
             ->orderBy('created_at')
             ->get()
@@ -55,7 +61,7 @@ class ChatterService
 
         $activities = ChatterActivity::query()
             ->where('subject_type', $subjectType)
-            ->where('subject_id', $subjectId)
+            ->where('subject_id', (string) $normalizedId)
             ->with(['assignee', 'createdBy'])
             ->orderByRaw("CASE WHEN status = 'planned' THEN 0 ELSE 1 END")
             ->orderBy('due_date')
@@ -78,7 +84,7 @@ class ChatterService
 
         $attachments = ChatterAttachment::query()
             ->where('subject_type', $subjectType)
-            ->where('subject_id', $subjectId)
+            ->where('subject_id', (string) $normalizedId)
             ->with('uploadedBy')
             ->orderByDesc('created_at')
             ->get()
@@ -105,15 +111,16 @@ class ChatterService
 
     public function addMessage(string $subjectType, int|string $subjectId, string $body): ChatterMessage
     {
+        $normalizedId = (int) $subjectId;
         $message = ChatterMessage::create([
             'tenant_id' => $this->currentTenantId(),
             'subject_type' => $subjectType,
-            'subject_id' => $subjectId,
+            'subject_id' => (string) $normalizedId,
             'author_id' => Auth::id(),
             'body' => $body,
         ]);
 
-        $this->logEvent($subjectType, $subjectId, 'message', 'Message posted', [
+        $this->logEvent($subjectType, $normalizedId, 'message', 'Message posted', [
             'message_id' => $message->id,
         ]);
 
@@ -122,10 +129,11 @@ class ChatterService
 
     public function addActivity(string $subjectType, int|string $subjectId, array $payload): ChatterActivity
     {
+        $normalizedId = (int) $subjectId;
         $activity = ChatterActivity::create([
             'tenant_id' => $this->currentTenantId(),
             'subject_type' => $subjectType,
-            'subject_id' => $subjectId,
+            'subject_id' => (string) $normalizedId,
             'assigned_to_id' => $payload['assigned_to_id'] ?? null,
             'created_by_id' => Auth::id(),
             'activity_type' => $payload['activity_type'],
@@ -135,7 +143,7 @@ class ChatterService
             'status' => 'planned',
         ]);
 
-        $this->logEvent($subjectType, $subjectId, 'activity_scheduled', 'Activity scheduled', [
+        $this->logEvent($subjectType, $normalizedId, 'activity_scheduled', 'Activity scheduled', [
             'activity_id' => $activity->id,
             'activity_type' => $activity->activity_type,
         ]);
@@ -145,9 +153,10 @@ class ChatterService
 
     public function markActivityDone(string $subjectType, int|string $subjectId, int $activityId): ChatterActivity
     {
+        $normalizedId = (int) $subjectId;
         $activity = ChatterActivity::query()
             ->where('subject_type', $subjectType)
-            ->where('subject_id', $subjectId)
+            ->where('subject_id', (string) $normalizedId)
             ->where('id', $activityId)
             ->firstOrFail();
 
@@ -156,7 +165,7 @@ class ChatterService
             'completed_at' => now(),
         ]);
 
-        $this->logEvent($subjectType, $subjectId, 'activity_done', 'Activity marked done', [
+        $this->logEvent($subjectType, $normalizedId, 'activity_done', 'Activity marked done', [
             'activity_id' => $activity->id,
         ]);
 
@@ -184,7 +193,7 @@ class ChatterService
         $attachment = ChatterAttachment::create([
             'tenant_id' => $this->currentTenantId(),
             'subject_type' => $subjectType,
-            'subject_id' => $subjectId,
+            'subject_id' => (string) (int) $subjectId,
             'uploaded_by_id' => Auth::id(),
             'filename' => $file->getClientOriginalName(),
             'mime_type' => $file->getClientMimeType(),
@@ -194,7 +203,7 @@ class ChatterService
             'checksum' => hash_file('sha256', $file->getRealPath()),
         ]);
 
-        $this->logEvent($subjectType, $subjectId, 'attachment_uploaded', 'Attachment uploaded', [
+        $this->logEvent($subjectType, (int) $subjectId, 'attachment_uploaded', 'Attachment uploaded', [
             'attachment_id' => $attachment->id,
             'filename' => $attachment->filename,
         ]);
@@ -206,14 +215,14 @@ class ChatterService
     {
         $attachment = ChatterAttachment::query()
             ->where('subject_type', $subjectType)
-            ->where('subject_id', $subjectId)
+            ->where('subject_id', (string) (int) $subjectId)
             ->where('id', $attachmentId)
             ->firstOrFail();
 
         Storage::disk($attachment->storage_disk ?: 'local')->delete($attachment->storage_path);
         $attachment->delete();
 
-        $this->logEvent($subjectType, $subjectId, 'attachment_deleted', 'Attachment deleted', [
+        $this->logEvent($subjectType, (int) $subjectId, 'attachment_deleted', 'Attachment deleted', [
             'attachment_id' => $attachmentId,
         ]);
     }
@@ -225,7 +234,7 @@ class ChatterService
                 'log_name' => 'chatter',
                 'description' => $description,
                 'subject_type' => $subjectType,
-                'subject_id' => $subjectId,
+                'subject_id' => (int) $subjectId,
                 'causer_type' => Auth::check() ? get_class(Auth::user()) : null,
                 'causer_id' => Auth::id(),
                 'event' => $event,
