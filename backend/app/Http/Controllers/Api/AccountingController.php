@@ -100,7 +100,12 @@ class AccountingController extends Controller
     public function createAccount(Request $request)
     {
         $validated = $request->validate([
-            'code' => 'required|string|max:20|unique:chart_of_accounts,code',
+            'code' => [
+                'required',
+                'string',
+                'max:20',
+                Rule::unique('chart_of_accounts', 'code')->whereNull('deleted_at'),
+            ],
             'name' => 'required|string|max:255',
             'type' => 'required|in:asset,liability,equity,revenue,expense',
             'subtype' => 'nullable|string|max:50',
@@ -132,7 +137,14 @@ class AccountingController extends Controller
         }
 
         $validated = $request->validate([
-            'code' => ['required', 'string', 'max:20', Rule::unique('chart_of_accounts')->ignore($id)],
+            'code' => [
+                'required',
+                'string',
+                'max:20',
+                Rule::unique('chart_of_accounts', 'code')
+                    ->whereNull('deleted_at')
+                    ->ignore($id),
+            ],
             'name' => 'required|string|max:255',
             'type' => 'required|in:asset,liability,equity,revenue,expense',
             'subtype' => 'nullable|string|max:50',
