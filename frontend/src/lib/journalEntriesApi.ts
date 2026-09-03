@@ -29,6 +29,7 @@ export interface JournalEntry {
   type: string;
   reference?: string;
   description: string;
+  remark?: string;
   status: 'draft' | 'posted';
   posted_at?: string;
   posted_by?: number;
@@ -71,6 +72,7 @@ export interface CreateJournalEntryRequest {
   entry_date: string;
   reference?: string;
   description: string;
+  remark?: string;
   lines: Omit<JournalEntryLine, 'id' | 'account'>[];
 }
 

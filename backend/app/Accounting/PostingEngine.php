@@ -732,6 +732,7 @@ class PostingEngine implements PostingEngineInterface
                     'type' => 'manual',
                     'reference' => $request->reference,
                     'description' => $request->description,
+                    'remark' => $request->remark,
                     'status' => 'draft',
                     'created_by' => $userId,
                     'legal_entity_id' => $request->legalEntityId,
