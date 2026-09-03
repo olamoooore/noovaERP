@@ -356,6 +356,7 @@ export const AccountingDashboard: React.FC = () => {
       secondary: 'Post journals, monitor lock dates, and keep books aligned.',
       actions: [
         { label: 'Journal entries', path: '/accounting/core/journal-entries' },
+        { label: 'Manage journals', path: '/accounting/core/journals' },
         { label: 'Lock dates', path: '/accounting/core/lock-dates' },
         { label: 'Entities', path: '/accounting/core/entities' },
       ],

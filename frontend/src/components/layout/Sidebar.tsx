@@ -398,6 +398,11 @@ const baseNavItems: NavItem[] = [
         href: '/accounting/core/journal-entries',
         icon: 'solar:document-text-bold-duotone',
       },
+      {
+        title: 'Journals',
+        href: '/accounting/core/journals',
+        icon: 'solar:notebook-bold-duotone',
+      },
 
       
     ],
