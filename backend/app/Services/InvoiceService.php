@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\DTOs\DomainPostingLine;
+use App\Accounting\DTOs\DomainPostingRequest;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\BankAccount;
@@ -133,56 +135,53 @@ class InvoiceService
             );
             $primaryTaxCode = $taxDetermination['tax_lines'][0]['tax_code'] ?? null;
 
-            // ── Build posting lines ──────────────────────────
+            // ── Build business-value lines (ACC-RM-001: profile-resolved) ──
+            // Operational domains may not submit unrestricted DR/CR lines
+            // (ADR-005 §12). Invoice submits account-role + amount business
+            // values; PostingPolicyMapper resolves directions from the
+            // versioned AR_INVOICE_POST posting profile.
             $lines = [];
 
-            // DR Accounts Receivable (total)
-            $lines[] = new PostingRequestLine(
-                accountMappingKey: 'accounts_receivable',
-                accountId: null,
-                debit: (float) $invoice->total,
-                credit: 0,
+            // Accounts Receivable (total) → profile direction: debit
+            $lines[] = new DomainPostingLine(
+                accountRole: 'accounts_receivable',
+                amount: (float) $invoice->total,
                 description: "Invoice {$invoice->invoice_number}",
             );
 
-            // CR Sales Revenue (subtotal minus discount)
+            // Sales Revenue (subtotal minus discount) → profile direction: credit
             $salesRevenue = (float) $invoice->subtotal - (float) $invoice->discount_amount;
-            $lines[] = new PostingRequestLine(
-                accountMappingKey: 'sales_revenue',
-                accountId: null,
-                debit: 0,
-                credit: $salesRevenue,
+            $lines[] = new DomainPostingLine(
+                accountRole: 'sales_revenue',
+                amount: $salesRevenue,
                 description: "Sales - Invoice {$invoice->invoice_number}",
             );
 
-            // CR Shipping Revenue (if shipping cost > 0)
+            // Shipping Revenue (if shipping cost > 0) → profile direction: credit
             if ((float) $invoice->shipping_cost > 0) {
-                $lines[] = new PostingRequestLine(
-                    accountMappingKey: 'shipping_revenue',
-                    accountId: null,
-                    debit: 0,
-                    credit: (float) $invoice->shipping_cost,
+                $lines[] = new DomainPostingLine(
+                    accountRole: 'shipping_revenue',
+                    amount: (float) $invoice->shipping_cost,
                     description: "Shipping - Invoice {$invoice->invoice_number}",
                 );
             }
 
-            // CR Sales Tax Payable
+            // Sales Tax Payable → profile direction: credit; keeps tax-code evidence
             if ((float) $invoice->tax_amount > 0) {
-                $lines[] = new PostingRequestLine(
-                    accountMappingKey: 'sales_tax_payable',
-                    accountId: null,
-                    debit: 0,
-                    credit: (float) $invoice->tax_amount,
+                $lines[] = new DomainPostingLine(
+                    accountRole: 'sales_tax_payable',
+                    amount: (float) $invoice->tax_amount,
                     description: "Tax - Invoice {$invoice->invoice_number}",
                     taxCode: $primaryTaxCode,
-                    taxId: null,
                 );
             }
 
             // ── COGS lines for inventory items ───────────────
             $totalCogs = 0;
             foreach ($invoice->lines as $line) {
-                if (($line->line_type ?? 'product') !== 'product') continue;
+                if (($line->line_type ?? 'product') !== 'product') {
+                    continue;
+                }
                 if ($line->product && $line->product->track_inventory) {
                     $unitCost = (float) ($line->product->cost ?? 0);
                     $lineCogs = $unitCost * $line->quantity;
@@ -194,35 +193,39 @@ class InvoiceService
             }
 
             if ($totalCogs > 0) {
-                // DR Cost of Goods Sold
-                $lines[] = new PostingRequestLine(
-                    accountMappingKey: 'cogs',
-                    accountId: null,
-                    debit: $totalCogs,
-                    credit: 0,
+                // Cost of Goods Sold → profile direction: debit
+                $lines[] = new DomainPostingLine(
+                    accountRole: 'cogs',
+                    amount: $totalCogs,
                     description: "COGS - Invoice {$invoice->invoice_number}",
                 );
 
-                // CR Inventory
-                $lines[] = new PostingRequestLine(
-                    accountMappingKey: 'inventory',
-                    accountId: null,
-                    debit: 0,
-                    credit: $totalCogs,
+                // Inventory → profile direction: credit
+                $lines[] = new DomainPostingLine(
+                    accountRole: 'inventory',
+                    amount: $totalCogs,
                     description: "Inventory - Invoice {$invoice->invoice_number}",
                 );
             }
 
-            // ── Post via PostingEngine ───────────────────────
-            $result = $this->postingEngine->post(new PostingRequest(
-                documentType: 'invoice',
-                documentId: $invoice->id,
+            // ── Post via PostingEngine (domain contract) ─────
+            $result = $this->postingEngine->domainPosting(new DomainPostingRequest(
+                postingRequestId: DomainPostingRequest::generateRequestId(),
+                idempotencyKey: "invoice:{$invoice->id}:post",
+                tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+                entityId: '',
+                accountingBookId: '',
+                sourceCapability: 'ACC-003',
+                sourceRecordType: 'invoice',
+                sourceRecordId: (string) $invoice->id,
+                sourceRecordVersion: (int) ($invoice->version_number ?? 1),
+                postingProfileCode: 'AR_INVOICE_POST',
+                transactionDate: $invoice->invoice_date->toDateString(),
                 postingDate: $invoice->invoice_date->toDateString(),
-                description: "Invoice #{$invoice->invoice_number} - {$invoice->customer->name}",
                 lines: $lines,
-                reference: $invoice->invoice_number,
                 userId: TenantUserHelper::requireTenantUserId($invoice->created_by),
                 taxDeterminationResult: $taxDetermination,
+                ledgerDescription: "Invoice #{$invoice->invoice_number} - {$invoice->customer->name}",
             ));
 
             if (! $result->success) {

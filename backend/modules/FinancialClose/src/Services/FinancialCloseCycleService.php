@@ -219,108 +219,114 @@ class FinancialCloseCycleService
      */
     public function signoffCycle(string $tenantId, string $cycleId, string $userId, ?string $role, ?string $notes = null): array
     {
-        // ADR-005 §9: sign-off transitions must be atomic with audit log
-        return DB::transaction(function () use ($tenantId, $cycleId, $userId, $role, $notes) {
-        $cycle = $this->getCycle($tenantId, $cycleId);
+        // ADR-005 §9: sign-off transitions must be atomic with audit log.
+        // The cycle row is locked FOR UPDATE before the metadata sign-off list
+        // is read-modify-written (lines below), so two concurrent sign-offs
+        // serialise instead of one clobbering the other's list entry.
+        return DB::transaction(function () use ($tenantId, $cycleId, $userId, $notes) {
+            $cycle = CloseCycle::where('tenant_id', $tenantId)
+                ->where('id', $cycleId)
+                ->lockForUpdate()
+                ->first();
 
-        if (! $cycle) {
-            return ['success' => false, 'reason' => 'Cycle not found.'];
-        }
+            if (! $cycle) {
+                return ['success' => false, 'reason' => 'Cycle not found.'];
+            }
 
-        if (in_array($cycle->status, ['closed', 'archived'])) {
-            return ['success' => false, 'reason' => 'Cycle is already closed.'];
-        }
+            if (in_array($cycle->status, ['closed', 'archived'])) {
+                return ['success' => false, 'reason' => 'Cycle is already closed.'];
+            }
 
-        // Block sign-off if there are incomplete tasks
-        $incompleteTasks = CloseTask::where('tenant_id', $tenantId)
-            ->where('cycle_id', $cycleId)
-            ->whereNotIn('status', ['completed', 'cancelled'])
-            ->count();
+            // Block sign-off if there are incomplete tasks
+            $incompleteTasks = CloseTask::where('tenant_id', $tenantId)
+                ->where('cycle_id', $cycleId)
+                ->whereNotIn('status', ['completed', 'cancelled'])
+                ->count();
 
-        if ($incompleteTasks > 0) {
-            return [
-                'success' => false,
-                'reason' => "Cannot sign off: {$incompleteTasks} incomplete task(s) must be completed or cancelled first.",
-                'incomplete_tasks' => $incompleteTasks,
+            if ($incompleteTasks > 0) {
+                return [
+                    'success' => false,
+                    'reason' => "Cannot sign off: {$incompleteTasks} incomplete task(s) must be completed or cancelled first.",
+                    'incomplete_tasks' => $incompleteTasks,
+                ];
+            }
+
+            // Block sign-off if there are open escalations
+            $openEscalations = \Modules\FinancialClose\Models\EscalationEvent::where('tenant_id', $tenantId)
+                ->whereHas('task', function ($q) use ($cycleId) {
+                    $q->where('cycle_id', $cycleId);
+                })
+                ->where('status', 'open')
+                ->count();
+
+            if ($openEscalations > 0) {
+                return [
+                    'success' => false,
+                    'reason' => "Cannot sign off: {$openEscalations} open escalation(s) must be resolved first.",
+                    'open_escalations' => $openEscalations,
+                ];
+            }
+
+            // ── Resolve role server-side (ADR-005 §41, G22) ──────────────────
+            // Never trust client-submitted role — resolve from actual user roles
+            $resolvedRole = $this->resolveUserRole($userId);
+            if (! $resolvedRole || ! in_array($resolvedRole, self::SIGNOFF_ROLES)) {
+                return [
+                    'success' => false,
+                    'reason' => 'Insufficient role for sign-off. Required roles: '.implode(', ', self::SIGNOFF_ROLES).'. Your role: '.($resolvedRole ?? 'none'),
+                ];
+            }
+
+            // ── SoD check (ADR-005 §41, G22) ──────────────────────────────────
+            // Preparer (cycle creator) cannot also sign off the cycle. This matches
+            // the segregation-of-duties pattern enforced by
+            // FinancialCloseSignoffService::recordSignoff() at the review level.
+            $policyService = app(\Modules\FinancialClose\Services\FinancialClosePolicyService::class);
+            if ($policyService->requiresIndependentReviewer($tenantId, (string) $cycle->created_by, $userId)) {
+                return [
+                    'success' => false,
+                    'reason' => 'Segregation-of-duties violation: the user who prepared this cycle cannot also sign it off. A different Owner/Admin/Manager must sign off.',
+                    'sod_violation' => 'preparer_is_signatory',
+                ];
+            }
+
+            $metadata = is_array($cycle->metadata) ? $cycle->metadata : [];
+            $signoffs = $metadata['cycle_signoffs'] ?? [];
+
+            // Prevent duplicate sign-off by the same user
+            $alreadySigned = collect($signoffs)->firstWhere('user_id', $userId);
+            if ($alreadySigned) {
+                return ['success' => false, 'reason' => 'You have already signed off this cycle.'];
+            }
+
+            $signoffs[] = [
+                'user_id' => $userId,
+                'role' => $resolvedRole,
+                'notes' => $notes,
+                'signed_at' => now()->toIso8601String(),
             ];
-        }
 
-        // Block sign-off if there are open escalations
-        $openEscalations = \Modules\FinancialClose\Models\EscalationEvent::where('tenant_id', $tenantId)
-            ->whereHas('task', function ($q) use ($cycleId) {
-                $q->where('cycle_id', $cycleId);
-            })
-            ->where('status', 'open')
-            ->count();
+            $metadata['cycle_signoffs'] = $signoffs;
+            $cycle->update(['metadata' => $metadata]);
 
-        if ($openEscalations > 0) {
+            AuditLog::create([
+                'tenant_id' => $tenantId,
+                'actor_id' => $userId,
+                'action' => 'cycle_signed_off',
+                'entity_type' => 'close_cycle',
+                'entity_id' => $cycleId,
+                'after' => ['role' => $resolvedRole, 'signoff_count' => count($signoffs)],
+            ]);
+
+            // Re-evaluate readiness after each sign-off
+            $evaluation = $this->evaluateReadiness($tenantId, $cycleId);
+
             return [
-                'success' => false,
-                'reason' => "Cannot sign off: {$openEscalations} open escalation(s) must be resolved first.",
-                'open_escalations' => $openEscalations,
+                'success' => true,
+                'signoff_count' => count($signoffs),
+                'ready_to_close' => $evaluation['ready_to_close'],
+                'evaluation' => $evaluation,
             ];
-        }
-
-        // ── Resolve role server-side (ADR-005 §41, G22) ──────────────────
-        // Never trust client-submitted role — resolve from actual user roles
-        $resolvedRole = $this->resolveUserRole($userId);
-        if (! $resolvedRole || ! in_array($resolvedRole, self::SIGNOFF_ROLES)) {
-            return [
-                'success' => false,
-                'reason' => 'Insufficient role for sign-off. Required roles: ' . implode(', ', self::SIGNOFF_ROLES) . '. Your role: ' . ($resolvedRole ?? 'none'),
-            ];
-        }
-
-        // ── SoD check (ADR-005 §41, G22) ──────────────────────────────────
-        // Preparer (cycle creator) cannot also sign off the cycle. This matches
-        // the segregation-of-duties pattern enforced by
-        // FinancialCloseSignoffService::recordSignoff() at the review level.
-        $policyService = app(\Modules\FinancialClose\Services\FinancialClosePolicyService::class);
-        if ($policyService->requiresIndependentReviewer($tenantId, (string) $cycle->created_by, $userId)) {
-            return [
-                'success' => false,
-                'reason' => 'Segregation-of-duties violation: the user who prepared this cycle cannot also sign it off. A different Owner/Admin/Manager must sign off.',
-                'sod_violation' => 'preparer_is_signatory',
-            ];
-        }
-
-        $metadata = is_array($cycle->metadata) ? $cycle->metadata : [];
-        $signoffs = $metadata['cycle_signoffs'] ?? [];
-
-        // Prevent duplicate sign-off by the same user
-        $alreadySigned = collect($signoffs)->firstWhere('user_id', $userId);
-        if ($alreadySigned) {
-            return ['success' => false, 'reason' => 'You have already signed off this cycle.'];
-        }
-
-        $signoffs[] = [
-            'user_id' => $userId,
-            'role' => $resolvedRole,
-            'notes' => $notes,
-            'signed_at' => now()->toIso8601String(),
-        ];
-
-        $metadata['cycle_signoffs'] = $signoffs;
-        $cycle->update(['metadata' => $metadata]);
-
-        AuditLog::create([
-            'tenant_id' => $tenantId,
-            'actor_id' => $userId,
-            'action' => 'cycle_signed_off',
-            'entity_type' => 'close_cycle',
-            'entity_id' => $cycleId,
-            'after' => ['role' => $resolvedRole, 'signoff_count' => count($signoffs)],
-        ]);
-
-        // Re-evaluate readiness after each sign-off
-        $evaluation = $this->evaluateReadiness($tenantId, $cycleId);
-
-        return [
-            'success' => true,
-            'signoff_count' => count($signoffs),
-            'ready_to_close' => $evaluation['ready_to_close'],
-            'evaluation' => $evaluation,
-        ];
         });
     }
 

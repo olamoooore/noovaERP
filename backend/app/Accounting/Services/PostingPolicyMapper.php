@@ -4,7 +4,6 @@ namespace App\Accounting\Services;
 
 use App\Accounting\DTOs\DomainPostingLine;
 use App\Accounting\DTOs\DomainPostingRequest;
-use App\Accounting\Services\AccountRoleResolver;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -44,7 +43,7 @@ class PostingPolicyMapper
             $request->postingProfileCode,
         );
 
-        if (!$profile) {
+        if (! $profile) {
             return PostingResolution::error("Posting profile '{$request->postingProfileCode}' not found for capability '{$request->sourceCapability}'.");
         }
 
@@ -78,14 +77,18 @@ class PostingPolicyMapper
      * Resolve a posting profile from the database catalog. Falls back to
      * built-in defaults when no active DB row is found (back-compat).
      *
-     * The catalog lives in the `public` schema (global across tenants),
-     * so we always query `public.accounting_posting_profiles` to avoid
-     * being shadowed by an empty per-tenant table.
+     * The catalog lives in the TENANT schema — the create migration is
+     * `database/migrations/tenant/2026_08_29_000001_...`, and rows carry
+     * tenant/entity/book columns. The table name must therefore stay
+     * UNQUALIFIED so it resolves through the active tenant `search_path`;
+     * a `public.` prefix would look in the central schema, find nothing,
+     * and silently degrade every call to the built-in fallback (this was
+     * the defect found while auditing ACC-RM-001 on 2026-09-02).
      */
     private function resolvePostingProfile(string $capability, string $profileCode): ?array
     {
         try {
-            $row = DB::table('public.accounting_posting_profiles')
+            $row = DB::table('accounting_posting_profiles')
                 ->where('source_capability', $capability)
                 ->where('posting_profile_code', $profileCode)
                 ->where('is_active', true)
@@ -117,17 +120,26 @@ class PostingPolicyMapper
     {
         $mapping = $profile['mappings'][$line->accountRole] ?? null;
 
-        if (!$mapping) {
+        if (! $mapping) {
+            return null;
+        }
+
+        // Zero-amount business values carry no accounting effect; dropping
+        // them keeps ledger cardinality equal to the legacy manual-line
+        // builders that conditionally appended tax/shipping/COGS lines.
+        if ((float) $line->amount === 0.0) {
             return null;
         }
 
         // Resolve concrete account_id via AccountRoleResolver (uses
-        // entity_account_roles mapped to chart_of_accounts). If the
-        // resolver is not available, leave account_id null and let the
-        // PostingEngine reject the line if no account can be resolved.
+        // entity_account_roles mapped to chart_of_accounts, falling back to
+        // the legacy AccountMappingService). The source record type is
+        // forwarded as documentType so keys without a direct role mapping
+        // (sales_revenue, shipping_revenue — KEY_TO_ROLE null entries)
+        // resolve identically to the pre-migration manual-line path.
         $accountId = null;
         try {
-            $accountId = $this->roleResolver->resolveId($line->accountRole);
+            $accountId = $this->roleResolver->resolveId($line->accountRole, $request->sourceRecordType);
         } catch (\Throwable $e) {
             // No-op — leave null, PostingEngine will surface error
         }
@@ -141,6 +153,8 @@ class PostingPolicyMapper
             'currency_code' => $line->currencyCode,
             'dimensions' => array_merge($request->dimensions, $line->dimensions),
             'tax_reference' => $line->taxResultReference,
+            'tax_code' => $line->taxCode,
+            'tax_id' => $line->taxId,
         ];
     }
 
@@ -194,11 +208,14 @@ class PostingPolicyMapper
             'ACC-003' => [
                 'AR_INVOICE_POST' => [
                     'id' => 'AR_INVOICE_POST',
-                    'version' => '1.0',
+                    'version' => '1.1',
                     'mappings' => [
                         'accounts_receivable' => ['account_id' => null, 'direction' => 'debit'],
                         'sales_revenue' => ['account_id' => null, 'direction' => 'credit'],
+                        'shipping_revenue' => ['account_id' => null, 'direction' => 'credit'],
                         'sales_tax_payable' => ['account_id' => null, 'direction' => 'credit'],
+                        'cogs' => ['account_id' => null, 'direction' => 'debit'],
+                        'inventory' => ['account_id' => null, 'direction' => 'credit'],
                     ],
                 ],
                 'AR_PAYMENT_RECEIPT' => [

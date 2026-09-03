@@ -9,7 +9,6 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Accounting\DTOs\PostingResult;
 use App\Accounting\DTOs\ReversalRequest;
-use App\Accounting\Enums\EligibilityResult;
 use App\Accounting\Enums\ReasonCode;
 use App\Accounting\Enums\StateDimension;
 use App\Accounting\Services\AccountMappingService;
@@ -397,21 +396,21 @@ class PostingEngine implements PostingEngineInterface
         $resolution = $policyMapper->resolve($request);
 
         if (! $resolution->success) {
-            return PostingResult::failure('Posting policy resolution failed: ' . ($resolution->error ?? 'unknown'));
+            return PostingResult::failure('Posting policy resolution failed: '.($resolution->error ?? 'unknown'));
         }
 
         // ── 3. Verify all resolved lines have account_id ──────
         $unresolvedLines = [];
         foreach ($resolution->ledgerLines as $idx => $line) {
             if (empty($line['account_id'])) {
-                $unresolvedLines[] = ($line['account_role'] ?? 'unknown') . " (line {$idx})";
+                $unresolvedLines[] = ($line['account_role'] ?? 'unknown')." (line {$idx})";
             }
         }
 
         if (! empty($unresolvedLines)) {
             return PostingResult::failure(
-                'Account role(s) could not be resolved to a chart_of_accounts.id: ' .
-                implode(', ', $unresolvedLines) .
+                'Account role(s) could not be resolved to a chart_of_accounts.id: '.
+                implode(', ', $unresolvedLines).
                 '. Configure via Entity Account Roles or update the posting profile.'
             );
         }
@@ -426,6 +425,8 @@ class PostingEngine implements PostingEngineInterface
                 credit: (float) $line['credit'],
                 description: $line['description'] ?? "Posting profile {$request->postingProfileCode}",
                 currencyCode: $line['currency_code'] ?? $request->currencyCode,
+                taxCode: $line['tax_code'] ?? null,
+                taxId: $line['tax_id'] ?? null,
             );
         }
 
@@ -433,14 +434,16 @@ class PostingEngine implements PostingEngineInterface
             documentType: $request->sourceRecordType,
             documentId: is_numeric($request->sourceRecordId) ? (int) $request->sourceRecordId : null,
             postingDate: $request->postingDate,
-            description: "Domain posting: {$request->sourceCapability}/{$request->postingProfileCode}",
+            description: $request->ledgerDescription ?? "Domain posting: {$request->sourceCapability}/{$request->postingProfileCode}",
             lines: $postingRequestLines,
             reference: $request->idempotencyKey,
             currencyCode: $request->currencyCode,
             exchangeRate: $request->exchangeRate,
             requestId: $request->postingRequestId,
+            userId: $request->userId,
             tenantId: null, // tenancy resolved by middleware
             sourceCapability: $request->sourceCapability,
+            taxDeterminationResult: $request->taxDeterminationResult,
         );
 
         // ── 5. Delegate to canonical post() path ──────────────
@@ -748,7 +751,7 @@ class PostingEngine implements PostingEngineInterface
                         'credit' => $line->credit,
                         'description' => $line->description,
                         'reference' => $line->reference,
-                'currency_code' => $line->currencyCode ?? \App\Models\Setting::getValue('currency', ['code' => 'SGD'])['code'] ?? 'SGD',
+                        'currency_code' => $line->currencyCode ?? \App\Models\Setting::getValue('currency', ['code' => 'SGD'])['code'] ?? 'SGD',
                         'original_amount' => $line->originalAmount ?? $lineAmount,
                         'exchange_rate' => $line->exchangeRate ?? 1.0,
                         'department_id' => $line->departmentId,

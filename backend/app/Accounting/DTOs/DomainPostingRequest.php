@@ -29,7 +29,7 @@ class DomainPostingRequest
         public readonly string $transactionDate,
         public readonly string $postingDate,
         public readonly array $lines,
-        public readonly string $currencyCode = 'USD',
+        public readonly ?string $currencyCode = null,
         public readonly ?float $exchangeRate = null,
         public readonly ?string $taxResultReference = null,
         public readonly array $dimensions = [],
@@ -38,11 +38,37 @@ class DomainPostingRequest
         public readonly ?string $authorityEvaluationId = null,
         public readonly array $supportingEvidenceRefs = [],
         public readonly ?string $createdBy = null,
+        /**
+         * Acting central user id forwarded to the inner PostingRequest so
+         * PermissionGate/audit context resolves (ADR-005 §8 gate actor).
+         * Required by operational migrations (ACC-RM-001) — domain postings
+         * must not silently lose the actor the legacy path carried.
+         */
+        public readonly ?int $userId = null,
+        /**
+         * Canonical tax determination persisted with the journal
+         * (Issue 42 contract). Passed through untouched to the inner
+         * PostingRequest so migrating an operational service cannot drop
+         * tax evidence.
+         */
+        public readonly ?array $taxDeterminationResult = null,
+        /**
+         * Optional ledger-entry description. When the migrating service
+         * previously set a bespoke description on PostingRequest (e.g.
+         * "Invoice #INV-1 - Acme Corp"), pass it here so the domain path
+         * produces an identical journal_entries.description.
+         */
+        public readonly ?string $ledgerDescription = null,
     ) {}
 
     public static function generateRequestId(): string
     {
-        return 'DPR-' . uniqid('', true);
+        // state_transitions.command_id is a UUID column and the engine binds
+        // this value as command_id on the posting state transition
+        // (found by the first runtime consumer of domainPosting — the
+        // InvoiceService ACC-RM-001 migration). The id must therefore be a
+        // UUID, not a prefixed uniqid.
+        return (string) \Illuminate\Support\Str::uuid();
     }
 }
 
@@ -50,14 +76,6 @@ class DomainPostingRequest
  * A business value line for posting policy resolution.
  * NOT a debit/credit line — the PostingPolicyMapper resolves these into ledger lines.
  */
-class DomainPostingLine
-{
-    public function __construct(
-        public readonly string $accountRole,
-        public readonly float $amount,
-        public readonly string $currencyCode = 'USD',
-        public readonly ?string $description = null,
-        public readonly array $dimensions = [],
-        public readonly ?string $taxResultReference = null,
-    ) {}
-}
+// DomainPostingLine moved to its own PSR-4 file
+// (app/Accounting/DTOs/DomainPostingLine.php) so it can be autoloaded
+// independently of this DTO.

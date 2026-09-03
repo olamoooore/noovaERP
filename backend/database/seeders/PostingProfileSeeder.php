@@ -21,7 +21,7 @@ class PostingProfileSeeder extends Seeder
 {
     public function run(): void
     {
-        $tenantId = DB::selectOne("SELECT id FROM public.tenants LIMIT 1")?->id;
+        $tenantId = DB::selectOne('SELECT id FROM public.tenants LIMIT 1')?->id;
         if (! $tenantId) {
             return;
         }
@@ -38,7 +38,10 @@ class PostingProfileSeeder extends Seeder
                 'mappings' => json_encode([
                     'accounts_receivable' => ['direction' => 'debit'],
                     'sales_revenue' => ['direction' => 'credit'],
+                    'shipping_revenue' => ['direction' => 'credit'],
                     'sales_tax_payable' => ['direction' => 'credit'],
+                    'cogs' => ['direction' => 'debit'],
+                    'inventory' => ['direction' => 'credit'],
                 ]),
                 'control_account_requirements' => json_encode([
                     ['account_role' => 'accounts_receivable', 'source_capability' => 'ACC-003', 'requires_exceptional_authority' => false],

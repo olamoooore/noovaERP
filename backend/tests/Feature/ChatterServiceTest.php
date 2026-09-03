@@ -29,7 +29,7 @@ class ChatterServiceTest extends TenantTestCase
     {
         parent::setUp();
         $this->bindTenantContext('chatter-test-tenant');
-        Storage::fake('local');
+        Storage::fake('public');
 
         $this->actor = User::factory()->create(['name' => 'Chatter Actor']);
         $this->subject = User::factory()->create(['name' => 'Subject Doc']);
@@ -127,7 +127,10 @@ class ChatterServiceTest extends TenantTestCase
         $this->assertSame('invoice.pdf', $attachment->filename);
         $this->assertSame(128 * 1024, $attachment->size);
         $this->assertNotNull($attachment->storage_path);
-        Storage::disk('local')->assertExists($attachment->storage_path);
+        // Service default disk is `public` (config('chatter.disk'), commit
+        // 300abaab) — assert against the same disk the service wrote to.
+        $this->assertSame('public', $attachment->storage_disk);
+        Storage::disk('public')->assertExists($attachment->storage_path);
         $this->assertSame(1, ChatterAttachment::count());
     }
 
@@ -141,7 +144,7 @@ class ChatterServiceTest extends TenantTestCase
         $this->chatter->deleteAttachment(User::class, $this->subject->id, $attachment->id);
 
         $this->assertSame(0, ChatterAttachment::count());
-        Storage::disk('local')->assertMissing($attachment->storage_path);
+        Storage::disk('public')->assertMissing($attachment->storage_path);
     }
 
     public function test_bundle_returns_logs_messages_activities_and_attachments(): void
