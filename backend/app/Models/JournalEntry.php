@@ -24,6 +24,7 @@ class JournalEntry extends Model
         'type',
         'reference',
         'description',
+        'remark',
         'status',
         'posted_at',
         'posted_by',

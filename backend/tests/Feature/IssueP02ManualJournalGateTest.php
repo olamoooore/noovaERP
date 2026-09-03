@@ -33,7 +33,7 @@ class IssueP02ManualJournalGateTest extends TenantTestCase
         $this->tenantUuid = Str::uuid()->toString();
         $this->bindTenantContext($this->tenantUuid);
 
-        // Need an authenticated user with accounting.write permission so the
+        // Need an authenticated user with accounting.post permission so the
         // PermissionGate does not pre-empt the ControlAccountGate test.
         $this->user = User::factory()->create();
         $this->seed(\Database\Seeders\RolePermissionSeeder::class);
@@ -156,7 +156,7 @@ class IssueP02ManualJournalGateTest extends TenantTestCase
         $this->assertFalse($result->success);
     }
 
-    public function test_manual_journal_without_accounting_write_permission_is_blocked_by_permission_gate(): void
+    public function test_manual_journal_without_accounting_post_permission_is_blocked_by_permission_gate(): void
     {
         // Create a user WITHOUT the accounting.write permission
         $userWithout = User::factory()->create();
@@ -173,5 +173,28 @@ class IssueP02ManualJournalGateTest extends TenantTestCase
         $result = app(ManualJournalPostingService::class)->post($entry, $userWithout->id);
 
         $this->assertFalse($result->success);
+    }
+
+    public function test_permission_gate_can_use_central_actor_when_tenant_audit_id_differs(): void
+    {
+        $cash = $this->makeChartOfAccount('1000-'.uniqid(), 'Cash', 'asset');
+        $revenue = $this->makeChartOfAccount('4000-'.uniqid(), 'Sales Revenue', 'revenue');
+        $entry = $this->makeDraftJournalEntry([
+            ['account_id' => $cash->id, 'debit' => 100],
+            ['account_id' => $revenue->id, 'credit' => 100],
+        ]);
+
+        // Simulate a tenant-local audit ID that does not identify the
+        // authenticated central user. Permission evaluation must use the
+        // explicit central actor while posted_by retains the tenant ID.
+        $tenantAuditUser = User::factory()->create();
+        $result = app(ManualJournalPostingService::class)->post(
+            entry: $entry,
+            userId: $tenantAuditUser->id,
+            permissionActorId: $this->user->id,
+        );
+
+        $this->assertTrue($result->success, 'Failed: '.(string) $result->error);
+        $this->assertSame($tenantAuditUser->id, $entry->fresh()->posted_by);
     }
 }

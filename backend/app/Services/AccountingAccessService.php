@@ -78,13 +78,33 @@ class AccountingAccessService
      */
     public function userHasPermission(int $userId, string $permission, ?string $tenantId = null): bool
     {
-        $user = User::find($userId);
+        // Authority gates run after tenant middleware changes PostgreSQL's
+        // search_path. The actor ID is a central-user ID, so an unqualified
+        // User::find() can resolve a tenant user (or no user) instead.
+        $user = DB::connection()->getDriverName() === 'pgsql'
+            ? User::query()->from('public.users')->where('id', $userId)->first()
+            : User::find($userId);
         if (! $user) {
             return false;
         }
 
         if ($user->is_super_admin ?? false) {
             return true;
+        }
+
+        // Accounting authority gates must use the same canonical policy as
+        // route middleware. These methods include explicit role fallbacks for
+        // central users whose Spatie role/permission records live in a tenant
+        // schema and therefore are not directly visible here.
+        $canonicalDecision = match ($permission) {
+            'accounting.write' => $this->canWrite($user),
+            'accounting.post' => $this->canPost($user),
+            'accounting.reverse' => $this->canReverse($user),
+            'accounting.lock' => $this->canManageLocks($user),
+            default => null,
+        };
+        if ($canonicalDecision !== null) {
+            return $canonicalDecision;
         }
 
         // Try Spatie permission first

@@ -40,12 +40,15 @@ class ManualJournalPostingService
      * @param  int  $userId  The actor performing the post
      * @param  string|null  $overrideReason  Non-null when posting to a locked period with approval
      * @param  int|null  $approvedBy  Approver ID for lock-date overrides (must differ from $userId)
+     * @param  int|null  $permissionActorId  Central authenticated user ID used by authority gates.
+     *                                        Tenant and central user IDs are not guaranteed to match.
      */
     public function post(
         JournalEntry $entry,
         int $userId,
         ?string $overrideReason = null,
         ?int $approvedBy = null,
+        ?int $permissionActorId = null,
     ): PostingResult {
         if ($entry->status === 'posted') {
             return PostingResult::failure('Journal entry is already posted.');
@@ -140,14 +143,14 @@ class ManualJournalPostingService
         $eligibilityContext = [
             'tenant_id' => (string) ($entry->tenant_id ?? tenant('id')),
             'entity_id' => $entry->legal_entity_id ? (string) $entry->legal_entity_id : null,
-            'actor_id' => (string) $userId,
+            'actor_id' => (string) ($permissionActorId ?? $userId),
             'document_type' => 'manual_journal',
             'posting_date' => $entry->entry_date instanceof \DateTimeInterface
                 ? $entry->entry_date->format('Y-m-d')
                 : (string) $entry->entry_date,
             'total_amount' => $totalDebit,
             'correlation_id' => 'manual_journal_'.$entry->id,
-            'required_permission' => 'accounting.write',
+            'required_permission' => 'accounting.post',
             'source_capability' => 'ACC-002',
             'posting_lines' => $entry->lines->map(fn ($l) => [
                 'account_mapping_key' => 'manual',
@@ -229,4 +232,3 @@ class ManualJournalPostingService
         }
     }
 }
-

@@ -7,6 +7,7 @@ use App\Accounting\DTOs\DraftJournalRequest;
 use App\Accounting\DTOs\ReversalRequest;
 use App\Http\Controllers\Controller;
 use App\Models\Journal;
+use App\Models\ChartOfAccount;
 use App\Models\JournalEntry;
 use App\Services\FiscalPeriodValidator;
 use App\Services\LockDateValidationService;
@@ -34,6 +35,7 @@ class JournalEntriesController extends Controller
             'entry_date' => 'required|date',
             'reference' => 'nullable|string|max:100',
             'description' => 'required|string',
+            'remark' => 'nullable|string|max:255',
             'lines' => 'required|array|min:2',
             'lines.*.account_id' => 'required|exists:chart_of_accounts,id',
             'lines.*.debit' => 'required|numeric|min:0',
@@ -125,6 +127,139 @@ class JournalEntriesController extends Controller
     }
 
     /**
+     * Import balanced draft journal entries from CSV.
+     * Rows sharing an entry_key are grouped into one journal entry.
+     */
+    public function import(Request $request)
+    {
+        $request->validate(['file' => 'required|file|mimes:csv,txt|max:10240']);
+        $handle = fopen($request->file('file')->getRealPath(), 'r');
+        if ($handle === false) {
+            return response()->json(['message' => 'Unable to read the uploaded CSV file.'], 422);
+        }
+
+        $header = fgetcsv($handle);
+        if ($header === false) {
+            fclose($handle);
+            return response()->json(['message' => 'The CSV file is empty.'], 422);
+        }
+        $header = array_map(fn ($value) => strtolower(trim((string) $value)), $header);
+        $required = ['entry_key', 'entry_date', 'description', 'account_code', 'debit', 'credit'];
+        $missing = array_values(array_diff($required, $header));
+        if ($missing !== []) {
+            fclose($handle);
+            return response()->json(['message' => 'Missing required CSV columns: '.implode(', ', $missing)], 422);
+        }
+
+        $groups = [];
+        $errors = [];
+        $rowNumber = 1;
+        while (($values = fgetcsv($handle)) !== false) {
+            $rowNumber++;
+            if (count(array_filter($values, fn ($value) => trim((string) $value) !== '')) === 0) {
+                continue;
+            }
+            $values = array_pad($values, count($header), '');
+            $row = array_combine($header, array_slice($values, 0, count($header)));
+            $key = trim((string) ($row['entry_key'] ?? ''));
+            if ($key === '') {
+                $errors[] = ['row' => $rowNumber, 'message' => 'entry_key is required.'];
+                continue;
+            }
+            $groups[$key][] = ['row_number' => $rowNumber, 'data' => $row];
+        }
+        fclose($handle);
+
+        $created = 0;
+        foreach ($groups as $key => $rows) {
+            try {
+                $first = $rows[0]['data'];
+                $description = trim((string) ($first['description'] ?? ''));
+                $remark = trim((string) ($first['remark'] ?? ''));
+                if ($description === '') {
+                    throw new \DomainException('description is required.');
+                }
+                if (mb_strlen($remark) > 255) {
+                    throw new \DomainException('remark may not exceed 255 characters.');
+                }
+                $entryDate = trim((string) $first['entry_date']);
+                if ($entryDate === '' || strtotime($entryDate) === false) {
+                    throw new \DomainException('entry_date must be a valid date.');
+                }
+                $entryDate = date('Y-m-d', strtotime($entryDate));
+                $lockResult = $this->lockDateService->validateTransactionDate('journal_entries', $entryDate);
+                if ($lockResult['is_locked']) {
+                    throw new \DomainException($lockResult['message'] ?? "Entry date {$entryDate} is locked.");
+                }
+                $periodResult = $this->fiscalValidator->validateDate($entryDate);
+                if (! ($periodResult['allowed'] ?? false)) {
+                    throw new \DomainException($periodResult['reason'] ?? "No open fiscal period covers {$entryDate}.");
+                }
+
+                $journalId = null;
+                $journalCode = trim((string) ($first['journal_code'] ?? ''));
+                if ($journalCode !== '') {
+                    $journalId = Journal::where('code', $journalCode)->value('id');
+                    if ($journalId === null) {
+                        throw new \DomainException("Journal code '{$journalCode}' was not found.");
+                    }
+                }
+
+                $lines = [];
+                $totalDebit = 0.0;
+                $totalCredit = 0.0;
+                foreach ($rows as $csvRow) {
+                    $data = $csvRow['data'];
+                    $accountCode = trim((string) ($data['account_code'] ?? ''));
+                    $accountId = ChartOfAccount::where('code', $accountCode)->value('id');
+                    if ($accountId === null) {
+                        throw new \DomainException("Row {$csvRow['row_number']}: account code '{$accountCode}' was not found.");
+                    }
+                    $debit = is_numeric($data['debit']) ? (float) $data['debit'] : 0.0;
+                    $credit = is_numeric($data['credit']) ? (float) $data['credit'] : 0.0;
+                    if (($debit > 0 && $credit > 0) || ($debit <= 0 && $credit <= 0)) {
+                        throw new \DomainException("Row {$csvRow['row_number']}: enter either a debit or a credit amount.");
+                    }
+                    $totalDebit += $debit;
+                    $totalCredit += $credit;
+                    $lines[] = [
+                        'account_id' => $accountId,
+                        'debit' => $debit,
+                        'credit' => $credit,
+                        'description' => trim((string) ($data['line_description'] ?? '')) ?: null,
+                    ];
+                }
+                if (count($lines) < 2) {
+                    throw new \DomainException('At least two lines are required.');
+                }
+                if (abs($totalDebit - $totalCredit) >= 0.01) {
+                    throw new \DomainException('Entry is not balanced (debits must equal credits).');
+                }
+
+                $result = $this->postingEngine->createDraft(DraftJournalRequest::fromArray([
+                    'journal_id' => $journalId,
+                    'entry_date' => $entryDate,
+                    'reference' => trim((string) ($first['reference'] ?? '')) ?: null,
+                    'description' => $description,
+                    'remark' => $remark ?: null,
+                    'lines' => $lines,
+                    'user_id' => $request->user()?->id,
+                    'legal_entity_id' => $request->attributes->get('legal_entity_id'),
+                    'entity_book_id' => $request->attributes->get('entity_book_id'),
+                ]));
+                if (! $result->success) {
+                    throw new \DomainException($result->error ?? 'Unable to create draft.');
+                }
+                $created++;
+            } catch (\Throwable $e) {
+                $errors[] = ['entry_key' => $key, 'row' => $rows[0]['row_number'], 'message' => $e->getMessage()];
+            }
+        }
+
+        return response()->json(['created' => $created, 'errors' => $errors]);
+    }
+
+    /**
      * Create a new journal entry
      */
     public function store(Request $request)
@@ -134,6 +269,7 @@ class JournalEntriesController extends Controller
             'entry_date' => 'required|date',
             'reference' => 'nullable|string|max:100',
             'description' => 'required|string',
+            'remark' => 'nullable|string|max:255',
             'lines' => 'required|array|min:2',
             'lines.*.account_id' => 'required|exists:chart_of_accounts,id',
             'lines.*.debit' => 'required|numeric|min:0',
@@ -240,6 +376,7 @@ class JournalEntriesController extends Controller
             'entry_date' => 'required|date',
             'reference' => 'nullable|string|max:100',
             'description' => 'required|string',
+            'remark' => 'nullable|string|max:255',
             'lines' => 'required|array|min:2',
             'lines.*.account_id' => 'required|exists:chart_of_accounts,id',
             'lines.*.debit' => 'required|numeric|min:0',
@@ -262,6 +399,7 @@ class JournalEntriesController extends Controller
                 'entry_date' => $validated['entry_date'],
                 'reference' => $validated['reference'] ?? null,
                 'description' => $validated['description'],
+                'remark' => $validated['remark'] ?? null,
             ]);
 
             // Delete existing lines
@@ -355,6 +493,7 @@ class JournalEntriesController extends Controller
             userId: $userId,
             overrideReason: $request->input('override_reason'),
             approvedBy: $approvedBy,
+            permissionActorId: (int) $request->user()->id,
         );
 
         if (! $result->success) {

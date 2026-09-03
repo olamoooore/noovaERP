@@ -6,7 +6,15 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ImportButton } from '@/components/ImportButton';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -41,7 +49,69 @@ import journalEntriesApi, {
 } from '@/lib/journalEntriesApi';
 import journalsApi from '@/lib/journalsApi';
 import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
-import { formatCurrency, mapCommandError } from '@/lib/utils';
+import type { ChartOfAccount } from '@/lib/chartOfAccountsApi';
+import { cn, formatCurrency, mapCommandError } from '@/lib/utils';
+
+function AccountSearchCombobox({
+  accounts,
+  value,
+  onValueChange,
+}: {
+  accounts: ChartOfAccount[];
+  value: number;
+  onValueChange: (accountId: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = accounts.find((account) => account.id === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className={cn('w-full justify-between font-normal', !selected && 'text-muted-foreground')}
+        >
+          <span className="truncate">
+            {selected ? selected.code + ' - ' + selected.name : 'Type or select account'}
+          </span>
+          <Icon icon="solar:magnifer-linear" className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search by account code or name..." autoFocus />
+          <CommandList>
+            <CommandEmpty>No account found.</CommandEmpty>
+            <CommandGroup>
+              {accounts.map((account) => (
+                <CommandItem
+                  key={account.id}
+                  value={account.code + ' ' + account.name + ' ' + account.type}
+                  onSelect={() => {
+                    onValueChange(account.id);
+                    setOpen(false);
+                  }}
+                >
+                  <Icon
+                    icon="solar:check-circle-bold"
+                    className={cn('mr-2 h-4 w-4 shrink-0', value === account.id ? 'opacity-100' : 'opacity-0')}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate">{account.code} - {account.name}</div>
+                    <div className="text-xs capitalize text-muted-foreground">{account.type}</div>
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export default function JournalEntriesPage() {
   const navigate = useNavigate();
@@ -49,6 +119,7 @@ export default function JournalEntriesPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'all' | 'draft' | 'posted' | 'reversed'>('all');
   const [formOpen, setFormOpen] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState<number | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
   const [reverseOpen, setReverseOpen] = useState(false);
@@ -67,6 +138,7 @@ export default function JournalEntriesPage() {
     entry_date: new Date().toISOString().split('T')[0],
     reference: '',
     description: '',
+    remark: '',
     lines: [
       { account_id: 0, debit: 0, credit: 0, description: '' },
       { account_id: 0, debit: 0, credit: 0, description: '' },
@@ -129,6 +201,20 @@ export default function JournalEntriesPage() {
       const err = mapCommandError(error);
       toast(err);
     },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: CreateJournalEntryRequest }) =>
+      journalEntriesApi.updateJournalEntry(id, data),
+    onSuccess: ({ entry }) => {
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      toast({ title: 'Success', description: 'Draft journal entry updated successfully' });
+      setSelectedEntry(entry);
+      setFormOpen(false);
+      setEditingEntryId(null);
+      resetForm();
+    },
+    onError: (error: any) => toast(mapCommandError(error)),
   });
 
   // Post entry mutation
@@ -198,11 +284,13 @@ export default function JournalEntriesPage() {
   });
 
   const resetForm = () => {
+    setEditingEntryId(null);
     setFormData({
       journal_id: undefined,
       entry_date: new Date().toISOString().split('T')[0],
       reference: '',
       description: '',
+      remark: '',
       lines: [
         { account_id: 0, debit: 0, credit: 0, description: '' },
         { account_id: 0, debit: 0, credit: 0, description: '' },
@@ -249,7 +337,46 @@ export default function JournalEntriesPage() {
       });
       return;
     }
-    createMutation.mutate(formData);
+    if (editingEntryId) {
+      updateMutation.mutate({ id: editingEntryId, data: formData });
+    } else {
+      createMutation.mutate(formData);
+    }
+  };
+
+  const handleEdit = async (id: number) => {
+    try {
+      const entry = await journalEntriesApi.getJournalEntry(id);
+      if (entry.status !== 'draft') {
+        toast({ title: 'Cannot edit entry', description: 'Only draft journal entries can be edited.', variant: 'destructive' });
+        return;
+      }
+      setEditingEntryId(entry.id);
+      setFormData({
+        journal_id: entry.journal_id || undefined,
+        entry_date: entry.entry_date.split('T')[0],
+        reference: entry.reference || '',
+        description: entry.description,
+        remark: entry.remark || '',
+        lines: entry.lines.map((line) => ({
+          account_id: line.account_id,
+          debit: Number(line.debit) || 0,
+          credit: Number(line.credit) || 0,
+          description: line.description || '',
+          reference: line.reference,
+          currency_code: line.currency_code,
+          original_amount: line.original_amount,
+          exchange_rate: line.exchange_rate,
+          department_id: line.department_id,
+          project_id: line.project_id,
+          location_id: line.location_id,
+        })),
+      });
+      setViewOpen(false);
+      setFormOpen(true);
+    } catch (error: any) {
+      toast(mapCommandError(error));
+    }
   };
 
   const handleViewEntry = async (id: number) => {
@@ -352,13 +479,14 @@ export default function JournalEntriesPage() {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-64"
             />
-            <ImportButton 
-              importType="journal-entries"
-              onImportComplete={() => queryClient.invalidateQueries({ queryKey: ['journal-entries'] })}
-              variant="outline"
-            />
             {canWrite && (
-              <Button onClick={() => setFormOpen(true)}>
+              <Button variant="outline" onClick={() => navigate('/accounting/core/journal-entries/import')}>
+                <Icon icon="solar:import-bold-duotone" className="h-4 w-4 mr-2" />
+                Import CSV
+              </Button>
+            )}
+            {canWrite && (
+              <Button onClick={() => { resetForm(); setFormOpen(true); }}>
                 <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
                 New Entry
               </Button>
@@ -386,6 +514,7 @@ export default function JournalEntriesPage() {
                     <TableHead>Date</TableHead>
                     <TableHead>Journal</TableHead>
                     <TableHead>Description</TableHead>
+                    <TableHead>Remark</TableHead>
                     <TableHead>Reference</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -398,6 +527,7 @@ export default function JournalEntriesPage() {
                       <TableCell>{new Date(entry.entry_date).toLocaleDateString()}</TableCell>
                       <TableCell className="text-sm">{entry.journal?.name || '-'}</TableCell>
                       <TableCell>{entry.description}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{entry.remark || '-'}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{entry.reference || '-'}</TableCell>
                       <TableCell>
                         <Badge variant={entry.status === 'posted' ? 'default' : 'secondary'}>
@@ -411,6 +541,11 @@ export default function JournalEntriesPage() {
                               {canPost && (
                                 <Button size="sm" variant="ghost" onClick={() => handlePost(entry.id)}>
                                   <Icon icon="solar:check-circle-linear" className="w-4 h-4" />
+                                </Button>
+                              )}
+                              {canWrite && (
+                                <Button size="sm" variant="ghost" title="Edit draft" onClick={() => handleEdit(entry.id)}>
+                                  <Icon icon="solar:pen-linear" className="w-4 h-4" />
                                 </Button>
                               )}
                               {canWrite && (
@@ -437,11 +572,11 @@ export default function JournalEntriesPage() {
       </Tabs>
 
       {/* Create Entry Dialog */}
-      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+      <Dialog open={formOpen} onOpenChange={(open) => { setFormOpen(open); if (!open) resetForm(); }}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>New Journal Entry</DialogTitle>
-            <DialogDescription>Create a new manual journal entry</DialogDescription>
+            <DialogTitle>{editingEntryId ? 'Edit Draft Journal Entry' : 'New Journal Entry'}</DialogTitle>
+            <DialogDescription>{editingEntryId ? 'Update this draft before it is posted' : 'Create a new manual journal entry'}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-3 gap-4">
@@ -494,6 +629,16 @@ export default function JournalEntriesPage() {
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="remark">Remark</Label>
+              <Input
+                id="remark"
+                maxLength={255}
+                placeholder="Optional remark"
+                value={formData.remark || ''}
+                onChange={(e) => setFormData({ ...formData, remark: e.target.value })}
+              />
+            </div>
 
             {/* Lines */}
             <div className="space-y-2">
@@ -519,22 +664,11 @@ export default function JournalEntriesPage() {
                     {formData.lines.map((line, index) => (
                       <TableRow key={index}>
                         <TableCell>
-                          <Select
-                            value={line.account_id?.toString() || 'select'}
-                            onValueChange={(value) => value !== 'select' && updateLine(index, 'account_id', parseInt(value))}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select account" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="select" disabled>Select account</SelectItem>
-                              {accounts.map((account) => (
-                                <SelectItem key={account.id} value={account.id.toString()}>
-                                  {account.code} - {account.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <AccountSearchCombobox
+                            accounts={accounts}
+                            value={line.account_id}
+                            onValueChange={(accountId) => updateLine(index, 'account_id', accountId)}
+                          />
                         </TableCell>
                         <TableCell>
                           <Input
@@ -602,17 +736,17 @@ export default function JournalEntriesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setFormOpen(false)}>
+            <Button variant="outline" onClick={() => { setFormOpen(false); resetForm(); }}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={createMutation.isPending || !totals.isBalanced}>
-              {createMutation.isPending ? (
+            <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending || !totals.isBalanced}>
+              {createMutation.isPending || updateMutation.isPending ? (
                 <>
                   <Icon icon="svg-spinners:ring-resize" className="w-4 h-4 mr-2" />
-                  Creating...
+                  {editingEntryId ? 'Saving...' : 'Creating...'}
                 </>
               ) : (
-                'Create Entry'
+                editingEntryId ? 'Save Changes' : 'Create Entry'
               )}
             </Button>
           </DialogFooter>
@@ -655,6 +789,10 @@ export default function JournalEntriesPage() {
                 <p>{selectedEntry.description}</p>
               </div>
               <div>
+                <Label className="text-muted-foreground">Remark</Label>
+                <p>{selectedEntry.remark || '-'}</p>
+              </div>
+              <div>
                 <Label className="text-muted-foreground">Lines</Label>
                 <Table>
                   <TableHeader>
@@ -688,6 +826,12 @@ export default function JournalEntriesPage() {
             </div>
           )}
           <DialogFooter>
+            {selectedEntry?.status === 'draft' && canWrite && (
+              <Button variant="outline" onClick={() => handleEdit(selectedEntry.id)}>
+                <Icon icon="solar:pen-linear" className="w-4 h-4 mr-2" />
+                Edit Draft
+              </Button>
+            )}
             {selectedEntry?.status === 'draft' && canPost && (
               <Button
                 onClick={() => postMutation.mutate(selectedEntry.id)}
@@ -756,7 +900,7 @@ export default function JournalEntriesPage() {
                         const lineAmount = partialLineAmounts.find(l => l.line_id === line.id);
                         return (
                           <TableRow key={line.id}>
-                            <TableCell className="text-sm">{line.account_code || line.account_name || `Line ${line.id}`}</TableCell>
+                            <TableCell className="text-sm">{line.account ? `${line.account.code} - ${line.account.name}` : `Line ${line.id}`}</TableCell>
                             <TableCell className="text-sm text-muted-foreground">{line.description || '-'}</TableCell>
                             <TableCell className="text-sm text-right">{formatCurrency(originalAmount)}</TableCell>
                             <TableCell className="text-right">

@@ -239,6 +239,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
         // Journal Entries
         Route::get('/journal-entries', [JournalEntriesController::class, 'index']);
+        Route::post('/journal-entries/import', [JournalEntriesController::class, 'import']);
         Route::get('/journal-entries/{id}', [JournalEntriesController::class, 'show']);
         Route::post('/journal-entries', [JournalEntriesController::class, 'store']);
         Route::put('/journal-entries/{id}', [JournalEntriesController::class, 'update']);
