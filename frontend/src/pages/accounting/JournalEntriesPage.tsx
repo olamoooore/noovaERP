@@ -486,6 +486,12 @@ export default function JournalEntriesPage() {
               </Button>
             )}
             {canWrite && (
+              <Button variant="outline" onClick={() => navigate('/accounting/core/journals')}>
+                <Icon icon="solar:notebook-bold-duotone" className="h-4 w-4 mr-2" />
+                Manage Journals
+              </Button>
+            )}
+            {canWrite && (
               <Button onClick={() => { resetForm(); setFormOpen(true); }}>
                 <Icon icon="solar:add-circle-linear" className="w-4 h-4 mr-2" />
                 New Entry
@@ -581,7 +587,16 @@ export default function JournalEntriesPage() {
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="journal">Journal</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="journal">Journal</Label>
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => navigate('/accounting/core/journals')}
+                  >
+                    Create or manage
+                  </button>
+                </div>
                 <Select
                   value={formData.journal_id?.toString() || 'none'}
                   onValueChange={(value) =>
