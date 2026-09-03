@@ -234,28 +234,42 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
     }
 
     // Prepare data for submission - remove empty optional fields
-    const submitData: any = {
-      code: formData.code.trim(),
-      name: formData.name.trim(),
-      type: formData.type,
-      is_active: formData.is_active,
-    };
+    const isSystem = editingAccount?.is_system === true;
+
+    // For SYSTEM accounts the backend only accepts name/subtype/description/is_active.
+    // Sending code/type/parent_id/account_group would be silently ignored and is
+    // misleading, so build the payload accordingly. For NON-SYSTEM accounts
+    // (including all creates) the backend expects the full set.
+    const submitData: any = isSystem
+      ? {
+          name: formData.name.trim(),
+          is_active: formData.is_active,
+        }
+      : {
+          code: formData.code.trim(),
+          name: formData.name.trim(),
+          type: formData.type,
+          is_active: formData.is_active,
+        };
 
     // Add optional fields only if they have values
-    if (formData.account_group && formData.account_group.trim()) {
-      submitData.account_group = formData.account_group.trim();
-    }
-
     if (formData.subtype && formData.subtype.trim()) {
       submitData.subtype = formData.subtype.trim();
     }
 
-    if (formData.parent_id) {
-      submitData.parent_id = formData.parent_id;
-    }
-
     if (formData.description && formData.description.trim()) {
       submitData.description = formData.description.trim();
+    }
+
+    // account_group, parent_id are NOT editable on system accounts
+    if (!isSystem) {
+      if (formData.account_group && formData.account_group.trim()) {
+        submitData.account_group = formData.account_group.trim();
+      }
+
+      if (formData.parent_id) {
+        submitData.parent_id = formData.parent_id;
+      }
     }
 
     // Only include opening_balance when creating new account
@@ -673,6 +687,15 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {editingAccount?.is_system && (
+              <div className="rounded-md border border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-900 p-3 text-sm flex items-start gap-2">
+                <Icon icon="solar:info-circle-bold-duotone" className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+                <div className="text-blue-900 dark:text-blue-200">
+                  <p className="font-medium">System account</p>
+                  <p className="text-xs mt-0.5">Account Code, Type, and Account Group are fixed for system accounts and cannot be changed. You can still edit the Name, Description, Subtype, and Active status.</p>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="code">Account Code *</Label>
@@ -681,6 +704,7 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
                   placeholder="1010"
                   value={formData.code}
                   onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                  disabled={editingAccount?.is_system === true}
                 />
                 <p className="text-xs text-muted-foreground">
                   Use 4-digit SFRS format (e.g., 1010, 1200)
@@ -693,6 +717,7 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
                   placeholder="1200"
                   value={formData.account_group}
                   onChange={(e) => setFormData({ ...formData, account_group: e.target.value })}
+                  disabled={editingAccount?.is_system === true}
                 />
                 <p className="text-xs text-muted-foreground">
                   SFRS grouping code (e.g., 1100, 1200, 2100)
@@ -711,21 +736,26 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="type">Account Type *</Label>
-                <Select
-                  value={formData.type}
-                  onValueChange={(value: any) => setFormData({ ...formData, type: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="asset">Asset</SelectItem>
-                    <SelectItem value="liability">Liability</SelectItem>
-                    <SelectItem value="equity">Equity</SelectItem>
-                    <SelectItem value="revenue">Revenue</SelectItem>
-                    <SelectItem value="expense">Expense</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className={editingAccount?.is_system === true ? 'opacity-60 pointer-events-none' : ''}>
+                  <Select
+                    value={formData.type}
+                    onValueChange={(value: any) => setFormData({ ...formData, type: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="asset">Asset</SelectItem>
+                      <SelectItem value="liability">Liability</SelectItem>
+                      <SelectItem value="equity">Equity</SelectItem>
+                      <SelectItem value="revenue">Revenue</SelectItem>
+                      <SelectItem value="expense">Expense</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {editingAccount?.is_system === true && (
+                  <p className="text-xs text-muted-foreground">Fixed for system accounts</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="subtype">Subtype</Label>
@@ -780,26 +810,31 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
               </div>
               <div className="space-y-2">
                 <Label htmlFor="parent">Parent Account</Label>
-                <Select
-                  value={formData.parent_id?.toString() || 'none'}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, parent_id: value === 'none' ? undefined : parseInt(value) })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="None" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {parentAccounts
-                      .filter((a) => a.id !== editingAccount?.id && a.id)
-                      .map((account) => (
-                        <SelectItem key={account.id} value={account.id.toString()}>
-                          {account.code} - {account.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                <div className={editingAccount?.is_system === true ? 'opacity-60 pointer-events-none' : ''}>
+                  <Select
+                    value={formData.parent_id?.toString() || 'none'}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, parent_id: value === 'none' ? undefined : parseInt(value) })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {parentAccounts
+                        .filter((a) => a.id !== editingAccount?.id && a.id)
+                        .map((account) => (
+                          <SelectItem key={account.id} value={account.id.toString()}>
+                            {account.code} - {account.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {editingAccount?.is_system === true && (
+                  <p className="text-xs text-muted-foreground">Fixed for system accounts</p>
+                )}
               </div>
             </div>
             <div className="space-y-2">
