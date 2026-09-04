@@ -62,13 +62,14 @@ class PublishAccountingOutboxEvents extends Command
                 // Per-tenant transaction with FOR UPDATE SKIP LOCKED so
                 // overlapping runs never double-publish and a mid-batch
                 // crash rolls the published flags back (at-least-once).
-                DB::transaction(function () use ($pairs, $dispatcher, &$published, &$failed) {
+                DB::transaction(function () use ($pairs, $dispatcher, $batchSize, &$published, &$failed) {
                     $ids = $pairs->pluck('id')->all();
 
                     $rows = AccountingOutboxEvent::query()
                         ->whereIn('id', $ids)
                         ->unpublished()
                         ->orderBy('id')
+                        ->limit($batchSize)
                         ->lock('FOR UPDATE SKIP LOCKED')
                         ->get();
 
