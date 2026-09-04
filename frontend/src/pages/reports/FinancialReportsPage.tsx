@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
@@ -7,53 +7,251 @@ import { Button } from '@/components/ui/button';
 import { ReportViewer } from '@/components/reports/ReportViewer';
 import { CompactReportFilters } from '@/components/reports/CompactReportFilters';
 import { ReportTable, Column } from '@/components/reports/ReportTable';
+import { ComparisonHierarchyTable, type ReportTreeNode } from '@/components/reports/ComparisonHierarchyTable';
 import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
 
-type BsRow = { code: string; name: string; balance: number };
-type BsGroupLike = {
+// ─── Comparison period math ─────────────────────────────────────────
+// Yearly/Quarterly/Monthly shift the selected window back by 12/3/1
+// months (month-end clamped, e.g. 2026-03-31 -> 2026-02-28). Custom
+// supplies explicit dates. Fiscal-year comparisons fall out naturally:
+// select the fiscal window (1 Sep – 31 Aug) and pick "yearly".
+
+type CompareMode = 'none' | 'yearly' | 'quarterly' | 'monthly' | 'custom';
+
+const COMPARE_MODES: { value: CompareMode; label: string }[] = [
+  { value: 'none', label: 'Off' },
+  { value: 'yearly', label: 'Yearly' },
+  { value: 'quarterly', label: 'Quarterly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'custom', label: 'Custom range' },
+];
+
+const compareMonthsBack = (mode: CompareMode): number | null =>
+  mode === 'yearly' ? 12 : mode === 'quarterly' ? 3 : mode === 'monthly' ? 1 : null;
+
+function shiftDateStr(dateStr: string, monthsBack: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return dateStr;
+  let ty = y;
+  let tm = m - monthsBack;
+  while (tm <= 0) {
+    tm += 12;
+    ty -= 1;
+  }
+  const lastDay = new Date(ty, tm, 0).getDate();
+  const td = Math.min(d, lastDay);
+  return `${ty}-${String(tm).padStart(2, '0')}-${String(td).padStart(2, '0')}`;
+}
+
+const num = (v: unknown): number => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+// ─── Balance Sheet tree merging ─────────────────────────────────────
+
+interface BsGroupLike {
   code?: string;
   name?: string;
-  balance?: number;
   total?: number;
   accounts?: Array<{ code?: string; name?: string; balance?: number }>;
+}
+
+function mergeBsGroups(
+  currentGroups: BsGroupLike[],
+  compareGroups: BsGroupLike[] | null
+): ReportTreeNode[] {
+  const withCompare = compareGroups !== null;
+  const map = new Map<
+    string,
+    {
+      code: string;
+      name: string;
+      sums: { current: number; compare: number };
+      accounts: Map<string, { code: string; name: string; sums: { current: number; compare: number } }>;
+    }
+  >();
+
+  const addSide = (groups: BsGroupLike[], side: 'current' | 'compare') => {
+    groups.forEach((g, gi) => {
+      const gkey = g.code || g.name || `grp-${gi}`;
+      if (!map.has(gkey)) {
+        map.set(gkey, { code: g.code || '', name: g.name || '', sums: { current: 0, compare: 0 }, accounts: new Map() });
+      }
+      const entry = map.get(gkey)!;
+      const accounts = g.accounts ?? [];
+      entry.sums[side] = accounts.length
+        ? accounts.reduce((s, a) => s + num(a.balance), 0)
+        : num(g.total);
+      accounts.forEach((a, ai) => {
+        const akey = a.code || a.name || `acc-${ai}`;
+        const prev = entry.accounts.get(akey) ?? { code: a.code || '', name: a.name || '', sums: { current: 0, compare: 0 } };
+        prev.sums[side] += num(a.balance);
+        entry.accounts.set(akey, prev);
+      });
+    });
+  };
+
+  addSide(currentGroups, 'current');
+  if (compareGroups) addSide(compareGroups, 'compare');
+
+  return [...map.entries()]
+    .sort((a, b) => (a[1].code || a[0]).localeCompare(b[1].code || b[0]))
+    .map(([key, e]) => ({
+      id: `bsg:${key}`,
+      code: e.code,
+      name: e.name,
+      current: e.sums.current,
+      compare: withCompare ? e.sums.compare : undefined,
+      children: [...e.accounts.values()].map((a) => ({
+        id: `bsa:${key}:${a.code || a.name}`,
+        code: a.code,
+        name: a.name,
+        current: a.sums.current,
+        compare: withCompare ? a.sums.compare : undefined,
+      })),
+    }));
+}
+
+const bsAssetGroups = (d: any): BsGroupLike[] => [
+  ...((d?.assets?.current as BsGroupLike[]) ?? []),
+  ...((d?.assets?.non_current as BsGroupLike[]) ?? []),
+];
+
+const bsLiabilityGroups = (d: any): BsGroupLike[] => [
+  ...((d?.liabilities?.current as BsGroupLike[]) ?? []),
+  ...((d?.liabilities?.non_current as BsGroupLike[]) ?? []),
+];
+
+const bsEquityGroups = (d: any): BsGroupLike[] => {
+  const groups = d?.equity?.groups;
+  if (Array.isArray(groups) && groups.length) return groups as BsGroupLike[];
+  const accounts = d?.equity?.accounts;
+  if (Array.isArray(accounts) && accounts.length) {
+    return [{ code: '3000', name: 'Equity', accounts }];
+  }
+  return [];
 };
 
-// The balance-sheet API returns grouped sections
-// ({code,name,accounts[],total}); the legacy flat rows carry `balance`.
-// ReportTable's Balance column reads `balance`, so flatten groups to
-// rows: group line first (balance = group total), then child accounts.
-// Passing group objects directly produced $NaN because they have no
-// `balance` key.
-function flattenBsGroups(items: unknown): BsRow[] {
-  const rows: BsRow[] = [];
-  const list: BsGroupLike[] = Array.isArray(items) ? (items as BsGroupLike[]) : [];
-  for (const item of list) {
-    if (item && Array.isArray(item.accounts)) {
-      rows.push({
-        code: item.code ?? '',
-        name: item.name ?? '',
-        balance: Number.isFinite(Number(item.total)) ? Number(item.total) : 0,
-      });
-      for (const account of item.accounts) {
-        rows.push({
-          code: account.code ?? '',
-          name: `\u00A0\u00A0\u00A0\u00A0${account.name ?? ''}`,
-          balance: Number.isFinite(Number(account.balance)) ? Number(account.balance) : 0,
-        });
-      }
-    } else if (item) {
-      const direct = Number(item.balance ?? item.total ?? 0);
-      rows.push({
-        code: item.code ?? '',
-        name: item.name ?? '',
-        balance: Number.isFinite(direct) ? direct : 0,
-      });
-    }
+function buildBsRoots(data: any, compare: any | null): ReportTreeNode[] {
+  const withCompare = compare !== null;
+  const sum = (nodes: ReportTreeNode[], side: 'current' | 'compare') =>
+    nodes.reduce((s, n) => s + (side === 'current' ? n.current : n.compare ?? 0), 0);
+
+  const sections: Array<[string, string, BsGroupLike[], BsGroupLike[]]> = [
+    ['assets', 'ASSETS', bsAssetGroups(data), withCompare ? bsAssetGroups(compare) : []],
+    ['liabilities', 'LIABILITIES', bsLiabilityGroups(data), withCompare ? bsLiabilityGroups(compare) : []],
+    ['equity', 'EQUITY', bsEquityGroups(data), withCompare ? bsEquityGroups(compare) : []],
+  ];
+
+  const roots: ReportTreeNode[] = [];
+  const totals = { current: {} as Record<string, number>, compare: {} as Record<string, number> };
+
+  for (const [key, label, curGroups, cmpGroups] of sections) {
+    const children = mergeBsGroups(curGroups, withCompare ? cmpGroups : null);
+    totals.current[key] = sum(children, 'current');
+    if (withCompare) totals.compare[key] = sum(children, 'compare');
+    roots.push({
+      id: `bs-${key}`,
+      name: label,
+      current: totals.current[key],
+      compare: withCompare ? totals.compare[key] : undefined,
+      children,
+    });
   }
-  return rows;
+
+  const totalA = totals.current.assets;
+  const totalLE = totals.current.liabilities + totals.current.equity;
+  roots.push(
+    { id: 'bs-total-a', name: 'TOTAL ASSETS', current: totalA, compare: withCompare ? totals.compare.assets : undefined, summary: true },
+    {
+      id: 'bs-total-le',
+      name: 'TOTAL LIABILITIES + EQUITY',
+      current: totalLE,
+      compare: withCompare ? totals.compare.liabilities + totals.compare.equity : undefined,
+      summary: true,
+    },
+    {
+      id: 'bs-check',
+      name: 'BALANCE CHECK (A − L − E)',
+      current: totalA - totalLE,
+      compare: withCompare ? totals.compare.assets - totals.compare.liabilities - totals.compare.equity : undefined,
+      summary: true,
+    }
+  );
+  return roots;
+}
+
+// ─── P&L tree merging ───────────────────────────────────────────────
+
+interface PlAccountLike {
+  code?: string;
+  account_name?: string;
+  name?: string;
+  amount?: number;
+}
+
+function mergePlAccounts(curList: PlAccountLike[], cmpList: PlAccountLike[] | null): ReportTreeNode[] {
+  const withCompare = cmpList !== null;
+  const map = new Map<string, { code: string; name: string; sums: { current: number; compare: number } }>();
+  const addSide = (list: PlAccountLike[], side: 'current' | 'compare') => {
+    list.forEach((a, i) => {
+      const key = a.code || a.name || a.account_name || `acc-${i}`;
+      const prev = map.get(key) ?? { code: a.code || '', name: a.name || a.account_name || '', sums: { current: 0, compare: 0 } };
+      prev.sums[side] += num(a.amount);
+      map.set(key, prev);
+    });
+  };
+  addSide(curList, 'current');
+  if (cmpList) addSide(cmpList, 'compare');
+  return [...map.entries()]
+    .sort((a, b) => (a[1].code || a[0]).localeCompare(b[1].code || b[0]))
+    .map(([key, e]) => ({
+      id: `pla:${key}`,
+      code: e.code,
+      name: e.name,
+      current: e.sums.current,
+      compare: withCompare ? e.sums.compare : undefined,
+    }));
+}
+
+function buildPlRoots(data: any, compare: any | null): ReportTreeNode[] {
+  const withCompare = compare !== null;
+  const sum = (nodes: ReportTreeNode[]) => nodes.reduce((s, n) => s + n.current, 0);
+  const sumCmp = (nodes: ReportTreeNode[]) => nodes.reduce((s, n) => s + (n.compare ?? 0), 0);
+
+  const section = (key: string, label: string): ReportTreeNode => {
+    const children = mergePlAccounts(
+      (data?.[key]?.accounts as PlAccountLike[]) ?? [],
+      withCompare ? ((compare?.[key]?.accounts as PlAccountLike[]) ?? []) : null
+    );
+    return {
+      id: `pl-${key}`,
+      name: label,
+      current: sum(children),
+      compare: withCompare ? sumCmp(children) : undefined,
+      children,
+    };
+  };
+
+  const revenue = section('revenue', 'REVENUE');
+  const cogs = section('cost_of_goods_sold', 'COST OF GOODS SOLD');
+  const grossCur = revenue.current - cogs.current;
+  const grossCmp = withCompare ? (revenue.compare ?? 0) - (cogs.compare ?? 0) : undefined;
+  const gross = { id: 'pl-gross', name: 'GROSS PROFIT', current: grossCur, compare: grossCmp, summary: true } as ReportTreeNode;
+
+  const opex = section('operating_expenses', 'OPERATING EXPENSES');
+  const opCur = grossCur - opex.current;
+  const opCmp = withCompare ? (grossCmp ?? 0) - (opex.compare ?? 0) : undefined;
+  const operating = { id: 'pl-operating', name: 'OPERATING PROFIT', current: opCur, compare: opCmp, summary: true } as ReportTreeNode;
+
+  const otherInc = section('other_income', 'OTHER INCOME');
+  const otherExp = section('other_expenses', 'OTHER EXPENSES');
+  const netCur = opCur + otherInc.current - otherExp.current;
+  const netCmp = withCompare ? (opCmp ?? 0) + (otherInc.compare ?? 0) - (otherExp.compare ?? 0) : undefined;
+  const net = { id: 'pl-net', name: 'NET PROFIT', current: netCur, compare: netCmp, summary: true } as ReportTreeNode;
+
+  return [revenue, cogs, gross, opex, operating, otherInc, otherExp, net];
 }
 
 export function FinancialReportsPage() {
@@ -92,6 +290,118 @@ export function FinancialReportsPage() {
     enabled: activeTab === 'balance-sheet',
     staleTime: 15 * 1000,
   });
+
+  // ── Comparison (P&L + Balance Sheet) ─────────────────────────────
+  const [compareMode, setCompareMode] = useState<CompareMode>('none');
+  const [customCmp, setCustomCmp] = useState<{ start_date: string; end_date: string }>({
+    start_date: '',
+    end_date: '',
+  });
+
+  // P&L compares activity over two windows; Balance Sheet compares two
+  // as-of dates (the BS window end acts as the as-of date).
+  const plCompareFilters = useMemo<ReportFiltersType | null>(() => {
+    if (compareMode === 'none' || activeTab !== 'profit-loss') return null;
+    if (compareMode === 'custom') {
+      if (!customCmp.start_date || !customCmp.end_date) return null;
+      return { ...filters, start_date: customCmp.start_date, end_date: customCmp.end_date };
+    }
+    const months = compareMonthsBack(compareMode);
+    if (!months || !filters.start_date || !filters.end_date) return null;
+    return { ...filters, start_date: shiftDateStr(filters.start_date, months), end_date: shiftDateStr(filters.end_date, months) };
+  }, [compareMode, filters, customCmp, activeTab]);
+
+  const {
+    data: plCompareData,
+    isFetching: isPlCmpFetching,
+  } = useQuery({
+    queryKey: ['profit-loss-compare', plCompareFilters],
+    queryFn: () => reportApi.getProfitLoss(plCompareFilters as ReportFiltersType),
+    enabled: !!plCompareFilters,
+    staleTime: 15 * 1000,
+  });
+
+  const bsCompareAsOf = useMemo<string | null>(() => {
+    if (compareMode === 'none' || activeTab !== 'balance-sheet') return null;
+    if (compareMode === 'custom') return customCmp.end_date || null;
+    const months = compareMonthsBack(compareMode);
+    const asOf = filters.end_date || filters.start_date;
+    if (!months || !asOf) return null;
+    return shiftDateStr(asOf, months);
+  }, [compareMode, filters, customCmp, activeTab]);
+
+  const {
+    data: bsCompareData,
+    isFetching: isBsCmpFetching,
+  } = useQuery({
+    queryKey: ['balance-sheet-compare', bsCompareAsOf, filters?.department_id, filters?.account_id],
+    queryFn: () =>
+      reportApi.getBalanceSheet({ ...filters, start_date: undefined, end_date: undefined, as_of_date: bsCompareAsOf as string }),
+    enabled: !!bsCompareAsOf,
+    staleTime: 15 * 1000,
+  });
+
+  const plComparing = compareMode !== 'none' && !!plCompareFilters && !!plCompareData;
+  const bsComparing = compareMode !== 'none' && !!bsCompareAsOf && !!bsCompareData;
+
+  const plCurrentLabel = `${formatDate(filters.start_date || '')} – ${formatDate(filters.end_date || '')}`;
+  const plCompareLabel = plCompareFilters
+    ? `${formatDate(plCompareFilters.start_date || '')} – ${formatDate(plCompareFilters.end_date || '')}`
+    : undefined;
+  const bsCurrentLabel = `As of ${formatDate(filters.end_date || '')}`;
+  const bsCompareLabel = bsCompareAsOf ? `As of ${formatDate(bsCompareAsOf)}` : undefined;
+
+  const compareToolbar = (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-sm font-medium text-muted-foreground">Comparison:</span>
+      {COMPARE_MODES.map((m) => (
+        <Button
+          key={m.value}
+          size="sm"
+          variant={compareMode === m.value ? 'default' : 'outline'}
+          className="h-8 text-xs"
+          onClick={() => setCompareMode(m.value)}
+        >
+          {m.label}
+        </Button>
+      ))}
+      {compareMode === 'custom' && (
+        <div className="flex items-center gap-2 ml-2">
+          <input
+            type="date"
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+            value={customCmp.start_date}
+            onChange={(e) => setCustomCmp((p) => ({ ...p, start_date: e.target.value }))}
+          />
+          <span className="text-muted-foreground">–</span>
+          <input
+            type="date"
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+            value={customCmp.end_date}
+            onChange={(e) => setCustomCmp((p) => ({ ...p, end_date: e.target.value }))}
+          />
+          <span className="text-xs text-muted-foreground">
+            (P&amp;L window; Balance Sheet uses the end date as its "as of")
+          </span>
+        </div>
+      )}
+      {compareMode !== 'none' && (
+        <span className="text-xs text-muted-foreground ml-2">
+          {activeTab === 'balance-sheet'
+            ? !bsCompareAsOf
+              ? 'Pick a complete custom range to compare.'
+              : isBsCmpFetching && !bsCompareData
+                ? 'Loading comparison…'
+                : ''
+            : !plCompareFilters
+              ? 'Pick a complete custom range to compare.'
+              : isPlCmpFetching && !plCompareData
+                ? 'Loading comparison…'
+                : ''}
+        </span>
+      )}
+    </div>
+  );
 
   // Cash Flow Query
   const {
@@ -144,45 +454,6 @@ export function FinancialReportsPage() {
   const handlePrint = () => {
     window.print();
   };
-
-  // Profit & Loss Columns
-  const plColumns: Column[] = [
-    {
-      key: 'name',
-      label: 'Account',
-      sortable: true,
-      filterable: true,
-    },
-    {
-      key: 'amount',
-      label: 'Amount',
-      sortable: true,
-      align: 'right',
-      format: (value) => formatCurrency(value),
-    },
-  ];
-
-  // Balance Sheet Columns
-  const bsColumns: Column[] = [
-    {
-      key: 'code',
-      label: 'Code',
-      sortable: true,
-    },
-    {
-      key: 'name',
-      label: 'Account',
-      sortable: true,
-      filterable: true,
-    },
-    {
-      key: 'balance',
-      label: 'Balance',
-      sortable: true,
-      align: 'right',
-      format: (value) => formatCurrency(value),
-    },
-  ];
 
   // Cash Flow Columns
   const cfColumns: Column[] = [
@@ -337,7 +608,11 @@ export function FinancialReportsPage() {
         <TabsContent value="profit-loss">
           <ReportViewer
             title="Profit & Loss Statement"
-            description={`For the period ${formatDate(filters.start_date || '')} to ${formatDate(filters.end_date || '')}`}
+            description={
+              plComparing
+                ? `${plCurrentLabel} compared with ${plCompareLabel}`
+                : `For the period ${formatDate(filters.start_date || '')} to ${formatDate(filters.end_date || '')}`
+            }
             isLoading={isPLLoading}
             error={plError?.message || null}
             onRefresh={refetchPL}
@@ -346,135 +621,14 @@ export function FinancialReportsPage() {
           >
             {profitLossData && (
               <div className="space-y-6">
-                {/* Revenue Section */}
-                <div>
-                  <h3 className="text-lg font-semibold mb-4 text-primary">Revenue</h3>
-                  <ReportTable
-                    columns={plColumns}
-                    data={profitLossData?.revenue?.accounts ?? []}
-                    showPagination={false}
-                    showSearch={false}
-                  />
-                  <div className="flex justify-end mt-2 pr-4">
-                    <div className="text-right">
-                      <span className="font-semibold">Total Revenue: </span>
-                      <span className="text-lg font-bold text-green-600">
-                        {formatCurrency(profitLossData?.revenue?.total ?? 0)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Cost of Goods Sold Section */}
-                {(profitLossData?.cost_of_goods_sold?.accounts?.length ?? 0) > 0 && (
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4 text-primary">Cost of Goods Sold</h3>
-                    <ReportTable
-                      columns={plColumns}
-                      data={profitLossData?.cost_of_goods_sold?.accounts ?? []}
-                      showPagination={false}
-                      showSearch={false}
-                    />
-                    <div className="flex justify-end mt-2 pr-4">
-                      <div className="text-right">
-                        <span className="font-semibold">Total COGS: </span>
-                        <span className="text-lg font-bold text-red-600">
-                          {formatCurrency(profitLossData?.cost_of_goods_sold?.total ?? 0)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Operating Expenses Section */}
-                <div>
-                  <h3 className="text-lg font-semibold mb-4 text-primary">Operating Expenses</h3>
-                  <ReportTable
-                    columns={plColumns}
-                    data={profitLossData?.operating_expenses?.accounts ?? profitLossData?.expenses?.accounts ?? []}
-                    showPagination={false}
-                    showSearch={false}
-                  />
-                  <div className="flex justify-end mt-2 pr-4">
-                    <div className="text-right">
-                      <span className="font-semibold">Total Operating Expenses: </span>
-                      <span className="text-lg font-bold text-red-600">
-                        {formatCurrency(profitLossData?.operating_expenses?.total ?? profitLossData?.expenses?.total ?? 0)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Other Income Section */}
-                {(profitLossData?.other_income?.accounts?.length ?? 0) > 0 && (
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4 text-primary">Other Income</h3>
-                    <ReportTable
-                      columns={plColumns}
-                      data={profitLossData?.other_income?.accounts ?? []}
-                      showPagination={false}
-                      showSearch={false}
-                    />
-                    <div className="flex justify-end mt-2 pr-4">
-                      <div className="text-right">
-                        <span className="font-semibold">Total Other Income: </span>
-                        <span className="text-lg font-bold text-green-600">
-                          {formatCurrency(profitLossData?.other_income?.total ?? 0)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Other Expenses Section */}
-                {(profitLossData?.other_expenses?.accounts?.length ?? 0) > 0 && (
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4 text-primary">Other Expenses</h3>
-                    <ReportTable
-                      columns={plColumns}
-                      data={profitLossData?.other_expenses?.accounts ?? []}
-                      showPagination={false}
-                      showSearch={false}
-                    />
-                    <div className="flex justify-end mt-2 pr-4">
-                      <div className="text-right">
-                        <span className="font-semibold">Total Other Expenses: </span>
-                        <span className="text-lg font-bold text-red-600">
-                          {formatCurrency(profitLossData?.other_expenses?.total ?? 0)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Summary Section */}
-                <Card className="p-6 bg-gray-50 dark:bg-gray-800">
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold">Gross Profit:</span>
-                      <span className="text-lg font-bold">
-                        {formatCurrency(typeof profitLossData?.gross_profit === 'object' ? profitLossData?.gross_profit?.amount ?? 0 : profitLossData?.gross_profit ?? 0)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold">Operating Profit:</span>
-                      <span className="text-lg font-bold">
-                        {formatCurrency(typeof profitLossData?.operating_profit === 'object' ? profitLossData?.operating_profit?.amount ?? 0 : profitLossData?.operating_profit ?? 0)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center pt-3 border-t">
-                      <span className="text-xl font-bold">Net Profit:</span>
-                      {(() => {
-                        const netVal = typeof profitLossData?.net_profit === 'object' ? profitLossData?.net_profit?.amount ?? 0 : profitLossData?.net_profit ?? 0;
-                        return (
-                          <span className={`text-2xl font-bold ${netVal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {formatCurrency(netVal)}
-                          </span>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                </Card>
+                {compareToolbar}
+                <ComparisonHierarchyTable
+                  roots={buildPlRoots(profitLossData, plComparing ? plCompareData : null)}
+                  compareEnabled={plComparing}
+                  currentLabel={plCurrentLabel}
+                  compareLabel={plCompareLabel}
+                  formatMoney={formatCurrency}
+                />
               </div>
             )}
           </ReportViewer>
@@ -484,7 +638,11 @@ export function FinancialReportsPage() {
         <TabsContent value="balance-sheet">
           <ReportViewer
             title="Balance Sheet"
-            description={`As of ${formatDate(filters.end_date || '')}`}
+            description={
+              bsComparing
+                ? `${bsCurrentLabel} compared with ${bsCompareLabel}`
+                : `As of ${formatDate(filters.end_date || '')}`
+            }
             isLoading={isBSLoading}
             error={bsError?.message || null}
             onRefresh={refetchBS}
@@ -493,125 +651,14 @@ export function FinancialReportsPage() {
           >
             {balanceSheetData && (
               <div className="space-y-6">
-                {/* Assets Section */}
-                <div>
-                  <h3 className="text-lg font-semibold mb-4 text-primary">Assets</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="font-medium mb-2">Current Assets</h4>
-                      <ReportTable
-                        columns={bsColumns}
-                        data={flattenBsGroups(balanceSheetData?.assets?.current)}
-                        showPagination={false}
-                        showSearch={false}
-                      />
-                    </div>
-                    <div>
-                      <h4 className="font-medium mb-2">Non-Current Assets</h4>
-                      <ReportTable
-                        columns={bsColumns}
-                        data={flattenBsGroups(balanceSheetData?.assets?.non_current)}
-                        showPagination={false}
-                        showSearch={false}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-end mt-2 pr-4">
-                    <div className="text-right">
-                      <span className="font-semibold">Total Assets: </span>
-                      <span className="text-lg font-bold text-blue-600">
-                        {formatCurrency(balanceSheetData?.total_assets ?? 0)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Liabilities Section */}
-                <div>
-                  <h3 className="text-lg font-semibold mb-4 text-primary">Liabilities</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="font-medium mb-2">Current Liabilities</h4>
-                      <ReportTable
-                        columns={bsColumns}
-                        data={flattenBsGroups(balanceSheetData?.liabilities?.current)}
-                        showPagination={false}
-                        showSearch={false}
-                      />
-                    </div>
-                    <div>
-                      <h4 className="font-medium mb-2">Non-Current Liabilities</h4>
-                      <ReportTable
-                        columns={bsColumns}
-                        data={flattenBsGroups(balanceSheetData?.liabilities?.non_current)}
-                        showPagination={false}
-                        showSearch={false}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-end mt-2 pr-4">
-                    <div className="text-right">
-                      <span className="font-semibold">Total Liabilities: </span>
-                      <span className="text-lg font-bold text-orange-600">
-                        {formatCurrency(balanceSheetData?.total_liabilities ?? 0)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Equity Section */}
-                <div>
-                  <h3 className="text-lg font-semibold mb-4 text-primary">Equity</h3>
-                  <ReportTable
-                    columns={bsColumns}
-                    data={flattenBsGroups(
-                      (balanceSheetData?.equity as any)?.groups?.length
-                        ? (balanceSheetData?.equity as any).groups
-                        : (balanceSheetData?.equity as any)?.accounts ?? []
-                    )}
-                    showPagination={false}
-                    showSearch={false}
-                  />
-                  <div className="flex justify-end mt-2 pr-4">
-                    <div className="text-right">
-                      <span className="font-semibold">Total Equity: </span>
-                      <span className="text-lg font-bold text-purple-600">
-                        {formatCurrency(balanceSheetData?.total_equity ?? 0)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Summary Section */}
-                <Card className="p-6 bg-gray-50 dark:bg-gray-800">
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold">Working Capital:</span>
-                      <span className="text-lg font-bold">
-                        {formatCurrency(balanceSheetData?.working_capital ?? 0)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center pt-3 border-t">
-                      <span className="text-xl font-bold">
-                        Total Liabilities + Equity:
-                      </span>
-                      <span className="text-2xl font-bold">
-                        {formatCurrency(
-                          (balanceSheetData?.total_liabilities ?? 0) +
-                            (balanceSheetData?.total_equity ?? 0)
-                        )}
-                      </span>
-                    </div>
-                    {(balanceSheetData?.balance_check ?? 0) !== 0 && (
-                      <div className="flex justify-between items-center text-red-600">
-                        <span className="font-semibold">Balance Check:</span>
-                        <span className="font-bold">
-                          {formatCurrency(balanceSheetData?.balance_check ?? 0)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </Card>
+                {compareToolbar}
+                <ComparisonHierarchyTable
+                  roots={buildBsRoots(balanceSheetData, bsComparing ? bsCompareData : null)}
+                  compareEnabled={bsComparing}
+                  currentLabel={bsCurrentLabel}
+                  compareLabel={bsCompareLabel}
+                  formatMoney={formatCurrency}
+                />
               </div>
             )}
           </ReportViewer>
