@@ -25,7 +25,11 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import currenciesApi, { type Currency, type CreateCurrencyRequest } from '@/lib/currenciesApi';
+import currenciesApi, {
+  type Currency,
+  type CreateCurrencyRequest,
+  type UpdateCurrencyRequest,
+} from '@/lib/currenciesApi';
 
 export default function MultiCurrencyPage({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
@@ -48,7 +52,7 @@ export default function MultiCurrencyPage({ embedded = false }: { embedded?: boo
   });
 
   // Safely extract currencies array from response
-  const currencies = Array.isArray(currenciesResponse) 
+  const currencies: Currency[] = Array.isArray(currenciesResponse) 
     ? currenciesResponse 
     : (currenciesResponse?.data && Array.isArray(currenciesResponse.data))
       ? currenciesResponse.data
@@ -74,7 +78,7 @@ export default function MultiCurrencyPage({ embedded = false }: { embedded?: boo
 
   // Update currency mutation
   const updateMutation = useMutation({
-    mutationFn: ({ code, data }: { code: string; data: Partial<CreateCurrencyRequest> }) =>
+    mutationFn: ({ code, data }: { code: string; data: UpdateCurrencyRequest }) =>
       currenciesApi.updateCurrency(code, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['currencies'] });
@@ -86,6 +90,22 @@ export default function MultiCurrencyPage({ embedded = false }: { embedded?: boo
       toast({
         title: 'Error',
         description: error.response?.data?.message || 'Failed to update currency',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Activate an inactive currency
+  const activateMutation = useMutation({
+    mutationFn: (code: string) => currenciesApi.updateCurrency(code, { is_active: true }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['currencies'] });
+      toast({ title: 'Success', description: 'Currency activated successfully' });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to activate currency',
         variant: 'destructive',
       });
     },
@@ -230,6 +250,17 @@ export default function MultiCurrencyPage({ embedded = false }: { embedded?: boo
                               onClick={() => handleDelete(currency.code)}
                             >
                               <Icon icon="solar:trash-bin-trash-linear" className="w-4 h-4" />
+                            </Button>
+                          )}
+                          {!currency.is_active && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => activateMutation.mutate(currency.code)}
+                              disabled={activateMutation.isPending}
+                            >
+                              <Icon icon="solar:check-circle-linear" className="w-4 h-4 mr-1" />
+                              Activate
                             </Button>
                           )}
                         </div>

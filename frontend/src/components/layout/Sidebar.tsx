@@ -559,11 +559,11 @@ const baseNavItems: NavItem[] = [
   },
      
       
-      // {
-      //   title: 'MyInvois E-Invoice',
-      //   href: '/accounting/reporting/myinvoice',
-      //   icon: 'solar:document-text-bold-duotone',
-      // },
+      {
+        title: 'MyInvois E-Invoice',
+        href: '/accounting/reporting/myinvoice',
+        icon: 'solar:document-text-bold-duotone',
+      },
      
       {
         title: 'Settings',

@@ -15,6 +15,10 @@ export interface CreateCurrencyRequest {
   decimal_places?: number;
 }
 
+export type UpdateCurrencyRequest = Partial<CreateCurrencyRequest> & {
+  is_active?: boolean;
+};
+
 const currenciesApi = {
   getCurrencies: async (params?: { is_active?: boolean; search?: string }) => {
     const response = await api.get('/accounting/currencies', { params });
@@ -36,7 +40,7 @@ const currenciesApi = {
     return response.data.currency;
   },
 
-  updateCurrency: async (code: string, data: Partial<CreateCurrencyRequest>) => {
+  updateCurrency: async (code: string, data: UpdateCurrencyRequest) => {
     const response = await api.put(`/accounting/currencies/${code}`, data);
     return response.data.currency;
   },

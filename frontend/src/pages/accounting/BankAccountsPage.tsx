@@ -32,6 +32,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
+import currenciesApi, { type Currency } from '@/lib/currenciesApi';
 
 interface BankAccount {
   id: number;
@@ -78,15 +79,10 @@ function BankAccountsPage() {
   const glAccounts = glAccountsData?.data || [];
 
   // Fetch currencies
-  const { data: currenciesData } = useQuery({
-    queryKey: ['currencies'],
-    queryFn: async () => {
-      const response = await api.get('/accounting/currencies');
-      return response.data;
-    },
+  const { data: currencies = [] } = useQuery<Currency[]>({
+    queryKey: ['currencies', 'active'],
+    queryFn: currenciesApi.getActiveCurrencies,
   });
-
-  const currencies = currenciesData?.data || [];
 
   // Create mutation
   const createMutation = useMutation({
@@ -169,8 +165,8 @@ function BankAccountsPage() {
     
     const data = {
       account_name: formData.get('account_name') as string,
-      account_number: formData.get('account_number') as string || null,
-      bank_name: formData.get('bank_name') as string || null,
+      account_number: formData.get('account_number') as string || undefined,
+      bank_name: formData.get('bank_name') as string || undefined,
       currency_code: currencyCode,
       gl_account_id: parseInt(glAccountId),
     };
@@ -384,7 +380,7 @@ function BankAccountsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {currencies.length > 0 ? (
-                      currencies.map((curr: any) => (
+                      currencies.map((curr) => (
                         <SelectItem key={curr.code} value={curr.code}>
                           {curr.code} - {curr.name}
                         </SelectItem>
@@ -458,4 +454,3 @@ function BankAccountsPage() {
 }
 
 export default BankAccountsPage;
-
