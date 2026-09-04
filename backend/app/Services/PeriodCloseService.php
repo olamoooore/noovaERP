@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\DTOs\PostingRequest;
+use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\FiscalPeriod;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -9,6 +12,10 @@ use Illuminate\Support\Facades\Schema;
 
 class PeriodCloseService
 {
+    public function __construct(
+        private readonly PostingEngineInterface $postingEngine,
+    ) {}
+
     /**
      * Pre-close validation checks for a fiscal period.
      */
@@ -477,37 +484,56 @@ class PeriodCloseService
         }
 
         return DB::transaction(function () use ($closingDate, $entryNumber, $lines, $period, $userId) {
-            $entryId = DB::table('journal_entries')->insertGetId([
-                'entry_number' => $entryNumber,
-                'entry_date' => $closingDate,
-                'description' => "Period closing entry for {$period->code}",
-                'status' => 'posted',
-                'type' => 'period_close',
+            // Issue #59: closing entries must go through PostingEngine, the
+            // authoritative ledger writer. The engine adds the idempotency
+            // guard (a second close attempt for the same period resolves to
+            // the existing JournalEntryLink instead of double-posting),
+            // balance validation, the gate pipeline (TaxGate/AssuranceGate),
+            // audit logging, state transitions and the accounting outbox —
+            // none of which the previous raw inserts had.
+            $postingLines = array_map(fn (array $line) => new PostingRequestLine(
+                accountMappingKey: 'period_close_account',
+                accountId: (int) $line['account_id'],
+                debit: (float) $line['debit'],
+                credit: (float) $line['credit'],
+                description: $line['description'],
+            ), $lines);
+
+            $result = $this->postingEngine->post(new PostingRequest(
+                documentType: 'period_close',
+                documentId: (int) $period->id,
+                postingDate: $closingDate,
+                description: "Period closing entry for {$period->code}",
+                lines: $postingLines,
+                reference: $entryNumber,
+                userId: $userId,
+                sourceCapability: 'ACC-002',
+            ));
+
+            if (! $result->success || ! $result->journalEntry) {
+                Log::error('PeriodCloseService::postClosingEntry rejected by PostingEngine', [
+                    'period_id' => $period->id,
+                    'error' => $result->error,
+                ]);
+
+                return null;
+            }
+
+            $entry = $result->journalEntry;
+
+            // Close-marker columns are descriptive metadata, not ledger
+            // amounts; they are not in the model's $fillable so the engine
+            // does not set them. Stamp them post- (not forceFill — keep the
+            // intent explicit) without touching amounts/status/dates.
+            $entry->forceFill([
                 'is_period_close_entry' => true,
                 'period_id' => $period->id,
-                'posted_at' => now(),
-                'posted_by' => $userId,
-                'created_by' => $userId,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            foreach ($lines as $line) {
-                DB::table('journal_entry_lines')->insert([
-                    'journal_entry_id' => $entryId,
-                    'account_id' => $line['account_id'],
-                    'description' => $line['description'],
-                    'debit' => $line['debit'],
-                    'credit' => $line['credit'],
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-            }
+            ])->save();
 
             return [
                 'type' => 'period_close',
-                'journal_entry_id' => $entryId,
-                'entry_number' => $entryNumber,
+                'journal_entry_id' => $entry->id,
+                'entry_number' => $entry->entry_number,
                 'lines_count' => count($lines),
                 'net_pl' => array_sum(array_column($lines, 'credit')) - array_sum(array_column($lines, 'debit')) + 0,
             ];

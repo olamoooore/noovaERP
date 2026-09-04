@@ -345,6 +345,21 @@ class AccountingImportService
         ]);
     }
 
+    /**
+     * Create a journal entry from an import row.
+     *
+     * Issue noovaerp/NoovaERP#65 audit (2026-09-04): this direct
+     * JournalEntry::create() does NOT bypass PostingEngine's gate
+     * pipeline. The import path only ever produces status='draft' rows
+     * (never 'posted'); the sole transition from draft to posted for
+     * manual entries is JournalEntriesController::post() ->
+     * ManualJournalPostingService::post(), which evaluates the full
+     * ActionEligibilityEvaluator gate pipeline (TaxGate,
+     * AssuranceGate, ControlAccountGate, PermissionGate, …) before the
+     * status transition and fails-closed on any BLOCK. Posted ledger
+     * rows therefore still originate only from gate-checked paths;
+     * creating draft bookkeeping rows is not a ledger write.
+     */
     private function createJournalEntry(array $data): \App\Models\JournalEntry
     {
         $entry = \App\Models\JournalEntry::create([

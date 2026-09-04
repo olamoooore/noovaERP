@@ -21,6 +21,9 @@ class DatabaseSeeder extends Seeder
             $seeders[] = AccountingPermissionSeeder::class;
             $seeders[] = LoyaltyTierSeeder::class;
             $seeders[] = FiscalPeriodSeeder::class; // Seed fiscal periods for accounting
+            // Issue #66: AssuranceGate needs baseline blocking policies to
+            // enforce; provisioned per-tenant into the central policy table.
+            $seeders[] = AssuranceBlockingPolicySeeder::class;
 
             // ADR-004: seed canonical registrations before reference templates.
             app(RegistryService::class)->seedCanonical();

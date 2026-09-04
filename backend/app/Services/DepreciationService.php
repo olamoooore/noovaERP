@@ -9,6 +9,8 @@ use App\Models\DepreciationSchedule;
 use App\Models\FixedAsset;
 use App\Models\JournalEntry;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
@@ -48,93 +50,93 @@ class DepreciationService
         $assets = $query->get();
 
         foreach ($assets as $asset) {
-            // Check if already depreciated for this period
-            $existing = DepreciationSchedule::where('asset_id', $asset->id)
-                ->where('period_date', $periodDate->format('Y-m-d'))
-                ->first();
-
-            if ($existing) {
-                $results[] = [
-                    'asset_id' => $asset->id,
-                    'asset_name' => $asset->name,
-                    'status' => 'skipped',
-                    'message' => 'Already depreciated for this period',
-                ];
-
-                continue;
-            }
-
-            // Check if fully depreciated
-            if ($asset->isFullyDepreciated()) {
-                $results[] = [
-                    'asset_id' => $asset->id,
-                    'asset_name' => $asset->name,
-                    'status' => 'skipped',
-                    'message' => 'Asset fully depreciated',
-                ];
-
-                continue;
-            }
-
             try {
-                $depreciationAmount = $this->calculateDepreciationAmount($asset, $periodDate);
+                $outcome = DB::transaction(function () use ($asset, $periodDate): array {
+                    // Serialize concurrent depreciation runs per asset
+                    // (issue #64): the row lock makes the existence-check
+                    // then create sequence atomic; the unique index on
+                    // (asset_id, period_date) is the DB-level backstop.
+                    FixedAsset::where('id', $asset->id)->lockForUpdate()->first();
 
-                // Ensure we don't depreciate below salvage value
-                $currentBookValue = $asset->calculateBookValue();
-                $newBookValue = $currentBookValue - $depreciationAmount;
+                    if (DepreciationSchedule::where('asset_id', $asset->id)
+                        ->where('period_date', $periodDate->format('Y-m-d'))
+                        ->exists()) {
+                        return ['status' => 'skipped', 'message' => 'Already depreciated for this period'];
+                    }
 
-                if ($newBookValue < $asset->salvage_value) {
-                    $depreciationAmount = $currentBookValue - $asset->salvage_value;
-                    $newBookValue = $asset->salvage_value;
-                }
+                    if ($asset->isFullyDepreciated()) {
+                        return ['status' => 'skipped', 'message' => 'Asset fully depreciated'];
+                    }
 
-                if ($depreciationAmount <= 0) {
+                    $depreciationAmount = $this->calculateDepreciationAmount($asset, $periodDate);
+
+                    // Ensure we don't depreciate below salvage value
+                    $currentBookValue = $asset->calculateBookValue();
+                    $newBookValue = $currentBookValue - $depreciationAmount;
+
+                    if ($newBookValue < $asset->salvage_value) {
+                        $depreciationAmount = $currentBookValue - $asset->salvage_value;
+                        $newBookValue = $asset->salvage_value;
+                    }
+
+                    if ($depreciationAmount <= 0) {
+                        return ['status' => 'skipped', 'message' => 'No depreciation needed'];
+                    }
+
+                    $schedule = DepreciationSchedule::create([
+                        'asset_id' => $asset->id,
+                        'period_date' => $periodDate->format('Y-m-d'),
+                        'depreciation_amount' => $depreciationAmount,
+                        'accumulated_depreciation' => $asset->accumulated_depreciation + $depreciationAmount,
+                        'book_value' => $newBookValue,
+                        'is_posted' => false,
+                    ]);
+
+                    $journalEntry = $this->createDepreciationJournalEntry($asset, $schedule, $periodDate);
+
+                    $schedule->update([
+                        'journal_entry_id' => $journalEntry->id,
+                        'is_posted' => true,
+                    ]);
+
+                    $asset->update([
+                        'accumulated_depreciation' => $asset->accumulated_depreciation + $depreciationAmount,
+                        'book_value' => $newBookValue,
+                        'last_depreciation_date' => $periodDate->format('Y-m-d'),
+                    ]);
+
+                    return [
+                        'status' => 'success',
+                        'depreciation_amount' => $depreciationAmount,
+                        'accumulated_depreciation' => $asset->accumulated_depreciation,
+                        'book_value' => $newBookValue,
+                        'journal_entry_id' => $journalEntry->id,
+                    ];
+                });
+
+                $results[] = array_merge(
+                    ['asset_id' => $asset->id, 'asset_name' => $asset->name],
+                    $outcome
+                );
+
+            } catch (QueryException $e) {
+                // Concurrent run won the (asset, period) race — the unique
+                // index rejected our insert; treat as idempotent skip.
+                if ($this->isUniqueViolation($e)) {
                     $results[] = [
                         'asset_id' => $asset->id,
                         'asset_name' => $asset->name,
                         'status' => 'skipped',
-                        'message' => 'No depreciation needed',
+                        'message' => 'Already depreciated for this period (concurrent run)',
                     ];
-
-                    continue;
+                } else {
+                    $results[] = [
+                        'asset_id' => $asset->id,
+                        'asset_name' => $asset->name,
+                        'status' => 'error',
+                        'message' => $e->getMessage(),
+                    ];
                 }
-
-                // Create depreciation schedule entry
-                $schedule = DepreciationSchedule::create([
-                    'asset_id' => $asset->id,
-                    'period_date' => $periodDate->format('Y-m-d'),
-                    'depreciation_amount' => $depreciationAmount,
-                    'accumulated_depreciation' => $asset->accumulated_depreciation + $depreciationAmount,
-                    'book_value' => $newBookValue,
-                    'is_posted' => false,
-                ]);
-
-                // Create journal entry
-                $journalEntry = $this->createDepreciationJournalEntry($asset, $schedule, $periodDate);
-
-                // Update schedule with journal entry ID
-                $schedule->update([
-                    'journal_entry_id' => $journalEntry->id,
-                    'is_posted' => true,
-                ]);
-
-                // Update asset
-                $asset->update([
-                    'accumulated_depreciation' => $asset->accumulated_depreciation + $depreciationAmount,
-                    'book_value' => $newBookValue,
-                    'last_depreciation_date' => $periodDate->format('Y-m-d'),
-                ]);
-
-                $results[] = [
-                    'asset_id' => $asset->id,
-                    'asset_name' => $asset->name,
-                    'status' => 'success',
-                    'depreciation_amount' => $depreciationAmount,
-                    'accumulated_depreciation' => $asset->accumulated_depreciation,
-                    'book_value' => $newBookValue,
-                    'journal_entry_id' => $journalEntry->id,
-                ];
-
             } catch (\Exception $e) {
                 $results[] = [
                     'asset_id' => $asset->id,
@@ -229,14 +231,32 @@ class DepreciationService
                 $cumulative = round($cumulative + $amount, 2);
                 $bookValue = round((float) $asset->purchase_cost - $cumulative, 2);
 
-                $schedule = DepreciationSchedule::create([
-                    'asset_id' => $asset->id,
-                    'period_date' => $periodDate->format('Y-m-d'),
-                    'depreciation_amount' => $amount,
-                    'accumulated_depreciation' => $cumulative,
-                    'book_value' => $bookValue,
-                    'is_posted' => false,
-                ]);
+                // Check-then-create under an asset row lock (issue #64);
+                // the unique (asset_id, period_date) index backstops any
+                // race that slips through between concurrent requests.
+                $schedule = DB::transaction(function () use ($asset, $periodDate, $amount, $cumulative, $bookValue): ?DepreciationSchedule {
+                    FixedAsset::where('id', $asset->id)->lockForUpdate()->first();
+
+                    if (DepreciationSchedule::where('asset_id', $asset->id)
+                        ->where('period_date', $periodDate->format('Y-m-d'))
+                        ->exists()) {
+                        return null;
+                    }
+
+                    return DepreciationSchedule::create([
+                        'asset_id' => $asset->id,
+                        'period_date' => $periodDate->format('Y-m-d'),
+                        'depreciation_amount' => $amount,
+                        'accumulated_depreciation' => $cumulative,
+                        'book_value' => $bookValue,
+                        'is_posted' => false,
+                    ]);
+                });
+
+                if ($schedule === null) {
+                    $results['skipped_existing']++;
+                    continue;
+                }
 
                 // Posting the JE can legitimately fail when no fiscal period is
                 // open for the date (e.g. a 3-year asset projected into 2028).
@@ -256,6 +276,15 @@ class DepreciationService
                         'message' => $je->getMessage(),
                         'schedule_id' => $schedule->id,
                         'retry_endpoint' => "/api/v1/assets/{$asset->id}/post-schedule",
+                    ];
+                }
+            } catch (QueryException $e) {
+                if ($this->isUniqueViolation($e)) {
+                    $results['skipped_existing']++;
+                } else {
+                    $results['errors'][] = [
+                        'period' => $periodDate->format('Y-m-d'),
+                        'message' => $e->getMessage(),
                     ];
                 }
             } catch (\Throwable $e) {
@@ -300,12 +329,37 @@ class DepreciationService
 
         foreach ($pending as $schedule) {
             try {
-                $periodDate = Carbon::parse($schedule->period_date);
-                $journalEntry = $this->createDepreciationJournalEntry($asset, $schedule, $periodDate);
-                $schedule->update([
-                    'journal_entry_id' => $journalEntry->id,
-                    'is_posted' => true,
-                ]);
+                // Post under a row lock and re-check journal_entry_id inside
+                // the transaction so two concurrent post-pending calls (or a
+                // retry after a slow response) cannot post the same schedule
+                // twice (issue #64).
+                $journalEntryId = DB::transaction(function () use ($asset, $schedule): ?int {
+                    $locked = DepreciationSchedule::where('id', $schedule->id)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (! $locked || $locked->journal_entry_id !== null) {
+                        return null;
+                    }
+
+                    $journalEntry = $this->createDepreciationJournalEntry(
+                        $asset,
+                        $locked,
+                        Carbon::parse($locked->period_date)
+                    );
+
+                    $locked->update([
+                        'journal_entry_id' => $journalEntry->id,
+                        'is_posted' => true,
+                    ]);
+
+                    return $journalEntry->id;
+                });
+
+                if ($journalEntryId === null) {
+                    continue;
+                }
+
                 $result['posted']++;
             } catch (\Throwable $e) {
                 $result['errors'][] = [
@@ -317,6 +371,17 @@ class DepreciationService
         }
 
         return $result;
+    }
+
+    /**
+     * PostgreSQL unique-violation (SQLSTATE 23505) detection for the
+     * (asset_id, period_date) backstop added in issue #64.
+     */
+    protected function isUniqueViolation(QueryException $e): bool
+    {
+        return $e->getCode() === '23505'
+            || str_contains(strtolower($e->getMessage() ?? ''), 'unique constraint')
+            || str_contains(strtolower($e->getMessage() ?? ''), 'duplicate key');
     }
 
     /**

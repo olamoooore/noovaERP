@@ -47,3 +47,11 @@ Schedule::command('pos:recover-stuck --fix-syncing')
     ->everyFifteenMinutes()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Accounting Outbox (issue #62) - Publish written-but-unpublished ledger
+// events onto the Domain Event Bus every minute. withoutOverlapping +
+// SKIP LOCKED inside the command make this safe to double-run.
+Schedule::command('accounting:publish-outbox')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();

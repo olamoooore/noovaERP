@@ -12,6 +12,32 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * SettlementController — ACC-005B subledger allocation bookkeeping.
+ *
+ * GL-SILENT BY DESIGN (issue noovaerp/NoovaERP#63, confirmed
+ * 2026-09-04): allocate()/reverse() intentionally contain no
+ * PostingEngine calls. Verified state of the design:
+ *   - The only GL effect in this flow is the cash receipt itself,
+ *     posted once via PaymentPostingService -> PostingEngine at payment
+ *     posting time (DR bank / CR AR-suspense).
+ *   - AR/AP clearing against a specific invoice/bill happens in the
+ *     payment-application path (PaymentController apply/cancel via
+ *     PaymentPostingService / PaymentCorrectionService), which are the
+ *     ledger-authoritative postings.
+ *   - Settlement allocation is a bookkeeping overlay on top of that:
+ *     it records which obligations a settlement is earmarked against.
+ *     No balance changes when cash is allocated, so no compensating
+ *     journal entry is due — the SettlementAllocated event has no
+ *     posting listener by design (verified: zero listeners registered
+ *     in app/Listeners and all module providers).
+ *   - reverse() writes compensating Allocation rows with
+ *     reversal_of_allocation_id lineage and moves settlement state to
+ *     REVERSED — subledger-only correction (G8, verified 2026-08-29).
+ * If ACC-005 ownership ever gives settlement its own GL effect, it
+ * MUST route through PostingEngine like every other ledger writer
+ * (ADR-005) — not by extending this controller's raw model writes.
+ */
 class SettlementController extends Controller
 {
     /**
