@@ -380,10 +380,24 @@ class ChartOfAccountsController extends Controller
                 ], 403);
             }
 
-            // Check if account has transactions
-            if ($account->journalEntryLines()->exists()) {
+            // Ledger guard: block only when the account is used by an
+            // ACTIVE-version journal entry (posted or draft). Lines whose
+            // entries were superseded by a correction (is_active_version
+            // = false) are preserved audit history — the account row is
+            // soft-deleted so those entries keep resolving it in the
+            // database, while the account disappears from all live
+            // lists, pickers and reports. Reversing an entry does NOT
+            // delete its lines (double-entry history is immutable), so
+            // the old blanket exists() check made fully-reversed test
+            // accounts permanently undeletable (production issue
+            // 2026-09-04, account 500001).
+            $activeLedgerUsage = $account->journalEntryLines()
+                ->whereHas('journalEntry', fn ($q) => $q->where('is_active_version', true))
+                ->exists();
+
+            if ($activeLedgerUsage) {
                 return response()->json([
-                    'message' => 'Cannot delete account with transactions',
+                    'message' => 'Cannot delete account with transactions. Correct or replace the active journal entries first, or deactivate the account instead.',
                 ], 403);
             }
 
@@ -391,6 +405,32 @@ class ChartOfAccountsController extends Controller
             if ($account->children()->exists()) {
                 return response()->json([
                     'message' => 'Cannot delete account with sub-accounts',
+                ], 403);
+            }
+
+            // Config/line-reference scan: soft-deleting the account would
+            // leave live pointers (journal templates, GL mappings, taxes,
+            // products, fixed assets, document lines, company defaults)
+            // dangling at an archived account. List every blocker so the
+            // user can clear it from the owning screen and retry.
+            $blockers = [];
+            foreach (self::DELETION_REFERENCE_CHECKS as [$table, $column, $label]) {
+                if (! \Illuminate\Support\Facades\Schema::hasTable($table)
+                    || ! \Illuminate\Support\Facades\Schema::hasColumn($table, $column)) {
+                    continue;
+                }
+                $count = \Illuminate\Support\Facades\DB::table($table)
+                    ->where($column, $account->id)
+                    ->count();
+                if ($count > 0) {
+                    $blockers[] = $label.' ('.$count.')';
+                }
+            }
+
+            if (! empty($blockers)) {
+                return response()->json([
+                    'message' => 'Account is still referenced by: '.implode(', ', $blockers).'. Clear those references first.',
+                    'references' => $blockers,
                 ], 403);
             }
 
@@ -407,6 +447,48 @@ class ChartOfAccountsController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * [table, column, human label] for every live reference that must be
+     * cleared before a chart-of-accounts row can be archived. Derived from
+     * the FK graph on chart_of_accounts (2026-09-04). Excludes:
+     * - chart_of_accounts.parent_id (covered by the children guard)
+     * - journal_entry_lines (covered by the version-aware ledger guard)
+     * - daily_ledger_summaries (derived, raw-joined history)
+     */
+    private const DELETION_REFERENCE_CHECKS = [
+        ['account_mappings', 'account_id', 'account mappings'],
+        ['bank_accounts', 'gl_account_id', 'bank accounts'],
+        ['bill_lines', 'account_id', 'vendor bill lines'],
+        ['company_settings', 'default_tax_account_id', 'company default accounts'],
+        ['company_settings', 'default_receivable_account_id', 'company default accounts'],
+        ['company_settings', 'default_payable_account_id', 'company default accounts'],
+        ['company_settings', 'default_revenue_account_id', 'company default accounts'],
+        ['company_settings', 'default_expense_account_id', 'company default accounts'],
+        ['company_settings', 'default_purchase_tax_account_id', 'company default accounts'],
+        ['company_settings', 'default_inventory_account_id', 'company default accounts'],
+        ['company_settings', 'default_cogs_account_id', 'company default accounts'],
+        ['company_settings', 'default_retained_earnings_account_id', 'company default accounts'],
+        ['company_settings', 'default_bank_charges_account_id', 'company default accounts'],
+        ['customer_credit_note_lines', 'account_id', 'customer credit note lines'],
+        ['entity_account_mappings', 'chart_of_account_id', 'entity account mappings'],
+        ['entity_account_roles', 'chart_of_account_id', 'entity account roles'],
+        ['fixed_assets', 'asset_account_id', 'fixed assets'],
+        ['fixed_assets', 'accumulated_depreciation_account_id', 'fixed assets'],
+        ['fixed_assets', 'depreciation_account_id', 'fixed assets'],
+        ['invoice_lines', 'gl_account_id', 'invoice lines'],
+        ['journals', 'default_debit_account_id', 'journal templates'],
+        ['journals', 'default_credit_account_id', 'journal templates'],
+        ['ocr_account_mappings', 'account_id', 'OCR account mappings'],
+        ['products', 'expense_account_id', 'products'],
+        ['products', 'income_account_id', 'products'],
+        ['reconciliation_exceptions', 'bank_account_id', 'reconciliation exceptions'],
+        ['sales_order_lines', 'income_account_id', 'sales order lines'],
+        ['tax_rates', 'tax_account_id', 'tax rates'],
+        ['vendor_credit_note_lines', 'account_id', 'vendor credit note lines'],
+        ['vendor_debit_note_lines', 'account_id', 'vendor debit note lines'],
+        ['web_order_items', 'income_account_id', 'web order items'],
+    ];
 
     /**
      * Convert empty-string fields to null so the DB CHECK constraints
