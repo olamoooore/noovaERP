@@ -261,11 +261,14 @@ class ChartOfAccountsController extends Controller
                 'name' => 'required|string|max:255',
                 'type' => 'required|in:asset,liability,equity,revenue,expense',
                 'subtype' => 'nullable|string|max:50',
+                'account_group' => 'nullable|string|max:20',
                 'parent_id' => 'nullable|exists:chart_of_accounts,id',
                 'description' => 'nullable|string',
                 'is_active' => 'boolean',
                 'opening_balance' => 'nullable|numeric',
             ]);
+
+            $validated = $this->normalizeEmptyStrings($validated);
 
             $account = ChartOfAccount::create($validated);
 
@@ -290,30 +293,19 @@ class ChartOfAccountsController extends Controller
 
     /**
      * Update account
+     *
+     * System accounts are editable too (client request 2026-09-04: a client
+     * needed a different account type on a system account). We no longer
+     * hard-block code/type edits. Instead we (a) run the same validation as
+     * for non-system accounts, (b) warn — but do not block — when a type or
+     * code change conflicts with existing posted journal lines, so the
+     * accountant can decide. Deleting system accounts remains blocked in
+     * destroy().
      */
     public function update(Request $request, int $id): JsonResponse
     {
         try {
             $account = ChartOfAccount::findOrFail($id);
-
-            // System accounts: allow editing name/description/subtype/is_active but protect code & type
-            if ($account->is_system) {
-                $validated = $request->validate([
-                    'name' => 'required|string|max:255',
-                    'subtype' => 'nullable|string|max:50',
-                    'description' => 'nullable|string',
-                    'is_active' => 'boolean',
-                ]);
-
-                $validated = $this->normalizeEmptyStrings($validated);
-
-                $account->update($validated);
-
-                return response()->json([
-                    'data' => $account,
-                    'message' => 'System account updated successfully',
-                ]);
-            }
 
             $validated = $request->validate([
                 'code' => [
@@ -327,6 +319,7 @@ class ChartOfAccountsController extends Controller
                 'name' => 'required|string|max:255',
                 'type' => 'required|in:asset,liability,equity,revenue,expense',
                 'subtype' => 'nullable|string|max:50',
+                'account_group' => 'nullable|string|max:20',
                 'parent_id' => 'nullable|exists:chart_of_accounts,id',
                 'description' => 'nullable|string',
                 'is_active' => 'boolean',
@@ -344,11 +337,51 @@ class ChartOfAccountsController extends Controller
                 ], 422);
             }
 
+            $warnings = [];
+
+            $newType = $validated['type'] ?? $account->type;
+
+            // A type change flips the natural balance side. Warn (do not
+            // block) if the account already has active posted journal lines,
+            // because historical reports and the trial-balance sign will shift.
+            if ($newType !== $account->type) {
+                $hasActivePosted = $account->journalEntryLines()
+                    ->whereHas('journalEntry', fn ($q) => $q->where('is_active_version', true))
+                    ->exists();
+
+                if ($hasActivePosted) {
+                    $warnings[] = sprintf(
+                        'Type changed from %s to %s but the account has posted journal entries. '
+                        . 'Its reported balance sign and trial-balance classification will change for historical periods.',
+                        $account->type,
+                        $newType
+                    );
+                }
+
+                // An existing subtype may no longer belong to the new type.
+                // Drop a now-invalid subtype rather than persist a mismatch.
+                if (array_key_exists('subtype', $validated)) {
+                    $allowed = $this->subtypesForType($newType);
+                    if ($validated['subtype'] !== null && ! in_array($validated['subtype'], $allowed, true)) {
+                        $validated['subtype'] = null;
+                        $warnings[] = 'Subtype was cleared because it is not valid for the new account type.';
+                    }
+                }
+            }
+
+            // Code changes are safe to persist — reports and journal lines
+            // join by account id; level is a computed accessor, not a column.
+
             $account->update($validated);
+
+            $message = $account->is_system
+                ? 'System account updated successfully'
+                : 'Account updated successfully';
 
             return response()->json([
                 'data' => $account,
-                'message' => 'Account updated successfully',
+                'message' => $message,
+                'warnings' => $warnings,
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -524,5 +557,22 @@ class ChartOfAccountsController extends Controller
         }
 
         return 3;
+    }
+
+    /**
+     * Subtypes valid per account type — mirrors the frontend subtype picker
+     * and stays within the chart_of_accounts_subtype_check DB constraint.
+     *
+     * @return string[]
+     */
+    private function subtypesForType(string $type): array
+    {
+        return [
+            'asset' => ['current_asset', 'fixed_asset', 'other_asset', 'asset_receivable', 'asset_current', 'asset_cash', 'asset_fixed', 'asset_non_current'],
+            'liability' => ['current_liability', 'long_term_liability', 'liability_payable', 'liability_current', 'liability_non_current'],
+            'equity' => ['equity'],
+            'revenue' => ['operating_revenue', 'other_revenue', 'income', 'income_other'],
+            'expense' => ['cost_of_goods_sold', 'operating_expense', 'other_expense', 'expense_direct_cost', 'expense', 'expense_depreciation'],
+        ][$type] ?? [];
     }
 }

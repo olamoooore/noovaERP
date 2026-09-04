@@ -85,12 +85,19 @@ class ChartOfAccountsApi {
   /**
    * Update account
    */
-  async updateAccount(id: number, data: UpdateAccountRequest): Promise<ChartOfAccount> {
-    const response = await api.put<{ data: ChartOfAccount }>(
-      `/accounting/chart-of-accounts/${id}`,
-      data
-    );
-    return response.data.data;
+  async updateAccount(
+    id: number,
+    data: UpdateAccountRequest
+  ): Promise<{ account: ChartOfAccount; warnings: string[] }> {
+    const response = await api.put<{
+      data: ChartOfAccount;
+      message: string;
+      warnings?: string[];
+    }>(`/accounting/chart-of-accounts/${id}`, data);
+    return {
+      account: response.data.data,
+      warnings: response.data.warnings ?? [],
+    };
   }
 
   /**

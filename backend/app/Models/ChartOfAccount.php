@@ -22,6 +22,7 @@ class ChartOfAccount extends Model
         'name',
         'type',
         'subtype',
+        'account_group',
         'parent_id',
         'description',
         'is_active',
