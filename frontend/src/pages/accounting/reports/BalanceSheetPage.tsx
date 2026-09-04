@@ -242,8 +242,6 @@ export default function BalanceSheetPage() {
               { label: 'TOTAL LIABILITIES + EQUITY', current: balanceSheet.total_liabilities_and_equity || 0, compare: (balanceSheet.comparison.total_liabilities.amount + balanceSheet.comparison.total_equity.amount), bold: true },
             ]}
             formatCurrency={formatCurrency}
-            onDownloadCSV={handleDownloadCSV}
-            onDownloadPDF={handleDownloadPDF}
           />
         </Card>
       )}

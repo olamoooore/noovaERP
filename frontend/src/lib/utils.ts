@@ -38,6 +38,7 @@ function localeForCurrency(currencyCode: string): string {
 }
 
 export function formatCurrency(amount: number, currencyCode?: string): string {
+  const value = Number.isFinite(Number(amount)) ? Number(amount) : 0
   const activeCurrencyCode =
     currencyCode ?? useSettingsStore.getState().currencyCode ?? 'USD'
 
@@ -50,9 +51,9 @@ export function formatCurrency(amount: number, currencyCode?: string): string {
       style: 'decimal',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(Math.abs(amount))
+    }).format(Math.abs(value))
 
-    const sign = amount < 0 ? '-' : ''
+    const sign = value < 0 ? '-' : ''
     return `${sign}$S${number}`
   }
 
@@ -61,13 +62,13 @@ export function formatCurrency(amount: number, currencyCode?: string): string {
       style: 'currency',
       currency: normalizedCode,
       currencyDisplay: 'symbol',
-    }).format(amount)
+    }).format(value)
   } catch {
     const fallbackNumber = new Intl.NumberFormat('en-US', {
       style: 'decimal',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(amount)
+    }).format(value)
     return `${normalizedCode} ${fallbackNumber}`
   }
 }

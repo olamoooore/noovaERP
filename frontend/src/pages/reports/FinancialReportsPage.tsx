@@ -12,6 +12,50 @@ import reportApi from '@/lib/reportApi';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
 
+type BsRow = { code: string; name: string; balance: number };
+type BsGroupLike = {
+  code?: string;
+  name?: string;
+  balance?: number;
+  total?: number;
+  accounts?: Array<{ code?: string; name?: string; balance?: number }>;
+};
+
+// The balance-sheet API returns grouped sections
+// ({code,name,accounts[],total}); the legacy flat rows carry `balance`.
+// ReportTable's Balance column reads `balance`, so flatten groups to
+// rows: group line first (balance = group total), then child accounts.
+// Passing group objects directly produced $NaN because they have no
+// `balance` key.
+function flattenBsGroups(items: unknown): BsRow[] {
+  const rows: BsRow[] = [];
+  const list: BsGroupLike[] = Array.isArray(items) ? (items as BsGroupLike[]) : [];
+  for (const item of list) {
+    if (item && Array.isArray(item.accounts)) {
+      rows.push({
+        code: item.code ?? '',
+        name: item.name ?? '',
+        balance: Number.isFinite(Number(item.total)) ? Number(item.total) : 0,
+      });
+      for (const account of item.accounts) {
+        rows.push({
+          code: account.code ?? '',
+          name: `\u00A0\u00A0\u00A0\u00A0${account.name ?? ''}`,
+          balance: Number.isFinite(Number(account.balance)) ? Number(account.balance) : 0,
+        });
+      }
+    } else if (item) {
+      const direct = Number(item.balance ?? item.total ?? 0);
+      rows.push({
+        code: item.code ?? '',
+        name: item.name ?? '',
+        balance: Number.isFinite(direct) ? direct : 0,
+      });
+    }
+  }
+  return rows;
+}
+
 export function FinancialReportsPage() {
   const [activeTab, setActiveTab] = useState('profit-loss');
   const queryClient = useQueryClient();
@@ -457,7 +501,7 @@ export function FinancialReportsPage() {
                       <h4 className="font-medium mb-2">Current Assets</h4>
                       <ReportTable
                         columns={bsColumns}
-                        data={balanceSheetData?.assets?.current ?? []}
+                        data={flattenBsGroups(balanceSheetData?.assets?.current)}
                         showPagination={false}
                         showSearch={false}
                       />
@@ -466,7 +510,7 @@ export function FinancialReportsPage() {
                       <h4 className="font-medium mb-2">Non-Current Assets</h4>
                       <ReportTable
                         columns={bsColumns}
-                        data={balanceSheetData?.assets?.non_current ?? []}
+                        data={flattenBsGroups(balanceSheetData?.assets?.non_current)}
                         showPagination={false}
                         showSearch={false}
                       />
@@ -490,7 +534,7 @@ export function FinancialReportsPage() {
                       <h4 className="font-medium mb-2">Current Liabilities</h4>
                       <ReportTable
                         columns={bsColumns}
-                        data={balanceSheetData?.liabilities?.current ?? []}
+                        data={flattenBsGroups(balanceSheetData?.liabilities?.current)}
                         showPagination={false}
                         showSearch={false}
                       />
@@ -499,7 +543,7 @@ export function FinancialReportsPage() {
                       <h4 className="font-medium mb-2">Non-Current Liabilities</h4>
                       <ReportTable
                         columns={bsColumns}
-                        data={balanceSheetData?.liabilities?.non_current ?? []}
+                        data={flattenBsGroups(balanceSheetData?.liabilities?.non_current)}
                         showPagination={false}
                         showSearch={false}
                       />
@@ -520,7 +564,11 @@ export function FinancialReportsPage() {
                   <h3 className="text-lg font-semibold mb-4 text-primary">Equity</h3>
                   <ReportTable
                     columns={bsColumns}
-                    data={balanceSheetData?.equity?.accounts ?? []}
+                    data={flattenBsGroups(
+                      (balanceSheetData?.equity as any)?.groups?.length
+                        ? (balanceSheetData?.equity as any).groups
+                        : (balanceSheetData?.equity as any)?.accounts ?? []
+                    )}
                     showPagination={false}
                     showSearch={false}
                   />

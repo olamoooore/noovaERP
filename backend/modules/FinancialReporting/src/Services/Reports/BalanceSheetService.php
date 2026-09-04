@@ -185,7 +185,19 @@ class BalanceSheetService extends BaseReportService
         string $category,
         bool $useSummary
     ): array {
+        // Natural-side sign convention: assets/expense keep debit-positive
+        // balances; liabilities/equity/revenue are credit-positive. Summing
+        // liabilities as debit-credit produced a NEGATIVE total liabilities
+        // and threw A = L + E off by exactly 2x the liability balance
+        // (balance sheet drift reported on production 2026-09-04).
+        $debitPositive = in_array($type, ['asset', 'expense'], true);
+
         if ($useSummary) {
+            // daily_ledger_summaries.net_amount is debit - credit.
+            $balanceExpr = $debitPositive
+                ? 'SUM(dls.net_amount)'
+                : 'SUM(-dls.net_amount)';
+
             $query = DB::table('daily_ledger_summaries as dls')
                 ->join('chart_of_accounts as coa', 'coa.id', '=', 'dls.account_id')
                 ->where('coa.type', $type)
@@ -194,10 +206,14 @@ class BalanceSheetService extends BaseReportService
                     'coa.id',
                     'coa.code',
                     'coa.name',
-                    DB::raw('SUM(dls.net_amount) as balance'),
+                    DB::raw($balanceExpr.' as balance'),
                 ])
                 ->groupBy('coa.id', 'coa.code', 'coa.name');
         } else {
+            $balanceExpr = $debitPositive
+                ? 'SUM(jel.debit - jel.credit)'
+                : 'SUM(jel.credit - jel.debit)';
+
             $query = DB::table('journal_entry_lines as jel')
                 ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
                 ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
@@ -208,7 +224,7 @@ class BalanceSheetService extends BaseReportService
                     'coa.id',
                     'coa.code',
                     'coa.name',
-                    DB::raw('SUM(jel.debit - jel.credit) as balance'),
+                    DB::raw($balanceExpr.' as balance'),
                 ])
                 ->groupBy('coa.id', 'coa.code', 'coa.name');
         }
@@ -308,7 +324,9 @@ class BalanceSheetService extends BaseReportService
             $query->where('dls.entity_book_id', $filter->entityBookId);
         }
 
-        return $query->sum('dls.net_amount');
+        // net_amount is debit-credit; equity is credit-positive — negate to
+        // match getEquityFromJournal()'s (credit - debit) convention.
+        return -$query->sum('dls.net_amount');
     }
 
     /**
