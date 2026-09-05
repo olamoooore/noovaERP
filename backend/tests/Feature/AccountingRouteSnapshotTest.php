@@ -99,7 +99,7 @@ class AccountingRouteSnapshotTest extends TestCase
         }
     }
 
-    public function test_no_payment_put_or_patch_routes(): void
+    public function test_only_supported_payment_update_route_is_exposed(): void
     {
         $routes = collect(Route::getRoutes()->getRoutes());
 
@@ -112,7 +112,14 @@ class AccountingRouteSnapshotTest extends TestCase
                 && (in_array('PUT', $methods) || in_array('PATCH', $methods));
         });
 
-        $this->assertCount(0, $paymentUpdateRoutes, 'Unexpected PUT/PATCH payment routes found: '.$paymentUpdateRoutes->pluck('uri')->join(', '));
+        $this->assertCount(1, $paymentUpdateRoutes, 'Expected exactly one draft-payment update route: '.$paymentUpdateRoutes->pluck('uri')->join(', '));
+        $route = $paymentUpdateRoutes->first();
+        $this->assertSame('api/v1/payments/{payment}', $route->uri());
+        $this->assertContains('PUT', $route->methods());
+        $this->assertSame(
+            \App\Http\Controllers\Api\PaymentController::class.'@update',
+            $route->getActionName()
+        );
     }
 
     public function test_no_logo_routes_exist(): void

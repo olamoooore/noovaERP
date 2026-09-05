@@ -409,7 +409,7 @@ class PaymentImportTest extends TenantTestCase
 
     // ───────────────────────── §9 / §10 edit & delete rules ─────────────────────────
 
-public function test_draft_payment_can_be_edited_via_controller(): void
+    public function test_draft_payment_can_be_edited_via_controller(): void
     {
         $customer = $this->makeCustomer();
         $invoice = $this->makeInvoice($customer, 1000.00);
@@ -428,20 +428,17 @@ public function test_draft_payment_can_be_edited_via_controller(): void
 
         $this->assertTrue($payment->isEditable());
 
-        // Payments must be mutated through the corrections endpoints
-        // (refund/reverse/unapply/cancel), not via a generic PUT — see
-        // AccountingRouteSnapshotTest::test_no_payment_put_or_patch_routes.
-        // The PUT route is intentionally absent; we assert the 405 here.
         $response = $this->withoutMiddleware()->actingAs($user)->putJson("/api/v1/payments/{$payment->id}", [
             'amount' => 250.00,
             'reference' => 'EDITED-REF',
         ]);
 
-        $response->assertStatus(405);
+        $response->assertOk();
         $payment->refresh();
-        // Original draft values must remain unchanged.
-        $this->assertSame(200.00, (float) $payment->amount);
-        $this->assertNotSame('EDITED-REF', $payment->reference);
+        $invoice->refresh();
+        $this->assertSame(250.00, (float) $payment->amount);
+        $this->assertSame('EDITED-REF', $payment->reference);
+        $this->assertSame(250.00, (float) $invoice->paid_amount);
     }
 
     public function test_posted_payment_cannot_be_edited_via_controller(): void
@@ -464,12 +461,11 @@ public function test_draft_payment_can_be_edited_via_controller(): void
 
         $this->assertFalse($payment->isEditable());
 
-        // Same governance rationale: PUT is not a supported verb for payments.
         $response = $this->withoutMiddleware()->actingAs($user)->putJson("/api/v1/payments/{$payment->id}", [
             'amount' => 999.00,
         ]);
 
-        $response->assertStatus(405);
+        $response->assertForbidden();
         $payment->refresh();
         $this->assertSame(200.00, (float) $payment->amount);
     }

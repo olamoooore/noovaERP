@@ -22,7 +22,7 @@ export interface InvoiceSearchItem {
   id: number
   invoice_number: string
   customer_id?: number
-  customer?: { id: number; name: string }
+  customer?: { id: number; name: string; code?: string }
   total: number
   paid_amount?: number
   balance?: number
@@ -95,13 +95,15 @@ export function InvoiceSearchCombobox({
     if (fromResults) {
       const customerName = fromResults.customer?.name || ''
       const balance = fromResults.balance ?? fromResults.total
-      return `${fromResults.invoice_number}${customerName ? ` - ${customerName}` : ''} ($${balance})`
+      const customerCode = fromResults.customer?.code
+      return `${fromResults.invoice_number}${customerCode ? ` - ${customerCode}` : ''}${customerName ? ` - ${customerName}` : ''} ($${balance})`
     }
 
     if (selectedInvoice) {
       const customerName = selectedInvoice.customer?.name || ''
       const balance = selectedInvoice.balance ?? selectedInvoice.total
-      return `${selectedInvoice.invoice_number}${customerName ? ` - ${customerName}` : ''} ($${balance})`
+      const customerCode = selectedInvoice.customer?.code
+      return `${selectedInvoice.invoice_number}${customerCode ? ` - ${customerCode}` : ''}${customerName ? ` - ${customerName}` : ''} ($${balance})`
     }
 
     return 'Loading...'
@@ -148,7 +150,7 @@ export function InvoiceSearchCombobox({
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder="Type invoice number or customer..."
+            placeholder="Invoice number, customer code, or name..."
             value={searchQuery}
             onValueChange={setSearchQuery}
           />
@@ -172,7 +174,7 @@ export function InvoiceSearchCombobox({
                   />
                   <div className="flex flex-col">
                     <span>
-                      {invoice.invoice_number} - {invoice.customer?.name || 'Unknown'}
+                      {invoice.invoice_number} - {invoice.customer?.code ? `${invoice.customer.code} - ` : ''}{invoice.customer?.name || 'Unknown'}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       ${invoice.balance ?? invoice.total}
