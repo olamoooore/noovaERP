@@ -212,6 +212,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/payments/bulk-post', [PaymentController::class, 'bulkPost']);
         Route::post('/payments', [PaymentController::class, 'store']);
         Route::get('/payments/{payment}', [PaymentController::class, 'show']);
+        Route::put('/payments/{payment}', [PaymentController::class, 'update']);
         Route::delete('/payments/{payment}', [PaymentController::class, 'destroy']);
         Route::post('/payments/{payment}/cancel', [PaymentController::class, 'cancel']);
         Route::post('/payments/{payment}/post', [PaymentController::class, 'post']);

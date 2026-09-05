@@ -304,6 +304,17 @@ class PaymentController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        if (array_key_exists('payment_date', $validated)) {
+            $lockResult = $this->lockDateValidator->validateTransactionDate('payments', $validated['payment_date']);
+            if ($lockResult['is_locked']) {
+                return response()->json([
+                    'message' => "Cannot edit a payment dated in a closed period. {$lockResult['message']}",
+                    'lock_date' => $lockResult['lock_date'],
+                    'transaction_date' => $validated['payment_date'],
+                ], 422);
+            }
+        }
+
         try {
             DB::transaction(function () use ($payment, $validated) {
                 $previousInvoiceId = $payment->invoice_id;
@@ -335,21 +346,22 @@ class PaymentController extends Controller
                 $amountChanged = abs($newAmount - $previousAmount) > 0.005;
 
                 if ($invoiceChanged || $amountChanged) {
-                    if ($newInvoiceId !== null) {
-                        $target = Invoice::findOrFail($newInvoiceId);
-
-                        // Restoring budget when switching away from an invoice
-                        if ($invoiceChanged && $previousInvoiceId !== null) {
-                            $previous = Invoice::find($previousInvoiceId);
-                            if ($previous) {
-                                $restoreAmount = $previousAmount;
-                                $previous->paid_amount = max(0, (float) $previous->paid_amount - $restoreAmount);
-                                $previous->balance = $previous->total - $previous->paid_amount;
-                                $previous->status = $this->resolveInvoiceStatus($previous);
-                                $previous->settlement_status = $previous->paid_amount <= 0 ? 'unpaid' : 'partially_paid';
-                                $previous->save();
-                            }
+                    // Remove the existing allocation first. This makes the
+                    // payment's current amount available when editing it on
+                    // the same invoice and prevents double-counting.
+                    if ($previousInvoiceId !== null) {
+                        $previous = Invoice::lockForUpdate()->find($previousInvoiceId);
+                        if ($previous) {
+                            $previous->paid_amount = max(0, (float) $previous->paid_amount - $previousAmount);
+                            $previous->balance = max(0, (float) $previous->total - (float) $previous->paid_amount);
+                            $previous->status = $this->resolveInvoiceStatus($previous);
+                            $previous->settlement_status = $previous->paid_amount <= 0 ? 'unpaid' : 'partially_paid';
+                            $previous->save();
                         }
+                    }
+
+                    if ($newInvoiceId !== null) {
+                        $target = Invoice::lockForUpdate()->findOrFail($newInvoiceId);
 
                         if ($newAmount > (float) $target->balance) {
                             throw new \RuntimeException(
@@ -357,22 +369,13 @@ class PaymentController extends Controller
                             );
                         }
 
-                        Invoice::where('id', $target->id)->increment('paid_amount', $newAmount);
-                        $target->refresh();
+                        $target->paid_amount = (float) $target->paid_amount + $newAmount;
                         $target->balance = max(0, (float) $target->total - (float) $target->paid_amount);
                         $target->status = $this->resolveInvoiceStatus($target);
                         $target->settlement_status = $target->paid_amount <= 0 ? 'unpaid' : ($target->balance <= 0 ? 'paid' : 'partially_paid');
                         $target->save();
-                    } elseif ($invoiceChanged && $previousInvoiceId !== null) {
-                        // Reverting to a standalone payment — refund the old invoice.
-                        $previous = Invoice::find($previousInvoiceId);
-                        if ($previous) {
-                            $previous->paid_amount = max(0, (float) $previous->paid_amount - $previousAmount);
-                            $previous->balance = $previous->total - $previous->paid_amount;
-                            $previous->status = $this->resolveInvoiceStatus($previous);
-                            $previous->settlement_status = $previous->paid_amount <= 0 ? 'unpaid' : 'partially_paid';
-                            $previous->save();
-                        }
+
+                        $payment->customer_id = $target->customer_id;
                     }
 
                     $payment->invoice_id = $newInvoiceId;

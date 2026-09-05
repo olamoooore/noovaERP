@@ -131,6 +131,7 @@ export const CustomerPayments: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [correctionTarget, setCorrectionTarget] = useState<{
     payment: Payment;
     action: PaymentCorrectionAction;
@@ -177,7 +178,7 @@ export const CustomerPayments: React.FC = () => {
       const response = await api.get('/invoices?status=posted,sent,overdue,partial');
       return response.data.data || [];
     },
-    enabled: showRecordPayment,
+    enabled: showRecordPayment || editingPayment !== null,
   });
 
   // Customer list for the Customer filter dropdown (§7 — recommended filter).
@@ -622,6 +623,17 @@ export const CustomerPayments: React.FC = () => {
                               >
                                 <Icon icon="solar:eye-bold-duotone" className="h-4 w-4" />
                               </Button>
+                              {editable && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setEditingPayment(payment)}
+                                  aria-label="Edit draft payment"
+                                  title="Edit draft payment"
+                                >
+                                  <Icon icon="solar:pen-bold-duotone" className="h-4 w-4" />
+                                </Button>
+                              )}
                               {postable && (
                                 <Button
                                   size="sm"
@@ -720,6 +732,26 @@ export const CustomerPayments: React.FC = () => {
         />
       )}
 
+      {editingPayment && (
+        <Dialog open onOpenChange={(open) => { if (!open) setEditingPayment(null); }}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit Draft Payment</DialogTitle>
+            </DialogHeader>
+            <EditPaymentForm
+              payment={editingPayment}
+              unpaidInvoices={unpaidInvoices || []}
+              onSuccess={() => {
+                setEditingPayment(null);
+                invalidate();
+                queryClient.invalidateQueries({ queryKey: ['unpaid-invoices'] });
+                toast({ title: 'Draft payment updated successfully' });
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Payment Correction Dialog (reverse / refund / unapply) */}
       {correctionTarget && (
         <PaymentCorrectionDialog
@@ -789,6 +821,7 @@ const ViewPaymentDialog: React.FC<{
   payment: Payment;
   onClose: () => void;
 }> = ({ payment, onClose }) => {
+  const navigate = useNavigate();
   const { data: full, isLoading, isError } = useQuery({
     queryKey: ['payment-detail', payment.id],
     queryFn: async () => {
@@ -862,7 +895,7 @@ const ViewPaymentDialog: React.FC<{
                 <button
                   type="button"
                   onClick={() => {
-                    setViewingPayment(null);
+                    onClose();
                     navigate(`/invoices/${detail.invoice!.id}`);
                   }}
                   className="text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/20 rounded font-medium text-left"
@@ -1026,7 +1059,7 @@ const RecordPaymentForm: React.FC<{
           <InvoiceSearchCombobox
             value={formData.invoice_id}
             onValueChange={handleInvoiceChange}
-            placeholder="Search invoice number or customer..."
+            placeholder="Search invoice number, customer code, or name..."
           />
         </div>
         <div className="space-y-2">
@@ -1089,6 +1122,100 @@ const RecordPaymentForm: React.FC<{
       <div className="flex justify-end gap-2 pt-4">
         <Button type="submit" disabled={recordPaymentMutation.isPending}>
           {recordPaymentMutation.isPending ? 'Recording...' : 'Record Payment'}
+        </Button>
+      </div>
+    </form>
+  );
+};
+
+const EditPaymentForm: React.FC<{
+  payment: Payment;
+  unpaidInvoices: any[];
+  onSuccess: () => void;
+}> = ({ payment, unpaidInvoices, onSuccess }) => {
+  const [formData, setFormData] = useState({
+    invoice_id: payment.invoice_id ? String(payment.invoice_id) : '',
+    amount: String(payment.amount),
+    payment_date: payment.payment_date.slice(0, 10),
+    method: payment.method,
+    reference: payment.reference || '',
+    notes: payment.notes || '',
+  });
+  const { toast } = useToast();
+
+  const updatePaymentMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.put(`/payments/${payment.id}`, {
+        ...formData,
+        invoice_id: formData.invoice_id ? Number(formData.invoice_id) : null,
+        amount: Number(formData.amount),
+      });
+      return response.data;
+    },
+    onSuccess,
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to update payment',
+        description: error.response?.data?.message || 'An error occurred',
+      });
+    },
+  });
+
+  const selectedInvoice = unpaidInvoices.find((invoice) => invoice.id === Number(formData.invoice_id));
+  const availableBalance = selectedInvoice
+    ? Number(selectedInvoice.balance || 0) + (selectedInvoice.id === payment.invoice_id ? Number(payment.amount) : 0)
+    : null;
+
+  return (
+    <form onSubmit={(event) => { event.preventDefault(); updatePaymentMutation.mutate(); }} className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="edit_invoice_id">Invoice</Label>
+          <InvoiceSearchCombobox
+            value={formData.invoice_id}
+            onValueChange={(value) => setFormData((current) => ({ ...current, invoice_id: value }))}
+            placeholder="Search invoice number, customer code, or name..."
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="edit_amount">Amount</Label>
+          <Input id="edit_amount" type="number" min="0.01" step="0.01" required value={formData.amount}
+            onChange={(event) => setFormData((current) => ({ ...current, amount: event.target.value }))} />
+          {availableBalance !== null && (
+            <p className="text-xs text-muted-foreground">Available invoice balance: {formatCurrency(availableBalance)}</p>
+          )}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="edit_payment_date">Payment Date</Label>
+          <Input id="edit_payment_date" type="date" required value={formData.payment_date}
+            onChange={(event) => setFormData((current) => ({ ...current, payment_date: event.target.value }))} />
+        </div>
+        <div className="space-y-2">
+          <Label>Payment Method</Label>
+          <Select value={formData.method} onValueChange={(value) => setFormData((current) => ({ ...current, method: value }))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {METHOD_OPTIONS.map((method) => <SelectItem key={method.value} value={method.value}>{method.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit_reference">Reference Number</Label>
+        <Input id="edit_reference" value={formData.reference}
+          onChange={(event) => setFormData((current) => ({ ...current, reference: event.target.value }))} />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="edit_notes">Notes</Label>
+        <Input id="edit_notes" value={formData.notes}
+          onChange={(event) => setFormData((current) => ({ ...current, notes: event.target.value }))} />
+      </div>
+      <div className="flex justify-end pt-4">
+        <Button type="submit" disabled={updatePaymentMutation.isPending}>
+          {updatePaymentMutation.isPending ? 'Saving...' : 'Save Changes'}
         </Button>
       </div>
     </form>
