@@ -563,6 +563,7 @@ const baseNavItems: NavItem[] = [
         title: 'MyInvois E-Invoice',
         href: '/accounting/reporting/myinvoice',
         icon: 'solar:document-text-bold-duotone',
+        featureKey: 'myinvoice',
       },
      
       {
@@ -815,7 +816,7 @@ export function Sidebar() {
   // Tenant-specific hard blocks for modules that must never appear in navigation.
   const tenantForceDisabledFeatures: Record<string, string[]> = {
     'c194ebd3-a0af-4aca-a9b5-1f3275318228': ['field-service'],
-    '00000000-0000-0000-0000-000000000001': ['ecommerce', 'crm', 'hrm', 'pos', 'auditor-portal'],
+    '00000000-0000-0000-0000-000000000001': ['ecommerce', 'crm', 'hrm', 'pos', 'auditor-portal', 'myinvoice'],
   }
 
   const isFeatureEnabled = (featureKey?: string) => {

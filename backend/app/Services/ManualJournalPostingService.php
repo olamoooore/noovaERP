@@ -200,6 +200,12 @@ class ManualJournalPostingService
                     'status' => 'posted',
                     'posted_at' => now(),
                     'posted_by' => $userId,
+                    // lifecycle_status drives the correction policies
+                    // (void/reverse require lifecycle 'posted'); without
+                    // this sync, manually posted JEs were permanently
+                    // uncorrectable through the sanctioned flows
+                    // (caught 2026-09-04 during Acme COA cleanup).
+                    'lifecycle_status' => 'posted',
                 ]);
 
                 // Create the document → journal link (source_document_id points to the SAME entry)

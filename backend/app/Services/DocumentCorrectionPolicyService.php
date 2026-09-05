@@ -237,7 +237,32 @@ class DocumentCorrectionPolicyService
             return false;
         }
 
-        return $user->can($permission);
+        // Coarse fallback chain. RolePermissionSeeder::PERMISSION_MATRIX
+        // seeds accounting.view/write/post/reverse/lock/settings — the
+        // fine-grained accounting.{type}.{action} strings were never
+        // seeded into any tenant, so every void/reverse/replace/refund
+        // attempt failed the gate for every user (confirmed in production
+        // 2026-09-04 while clearing Acme test JEs).
+        $coarse = match ($action) {
+            'void', 'reverse', 'refund', 'credit_note' => 'accounting.reverse',
+            default => 'accounting.write',
+        };
+
+        // Platform bridge first: central tenant role (user_company_access)
+        // -> spatie tenant role permissions, with OWNER/ADMIN super-role
+        // bypass — this is how the rest of the stack authorizes actions.
+        try {
+            $tenantId = (string) (tenant()?->id ?? '');
+            if ($tenantId !== '') {
+                if (app(TenantRoleService::class)->hasAnyPermission((int) $user->id, $tenantId, [$permission, $coarse])) {
+                    return true;
+                }
+            }
+        } catch (\Throwable) {
+            // fall through to direct checks
+        }
+
+        return $user->can($permission) || $user->can($coarse);
     }
 }
 
