@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\DTOs\DraftJournalRequest;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\DepreciationSchedule;
@@ -33,7 +34,10 @@ class DepreciationService
      */
     public function calculateDepreciationForPeriod(string $periodDate, ?array $assetIds = null): array
     {
-        $periodDate = Carbon::parse($periodDate);
+        // A depreciation run builds the complete useful-life schedule. The
+        // requested date is retained as the run context, but future periods
+        // are intentionally created as drafts for review/posting later.
+        $periodDate = Carbon::parse($periodDate)->endOfMonth();
         $results = [];
 
         // Get active assets
@@ -48,91 +52,65 @@ class DepreciationService
         $assets = $query->get();
 
         foreach ($assets as $asset) {
-            // Check if already depreciated for this period
-            $existing = DepreciationSchedule::where('asset_id', $asset->id)
-                ->where('period_date', $periodDate->format('Y-m-d'))
-                ->first();
-
-            if ($existing) {
-                $results[] = [
-                    'asset_id' => $asset->id,
-                    'asset_name' => $asset->name,
-                    'status' => 'skipped',
-                    'message' => 'Already depreciated for this period',
-                ];
-
-                continue;
-            }
-
-            // Check if fully depreciated
-            if ($asset->isFullyDepreciated()) {
-                $results[] = [
-                    'asset_id' => $asset->id,
-                    'asset_name' => $asset->name,
-                    'status' => 'skipped',
-                    'message' => 'Asset fully depreciated',
-                ];
-
-                continue;
-            }
-
             try {
-                $depreciationAmount = $this->calculateDepreciationAmount($asset, $periodDate);
-
-                // Ensure we don't depreciate below salvage value
-                $currentBookValue = $asset->calculateBookValue();
-                $newBookValue = $currentBookValue - $depreciationAmount;
-
-                if ($newBookValue < $asset->salvage_value) {
-                    $depreciationAmount = $currentBookValue - $asset->salvage_value;
-                    $newBookValue = $asset->salvage_value;
+                $start = Carbon::parse($asset->depreciation_start_date)->startOfMonth();
+                $months = ($asset->useful_life_years ?? 0) * 12;
+                if ($months < 1) {
+                    throw new \InvalidArgumentException('Useful life must be at least one month.');
                 }
 
-                if ($depreciationAmount <= 0) {
-                    $results[] = [
-                        'asset_id' => $asset->id,
-                        'asset_name' => $asset->name,
-                        'status' => 'skipped',
-                        'message' => 'No depreciation needed',
-                    ];
+                $period = $start->copy();
+                $scheduleEnd = $start->copy()->addMonths($months - 1)->endOfMonth();
+                $created = 0;
+                while ($period->lte($scheduleEnd)) {
+                    $periodEnd = $period->copy()->endOfMonth();
+                    $existing = DepreciationSchedule::where('asset_id', $asset->id)
+                        ->whereDate('period_date', $periodEnd->toDateString())
+                        ->first();
 
-                    continue;
+                    if (! $existing) {
+                        $draftScheduledBefore = (float) DepreciationSchedule::where('asset_id', $asset->id)
+                            ->where('is_posted', false)
+                            ->sum('depreciation_amount');
+                        $projectedAccumulated = (float) $asset->accumulated_depreciation + $draftScheduledBefore;
+                        $remaining = (float) $asset->purchase_cost - (float) $asset->salvage_value - $projectedAccumulated;
+                        if ($remaining <= 0.01) {
+                            break;
+                        }
+
+                        $amount = min($this->calculateDepreciationAmount($asset, $period), $remaining);
+                        if ($amount <= 0) {
+                            break;
+                        }
+                        $accumulated = $projectedAccumulated + $amount;
+                        $bookValue = (float) $asset->purchase_cost - $accumulated;
+                        $schedule = DepreciationSchedule::create([
+                            'asset_id' => $asset->id,
+                            'period_date' => $periodEnd->toDateString(),
+                            'depreciation_amount' => $amount,
+                            'accumulated_depreciation' => $accumulated,
+                            'book_value' => max($bookValue, (float) $asset->salvage_value),
+                            'is_posted' => false,
+                        ]);
+                        try {
+                            $journalEntry = $this->createDepreciationDraftJournalEntry($asset, $schedule, $periodEnd);
+                        } catch (\Throwable $e) {
+                            // Do not leave an orphaned schedule when draft creation fails.
+                            $schedule->delete();
+                            throw $e;
+                        }
+                        $schedule->update(['journal_entry_id' => $journalEntry->id]);
+                        $created++;
+                    }
+                    $period->addMonth();
                 }
-
-                // Create depreciation schedule entry
-                $schedule = DepreciationSchedule::create([
-                    'asset_id' => $asset->id,
-                    'period_date' => $periodDate->format('Y-m-d'),
-                    'depreciation_amount' => $depreciationAmount,
-                    'accumulated_depreciation' => $asset->accumulated_depreciation + $depreciationAmount,
-                    'book_value' => $newBookValue,
-                    'is_posted' => false,
-                ]);
-
-                // Create journal entry
-                $journalEntry = $this->createDepreciationJournalEntry($asset, $schedule, $periodDate);
-
-                // Update schedule with journal entry ID
-                $schedule->update([
-                    'journal_entry_id' => $journalEntry->id,
-                    'is_posted' => true,
-                ]);
-
-                // Update asset
-                $asset->update([
-                    'accumulated_depreciation' => $asset->accumulated_depreciation + $depreciationAmount,
-                    'book_value' => $newBookValue,
-                    'last_depreciation_date' => $periodDate->format('Y-m-d'),
-                ]);
 
                 $results[] = [
                     'asset_id' => $asset->id,
                     'asset_name' => $asset->name,
-                    'status' => 'success',
-                    'depreciation_amount' => $depreciationAmount,
-                    'accumulated_depreciation' => $asset->accumulated_depreciation,
-                    'book_value' => $newBookValue,
-                    'journal_entry_id' => $journalEntry->id,
+                    'status' => $created > 0 ? 'success' : 'skipped',
+                    'message' => $created > 0 ? "Created {$created} draft depreciation journal(s)." : 'No missing depreciation periods.',
+                    'draft_count' => $created,
                 ];
 
             } catch (\Exception $e) {
@@ -214,7 +192,7 @@ class DepreciationService
      * DR: Depreciation Expense
      * CR: Accumulated Depreciation
      */
-    protected function createDepreciationJournalEntry(
+    protected function createDepreciationDraftJournalEntry(
         FixedAsset $asset,
         DepreciationSchedule $schedule,
         Carbon $periodDate
@@ -236,15 +214,18 @@ class DepreciationService
             ),
         ];
 
-        $result = $this->postingEngine->post(new PostingRequest(
-            documentType: 'depreciation',
-            documentId: $asset->id,
-            postingDate: $periodDate->format('Y-m-d'),
-            description: "Depreciation for {$asset->name} - ".$periodDate->format('M Y'),
-            lines: $lines,
-            reference: $asset->asset_number,
-            userId: TenantUserHelper::resolveTenantUserId(),
-        ));
+        $result = $this->postingEngine->createDraft(DraftJournalRequest::fromArray([
+            'entry_date' => $periodDate->format('Y-m-d'),
+            'description' => "Depreciation for {$asset->name} - ".$periodDate->format('M Y'),
+            'reference' => $asset->asset_number,
+            'lines' => array_map(fn (PostingRequestLine $line) => [
+                'account_id' => $line->accountId,
+                'debit' => $line->debit,
+                'credit' => $line->credit,
+                'description' => $line->description,
+            ], $lines),
+            'user_id' => TenantUserHelper::resolveTenantUserId(),
+        ]));
 
         if (! $result->success) {
             throw new \Exception($result->error);
