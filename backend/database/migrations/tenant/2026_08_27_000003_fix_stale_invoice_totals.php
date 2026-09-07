@@ -2,11 +2,16 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::hasColumn('invoice_lines', 'tax_inclusive')) {
+            return;
+        }
+
         $invoices = DB::table('invoices')->select('id', 'subtotal', 'tax_amount', 'total')->get();
 
         $fixed = 0;

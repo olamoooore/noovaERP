@@ -9,9 +9,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('customer_contacts', function (Blueprint $table) {
-            $table->softDeletes()->after('notes');
-        });
+        if (!Schema::hasColumn('customer_contacts', 'deleted_at')) {
+            Schema::table('customer_contacts', function (Blueprint $table) {
+                $table->softDeletes()->after('notes');
+            });
+        }
 
         // Recreate the unique primary index to exclude soft-deleted rows
         // so that a soft-deleted contact doesn't block a new primary for the same customer.

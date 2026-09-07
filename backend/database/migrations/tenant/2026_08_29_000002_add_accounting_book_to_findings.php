@@ -13,18 +13,23 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('accounting_findings', function (Blueprint $table) {
-            // accounting_book_id is the entity-bound accounting book context.
-            // Nullable for findings not tied to a specific book (e.g.,
-            // organization-wide system validation findings).
-            $table->uuid('accounting_book_id')->nullable()->after('entity_id')->index();
-        });
+        if (!Schema::hasTable('accounting_findings')) {
+            return;
+        }
+
+        if (!Schema::hasColumn('accounting_findings', 'accounting_book_id')) {
+            Schema::table('accounting_findings', function (Blueprint $table) {
+                $table->uuid('accounting_book_id')->nullable()->after('entity_id')->index();
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('accounting_findings', function (Blueprint $table) {
-            $table->dropColumn('accounting_book_id');
-        });
+        if (Schema::hasTable('accounting_findings') && Schema::hasColumn('accounting_findings', 'accounting_book_id')) {
+            Schema::table('accounting_findings', function (Blueprint $table) {
+                $table->dropColumn('accounting_book_id');
+            });
+        }
     }
 };

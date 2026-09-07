@@ -13,14 +13,19 @@ return new class extends Migration {
             $table->uuid('buyer_contact_id')->nullable();
             $table->string('plant_code', 100)->nullable();
             $table->string('company_code', 100)->nullable();
-            $table->foreign('buyer_contact_id')->references('id')->on('core_contacts')->nullOnDelete();
+
+            if (Schema::hasTable('core_contacts')) {
+                $table->foreign('buyer_contact_id')->references('id')->on('core_contacts')->nullOnDelete();
+            }
         });
     }
 
     public function down(): void
     {
         Schema::table('invoices', function (Blueprint $table) {
-            $table->dropForeign(['buyer_contact_id']);
+            if (Schema::hasTable('core_contacts')) {
+                $table->dropForeign(['buyer_contact_id']);
+            }
             $table->dropColumn(['pr_no', 'contract_no', 'buyer_contact_id', 'plant_code', 'company_code']);
         });
     }

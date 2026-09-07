@@ -9,6 +9,10 @@ return new class extends Migration
     public function up(): void
     {
         foreach (['quotation_lines', 'invoice_lines', 'sales_order_lines', 'delivery_order_lines', 'purchase_order_items'] as $tableName) {
+            if (!Schema::hasTable($tableName)) {
+                continue;
+            }
+
             if (! Schema::hasColumn($tableName, 'line_type')) {
                 Schema::table($tableName, function (Blueprint $table) {
                     $table->string('line_type', 20)->default('product')->after('id');
@@ -26,6 +30,10 @@ return new class extends Migration
     public function down(): void
     {
         foreach (['quotation_lines', 'invoice_lines', 'sales_order_lines', 'delivery_order_lines', 'purchase_order_items'] as $tableName) {
+            if (!Schema::hasTable($tableName)) {
+                continue;
+            }
+
             if (Schema::hasColumn($tableName, 'sequence')) {
                 Schema::table($tableName, fn (Blueprint $table) => $table->dropColumn('sequence'));
             }

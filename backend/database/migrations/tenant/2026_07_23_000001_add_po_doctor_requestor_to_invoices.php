@@ -18,11 +18,15 @@ return new class extends Migration
             }
             if (!Schema::hasColumn('invoices', 'doctor_contact_id')) {
                 $table->uuid('doctor_contact_id')->nullable()->after('po_number');
-                $table->foreign('doctor_contact_id')->references('id')->on('core_contacts')->nullOnDelete();
+                if (Schema::hasTable('core_contacts')) {
+                    $table->foreign('doctor_contact_id')->references('id')->on('core_contacts')->nullOnDelete();
+                }
             }
             if (!Schema::hasColumn('invoices', 'requestor_contact_id')) {
                 $table->uuid('requestor_contact_id')->nullable()->after('doctor_contact_id');
-                $table->foreign('requestor_contact_id')->references('id')->on('core_contacts')->nullOnDelete();
+                if (Schema::hasTable('core_contacts')) {
+                    $table->foreign('requestor_contact_id')->references('id')->on('core_contacts')->nullOnDelete();
+                }
             }
         });
     }
