@@ -34,6 +34,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import fixedAssetsApi, { type FixedAsset, type CreateAssetRequest } from '@/lib/fixedAssetsApi';
 import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
+import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu';
+
+const ASSET_EXPORT_COLUMNS = [
+  { key: 'asset_number', label: 'Asset No', group: 'Asset', default: true }, { key: 'name', label: 'Asset Name', group: 'Asset', default: true },
+  { key: 'category', label: 'Category', group: 'Asset', default: true }, { key: 'purchase_date', label: 'Purchase Date', group: 'Asset', default: true },
+  { key: 'purchase_cost', label: 'Purchase Cost', group: 'Values', default: true }, { key: 'salvage_value', label: 'Salvage Value', group: 'Values' },
+  { key: 'accumulated_depreciation', label: 'Accumulated Depreciation', group: 'Values', default: true }, { key: 'book_value', label: 'Book Value', group: 'Values', default: true },
+  { key: 'depreciation_method', label: 'Method', group: 'Depreciation' }, { key: 'depreciation_frequency', label: 'Frequency', group: 'Depreciation' },
+  { key: 'useful_life_years', label: 'Useful Life', group: 'Depreciation' }, { key: 'depreciation_start_date', label: 'Start Date', group: 'Depreciation' },
+  { key: 'status', label: 'Status', group: 'Asset', default: true }, { key: 'location', label: 'Location', group: 'Asset' }, { key: 'serial_number', label: 'Serial Number', group: 'Asset' },
+  { key: 'asset_account_code', label: 'Asset Account', group: 'Accounts' }, { key: 'depreciation_account_code', label: 'Depreciation Account', group: 'Accounts' },
+] as const satisfies readonly SalesExportColumn[];
 
 export default function AssetsManagementPage() {
   const navigate = useNavigate();
@@ -314,6 +326,11 @@ export default function AssetsManagementPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Fixed Assets</h2>
               <div className="flex gap-2">
+                <SalesDocumentExportMenu endpoint="/accounting/assets/export" filenamePrefix="fixed_assets" columns={ASSET_EXPORT_COLUMNS} filters={{ search: searchTerm || undefined, status: statusFilter === 'all' ? undefined : statusFilter }} />
+                <Button variant="outline" onClick={() => navigate('/accounting/core/assets/import')}>
+                  <Icon icon="solar:upload-linear" className="w-4 h-4 mr-2" />
+                  Import CSV
+                </Button>
                 <Input
                   placeholder="Search assets..."
                   value={searchTerm}

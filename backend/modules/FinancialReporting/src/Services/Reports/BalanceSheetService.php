@@ -200,15 +200,32 @@ class BalanceSheetService extends BaseReportService
 
             $query = DB::table('daily_ledger_summaries as dls')
                 ->join('chart_of_accounts as coa', 'coa.id', '=', 'dls.account_id')
+                ->leftJoin('chart_of_accounts as parent_coa', 'parent_coa.id', '=', 'coa.parent_id')
+                ->leftJoin('chart_of_accounts as group_coa', 'group_coa.code', '=', 'coa.account_group')
+                ->leftJoin('bank_accounts as ba', function ($join) {
+                    $join->on('ba.gl_account_id', '=', 'coa.id')->where('ba.is_active', true);
+                })
                 ->where('coa.type', $type)
+                ->where(function ($categoryQuery) use ($type, $category) {
+                    $categoryQuery->whereIn('coa.subtype', $this->getCategorySubtypes($type, $category));
+                    if ($type === 'asset' && $category === 'current_asset') {
+                        $categoryQuery->orWhereNotNull('ba.id');
+                    }
+                })
                 ->where('dls.summary_date', '<=', $filter->asOfDate)
                 ->select([
                     'coa.id',
                     'coa.code',
                     'coa.name',
+                    'coa.account_group',
+                    'coa.parent_id',
+                    'parent_coa.code as parent_code',
+                    'parent_coa.name as parent_name',
+                    'group_coa.name as group_name',
+                    'ba.currency_code',
                     DB::raw($balanceExpr.' as balance'),
                 ])
-                ->groupBy('coa.id', 'coa.code', 'coa.name');
+                ->groupBy('coa.id', 'coa.code', 'coa.name', 'coa.account_group', 'coa.parent_id', 'parent_coa.code', 'parent_coa.name', 'group_coa.name', 'ba.currency_code');
         } else {
             $balanceExpr = $debitPositive
                 ? 'SUM(jel.debit - jel.credit)'
@@ -217,22 +234,33 @@ class BalanceSheetService extends BaseReportService
             $query = DB::table('journal_entry_lines as jel')
                 ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
                 ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
+                ->leftJoin('chart_of_accounts as parent_coa', 'parent_coa.id', '=', 'coa.parent_id')
+                ->leftJoin('chart_of_accounts as group_coa', 'group_coa.code', '=', 'coa.account_group')
+                ->leftJoin('bank_accounts as ba', function ($join) {
+                    $join->on('ba.gl_account_id', '=', 'coa.id')->where('ba.is_active', true);
+                })
                 ->where('je.status', 'posted')->where('je.is_active_version', true)
                 ->where('coa.type', $type)
+                ->where(function ($categoryQuery) use ($type, $category) {
+                    $categoryQuery->whereIn('coa.subtype', $this->getCategorySubtypes($type, $category));
+                    if ($type === 'asset' && $category === 'current_asset') {
+                        $categoryQuery->orWhereNotNull('ba.id');
+                    }
+                })
                 ->where('je.entry_date', '<=', $filter->asOfDate)
                 ->select([
                     'coa.id',
                     'coa.code',
                     'coa.name',
+                    'coa.account_group',
+                    'coa.parent_id',
+                    'parent_coa.code as parent_code',
+                    'parent_coa.name as parent_name',
+                    'group_coa.name as group_name',
+                    'ba.currency_code',
                     DB::raw($balanceExpr.' as balance'),
                 ])
-                ->groupBy('coa.id', 'coa.code', 'coa.name');
-        }
-
-        // Filter by category using report tag mappings
-        $tagCode = $this->getCategoryTagCode($type, $category);
-        if ($tagCode) {
-            $this->mappingReader->applyFilter($query, $tagCode);
+                ->groupBy('coa.id', 'coa.code', 'coa.name', 'coa.account_group', 'coa.parent_id', 'parent_coa.code', 'parent_coa.name', 'group_coa.name', 'ba.currency_code');
         }
 
         // Apply entity filters
@@ -258,6 +286,12 @@ class BalanceSheetService extends BaseReportService
                 'account_id' => $row->id,
                 'code' => $row->code,
                 'name' => $row->name,
+                'account_group' => $row->account_group,
+                'parent_id' => $row->parent_id,
+                'parent_code' => $row->parent_code,
+                'parent_name' => $row->parent_name,
+                'group_name' => $row->group_name,
+                'currency_code' => $row->currency_code,
                 'balance' => (float) $row->balance,
             ])
             ->toArray();
@@ -281,6 +315,22 @@ class BalanceSheetService extends BaseReportService
         ];
 
         return $map[$type][$category] ?? null;
+    }
+
+    /**
+     * Support both the original database subtype names and the expanded
+     * subtype values currently produced by the Chart of Accounts UI/importer.
+     */
+    protected function getCategorySubtypes(string $type, string $category): array
+    {
+        return match ([$type, $category]) {
+            ['asset', 'current_asset'] => ['current_asset', 'asset_receivable', 'asset_current', 'asset_cash'],
+            ['asset', 'fixed_asset'] => ['fixed_asset', 'asset_fixed', 'asset_non_current'],
+            ['asset', 'other_asset'] => ['other_asset'],
+            ['liability', 'current_liability'] => ['current_liability', 'liability_payable', 'liability_current'],
+            ['liability', 'long_term_liability'] => ['long_term_liability', 'liability_non_current'],
+            default => [$category],
+        };
     }
 
     /**

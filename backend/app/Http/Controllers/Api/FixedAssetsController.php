@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exports\FixedAssetsExport;
 use App\Http\Controllers\Controller;
 use App\Models\FixedAsset;
 use App\Services\DepreciationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Maatwebsite\Excel\Facades\Excel;
 
 /**
  * Fixed Assets Controller
@@ -68,6 +70,124 @@ class FixedAssetsController extends Controller
         $assets = $query->orderBy('asset_number')->paginate($request->per_page ?? 15);
 
         return response()->json($assets);
+    }
+
+    public function export(Request $request)
+    {
+        $validated = $request->validate([
+            'columns' => ['required', 'array', 'min:1', 'max:'.count(FixedAssetsExport::COLUMNS)],
+            'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(FixedAssetsExport::COLUMNS))],
+        ]);
+        $query = FixedAsset::query();
+        if ($request->filled('status')) $query->where('status', $request->status);
+        if ($request->filled('category')) $query->where('category', $request->category);
+        if ($request->filled('search')) {
+            $search = (string) $request->search;
+            $query->where(fn ($q) => $q->where('asset_number', 'LIKE', "%{$search}%")->orWhere('name', 'LIKE', "%{$search}%")->orWhere('description', 'LIKE', "%{$search}%"));
+        }
+        return Excel::download(new FixedAssetsExport($query->orderBy('asset_number'), $validated['columns']), 'fixed_assets_'.now()->format('Y-m-d').'.xlsx');
+    }
+
+    /**
+     * Import fixed assets from a CSV file. Assets are created active, without
+     * posting acquisition or depreciation journals; those remain controlled
+     * follow-up workflows.
+     */
+    public function import(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'file' => 'required|file|mimes:csv,txt|max:10240',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $handle = fopen($request->file('file')->getRealPath(), 'r');
+        $headers = fgetcsv($handle);
+        if (! $headers) {
+            fclose($handle);
+            return response()->json(['message' => 'CSV file is empty.'], 422);
+        }
+        $headers = array_map(fn ($header) => strtolower(trim((string) $header)), $headers);
+        $required = ['asset_number', 'name', 'category', 'purchase_date', 'purchase_cost', 'depreciation_method', 'depreciation_start_date', 'asset_account_code', 'depreciation_account_code', 'accumulated_depreciation_account_code'];
+        $missing = array_values(array_diff($required, $headers));
+        if ($missing) {
+            fclose($handle);
+            return response()->json(['message' => 'Missing required CSV columns: '.implode(', ', $missing)], 422);
+        }
+
+        $created = 0;
+        $errors = [];
+        $warnings = [];
+        $rowNumber = 1;
+        while (($values = fgetcsv($handle)) !== false) {
+            $rowNumber++;
+            if (count(array_filter($values, fn ($value) => trim((string) $value) !== '')) === 0) {
+                continue;
+            }
+            $row = array_pad(array_combine($headers, array_pad($values, count($headers), null)) ?: [], count($headers), null);
+            try {
+                $data = [
+                    'asset_number' => trim((string) ($row['asset_number'] ?? '')),
+                    'name' => trim((string) ($row['name'] ?? '')),
+                    'category' => trim((string) ($row['category'] ?? '')),
+                    'purchase_date' => $row['purchase_date'] ?? null,
+                    'purchase_cost' => $row['purchase_cost'] ?? null,
+                    'depreciation_method' => strtolower(trim((string) ($row['depreciation_method'] ?? ''))),
+                    'useful_life_years' => $row['useful_life_years'] ?? null,
+                    'useful_life_units' => $row['useful_life_units'] ?? null,
+                    'salvage_value' => ($row['salvage_value'] ?? '') === '' ? 0 : $row['salvage_value'],
+                    'depreciation_start_date' => $row['depreciation_start_date'] ?? null,
+                    'location' => $row['location'] ?? null,
+                    'department_id' => ($row['department_id'] ?? '') === '' ? null : $row['department_id'],
+                    'responsible_person' => $row['responsible_person'] ?? null,
+                    'serial_number' => $row['serial_number'] ?? null,
+                    'description' => $row['description'] ?? null,
+                ];
+                $rowValidator = Validator::make($data, [
+                    'asset_number' => 'required|string|max:50|unique:fixed_assets,asset_number',
+                    'name' => 'required|string|max:255',
+                    'category' => 'required|string|max:100',
+                    'purchase_date' => 'required|date',
+                    'purchase_cost' => 'required|numeric|min:0',
+                    'depreciation_method' => 'required|in:straight_line,declining_balance,units_of_production',
+                    'useful_life_years' => 'nullable|required_unless:depreciation_method,units_of_production|integer|min:1',
+                    'useful_life_units' => 'nullable|required_if:depreciation_method,units_of_production|integer|min:1',
+                    'salvage_value' => 'nullable|numeric|min:0',
+                    'depreciation_start_date' => 'required|date',
+                    'asset_account_code' => 'nullable',
+                    'depreciation_account_code' => 'nullable',
+                    'accumulated_depreciation_account_code' => 'nullable',
+                    'department_id' => 'nullable|exists:departments,id',
+                ]);
+                if ($rowValidator->fails()) {
+                    throw new \InvalidArgumentException(implode(' ', $rowValidator->errors()->all()));
+                }
+                foreach (['asset_account_code' => 'asset_account_id', 'depreciation_account_code' => 'depreciation_account_id', 'accumulated_depreciation_account_code' => 'accumulated_depreciation_account_id'] as $source => $target) {
+                    $code = trim((string) ($row[$source] ?? ''));
+                    $account = \App\Models\ChartOfAccount::where('code', $code)->first();
+                    if (! $account) {
+                        throw new \InvalidArgumentException("{$source} '{$code}' was not found.");
+                    }
+                    $data[$target] = $account->id;
+                }
+                $data['status'] = 'active';
+                $data['is_active'] = true;
+                $data['accumulated_depreciation'] = 0;
+                $data['book_value'] = $data['purchase_cost'];
+                FixedAsset::create($data);
+                $created++;
+            } catch (\Throwable $e) {
+                $errors[] = ['row' => $rowNumber, 'message' => $e->getMessage()];
+            }
+        }
+        fclose($handle);
+
+        return response()->json([
+            'created' => $created,
+            'warnings' => $warnings,
+            'errors' => $errors,
+        ], $created > 0 || ! $errors ? 200 : 422);
     }
 
     /**
