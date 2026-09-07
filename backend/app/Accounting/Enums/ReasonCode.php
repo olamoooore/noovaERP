@@ -11,6 +11,7 @@ enum ReasonCode: string
     // Period
     case PERIOD_CLOSED = 'PERIOD_CLOSED';
     case PERIOD_NOT_OPEN = 'PERIOD_NOT_OPEN';
+    /** ACC-011 Financial Close workflow — not used by ACC-001 posting authority. */
     case SOFT_CLOSE_RESTRICTED = 'SOFT_CLOSE_RESTRICTED';
 
     // Approval / Workflow

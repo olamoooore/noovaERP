@@ -26,6 +26,14 @@ use App\Accounting\Enums\ReasonCode;
  *
  * ACC-REG-001 §3 — Canonical Capability Registry.
  * ACC-REG-001 §4 — Mandatory Capability Metadata.
+ *
+ * ACC-DEC-060 Track A (issue #69): InitializePostingPeriod has been
+ * retired as a separate component. Its fiscal-period initialization
+ * responsibility is absorbed into FiscalCalendar / AccountingPeriodDefinition
+ * configuration. The 5-state period model (OPEN / SOFT_CLOSE /
+ * CLOSE_IN_PROGRESS / CLOSED / REOPENED) has been rescoped to 3 states
+ * (OPEN / CLOSED / LOCKED) matching the DB schema. SOFT_CLOSE and
+ * CLOSE_IN_PROGRESS belong to ACC-011 Financial Close workflow state.
  */
 class CapabilityRegistry
 {
@@ -571,8 +579,14 @@ class CapabilityRegistry
     }
 
     /**
-     * ACC-REG-001 §6 — Period States.
-     * Returns the canonical period states.
+     * ACC-REG-001 §6 — Canonical period states for ACC-001 posting authority.
+     *
+     * ACC-DEC-060 Track A (issue #69): rescoped from 5 states to 3,
+     * matching the DB schema (fiscal_periods.status). SOFT_CLOSE,
+     * CLOSE_IN_PROGRESS and REOPENED are retired from ACC-001 —
+     * SOFT_CLOSE and CLOSE_IN_PROGRESS belong to ACC-011 Financial
+     * Close workflow; REOPENED is not a distinct DB state (reopen
+     * sets status back to 'open').
      *
      * @return array<int, string>
      */
@@ -580,10 +594,8 @@ class CapabilityRegistry
     {
         return [
             'OPEN',
-            'SOFT_CLOSE',
-            'CLOSE_IN_PROGRESS',
             'CLOSED',
-            'REOPENED',
+            'LOCKED',
         ];
     }
 

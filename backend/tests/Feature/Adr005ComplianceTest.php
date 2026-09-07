@@ -125,8 +125,8 @@ class Adr005ComplianceTest extends TenantTestCase
     public function test_period_state_allows_posting_only_when_open(): void
     {
         $this->assertTrue(PeriodState::OPEN->allowsPosting());
-        $this->assertTrue(PeriodState::REOPENED->allowsPosting());
         $this->assertFalse(PeriodState::CLOSED->allowsPosting());
+        $this->assertFalse(PeriodState::LOCKED->allowsPosting());
     }
 
     // §11.5 — Journal Lifecycle Dimensions

@@ -205,8 +205,8 @@ class AccReg001ComplianceTest extends TenantTestCase
             'Closed period must not allow posting (ACC-REG-001 §6).',
         );
         $this->assertFalse(
-            PeriodState::CLOSE_IN_PROGRESS->allowsPosting(),
-            'Close-in-progress period must not allow posting.',
+            PeriodState::LOCKED->allowsPosting(),
+            'Locked period must not allow posting.',
         );
     }
 

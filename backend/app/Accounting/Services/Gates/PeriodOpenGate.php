@@ -8,8 +8,15 @@ use App\Accounting\Enums\PeriodState;
 use App\Models\FiscalPeriod;
 
 /**
- * Verifies the posting period is open.
+ * ACC-001 posting-authority gate: verifies the posting period is open.
+ *
  * ADR-005 §8.4 — accounting period gate.
+ * ACC-DEC-060 Track A (issue #69): now uses PeriodState enum for
+ * authoritative evaluation instead of raw string comparison.
+ *
+ * The gate evaluates period_id from context and blocks if the period
+ * is closed, locked, or missing. Unknown statuses are treated as
+ * not-open (fail-closed).
  */
 class PeriodOpenGate implements AuthorityGate
 {
@@ -25,26 +32,26 @@ class PeriodOpenGate implements AuthorityGate
 
     public function gateVersion(): string
     {
-        return '1.0';
+        return '2.0';
     }
 
     public function evaluate(array $context): GateEvaluationResult
     {
         $periodId = $context['period_id'] ?? null;
 
-        if (!$periodId) {
+        if (! $periodId) {
             return GateEvaluationResult::notApplicable($this->gateCode(), $this->gateOwner());
         }
 
         $period = FiscalPeriod::find($periodId);
 
-        if (!$period) {
+        if (! $period) {
             return GateEvaluationResult::block($this->gateCode(), $this->gateOwner(), 'PERIOD_NOT_FOUND');
         }
 
-        $state = $period->status ?? 'unknown';
+        $state = PeriodState::fromDbStatus($period->status ?? 'open');
 
-        if ($state === 'closed' || $state === 'locked') {
+        if (! $state->allowsPosting()) {
             return GateEvaluationResult::block($this->gateCode(), $this->gateOwner(), 'PERIOD_CLOSED');
         }
 

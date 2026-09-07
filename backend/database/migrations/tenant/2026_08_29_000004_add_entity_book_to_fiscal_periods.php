@@ -29,8 +29,8 @@ return new class extends Migration
         });
 
         // Backfill: existing global periods/locks remain global (null values)
-        // for backward-compat. New ones created via InitializePostingPeriod
-        // or LockDateService must populate these fields.
+        // for backward-compat. New ones created via FiscalCalendar/PeriodDefinition
+        // configuration or LockDateService must populate these fields.
     }
 
     public function down(): void
