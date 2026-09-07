@@ -816,8 +816,8 @@ export function Sidebar() {
   // Tenant-specific hard blocks for modules that must never appear in navigation.
   const tenantForceDisabledFeatures: Record<string, string[]> = {
     'c194ebd3-a0af-4aca-a9b5-1f3275318228': ['field-service'],
-    '00000000-0000-0000-0000-000000000001': ['ecommerce', 'crm', 'hrm', 'pos', 'auditor-portal', 'myinvoice'],
-    '00000000-0000-0000-0000-000000000002': ['ecommerce', 'crm', 'hrm', 'pos', 'auditor-portal', 'myinvoice'],
+    '00000000-0000-0000-0000-000000000001': ['ecommerce', 'crm', 'hrm', 'pos', 'auditor-portal', 'myinvoice', 'website-builder'],
+    '00000000-0000-0000-0000-000000000002': ['ecommerce', 'crm', 'hrm', 'pos', 'auditor-portal', 'myinvoice', 'website-builder'],
   }
 
   const isFeatureEnabled = (featureKey?: string) => {
