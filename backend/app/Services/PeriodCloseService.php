@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
+use App\Accounting\DTOs\ReversalRequest;
 use App\Models\FiscalPeriod;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -339,15 +340,28 @@ class PeriodCloseService
      */
     private function aggregatePeriodPLBalances(FiscalPeriod $period): array
     {
+        // Issue #68: only aggregate ACTIVE-version journal entries.
+        // Reversed (inactive) entries are the audit-preserved mirror of
+        // the correction path — including them would net-zero the P&L
+        // after a reopen, preventing a subsequent close from generating
+        // a fresh closing entry against the period's current balances.
         $balances = DB::table('journal_entry_lines as jel')
             ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
             ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
             ->where('je.status', 'posted')
+            ->where('je.is_active_version', true)
             ->whereBetween('je.entry_date', [$period->period_start->toDateString(), $period->period_end->toDateString()])
             ->whereIn('coa.type', ['revenue', 'expense'])
             ->groupBy('jel.account_id')
             ->selectRaw('jel.account_id, SUM(jel.credit - jel.debit) as net_balance')
             ->get();
+
+        Log::debug('aggregatePeriodPLBalances', [
+            'period_id' => $period->id,
+            'date_range' => [$period->period_start->toDateString(), $period->period_end->toDateString()],
+            'rows' => $balances->toArray(),
+            'count' => $balances->count(),
+        ]);
 
         $out = [];
         foreach ($balances as $row) {
@@ -510,14 +524,15 @@ class PeriodCloseService
                 sourceCapability: 'ACC-002',
             ));
 
-            if (! $result->success || ! $result->journalEntry) {
-                Log::error('PeriodCloseService::postClosingEntry rejected by PostingEngine', [
-                    'period_id' => $period->id,
-                    'error' => $result->error,
-                ]);
+        if (! $result->success || ! $result->journalEntry) {
+            Log::error('PeriodCloseService::postClosingEntry rejected by PostingEngine', [
+                'period_id' => $period->id,
+                'error' => $result->error,
+                'journal_entry_id' => $result->journalEntryId,
+            ]);
 
-                return null;
-            }
+            return null;
+        }
 
             $entry = $result->journalEntry;
 
@@ -618,15 +633,94 @@ class PeriodCloseService
         return $record;
     }
 
+    /**
+     * Reverse the active closing journal entry for a period via the
+     * PostingEngine reversal path. The engine flips the original JE to
+     * `is_active_version=false` + `lifecycle_status='reversed'` and creates
+     * the mirror reversal entry — preserving ledger immutability (the
+     * original row is never deleted).
+     *
+     * Required for issue noovaerp/NoovaERP#68: without this, reopen→
+     * re-close cycles resolve the idempotency guard to the SAME (stale)
+     * closing entry instead of generating a fresh one against the
+     * period's now-current P&L balances.
+     */
     private function removeClosingEntries(FiscalPeriod $period): int
     {
-        // Remove closing entries for this period
-        return 0;
+        if (! $this->tablesExist(['journal_entries', 'journal_entry_links'])) {
+            return 0;
+        }
+
+        $reversed = 0;
+        // The active-version closing entry for this period. There can be
+        // only one in normal operation (the engine's idempotency guard
+        // dedupes); if a prior reopen created stale duplicates, we
+        // reverse every active one.
+        $activeClosings = DB::table('journal_entries as je')
+            ->where('je.type', 'period_close')
+            ->where('je.is_active_version', true)
+            ->where('je.period_id', $period->id)
+            ->pluck('je.id');
+
+        foreach ($activeClosings as $jeId) {
+            // Also delete the period_close link BEFORE reversing: the
+            // engine's idempotency guard (source_document_type +
+            // source_document_id + relation_type='post') would otherwise
+            // find the stale link on the next close and return the
+            // now-inactive JE instead of creating a fresh one.
+            DB::table('journal_entry_links')
+                ->where('source_document_type', 'period_close')
+                ->where('source_document_id', $period->id)
+                ->delete();
+
+            $req = new ReversalRequest(
+                journalEntryId: (int) $jeId,
+                reversalDate: now()->toDateString(),
+                reason: "Period reopen for {$period->code} (issue #68)",
+                reasonCode: 'PERIOD_REOPEN',
+                tenantId: tenant()?->id,
+            );
+            $result = $this->postingEngine->reverse($req);
+
+            if (! $result->success) {
+                Log::error('PeriodCloseService::removeClosingEntries reverse failed', [
+                    'period_id' => $period->id,
+                    'je_id' => $jeId,
+                    'error' => $result->error,
+                ]);
+
+                continue;
+            }
+
+            // The engine's fullReversal() creates the mirror reversal JE
+            // but does NOT mark the original as inactive (that's done by
+            // DocumentCorrectionService::reverseDocument which wraps the
+            // engine call + markReversed). For our purpose — "revoke the
+            // closing entry so re-close generates a fresh one" — we must
+            // explicitly flip the original to is_active_version=false
+            // and lifecycle_status='reversed' so it no longer resolves
+            // through the active-version guard.
+            DB::table('journal_entries')->where('id', $jeId)->update([
+                'is_active_version' => false,
+                'lifecycle_status' => 'reversed',
+                'reversed_at' => now(),
+            ]);
+
+            $reversed++;
+        }
+
+        return $reversed;
     }
 
+    /**
+     * Reverse any auto-adjustment JEs (currently FX revaluation) tied to
+     * this period via PostingEngine.reverse(). Today the revaluation
+     * path itself is a no-op (postFxRevaluationEntry returns null), so
+     * there is typically nothing to reverse; this method stays a no-op
+     * until FX revaluation produces entries.
+     */
     private function removeAutomaticAdjustments(FiscalPeriod $period): int
     {
-        // Remove automatic adjustments for this period
         return 0;
     }
 
