@@ -817,6 +817,7 @@ export function Sidebar() {
   const tenantForceDisabledFeatures: Record<string, string[]> = {
     'c194ebd3-a0af-4aca-a9b5-1f3275318228': ['field-service'],
     '00000000-0000-0000-0000-000000000001': ['ecommerce', 'crm', 'hrm', 'pos', 'auditor-portal', 'myinvoice'],
+    '00000000-0000-0000-0000-000000000002': ['ecommerce', 'crm', 'hrm', 'pos', 'auditor-portal', 'myinvoice'],
   }
 
   const isFeatureEnabled = (featureKey?: string) => {
