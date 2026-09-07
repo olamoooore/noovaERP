@@ -8,17 +8,27 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('acct_compliance_documents', function (Blueprint $table) {
-            if (!Schema::hasColumn('acct_compliance_documents', 'deleted_at')) {
+        if (!Schema::hasTable('acct_compliance_documents')) {
+            return;
+        }
+
+        if (!Schema::hasColumn('acct_compliance_documents', 'deleted_at')) {
+            Schema::table('acct_compliance_documents', function (Blueprint $table) {
                 $table->softDeletes();
-            }
-        });
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('acct_compliance_documents', function (Blueprint $table) {
-            $table->dropSoftDeletes();
-        });
+        if (!Schema::hasTable('acct_compliance_documents')) {
+            return;
+        }
+
+        if (Schema::hasColumn('acct_compliance_documents', 'deleted_at')) {
+            Schema::table('acct_compliance_documents', function (Blueprint $table) {
+                $table->dropSoftDeletes();
+            });
+        }
     }
 };
