@@ -206,6 +206,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
         // Payments
         Route::get('/payments', [PaymentController::class, 'index']);
+        Route::get('/payments/export', [PaymentController::class, 'export']);
         Route::get('/payments/eligible-invoices', [PaymentController::class, 'eligibleInvoices']);
         Route::post('/payments/import', [PaymentImportController::class, 'import']);
         Route::post('/payments/bulk-delete', [PaymentController::class, 'bulkDestroy']);
@@ -240,6 +241,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
         // Journal Entries
         Route::get('/journal-entries', [JournalEntriesController::class, 'index']);
+        Route::get('/journal-entries/export', [JournalEntriesController::class, 'export']);
         Route::post('/journal-entries/import', [JournalEntriesController::class, 'import']);
         Route::get('/journal-entries/{id}', [JournalEntriesController::class, 'show']);
         Route::post('/journal-entries', [JournalEntriesController::class, 'store']);
@@ -329,6 +331,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
         // Fixed Assets
         Route::get('/assets', [FixedAssetsController::class, 'index']);
+        Route::get('/assets/export', [FixedAssetsController::class, 'export']);
+        Route::post('/assets/import', [FixedAssetsController::class, 'import']);
         Route::get('/assets/{id}', [FixedAssetsController::class, 'show']);
         Route::post('/assets', [FixedAssetsController::class, 'store']);
         Route::put('/assets/{id}', [FixedAssetsController::class, 'update']);

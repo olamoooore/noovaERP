@@ -715,7 +715,7 @@ export default function ChartOfAccountsPage({ embedded = false }: { embedded?: b
                   onChange={(e) => setFormData({ ...formData, account_group: e.target.value })}
                 />
                 <p className="text-xs text-muted-foreground">
-                  SFRS grouping code (e.g., 1100, 1200, 2100)
+                  Enter the parent/group account code. Accounts sharing it appear under the same financial-statement caption.
                 </p>
               </div>
             </div>

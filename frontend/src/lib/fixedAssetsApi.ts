@@ -70,6 +70,15 @@ const fixedAssetsApi = {
     return response.data.asset;
   },
 
+  importAssets: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/accounting/assets/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
   updateAsset: async (id: number, data: Partial<CreateAssetRequest>) => {
     const response = await api.put(`/accounting/assets/${id}`, data);
     return response.data.asset;

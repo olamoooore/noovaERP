@@ -26,6 +26,7 @@ import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
+import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu';
 import {
   PaymentCorrectionDialog,
   type PaymentCorrectionAction,
@@ -95,6 +96,15 @@ const METHOD_OPTIONS = [
   { value: 'check', label: 'Check', icon: 'solar:document-bold-duotone' },
   { value: 'other', label: 'Other', icon: 'solar:question-circle-bold-duotone' },
 ];
+
+const PAYMENT_EXPORT_COLUMNS = [
+  { key: 'payment_number', label: 'Payment No', group: 'Payment', default: true }, { key: 'payment_date', label: 'Date', group: 'Payment', default: true },
+  { key: 'customer_name', label: 'Customer', group: 'Payment', default: true }, { key: 'invoice_number', label: 'Invoice No', group: 'Payment', default: true },
+  { key: 'amount', label: 'Amount', group: 'Payment', default: true }, { key: 'currency', label: 'Currency', group: 'Payment' },
+  { key: 'method', label: 'Method', group: 'Payment', default: true }, { key: 'reference', label: 'Reference', group: 'Payment' },
+  { key: 'payment_status', label: 'Status', group: 'Payment', default: true }, { key: 'journal_entry_number', label: 'Journal Entry', group: 'Accounting' },
+  { key: 'notes', label: 'Notes', group: 'Payment' },
+] as const satisfies readonly SalesExportColumn[];
 
 const formatDate = (date: string | undefined) => {
   if (!date) return '-';
@@ -316,6 +326,7 @@ export const CustomerPayments: React.FC = () => {
           <p className="text-muted-foreground mt-1">Track payments received from customers</p>
         </div>
         <div className="flex gap-2">
+          <SalesDocumentExportMenu endpoint="/payments/export" filenamePrefix="payments" columns={PAYMENT_EXPORT_COLUMNS} filters={{ search: searchQuery || undefined, payment_status: statusFilter || undefined, method: methodFilter || undefined, customer_id: customerFilter || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined }} selectedIds={Array.from(selectedIds)} />
           <Button variant="outline" onClick={() => window.location.href = '/accounting/customers/payments/import'}>
             <Icon icon="solar:upload-bold-duotone" className="h-4 w-4 mr-2" />
             Import

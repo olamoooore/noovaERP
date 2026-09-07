@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
+import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,6 +52,16 @@ import journalsApi from '@/lib/journalsApi';
 import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
 import type { ChartOfAccount } from '@/lib/chartOfAccountsApi';
 import { cn, formatCurrency, mapCommandError } from '@/lib/utils';
+
+const JOURNAL_EXPORT_COLUMNS = [
+  { key: 'entry_number', label: 'Entry No', group: 'Entry', default: true }, { key: 'entry_date', label: 'Date', group: 'Entry', default: true },
+  { key: 'journal_name', label: 'Journal', group: 'Entry', default: true }, { key: 'reference', label: 'Reference', group: 'Entry' },
+  { key: 'description', label: 'Description', group: 'Entry', default: true }, { key: 'remark', label: 'Remark', group: 'Entry' },
+  { key: 'type', label: 'Type', group: 'Entry' }, { key: 'status', label: 'Status', group: 'Entry', default: true },
+  { key: 'account_code', label: 'Account Code', group: 'Lines', default: true }, { key: 'account_name', label: 'Account Name', group: 'Lines', default: true },
+  { key: 'line_description', label: 'Line Description', group: 'Lines' }, { key: 'debit', label: 'Debit', group: 'Lines', default: true },
+  { key: 'credit', label: 'Credit', group: 'Lines', default: true }, { key: 'currency_code', label: 'Currency', group: 'Lines' },
+] as const satisfies readonly SalesExportColumn[];
 
 function AccountSearchCombobox({
   accounts,
@@ -129,6 +140,9 @@ export default function JournalEntriesPage() {
   const [partialLineAmounts, setPartialLineAmounts] = useState<{ line_id: number; amount: number }[]>([]);
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [page, setPage] = useState(1);
   const { hasPermission } = useAuthStore();
   const canPost = hasPermission('accounting.post');
   const canReverse = hasPermission('accounting.reverse');
@@ -166,13 +180,16 @@ export default function JournalEntriesPage() {
 
   // Fetch journal entries
   const { data: entriesData, isLoading } = useQuery({
-    queryKey: ['journal-entries', { status: activeTab === 'all' ? undefined : activeTab === 'reversed' ? undefined : activeTab, is_reversal: activeTab === 'reversed' ? true : undefined, search: searchTerm }],
+    queryKey: ['journal-entries', { status: activeTab === 'all' ? undefined : activeTab === 'reversed' ? undefined : activeTab, is_reversal: activeTab === 'reversed' ? true : undefined, search: searchTerm, start_date: dateFrom, end_date: dateTo, page }],
     queryFn: () =>
       journalEntriesApi.getJournalEntries({
         status: activeTab === 'all' || activeTab === 'reversed' ? undefined : activeTab,
         is_reversal: activeTab === 'reversed' ? true : undefined,
         search: searchTerm,
-        per_page: 50,
+        start_date: dateFrom || undefined,
+        end_date: dateTo || undefined,
+        page,
+        per_page: 20,
       }),
   });
 
@@ -445,6 +462,8 @@ export default function JournalEntriesPage() {
   };
 
   const entries = entriesData?.data || [];
+  const totalPages = entriesData?.last_page || 1;
+  const totalRecords = entriesData?.total || 0;
   const totals = calculateTotals();
 
   return (
@@ -464,7 +483,7 @@ export default function JournalEntriesPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)}>
+      <Tabs value={activeTab} onValueChange={(v: any) => { setActiveTab(v); setPage(1); }}>
         <div className="flex items-center justify-between">
           <TabsList>
             <TabsTrigger value="all">All Entries</TabsTrigger>
@@ -472,13 +491,16 @@ export default function JournalEntriesPage() {
             <TabsTrigger value="posted">Posted</TabsTrigger>
             <TabsTrigger value="reversed">Reversed</TabsTrigger>
           </TabsList>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
+            <SalesDocumentExportMenu endpoint="/accounting/journal-entries/export" filenamePrefix="journal_entries" columns={JOURNAL_EXPORT_COLUMNS} filters={{ status: activeTab === 'all' || activeTab === 'reversed' ? undefined : activeTab, is_reversal: activeTab === 'reversed' ? 1 : undefined, search: searchTerm || undefined, start_date: dateFrom || undefined, end_date: dateTo || undefined }} />
             <Input
-              placeholder="Search entries..."
+              placeholder="Search entry no., reference, description..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-64"
+              onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
+              className="w-72"
             />
+            <Input type="date" aria-label="From date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} className="w-40" />
+            <Input type="date" aria-label="To date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} className="w-40" />
             {canWrite && (
               <Button variant="outline" onClick={() => navigate('/accounting/core/journal-entries/import')}>
                 <Icon icon="solar:import-bold-duotone" className="h-4 w-4 mr-2" />
@@ -572,6 +594,19 @@ export default function JournalEntriesPage() {
                   ))}
                 </TableBody>
               </Table>
+            )}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-sm text-muted-foreground">Showing page {page} of {totalPages} ({totalRecords} entries)</p>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>
+                    <Icon icon="solar:arrow-left-bold" className="h-4 w-4 mr-1" />Previous
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
+                    Next<Icon icon="solar:arrow-right-bold" className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+              </div>
             )}
           </Card>
         </TabsContent>

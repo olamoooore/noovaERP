@@ -154,47 +154,13 @@ class FinancialReportController extends Controller
 
             $response = [
                 'assets' => [
-                    'current' => [
-                        [
-                            'code' => '1000',
-                            'name' => 'Current Assets',
-                            'accounts' => $this->normalizeBalanceSheetAccounts($currentAssets),
-                            'total' => $reportData->data['assets']['current_assets']['total'] ?? array_sum(array_column($currentAssets, 'balance')),
-                        ],
-                    ],
-                    'non_current' => [
-                        [
-                            'code' => '1500',
-                            'name' => 'Fixed Assets',
-                            'accounts' => $this->normalizeBalanceSheetAccounts($fixedAssets),
-                            'total' => $reportData->data['assets']['fixed_assets']['total'] ?? array_sum(array_column($fixedAssets, 'balance')),
-                        ],
-                        [
-                            'code' => '1800',
-                            'name' => 'Other Assets',
-                            'accounts' => $this->normalizeBalanceSheetAccounts($otherAssets),
-                            'total' => $reportData->data['assets']['other_assets']['total'] ?? array_sum(array_column($otherAssets, 'balance')),
-                        ],
-                    ],
+                    'current' => $this->groupBalanceSheetAccounts($currentAssets),
+                    'non_current' => $this->groupBalanceSheetAccounts([...$fixedAssets, ...$otherAssets]),
                     'total' => $totalAssets,
                 ],
                 'liabilities' => [
-                    'current' => [
-                        [
-                            'code' => '2000',
-                            'name' => 'Current Liabilities',
-                            'accounts' => $this->normalizeBalanceSheetAccounts($currentLiabilities),
-                            'total' => $reportData->data['liabilities']['current_liabilities']['total'] ?? array_sum(array_column($currentLiabilities, 'balance')),
-                        ],
-                    ],
-                    'non_current' => [
-                        [
-                            'code' => '2500',
-                            'name' => 'Long-Term Liabilities',
-                            'accounts' => $this->normalizeBalanceSheetAccounts($longTermLiabilities),
-                            'total' => $reportData->data['liabilities']['long_term_liabilities']['total'] ?? array_sum(array_column($longTermLiabilities, 'balance')),
-                        ],
-                    ],
+                    'current' => $this->groupBalanceSheetAccounts($currentLiabilities),
+                    'non_current' => $this->groupBalanceSheetAccounts($longTermLiabilities),
                     'total' => $totalLiabilities,
                 ],
                 'equity' => [
@@ -271,9 +237,50 @@ class FinancialReportController extends Controller
                 'account_id' => $account['account_id'] ?? $account['id'] ?? 0,
                 'code' => $account['code'] ?? '',
                 'name' => $account['name'] ?? '',
+                'currency_code' => $account['currency_code'] ?? null,
                 'balance' => (float) ($account['balance'] ?? 0),
             ];
         }, $accounts);
+    }
+
+    /**
+     * Build statement captions dynamically from bank links and the COA
+     * hierarchy. No posting account IDs or code ranges are embedded here.
+     */
+    private function groupBalanceSheetAccounts(array $accounts): array
+    {
+        $groups = [];
+
+        foreach ($accounts as $account) {
+            if (! empty($account['parent_id'])) {
+                $groupCode = (string) ($account['parent_code'] ?: 'PARENT-'.$account['parent_id']);
+                $groupName = (string) ($account['parent_name'] ?: $groupCode);
+            } elseif (! empty($account['account_group'])) {
+                $groupCode = (string) $account['account_group'];
+                $groupName = (string) ($account['group_name'] ?: $account['account_group']);
+            } elseif (! empty($account['currency_code'])) {
+                $groupCode = 'BANK_BALANCES';
+                $groupName = 'Bank balances';
+            } else {
+                $groupCode = (string) $account['code'];
+                $groupName = (string) $account['name'];
+            }
+
+            if (! isset($groups[$groupCode])) {
+                $groups[$groupCode] = [
+                    'code' => $groupCode,
+                    'name' => $groupName,
+                    'accounts' => [],
+                    'total' => 0.0,
+                ];
+            }
+
+            $normalized = $this->normalizeBalanceSheetAccounts([$account])[0];
+            $groups[$groupCode]['accounts'][] = $normalized;
+            $groups[$groupCode]['total'] += $normalized['balance'];
+        }
+
+        return array_values($groups);
     }
 
     /**

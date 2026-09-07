@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exports\JournalEntriesExport;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\DraftJournalRequest;
 use App\Accounting\DTOs\ReversalRequest;
@@ -14,6 +15,7 @@ use App\Services\LockDateValidationService;
 use App\Services\ManualJournalPostingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Maatwebsite\Excel\Facades\Excel;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 /**
@@ -103,6 +105,24 @@ class JournalEntriesController extends Controller
             ->paginate($request->input('per_page', 50));
 
         return response()->json($entries);
+    }
+
+    public function export(Request $request)
+    {
+        $validated = $request->validate([
+            'columns' => ['required', 'array', 'min:1', 'max:'.count(JournalEntriesExport::COLUMNS)],
+            'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(JournalEntriesExport::COLUMNS))],
+        ]);
+        $query = JournalEntry::query();
+        if ($request->filled('status')) $query->where('status', $request->status);
+        if ($request->has('is_reversal')) $query->where('is_reversal', filter_var($request->is_reversal, FILTER_VALIDATE_BOOLEAN));
+        if ($request->filled('start_date')) $query->whereDate('entry_date', '>=', $request->start_date);
+        if ($request->filled('end_date')) $query->whereDate('entry_date', '<=', $request->end_date);
+        if ($request->filled('search')) {
+            $search = (string) $request->search;
+            $query->where(fn ($q) => $q->where('entry_number', 'LIKE', "%{$search}%")->orWhere('description', 'LIKE', "%{$search}%")->orWhere('reference', 'LIKE', "%{$search}%"));
+        }
+        return Excel::download(new JournalEntriesExport($query->orderByDesc('entry_date')->orderByDesc('id'), $validated['columns']), 'journal_entries_'.now()->format('Y-m-d').'.xlsx');
     }
 
     /**

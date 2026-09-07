@@ -24,6 +24,7 @@ interface Account {
   code: string;
   name: string;
   balance: number;
+  currency_code?: string | null;
   account_group?: string;
   group_name?: string;
 }
@@ -104,8 +105,6 @@ export default function BalanceSheetPage() {
         <TableRow className="bg-blue-50 border-l-4 border-l-blue-400">
           <TableCell className="font-semibold text-blue-900 pl-6">
             <div className="flex items-center gap-2">
-              <Badge className="bg-blue-100 text-blue-800 text-xs">L2</Badge>
-              <span className="font-mono text-sm">{group.code}</span>
               <span>{group.name}</span>
             </div>
           </TableCell>
@@ -124,6 +123,7 @@ export default function BalanceSheetPage() {
                 <Badge className="bg-gray-100 text-gray-600 text-xs">L3</Badge>
                 <span className="font-mono text-sm text-muted-foreground">{account.code}</span>
                 <span>{account.name}</span>
+                {account.currency_code && <Badge variant="outline" className="text-xs">{account.currency_code}</Badge>}
               </div>
             </TableCell>
             <TableCell className="text-right font-mono">
@@ -287,7 +287,7 @@ export default function BalanceSheetPage() {
         ) : (
           <>
             <div className="mb-6 text-center border-b pb-4">
-              <h2 className="text-2xl font-bold">Balance Sheet</h2>
+              <h2 className="text-2xl font-bold uppercase">Balance Sheet</h2>
               <p className="text-sm text-muted-foreground mt-1">
                 As of {new Date(asOfDate).toLocaleDateString('en-US', { 
                   year: 'numeric', 
@@ -355,6 +355,13 @@ export default function BalanceSheetPage() {
                   <TableCell className="text-xl py-4">TOTAL LIABILITIES</TableCell>
                   <TableCell className="text-right font-mono text-xl">
                     {formatCurrency(balanceSheet.total_liabilities || 0)}
+                  </TableCell>
+                </TableRow>
+
+                <TableRow className="font-bold border-y-4 bg-muted/60">
+                  <TableCell className="text-xl py-4">NET ASSETS/(LIABILITIES)</TableCell>
+                  <TableCell className="text-right font-mono text-xl">
+                    {formatCurrency((balanceSheet.total_assets || 0) - (balanceSheet.total_liabilities || 0))}
                   </TableCell>
                 </TableRow>
 

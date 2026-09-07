@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exports\PaymentsExport;
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
 use App\Models\Payment;
@@ -10,6 +11,7 @@ use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Maatwebsite\Excel\Facades\Excel;
 
 class PaymentController extends Controller
 {
@@ -87,6 +89,31 @@ class PaymentController extends Controller
         $payments = $query->paginate($perPage);
 
         return response()->json($payments);
+    }
+
+    public function export(Request $request)
+    {
+        $validated = $request->validate([
+            'columns' => ['required', 'array', 'min:1', 'max:'.count(PaymentsExport::COLUMNS)],
+            'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(PaymentsExport::COLUMNS))],
+            'document_ids' => ['nullable', 'array'],
+            'document_ids.*' => ['integer', 'distinct', 'exists:payments,id'],
+        ]);
+        $query = Payment::query();
+        if ($request->filled('document_ids')) $query->whereIn('id', $request->input('document_ids'));
+        if ($request->filled('customer_id')) $query->where('customer_id', $request->customer_id);
+        if ($request->filled('payment_status')) $query->whereIn('payment_status', array_filter(array_map('trim', explode(',', (string) $request->payment_status))));
+        if ($request->filled('method')) $query->whereIn('method', array_filter(array_map('trim', explode(',', (string) $request->method))));
+        if ($request->filled('date_from')) $query->whereDate('payment_date', '>=', $request->date_from);
+        if ($request->filled('date_to')) $query->whereDate('payment_date', '<=', $request->date_to);
+        if ($request->filled('search')) {
+            $search = (string) $request->search;
+            $query->where(fn ($q) => $q->where('payment_number', 'ILIKE', "%{$search}%")
+                ->orWhere('reference', 'ILIKE', "%{$search}%")
+                ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'ILIKE', "%{$search}%"))
+                ->orWhereHas('invoice', fn ($iq) => $iq->where('invoice_number', 'ILIKE', "%{$search}%")));
+        }
+        return Excel::download(new PaymentsExport($query->orderByDesc('payment_date')->orderByDesc('id'), $validated['columns']), 'payments_'.now()->format('Y-m-d').'.xlsx');
     }
 
     /**
