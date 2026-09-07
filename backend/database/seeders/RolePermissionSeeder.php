@@ -62,6 +62,12 @@ class RolePermissionSeeder extends Seeder
         'accounting.close.escalation_write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
         'accounting.close.template_write' => [UserRole::OWNER, UserRole::ADMIN],
 
+        // ACC-001 Opening Balance (issue #70)
+        'accounting.opening_balance.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
+        'accounting.opening_balance.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::ACCOUNTANT],
+        'accounting.opening_balance.approve' => [UserRole::OWNER, UserRole::ADMIN], // SoD: not same as write
+        'accounting.opening_balance.post' => [UserRole::OWNER, UserRole::ADMIN],
+
         // HRM
         'hrm.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::VIEWER],
         'hrm.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],

@@ -1,0 +1,9 @@
+{
+  "key": "accounting-foundation",
+  "name": "AccountingFoundation",
+  "type": "feature",
+  "providers": [
+    "Modules\\AccountingFoundation\\Providers\\AccountingFoundationServiceProvider"
+  ],
+  "dependencies": ["core"]
+}
