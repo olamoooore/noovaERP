@@ -4,25 +4,24 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Issue noovaerp/NoovaERP#61 — second half of the fix.
+ * Issue noovaerp/NoovaERP#67 — second-half of the #61 fix tightened.
  *
- * Removes the shared CENTRAL copies of the ACC-005 settlement batch
- * tables once the tenant migration
- * `2026_09_04_000002_move_settlement_batch_tables_to_tenant_schema.php`
- * has created per-tenant versions. Dropping them here means a tenant
- * request can no longer silently fall back to a shared public-schema
- * table via search_path — the cross-tenant leakage vector.
+ * The first version (commit `b44f99f9`) checked only whether ANY tenant
+ * schema had the table and silently dropped the central copy. If
+ * `tenants:migrate` failed partway (one tenant schema errored out),
+ * subsequent re-runs of the central migrations could drop the central
+ * table while some tenants were never given their own copy — silent
+ * total-outage for those tenants.
  *
- * Deployment order matters: run `php artisan tenants:migrate` FIRST
- * (creates tenant tables + backfills any tenant rows), then
- * `php artisan migrate` (this drop). Verified on production 2026-09-04:
- * all four central tables contained zero rows, so the backfill is a
- * no-op safeguard, not a data dependency.
+ * This version replaces the "any schema has it" check with a
+ * completeness check: every active tenant schema must have the table
+ * before the central copy is dropped. Incomplete roll-outs surface as
+ * a loud runtime exception that fails the migration, so a mis-ordered
+ * or partially-failed deploy is visible at deploy time instead of
+ * silently degrading affected tenants.
  *
- * The tables being dropped are themselves created by now-superseded
- * central migrations (2026_08_16_000009/10/11/12 + 2026_08_25_000001),
- * left in place for fresh-install reproducibility; this migration is
- * the authoritative removal step for existing deployments.
+ * Scope: ACC-005 settlement-batch tables (ACC-005A payment_executions,
+ * ACC-005B settlements, allocations, unapplied_cash).
  */
 return new class extends Migration
 {
@@ -35,19 +34,31 @@ return new class extends Migration
 
     public function up(): void
     {
-        foreach (self::TABLES as $table) {
-            // Safety: only drop the central copy when the tenant
-            // counterpart is reachable via tenants:migrate — i.e. when
-            // at least one tenant schema owns the table.
-            $tenantCopyExists = (bool) DB::selectOne(
-                "SELECT 1 FROM information_schema.tables
-                 WHERE table_name = ? AND table_schema NOT IN ('public') LIMIT 1",
-                [$table]
-            );
+        $expected = $this->expectedTenantSchemas();
 
-            if ($tenantCopyExists) {
-                DB::statement("DROP TABLE IF EXISTS public.{$table}");
+        foreach (self::TABLES as $table) {
+            $present = $this->tenantSchemasWith($table);
+
+            $missing = array_values(array_diff($expected, $present));
+
+            if (! empty($missing)) {
+                // LOUD FAIL — incomplete roll-out must NOT silently
+                // delete the shared central copy. Re-run
+                // `tenants:migrate` to completion (or restore from the
+                // pre-deploy backup) before re-running this migration.
+                throw new \RuntimeException(sprintf(
+                    'Issue #67: refusing to drop central public.%s — '
+                    . '%d tenant schema(s) are missing their copy '
+                    . '(incomplete tenants:migrate roll-out): %s. '
+                    . 'Re-run `php artisan tenants:migrate` to '
+                    . 'completion before re-running `php artisan migrate`.',
+                    $table,
+                    count($missing),
+                    implode(', ', $missing),
+                ));
             }
+
+            DB::statement("DROP TABLE IF EXISTS public.{$table}");
         }
     }
 
@@ -57,5 +68,36 @@ return new class extends Migration
         // would resurrect the cross-tenant leakage vector (#61). To
         // revert, restore from the pre-deploy backup taken before
         // tenants:migrate + this migration.
+    }
+
+    /**
+     * Active tenant schema names = tenant ids with the canonical
+     * Stancl mapping (currently uuid with dashes; suffix/`tenant_`
+     * prefix is configurable but not used here). When tenants add a
+     * deactivation flag, extend this to filter on it.
+     *
+     * @return string[]
+     */
+    private function expectedTenantSchemas(): array
+    {
+        return DB::table('public.tenants')
+            ->whereNotNull('id')
+            ->pluck('id')
+            ->map(fn ($id) => trim((string) $id))
+            ->filter()
+            ->all();
+    }
+
+    /**
+     * @return string[]
+     */
+    private function tenantSchemasWith(string $table): array
+    {
+        return DB::table('information_schema.tables')
+            ->where('table_name', $table)
+            ->where('table_schema', '!=', 'public')
+            ->pluck('table_schema')
+            ->map(fn ($s) => (string) $s)
+            ->all();
     }
 };
