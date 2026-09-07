@@ -241,7 +241,7 @@ class DepreciationService
                 // In that case keep the schedule row unposted so a later
                 // manual run (or a fiscal-period backfill) can post it.
                 try {
-                    $journalEntry = $this->createDepreciationJournalEntry($asset, $schedule, $periodDate);
+                    $journalEntry = $this->createDepreciationDraftJournalEntry($asset, $schedule, $periodDate);
                     $schedule->update([
                         'journal_entry_id' => $journalEntry->id,
                         'is_posted' => true,
@@ -320,7 +320,7 @@ class DepreciationService
                         return null;
                     }
 
-                    $journalEntry = $this->createDepreciationJournalEntry(
+                    $journalEntry = $this->createDepreciationDraftJournalEntry(
                         $asset,
                         $locked,
                         Carbon::parse($locked->period_date)
