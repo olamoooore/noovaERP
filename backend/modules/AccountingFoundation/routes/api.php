@@ -26,7 +26,7 @@ Route::middleware([\App\Http\Middleware\RequirePermission::using('accounting.ope
 Route::middleware([\App\Http\Middleware\RequirePermission::using('accounting.opening_balance.write')])->group(function () {
     Route::post('/opening-balances', [OpeningBalanceController::class, 'store']);
     Route::post('/opening-balances/{id}/lines', [OpeningBalanceController::class, 'captureLines']);
-    Route::post('/opening-balances/{id}/validate', [OpeningBalanceController::class, 'validate']);
+    Route::post('/opening-balances/{id}/validate', [OpeningBalanceController::class, 'validateBatch']);
     Route::post('/opening-balances/{id}/reconcile', [OpeningBalanceController::class, 'reconcile']);
     Route::post('/opening-balances/{id}/submit-approval', [OpeningBalanceController::class, 'submitForApproval']);
     Route::post('/opening-balances/{id}/supersede', [OpeningBalanceController::class, 'supersede']);

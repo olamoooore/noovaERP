@@ -94,7 +94,7 @@ class OpeningBalanceController extends Controller
     /**
      * Validate the batch.
      */
-    public function validate(string $id): JsonResponse
+    public function validateBatch(string $id): JsonResponse
     {
         $batch = OpeningBalanceBatch::findOrFail($id);
 
