@@ -4,12 +4,14 @@ namespace App\Services;
 
 use App\Models\Customer;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Modules\Contact\src\Models\ContactImportBatch;
 use Modules\Contact\src\Models\ContactImportStaging;
 use Modules\Contact\src\Services\ContactMasterService;
 use Modules\Contact\src\Support\ContactTaxonomyRegistry;
 use Modules\Contact\src\Support\LegacyContactTypeMapping;
+use Ramsey\Uuid\Uuid;
 
 /**
  * ADR-003A Import Contract v1 — staged, validated Acme customer import.
@@ -58,7 +60,7 @@ class AcmeCustomerImportService
         $batch = ContactImportBatch::create([
             'id' => Str::uuid(),
             'tenant_id' => $tenantId,
-            'user_id' => $userId,
+            'user_id' => $this->importBatchUserId($tenantId, $userId),
             'file_name' => $fileName,
             'file_hash' => $fileHash,
             'source_system' => $sourceSystem,
@@ -72,6 +74,7 @@ class AcmeCustomerImportService
 
         $counts = ['valid' => 0, 'warning' => 0, 'duplicate' => 0, 'candidate' => 0, 'error' => 0];
         $codeConflicts = [];
+        $issues = [];
         $seenCodes = [];
 
         foreach ($rows as $index => $row) {
@@ -93,19 +96,28 @@ class AcmeCustomerImportService
             if (! $errors) {
                 if ($code !== null) {
                     $lower = strtolower($code);
-                    $existsLive = Customer::query()
+                    $existingCustomer = Customer::query()
                         ->whereRaw('LOWER(code) = ?', [$lower])
                         ->when($legalEntityId, fn ($q) => $q->where('legal_entity_id', $legalEntityId))
-                        ->exists();
+                        ->first();
                     $inBatch = isset($seenCodes[$lower]);
-                    if ($existsLive || $inBatch) {
+                    $sameLiveCustomer = $existingCustomer
+                        && strcasecmp((string) $existingCustomer->name, (string) ($mapped['name'] ?? '')) === 0;
+                    $sameBatchCustomer = $inBatch
+                        && strcasecmp((string) $seenCodes[$lower], (string) ($mapped['name'] ?? '')) === 0;
+
+                    if (($existingCustomer && ! $sameLiveCustomer) || ($inBatch && ! $sameBatchCustomer)) {
                         $codeConflicts[] = ['row' => $rowNumber, 'code' => $code];
-                        // A conflicting code is a reportable conflict; the row
-                        // is not commit-ready as a NEW customer.
+                        // The same code assigned to a different customer name
+                        // remains a conflict and is never silently reassigned.
                         $status = self::STATUS_ERROR;
                         $errors = true;
+                    } elseif ($existingCustomer || $inBatch) {
+                        // Matching code + name is an explicit update or a
+                        // continuation row for the same customer.
+                        $status = self::STATUS_DUPLICATE;
                     }
-                    $seenCodes[$lower] = true;
+                    $seenCodes[$lower] = $mapped['name'] ?? '';
                 }
 
                 if ($warnings && ! $errors) {
@@ -134,6 +146,32 @@ class AcmeCustomerImportService
 
             if (isset($counts[$status])) {
                 $counts[$status]++;
+            }
+
+            if ($status === self::STATUS_ERROR) {
+                $isCodeConflict = collect($codeConflicts)->contains('row', $rowNumber);
+                $messages = $isCodeConflict
+                    ? ["Customer code '{$code}' already exists or is duplicated in this file."]
+                    : (is_array($errors) ? $errors : [(string) $errors]);
+
+                foreach ($messages as $message) {
+                    $column = str_contains(strtolower($message), 'name') ? 'name' : ($isCodeConflict ? 'code' : null);
+                    $issues[] = $this->rowIssue($rowNumber, 'error', $column, $mapped, $message);
+                }
+            } elseif ($status === self::STATUS_WARNING) {
+                foreach ($warnings as $message) {
+                    $column = str_contains($message, 'contact_category') ? 'contact_category'
+                        : (str_contains($message, 'contact_type') ? 'contact_type' : null);
+                    $issues[] = $this->rowIssue($rowNumber, 'warning', $column, $mapped, $message);
+                }
+            } elseif ($status === self::STATUS_CANDIDATE) {
+                $issues[] = $this->rowIssue(
+                    $rowNumber,
+                    'candidate',
+                    'contact_name',
+                    $mapped,
+                    'A contact with a similar name requires review before import.'
+                );
             }
 
             ContactImportStaging::create([
@@ -181,6 +219,7 @@ class AcmeCustomerImportService
             'total_rows' => $batch->total_rows,
             'counts' => $counts,
             'code_conflicts' => $codeConflicts,
+            'issues' => $issues,
             'status' => $batch->status,
         ];
     }
@@ -473,6 +512,31 @@ class AcmeCustomerImportService
         $value = trim((string) $value);
 
         return $value === '' ? null : $value;
+    }
+
+    private function importBatchUserId(string $tenantId, int $userId): int|string
+    {
+        if (Schema::getColumnType('contact_import_batches', 'user_id') !== 'uuid') {
+            return $userId;
+        }
+
+        return Uuid::uuid5(Uuid::NAMESPACE_URL, "{$tenantId}:tenant-user:{$userId}")->toString();
+    }
+
+    private function rowIssue(
+        int $row,
+        string $severity,
+        ?string $column,
+        array $mapped,
+        string $message
+    ): array {
+        return [
+            'row' => $row,
+            'severity' => $severity,
+            'column' => $column,
+            'value' => $column ? ($mapped[$column] ?? null) : null,
+            'message' => $message,
+        ];
     }
 
     private function errorText($errors): string

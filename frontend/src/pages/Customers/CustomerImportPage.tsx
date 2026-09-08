@@ -28,6 +28,13 @@ interface StageResult {
     error: number
   }
   code_conflicts: Array<{ row: number; code: string }>
+  issues: Array<{
+    row: number
+    severity: 'error' | 'warning' | 'candidate'
+    column: string | null
+    value: string | null
+    message: string
+  }>
   status: string
 }
 
@@ -89,7 +96,7 @@ export function CustomerImportPage() {
     mutationFn: async (file: File) => {
       const fd = new FormData()
       fd.append('file', file)
-      const response = await api.post('/customers/import', fd, {
+      const response = await api.post('/accounting/customers/import', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       return response.data as StageResult
@@ -114,7 +121,7 @@ export function CustomerImportPage() {
       } else {
         toast({
           title: 'Import staged',
-          description: `${commitReady} rows ready to commit.`,
+          description: `${commitReady} rows valid and ready to import.`,
         })
       }
     },
@@ -129,20 +136,20 @@ export function CustomerImportPage() {
 
   const commitMutation = useMutation({
     mutationFn: async (batchId: string) => {
-      const response = await api.post(`/customers/import/${batchId}/commit`)
+      const response = await api.post(`/accounting/customers/import/${batchId}/commit`)
       return response.data as CommitResult
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['customers'] })
       setCommitResult(data)
       toast({
-        title: 'Import committed',
+        title: 'Import complete',
         description: `${data.imported} customers imported${data.rejected > 0 ? `, ${data.rejected} rejected` : ''}.`,
       })
     },
     onError: (error: Error) => {
       toast({
-        title: 'Commit failed',
+        title: 'Import failed',
         description: error.message || 'An error occurred during commit.',
         variant: 'destructive',
       })
@@ -345,13 +352,13 @@ export function CustomerImportPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Icon icon="solar:upload-minimalistic-bold" className="h-5 w-5 text-primary" />
-                {!stageResult ? 'Step 2: Upload & Validate' : !commitResult ? 'Step 3: Review & Commit' : 'Complete'}
+                {!stageResult ? 'Step 2: Upload & Validate' : !commitResult ? 'Step 3: Review & Import' : 'Complete'}
               </CardTitle>
               <CardDescription>
                 {!stageResult
                   ? 'Fill in the template and upload it here for validation.'
                   : !commitResult
-                    ? 'Review the validation results and commit to import.'
+                    ? 'Review the validation results and import the valid rows.'
                     : 'Import completed successfully.'}
               </CardDescription>
             </CardHeader>
@@ -438,7 +445,7 @@ export function CustomerImportPage() {
                     <Icon icon="solar:info-circle-bold" className="h-4 w-4" />
                     <AlertTitle>Validation Complete</AlertTitle>
                     <AlertDescription>
-                      {commitReadyRows} rows ready to commit
+                      {commitReadyRows} rows valid and ready to import
                       {stageResult.counts.warning > 0 && `, ${stageResult.counts.warning} with warnings`}
                       {stageResult.counts.error > 0 && `, ${stageResult.counts.error} with errors`}
                       {stageResult.counts.candidate > 0 && `, ${stageResult.counts.candidate} candidates for review`}.
@@ -447,7 +454,7 @@ export function CustomerImportPage() {
 
                   <div className="grid grid-cols-3 gap-4">
                     <div className="text-center p-4 bg-green-50 dark:bg-green-950/20 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">{stageResult.counts.valid}</div>
+                      <div className="text-2xl font-bold text-green-600">{commitReadyRows}</div>
                       <div className="text-sm text-muted-foreground">Valid</div>
                     </div>
                     <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg">
@@ -477,6 +484,38 @@ export function CustomerImportPage() {
                     </Alert>
                   )}
 
+                  {stageResult.issues?.length > 0 && (
+                    <div className="rounded-lg border overflow-hidden">
+                      <div className="bg-muted px-4 py-3 font-medium">Validation details</div>
+                      <div className="max-h-[260px] overflow-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Row</TableHead>
+                              <TableHead>Column</TableHead>
+                              <TableHead>Value</TableHead>
+                              <TableHead>Issue</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {stageResult.issues.map((issue, idx) => (
+                              <TableRow key={`${issue.row}-${issue.column}-${idx}`}>
+                                <TableCell className="font-medium">{issue.row}</TableCell>
+                                <TableCell>{issue.column || 'Row'}</TableCell>
+                                <TableCell className="max-w-[140px] truncate" title={issue.value || ''}>
+                                  {issue.value || '—'}
+                                </TableCell>
+                                <TableCell className={issue.severity === 'error' ? 'text-destructive' : 'text-yellow-700'}>
+                                  {issue.message}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  )}
+
                   <Button
                     onClick={handleCommit}
                     className="w-full"
@@ -485,12 +524,12 @@ export function CustomerImportPage() {
                     {commitMutation.isPending ? (
                       <>
                         <Icon icon="solar:refresh-circle-bold" className="mr-2 h-4 w-4 animate-spin" />
-                        Committing...
+                        Importing...
                       </>
                     ) : (
                       <>
                         <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
-                        Commit {commitReadyRows} Rows
+                        Import {commitReadyRows} Rows
                       </>
                     )}
                   </Button>
