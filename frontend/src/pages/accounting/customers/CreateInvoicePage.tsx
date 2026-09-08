@@ -29,7 +29,7 @@ interface InvoiceLine {
   product_notes: string;
   lot_number: string;
   expiry_date: string;
-  quantity: number;
+  quantity: number | '';
   unit_price: number | '';
   tax_rate: number | '';
   discount_amount: number | '';
@@ -255,9 +255,13 @@ export const CreateInvoicePage: React.FC = () => {
 
   const [customerId, setCustomerId] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [dueDate, setDueDate] = useState(
-    new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  );
+  const [paymentTerms, setPaymentTerms] = useState(30);
+  const calcDueDate = (invDate: string, termsDays: number) => {
+    const d = new Date(invDate + 'T00:00:00');
+    d.setDate(d.getDate() + termsDays);
+    return d.toISOString().split('T')[0];
+  };
+  const [dueDate, setDueDate] = useState(() => calcDueDate(new Date().toISOString().split('T')[0], 30));
   const [caseNumber, setCaseNumber] = useState('');
   const [prNo, setPrNo] = useState('');
   const [contractNo, setContractNo] = useState('');
@@ -379,6 +383,13 @@ export const CreateInvoicePage: React.FC = () => {
     setShippingContactId('');
     setDoctorContactId('');
     setRequestorContactId('');
+
+    // WRK-A: Use customer payment terms to calculate due date
+    const customerTerms = Number(selectedCustomer.payment_terms);
+    if (Number.isFinite(customerTerms) && customerTerms >= 0) {
+      setPaymentTerms(customerTerms);
+      setDueDate(calcDueDate(invoiceDate, customerTerms));
+    }
   }, [isEditMode, originalCustomerId, selectedCustomer]);
 
   useEffect(() => {
@@ -581,7 +592,19 @@ export const CreateInvoicePage: React.FC = () => {
 
   const addLine = () => setLines([...lines, emptyLine()]);
   const addTextLine = (line_type: 'note' | 'section') => setLines([...lines, { ...emptyLine(), line_type, quantity: 0, unit_price: 0, tax_rate: 0, discount_amount: 0 }]);
-  const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => { const next = [...lines]; selected.forEach(({ product, quantity }) => { const existing = next.find((line) => line.line_type === 'product' && line.product_id === String(product.id)); if (existing) existing.quantity += quantity; else next.push({ ...emptyLine(), product_id: String(product.id), sku: product.sku || '', description: product.name || '', unit_price: Number(product.price || 0), quantity }); }); setLines(next); };
+  const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => {
+    const next = [...lines];
+    selected.forEach(({ product, quantity }) => {
+      const existing = next.find((line) => line.line_type === 'product' && line.product_id === String(product.id));
+      if (existing) {
+        const cur = existing.quantity === '' ? 0 : existing.quantity;
+        existing.quantity = cur + quantity;
+      } else {
+        next.push({ ...emptyLine(), product_id: String(product.id), sku: product.sku || '', description: product.name || '', unit_price: Number(product.price || 0), quantity });
+      }
+    });
+    setLines(next);
+  };
 
   const duplicateLine = (index: number) => {
     const targetLine = lines[index];
@@ -609,10 +632,11 @@ export const CreateInvoicePage: React.FC = () => {
   };
 
   const getLineTotal = (line: InvoiceLine) => {
+    const qty = line.quantity === '' ? 0 : line.quantity;
     const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
     const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
     const discount = line.discount_amount === '' ? 0 : line.discount_amount;
-    const base = line.quantity * unitPrice;
+    const base = qty * unitPrice;
     const discounted = base - discount;
     const tax = discounted * (taxRate / 100);
     return discounted + tax;
@@ -649,14 +673,16 @@ export const CreateInvoicePage: React.FC = () => {
   };
 
   const subtotal = lines.reduce((sum, line) => {
+    const qty = line.quantity === '' ? 0 : line.quantity;
     const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
-    return sum + line.quantity * unitPrice;
+    return sum + qty * unitPrice;
   }, 0);
   const taxTotal = lines.reduce((sum, line) => {
+    const qty = line.quantity === '' ? 0 : line.quantity;
     const unitPrice = line.unit_price === '' ? 0 : line.unit_price;
     const taxRate = line.tax_rate === '' ? 0 : line.tax_rate;
     const discount = line.discount_amount === '' ? 0 : line.discount_amount;
-    const base = line.quantity * unitPrice;
+    const base = qty * unitPrice;
     return sum + (base - discount) * (taxRate / 100);
   }, 0);
   const lineDiscounts = lines.reduce((sum, line) => sum + (line.discount_amount === '' ? 0 : line.discount_amount), 0);
@@ -726,6 +752,7 @@ export const CreateInvoicePage: React.FC = () => {
         .find((contact) => String(contact.id) === requestorContactId)?.name || null,
       notes: notes || undefined,
       terms: terms || undefined,
+      payment_terms: paymentTerms,
       discount_amount: documentDiscountAmount || 0,
       ...documentSnapshot,
       lines: lines
@@ -739,7 +766,7 @@ export const CreateInvoicePage: React.FC = () => {
           product_notes: line.product_notes || null,
           lot_number: line.lot_number || null,
           expiry_date: line.expiry_date || null,
-          quantity: line.quantity,
+          quantity: line.quantity === '' || line.quantity < 1 ? 1 : line.quantity,
           unit_price: line.unit_price === '' ? 0 : line.unit_price,
           tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
           discount_amount: line.discount_amount === '' ? 0 : line.discount_amount,
@@ -853,10 +880,30 @@ export const CreateInvoicePage: React.FC = () => {
                   <input
                     type="date"
                     value={invoiceDate}
-                    onChange={(event) => setInvoiceDate(event.target.value)}
+                    onChange={(event) => {
+                      const newDate = event.target.value;
+                      setInvoiceDate(newDate);
+                      setDueDate(calcDueDate(newDate, paymentTerms));
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+                {!isQuoteMode && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Payment Terms (days)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={paymentTerms}
+                      onChange={(event) => {
+                        const days = Math.max(0, parseInt(event.target.value, 10) || 0);
+                        setPaymentTerms(days);
+                        setDueDate(calcDueDate(invoiceDate, days));
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1">{isQuoteMode ? 'Valid Until' : 'Due Date'}</label>
                   <input
@@ -1244,17 +1291,17 @@ export const CreateInvoicePage: React.FC = () => {
                   <thead>
                     <tr className="border-b">
                       <th className="text-left py-2 px-2 w-12">#</th>
-                      <th className="text-left py-2 px-2 w-[200px]">Product</th>
+                      <th className="text-left py-2 px-2 min-w-[200px]">Product</th>
                       {visibleLineColumns.sku && <th className="text-left py-2 px-2 w-24">SKU</th>}
-                      {visibleLineColumns.description && <th className="text-left py-2 px-2">Description</th>}
+                      {visibleLineColumns.description && <th className="text-left py-2 px-2 min-w-[150px]">Description</th>}
                       {visibleLineColumns.model_number && <th className="text-left py-2 px-2 w-28">Model #</th>}
                       {visibleLineColumns.product_notes && <th className="text-left py-2 px-2 w-36">Product Notes</th>}
                       {visibleLineColumns.lot_number && <th className="text-left py-2 px-2 w-32">Lot Number</th>}
                       {visibleLineColumns.expiry_date && <th className="text-left py-2 px-2 w-36">Expiry Date</th>}
-                      <th className="text-right py-2 px-2 w-20">Qty</th>
-                      <th className="text-right py-2 px-2 w-28">Unit Price</th>
-                      {visibleLineColumns.tax_rate && <th className="text-right py-2 px-2 w-20">Tax %</th>}
-                      <th className="text-right py-2 px-2 w-28">Line Total</th>
+                      <th className="text-right py-2 px-2 min-w-[90px]">Qty</th>
+                      <th className="text-right py-2 px-2 min-w-[120px]">Unit Price</th>
+                      {visibleLineColumns.tax_rate && <th className="text-right py-2 px-2 min-w-[90px]">Tax %</th>}
+                      <th className="text-right py-2 px-2 min-w-[110px]">Line Total</th>
                       <th className="py-2 px-2 w-32">Actions</th>
                     </tr>
                   </thead>
@@ -1263,7 +1310,7 @@ export const CreateInvoicePage: React.FC = () => {
                       <tr key={index} className="border-b" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
                         {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={12} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
                         <td className="py-2 px-2 text-sm font-medium text-slate-500">{lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}</td>
-                        <td className="py-2 px-2 w-[200px] max-w-[200px] overflow-hidden">
+                        <td className="py-2 px-2 min-w-[200px]">
                           <ProductSearchCombobox
                             value={line.product_id}
                             onValueChange={(productId, product) => {
@@ -1326,8 +1373,16 @@ export const CreateInvoicePage: React.FC = () => {
                             type="number"
                             min="1"
                             value={line.quantity}
-                            onChange={(event) => updateLine(index, 'quantity', parseInt(event.target.value, 10) || 1)}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
+                            onChange={(event) => {
+                              const raw = event.target.value;
+                              if (raw === '') { updateLine(index, 'quantity', ''); return; }
+                              const parsed = parseInt(raw, 10);
+                              if (!isNaN(parsed) && parsed >= 1) updateLine(index, 'quantity', parsed);
+                            }}
+                            onBlur={(event) => {
+                              if (!event.target.value || parseInt(event.target.value, 10) < 1) updateLine(index, 'quantity', 1);
+                            }}
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right text-gray-900 dark:text-gray-100 font-medium"
                           />
                         </td>
                         <td className="py-2 px-2">
@@ -1338,7 +1393,7 @@ export const CreateInvoicePage: React.FC = () => {
                             placeholder="0.00"
                             value={line.unit_price === '' ? '' : line.unit_price}
                             onChange={(event) => updateLine(index, 'unit_price', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
+                            className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right text-gray-900 dark:text-gray-100 font-medium"
                           />
                         </td>
                         {visibleLineColumns.tax_rate && <td className="py-2 px-2">
@@ -1350,7 +1405,7 @@ export const CreateInvoicePage: React.FC = () => {
                           placeholder="0"
                           value={line.tax_rate === '' ? '' : line.tax_rate}
                           onChange={(event) => updateLine(index, 'tax_rate', event.target.value === '' ? '' : parseFloat(event.target.value))}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
+                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right text-gray-900 dark:text-gray-100 font-medium"
                         />
                       </td>}
                         <td className="py-2 px-2 text-right font-medium">
