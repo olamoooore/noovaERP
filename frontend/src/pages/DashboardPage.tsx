@@ -82,6 +82,15 @@ const MODULES: Array<{
     iconBg: 'bg-amber-100 text-amber-700',
   },
   {
+    key: 'template-builder',
+    label: 'Template Builder',
+    description: 'Document & PDF templates',
+    icon: 'solar:document-text-bold-duotone',
+    to: '/sales/settings',
+    accent: 'from-indigo-50 to-white',
+    iconBg: 'bg-indigo-100 text-indigo-700',
+  },
+  {
     key: 'hrm',
     label: 'HRM & Payroll',
     description: 'People & pay runs',
