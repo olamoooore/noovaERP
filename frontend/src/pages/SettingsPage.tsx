@@ -87,17 +87,19 @@ export function SettingsPage() {
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const tenantId = useAuthStore((state) => state.tenantId)
-  const isAcmeTenant = tenantId === '00000000-0000-0000-0000-000000000001'
+  const isAcmeTenant =
+    tenantId === '00000000-0000-0000-0000-000000000001' ||
+    tenantId === '00000000-0000-0000-0000-000000000002'
 
   const availableTabs = new Set([
     'general',
     'tax',
     'mail',
-    'inventory',
     'team',
     'modules',
   ])
   if (!isAcmeTenant) {
+    availableTabs.add('inventory')
     availableTabs.add('payment-gateways')
     availableTabs.add('fulfillment')
     availableTabs.add('whatsapp')
@@ -258,7 +260,7 @@ export function SettingsPage() {
           {!isAcmeTenant && <TabsTrigger value="fulfillment">Fulfillment</TabsTrigger>}
           <TabsTrigger value="mail">Email Configuration</TabsTrigger>
           {!isAcmeTenant && <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>}
-          <TabsTrigger value="inventory">Inventory</TabsTrigger>
+          {!isAcmeTenant && <TabsTrigger value="inventory">Inventory</TabsTrigger>}
           <TabsTrigger value="team">Team</TabsTrigger>
           <TabsTrigger value="modules">Modules</TabsTrigger>
         </TabsList>
