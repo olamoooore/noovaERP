@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exports\ProductsExport;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductAuditLog;
@@ -16,6 +17,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Modules\Inventory\Models\Brand;
 use Modules\Inventory\Services\InventoryService;
+use Maatwebsite\Excel\Facades\Excel;
 
 class ProductController extends Controller
 {
@@ -207,6 +209,31 @@ class ProductController extends Controller
         });
 
         return response()->json($products);
+    }
+
+    public function export(Request $request)
+    {
+        $validated = $request->validate([
+            'columns' => ['required', 'array', 'min:1', 'max:'.count(ProductsExport::COLUMNS)],
+            'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(ProductsExport::COLUMNS))],
+            'document_ids' => ['nullable', 'array'],
+            'document_ids.*' => ['integer', 'distinct', 'exists:products,id'],
+        ]);
+
+        $query = Product::query();
+        if ($request->filled('document_ids')) $query->whereIn('id', $request->input('document_ids'));
+        if ($request->filled('search')) {
+            $search = strtolower((string) $request->search);
+            $query->where(fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])->orWhereRaw('LOWER(sku) LIKE ?', ["%{$search}%"])->orWhereRaw('LOWER(barcode) LIKE ?', ["%{$search}%"]));
+        }
+        if ($request->filled('category_id')) $query->where('category_id', (int) $request->category_id);
+        if ($request->filled('type')) $query->where('type', $request->type);
+        if ($request->filled('is_active')) $query->where('is_active', $request->boolean('is_active'));
+        if ($request->filled('is_new_arrival')) $query->where('is_new_arrival', true);
+        if ($request->filled('is_preorder')) $query->where('is_preorder', true);
+        if ($request->filled('out_of_stock')) $query->where('stock_quantity', '<=', 0);
+
+        return Excel::download(new ProductsExport($query->orderBy('name'), $validated['columns']), 'products_'.now()->format('Y-m-d').'.xlsx');
     }
 
     public function store(Request $request)

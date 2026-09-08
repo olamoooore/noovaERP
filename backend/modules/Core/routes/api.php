@@ -116,6 +116,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
     // Vendor Credit Notes
 
+    Route::get('/products/export', [ProductController::class, 'export']);
     Route::post('/products/import', [ProductController::class, 'import']);
     Route::post('/products/bulk-delete', [ProductController::class, 'bulkDestroy']);
     Route::delete('/products/delete-all', [ProductController::class, 'destroyAll']);
@@ -157,6 +158,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     // Customers - static routes first (before apiResource)
     Route::get('customers/statistics', [CustomerController::class, 'statistics']);
     Route::get('customers/search', [CustomerController::class, 'search']);
+    Route::get('customers/export', [CustomerController::class, 'export']);
     Route::get('customers/{customer}/invoices', [CustomerController::class, 'invoices']);
     Route::post('customers/bulk-delete', [CustomerController::class, 'bulkDestroy']);
 

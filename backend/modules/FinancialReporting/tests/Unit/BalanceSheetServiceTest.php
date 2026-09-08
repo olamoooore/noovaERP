@@ -194,4 +194,33 @@ class BalanceSheetServiceTest extends TenantTestCase
         $this->assertArrayHasKey('total_liabilities', $report->summary);
         $this->assertArrayHasKey('total_equity', $report->summary);
     }
+
+    /** @test */
+    public function it_returns_actual_recoded_equity_accounts_from_the_coa()
+    {
+        $cashAccount = ChartOfAccount::where('code', '1000')->first();
+        $equityAccount = ChartOfAccount::where('code', '3000')->first();
+        $equityAccount->update(['code' => '399900', 'name' => 'Members Contributions']);
+
+        $entry = $this->createJournalEntry(['description' => 'Recoded equity account']);
+        JournalEntryLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $cashAccount->id,
+            'debit' => 12500,
+            'credit' => 0,
+        ]);
+        JournalEntryLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $equityAccount->id,
+            'debit' => 0,
+            'credit' => 12500,
+        ]);
+
+        $report = $this->service->generate(new ReportFilter(asOfDate: Carbon::parse('2024-01-31')));
+
+        $this->assertSame('399900', $report->data['equity']['accounts'][0]['code']);
+        $this->assertSame('Members Contributions', $report->data['equity']['accounts'][0]['name']);
+        $this->assertEquals(12500, $report->data['equity']['accounts'][0]['balance']);
+        $this->assertEquals(12500, $report->data['equity']['total']);
+    }
 }

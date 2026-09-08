@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exports\CustomersExport;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\CustomerCategory;
@@ -11,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Maatwebsite\Excel\Facades\Excel;
 use Modules\Contact\src\Support\ContactTaxonomyRegistry;
 use Modules\Contact\src\Support\LegacyContactTypeMapping;
 
@@ -85,6 +87,28 @@ class CustomerController extends Controller
         });
 
         return response()->json($customers);
+    }
+
+    public function export(Request $request)
+    {
+        $validated = $request->validate([
+            'columns' => ['required', 'array', 'min:1', 'max:'.count(CustomersExport::COLUMNS)],
+            'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(CustomersExport::COLUMNS))],
+            'document_ids' => ['nullable', 'array'],
+            'document_ids.*' => ['integer', 'distinct', 'exists:customers,id'],
+        ]);
+
+        $query = Customer::query();
+        if ($request->filled('document_ids')) $query->whereIn('id', $request->input('document_ids'));
+        if ($request->filled('search')) {
+            $search = (string) $request->search;
+            $query->where(fn ($q) => $q->where('name', 'ilike', "%{$search}%")->orWhere('email', 'ilike', "%{$search}%")->orWhere('phone', 'ilike', "%{$search}%")->orWhere('company', 'ilike', "%{$search}%")->orWhere('code', 'ilike', "%{$search}%"));
+        }
+        if ($request->filled('type')) $query->where('type', $request->type);
+        if ($request->filled('is_active')) $query->where('is_active', $request->boolean('is_active'));
+        if ($request->filled('category_id')) $query->whereHas('categories', fn ($q) => $q->where('customer_categories.id', $request->category_id));
+
+        return Excel::download(new CustomersExport($query->orderBy('name'), $validated['columns']), 'customers_'.now()->format('Y-m-d').'.xlsx');
     }
 
     public function store(Request $request): JsonResponse
