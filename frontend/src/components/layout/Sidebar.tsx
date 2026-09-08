@@ -764,6 +764,11 @@ const baseNavItems: NavItem[] = [
         ],
       },
       {
+        title: 'Template Builder',
+        href: '/template-builder',
+        icon: 'solar:document-text-bold-duotone',
+      },
+      {
         title: 'Settings',
         href: '/settings',
         icon: 'solar:settings-bold-duotone',
