@@ -89,6 +89,7 @@ class AcmeContactAcceptanceTest extends TenantTestCase
                 'total_rows',
                 'counts' => ['valid', 'warning', 'duplicate', 'candidate', 'error'],
                 'code_conflicts',
+                'issues',
                 'status',
             ])
             ->assertJsonPath('total_rows', 2)
@@ -341,6 +342,38 @@ class AcmeContactAcceptanceTest extends TenantTestCase
 
         $codeConflicts = $stageRes->json('code_conflicts');
         $this->assertNotEmpty($codeConflicts);
+    }
+
+    public function test_existing_customer_with_matching_code_and_name_is_updated(): void
+    {
+        Customer::create([
+            'code' => 'VC00263',
+            'name' => 'Acme Corp',
+            'email' => 'old@example.com',
+            'is_active' => true,
+            'total_outstanding' => 0,
+        ]);
+
+        $csv = "name,code,email\nAcme Corp,VC00263,new@example.com";
+        $stage = $this->as($this->admin(), 'post', '/api/v1/accounting/customers/import', [
+            'file' => $this->createCsvFile($csv),
+        ]);
+
+        $stage->assertOk()
+            ->assertJsonPath('counts.error', 0)
+            ->assertJsonPath('counts.duplicate', 1);
+
+        $this->as(
+            $this->admin(),
+            'post',
+            '/api/v1/accounting/customers/import/'.$stage->json('batch_id').'/commit'
+        )->assertOk();
+
+        $this->assertDatabaseHas('customers', [
+            'code' => 'VC00263',
+            'name' => 'Acme Corp',
+            'email' => 'new@example.com',
+        ]);
     }
 
     // ─── VEN-AT-12: Billing party preserved as CRM compat ──────────

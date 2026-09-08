@@ -197,6 +197,7 @@ class CustomersController extends Controller
             'total_rows' => $result['total_rows'],
             'counts' => $result['counts'],
             'code_conflicts' => $result['code_conflicts'],
+            'issues' => $result['issues'],
             'status' => $result['status'],
             'message' => 'Import staged. Call POST /customers/import/{batch_id}/commit to execute.',
         ]);
