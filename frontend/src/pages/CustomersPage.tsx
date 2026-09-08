@@ -16,6 +16,23 @@ import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils'
 import api from '@/lib/api'
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu'
+
+const CUSTOMER_EXPORT_COLUMNS = [
+  { key: 'code', label: 'Customer Code', group: 'Customer', default: true }, { key: 'name', label: 'Customer Name', group: 'Customer', default: true },
+  { key: 'type', label: 'Type', group: 'Customer', default: true }, { key: 'company', label: 'Company', group: 'Customer' },
+  { key: 'email', label: 'Email', group: 'Contact', default: true }, { key: 'phone', label: 'Phone', group: 'Contact', default: true }, { key: 'mobile', label: 'Mobile', group: 'Contact' },
+  { key: 'tax_number', label: 'Tax Number', group: 'Customer' }, { key: 'billing_address', label: 'Billing Address', group: 'Address' }, { key: 'shipping_address', label: 'Shipping Address', group: 'Address' },
+  { key: 'address_type', label: 'Address Type', group: 'Saved Addresses', default: true }, { key: 'address_label', label: 'Address Label', group: 'Saved Addresses', default: true },
+  { key: 'address_street', label: 'Street', group: 'Saved Addresses', default: true }, { key: 'address_street2', label: 'Street 2', group: 'Saved Addresses', default: true },
+  { key: 'address_city', label: 'City', group: 'Saved Addresses', default: true }, { key: 'address_state', label: 'State', group: 'Saved Addresses' },
+  { key: 'address_zip', label: 'ZIP Code', group: 'Saved Addresses', default: true }, { key: 'address_country', label: 'Country', group: 'Saved Addresses', default: true },
+  { key: 'address_is_default', label: 'Default Address', group: 'Saved Addresses' },
+  { key: 'credit_limit', label: 'Credit Limit', group: 'Financial' }, { key: 'payment_terms', label: 'Payment Terms', group: 'Financial' },
+  { key: 'total_outstanding', label: 'Outstanding', group: 'Financial', default: true }, { key: 'total_purchases', label: 'Total Purchases', group: 'Financial' }, { key: 'total_orders', label: 'Total Orders', group: 'Financial' },
+  { key: 'categories', label: 'Categories', group: 'Customer' }, { key: 'salesperson', label: 'Salesperson', group: 'Customer' },
+  { key: 'customer_since', label: 'Customer Since', group: 'Customer' }, { key: 'is_active', label: 'Active', group: 'Customer', default: true }, { key: 'notes', label: 'Notes', group: 'Customer' },
+] as const satisfies readonly SalesExportColumn[]
 
 interface Customer {
   id: number
@@ -38,6 +55,7 @@ interface Customer {
   loyalty_points: number
   is_active: boolean
   customer_since: string
+  created_at?: string
   categories: { id: number; name: string; color: string }[]
   salesperson?: { id: number; name: string }
   invoices_count?: number
@@ -341,6 +359,7 @@ export function CustomersPage() {
           <p className="text-muted-foreground">Manage your customers, contacts and relationships</p>
         </div>
         <div className="flex items-center gap-2">
+          <SalesDocumentExportMenu endpoint="/customers/export" filenamePrefix="customers" columns={CUSTOMER_EXPORT_COLUMNS} filters={{ search: searchTerm || undefined, type: filterType === 'all' ? undefined : filterType }} selectedIds={selectedIds} />
           <Button variant="secondary" asChild>
             <Link to="/customers/import">
               <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />

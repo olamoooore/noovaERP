@@ -42,10 +42,13 @@ class BalanceSheetService extends BaseReportService
         $longTermLiabilities = $this->getLiabilitiesByCategory($filter, 'long_term_liability', $useSummary);
         $totalLiabilities = $currentLiabilities['total'] + $longTermLiabilities['total'];
 
-        // Get equity
-        $equity = $this->getEquity($filter, $useSummary);
-        $retainedEarnings = $this->getRetainedEarnings($filter, $useSummary);
-        $totalEquity = $equity + $retainedEarnings;
+        // Get the actual equity accounts from the tenant COA. Profit/loss is
+        // still calculated because it is not a balance-sheet COA account until
+        // the period-close process posts it to retained earnings.
+        $equityAccounts = $this->getAccountsByType($filter, 'equity', $useSummary);
+        $equityAccountTotal = array_sum(array_column($equityAccounts, 'balance'));
+        $currentYearEarnings = $this->getRetainedEarnings($filter, $useSummary);
+        $totalEquity = $equityAccountTotal + $currentYearEarnings;
 
         // Calculate working capital
         $workingCapital = $currentAssets['total'] - $currentLiabilities['total'];
@@ -64,8 +67,8 @@ class BalanceSheetService extends BaseReportService
                 'total' => $totalLiabilities,
             ],
             'equity' => [
-                'capital' => $equity,
-                'retained_earnings' => $retainedEarnings,
+                'accounts' => $equityAccounts,
+                'current_year_earnings' => $currentYearEarnings,
                 'total' => $totalEquity,
             ],
             'total_liabilities_and_equity' => $totalLiabilities + $totalEquity,
@@ -143,6 +146,75 @@ class BalanceSheetService extends BaseReportService
         }
 
         return $this->getEquityFromJournal($filter);
+    }
+
+    /**
+     * Get posted balances for every account of a COA type without imposing a
+     * legacy code range. This lets renamed and recoded equity accounts retain
+     * their identity in the Balance Sheet.
+     */
+    protected function getAccountsByType(ReportFilter $filter, string $type, bool $useSummary): array
+    {
+        $balanceExpr = in_array($type, ['asset', 'expense'], true)
+            ? ($useSummary ? 'SUM(dls.net_amount)' : 'SUM(jel.debit - jel.credit)')
+            : ($useSummary ? 'SUM(-dls.net_amount)' : 'SUM(jel.credit - jel.debit)');
+
+        if ($useSummary) {
+            $query = DB::table('daily_ledger_summaries as dls')
+                ->join('chart_of_accounts as coa', 'coa.id', '=', 'dls.account_id')
+                ->leftJoin('chart_of_accounts as parent_coa', 'parent_coa.id', '=', 'coa.parent_id')
+                ->leftJoin('chart_of_accounts as group_coa', 'group_coa.code', '=', 'coa.account_group')
+                ->where('coa.type', $type)
+                ->where('dls.summary_date', '<=', $filter->asOfDate)
+                ->select([
+                    'coa.id', 'coa.code', 'coa.name', 'coa.account_group', 'coa.parent_id',
+                    'parent_coa.code as parent_code', 'parent_coa.name as parent_name',
+                    'group_coa.name as group_name', DB::raw($balanceExpr.' as balance'),
+                ])
+                ->groupBy('coa.id', 'coa.code', 'coa.name', 'coa.account_group', 'coa.parent_id', 'parent_coa.code', 'parent_coa.name', 'group_coa.name');
+
+            if ($filter->legalEntityId) {
+                $query->where('dls.legal_entity_id', $filter->legalEntityId);
+            }
+            if ($filter->entityBookId) {
+                $query->where('dls.entity_book_id', $filter->entityBookId);
+            }
+        } else {
+            $query = DB::table('journal_entry_lines as jel')
+                ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
+                ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
+                ->leftJoin('chart_of_accounts as parent_coa', 'parent_coa.id', '=', 'coa.parent_id')
+                ->leftJoin('chart_of_accounts as group_coa', 'group_coa.code', '=', 'coa.account_group')
+                ->where('je.status', 'posted')->where('je.is_active_version', true)
+                ->where('coa.type', $type)
+                ->where('je.entry_date', '<=', $filter->asOfDate)
+                ->select([
+                    'coa.id', 'coa.code', 'coa.name', 'coa.account_group', 'coa.parent_id',
+                    'parent_coa.code as parent_code', 'parent_coa.name as parent_name',
+                    'group_coa.name as group_name', DB::raw($balanceExpr.' as balance'),
+                ])
+                ->groupBy('coa.id', 'coa.code', 'coa.name', 'coa.account_group', 'coa.parent_id', 'parent_coa.code', 'parent_coa.name', 'group_coa.name');
+
+            if ($filter->legalEntityId) {
+                $query->where('je.legal_entity_id', $filter->legalEntityId);
+            }
+            if ($filter->entityBookId) {
+                $query->where('je.entity_book_id', $filter->entityBookId);
+            }
+        }
+
+        return $query->orderBy('coa.code')->get()->map(fn ($row) => [
+            'account_id' => $row->id,
+            'code' => $row->code,
+            'name' => $row->name,
+            'account_group' => $row->account_group,
+            'parent_id' => $row->parent_id,
+            'parent_code' => $row->parent_code,
+            'parent_name' => $row->parent_name,
+            'group_name' => $row->group_name,
+            'currency_code' => null,
+            'balance' => (float) $row->balance,
+        ])->toArray();
     }
 
     /**

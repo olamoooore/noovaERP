@@ -148,9 +148,23 @@ class FinancialReportController extends Controller
             $totalLiabilities = $reportData->summary['total_liabilities'] ?? 0;
             $totalEquity = $reportData->summary['total_equity'] ?? 0;
 
-            $capital = (float) ($reportData->data['equity']['capital'] ?? 0);
-            $retainedEarnings = (float) ($reportData->data['equity']['retained_earnings'] ?? 0);
-            $currentYearEarnings = round((float) ($totalAssets - $totalLiabilities - $capital - $retainedEarnings), 2);
+            $equityAccounts = $reportData->data['equity']['accounts'] ?? [];
+            $currentYearEarnings = (float) ($reportData->data['equity']['current_year_earnings'] ?? 0);
+            $equityGroups = $this->groupBalanceSheetAccounts($equityAccounts);
+
+            if (abs($currentYearEarnings) >= 0.005) {
+                $equityGroups[] = [
+                    'code' => '',
+                    'name' => 'Calculated earnings',
+                    'accounts' => [[
+                        'account_id' => 0,
+                        'code' => '',
+                        'name' => 'Current Year Earnings (Net Profit/Loss)',
+                        'balance' => $currentYearEarnings,
+                    ]],
+                    'total' => $currentYearEarnings,
+                ];
+            }
 
             $response = [
                 'assets' => [
@@ -164,33 +178,7 @@ class FinancialReportController extends Controller
                     'total' => $totalLiabilities,
                 ],
                 'equity' => [
-                    'groups' => [
-                        [
-                            'code' => '3000',
-                            'name' => 'Equity',
-                            'accounts' => [
-                                [
-                                    'account_id' => 0,
-                                    'code' => '3000',
-                                    'name' => 'Capital',
-                                    'balance' => $capital,
-                                ],
-                                [
-                                    'account_id' => 0,
-                                    'code' => '3100',
-                                    'name' => 'Retained Earnings',
-                                    'balance' => $retainedEarnings,
-                                ],
-                                [
-                                    'account_id' => 0,
-                                    'code' => '3200',
-                                    'name' => 'Current Year Earnings',
-                                    'balance' => $currentYearEarnings,
-                                ],
-                            ],
-                            'total' => $totalEquity,
-                        ],
-                    ],
+                    'groups' => $equityGroups,
                     'total' => $totalEquity,
                 ],
                 'total_assets' => $totalAssets,

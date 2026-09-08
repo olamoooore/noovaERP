@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,27 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu'
+
+const PRODUCT_EXPORT_COLUMNS = [
+  { key: 'sku', label: 'SKU', group: 'Product', default: true }, { key: 'name', label: 'Product Name', group: 'Product', default: true },
+  { key: 'secondary_name', label: 'Secondary Name', group: 'Product' }, { key: 'short_description', label: 'Short Description', group: 'Product', default: true },
+  { key: 'description', label: 'Full Description', group: 'Product', default: true }, { key: 'type', label: 'Type', group: 'Product', default: true },
+  { key: 'category_name', label: 'Category', group: 'Classification', default: true }, { key: 'brand_name', label: 'Brand', group: 'Classification' },
+  { key: 'barcode', label: 'Barcode', group: 'Product' }, { key: 'manufacturer', label: 'Manufacturer', group: 'Product', default: true }, { key: 'manufacturer_part_number', label: 'Manufacturer Part No', group: 'Product' },
+  { key: 'cost', label: 'Cost', group: 'Pricing', default: true }, { key: 'vendor_price', label: 'Vendor Price', group: 'Pricing' }, { key: 'price', label: 'Price', group: 'Pricing', default: true },
+  { key: 'wholesale_price', label: 'Wholesale Price', group: 'Pricing' }, { key: 'msrp', label: 'MSRP', group: 'Pricing' }, { key: 'min_price', label: 'Minimum Price', group: 'Pricing' }, { key: 'max_price', label: 'Maximum Price', group: 'Pricing' },
+  { key: 'tax_rate', label: 'Tax Rate', group: 'Pricing' }, { key: 'tax_mode', label: 'Tax Mode', group: 'Pricing' }, { key: 'tax_included', label: 'Tax Included', group: 'Pricing' },
+  { key: 'stock_quantity', label: 'Stock Quantity', group: 'Inventory', default: true }, { key: 'unit', label: 'Unit', group: 'Inventory' },
+  { key: 'track_inventory', label: 'Track Inventory', group: 'Inventory' }, { key: 'tracking_method', label: 'Tracking Method', group: 'Inventory' }, { key: 'reorder_level', label: 'Reorder Level', group: 'Inventory' },
+  { key: 'safety_stock', label: 'Safety Stock', group: 'Inventory' }, { key: 'max_stock', label: 'Maximum Stock', group: 'Inventory' }, { key: 'reorder_quantity', label: 'Reorder Quantity', group: 'Inventory' },
+  { key: 'weight', label: 'Weight', group: 'Physical' }, { key: 'length', label: 'Length', group: 'Physical' }, { key: 'width', label: 'Width', group: 'Physical' }, { key: 'height', label: 'Height', group: 'Physical' },
+  { key: 'is_hazmat', label: 'Hazardous Material', group: 'Handling' }, { key: 'hazmat_class', label: 'Hazmat Class', group: 'Handling' }, { key: 'storage_conditions', label: 'Storage Conditions', group: 'Handling' }, { key: 'is_fragile', label: 'Fragile', group: 'Handling' },
+  { key: 'shelf_life_days', label: 'Shelf Life', group: 'Handling' }, { key: 'lot_number', label: 'Lot Number', group: 'Handling' }, { key: 'expiry_date', label: 'Expiry Date', group: 'Handling' },
+  { key: 'hs_code', label: 'HS Code', group: 'Compliance' }, { key: 'country_of_origin', label: 'Country of Origin', group: 'Compliance' }, { key: 'warranty_months', label: 'Warranty Months', group: 'Compliance' }, { key: 'warranty_type', label: 'Warranty Type', group: 'Compliance' },
+  { key: 'income_account_code', label: 'Income Account', group: 'Accounting' }, { key: 'expense_account_code', label: 'Expense Account', group: 'Accounting' },
+  { key: 'status', label: 'Status', group: 'Product', default: true }, { key: 'is_active', label: 'Active', group: 'Product' }, { key: 'is_new_arrival', label: 'New Arrival', group: 'Product' }, { key: 'is_preorder', label: 'Preorder', group: 'Product' }, { key: 'show_on_website', label: 'Show on Website', group: 'Product' },
+] as const satisfies readonly SalesExportColumn[]
 
 interface Category {
   id: number
@@ -38,6 +59,7 @@ function resolveImageUrl(path: string | null | undefined): string {
 }
 
 export function ProductsPage() {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [search, setSearch] = useState('')
@@ -179,6 +201,7 @@ export function ProductsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Products</h1>
         <div className="flex items-center gap-2">
+          <SalesDocumentExportMenu endpoint="/products/export" filenamePrefix="products" columns={PRODUCT_EXPORT_COLUMNS} filters={{ search: search.trim() || undefined, type: type === 'all' ? undefined : type, category_id: categoryId === 'all' ? undefined : Number(categoryId), is_active: status === 'active' ? 1 : status === 'inactive' ? 0 : undefined, is_new_arrival: status === 'new_arrival' ? 1 : undefined, is_preorder: status === 'preorder' ? 1 : undefined, out_of_stock: status === 'out_of_stock' ? 1 : undefined }} selectedIds={Array.from(selectedIds)} />
           <Button variant="secondary" asChild>
             <Link to="/products/import">
               <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
@@ -376,8 +399,8 @@ export function ProductsPage() {
               </TableHeader>
               <TableBody>
                 {products?.map((product: any) => (
-                  <TableRow key={product.id} className={selectedIds.has(product.id) ? 'bg-muted/50' : ''}>
-                    <TableCell>
+                  <TableRow key={product.id} className={`cursor-pointer ${selectedIds.has(product.id) ? 'bg-muted/50' : ''}`} onClick={() => navigate(`/products/${product.id}`)}>
+                    <TableCell onClick={(event) => event.stopPropagation()}>
                       <Checkbox
                         checked={selectedIds.has(product.id)}
                         onCheckedChange={() => toggleSelect(product.id)}
@@ -444,7 +467,7 @@ export function ProductsPage() {
                         {product.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
                       <div className="inline-flex items-center gap-1">
                         <Button asChild variant="ghost" size="icon" title="Edit">
                           <Link to={`/products/${product.id}/edit`}>
@@ -485,8 +508,8 @@ export function ProductsPage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {products?.map((product: any) => (
-                <Card key={product.id} className={`overflow-hidden relative group ${selectedIds.has(product.id) ? 'ring-2 ring-primary' : ''}`}>
-                  <div className="absolute top-2 left-2 z-10">
+                <Card key={product.id} onClick={() => navigate(`/products/${product.id}`)} className={`cursor-pointer overflow-hidden relative group ${selectedIds.has(product.id) ? 'ring-2 ring-primary' : ''}`}>
+                  <div className="absolute top-2 left-2 z-10" onClick={(event) => event.stopPropagation()}>
                     <Checkbox
                       checked={selectedIds.has(product.id)}
                       onCheckedChange={() => toggleSelect(product.id)}
@@ -524,7 +547,7 @@ export function ProductsPage() {
                       )}
                     </div>
 
-                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(event) => event.stopPropagation()}>
                       <Button asChild variant="secondary" size="icon" title="Edit" className="h-8 w-8 shadow-sm">
                         <Link to={`/products/${product.id}/edit`}>
                           <Icon icon="solar:pen-bold" className="h-4 w-4" />
