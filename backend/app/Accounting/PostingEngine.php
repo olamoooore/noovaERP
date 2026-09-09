@@ -960,13 +960,22 @@ class PostingEngine implements PostingEngineInterface
         return match ($documentType) {
             'invoice', 'sales_invoice', 'credit_note' => 'accounting.write',
             'bill', 'purchase_invoice', 'debit_note' => 'accounting.write',
-            'payment', 'bill_payment' => 'accounting.write',
+            'payment', 'bill_payment', 'payment_refund' => 'accounting.write',
             'journal_entry' => 'accounting.write',
             'adjustment' => 'accounting.write',
             'reversal' => 'accounting.reverse',
-            // POS, bank reconciliation, asset, and other module-specific types
-            // are expected to provide required_permission in metadata or skip
-            // the permission gate via module-level RBAC instead.
+            // Vendor document variants (module postings that create AP GL lines).
+            'vendor_credit_note', 'vendor_debit_note' => 'accounting.write',
+            // Accountant-owned ledger operations.
+            'opening_balance', 'period_close', 'bank_adjustment',
+            'fx_revaluation', 'intercompany', 'asset_disposal', 'payroll_run' => 'accounting.write',
+            // Retail / ecommerce sales posting — coarse module permission held
+            // by the actors who create these documents (module-level RBAC aligned).
+            'pos_order', 'pos_refund_payment' => 'pos.create',
+            'web_order' => 'sales.write',
+            // Genuinely unknown document types resolve to null; the
+            // PermissionGate treats a null required_permission on a material
+            // posting action as a fail-closed ERROR (#37 AC4).
             default => null,
         };
     }
