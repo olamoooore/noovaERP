@@ -314,6 +314,11 @@ class OpeningBalanceService
                     'source_hash' => $batch->source_hash,
                     'mapping_version' => $batch->mapping_version,
                     'mapping_hash' => $batch->mapping_hash,
+                    // HR69-01: Opening Balance period admission is mandatory —
+                    // bind the actual fiscal period so PeriodOpenGate fails
+                    // closed if it is missing/closed, never NOT_APPLICABLE.
+                    'period_id' => $batch->fiscal_period_id,
+                    'period_required' => true,
                 ],
             ));
 

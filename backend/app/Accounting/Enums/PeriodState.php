@@ -66,14 +66,19 @@ enum PeriodState: string
     /**
      * Factory: map the DB string ('open', 'closed', 'locked') to the
      * canonical enum case. Handles case-insensitive DB values.
+     *
+     * HR69-02: an unknown or unrecognised status must NOT become
+     * posting-eligible. Only an explicit 'open' maps to OPEN; everything
+     * else (including unknown strings, empty/null) maps to CLOSED — the
+     * most conservative posting-blocked state — so the gate fails closed.
      */
-    public static function fromDbStatus(string $status): self
+    public static function fromDbStatus(?string $status): self
     {
-        return match (strtolower($status)) {
+        return match (strtolower((string) $status)) {
             'open' => self::OPEN,
             'closed' => self::CLOSED,
             'locked' => self::LOCKED,
-            default => self::OPEN, // fail-closed: unknown status treated as not-open
+            default => self::CLOSED, // fail-closed: unknown/missing → not posting-eligible
         };
     }
 }

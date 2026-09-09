@@ -177,6 +177,11 @@ class PostingEngine implements PostingEngineInterface
                     'credit' => $l->credit,
                 ], $request->lines),
                 'tax_determination_result' => $request->taxDeterminationResult ?? ($request->metadata['tax_determination_result'] ?? null),
+                // HR69-01: thread period admission context so PeriodOpenGate
+                // can bind the mandatory posting period (Opening Balance, etc.)
+                // rather than resolving to NOT_APPLICABLE on a missing period.
+                'period_id' => $request->metadata['period_id'] ?? ($request->metadata['fiscal_period_id'] ?? null),
+                'period_required' => $request->metadata['period_required'] ?? false,
             ],
             requireSnapshot: true,
         );

@@ -40,6 +40,18 @@ class PeriodOpenGate implements AuthorityGate
         $periodId = $context['period_id'] ?? null;
 
         if (! $periodId) {
+            // HR69-01: for actions where a period is MANDATORY (Opening
+            // Balance admission, and any caller that flags period_required),
+            // a missing period must fail CLOSED — never NOT_APPLICABLE.
+            if ($this->periodIsMandatory($context)) {
+                return GateEvaluationResult::block(
+                    $this->gateCode(),
+                    $this->gateOwner(),
+                    'PERIOD_MISSING_MANDATORY',
+                );
+            }
+
+            // Non-period-sensitive actions legitimately have no period to bind.
             return GateEvaluationResult::notApplicable($this->gateCode(), $this->gateOwner());
         }
 
@@ -49,12 +61,34 @@ class PeriodOpenGate implements AuthorityGate
             return GateEvaluationResult::block($this->gateCode(), $this->gateOwner(), 'PERIOD_NOT_FOUND');
         }
 
-        $state = PeriodState::fromDbStatus($period->status ?? 'open');
+        // HR69-04: null/empty persisted status is mapped by fromDbStatus to a
+        // fail-closed (CLOSED) state, never OPEN.
+        $state = PeriodState::fromDbStatus($period->status);
 
         if (! $state->allowsPosting()) {
             return GateEvaluationResult::block($this->gateCode(), $this->gateOwner(), 'PERIOD_CLOSED');
         }
 
         return GateEvaluationResult::pass($this->gateCode(), $this->gateOwner(), $this->gateVersion());
+    }
+
+    /**
+     * HR69-01: an action requires a bound posting period when the caller
+     * explicitly flags it (period_required) or it is a period-mandatory
+     * capability/document type. Opening Balance admission (ACC-001) is
+     * period-mandatory per ACC-DEC-060 Track A.
+     */
+    private function periodIsMandatory(array $context): bool
+    {
+        if (($context['period_required'] ?? false) === true) {
+            return true;
+        }
+
+        $mandatoryCapabilities = ['ACC-001']; // Opening Balance
+        if (in_array($context['source_capability'] ?? null, $mandatoryCapabilities, true)) {
+            return true;
+        }
+
+        return false;
     }
 }
