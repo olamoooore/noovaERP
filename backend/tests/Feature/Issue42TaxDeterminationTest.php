@@ -27,6 +27,13 @@ class Issue42TaxDeterminationTest extends TenantTestCase
 
         $this->tenantUuid = Str::uuid()->toString();
         $this->bindTenantContext($this->tenantUuid);
+
+        // Seed permissions required for posting (accounting.write gate).
+        // Note: This intentionally uses the minimal seeder so the test isn't
+        // affected by future additions to RolePermissionSeeder.
+        \Spatie\Permission\Models\Permission::firstOrCreate(
+            ['name' => 'accounting.write', 'guard_name' => 'web']
+        );
     }
 
     private function createAccount(string $code, string $type): ChartOfAccount
@@ -44,6 +51,9 @@ class Issue42TaxDeterminationTest extends TenantTestCase
     {
         $debit = $this->createAccount('TX-D-'.uniqid(), 'asset');
         $credit = $this->createAccount('TX-C-'.uniqid(), 'liability');
+
+        $user = User::factory()->create();
+        $user->givePermissionTo('accounting.write');
 
         return new PostingRequest(
             documentType: 'invoice',
@@ -68,7 +78,7 @@ class Issue42TaxDeterminationTest extends TenantTestCase
                     taxId: 1,
                 ),
             ],
-            userId: User::factory()->create()->id,
+            userId: $user->id,
             taxDeterminationResult: $taxDeterminationResult,
         );
     }
