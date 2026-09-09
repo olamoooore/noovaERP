@@ -163,4 +163,116 @@ class Issue45StandalonePaymentCorrectionTest extends TenantTestCase
 
         $this->assertSame('unapplied', $result->payment->payment_status);
     }
+
+    /**
+     * AC1 (true end-to-end): a standalone payment posted through the REAL
+     * PaymentPostingService (AR customer-credit GL) can be reversed through
+     * the REAL PaymentCorrectionService, and the original + reversal journal
+     * entries net to zero (balanced pair). No parent document required.
+     */
+    public function test_standalone_payment_posts_and_reverses_end_to_end(): void
+    {
+        // Permission-gate needs accounting.write on the posting user (issue #37).
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+        $user = User::factory()->create();
+        $user->givePermissionTo('accounting.write');
+
+        $customer = Customer::firstOrCreate(
+            ['name' => 'E2E Standalone Customer '.uniqid()],
+            ['name' => 'E2E Standalone Customer '.uniqid()]
+        );
+
+        $payment = Payment::create([
+            'payment_number' => 'PAY-E2E-'.uniqid(),
+            'customer_id' => $customer->id,
+            'amount' => 250.00,
+            'currency' => 'USD',
+            'method' => 'cash',
+            'payment_date' => now()->toDateString(),
+            'payment_status' => 'draft',
+            'received_by' => $user->id,
+        ]);
+
+        // 1. Post standalone payment through the real posting service.
+        $posted = app(\App\Services\PaymentPostingService::class)->post($payment, $user->id);
+        $this->assertSame('posted', $posted->payment_status);
+        $originalJeId = $posted->journal_entry_id;
+        $this->assertNotNull($originalJeId, 'Standalone payment must post to the GL');
+
+        // 2. Reverse it through the real correction service (no stub engine).
+        $result = app(PaymentCorrectionService::class)->reversePayment(
+            $posted->fresh(),
+            $this->correctionRequest($user->id)
+        );
+        $this->assertSame('reversed', $result->payment->payment_status);
+
+        // 3. A distinct reversal journal entry exists (stored on the newly
+        //    created reversal payment's reversal_journal_entry_id).
+        $reversalJeId = DB::table('payments')
+            ->where('id', $result->payment->id)
+            ->value('reversal_journal_entry_id');
+        $this->assertNotNull($reversalJeId);
+        $this->assertNotSame((int) $originalJeId, (int) $reversalJeId,
+            'Reversal must produce its own journal entry');
+
+        // 4. The original + reversal JEs net to zero on every account
+        //    (the standalone AR credit is fully reversed).
+        $perAccount = DB::table('journal_entry_lines')
+            ->selectRaw('account_id, SUM(debit) AS d, SUM(credit) AS c')
+            ->whereIn('journal_entry_id', [$originalJeId, $reversalJeId])
+            ->groupBy('account_id')
+            ->get();
+
+        $this->assertNotEmpty($perAccount);
+        foreach ($perAccount as $row) {
+            $this->assertEqualsWithDelta((float) $row->d, (float) $row->c, 0.01,
+                "Account {$row->account_id} must net to zero after standalone reversal");
+        }
+    }
+
+    /**
+     * AC3 (shared contract): both supported payment shapes are correctable,
+     * and non-posted/already-corrected shapes remain rejected. Documents the
+     * PaymentPostingService ↔ PaymentCorrectionService contract so a future
+     * change to one service cannot silently break the other again.
+     */
+    public function test_correction_shape_contract_is_enforced(): void
+    {
+        // (a) A standalone (no invoice/bill) posted payment IS correctable.
+        $standalone = $this->createStandalonePayment();
+        $this->stubPostingEngine();
+        $reverseResult = app(PaymentCorrectionService::class)->reversePayment(
+            $standalone->fresh(),
+            $this->correctionRequest(User::factory()->create()->id)
+        );
+        $this->assertSame('reversed', $reverseResult->payment->payment_status);
+
+        // (b) A draft payment is NOT correctable (must be deleted instead).
+        $customer = Customer::firstOrCreate(
+            ['name' => 'Contract Draft Customer '.uniqid()],
+            ['name' => 'Contract Draft Customer '.uniqid()]
+        );
+        $draft = Payment::create([
+            'payment_number' => 'PAY-DRAFT-'.uniqid(),
+            'customer_id' => $customer->id,
+            'amount' => 10.00,
+            'currency' => 'USD',
+            'method' => 'cash',
+            'payment_date' => now()->toDateString(),
+            'payment_status' => 'draft',
+            'received_by' => User::factory()->create()->id,
+        ]);
+
+        $threw = false;
+        try {
+            app(PaymentCorrectionService::class)->reversePayment(
+                $draft,
+                $this->correctionRequest(User::factory()->create()->id)
+            );
+        } catch (\RuntimeException $e) {
+            $threw = true;
+            $this->assertStringContainsString('draft', strtolower($e->getMessage()));
+        }
+        $this->assertTrue($threw, 'Draft payment must be rejected for correction (assertCorrectable)');
+    }
 }

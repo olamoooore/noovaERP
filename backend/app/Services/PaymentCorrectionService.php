@@ -10,6 +10,24 @@ use App\Models\Payment;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * PaymentCorrectionService — canonical reverse/refund/unapply path (ACC-005A/005B).
+ *
+ * Shared correction contract with PaymentPostingService (issue #45):
+ *   A payment is correctable iff it has been posted (has a journal_entry_id) and
+ *   is not already corrected (assertCorrectable). Two payment shapes are supported:
+ *     1. invoice- or bill-linked  → correction also drives the parent document's
+ *        subledger (apply*Reversal / apply*Refund) and records a refund/correction
+ *        link via DocumentVersionLinkService.
+ *     2. standalone (no invoice/bill) → PaymentPostingService posts these as an
+ *        AR customer credit; correction reverses that GL and updates the payment,
+ *        but SKIPS subledger application and the refund link (there is no parent
+ *        document). It must NOT be rejected — see the conditional guards below.
+ *
+ * This mirrors PaymentPostingService's own contract (see that class docblock). If
+ * either service changes which shapes it supports, update BOTH the other service
+ * and Issue45StandalonePaymentCorrectionTest + PaymentCorrectionWorkflowTest.
+ */
 class PaymentCorrectionService
 {
     public function __construct(
