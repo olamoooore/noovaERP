@@ -38,8 +38,12 @@ use Tests\TenantTestCase;
  * meaning a DEFERRED constraint trigger (which fires at real COMMIT) would
  * never actually fire during the test, silently hiding the exact behavior
  * this test exists to observe. Real commits happen here, matching
- * production request behavior. All test data is cleaned up manually in
- * tearDown() via TRUNCATE.
+ * production request behavior. Test data is cleaned up in tearDown() via
+ * SCOPED deletes (this test's own journal entries by created_by, its created
+ * accounts, and its central user rows) — deliberately NOT via an unscoped
+ * TRUNCATE, which would destroy the migrated baseline chart_of_accounts /
+ * fall through to the shared public.user_company_access and poison other
+ * in-process tests (issue #53).
  */
 class PartialReversePostingEngineBypassRuntimeTest extends TenantTestCase
 {
@@ -74,15 +78,61 @@ class PartialReversePostingEngineBypassRuntimeTest extends TenantTestCase
         $this->bindTenantContext($this->tenantUuid);
 
         $this->user = User::factory()->create();
+
+        // Issue #37 made the PermissionGate fail-closed on a missing
+        // required_permission for material actions. This test posts via the
+        // canonical engine, so the actor must carry the accounting permissions
+        // the posting requests declare.
+        foreach (['accounting.write', 'accounting.reverse'] as $perm) {
+            \Spatie\Permission\Models\Permission::firstOrCreate(['name' => $perm, 'guard_name' => 'web']);
+        }
+        $this->user->givePermissionTo(['accounting.write', 'accounting.reverse']);
     }
 
     protected function tearDown(): void
     {
-        // Since beginDatabaseTransaction() is a no-op, nothing rolls back.
-        // Manually clean up everything this test wrote so state doesn't
-        // leak into other test classes that run in the same process.
+        // beginDatabaseTransaction() is a no-op, so nothing rolls back. We must
+        // clean up manually — but ONLY the tenant-scoped accounting tables this
+        // test wrote. Issue #53: an unscoped `TRUNCATE ... users,
+        // user_company_access CASCADE` is catastrophic in a shared test process,
+        // because user_company_access has no tenant-schema copy — under an active
+        // tenant search_path it falls through to the single shared
+        // public.user_company_access (read by TenantRoleService for every tenant),
+        // so truncating it wipes every other in-process test's role/permission
+        // lookups. Clean central rows SCOPED to this test's own user instead.
         try {
-            DB::statement('TRUNCATE TABLE posting_audit_logs, journal_entry_links, journal_entry_lines, journal_entries, chart_of_accounts, users, user_company_access RESTART IDENTITY CASCADE');
+            $userId = $this->user->id;
+
+            // Delete ONLY the rows this test committed, scoped by the acting
+            // user's journal entries + the accounts it created. We must NOT
+            // TRUNCATE shared tables (issue #53): a TRUNCATE of chart_of_accounts
+            // destroys the migrated baseline COA rows every later test's
+            // AccountMappingService.seedDefaults guard (`count() > 0`) depends on,
+            // and a TRUNCATE of user_company_access falls through the tenant
+            // search_path to the single shared public table used by ALL tenants.
+            $entryIds = DB::table('journal_entries')
+                ->where('created_by', $userId)
+                ->pluck('id')
+                ->all();
+
+            if (! empty($entryIds)) {
+                DB::table('journal_entry_lines')->whereIn('journal_entry_id', $entryIds)->delete();
+                DB::table('posting_audit_logs')->whereIn('journal_entry_id', $entryIds)->delete();
+                DB::table('journal_entry_links')->whereIn('journal_entry_id', $entryIds)->delete();
+                DB::table('journal_entry_links')->whereIn('original_journal_entry_id', $entryIds)->delete();
+                DB::table('journal_entry_links')->whereIn('reversal_journal_entry_id', $entryIds)->delete();
+                DB::table('journal_entries')->whereIn('id', $entryIds)->delete();
+            }
+
+            if (! empty($this->createdAccountIds)) {
+                DB::table('account_mappings')->whereIn('account_id', $this->createdAccountIds)->delete();
+                DB::table('chart_of_accounts')->whereIn('id', $this->createdAccountIds)->delete();
+            }
+
+            DB::table('public.user_company_access')->where('user_id', $userId)->delete();
+            DB::table('model_has_permissions')->where('model_id', $userId)->delete();
+            DB::table('model_has_roles')->where('model_id', $userId)->delete();
+            DB::table('public.users')->where('id', $userId)->delete();
         } catch (\Throwable $e) {
             // best-effort cleanup
         }
@@ -90,15 +140,21 @@ class PartialReversePostingEngineBypassRuntimeTest extends TenantTestCase
         parent::tearDown();
     }
 
+    /** @var int[] chart_of_accounts ids created by this test, for scoped cleanup */
+    private array $createdAccountIds = [];
+
     private function createAccount(string $code, string $type): ChartOfAccount
     {
-        return ChartOfAccount::create([
+        $account = ChartOfAccount::create([
             'code' => $code,
             'name' => "Test {$code}",
             'type' => $type,
             'account_type' => $type,
             'is_active' => true,
         ]);
+        $this->createdAccountIds[] = $account->id;
+
+        return $account;
     }
 
     /**
@@ -126,6 +182,7 @@ class PartialReversePostingEngineBypassRuntimeTest extends TenantTestCase
                 new PostingRequestLine(accountMappingKey: 'cash', accountId: $cash->id, debit: 0, credit: 200.00),
             ],
             userId: $this->user->id,
+            requiredPermission: 'accounting.write',
         );
 
         $result = $engine->post($request);
