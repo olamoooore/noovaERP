@@ -92,6 +92,11 @@ return new class extends Migration
             ['settlements', 'reversal_reason', 'varchar(500) NULL'],
         ];
 
+        // Use double-quoted schema identifier because tenant schema names
+        // contain hyphens (UUID format). Quote via concatenation with proper
+        // escape to avoid SQL injection.
+        $quoted = '"' . str_replace('"', '""', $schema) . '"';
+
         foreach ($columns as [$table, $column, $type]) {
             if (! $this->tableExistsInSchema($schema, $table)) {
                 continue;
@@ -103,7 +108,7 @@ return new class extends Migration
                 [$schema, $table, $column]
             );
             if (! $exists) {
-                DB::statement("ALTER TABLE {$schema}.{$table} ADD COLUMN {$column} {$type}");
+                DB::statement("ALTER TABLE {$quoted}.{$table} ADD COLUMN {$column} {$type}");
             }
         }
     }
@@ -121,7 +126,11 @@ return new class extends Migration
             [$schema]
         );
         if (! $idxExists) {
-            DB::statement("CREATE INDEX allocations_reversal_of_allocation_id_idx ON {$schema}.allocations (reversal_of_allocation_id)");
+            // CREATE INDEX syntax: CREATE INDEX index_name ON schema.table (col)
+            // The index name itself must NOT be schema-qualified (PG syntax).
+            // Schema-qualify only the table reference (quoted because of hyphens).
+            $quoted = '"' . str_replace('"', '""', $schema) . '"';
+            DB::statement("CREATE INDEX allocations_reversal_of_allocation_id_idx ON {$quoted}.allocations (reversal_of_allocation_id)");
         }
     }
 
@@ -139,16 +148,20 @@ return new class extends Migration
             [$schema]
         );
         if (! $fkExists) {
+            // Quote schema identifier (hyphens in UUID require quoting).
+            $quoted = '"' . str_replace('"', '""', $schema) . '"';
             DB::statement(
-                "ALTER TABLE {$schema}.allocations
+                "ALTER TABLE {$quoted}.allocations
                  ADD CONSTRAINT allocations_reversal_of_allocation_id_foreign
-                 FOREIGN KEY (reversal_of_allocation_id) REFERENCES {$schema}.allocations(id) ON DELETE SET NULL"
+                 FOREIGN KEY (reversal_of_allocation_id) REFERENCES {$quoted}.allocations(id) ON DELETE SET NULL"
             );
         }
     }
 
     private function dropColumnsFromSchema(string $schema): void
     {
+        $quoted = '"' . str_replace('"', '""', $schema) . '"';
+
         foreach ([
             ['allocations', 'allocations_reversal_of_allocation_id_foreign', 'allocations_reversal_of_allocation_id_idx',
                 ['reversal_reason', 'reversal_of_allocation_id', 'reversed_at']],
@@ -158,13 +171,13 @@ return new class extends Migration
                 continue;
             }
             if ($fk) {
-                DB::statement("ALTER TABLE {$schema}.{$table} DROP CONSTRAINT IF EXISTS {$fk}");
+                DB::statement("ALTER TABLE {$quoted}.{$table} DROP CONSTRAINT IF EXISTS {$fk}");
             }
             if ($idx) {
-                DB::statement("DROP INDEX IF EXISTS {$schema}.{$idx}");
+                DB::statement("DROP INDEX IF EXISTS {$quoted}.{$idx}");
             }
             foreach ($cols as $col) {
-                DB::statement("ALTER TABLE {$schema}.{$table} DROP COLUMN IF EXISTS {$col}");
+                DB::statement("ALTER TABLE {$quoted}.{$table} DROP COLUMN IF EXISTS {$col}");
             }
         }
     }
