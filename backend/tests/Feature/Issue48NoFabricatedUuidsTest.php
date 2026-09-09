@@ -66,4 +66,138 @@ class Issue48NoFabricatedUuidsTest extends TenantTestCase
             $result->blockingReason?->value
         );
     }
+
+    /**
+     * AC1 (real record, not just uuid math): a posting-evaluation performed by
+     * a real numeric actor persists a snapshot whose actor_id is the STABLE
+     * uuid5 of that real ID — re-running with the same actor yields the SAME
+     * value (proving it is derived from the real identity, not a random UUID),
+     * and it round-trips back to the numeric actor.
+     */
+    public function test_real_snapshot_actor_id_is_deterministic_and_traces_to_real_actor(): void
+    {
+        $evaluator = app(\App\Accounting\Services\ActionEligibilityEvaluator::class);
+        $numericActorId = 777;
+
+        $make = function () use ($evaluator, $numericActorId) {
+            return $evaluator->evaluate(
+                action: 'POST_JOURNAL',
+                recordType: 'JournalEntry',
+                recordId: 'trace-' . uniqid(),
+                context: [
+                    'tenant_id' => $this->tenantUuid,
+                    'entity_id' => null,
+                    'actor_id' => (string) $numericActorId,
+                    'document_type' => 'invoice',
+                    'posting_date' => now()->toDateString(),
+                    'total_amount' => '100.00',
+                    'correlation_id' => 'corr-' . uniqid(),
+                    'required_permission' => null, // not material to identity assertion
+                ],
+                requireSnapshot: true,
+            );
+        };
+
+        $first = $make();
+        $second = $make();
+
+        $snap1 = AuthorityEvaluationSnapshot::where('action_eligibility_evaluation_id', $first->snapshotId)->first();
+        $snap2 = AuthorityEvaluationSnapshot::where('action_eligibility_evaluation_id', $second->snapshotId)->first();
+
+        $this->assertNotNull($snap1, 'Snapshot must persist on requireSnapshot:true');
+        $this->assertSame(
+            $snap1->actor_id,
+            $snap2->actor_id,
+            'Same numeric actor must map to the SAME actor_id across calls (not random).'
+        );
+        $this->assertSame(
+            Uuid::uuid5(Uuid::NAMESPACE_URL, 'actor:' . $numericActorId)->toString(),
+            $snap1->actor_id,
+            'Snapshot actor_id must be the deterministic uuid5 of the real numeric actor.'
+        );
+        $this->assertSame($this->tenantUuid, $snap1->tenant_id, 'Tenant id must be recorded verbatim.');
+    }
+
+    /**
+     * AC3: a successful posting writes an outbox event whose tenant_id is the
+     * REAL bound tenant (never a randomly fabricated UUID).
+     */
+    public function test_outbox_event_tenant_id_is_real_on_successful_posting(): void
+    {
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+        $user = User::factory()->create();
+        $user->givePermissionTo('accounting.write');
+
+        $debit = \App\Models\ChartOfAccount::create(['code' => '48-D-'.uniqid(), 'name' => 'Debit', 'type' => 'asset', 'account_type' => 'asset', 'is_active' => true]);
+        $credit = \App\Models\ChartOfAccount::create(['code' => '48-C-'.uniqid(), 'name' => 'Credit', 'type' => 'liability', 'account_type' => 'liability', 'is_active' => true]);
+
+        $request = new \App\Accounting\DTOs\PostingRequest(
+            documentType: 'invoice',
+            documentId: 480001,
+            description: 'Outbox identity test',
+            postingDate: now()->toDateString(),
+            lines: [
+                new \App\Accounting\DTOs\PostingRequestLine('cash', $debit->id, 100.0, 0),
+                new \App\Accounting\DTOs\PostingRequestLine('accounts_receivable', $credit->id, 0, 100.0),
+            ],
+            userId: $user->id,
+        );
+
+        $result = app(\App\Accounting\PostingEngine::class)->post($request);
+        $this->assertTrue($result->success, 'Posting failed: ' . ($result->error ?? ''));
+
+        $event = \App\Models\AccountingOutboxEvent::where('aggregate_type', 'JournalEntry')
+            ->where('aggregate_id', (string) $result->journalEntry->id)
+            ->first();
+
+        $this->assertNotNull($event, 'Successful posting must emit an outbox event');
+        $this->assertSame(
+            $this->tenantUuid,
+            (string) $event->tenant_id,
+            'Outbox tenant_id must be the real bound tenant, not a fabricated UUID'
+        );
+    }
+
+    /**
+     * AC2 (fail-closed posting path): with no tenant context bound, posting
+     * must fail with MISSING_TENANT_CONTEXT and must NOT emit any outbox
+     * event (no fabricated tenant identity).
+     */
+    public function test_posting_fails_closed_without_tenant_context_no_outbox_fabricated(): void
+    {
+        // Unbind tenancy to simulate a tenant-less posting call.
+        $tenancy = app(\Stancl\Tenancy\Tenancy::class);
+        $tenancy->end();
+        $this->app->forgetInstance(\Stancl\Tenancy\Contracts\Tenant::class);
+
+        $debit = \App\Models\ChartOfAccount::create(['code' => '48F-D-'.uniqid(), 'name' => 'D', 'type' => 'asset', 'account_type' => 'asset', 'is_active' => true]);
+        $credit = \App\Models\ChartOfAccount::create(['code' => '48F-C-'.uniqid(), 'name' => 'C', 'type' => 'liability', 'account_type' => 'liability', 'is_active' => true]);
+
+        $before = \App\Models\AccountingOutboxEvent::count();
+
+        $request = new \App\Accounting\DTOs\PostingRequest(
+            documentType: 'invoice',
+            documentId: 480002,
+            description: 'No-tenant posting test',
+            postingDate: now()->toDateString(),
+            lines: [
+                new \App\Accounting\DTOs\PostingRequestLine('cash', $debit->id, 50.0, 0),
+                new \App\Accounting\DTOs\PostingRequestLine('accounts_receivable', $credit->id, 0, 50.0),
+            ],
+            userId: 1,
+        );
+
+        $result = app(\App\Accounting\PostingEngine::class)->post($request);
+
+        $this->assertFalse($result->success, 'Posting without tenant context must fail closed.');
+        $this->assertStringContainsString(
+            \App\Accounting\Enums\ReasonCode::MISSING_TENANT_CONTEXT->value,
+            $result->error ?? ''
+        );
+        $this->assertSame(
+            $before,
+            \App\Models\AccountingOutboxEvent::count(),
+            'No outbox event may be fabricated for a failed tenant-less posting.'
+        );
+    }
 }
