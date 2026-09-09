@@ -277,12 +277,12 @@ class OpeningBalanceCapabilityTest extends TenantTestCase
             'source_type' => 'manual',
         ], (string) $this->user->id);
 
-        // Different scope — should succeed
+        // Different scope — should succeed (a distinct canonical catalogue value)
         $batch2 = $service->createBatch([
             'tenant_id' => $this->tenantId,
             'cutover_date' => '2026-01-01',
             'fiscal_period_id' => $this->period->id,
-            'population_scope' => 'partial_ar',
+            'population_scope' => 'ar_only',
             'source_type' => 'manual',
         ], (string) $this->user->id);
 

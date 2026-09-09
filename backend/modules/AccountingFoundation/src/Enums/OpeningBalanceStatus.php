@@ -50,4 +50,32 @@ enum OpeningBalanceStatus: string
     {
         return ! $this->isTerminal();
     }
+
+    /**
+     * Does this status represent a live economic baseline that must block a
+     * new baseline for the same controlled scope?
+     *
+     * Issue #70 HR70-09: terminal FAILURE states (validation_failed,
+     * reconciliation_failed, posting_failed, rejected, superseded) must NOT
+     * strand the scope — a failed batch has no economic effect and must be
+     * correctable/replacable. Only in-flight (active) batches and a genuinely
+     * POSTED baseline block a competing baseline.
+     */
+    public function isScopeBlocking(): bool
+    {
+        return $this->isActive() || $this === self::POSTED;
+    }
+
+    /**
+     * Non-scope-blocking terminal states, for query negation.
+     *
+     * @return string[]
+     */
+    public static function scopeBlockingValues(): array
+    {
+        return array_values(array_map(
+            fn (self $s) => $s->value,
+            array_filter(self::cases(), fn (self $s) => $s->isScopeBlocking()),
+        ));
+    }
 }

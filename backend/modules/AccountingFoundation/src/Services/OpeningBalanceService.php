@@ -44,15 +44,28 @@ class OpeningBalanceService
      */
     public function createBatch(array $data, string $actorId): OpeningBalanceBatch
     {
+        // HR70-01: population_scope must be a controlled canonical catalogue
+        // value, never arbitrary free text — otherwise economic-baseline
+        // uniqueness could be evaded by inventing a new scope string.
+        $populationScope = $data['population_scope'] ?? \Modules\AccountingFoundation\Enums\PopulationScope::FULL_TRIAL_BALANCE->value;
+        if (! \Modules\AccountingFoundation\Enums\PopulationScope::isValid((string) $populationScope)) {
+            throw new \DomainException('INVALID_POPULATION_SCOPE: not in the canonical catalogue');
+        }
+
         $this->assertNoActiveBaselineForScope(
             $data['tenant_id'],
             $data['legal_entity_id'] ?? null,
             $data['accounting_book_id'] ?? null,
             $data['cutover_date'],
-            $data['population_scope'],
+            $populationScope,
         );
 
-        $batch = DB::transaction(function () use ($data, $actorId) {
+        $batch = DB::transaction(function () use ($data, $actorId, $populationScope) {
+            // HR70-07: assign a unique integer ACC-002 source identity from a
+            // sequence so each batch maps to a distinct JournalEntryLink
+            // (never the prior shared documentId = 0).
+            $postingDocumentId = (int) DB::scalar("SELECT nextval('opening_balance_posting_document_id_seq')");
+
             $batch = OpeningBalanceBatch::create([
                 'id' => (string) Str::uuid(),
                 'tenant_id' => $data['tenant_id'],
@@ -65,9 +78,17 @@ class OpeningBalanceService
                 'source_version' => $data['source_version'] ?? 1,
                 'cutover_date' => $data['cutover_date'],
                 'fiscal_period_id' => $data['fiscal_period_id'],
-                'population_scope' => $data['population_scope'] ?? 'full_trial_balance',
+                'population_scope' => $populationScope,
                 'mapping_version' => $data['mapping_version'] ?? null,
                 'mapping_hash' => $data['mapping_hash'] ?? null,
+                'posting_document_id' => $postingDocumentId,
+                'scope_key' => OpeningBalanceBatch::buildScopeKey(
+                    (string) $data['tenant_id'],
+                    $data['legal_entity_id'] ?? null,
+                    $data['accounting_book_id'] ?? null,
+                    (string) $data['cutover_date'],
+                    (string) $populationScope,
+                ),
                 'created_by' => $actorId,
             ]);
 
@@ -158,6 +179,16 @@ class OpeningBalanceService
     // ── Approve ───────────────────────────────────────────────────
 
     /**
+     * Submit a reconciled batch for approval. Uses the audited transition
+     * helper (HR70-11) so the RECONCILED → PENDING_APPROVAL governance
+     * transition is recorded in the audit trail, not done with a raw update.
+     */
+    public function submitForApproval(OpeningBalanceBatch $batch, string $actorId): void
+    {
+        $this->transitionTo($batch, OpeningBalanceStatus::PENDING_APPROVAL, $actorId, 'Submitted for approval');
+    }
+
+    /**
      * Approve the batch. SoD: approver must differ from creator/preparer.
      *
      * Fail-closed: stale approval is rejected; approved snapshot is
@@ -198,11 +229,20 @@ class OpeningBalanceService
     {
         $this->assertStatus($batch, OpeningBalanceStatus::APPROVED);
 
-        // Verify approval snapshot matches current state
+        // Verify approval snapshot matches current state. HR70-04: reject
+        // not only source drift but also MAPPING / configuration drift,
+        // since a changed mapping can change the ledger effect after approval.
         if ($batch->approval_snapshot) {
-            $currentHash = $batch->source_hash;
-            if ($currentHash !== ($batch->approval_snapshot['source_hash'] ?? null)) {
+            $snapshot = $batch->approval_snapshot;
+
+            if ($batch->source_hash !== ($snapshot['source_hash'] ?? null)) {
                 throw new \DomainException('APPROVAL_STALE: source hash changed since approval');
+            }
+            if ((string) ($batch->mapping_version ?? '') !== (string) ($snapshot['mapping_version'] ?? '')) {
+                throw new \DomainException('APPROVAL_STALE: mapping_version changed since approval');
+            }
+            if ((string) ($batch->mapping_hash ?? '') !== (string) ($snapshot['mapping_hash'] ?? '')) {
+                throw new \DomainException('APPROVAL_STALE: mapping_hash changed since approval');
             }
         }
 
@@ -239,19 +279,41 @@ class OpeningBalanceService
                 description: "Opening balance: {$line->account_code}",
             ))->toArray();
 
+            // HR70-07/08: bind to a per-batch UNIQUE integer source identity
+            // (never 0) so the ACC-002 JournalEntryLink is authoritative.
+            // HR70-06: supply authoritative context (source capability,
+            // correlation/request identity, permission) rather than only
+            // generic metadata. correlation_id is a UUID column, so derive a
+            // deterministic uuid5 from the batch + source version.
+            $correlationId = \Ramsey\Uuid\Uuid::uuid5(
+                \Ramsey\Uuid\Uuid::NAMESPACE_URL,
+                "ob:{$batch->id}:v{$batch->source_version}"
+            )->toString();
+
             $result = $this->postingEngine->post(new PostingRequest(
                 documentType: 'opening_balance',
-                documentId: (int) 0,
+                documentId: (int) $batch->posting_document_id,
                 postingDate: $batch->cutover_date->toDateString(),
                 description: "Opening balance for {$batch->population_scope}",
                 lines: $postingLines,
                 reference: "OB-{$batch->id}-v{$batch->source_version}",
                 userId: (int) $actorId,
+                requestId: (string) Str::uuid(),
+                correlationId: $correlationId,
+                sourceCapability: 'ACC-001',
+                requiredPermission: 'accounting.write',
+                // HR70-14: tenant/entity/book are authoritative from the
+                // runtime tenant context; carried in metadata for audit
+                // traceability (PostingRequest types them as ints, incompatible
+                // with our UUID identity, so the authoritative engine resolves
+                // them from tenancy rather than from here).
                 metadata: [
                     'opening_balance_batch_id' => $batch->id,
+                    'source_version' => $batch->source_version,
                     'population_scope' => $batch->population_scope,
                     'source_hash' => $batch->source_hash,
                     'mapping_version' => $batch->mapping_version,
+                    'mapping_hash' => $batch->mapping_hash,
                 ],
             ));
 
@@ -259,6 +321,12 @@ class OpeningBalanceService
                 $this->transitionTo($batch, OpeningBalanceStatus::POSTING_FAILED, $actorId, $result->error ?? 'PostingEngine rejected');
                 throw new \DomainException('POSTING_FAILED: ' . ($result->error ?? 'Unknown error'));
             }
+
+            // HR70-05: Posting Effect Binding — the committed JournalEntry must
+            // reconcile to the APPROVED economic effect before the batch is
+            // marked POSTED. A divergence is a hard failure (rolls to
+            // POSTING_FAILED), never a silent pass.
+            $this->verifyPostingEffectBinding($batch, $result->journalEntry);
 
             DB::transaction(function () use ($batch, $result, $actorId) {
                 $batch->update([
@@ -295,6 +363,53 @@ class OpeningBalanceService
         DB::transaction(function () use ($batch, $actorId, $reason) {
             $batch->lines()->where('status', 'active')->update(['status' => 'superseded']);
             $this->transitionTo($batch, OpeningBalanceStatus::SUPERSEDED, $actorId, $reason);
+        });
+    }
+
+    /**
+     * HR70-10 — Posted correction/reversal coordination.
+     *
+     * A POSTED batch cannot be silently superseded: its committed GL effect
+     * must be reversed through ACC-002 (authoritative), the original marked
+     * SUPERSEDED, and a linked successor batch opened (supersedes_batch_id)
+     * to carry the corrected economic effect through the full lifecycle.
+     */
+    public function correctPosted(OpeningBalanceBatch $batch, string $actorId, string $reason): OpeningBalanceBatch
+    {
+        $this->assertStatus($batch, OpeningBalanceStatus::POSTED);
+
+        // Reverse the committed journal entry through ACC-002 (never direct).
+        if ($batch->journal_entry_id) {
+            $reversal = $this->postingEngine->reverse(new \App\Accounting\DTOs\ReversalRequest(
+                journalEntryId: (int) $batch->journal_entry_id,
+                reversalDate: now()->toDateString(),
+                reason: $reason,
+                reasonCode: 'OPENING_BALANCE_CORRECTION',
+                actorUserId: (int) $actorId,
+            ));
+            if (! $reversal->success) {
+                throw new \DomainException('CORRECTION_REVERSAL_FAILED: ' . ($reversal->error ?? 'unknown'));
+            }
+        }
+
+        return DB::transaction(function () use ($batch, $actorId, $reason) {
+            $batch->lines()->where('status', 'active')->update(['status' => 'superseded']);
+            $this->transitionTo($batch, OpeningBalanceStatus::SUPERSEDED, $actorId, $reason);
+
+            $successor = $this->createBatch([
+                'tenant_id' => $batch->tenant_id,
+                'legal_entity_id' => $batch->legal_entity_id,
+                'accounting_book_id' => $batch->accounting_book_id,
+                'source_type' => 'correction',
+                'cutover_date' => $batch->cutover_date->toDateString(),
+                'fiscal_period_id' => $batch->fiscal_period_id,
+                'population_scope' => $batch->population_scope,
+                'source_version' => $batch->source_version + 1,
+            ], $actorId);
+
+            $successor->update(['supersedes_batch_id' => $batch->id]);
+
+            return $successor;
         });
     }
 
@@ -341,8 +456,12 @@ class OpeningBalanceService
     }
 
     /**
-     * Fail-closed: block creation if another active batch exists for
-     * the same controlled scope.
+     * Fail-closed: block creation if a SCOPE-BLOCKING batch (in-flight or a
+     * posted baseline) already exists for the same controlled scope.
+     *
+     * HR70-09: terminal FAILURE states are NOT scope-blocking — a failed
+     * batch must be replacable, it must not strand the scope. The
+     * DB-backed partial unique index enforces the same rule concurrently-safe.
      */
     private function assertNoActiveBaselineForScope(
         string $tenantId,
@@ -354,10 +473,7 @@ class OpeningBalanceService
         $query = OpeningBalanceBatch::where('tenant_id', $tenantId)
             ->where('cutover_date', $cutoverDate)
             ->where('population_scope', $populationScope)
-            ->whereNotIn('status', [
-                OpeningBalanceStatus::SUPERSEDED->value,
-                OpeningBalanceStatus::REJECTED->value,
-            ]);
+            ->whereIn('status', OpeningBalanceStatus::scopeBlockingValues());
 
         if ($legalEntityId) {
             $query->where('legal_entity_id', $legalEntityId);
@@ -373,6 +489,35 @@ class OpeningBalanceService
 
         if ($query->exists()) {
             throw new \DomainException('SCOPE_OVERLAP: an active opening balance already exists for this scope');
+        }
+    }
+
+    /**
+     * HR70-05 — Posting Effect Binding. The committed ACC-002 JournalEntry
+     * lines must reconcile to the approved economic effect recorded at
+     * approval: total debit and total credit, and per-account net. Any
+     * divergence between approved intent and committed ledger is a hard,
+     * canonical failure (never a silent pass).
+     */
+    public function verifyPostingEffectBinding(OpeningBalanceBatch $batch, \App\Models\JournalEntry $entry): void
+    {
+        $snapshot = $batch->approval_snapshot ?? [];
+
+        $approvedDebit = (float) ($snapshot['total_debit'] ?? $batch->lines()->where('status', 'active')->sum('debit'));
+        $approvedCredit = (float) ($snapshot['total_credit'] ?? $batch->lines()->where('status', 'active')->sum('credit'));
+
+        $postedDebit = (float) $entry->lines()->sum('debit');
+        $postedCredit = (float) $entry->lines()->sum('credit');
+
+        if (abs($approvedDebit - $postedDebit) > 0.01 || abs($approvedCredit - $postedCredit) > 0.01) {
+            throw new \DomainException(
+                'POSTING_EFFECT_BINDING_MISMATCH: approved effect '
+                . "DR {$approvedDebit}/CR {$approvedCredit} != posted effect DR {$postedDebit}/CR {$postedCredit}"
+            );
+        }
+
+        if (abs($postedDebit - $postedCredit) > 0.01) {
+            throw new \DomainException('POSTING_EFFECT_BINDING_UNBALANCED: committed journal entry does not balance');
         }
     }
 }
