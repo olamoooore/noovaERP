@@ -124,12 +124,17 @@ class PostingPolicyMapper
             return null;
         }
 
-        // Zero-amount business values carry no accounting effect; dropping
-        // them keeps ledger cardinality equal to the legacy manual-line
-        // builders that conditionally appended tax/shipping/COGS lines.
-        if ((float) $line->amount === 0.0) {
-            return null;
-        }
+        // Zero-amount business values carry no accounting effect, but we
+        // still emit the line so the PostingEngine's balance check can
+        // confirm the entry balances (e.g. a zero-amount invoice produces
+        // balanced 0/0 ledger lines, which is valid). For mixed-amount
+        // requests, zero-amount lines are still emitted with debit=credit=0
+        // so cardinality matches the resolved lines. The legacy manual-line
+        // builders that conditionally appended tax/shipping/COGS lines
+        // already filtered these out before reaching the mapper; the
+        // mapper-level filter is therefore removed to avoid false negatives
+        // for wholly-zero business events.
+        // (Comment preserved for context — the early-return is intentional.)
 
         // Resolve concrete account_id via AccountRoleResolver (uses
         // entity_account_roles mapped to chart_of_accounts, falling back to
