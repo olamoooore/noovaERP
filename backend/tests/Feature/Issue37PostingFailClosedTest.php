@@ -10,6 +10,7 @@ use App\Accounting\Enums\ReasonCode;
 use App\Accounting\PostingEngine;
 use App\Models\ChartOfAccount;
 use App\Models\User;
+use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Support\Str;
 use Tests\TenantTestCase;
 
@@ -67,7 +68,7 @@ class Issue37PostingFailClosedTest extends TenantTestCase
                 ),
             ],
             userId: $userId,
-            tenantId: $tenantId === null ? null : (int) $tenantId,
+            tenantId: $tenantId === null ? null : $tenantId,
         );
     }
 
@@ -91,7 +92,16 @@ class Issue37PostingFailClosedTest extends TenantTestCase
 
     public function test_posting_with_tenant_and_user_succeeds(): void
     {
+        // Seed permissions + roles for this tenant so the gate can resolve them
+        $this->seed(RolePermissionSeeder::class);
+
         $user = User::factory()->create();
+
+        // Grant accounting.write permission to allow the post to succeed.
+        // The permission gate is fail-closed by design: without the required
+        // permission, the post must be blocked (see test_posting_without_*).
+        $user->givePermissionTo('accounting.write');
+
         $request = $this->makeRequest(userId: $user->id);
 
         $result = app(PostingEngine::class)->post($request);

@@ -152,6 +152,7 @@ class PostingEngine implements PostingEngineInterface
             recordType: 'JournalEntry',
             recordId: $request->documentId ?? 'new',
             context: [
+                'action' => 'POST_JOURNAL',
                 'tenant_id' => (string) $tenantId,
                 'entity_id' => $request->legalEntityId ? (string) $request->legalEntityId : null,
                 'actor_id' => $userId ? (string) $userId : null,
