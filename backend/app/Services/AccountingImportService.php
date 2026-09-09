@@ -329,11 +329,13 @@ class AccountingImportService
         $taxAmount = $data['tax_amount'] ?? 0;
         $total = $data['total'] ?? $data['total_amount'] ?? ($subtotal + $taxAmount);
 
+        $invoiceDate = $data['invoice_date'] ?? now()->toDateString();
+
         return \App\Models\Invoice::create([
             'customer_id' => $customerId,
             'invoice_number' => $data['invoice_number'],
-            'invoice_date' => $data['invoice_date'] ?? now()->toDateString(),
-            'due_date' => $data['due_date'] ?? null,
+            'invoice_date' => $invoiceDate,
+            'due_date' => $data['due_date'] ?? $invoiceDate,
             'subtotal' => $subtotal,
             'tax_amount' => $taxAmount,
             'total' => $total,
