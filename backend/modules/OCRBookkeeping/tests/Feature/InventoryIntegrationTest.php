@@ -28,7 +28,14 @@ class InventoryIntegrationTest extends TenantTestCase
     {
         parent::setUp();
 
-        $this->bindTenantContext('00000000-0000-0000-0000-000000000001');
+        // Issue #37 made the PostingEngine gate fail-closed on a null
+        // required_permission for material posting actions. The OCR posting
+        // service routes through PostingEngine, so the acting user needs the
+        // accounting.write / accounting.reverse permissions the gate checks.
+        // bindTenantContextWithPermissions seeds RolePermissionSeeder and
+        // auto-assigns the Spatie 'Admin' role to users created in this test,
+        // which carries those permissions (same pattern as WS08AccountingPostingTest).
+        $this->bindTenantContextWithPermissions('00000000-0000-0000-0000-000000000001');
 
         $this->user = User::factory()->create();
         $this->actingAs($this->user);
