@@ -220,7 +220,17 @@ class FinancialCloseReadinessService
 
     private function buildSectionBreakdown($reviews): array
     {
-        $findingsByReview = AiFinding::where('tenant_id', $reviews->first()?->tenant_id ?? '')
+        // Defensive guard: with no account reviews there is nothing to break
+        // down. The previous `$reviews->first()?->tenant_id ?? ''` fallback
+        // queried AiFinding with an empty-string tenant_id against a UUID
+        // column, raising SQLSTATE[22P02] and 500-ing the readiness refresh for
+        // any entity that has no reviews yet (a normal state at period start).
+        // The empty `whereIn('review_id', [])` also degenerated to `0 = 1`.
+        if ($reviews->isEmpty()) {
+            return [];
+        }
+
+        $findingsByReview = AiFinding::where('tenant_id', $reviews->first()->tenant_id)
             ->whereIn('review_id', $reviews->pluck('id'))
             ->where('status', 'open')
             ->get()
