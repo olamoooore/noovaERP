@@ -2,6 +2,9 @@
 
 namespace Modules\FinancialClose\Services;
 
+use App\Accounting\Enums\GateResult;
+use App\Accounting\Services\Gates\AssuranceGate;
+use App\Models\Accounting\AccountingFinding;
 use App\Models\FiscalPeriod;
 use App\Models\LockDate;
 use Illuminate\Support\Facades\DB;
@@ -22,6 +25,13 @@ class FinancialCloseCycleService
      * Minimum number of distinct sign-offs required to mark a cycle ready to close.
      */
     private const REQUIRED_SIGNOFFS = 1;
+
+    /**
+     * Canonical Financial Close action consumed by the ACC-010 assurance-blocking
+     * authority (AssuranceGate). AssuranceBlockingPolicy.action_scope entries
+     * (or wildcard '*') must include this string to apply to close readiness.
+     */
+    private const FINANCIAL_CLOSE_ACTION = 'PERIOD_CLOSE';
 
     /**
      * Get all close cycles for a tenant/entity
@@ -489,37 +499,46 @@ class FinancialCloseCycleService
             ->where('status', 'open')
             ->count();
 
-        // ── Blocking-policy-aware open findings check (ADR-005 §39.1, #39) ──
-        // A finding blocks closure when:
-        //   - its status is `open` or `investigating` (canonical unresolved states),
-        //   - AND its severity is `high` or `critical`,
-        //   - AND it is either tied to this cycle (source_type=close_cycle,
-        //     source_id=cycleId) OR it is an entity-wide open finding for the
-        //     cycle's entity.
-        //
-        // This policy is the documented contract: medium/low findings remain
-        // visible but do not by themselves block closure; an admin may override.
-        $blockingFindings = \App\Models\Accounting\AccountingFinding::where('tenant_id', $tenantId)
+        // ── HR39-01: consume the canonical ACC-010 assurance-blocking authority ──
+        // ACC-011 orchestrates WHICH findings are in scope for this close
+        // (cycle-tied or entity-wide, in the canonical unresolved states used by
+        // AssuranceGate::resolveCandidateFindings). The BLOCKING DECISION —
+        // whether a given finding blocks the Financial Close action — is resolved
+        // exclusively by the canonical ACC-010 authority (AssuranceGate ->
+        // active/effective AssuranceBlockingPolicy -> shouldBlock). No severity /
+        // status blocking rule is reproduced locally.
+        $candidateFindings = AccountingFinding::where('tenant_id', $tenantId)
             ->where(function ($q) use ($cycleId, $cycle) {
                 $q->where(function ($inner) use ($cycleId) {
                     $inner->where('source_type', 'close_cycle')
                         ->where('source_id', $cycleId);
                 })->orWhere('entity_id', $cycle->entity_id);
             })
-            ->whereIn('status', ['open', 'investigating'])
-            ->whereIn('severity', ['high', 'critical'])
-            ->count();
+            ->whereIn('status', ['open', 'acknowledged', 'investigating'])
+            ->get();
 
-        // Total open findings (for reporting visibility, not blocking):
-        $totalOpenFindings = \App\Models\Accounting\AccountingFinding::where('tenant_id', $tenantId)
-            ->where(function ($q) use ($cycleId, $cycle) {
-                $q->where(function ($inner) use ($cycleId) {
-                    $inner->where('source_type', 'close_cycle')
-                        ->where('source_id', $cycleId);
-                })->orWhere('entity_id', $cycle->entity_id);
-            })
-            ->whereIn('status', ['open', 'investigating'])
-            ->count();
+        $assuranceGate = app(AssuranceGate::class);
+        $action = self::FINANCIAL_CLOSE_ACTION;
+
+        $blockingFindings = 0;
+        $assuranceDecision = null;
+        foreach ($candidateFindings as $finding) {
+            $result = $assuranceGate->evaluate([
+                'requested_action' => $action,
+                'action' => $action,
+                'tenant_id' => $tenantId,
+                'blocking_assurance_findings' => [$finding],
+            ]);
+            if ($result->result === GateResult::BLOCK) {
+                $blockingFindings++;
+                if ($assuranceDecision === null) {
+                    $assuranceDecision = $result;
+                }
+            }
+        }
+
+        // Total unresolved findings (reporting visibility, not the blocking rule).
+        $totalOpenFindings = $candidateFindings->count();
 
         // Count authorised sign-offs
         $metadata = is_array($cycle->metadata) ? $cycle->metadata : [];
@@ -562,13 +581,18 @@ class FinancialCloseCycleService
             'ready_to_close' => $ready,
             'incomplete_tasks' => $incompleteTasks,
             'open_escalations' => $openEscalations,
-            // #39: split blocking from non-blocking findings; expose the policy.
+            // HR39-01: expose the canonical ACC-010 authority consumed for the
+            // blocking decision — NOT a locally reproduced policy.
             'blocking_findings' => $blockingFindings,
             'open_findings' => $totalOpenFindings,
             'blocking_policy' => [
-                'severity_threshold' => 'high_or_critical',
-                'unresolved_statuses' => ['open', 'investigating'],
-                'scope' => 'cycle_or_entity',
+                'authority' => 'ACC-010',
+                'resolver' => AssuranceGate::class,
+                'gate_code' => $assuranceGate->gateCode(),
+                'gate_owner' => $assuranceGate->gateOwner(),
+                'gate_version' => $assuranceGate->gateVersion(),
+                'action' => $action,
+                'decision_reason' => $assuranceDecision?->reasonCode,
             ],
             'authorised_signoffs' => $authorisedSignoffs,
             'required_signoffs' => self::REQUIRED_SIGNOFFS,

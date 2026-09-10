@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\Accounting\AccountingFinding;
-use Illuminate\Support\Facades\DB;
+use App\Models\AssuranceBlockingPolicy;
 use Illuminate\Support\Str;
 use Modules\FinancialClose\Models\CloseCycle;
 use Tests\TenantTestCase;
@@ -32,6 +32,28 @@ class Issue39FinancialCloseReadinessTest extends TenantTestCase
             'email' => $this->tenantUuid.'@example.test',
             'created_at' => now(),
             'updated_at' => now(),
+        ]);
+
+        // HR39-01: the blocking decision is now resolved by the canonical
+        // ACC-010 authority (AssuranceGate -> AssuranceBlockingPolicy). Seed
+        // an active tenant-scoped policy so the gate has a policy to apply:
+        // wildcard category, HIGH threshold, BLOCK mode, action_scope covering
+        // FINANCIAL_CLOSE_ACTION (PERIOD_CLOSE). Without a policy, AssuranceGate
+        // returns PASS (ADR-005 §39.1: a finding does not block merely because
+        // it exists) — which is the correct canonical behavior.
+        AssuranceBlockingPolicy::create([
+            'tenant_id' => $this->tenantUuid,
+            'policy_name' => 'HR39 readiness test policy',
+            'policy_version' => '1.0',
+            'finding_category' => '*',
+            'assertion_level' => 'STANDARD',
+            'severity_threshold' => 'HIGH',
+            'risk_threshold' => null,
+            'action_scope' => ['PERIOD_CLOSE'],
+            'block_mode' => 'BLOCK',
+            'effective_from' => null,
+            'effective_to' => null,
+            'status' => 'active',
         ]);
     }
 
@@ -72,7 +94,13 @@ class Issue39FinancialCloseReadinessTest extends TenantTestCase
         $this->assertFalse($evaluation['ready_to_close']);
         $this->assertSame(1, $evaluation['blocking_findings']);
         $this->assertSame(1, $evaluation['open_findings']);
-        $this->assertSame('high_or_critical', $evaluation['blocking_policy']['severity_threshold']);
+        // HR39-01: the blocking decision is now consumed from the canonical
+        // ACC-010 authority — not a locally reproduced policy. The returned
+        // blocking_policy identifies the resolver and its governed decision
+        // reason (ASSURANCE_BLOCKED), not a hard-coded severity/status rule.
+        $this->assertSame('ACC-010', $evaluation['blocking_policy']['authority']);
+        $this->assertSame('PERIOD_CLOSE', $evaluation['blocking_policy']['action']);
+        $this->assertSame('ASSURANCE_BLOCKED', $evaluation['blocking_policy']['decision_reason']);
     }
 
     public function test_low_finding_does_not_block_readiness(): void
