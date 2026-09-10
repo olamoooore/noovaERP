@@ -77,7 +77,7 @@ class PeriodCloseService
         // Pre-close validation
         $issues = $this->validateBeforeClose($period);
         if (! empty($issues)) {
-            throw new \DomainException('PERIOD_CLOSE_VALIDATION_FAILED: ' . implode(', ', $issues));
+            throw new \DomainException('PERIOD_CLOSE_VALIDATION_FAILED: '.implode(', ', $issues));
         }
 
         try {
@@ -319,12 +319,12 @@ class PeriodCloseService
                 return $entries;
             }
 
-        $retainedEarningsId = $this->ensureRetainedEarningsAccount($period);
+            $retainedEarningsId = $this->ensureRetainedEarningsAccount($period);
 
-        $closingEntry = $this->postClosingEntry($period, $retainedEarningsId, $plBalances);
-        if ($closingEntry) {
-            $entries[] = $closingEntry;
-        }
+            $closingEntry = $this->postClosingEntry($period, $retainedEarningsId, $plBalances);
+            if ($closingEntry) {
+                $entries[] = $closingEntry;
+            }
         } catch (\Exception $e) {
             Log::error('PeriodCloseService::generateClosingEntries failed', [
                 'period_id' => $period->id,
@@ -524,15 +524,15 @@ class PeriodCloseService
                 sourceCapability: 'ACC-002',
             ));
 
-        if (! $result->success || ! $result->journalEntry) {
-            Log::error('PeriodCloseService::postClosingEntry rejected by PostingEngine', [
-                'period_id' => $period->id,
-                'error' => $result->error,
-                'journal_entry_id' => $result->journalEntryId,
-            ]);
+            if (! $result->success || ! $result->journalEntry) {
+                Log::error('PeriodCloseService::postClosingEntry rejected by PostingEngine', [
+                    'period_id' => $period->id,
+                    'error' => $result->error,
+                    'journal_entry_id' => $result->journalEntryId,
+                ]);
 
-            return null;
-        }
+                return null;
+            }
 
             $entry = $result->journalEntry;
 
@@ -663,16 +663,13 @@ class PeriodCloseService
             ->pluck('je.id');
 
         foreach ($activeClosings as $jeId) {
-            // Also delete the period_close link BEFORE reversing: the
-            // engine's idempotency guard (source_document_type +
-            // source_document_id + relation_type='post') would otherwise
-            // find the stale link on the next close and return the
-            // now-inactive JE instead of creating a fresh one.
-            DB::table('journal_entry_links')
-                ->where('source_document_type', 'period_close')
-                ->where('source_document_id', $period->id)
-                ->delete();
-
+            // HR68-01: invoke the authoritative ACC-002 reversal FIRST.
+            // Do NOT delete the period_close link before reversal succeeds —
+            // that would leave a mixed authoritative state on reversal failure.
+            // On reversal failure, FAIL CLOSED (throw) so the outer
+            // reopenPeriod() DB::transaction rolls back the whole reopen:
+            // the original closing journal, the link, and the period state
+            // all remain unchanged (no mixed authoritative state survives).
             $req = new ReversalRequest(
                 journalEntryId: (int) $jeId,
                 reversalDate: now()->toDateString(),
@@ -683,23 +680,28 @@ class PeriodCloseService
             $result = $this->postingEngine->reverse($req);
 
             if (! $result->success) {
-                Log::error('PeriodCloseService::removeClosingEntries reverse failed', [
-                    'period_id' => $period->id,
-                    'je_id' => $jeId,
-                    'error' => $result->error,
-                ]);
-
-                continue;
+                // A failed closing-entry reversal is a HARD BLOCKER to
+                // period reopen. Throw (no Log::error + continue) so the
+                // outer DB::transaction rolls back and no mixed state
+                // survives. The exception propagates to reopenPeriod().
+                throw new \RuntimeException(
+                    'Period reopen blocked: ACC-002 reversal failed for closing JE '
+                    ."{$jeId} (period {$period->code}): ".($result->error ?? 'unknown')
+                );
             }
 
+            // Reversal succeeded — now it is safe to retire the original
+            // posting reference (the link) so the engine's idempotency
+            // guard won't find a stale 'post' link on the next re-close.
+            DB::table('journal_entry_links')
+                ->where('source_document_type', 'period_close')
+                ->where('source_document_id', $period->id)
+                ->delete();
+
             // The engine's fullReversal() creates the mirror reversal JE
-            // but does NOT mark the original as inactive (that's done by
-            // DocumentCorrectionService::reverseDocument which wraps the
-            // engine call + markReversed). For our purpose — "revoke the
-            // closing entry so re-close generates a fresh one" — we must
-            // explicitly flip the original to is_active_version=false
-            // and lifecycle_status='reversed' so it no longer resolves
-            // through the active-version guard.
+            // but does NOT mark the original as inactive. Flip the original
+            // to is_active_version=false and lifecycle_status='reversed'
+            // so it no longer resolves through the active-version guard.
             DB::table('journal_entries')->where('id', $jeId)->update([
                 'is_active_version' => false,
                 'lifecycle_status' => 'reversed',
