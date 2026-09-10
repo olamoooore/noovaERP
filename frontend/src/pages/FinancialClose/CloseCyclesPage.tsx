@@ -151,6 +151,19 @@ export function CloseCyclesPage() {
     onError: () => toast({ title: 'Cycle is not ready to close.', variant: 'destructive' }),
   })
 
+  const archiveMutation = useMutation({
+    mutationFn: (id: string) => closeCyclesApi.archive(id, 'Archived from cycle list'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['close-cycles'] })
+      toast({ title: 'Cycle archived.', description: 'The period is now free to start a new close cycle.' })
+    },
+    onError: (error: any) => toast({
+      title: 'Could not archive cycle.',
+      description: error?.response?.data?.message || 'Please try again.',
+      variant: 'destructive',
+    }),
+  })
+
   const signoffMutation = useMutation({
     mutationFn: ({ cycleId, role }: { cycleId: string; role: string }) =>
       closeCyclesApi.signoff(cycleId, role),
@@ -310,6 +323,23 @@ export function CloseCyclesPage() {
                           disabled={openMutation.isPending}
                         >
                           Open Cycle
+                        </Button>
+                      )}
+
+                      {['draft', 'opened', 'ready_to_close'].includes(cycle.status) && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-muted-foreground hover:text-red-600"
+                          disabled={archiveMutation.isPending}
+                          onClick={() => {
+                            if (window.confirm('Archive this close cycle? Its period will be freed to start a new cycle. This does not delete the record (kept for audit).')) {
+                              archiveMutation.mutate(cycle.id)
+                            }
+                          }}
+                        >
+                          <Icon icon="solar:archive-bold-duotone" className="mr-1.5 h-4 w-4" />
+                          Archive
                         </Button>
                       )}
 

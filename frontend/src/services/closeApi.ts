@@ -224,6 +224,9 @@ export const closeCyclesApi = {
   close: (cycleId: string) =>
     api.post(`/close/cycles/${cycleId}/close`),
 
+  archive: (cycleId: string, reason?: string) =>
+    api.post(`/close/cycles/${cycleId}/archive`, { reason }),
+
   signoff: (cycleId: string, role: string, notes?: string) =>
     api.post(`/close/cycles/${cycleId}/signoff`, { role, notes }),
 

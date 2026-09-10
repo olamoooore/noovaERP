@@ -55,6 +55,10 @@ class FinancialCloseServiceProvider extends ServiceProvider
                 Route::post('/cycles/{cycleId}/close', [\Modules\FinancialClose\Http\Controllers\CloseCycleController::class, 'close'])
                     ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.close.admin'));
 
+                // Archive a stuck cycle requires accounting.close.admin
+                Route::post('/cycles/{cycleId}/archive', [\Modules\FinancialClose\Http\Controllers\CloseCycleController::class, 'archive'])
+                    ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.close.admin'));
+
                 // Period reopen requires accounting.close.admin
                 Route::post('/cycles/reopen-period', [\Modules\FinancialClose\Http\Controllers\CloseCycleController::class, 'reopenPeriod'])
                     ->middleware(\App\Http\Middleware\RequirePermission::using('accounting.close.admin'));

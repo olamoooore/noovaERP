@@ -92,6 +92,62 @@ class FinancialCloseCycleService
     }
 
     /**
+     * The existing non-terminal (active) cycle for a scope, if any — used to
+     * return an informative conflict so the caller knows WHICH cycle blocks a
+     * new create and can continue or archive it.
+     */
+    public function findActiveCycle(string $tenantId, string $entityId, string $periodId): ?CloseCycle
+    {
+        return CloseCycle::where('tenant_id', $tenantId)
+            ->where('entity_id', $entityId)
+            ->where('period_id', $periodId)
+            ->whereNotIn('status', ['closed', 'archived'])
+            ->first();
+    }
+
+    /**
+     * Archive (retire) a stuck draft/opened/ready cycle so its period is no
+     * longer blocked by the one-active-cycle rule. Non-destructive: the record
+     * is kept for audit, status -> 'archived'. Closed cycles are not archivable
+     * (they are already terminal).
+     */
+    public function archiveCycle(string $tenantId, string $cycleId, string $userId, ?string $reason = null): array
+    {
+        $cycle = $this->getCycle($tenantId, $cycleId);
+
+        if (! $cycle) {
+            return ['ok' => false, 'code' => 'not_found'];
+        }
+
+        if (in_array($cycle->status, ['closed', 'archived'], true)) {
+            return ['ok' => false, 'code' => 'terminal', 'status' => $cycle->status];
+        }
+
+        $cycle->update([
+            'status' => 'archived',
+            'metadata' => array_merge(
+                is_array($cycle->metadata) ? $cycle->metadata : [],
+                ['archived_by' => $userId, 'archived_at' => now()->toIso8601String(), 'archive_reason' => $reason]
+            ),
+        ]);
+
+        AuditLog::create([
+            'tenant_id' => $tenantId,
+            'actor_id' => $userId,
+            'action' => 'cycle_archived',
+            'entity_type' => 'close_cycle',
+            'entity_id' => $cycleId,
+            'after' => ['status' => 'archived', 'period_id' => $cycle->period_id, 'entity_id' => $cycle->entity_id, 'reason' => $reason],
+        ]);
+
+        Log::info('FinancialClose: cycle archived', [
+            'tenant_id' => $tenantId, 'cycle_id' => $cycleId, 'actor' => $userId,
+        ]);
+
+        return ['ok' => true];
+    }
+
+    /**
      * Open a close cycle
      */
     public function openCycle(string $tenantId, string $cycleId, string $userId): bool
