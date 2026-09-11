@@ -41,6 +41,8 @@ const QUOTATION_EXPORT_COLUMNS = [
   { key: 'contact_phone', label: 'Contact Phone', group: 'Commercial Snapshot' },
   { key: 'billing_address', label: 'Billing Address', group: 'Commercial Snapshot' },
   { key: 'shipping_address', label: 'Shipping Address', group: 'Commercial Snapshot' },
+  { key: 'notes', label: 'Notes', group: 'Quotation Details' },
+  { key: 'terms', label: 'Terms & Conditions', group: 'Quotation Details' },
   { key: 'invoice_numbers', label: 'Invoice No(s)', group: 'Linked Documents' },
   { key: 'subtotal', label: 'Subtotal', group: 'Quotation' },
   { key: 'tax_amount', label: 'Tax', group: 'Quotation' },

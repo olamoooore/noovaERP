@@ -538,6 +538,7 @@ class DeliveryOrderController extends Controller
                 'tenant_id' => tenant()?->id,
                 'user_id' => Auth::id(),
                 'group_key' => 'delivery_order_number',
+                'restore_soft_deleted_by' => 'delivery_order_number',
                 'line_column_map' => [
                     'header_id' => 'delivery_order_id',
                     'map' => [
@@ -745,8 +746,9 @@ class DeliveryOrderController extends Controller
         }
 
         return response()->json([
-            'message' => "Import complete: {$result['created']} delivery order(s) created, {$caseCount} medical case(s) created",
+            'message' => "Import complete: {$result['created']} delivery order(s) created, {$result['restored']} restored, {$caseCount} medical case(s) created",
             'created' => $result['created'],
+            'restored' => $result['restored'],
             'cases_created' => $caseCount,
             'errors' => $result['errors'],
         ], ! empty($result['errors']) ? 207 : 201);

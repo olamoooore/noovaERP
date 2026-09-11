@@ -26,6 +26,8 @@ class SalesDocumentExportColumnsTest extends TestCase
             'contact_phone',
             'billing_address',
             'shipping_address',
+            'notes',
+            'terms',
             'invoice_numbers',
         ] as $column) {
             $this->assertArrayHasKey($column, QuotationsExport::COLUMNS);
@@ -61,5 +63,11 @@ class SalesDocumentExportColumnsTest extends TestCase
             ['heading' => 'Patient Name', 'type' => 'text', 'line' => true],
             DeliveryOrdersExport::COLUMNS['patient_name'],
         );
+    }
+
+    public function test_both_document_exports_expose_notes(): void
+    {
+        $this->assertArrayHasKey('notes', QuotationsExport::COLUMNS);
+        $this->assertArrayHasKey('notes', DeliveryOrdersExport::COLUMNS);
     }
 }

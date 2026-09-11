@@ -25,6 +25,8 @@ class QuotationsExport extends SalesDocumentExport
         'contact_phone' => ['heading' => 'Contact Phone', 'type' => 'text'],
         'billing_address' => ['heading' => 'Billing Address', 'type' => 'text'],
         'shipping_address' => ['heading' => 'Shipping Address', 'type' => 'text'],
+        'notes' => ['heading' => 'Notes', 'type' => 'text'],
+        'terms' => ['heading' => 'Terms & Conditions', 'type' => 'text'],
         'invoice_numbers' => ['heading' => 'Invoice No(s)', 'type' => 'text'],
         'subtotal' => ['heading' => 'Subtotal', 'type' => 'amount'],
         'tax_amount' => ['heading' => 'Tax', 'type' => 'amount'],
