@@ -13,10 +13,15 @@ use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\AutoMatchController;
 use App\Http\Controllers\Api\BankAccountsController;
 use App\Http\Controllers\Api\BankReconciliationController;
+use App\Http\Controllers\Api\BankStatementImportController;
+use App\Http\Controllers\Api\BankStatementMatchController;
+use App\Http\Controllers\Api\BankStatementTransactionController;
 use App\Http\Controllers\Api\BillPaymentsController;
+use App\Http\Controllers\Api\BonusSchemeController;
 use App\Http\Controllers\Api\ChartOfAccountsController;
 use App\Http\Controllers\Api\CompanySettingsController;
 use App\Http\Controllers\Api\CurrenciesController;
+use App\Http\Controllers\Api\CustomerBonusSchemeController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\CustomerCreditNotesController;
 use App\Http\Controllers\Api\CustomersController;
@@ -32,6 +37,7 @@ use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\JournalEntriesController;
 use App\Http\Controllers\Api\JournalsController;
 use App\Http\Controllers\Api\LockDatesController;
+use App\Http\Controllers\Api\MedicalCaseController;
 use App\Http\Controllers\Api\OnboardingSessionsController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentImportController;
@@ -54,9 +60,6 @@ use App\Http\Controllers\Api\VendorCreditNotesController;
 use App\Http\Controllers\Api\VendorDebitNotesController;
 use App\Http\Controllers\Api\VendorsController;
 use App\Http\Controllers\Api\WarehouseController;
-use App\Http\Controllers\Api\MedicalCaseController;
-use App\Http\Controllers\Api\BonusSchemeController;
-use App\Http\Controllers\Api\CustomerBonusSchemeController;
 use App\Http\Middleware\EnsureAccountingLockManageAccess;
 use App\Http\Middleware\EnsureAccountingPostAccess;
 use App\Http\Middleware\EnsureAccountingReverseAccess;
@@ -307,6 +310,26 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/reconciliation/complete', [BankReconciliationController::class, 'complete']);
         Route::post('/reconciliation/add-transaction', [BankReconciliationController::class, 'addTransaction']);
         Route::get('/reconciliation/history/{bankAccountId}', [BankReconciliationController::class, 'history']);
+
+        // Persisted bank-statement ingestion (statement records only; never posts GL entries)
+        Route::post('/reconciliation/statement-imports/preview', [BankStatementImportController::class, 'preview'])
+            ->middleware(RequirePermission::using('reconciliation.import'));
+        Route::post('/reconciliation/statement-imports', [BankStatementImportController::class, 'store'])
+            ->middleware(RequirePermission::using('reconciliation.import'));
+        Route::get('/reconciliation/statement-imports', [BankStatementImportController::class, 'index'])
+            ->middleware(RequirePermission::using('reconciliation.view'));
+        Route::get('/reconciliation/statement-imports/{importId}', [BankStatementImportController::class, 'show'])
+            ->middleware(RequirePermission::using('reconciliation.view'));
+        Route::get('/reconciliation/statement-transactions', [BankStatementTransactionController::class, 'index'])
+            ->middleware(RequirePermission::using('reconciliation.view'));
+        Route::get('/reconciliation/statement-transactions/{transactionId}', [BankStatementTransactionController::class, 'show'])
+            ->middleware(RequirePermission::using('reconciliation.view'));
+        Route::post('/reconciliation/statement-imports/{importId}/suggest-matches', [BankStatementMatchController::class, 'suggest'])
+            ->middleware(RequirePermission::using('reconciliation.match'));
+        Route::post('/reconciliation/statement-matches', [BankStatementMatchController::class, 'store'])
+            ->middleware(RequirePermission::using('reconciliation.match'));
+        Route::delete('/reconciliation/statement-matches/{matchId}', [BankStatementMatchController::class, 'destroy'])
+            ->middleware(RequirePermission::using('reconciliation.match'));
 
         // Auto-Matching
         Route::post('/reconciliation/auto-match/suggest', [AutoMatchController::class, 'suggestMatches']);

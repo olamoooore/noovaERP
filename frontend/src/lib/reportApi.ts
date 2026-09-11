@@ -319,6 +319,63 @@ class ReportApiClient {
     }
   }
 
+  async previewBankStatement(file: File, bankAccountId: number, headerRow = 1): Promise<any> {
+    const body = new FormData();
+    body.append('file', file);
+    body.append('bank_account_id', String(bankAccountId));
+    body.append('header_row', String(headerRow));
+    const response = await api.post('/accounting/reconciliation/statement-imports/preview', body, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data.data;
+  }
+
+  async confirmBankStatementImport(request: {
+    preview_token: string;
+    mapping: Record<string, string>;
+    currency_code: string;
+    statement_start_date?: string;
+    statement_end_date: string;
+    opening_balance?: number;
+    closing_balance: number;
+    date_format?: string;
+  }): Promise<any> {
+    const response = await api.post('/accounting/reconciliation/statement-imports', request);
+    return response.data.data;
+  }
+
+  async getBankStatementImports(bankAccountId: number): Promise<any> {
+    const response = await api.get('/accounting/reconciliation/statement-imports', { params: { bank_account_id: bankAccountId } });
+    return response.data;
+  }
+
+  async getBankStatementTransactions(bankAccountId: number, importId?: string): Promise<any> {
+    const response = await api.get('/accounting/reconciliation/statement-transactions', {
+      params: { bank_account_id: bankAccountId, import_id: importId },
+    });
+    return response.data;
+  }
+
+  async createBankStatementMatch(request: {
+    bank_statement_transaction_id: string;
+    journal_entry_line_id: number;
+    matched_amount: number;
+    idempotency_key: string;
+    review_reason: string;
+  }): Promise<any> {
+    const response = await api.post('/accounting/reconciliation/statement-matches', request);
+    return response.data.data;
+  }
+
+  async removeBankStatementMatch(matchId: string): Promise<void> {
+    await api.delete(`/accounting/reconciliation/statement-matches/${matchId}`);
+  }
+
+  async suggestBankStatementMatches(importId: string): Promise<any> {
+    const response = await api.post(`/accounting/reconciliation/statement-imports/${importId}/suggest-matches`);
+    return response.data.data;
+  }
+
   // ==================== Inventory Reports ====================
 
   /**

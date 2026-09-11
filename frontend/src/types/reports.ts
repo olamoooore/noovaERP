@@ -560,6 +560,7 @@ export interface BankAccountsData {
     name: string;
     account_number: string;
     bank_name: string;
+    currency_code: string;
     gl_account_id: number;
     gl_account_name: string | null;
     last_reconciliation_date: string | null;

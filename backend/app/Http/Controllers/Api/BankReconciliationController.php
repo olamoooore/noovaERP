@@ -45,6 +45,7 @@ class BankReconciliationController extends Controller
                     'name' => $account->account_name,
                     'account_number' => $account->account_number,
                     'bank_name' => $account->bank_name,
+                    'currency_code' => $account->currency_code,
                     'gl_account_id' => $account->gl_account_id,
                     'gl_account_name' => $account->glAccount?->name,
                     'last_reconciliation_date' => $lastReconciliation ?

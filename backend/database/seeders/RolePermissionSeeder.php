@@ -51,6 +51,12 @@ class RolePermissionSeeder extends Seeder
         'accounting.lock' => [UserRole::OWNER, UserRole::ADMIN],
         'accounting.settings' => [UserRole::OWNER, UserRole::ADMIN],
         'reconciliation.complete' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        'reconciliation.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
+        'reconciliation.import' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        'reconciliation.match' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        'reconciliation.adjust' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        'reconciliation.exclude' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'reconciliation.reverse' => [UserRole::OWNER, UserRole::ADMIN],
 
         // Financial Close (ACC-011)
         'accounting.close.read' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],

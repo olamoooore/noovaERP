@@ -13,6 +13,8 @@ class ReconciliationItem extends Model
     protected $fillable = [
         'reconciliation_id',
         'journal_entry_line_id',
+        'bank_statement_transaction_id',
+        'bank_statement_match_id',
     ];
 
     /**
