@@ -157,20 +157,22 @@ class ImportService
         $lineColumnMap = $options['line_column_map'] ?? [];
         $transformHeader = $options['transform_header'] ?? null;
         $transformLine = $options['transform_line'] ?? null;
+        $restoreSoftDeletedBy = $options['restore_soft_deleted_by'] ?? null;
 
         $created = 0;
+        $restored = 0;
         $errors = [];
 
         $handle = fopen($file->getPathname(), 'r');
         if (! $handle) {
-            return ['created' => 0, 'errors' => [['row' => 0, 'message' => 'Failed to open file']]];
+            return ['created' => 0, 'restored' => 0, 'errors' => [['row' => 0, 'message' => 'Failed to open file']]];
         }
 
         $headers = fgetcsv($handle);
         if (! $headers) {
             fclose($handle);
 
-            return ['created' => 0, 'errors' => [['row' => 0, 'message' => 'Empty CSV']]];
+            return ['created' => 0, 'restored' => 0, 'errors' => [['row' => 0, 'message' => 'Empty CSV']]];
         }
 
         $normalizedHeaders = array_map(fn ($h) => strtolower(trim(str_replace(' ', '_', $h))), $headers);
@@ -240,7 +242,38 @@ class ImportService
                     $headerData['status'] = $headerData['status'] ?? 'draft';
                 }
 
-                $headerId = DB::table($table)->insertGetId($headerData);
+                $headerId = null;
+                $wasRestored = false;
+                if (
+                    $restoreSoftDeletedBy
+                    && array_key_exists($restoreSoftDeletedBy, $headerData)
+                    && $this->hasColumn($table, 'deleted_at')
+                ) {
+                    $deletedHeader = DB::table($table)
+                        ->where($restoreSoftDeletedBy, $headerData[$restoreSoftDeletedBy])
+                        ->whereNotNull('deleted_at')
+                        ->lockForUpdate()
+                        ->first();
+
+                    if ($deletedHeader) {
+                        $headerId = $deletedHeader->id;
+                        $lineHeaderColumn = $lineColumnMap['header_id'] ?? str_replace('_s', '', $table).'_id';
+
+                        // Re-importing a deleted grouped document replaces its stale
+                        // detail rows while retaining the original document identity.
+                        DB::table($lineTable)->where($lineHeaderColumn, $headerId)->delete();
+                        $headerData['deleted_at'] = null;
+                        if ($this->hasColumn($table, 'updated_at')) {
+                            $headerData['updated_at'] = now();
+                        }
+                        DB::table($table)->where('id', $headerId)->update($headerData);
+                        $wasRestored = true;
+                    }
+                }
+
+                if ($headerId === null) {
+                    $headerId = DB::table($table)->insertGetId($headerData);
+                }
 
                 // Build line records
                 foreach ($rows as $idx => $row) {
@@ -265,7 +298,7 @@ class ImportService
                     DB::table($lineTable)->insert($lineData);
                 }
 
-                $created++;
+                $wasRestored ? $restored++ : $created++;
                 DB::commit();
             } catch (\Exception $e) {
                 DB::rollBack();
@@ -273,7 +306,7 @@ class ImportService
             }
         }
 
-        return ['created' => $created, 'errors' => $errors];
+        return ['created' => $created, 'restored' => $restored, 'errors' => $errors];
     }
 
     /**
