@@ -226,6 +226,7 @@ class InvoiceService
                 userId: TenantUserHelper::requireTenantUserId($invoice->created_by),
                 taxDeterminationResult: $taxDetermination,
                 ledgerDescription: "Invoice #{$invoice->invoice_number} - {$invoice->customer->name}",
+                reference: $invoice->invoice_number,
             ));
 
             if (! $result->success) {

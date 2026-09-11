@@ -442,7 +442,7 @@ class PostingEngine implements PostingEngineInterface
             postingDate: $request->postingDate,
             description: $request->ledgerDescription ?? "Domain posting: {$request->sourceCapability}/{$request->postingProfileCode}",
             lines: $postingRequestLines,
-            reference: $request->idempotencyKey,
+            reference: $request->reference,
             currencyCode: $request->currencyCode,
             exchangeRate: $request->exchangeRate,
             requestId: $request->postingRequestId,

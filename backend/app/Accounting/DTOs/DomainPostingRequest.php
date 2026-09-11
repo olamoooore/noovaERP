@@ -59,6 +59,12 @@ class DomainPostingRequest
          * produces an identical journal_entries.description.
          */
         public readonly ?string $ledgerDescription = null,
+        /**
+         * Human-readable source document reference shown on the journal entry
+         * (for example, an invoice number). This is intentionally separate
+         * from the technical idempotency key.
+         */
+        public readonly ?string $reference = null,
     ) {}
 
     public static function generateRequestId(): string

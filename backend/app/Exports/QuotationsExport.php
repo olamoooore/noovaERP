@@ -14,6 +14,18 @@ class QuotationsExport extends SalesDocumentExport
         'customer_name' => ['heading' => 'Customer', 'type' => 'text'],
         'customer_code' => ['heading' => 'Customer Code', 'type' => 'text'],
         'customer_reference' => ['heading' => 'Customer Reference', 'type' => 'text'],
+        'internal_reference' => ['heading' => 'Internal Reference', 'type' => 'text'],
+        'salesperson' => ['heading' => 'Salesperson', 'type' => 'text'],
+        'delivery_lead_time' => ['heading' => 'Delivery Lead Time', 'type' => 'text'],
+        'shipping_method' => ['heading' => 'Shipping Method', 'type' => 'text'],
+        'shipping_terms' => ['heading' => 'Shipping Terms', 'type' => 'text'],
+        'validity' => ['heading' => 'Validity', 'type' => 'text'],
+        'attention_to' => ['heading' => 'Attention To', 'type' => 'text'],
+        'contact_email' => ['heading' => 'Contact Email', 'type' => 'text'],
+        'contact_phone' => ['heading' => 'Contact Phone', 'type' => 'text'],
+        'billing_address' => ['heading' => 'Billing Address', 'type' => 'text'],
+        'shipping_address' => ['heading' => 'Shipping Address', 'type' => 'text'],
+        'invoice_numbers' => ['heading' => 'Invoice No(s)', 'type' => 'text'],
         'subtotal' => ['heading' => 'Subtotal', 'type' => 'amount'],
         'tax_amount' => ['heading' => 'Tax', 'type' => 'amount'],
         'discount_amount' => ['heading' => 'Discount', 'type' => 'amount'],
@@ -37,11 +49,19 @@ class QuotationsExport extends SalesDocumentExport
         return self::COLUMNS;
     }
 
+    protected function relations(): array
+    {
+        return ['customer', 'invoices', 'lines.product'];
+    }
+
     protected function value($quotation, $line, string $column): mixed
     {
         return match ($column) {
             'customer_name' => $quotation->customer?->name,
             'customer_code' => $quotation->customer?->code,
+            'billing_address' => $quotation->billing_address_snapshot,
+            'shipping_address' => $quotation->shipping_address_snapshot,
+            'invoice_numbers' => $quotation->invoices->pluck('invoice_number')->filter()->implode(', '),
             'quotation_date', 'valid_until' => $quotation->{$column} ? Date::dateTimeToExcel($quotation->{$column}) : null,
             'subtotal', 'tax_amount', 'discount_amount', 'total' => (float) $quotation->{$column},
             'product_code' => $line?->product?->sku,

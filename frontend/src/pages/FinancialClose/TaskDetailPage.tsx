@@ -22,6 +22,7 @@ import { useAuthStore } from '@/store/authStore'
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   created: { label: 'Created', variant: 'secondary' },
+  assigned: { label: 'Assigned', variant: 'secondary' },
   in_progress: { label: 'In Progress', variant: 'default' },
   submitted: { label: 'Submitted', variant: 'outline' },
   completed: { label: 'Completed', variant: 'outline' },
@@ -99,7 +100,20 @@ export function TaskDetailPage() {
 
   const reassignMutation = useMutation({
     mutationFn: () => closeTasksApi.reassign(taskId, reassignUserId),
-    onSuccess: () => { setReassignDialogOpen(false); setReassignUserId(''); refetchTask(); toast({ title: 'Task reassigned.' }) },
+    onSuccess: () => {
+      const assignee = users.find(candidate => String(candidate.id) === String(reassignUserId))
+      setReassignDialogOpen(false)
+      setReassignUserId('')
+      refetchTask()
+      queryClient.invalidateQueries({ queryKey: ['my-tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['cycle-tasks'] })
+      toast({
+        title: 'Task reassigned.',
+        description: assignee
+          ? `${assignee.name} can now open the task and select Start Task.`
+          : 'The new assignee can now open the task and select Start Task.',
+      })
+    },
     onError: () => toast({ title: 'Failed to reassign task.', variant: 'destructive' }),
   })
 
@@ -243,7 +257,7 @@ export function TaskDetailPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {task.status === 'created' && (
+          {['created', 'assigned'].includes(task.status) && (
             <Button size="sm" onClick={() => startMutation.mutate()} disabled={startMutation.isPending}>
               Start Task
             </Button>
