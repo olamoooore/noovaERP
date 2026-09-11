@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -36,12 +37,20 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->timestamps();
 
-            // EVID-02A-003: scope = tenant/entity/book/period — composite unique
-            // prevents duplicate current runs for the same scope + analysis type.
-            $table->unique(['analysis_type', 'tenant_id', 'legal_entity_id', 'accounting_book_id', 'fiscal_period_id', 'is_current'], 'analysis_run_scope_current_idx');
+            // EVID-02A-003: scope = tenant/entity/book/period — partial unique
+            // index prevents duplicate CURRENT runs for the same scope + analysis type.
+            // Partial: only enforces uniqueness when is_current = true, so multiple
+            // superseded/stale rows for the same scope are allowed.
             $table->index(['tenant_id', 'analysis_type', 'status']);
             $table->index(['is_current', 'analysis_type']);
         });
+
+        // Partial unique index: only one admitted+current run per scope.
+        DB::statement("
+            CREATE UNIQUE INDEX analysis_run_scope_current_idx
+            ON analysis_runs (analysis_type, tenant_id, legal_entity_id, accounting_book_id, fiscal_period_id)
+            WHERE is_current = true AND status = 'admitted'
+        ");
     }
 
     public function down(): void
