@@ -204,7 +204,7 @@ export default function MyInvoiceDocumentPage() {
       return res.data
     },
     onSuccess: async () => {
-      toast({ title: 'Submitted', description: 'Document submitted to MyInvoice sandbox.' })
+      toast({ title: 'Submitted', description: 'Document submitted to MyInvois Portal.' })
       await refetchDocument()
       await refetchSubmissions()
     },

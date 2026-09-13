@@ -39,4 +39,32 @@ class MFRSValidationServiceTest extends TestCase
         $this->assertTrue($result['valid']);
         $this->assertSame([], $result['errors']);
     }
+
+    public function test_validate_invoice_uses_supplier_identity_from_tenant_configuration(): void
+    {
+        $invoice = new Invoice;
+        $invoice->setRawAttributes([
+            'invoice_number' => 'INV-2026-0015',
+            'invoice_date' => '2026-09-14',
+            'subtotal' => 100,
+            'tax_amount' => 0,
+            'total' => 100,
+            'tax_rate' => 0,
+        ], true);
+
+        $invoice->customer = (object) [
+            'name' => 'Individual Buyer',
+            'type' => 'individual',
+        ];
+        $invoice->lines = collect();
+
+        $result = (new MFRSValidationService)->validateInvoice($invoice, [
+            'supplier_tin' => 'C59942841040',
+            'supplier_id_type' => 'BRN',
+            'supplier_id_number' => '202501010250',
+        ]);
+
+        $this->assertTrue($result['valid']);
+        $this->assertSame([], $result['errors']);
+    }
 }

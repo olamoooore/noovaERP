@@ -67,6 +67,7 @@ STEERING-PACK-ADDENDUM-REVIEW.md
 
 # Test/validation scripts
 *validation*.php
+!backend/modules/AccountingCountry/Malaysia/Services/MFRSValidationService.php
 
 # OpenClaw implementation pack (local reference only)
 ace-openclaw-implementation-pack/

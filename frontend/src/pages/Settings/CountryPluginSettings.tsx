@@ -132,14 +132,16 @@ export function CountryPluginSettings() {
   // Save MyInvois credentials
   const saveCredentialsMutation = useMutation({
     mutationFn: async () => {
-      const payload: Record<string, unknown> = {
+      const { myinvoice_client_secret: clientSecret, ...nonSecretCredentials } = myinvoisForm
+      const credentials = {
+        ...nonSecretCredentials,
+        ...(clientSecret ? { myinvoice_client_secret: clientSecret } : {}),
+      }
+      const payload = {
         is_enabled: enabled,
         test_mode: complianceData?.test_mode ?? true,
         provider_name: 'myinvoice',
-        credentials: { ...myinvoisForm },
-      }
-      if (!payload.credentials.myinvoice_client_secret) {
-        delete payload.credentials.myinvoice_client_secret
+        credentials,
       }
       const res = await api.put('/accounting/compliance/config/MY', payload)
       return res.data

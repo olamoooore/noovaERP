@@ -557,19 +557,46 @@ class ComplianceService
     {
         $countryCode = strtoupper($countryCode);
 
-        return CountryConfiguration::updateOrCreate(
-            [
-                'tenant_id' => $this->currentTenantId(),
-                'country_code' => $countryCode,
-                'provider_name' => $config['provider_name'] ?? 'default',
-            ],
-            [
-                'is_enabled' => $config['is_enabled'] ?? false,
-                'api_credentials' => $config['api_credentials'] ?? [],
-                'settings' => $config['settings'] ?? [],
-                'test_mode' => $config['test_mode'] ?? true,
-            ]
-        );
+        $identity = [
+            'tenant_id' => $this->currentTenantId(),
+            'country_code' => $countryCode,
+            'provider_name' => $config['provider_name'] ?? 'default',
+        ];
+
+        $values = [
+            'is_enabled' => $config['is_enabled'] ?? false,
+            'api_credentials' => $config['api_credentials'] ?? [],
+            'settings' => $config['settings'] ?? [],
+            'test_mode' => $config['test_mode'] ?? true,
+        ];
+
+        /*
+         * Some configurations created before these columns used encrypted
+         * casts still contain plaintext JSON. Eloquent's updateOrCreate()
+         * hydrates that row and attempts to decrypt every original cast value
+         * during dirty checking, which makes it impossible to replace the
+         * legacy value. Cast the new values on a clean model and update the
+         * existing row through the query builder so the unreadable original is
+         * never decrypted.
+         */
+        $existingId = DB::table((new CountryConfiguration)->getTable())
+            ->where($identity)
+            ->value('id');
+
+        if ($existingId !== null) {
+            $castModel = new CountryConfiguration;
+            $castModel->forceFill($values);
+            $rawValues = array_intersect_key($castModel->getAttributes(), $values);
+            $rawValues['updated_at'] = now();
+
+            DB::table($castModel->getTable())
+                ->where('id', $existingId)
+                ->update($rawValues);
+
+            return CountryConfiguration::findOrFail($existingId);
+        }
+
+        return CountryConfiguration::create(array_merge($identity, $values));
     }
 
     public function submitComplianceDocument(ComplianceDocument $document, string $countryCode, mixed $sourceDocument = null): array
@@ -626,6 +653,13 @@ class ComplianceService
         try {
             DB::beginTransaction();
 
+            // Tenant supplier identity is configured in MyInvois settings,
+            // rather than duplicated on every invoice. Load it before
+            // validation so the Malaysia validator sees the same values that
+            // will be mapped into and submitted with the payload.
+            $config = $this->getCountryConfig($countryCode);
+            $context = $config?->getProviderContext() ?? [];
+
             $validator = $this->pluginRegistry->resolve($countryCode, 'validator');
             if (! $validator) {
                 DB::rollBack();
@@ -635,7 +669,9 @@ class ComplianceService
 
             $nonInvoiceTypes = ['credit_note', 'bill', 'vendor_debit_note', 'journal_entry'];
             if (! in_array($docType, $nonInvoiceTypes, true)) {
-                $validation = $validator->validateInvoice($sourceDocument);
+                $validation = strtoupper($countryCode) === 'MY'
+                    ? $validator->validateInvoice($sourceDocument, $context)
+                    : $validator->validateInvoice($sourceDocument);
                 if (! $validation['valid']) {
                     DB::rollBack();
 
@@ -676,9 +712,6 @@ class ComplianceService
                 'payload_hash' => hash('sha256', (string) json_encode($payload)),
                 'line_item_count' => count($payload['line_items'] ?? []),
             ]);
-
-            $config = $this->getCountryConfig($countryCode);
-            $context = $config?->getProviderContext() ?? [];
 
             if ($countryCode === 'MY') {
                 $credentialError = $this->validateMyInvoiceCredentials($context);

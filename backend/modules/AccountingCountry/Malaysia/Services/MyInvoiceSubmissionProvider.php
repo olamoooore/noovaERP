@@ -24,6 +24,8 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
     protected bool $testMode;
 
+    protected bool $hasEndpointOverride;
+
     public function __construct(?Client $client = null, ?string $endpoint = null)
     {
         $this->client = $client ?? new Client;
@@ -32,12 +34,17 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         $defaultTestEndpoint = 'https://preprod-api.myinvois.hasil.gov.my';
         $defaultProdEndpoint = 'https://api.myinvois.hasil.gov.my';
 
+        $configuredEndpoint = $endpoint
+            ?? $this->safeConfig('compliance.malaysia.myinvoice_api_endpoint');
+        $this->hasEndpointOverride = is_string($configuredEndpoint)
+            && trim($configuredEndpoint) !== '';
+
+        // An explicitly blank environment variable should behave like an
+        // unset value, not produce a relative URL with no host.
         $this->endpoint = rtrim(
-            $endpoint
-            ?? $this->safeConfig(
-                'compliance.malaysia.myinvoice_api_endpoint',
-                $this->testMode ? $defaultTestEndpoint : $defaultProdEndpoint
-            ),
+            is_string($configuredEndpoint) && trim($configuredEndpoint) !== ''
+                ? $configuredEndpoint
+                : ($this->testMode ? $defaultTestEndpoint : $defaultProdEndpoint),
             '/'
         );
     }
@@ -47,6 +54,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
      */
     public function submit(array $payload, array $credentials): array
     {
+        $this->configureTenantEnvironment($credentials);
         $idempotencyKey = (string) ($credentials['idempotency_key'] ?? Str::uuid());
 
         try {
@@ -230,6 +238,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
      */
     public function getStatus(string $providerReference, array $credentials): array
     {
+        $this->configureTenantEnvironment($credentials);
         try {
             $credentials = $this->withAccessToken($credentials);
 
@@ -338,6 +347,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
      */
     public function getStatusByDocumentUuid(string $documentUuid, array $credentials): array
     {
+        $this->configureTenantEnvironment($credentials);
         try {
             $credentials = $this->withAccessToken($credentials);
             $details = $this->fetchDocumentDetails($documentUuid, $credentials);
@@ -400,6 +410,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
      */
     public function cancel(string $providerReference, array $credentials): array
     {
+        $this->configureTenantEnvironment($credentials);
         try {
             $credentials = $this->withAccessToken($credentials);
 
@@ -718,7 +729,7 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
 
         $identityService = rtrim((string) $this->safeConfig('compliance.malaysia.myinvoice_identity_service', ''), '/');
         if ($identityService === '') {
-            return $credentials;
+            $identityService = $this->endpoint;
         }
 
         if ($usingEnvFallback) {
@@ -804,6 +815,24 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         }
 
         return $credentials;
+    }
+
+    /**
+     * Select sandbox or production from the tenant configuration supplied to
+     * this request. A non-empty constructor/environment endpoint remains an
+     * explicit operator override.
+     */
+    private function configureTenantEnvironment(array $credentials): void
+    {
+        if (array_key_exists('test_mode', $credentials)) {
+            $this->testMode = (bool) $credentials['test_mode'];
+        }
+
+        if (! $this->hasEndpointOverride) {
+            $this->endpoint = $this->testMode
+                ? 'https://preprod-api.myinvois.hasil.gov.my'
+                : 'https://api.myinvois.hasil.gov.my';
+        }
     }
 
     private function decodeExceptionResponse(RequestException $e): array
@@ -984,6 +1013,10 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         $isGeneralBuyerTin = $buyerTinValue === '' || $buyerTinValue === 'EI00000000010';
         if ($isGeneralBuyerTin) {
             $isConsolidatedInvoice = true;
+            // LHDN's consolidated/general-public identity is TIN
+            // EI00000000010 with BRN "NA". A fabricated NRIC is rejected by
+            // production validation (CF324).
+            $buyerTaxId = 'BRN';
         }
         $docTypeCode = $this->resolveDocumentTypeCode((string) ($payload['document_type'] ?? 'invoice'));
         $invoiceNumber = (string) ($payload['invoice_number'] ?? 'INV');
@@ -1070,14 +1103,6 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
             'InvoiceTypeCode' => [['_' => $docTypeCode, 'listVersionID' => '1.0']],
             'DocumentCurrencyCode' => [['_' => $currency]],
             'TaxCurrencyCode' => [['_' => $currency]],
-            // BillingPeriod is required by LHDN for consolidated invoices (type 04).
-            // Use the invoice month as the consolidation period.
-            ...($isGeneralBuyerTin ? [
-                'BillingPeriod' => [[
-                    'StartDate' => [['_' => \Carbon\Carbon::parse($invoiceDate)->startOfMonth()->toDateString()]],
-                    'EndDate' => [['_' => \Carbon\Carbon::parse($invoiceDate)->endOfMonth()->toDateString()]],
-                ]],
-            ] : []),
             'AccountingSupplierParty' => [[
                 'Party' => [[
                     'IndustryClassificationCode' => [[
@@ -1278,8 +1303,8 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
         ];
 
         $registrationValue = $this->normalizeIdentifierValue($party['company_registration'] ?? $party['identity_number'] ?? null);
-        if (! $isSupplier && $isConsolidatedBuyer && $usesGeneralTin && $registrationValue === null) {
-            $registrationValue = '00000000000';
+        if (! $isSupplier && $isConsolidatedBuyer && $usesGeneralTin) {
+            $registrationValue = 'NA';
         }
 
         $identifications[] = [
@@ -1745,9 +1770,9 @@ class MyInvoiceSubmissionProvider implements SubmissionProviderContract
                 ?? $responseData['response_code']
                 ?? $nestedError['code']
                 ?? null,
-            'message' => $responseData['message']
+            'message' => $detailMessage
+                ?? $responseData['message']
                 ?? $nestedError['message']
-                ?? $detailMessage
                 ?? $responseData['error_message']
                 ?? $responseData['reason']
                 ?? $fallbackMessage,
