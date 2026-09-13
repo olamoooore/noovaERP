@@ -10,6 +10,7 @@ use App\Services\BankStatements\BankStatementImportService;
 use App\Services\BankStatements\DuplicateStatementFile;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class BankStatementImportController extends Controller
@@ -56,5 +57,14 @@ class BankStatementImportController extends Controller
     public function show(string $importId): JsonResponse
     {
         return response()->json(['data' => BankStatementImport::with('bankAccount:id,account_name,currency_code')->withCount('transactions')->findOrFail($importId)]);
+    }
+
+    public function errors(Request $request, string $importId): JsonResponse
+    {
+        BankStatementImport::findOrFail($importId);
+
+        return response()->json(DB::table('bank_statement_import_errors')
+            ->where('import_id', $importId)->orderBy('source_row')
+            ->paginate(min(250, max(1, $request->integer('per_page', 50)))));
     }
 }

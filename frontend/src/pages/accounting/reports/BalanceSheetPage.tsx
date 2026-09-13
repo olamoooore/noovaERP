@@ -67,11 +67,31 @@ interface BalanceSheetData {
   };
 }
 
-export default function BalanceSheetPage() {
+interface BalanceSheetPageProps {
+  pageTitle?: string;
+  statementTitle?: string;
+  financialStatementStyle?: boolean;
+}
+
+export default function BalanceSheetPage({
+  pageTitle = 'Balance Sheet (SFRS)',
+  statementTitle = 'Balance Sheet',
+  financialStatementStyle = false,
+}: BalanceSheetPageProps) {
   const navigate = useNavigate();
   const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split('T')[0]);
   const [compareEnabled, setCompareEnabled] = useState(false);
   const [compareDate, setCompareDate] = useState('');
+  const [collapsedRows, setCollapsedRows] = useState<Set<string>>(new Set());
+
+  const toggleRow = (id: string) => {
+    setCollapsedRows((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['balance-sheet', asOfDate, compareEnabled, compareDate],
@@ -99,20 +119,34 @@ export default function BalanceSheetPage() {
     });
   };
 
-  const renderAccountGroup = (group: AccountGroup) => {
+  const renderAccountGroup = (group: AccountGroup, sectionId = '') => {
+    const rowId = `group:${sectionId}:${group.code}`;
+    const isCollapsed = collapsedRows.has(rowId);
+
     return (
       <React.Fragment key={group.code}>
-        <TableRow className="bg-blue-50 border-l-4 border-l-blue-400">
-          <TableCell className="font-semibold text-blue-900 pl-6">
+        <TableRow className={financialStatementStyle ? '' : 'bg-blue-50 border-l-4 border-l-blue-400'}>
+          <TableCell className={`font-semibold pl-6 ${financialStatementStyle ? '' : 'text-blue-900'}`}>
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label={isCollapsed ? `Expand ${group.name}` : `Collapse ${group.name}`}
+                className="p-0.5 rounded hover:bg-black/5 text-muted-foreground shrink-0"
+                onClick={() => toggleRow(rowId)}
+              >
+                <Icon
+                  icon={isCollapsed ? 'solar:alt-arrow-right-linear' : 'solar:alt-arrow-down-linear'}
+                  className="w-4 h-4"
+                />
+              </button>
               <span>{group.name}</span>
             </div>
           </TableCell>
-          <TableCell className="text-right font-mono font-semibold text-blue-900">
+          <TableCell className={`text-right font-mono font-semibold ${financialStatementStyle ? '' : 'text-blue-900'}`}>
             {formatCurrency(group.total)}
           </TableCell>
         </TableRow>
-        {group.accounts.map((account) => (
+        {!isCollapsed && group.accounts.map((account) => (
           <TableRow
             key={account.account_id}
             className="hover:bg-gray-50 cursor-pointer"
@@ -120,7 +154,7 @@ export default function BalanceSheetPage() {
           >
             <TableCell className="pl-12">
               <div className="flex items-center gap-2">
-                <Badge className="bg-gray-100 text-gray-600 text-xs">L3</Badge>
+                {!financialStatementStyle && <Badge className="bg-gray-100 text-gray-600 text-xs">L3</Badge>}
                 <span className="font-mono text-sm text-muted-foreground">{account.code}</span>
                 <span>{account.name}</span>
                 {account.currency_code && <Badge variant="outline" className="text-xs">{account.currency_code}</Badge>}
@@ -137,25 +171,38 @@ export default function BalanceSheetPage() {
 
   const renderSection = (title: string, groups: AccountGroup[], total: number) => {
     if (!groups || groups.length === 0) return null;
+    const sectionId = `section:${title.toLowerCase().replace(/ /g, '-')}`;
+    const isCollapsed = collapsedRows.has(sectionId);
 
     return (
       <>
-        <TableRow className="bg-purple-50 border-l-4 border-l-purple-500">
-          <TableCell className="font-bold text-lg text-purple-900 pl-4">
+        <TableRow className={financialStatementStyle ? 'bg-muted/50' : 'bg-purple-50 border-l-4 border-l-purple-500'}>
+          <TableCell className={`font-bold text-lg pl-4 ${financialStatementStyle ? '' : 'text-purple-900'}`}>
             <div className="flex items-center gap-2">
-              <Badge className="bg-purple-100 text-purple-800 font-bold text-xs">L1</Badge>
+              <button
+                type="button"
+                aria-label={isCollapsed ? `Expand ${title}` : `Collapse ${title}`}
+                className="p-0.5 rounded hover:bg-black/5 text-muted-foreground shrink-0"
+                onClick={() => toggleRow(sectionId)}
+              >
+                <Icon
+                  icon={isCollapsed ? 'solar:alt-arrow-right-linear' : 'solar:alt-arrow-down-linear'}
+                  className="w-4 h-4"
+                />
+              </button>
+              {!financialStatementStyle && <Badge className="bg-purple-100 text-purple-800 font-bold text-xs">L1</Badge>}
               <span>{title}</span>
             </div>
           </TableCell>
           <TableCell></TableCell>
         </TableRow>
-        {groups.map((group) => renderAccountGroup(group))}
-        <TableRow className="font-bold bg-muted border-t-2">
-          <TableCell className="pl-4">Total {title}</TableCell>
-          <TableCell className="text-right font-mono text-lg">
-            {formatCurrency(total)}
-          </TableCell>
-        </TableRow>
+        {!isCollapsed && groups.map((group) => renderAccountGroup(group, sectionId))}
+        {!isCollapsed && (
+          <TableRow className="font-bold border-t-2">
+            <TableCell className="pl-4">Total {title}</TableCell>
+            <TableCell className="text-right font-mono text-lg">{formatCurrency(total)}</TableCell>
+          </TableRow>
+        )}
       </>
     );
   };
@@ -164,7 +211,7 @@ export default function BalanceSheetPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Balance Sheet (SFRS)</h1>
+          <h1 className="text-3xl font-bold">{pageTitle}</h1>
           <p className="text-muted-foreground mt-1">
             Singapore Financial Reporting Standards compliant
           </p>
@@ -221,7 +268,7 @@ export default function BalanceSheetPage() {
       {compareEnabled && balanceSheet?.comparison && (
         <Card className="p-6">
           <ComparisonTable
-            title="Balance Sheet Comparison"
+            title={`${statementTitle} Comparison`}
             companyName="NoovaERP"
             asOfDate={new Date(asOfDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
             compareDate={new Date(balanceSheet.comparison.as_of_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
@@ -246,7 +293,7 @@ export default function BalanceSheetPage() {
         </Card>
       )}
 
-      <Card className="p-4 bg-blue-50 border-blue-200">
+      {!financialStatementStyle && <Card className="p-4 bg-blue-50 border-blue-200">
         <div className="flex items-start gap-3">
           <Icon icon="solar:info-circle-bold" className="w-5 h-5 text-blue-600 mt-0.5" />
           <div className="flex-1">
@@ -267,7 +314,7 @@ export default function BalanceSheetPage() {
             </div>
           </div>
         </div>
-      </Card>
+      </Card>}
 
       <Card className="p-6">
         {isLoading ? (
@@ -287,7 +334,7 @@ export default function BalanceSheetPage() {
         ) : (
           <>
             <div className="mb-6 text-center border-b pb-4">
-              <h2 className="text-2xl font-bold uppercase">Balance Sheet</h2>
+              <h2 className="text-2xl font-bold uppercase">{statementTitle}</h2>
               <p className="text-sm text-muted-foreground mt-1">
                 As of {new Date(asOfDate).toLocaleDateString('en-US', { 
                   year: 'numeric', 
@@ -299,6 +346,21 @@ export default function BalanceSheetPage() {
             </div>
 
             <Table>
+              <caption className="caption-top pb-2">
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setCollapsedRows(new Set())}>
+                    <Icon icon="solar:maximize-linear" className="w-3.5 h-3.5 mr-1" />
+                    Expand all
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => {
+                    const ids = ['section:current-assets', 'section:non-current-assets', 'section:current-liabilities', 'section:non-current-liabilities', 'section:equity'];
+                    setCollapsedRows(new Set(ids));
+                  }}>
+                    <Icon icon="solar:minimize-linear" className="w-3.5 h-3.5 mr-1" />
+                    Collapse all
+                  </Button>
+                </div>
+              </caption>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-2/3">Account</TableHead>
@@ -306,7 +368,7 @@ export default function BalanceSheetPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow className="bg-primary/10">
+                <TableRow className={financialStatementStyle ? 'bg-muted/50' : 'bg-primary/10'}>
                   <TableCell className="font-bold text-xl py-4">ASSETS</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
@@ -323,7 +385,7 @@ export default function BalanceSheetPage() {
                   normalizeGroups(balanceSheet.assets?.non_current || []).reduce((sum, group) => sum + group.total, 0)
                 )}
 
-                <TableRow className="font-bold border-t-4 bg-primary/20">
+                <TableRow className={financialStatementStyle ? 'font-bold border-t-2' : 'font-bold border-t-4 bg-primary/20'}>
                   <TableCell className="text-xl py-4">TOTAL ASSETS</TableCell>
                   <TableCell className="text-right font-mono text-xl">
                     {formatCurrency(balanceSheet.total_assets || 0)}
@@ -334,7 +396,7 @@ export default function BalanceSheetPage() {
                   <TableCell colSpan={2} className="h-6"></TableCell>
                 </TableRow>
 
-                <TableRow className="bg-primary/10">
+                <TableRow className={financialStatementStyle ? 'bg-muted/50' : 'bg-primary/10'}>
                   <TableCell className="font-bold text-xl py-4">LIABILITIES</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
@@ -351,14 +413,14 @@ export default function BalanceSheetPage() {
                   normalizeGroups(balanceSheet.liabilities?.non_current || []).reduce((sum, group) => sum + group.total, 0)
                 )}
 
-                <TableRow className="font-bold border-t-4 bg-primary/20">
+                <TableRow className={financialStatementStyle ? 'font-bold border-t-2' : 'font-bold border-t-4 bg-primary/20'}>
                   <TableCell className="text-xl py-4">TOTAL LIABILITIES</TableCell>
                   <TableCell className="text-right font-mono text-xl">
                     {formatCurrency(balanceSheet.total_liabilities || 0)}
                   </TableCell>
                 </TableRow>
 
-                <TableRow className="font-bold border-y-4 bg-muted/60">
+                <TableRow className={financialStatementStyle ? 'font-bold border-y-2' : 'font-bold border-y-4 bg-muted/60'}>
                   <TableCell className="text-xl py-4">NET ASSETS/(LIABILITIES)</TableCell>
                   <TableCell className="text-right font-mono text-xl">
                     {formatCurrency((balanceSheet.total_assets || 0) - (balanceSheet.total_liabilities || 0))}
@@ -369,15 +431,41 @@ export default function BalanceSheetPage() {
                   <TableCell colSpan={2} className="h-6"></TableCell>
                 </TableRow>
 
-                <TableRow className="bg-primary/10">
-                  <TableCell className="font-bold text-xl py-4">EQUITY</TableCell>
+                <TableRow className={financialStatementStyle ? 'bg-muted/50' : 'bg-primary/10'}>
+                  <TableCell className="font-bold text-xl py-4">
+                    <button type="button" className="flex items-center gap-2" onClick={() => toggleRow('section:equity')}>
+                      <Icon icon={collapsedRows.has('section:equity') ? 'solar:alt-arrow-right-linear' : 'solar:alt-arrow-down-linear'} className="w-4 h-4" />
+                      EQUITY
+                    </button>
+                  </TableCell>
                   <TableCell></TableCell>
                 </TableRow>
 
-                {normalizeGroups(balanceSheet.equity?.groups || balanceSheet.equity?.accounts || []).map((group) => renderAccountGroup(group))}
+                {!collapsedRows.has('section:equity') && (financialStatementStyle ? (() => {
+                  const equityAccounts = normalizeGroups(
+                    balanceSheet.equity?.groups || balanceSheet.equity?.accounts || []
+                  ).flatMap((group) => group.accounts);
+                  const shareCapital = equityAccounts
+                    .filter((account) => /share capital/i.test(account.name))
+                    .reduce((sum, account) => sum + account.balance, 0);
+                  const retainedProfit = (balanceSheet.total_equity || 0) - shareCapital;
 
-                {/* Show Current Year Earnings as a separate line */}
-                {balanceSheet.equity?.current_year_earnings !== undefined && (
+                  return (
+                    <>
+                      <TableRow>
+                        <TableCell className="pl-6">Share Capital</TableCell>
+                        <TableCell className="text-right font-mono">{formatCurrency(shareCapital)}</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="pl-6">Retained Profit</TableCell>
+                        <TableCell className="text-right font-mono">{formatCurrency(retainedProfit)}</TableCell>
+                      </TableRow>
+                    </>
+                  );
+                })() : normalizeGroups(balanceSheet.equity?.groups || balanceSheet.equity?.accounts || []).map((group) => renderAccountGroup(group, 'section:equity')))}
+
+                {/* Show Current Year Earnings as a separate line on the standard balance sheet. */}
+                {!collapsedRows.has('section:equity') && !financialStatementStyle && balanceSheet.equity?.current_year_earnings !== undefined && (
                   <TableRow className="border-t">
                     <TableCell className="pl-8 font-semibold">
                       Current Year Earnings (Net Profit/Loss)
@@ -388,27 +476,32 @@ export default function BalanceSheetPage() {
                   </TableRow>
                 )}
 
-                <TableRow className="font-bold border-t-4 bg-primary/20">
-                  <TableCell className="text-xl py-4">TOTAL EQUITY</TableCell>
+                {!collapsedRows.has('section:equity') && <TableRow className={financialStatementStyle ? 'font-bold border-y-2' : 'font-bold border-t-4 bg-primary/20'}>
+                  <TableCell className="text-xl py-4">
+                    {financialStatementStyle ? 'TOTAL EQUITY/(CAPITAL DEFICIENCY)' : 'TOTAL EQUITY'}
+                  </TableCell>
                   <TableCell className="text-right font-mono text-xl">
                     {formatCurrency(balanceSheet.total_equity || 0)}
                   </TableCell>
-                </TableRow>
+                </TableRow>}
 
-                <TableRow>
-                  <TableCell colSpan={2} className="h-4"></TableCell>
-                </TableRow>
-
-                <TableRow className="font-bold border-t-4 border-b-4 bg-primary/30">
-                  <TableCell className="text-xl py-4">TOTAL LIABILITIES + EQUITY</TableCell>
-                  <TableCell className="text-right font-mono text-xl">
-                    {formatCurrency(balanceSheet.total_liabilities_and_equity || 0)}
-                  </TableCell>
-                </TableRow>
+                {!financialStatementStyle && (
+                  <>
+                    <TableRow>
+                      <TableCell colSpan={2} className="h-4"></TableCell>
+                    </TableRow>
+                    <TableRow className="font-bold border-t-4 border-b-4 bg-primary/30">
+                      <TableCell className="text-xl py-4">TOTAL LIABILITIES + EQUITY</TableCell>
+                      <TableCell className="text-right font-mono text-xl">
+                        {formatCurrency(balanceSheet.total_liabilities_and_equity || 0)}
+                      </TableCell>
+                    </TableRow>
+                  </>
+                )}
               </TableBody>
             </Table>
 
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            {!financialStatementStyle && <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card className={`p-4 ${Math.abs(balanceSheet.balance_check || 0) < 0.01 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
                 <div className="flex items-center gap-3">
                   {Math.abs(balanceSheet.balance_check || 0) < 0.01 ? (
@@ -450,7 +543,7 @@ export default function BalanceSheetPage() {
                   </div>
                 </div>
               </Card>
-            </div>
+            </div>}
           </>
         )}
       </Card>

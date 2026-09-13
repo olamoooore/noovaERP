@@ -7,16 +7,17 @@ use App\Http\Requests\CreateBankStatementMatchRequest;
 use App\Services\BankStatements\BankStatementMatchingService;
 use App\Services\BankStatements\MatchConflict;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class BankStatementMatchController extends Controller
 {
     public function __construct(private BankStatementMatchingService $service) {}
 
-    public function suggest(string $importId): JsonResponse
+    public function suggest(Request $request, string $importId): JsonResponse
     {
         try {
-            return response()->json(['data' => $this->service->suggest($importId), 'correlation_id' => (string) Str::uuid()]);
+            return response()->json(['data' => $this->service->suggest($importId, (int) $request->user()->id), 'correlation_id' => (string) Str::uuid()]);
         } catch (\DomainException $e) {
             return response()->json(['code' => 'MATCH_SUGGESTION_REJECTED', 'message' => $e->getMessage(), 'correlation_id' => (string) Str::uuid()], 422);
         }
@@ -33,10 +34,10 @@ class BankStatementMatchController extends Controller
         }
     }
 
-    public function destroy(string $matchId): JsonResponse
+    public function destroy(Request $request, string $matchId): JsonResponse
     {
         try {
-            $this->service->remove($matchId);
+            $this->service->remove($matchId, (int) $request->user()->id);
 
             return response()->json(['message' => 'Statement match removed.', 'correlation_id' => (string) Str::uuid()]);
         } catch (MatchConflict $e) {

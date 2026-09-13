@@ -127,6 +127,7 @@ const VendorDebitNoteDetail = lazy(() => import('@/pages/accounting/vendors/Vend
 const ARTransactionsPage = lazy(() => import('@/pages/accounting/ARTransactionsPage'))
 const APTransactionsPage = lazy(() => import('@/pages/accounting/APTransactionsPage'))
 const BalanceSheetPage = lazy(() => import('@/pages/accounting/reports/BalanceSheetPage'))
+const FinancialStatementPage = lazy(() => import('@/pages/accounting/reports/FinancialStatementPage'))
 
 // Auditor Portal Pages
 const AuditorManagementPage = lazy(() => import('@/pages/auditor/AuditorManagementPage'))
@@ -435,6 +436,7 @@ function App() {
                 {/* Reporting Section */}
                 <Route path="/accounting/reporting" element={<Navigate to="/accounting/reporting/trial-balance" replace />} />
                 <Route path="/accounting/reporting/balance-sheet" element={<BalanceSheetPage />} />
+                <Route path="/accounting/reporting/financial-statement" element={<FinancialStatementPage />} />
                 <Route path="/accounting/reporting/profit-loss" element={<ProfitLossPage />} />
                 <Route path="/accounting/reporting/cash-flow" element={<CashFlowPage />} />
                 <Route path="/accounting/reporting/general-ledger" element={<GeneralLedgerPage />} />

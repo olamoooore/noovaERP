@@ -18,7 +18,7 @@ class CreateBankStatementMatchRequest extends FormRequest
             'journal_entry_line_id' => ['required', 'integer', 'exists:journal_entry_lines,id'],
             'matched_amount' => ['required', 'numeric', 'not_in:0'],
             'idempotency_key' => ['required', 'string', 'max:100'],
-            'review_reason' => ['required', 'string', 'min:10', 'max:1000'],
+            'review_reason' => ['required', 'string', 'max:1000'],
         ];
     }
 }

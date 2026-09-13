@@ -7,6 +7,7 @@ use App\Accounting\DTOs\PostingRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\BankAccount;
 use App\Models\BankReconciliation;
+use App\Models\BankStatementMatch;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntryLine;
 use App\Models\ReconciliationItem;
@@ -90,9 +91,18 @@ class BankReconciliationService
             ->select('journal_entry_lines.*')
             ->get();
 
+        $acceptedAllocations = BankStatementMatch::query()
+            ->whereIn('journal_entry_line_id', $lines->pluck('id'))
+            ->where('status', 'accepted')
+            ->selectRaw('journal_entry_line_id, SUM(matched_amount) AS allocated_amount')
+            ->groupBy('journal_entry_line_id')
+            ->pluck('allocated_amount', 'journal_entry_line_id');
+
         // Format transactions
         $transactions = [];
         foreach ($lines as $line) {
+            $movement = (float) $line->debit - (float) $line->credit;
+            $allocatedAmount = (float) ($acceptedAllocations[$line->id] ?? 0);
             $transactions[] = [
                 'id' => $line->id,
                 'date' => $line->journalEntry->entry_date->format('Y-m-d'),
@@ -100,6 +110,8 @@ class BankReconciliationService
                 'reference' => $line->reference ?: $line->journalEntry->reference,
                 'debit' => round((float) $line->debit, 2),
                 'credit' => round((float) $line->credit, 2),
+                'statement_matched_amount' => round($allocatedAmount, 8),
+                'available_amount' => round($movement - $allocatedAmount, 8),
                 'reconciled' => ! is_null($line->reconciliation_id),
                 'reconciliation_date' => $line->reconciliation_id ?
                     ($line->reconciliation ? $line->reconciliation->statement_date->format('Y-m-d') : null) :

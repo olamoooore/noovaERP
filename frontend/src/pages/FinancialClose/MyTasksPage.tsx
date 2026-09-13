@@ -152,7 +152,7 @@ export function MyTasksPage() {
     if (link.type === 'report') {
       const reportRoutes: Record<string, string> = {
         'trial-balance': '/accounting/reporting/trial-balance',
-        'financial-statements': '/accounting/reporting/financial-statements',
+        'financial-statements': '/accounting/reporting/financial-statement',
         'general-ledger': '/accounting/reporting/general-ledger',
       }
       navigate(reportRoutes[link.id as string] ?? '/accounting/reporting/trial-balance')

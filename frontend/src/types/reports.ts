@@ -543,6 +543,8 @@ export interface ReconciliationTransaction {
   reference: string | null;
   debit: number;
   credit: number;
+  statement_matched_amount?: number;
+  available_amount?: number;
   reconciled: boolean;
   reconciliation_date: string | null;
 }

@@ -384,7 +384,7 @@ export function TaskDetailPage() {
                       if (doc.type === 'report') {
                         const reportRoutes: Record<string, string> = {
                           'trial-balance': '/accounting/reporting/trial-balance',
-                          'financial-statements': '/accounting/reporting/financial-statements',
+                          'financial-statements': '/accounting/reporting/financial-statement',
                           'general-ledger': '/accounting/reporting/general-ledger',
                         }
                         const reportRoute = reportRoutes[doc.id as string] ?? '/accounting/reporting/trial-balance'

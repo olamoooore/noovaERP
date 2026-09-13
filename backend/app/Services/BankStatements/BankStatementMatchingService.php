@@ -4,15 +4,19 @@ namespace App\Services\BankStatements;
 
 use App\Models\BankStatementImport;
 use App\Models\BankStatementMatch;
+use App\Models\BankStatementOperation;
 use App\Models\BankStatementTransaction;
 use App\Models\JournalEntryLine;
 use Illuminate\Support\Facades\DB;
 
 class BankStatementMatchingService
 {
-    private const TOLERANCE = 0.01;
+    public function __construct(
+        private CurrencyToleranceService $tolerances,
+        private BankStatementAuditService $audit,
+    ) {}
 
-    public function suggest(string $importId): array
+    public function suggest(string $importId, int $actorId): array
     {
         $import = BankStatementImport::with('bankAccount')->findOrFail($importId);
         if ($import->status !== 'imported') {
@@ -20,21 +24,30 @@ class BankStatementMatchingService
         }
         $lines = BankStatementTransaction::with(['allocations', 'import'])->where('import_id', $importId)->whereIn('status', ['unmatched', 'suggested', 'partially_matched'])->get();
         $glLines = $this->eligibleGlLines((int) $import->bank_account_id)->get();
+        $acceptedByGl = BankStatementMatch::query()
+            ->whereIn('journal_entry_line_id', $glLines->pluck('id'))
+            ->where('status', 'accepted')
+            ->selectRaw('journal_entry_line_id, SUM(matched_amount) AS allocated_amount')
+            ->groupBy('journal_entry_line_id')
+            ->pluck('allocated_amount', 'journal_entry_line_id');
+        $searchWindowDays = max(10, (int) config('bank_statements.matching_search_window_days', 45));
         $created = 0;
         foreach ($lines as $statement) {
+            $tolerance = (float) $this->tolerances->for($statement->currency_code);
             $invoiceReferences = $statement->allocations->where('allocation_type', 'invoice_reference')
                 ->pluck('external_reference')->map(fn ($value) => $this->normalize($value))->filter()->values();
-            $ranked = $glLines->map(function ($gl) use ($statement, $invoiceReferences) {
+            $ranked = $glLines->map(function ($gl) use ($statement, $invoiceReferences, $tolerance, $acceptedByGl, $searchWindowDays) {
                 $movement = (float) $gl->debit - (float) $gl->credit;
-                if ($movement * (float) $statement->amount <= 0) {
+                $glRemaining = $movement - (float) ($acceptedByGl[$gl->id] ?? 0);
+                if (abs($glRemaining) <= $tolerance || $glRemaining * (float) $statement->amount <= 0) {
                     return null;
                 }
                 $dateGap = abs($statement->transaction_date->diffInDays($gl->journalEntry->entry_date));
-                if ($dateGap > 10) {
+                if ($dateGap > $searchWindowDays) {
                     return null;
                 }
-                $amountScore = abs(abs($movement) - abs((float) $statement->residual_amount)) <= self::TOLERANCE ? 0.45 : 0;
-                $dateScore = 0.05 * max(0, 1 - ($dateGap / 10));
+                $amountScore = abs(abs($glRemaining) - abs((float) $statement->residual_amount)) <= $tolerance ? 0.45 : 0;
+                $dateScore = $dateGap <= 3 ? 0.05 : ($dateGap <= 10 ? 0.05 * ((10 - $dateGap) / 7) : 0);
                 $statementRef = $this->normalize($statement->bank_reference);
                 $glRef = $this->normalize($gl->reference ?: $gl->journalEntry->reference);
                 $payment = DB::table('payments as p')->leftJoin('customers as c', 'c.id', '=', 'p.customer_id')
@@ -58,7 +71,7 @@ class BankStatementMatchingService
                     - ($referenceConflict ? 0.15 : 0) - ($customerConflict ? 0.20 : 0);
 
                 return ['line' => $gl, 'score' => max(0, $score),
-                    'allocation' => abs($movement) < abs((float) $statement->residual_amount) ? $movement : (float) $statement->residual_amount,
+                    'allocation' => abs($glRemaining) < abs((float) $statement->residual_amount) ? $glRemaining : (float) $statement->residual_amount,
                     'reasons' => ['exact_amount' => $amountScore > 0, 'reference_match' => $referenceMatch, 'reference_conflict' => $referenceConflict,
                         'invoice_match' => $invoiceMatch, 'customer_code_match' => $customerCodeMatch, 'customer_name_match' => $customerNameMatch,
                         'customer_conflict' => $customerConflict, 'date_gap_days' => $dateGap]];
@@ -80,16 +93,25 @@ class BankStatementMatchingService
             }
         }
 
+        $this->audit->record('suggestions_generated', ['actor_id' => $actorId, 'bank_account_id' => $import->bank_account_id, 'import_id' => $import->id, 'after_state' => ['suggestions_created' => $created]]);
+
         return ['suggestions_created' => $created];
     }
 
     public function accept(array $data, int $userId): BankStatementMatch
     {
         return DB::transaction(function () use ($data, $userId) {
-            $replay = BankStatementMatch::where('idempotency_key', $data['idempotency_key'])->first();
-            if ($replay) {
-                return $replay;
+            $payloadHash = hash('sha256', json_encode(collect($data)->except('idempotency_key')->sortKeys()->all(), JSON_THROW_ON_ERROR));
+            $operation = BankStatementOperation::where('operation', 'match_accept')->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first();
+            if ($operation) {
+                if (! hash_equals($operation->payload_hash, $payloadHash)) {
+                    throw new MatchConflict('Idempotency key was already used with a different payload.');
+                }
+                if ($operation->status === 'completed' && $operation->response_id) {
+                    return BankStatementMatch::findOrFail($operation->response_id);
+                }
             }
+            $operation ??= BankStatementOperation::create(['operation' => 'match_accept', 'idempotency_key' => $data['idempotency_key'], 'payload_hash' => $payloadHash, 'actor_id' => $userId, 'status' => 'processing', 'correlation_id' => (string) \Illuminate\Support\Str::uuid()]);
             $statement = BankStatementTransaction::lockForUpdate()->findOrFail($data['bank_statement_transaction_id']);
             $gl = JournalEntryLine::with('journalEntry')->lockForUpdate()->findOrFail($data['journal_entry_line_id']);
             $account = $statement->bankAccount()->firstOrFail();
@@ -113,19 +135,22 @@ class BankStatementMatchingService
             $statementRemaining = (float) $statement->residual_amount;
             $glAllocated = (float) BankStatementMatch::where('journal_entry_line_id', $gl->id)->where('status', 'accepted')->sum('matched_amount');
             $glRemaining = $movement - $glAllocated;
-            if (abs($amount) - abs($statementRemaining) > self::TOLERANCE || abs($amount) - abs($glRemaining) > self::TOLERANCE) {
+            $tolerance = (float) $this->tolerances->for($statement->currency_code);
+            if (abs($amount) - abs($statementRemaining) > $tolerance || abs($amount) - abs($glRemaining) > $tolerance) {
                 throw new MatchConflict('Match amount exceeds the available statement or GL amount.');
             }
             $match = BankStatementMatch::create(['bank_statement_transaction_id' => $statement->id, 'journal_entry_line_id' => $gl->id, 'matched_amount' => $amount, 'match_type' => 'manual', 'confidence' => null, 'match_reasons' => ['manual' => true], 'review_reason' => $data['review_reason'], 'status' => 'accepted', 'accepted_by' => $userId, 'accepted_at' => now(), 'idempotency_key' => $data['idempotency_key']]);
             $this->refreshStatement($statement);
+            $operation->update(['status' => 'completed', 'response_type' => BankStatementMatch::class, 'response_id' => $match->id, 'response' => ['match_id' => $match->id]]);
+            $this->audit->record('match_accepted', ['actor_id' => $userId, 'bank_account_id' => $statement->bank_account_id, 'import_id' => $statement->import_id, 'statement_transaction_id' => $statement->id, 'match_id' => $match->id, 'reason' => $data['review_reason'], 'after_state' => ['journal_entry_line_id' => $gl->id, 'matched_amount' => $amount]], $operation->correlation_id);
 
             return $match;
         });
     }
 
-    public function remove(string $matchId): void
+    public function remove(string $matchId, int $actorId): void
     {
-        DB::transaction(function () use ($matchId) {
+        DB::transaction(function () use ($matchId, $actorId) {
             $match = BankStatementMatch::lockForUpdate()->findOrFail($matchId);
             if ($match->reconciliation_id !== null) {
                 throw new MatchConflict('A completed reconciliation match cannot be removed.');
@@ -133,6 +158,7 @@ class BankStatementMatchingService
             $statement = BankStatementTransaction::lockForUpdate()->findOrFail($match->bank_statement_transaction_id);
             $match->update(['status' => 'reversed', 'version' => $match->version + 1]);
             $this->refreshStatement($statement);
+            $this->audit->record('match_removed', ['actor_id' => $actorId, 'bank_account_id' => $statement->bank_account_id, 'import_id' => $statement->import_id, 'statement_transaction_id' => $statement->id, 'match_id' => $match->id, 'before_state' => ['status' => 'accepted', 'matched_amount' => $match->matched_amount], 'after_state' => ['status' => 'reversed']]);
         });
     }
 
@@ -140,7 +166,8 @@ class BankStatementMatchingService
     {
         $matched = (float) BankStatementMatch::where('bank_statement_transaction_id', $statement->id)->where('status', 'accepted')->sum('matched_amount');
         $residual = (float) $statement->amount - $matched;
-        $status = abs($residual) <= self::TOLERANCE ? 'matched' : (abs($matched) > self::TOLERANCE ? 'partially_matched' : 'unmatched');
+        $tolerance = (float) $this->tolerances->for($statement->currency_code);
+        $status = abs($residual) <= $tolerance ? 'matched' : (abs($matched) > $tolerance ? 'partially_matched' : 'unmatched');
         $statement->update(['matched_amount' => $matched, 'residual_amount' => $residual, 'status' => $status]);
     }
 

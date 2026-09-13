@@ -320,6 +320,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
             ->middleware(RequirePermission::using('reconciliation.view'));
         Route::get('/reconciliation/statement-imports/{importId}', [BankStatementImportController::class, 'show'])
             ->middleware(RequirePermission::using('reconciliation.view'));
+        Route::get('/reconciliation/statement-imports/{importId}/errors', [BankStatementImportController::class, 'errors'])
+            ->middleware(RequirePermission::using('reconciliation.view'));
         Route::get('/reconciliation/statement-transactions', [BankStatementTransactionController::class, 'index'])
             ->middleware(RequirePermission::using('reconciliation.view'));
         Route::get('/reconciliation/statement-transactions/{transactionId}', [BankStatementTransactionController::class, 'show'])

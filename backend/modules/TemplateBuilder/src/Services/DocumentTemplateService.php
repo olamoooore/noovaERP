@@ -186,7 +186,12 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
         // Always use real tenant company data so logo, name, tax_id etc. appear in preview
         $data['company'] = \Modules\TemplateBuilder\Services\DataSource\CompanyDataSource::forCurrentTenant();
 
-        $result = $this->renderer->render($template, $data);
+        $previewTemplate = clone $template;
+        $previewTemplate->metadata = array_merge(
+            is_array($template->metadata) ? $template->metadata : [],
+            ['_canvas_preview' => true],
+        );
+        $result = $this->renderer->render($previewTemplate, $data);
 
         // Wrap in the canvas template so the preview gets full styling (fonts, margins, CSS).
         $fullHtml = view('templatebuilder::canvas', [
@@ -194,6 +199,7 @@ final class DocumentTemplateService implements DocumentTemplateServiceContract
             'font' => $template->default_font ?: config('templatebuilder.defaults.font', 'DejaVu Sans'),
             'margin' => is_array($template->margin) ? $template->margin : config('templatebuilder.defaults.margin_mm'),
             'css' => (string) ($template->css ?? ''),
+            'isPreview' => true,
         ])->render();
 
         return [

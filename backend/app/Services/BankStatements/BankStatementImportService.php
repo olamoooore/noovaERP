@@ -15,7 +15,10 @@ use Illuminate\Support\Str;
 
 class BankStatementImportService
 {
-    public function __construct(private BankStatementParser $parser) {}
+    public function __construct(
+        private BankStatementParser $parser,
+        private BankStatementAuditService $audit,
+    ) {}
 
     public function preview(UploadedFile $file, int $bankAccountId, int $userId, int $headerRow = 1, ?string $worksheet = null): array
     {
@@ -38,6 +41,7 @@ class BankStatementImportService
         $token = Str::random(64);
         $safeName = preg_replace('/[^A-Za-z0-9._ -]/', '_', basename($file->getClientOriginalName()));
         Cache::put('bank-statement-preview:'.$token, ['tenant_id' => $tenantId, 'user_id' => $userId, 'bank_account_id' => $bankAccountId, 'path' => $path, 'type' => $type, 'hash' => $hash, 'file_name' => $safeName, 'header_row' => $headerRow, 'worksheet' => $parsed['worksheet']], now()->addHour());
+        $this->audit->record('import_preview_generated', ['actor_id' => $userId, 'bank_account_id' => $bankAccountId, 'metadata' => ['file_hash' => $hash, 'file_type' => $type, 'source_rows' => count($parsed['rows'])]]);
 
         return ['preview_token' => $token, 'file_hash' => $hash, 'headers' => $parsed['headers'], 'proposed_mapping' => $this->parser->proposeMapping($parsed['headers']), 'source_rows' => count($parsed['rows']), 'sample' => array_slice($parsed['rows'], 0, 100)];
     }
@@ -74,6 +78,17 @@ class BankStatementImportService
                     $normal = $this->normalize($row, $input, $preview['bank_account_id']);
                 } catch (\Throwable) {
                     $errors++;
+                    DB::table('bank_statement_import_errors')->insert([
+                        'id' => (string) Str::uuid(),
+                        'import_id' => $import->id,
+                        'source_row' => $row['source_row'],
+                        'field' => null,
+                        'code' => 'ROW_NORMALIZATION_FAILED',
+                        'severity' => 'error',
+                        'message' => 'The row could not be normalized. Check its date, amount, and required mapped values.',
+                        'safe_value' => null,
+                        'created_at' => now(),
+                    ]);
 
                     continue;
                 }
@@ -108,6 +123,7 @@ class BankStatementImportService
                 }
             }
             $import->update(['status' => $errors ? 'failed' : 'imported', 'transaction_count' => $created, 'duplicate_count' => $duplicates, 'error_count' => $errors, 'imported_at' => $errors ? null : now()]);
+            $this->audit->record($errors ? 'import_failed' : 'import_completed', ['actor_id' => $userId, 'bank_account_id' => $import->bank_account_id, 'import_id' => $import->id, 'after_state' => ['status' => $errors ? 'failed' : 'imported', 'row_count' => count($parsed['rows']), 'transaction_count' => $created, 'duplicate_count' => $duplicates, 'error_count' => $errors]]);
             Cache::forget($key);
 
             return $import->fresh();

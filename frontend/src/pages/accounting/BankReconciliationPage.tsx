@@ -389,6 +389,7 @@ export function BankReconciliationPage() {
     onSuccess: (_, variables) => {
       setMatchSelections((current) => { const next = { ...current }; delete next[variables.transactionId]; return next; });
       queryClient.invalidateQueries({ queryKey: ['bank-statement-transactions', selectedBankAccount] });
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-transactions', selectedBankAccount] });
       toast({ title: 'Transaction matched' });
     },
     onError: (error: any) => toast({ title: 'Match failed', description: error?.response?.data?.message ?? error.message, variant: 'destructive' }),
@@ -396,7 +397,11 @@ export function BankReconciliationPage() {
 
   const unmatchStatementMutation = useMutation({
     mutationFn: (matchId: string) => reportApi.removeBankStatementMatch(matchId),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['bank-statement-transactions', selectedBankAccount] }); toast({ title: 'Match removed' }); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bank-statement-transactions', selectedBankAccount] });
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-transactions', selectedBankAccount] });
+      toast({ title: 'Match removed' });
+    },
     onError: (error: any) => toast({ title: 'Unmatch failed', description: error?.response?.data?.message ?? error.message, variant: 'destructive' }),
   });
 
@@ -619,7 +624,7 @@ export function BankReconciliationPage() {
                                 value={matchSelections[transaction.id]?.glLineId || 'select'}
                                 onValueChange={(value) => {
                                   const gl = transactionsData?.data?.find((line) => line.id === Number(value));
-                                  const available = gl ? Number(gl.debit) - Number(gl.credit) : Number(transaction.residual_amount);
+                                  const available = gl ? Number(gl.available_amount ?? (Number(gl.debit) - Number(gl.credit))) : Number(transaction.residual_amount);
                                   const residual = Number(transaction.residual_amount);
                                   const amount = Math.sign(residual) * Math.min(Math.abs(residual), Math.abs(available));
                                   setMatchSelections((current) => ({ ...current, [transaction.id]: { glLineId: value, amount: String(amount), reason: current[transaction.id]?.reason ?? '' } }));
@@ -628,13 +633,23 @@ export function BankReconciliationPage() {
                                 <SelectTrigger><SelectValue placeholder="Select GL transaction" /></SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="select" disabled>Select GL transaction</SelectItem>
-                                  {(transactionsData?.data ?? []).map((line) => (
+                                  {(transactionsData?.data ?? [])
+                                    .filter((line) => {
+                                      const available = Number(line.available_amount ?? (Number(line.debit) - Number(line.credit)));
+                                      return Math.abs(available) > 0.00000001 && available * Number(transaction.residual_amount) > 0;
+                                    })
+                                    .map((line) => (
                                     <SelectItem key={line.id} value={String(line.id)}>
-                                      {line.date} · {line.reference || line.description} · {formatCurrency(Number(line.debit) - Number(line.credit))}
+                                      {line.date} · {line.reference || line.description} · {formatCurrency(Number(line.available_amount ?? (Number(line.debit) - Number(line.credit))))} available
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
+                              <Input
+                                aria-label="Match review reason" placeholder="Reason for accepting this match"
+                                value={matchSelections[transaction.id]?.reason ?? ''}
+                                onChange={(e) => setMatchSelections((current) => ({ ...current, [transaction.id]: { glLineId: current[transaction.id]?.glLineId ?? '', amount: current[transaction.id]?.amount ?? String(transaction.residual_amount), reason: e.target.value } }))}
+                              />
                               <div className="flex gap-2">
                                 <Input
                                   type="number" step="0.01" aria-label="Match amount"
@@ -643,15 +658,10 @@ export function BankReconciliationPage() {
                                 />
                                 <Button
                                   type="button" size="sm"
-                                  disabled={!matchSelections[transaction.id]?.glLineId || (matchSelections[transaction.id]?.reason?.trim().length ?? 0) < 10 || matchStatementMutation.isPending}
+                                  disabled={!matchSelections[transaction.id]?.glLineId || !matchSelections[transaction.id]?.reason?.trim() || matchStatementMutation.isPending}
                                   onClick={() => matchStatementMutation.mutate({ transactionId: transaction.id, glLineId: Number(matchSelections[transaction.id].glLineId), amount: Number(matchSelections[transaction.id].amount), reason: matchSelections[transaction.id].reason })}
                                 >Match</Button>
                               </div>
-                              <Input
-                                aria-label="Match review reason" placeholder="Reason for accepting this match (minimum 10 characters)"
-                                value={matchSelections[transaction.id]?.reason ?? ''}
-                                onChange={(e) => setMatchSelections((current) => ({ ...current, [transaction.id]: { glLineId: current[transaction.id]?.glLineId ?? '', amount: current[transaction.id]?.amount ?? String(transaction.residual_amount), reason: e.target.value } }))}
-                              />
                               {(transaction.matches ?? []).filter((match: any) => match.status === 'accepted' && !match.reconciliation_id).map((match: any) => (
                                 <Button key={match.id} type="button" size="sm" variant="ghost" onClick={() => unmatchStatementMutation.mutate(match.id)}>Remove existing match</Button>
                               ))}
