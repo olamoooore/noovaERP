@@ -78,7 +78,7 @@ class Issue40PaymentCorrectionRollbackTest extends TenantTestCase
             'currency' => 'USD',
             'method' => 'cash',
             'payment_date' => now()->toDateString(),
-            'payment_status' => 'posted',
+            'payment_status' => 'applied',
             'journal_entry_id' => $journal->id,
             'received_by' => $user->id,
         ]);
@@ -162,7 +162,7 @@ class Issue40PaymentCorrectionRollbackTest extends TenantTestCase
         $this->assertSame($paymentsBefore, Payment::count());
 
         $payment->refresh();
-        $this->assertSame('posted', $payment->payment_status);
+        $this->assertSame('applied', $payment->payment_status);
         $this->assertNull($payment->refund_payment_id);
     }
 
@@ -193,6 +193,6 @@ class Issue40PaymentCorrectionRollbackTest extends TenantTestCase
 
         // Payment status unchanged
         $payment->refresh();
-        $this->assertSame('posted', $payment->payment_status);
+        $this->assertSame('applied', $payment->payment_status);
     }
 }

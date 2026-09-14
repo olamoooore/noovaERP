@@ -455,7 +455,7 @@ class PaymentImportTest extends TenantTestCase
             'amount' => 200.00,
             'method' => 'cash',
             'received_by' => $user->id,
-            'payment_status' => 'posted',
+            'payment_status' => 'applied',
             'journal_entry_id' => $this->makeJournalEntry(),
         ]);
 
@@ -495,7 +495,7 @@ class PaymentImportTest extends TenantTestCase
             'amount' => 50.00,
             'method' => 'cash',
             'received_by' => $user->id,
-            'payment_status' => 'posted',
+            'payment_status' => 'applied',
             'journal_entry_id' => $this->makeJournalEntry(),
         ]);
 
@@ -528,7 +528,7 @@ class PaymentImportTest extends TenantTestCase
             'amount' => 100.00,
             'method' => 'cash',
             'received_by' => $user->id,
-            'payment_status' => 'posted',
+            'payment_status' => 'applied',
             'journal_entry_id' => $this->makeJournalEntry(),
         ]);
 
@@ -565,7 +565,7 @@ class PaymentImportTest extends TenantTestCase
             'amount' => 50.00,
             'method' => 'cash',
             'received_by' => $user->id,
-            'payment_status' => 'posted',
+            'payment_status' => 'applied',
             'journal_entry_id' => $this->makeJournalEntry(),
         ]);
 
@@ -704,7 +704,7 @@ class PaymentImportTest extends TenantTestCase
         // must still answer 200 with the failure reported per-row.
         if ($response->status() === 200 && empty($response->json('skipped'))) {
             $draft->refresh();
-            $this->assertSame('posted', $draft->payment_status);
+            $this->assertSame('applied', $draft->payment_status);
             $this->assertNotNull($draft->journal_entry_id);
         } else {
             $response->assertStatus(200);
@@ -724,7 +724,7 @@ class PaymentImportTest extends TenantTestCase
             'amount' => 75.00,
             'method' => 'cash',
             'received_by' => $user->id,
-            'payment_status' => 'posted',
+            'payment_status' => 'applied',
             'journal_entry_id' => $this->makeJournalEntry(),
         ]);
 
@@ -755,7 +755,7 @@ class PaymentImportTest extends TenantTestCase
         $response = $this->withoutMiddleware()->actingAs($user)->postJson("/api/v1/payments/{$draft->id}/post");
 
         if ($response->status() === 200 && $response->json('data.payment_status') !== null) {
-            $this->assertSame('posted', $response->json('data.payment_status'));
+            $this->assertSame('applied', $response->json('data.payment_status'));
         } else {
             // GL not configured in this tenant — engine rejection surfaces as 422.
             $response->assertStatus(422);

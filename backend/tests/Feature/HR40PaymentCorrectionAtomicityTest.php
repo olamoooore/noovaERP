@@ -104,6 +104,14 @@ class HR40PaymentCorrectionAtomicityTest extends TenantTestCase
         // Real posted payment against a real invoice (prerequisite for
         // correction). PaymentCorrectionService.assertCorrectable checks the
         // payment is in a correctable state and that a journal entry exists.
+        // Note: convergence migration added FK on payments.customer_id, so
+        // we must create a Customer row before the Payment.
+        $customer = \App\Models\Customer::create([
+            'name' => 'HR40 Customer',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         $this->invoice = Invoice::create([
             'customer_name' => 'HR40 Customer',
             'invoice_number' => 'INV-HR40-001',
@@ -159,14 +167,14 @@ class HR40PaymentCorrectionAtomicityTest extends TenantTestCase
 
         $this->payment = Payment::create([
             'payment_number' => 'PAY-HR40-001',
-            'customer_id' => $this->invoice->id,
+            'customer_id' => $customer->id,
             'invoice_id' => $this->invoice->id,
             'payment_date' => now()->subDays(2)->toDateString(),
             'amount' => 500.00,
             'method' => 'bank_transfer',
             'reference' => 'HR40-PAY-001',
             'received_by' => $this->accountant->id,
-            'payment_status' => 'posted',
+            'payment_status' => 'applied',
             'journal_entry_id' => $journal->id,
         ]);
 
@@ -205,7 +213,7 @@ class HR40PaymentCorrectionAtomicityTest extends TenantTestCase
         // The route requires accounting.post; Accountant holds it via the
         // canonical PERMISSION_MATRIX (HR38 attribution pattern).
         $this->assertTrue($this->accountant->hasPermissionTo('accounting.post'));
-        $this->assertSame('posted', $this->payment->fresh()->payment_status);
+        $this->assertSame('applied', $this->payment->fresh()->payment_status);
         $this->assertNotNull($this->payment->fresh()->journal_entry_id);
 
         // Force PostingEngine::reverse() to return failure (service throws
@@ -235,7 +243,7 @@ class HR40PaymentCorrectionAtomicityTest extends TenantTestCase
 
         // Original payment unchanged (status NOT reversed, no refund_payment_id).
         $original = $this->payment->fresh();
-        $this->assertSame('posted', $original->payment_status);
+        $this->assertSame('applied', $original->payment_status);
         $this->assertNull($original->refund_payment_id);
 
         // No correction payment created.
@@ -306,7 +314,7 @@ class HR40PaymentCorrectionAtomicityTest extends TenantTestCase
 
         // Original payment unchanged.
         $original = $this->payment->fresh();
-        $this->assertSame('posted', $original->payment_status);
+        $this->assertSame('applied', $original->payment_status);
         $this->assertNull($original->refund_payment_id);
 
         // No correction payment.
