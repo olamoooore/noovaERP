@@ -27,6 +27,11 @@ class PostingEngineComprehensiveTest extends TenantTestCase
         $this->bindTenantContext($this->tenantUuid);
         $this->postingEngine = app(PostingEngine::class);
         $this->user = User::factory()->create();
+        // Seed accounting.write so PostingEngine's permission gate accepts the test user.
+        \Spatie\Permission\Models\Permission::firstOrCreate(
+            ['name' => 'accounting.write', 'guard_name' => 'web']
+        );
+        $this->user->givePermissionTo('accounting.write');
     }
 
     private function createAccount(string $code, string $type): ChartOfAccount
@@ -48,7 +53,7 @@ class PostingEngineComprehensiveTest extends TenantTestCase
         $creditAccount = $this->createAccount('PE-2100-' . uniqid(), 'liability');
 
         $request = new PostingRequest(
-            documentType: 'manual',
+            documentType: 'journal_entry',
             documentId: rand(1, 999999),
             description: 'Test posting',
             postingDate: now()->toDateString(),
@@ -82,7 +87,7 @@ class PostingEngineComprehensiveTest extends TenantTestCase
         $creditAccount = $this->createAccount('PE-UNB2-' . uniqid(), 'liability');
 
         $request = new PostingRequest(
-            documentType: 'manual',
+            documentType: 'journal_entry',
             documentId: rand(1, 999999),
             description: 'Unbalanced test',
             postingDate: now()->toDateString(),
@@ -114,7 +119,7 @@ class PostingEngineComprehensiveTest extends TenantTestCase
         $documentId = rand(1, 999999);
 
         $request = new PostingRequest(
-            documentType: 'manual',
+            documentType: 'journal_entry',
             documentId: $documentId,
             description: 'Idempotent test',
             postingDate: now()->toDateString(),
@@ -151,7 +156,7 @@ class PostingEngineComprehensiveTest extends TenantTestCase
         $creditAccount = $this->createAccount('PE-REV2-' . uniqid(), 'liability');
 
         $postRequest = new PostingRequest(
-            documentType: 'manual',
+            documentType: 'journal_entry',
             documentId: rand(1, 999999),
             description: 'Original entry',
             postingDate: now()->toDateString(),
@@ -214,7 +219,7 @@ class PostingEngineComprehensiveTest extends TenantTestCase
         $creditAccount = $this->createAccount('PE-DOUBLE2-' . uniqid(), 'liability');
 
         $postRequest = new PostingRequest(
-            documentType: 'manual',
+            documentType: 'journal_entry',
             documentId: rand(1, 999999),
             description: 'Double reverse test',
             postingDate: now()->toDateString(),
@@ -264,7 +269,7 @@ class PostingEngineComprehensiveTest extends TenantTestCase
         $creditAccount = $this->createAccount('PE-PREV2-' . uniqid(), 'liability');
 
         $request = new PostingRequest(
-            documentType: 'manual',
+            documentType: 'journal_entry',
             documentId: rand(1, 999999),
             description: 'Preview test',
             postingDate: now()->toDateString(),

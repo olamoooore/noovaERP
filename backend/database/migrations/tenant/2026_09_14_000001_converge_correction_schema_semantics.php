@@ -129,22 +129,23 @@ return new class extends Migration
     {
         $table = 'payments';
 
-        // payment_status → enum (canonical plus accepted transitional values)
-        // The platform's authoritative contract uses canonical values
-        // {recorded, applied, unapplied, reversed, refunded}. The convergence
-        // migration preserves legacy fixture values {draft, posted} because:
-        // 1) production data and existing test fixtures use them;
-        // 2) the ACC-002 Application Layer is responsible for normalizing
-        //    inputs to canonical values on write (a future ACC-009 follow-up);
-        // 3) tearing out legacy values without a real data migration would
-        //    destroy legitimate production data.
-        // A separate, future-only convergence will prune 'draft'/'posted'
-        // once the codebase fully transitions.
+// payment_status → enum (canonical plus accepted transitional values)
+// The platform's authoritative contract uses canonical values
+// {recorded, applied, unapplied, reversed, refunded}. The convergence
+// migration preserves legacy fixture values {draft, posted, cancelled}
+// because:
+//   1) production data and existing test fixtures use them;
+//   2) the ACC-002 Application Layer is responsible for normalizing
+//      inputs to canonical values on write (a future ACC-009 follow-up);
+//   3) tearing out legacy values without a real data migration would
+//      destroy legitimate production data.
+// A separate, future-only convergence (HR56-04) will prune the legacy
+// subset {draft, posted, cancelled} once the codebase fully transitions.
         $this->convertToEnum(
             $table,
             'payment_status',
             'ENUM_PAYMENT_STATUS',
-            ['draft', 'recorded', 'posted', 'applied', 'unapplied', 'reversed', 'refunded'],
+            ['draft', 'recorded', 'posted', 'applied', 'unapplied', 'reversed', 'refunded', 'cancelled'],
             'draft',
             false
         );
