@@ -113,7 +113,11 @@ class RuntimeAuthVerificationTest extends TenantTestCase
                 new PostingRequestLine('expense', $debitAccount->id, 200.00, 0.00, 'Debit'),
                 new PostingRequestLine('payable', $creditAccount->id, 0.00, 200.00, 'Credit'),
             ],
-            userId: 1,
+            userId: $this->accountant->id,
+            // #37: a synthetic/module document type has no platform-resolved
+            // permission, so the caller must declare the required permission
+            // explicitly (the Accountant holds accounting.write).
+            requiredPermission: 'accounting.write',
         );
 
         $result = $engine->post($request);

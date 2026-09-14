@@ -9,20 +9,19 @@ use Modules\AccountingFoundation\Models\OpeningBalanceBatch;
  * ACC-001 Opening Balance — cross-reconciliation against authoritative
  * source populations.
  *
- * Issue #70: reconciles the opening balance batch against AR/AP/FA/
- * inventory/bank/tax source populations. ACC-001 does not own foreign
- * source truth — it only cross-checks for material variances.
+ * Issue #70: reconciles the opening balance batch against the subledgers it
+ * actually claims. Implemented source populations (per HR70-03 — bank and tax
+ * are NOT claimed because they are not implemented here):
+ *  1. AR subledger total vs opening-balance receivable lines
+ *  2. AP subledger total vs opening-balance payable lines
+ *  3. Fixed asset register vs opening-balance fixed_asset lines
+ *  4. Inventory valuation vs opening-balance inventory lines
  *
- * Reconciliation checks:
- * 1. AR subledger total matches opening balance AR accounts
- * 2. AP subledger total matches opening balance AP accounts
- * 3. Fixed asset register total matches opening balance FA accounts
- * 4. Inventory valuation matches opening balance inventory accounts
- * 5. Bank statement balances match opening balance bank accounts
- *
- * Each check is advisory — a variance is logged but does not
- * automatically fail reconciliation. Only critical structural
- * failures (e.g., missing subledger tables) cause RECONCILIATION_FAILED.
+ * Fail-closed semantics (HR70-03): a check only applies when the batch
+ * carries lines for that population. When it does apply but the authoritative
+ * source table/column is missing or the query errors, that is a STRUCTURAL
+ * reconciliation FAILURE — never a silent pass. Genuine material variances on
+ * present sources are advisory (logged, not blocking).
  */
 class OpeningBalanceReconciler
 {
@@ -31,8 +30,8 @@ class OpeningBalanceReconciler
         $errors = [];
         $variances = [];
 
-        // Each check runs in its own savepoint so a failing query
-        // (e.g., missing column) doesn't poison the outer transaction.
+        // Each check runs in its own savepoint so a failing query (e.g.,
+        // missing column) doesn't poison the outer transaction.
         $checks = [
             fn () => $this->checkArSubledger($batch),
             fn () => $this->checkApSubledger($batch),
@@ -41,21 +40,27 @@ class OpeningBalanceReconciler
         ];
 
         foreach ($checks as $check) {
+            $outcome = null;
             try {
-                $result = $check();
-                if ($result !== null) {
-                    $variances[] = $result;
-                }
+                $outcome = $check();
             } catch (\Throwable $e) {
-                // Structural failure — log but don't block reconciliation
-                \Log::warning('Opening balance reconciliation check failed', [
-                    'batch_id' => $batch->id,
-                    'error' => $e->getMessage(),
-                ]);
+                // HR70-03: a check that throws on a RELEVANT population is a
+                // structural reconciliation failure, not a silent pass.
+                $errors[] = 'Reconciliation check errored: ' . $e->getMessage();
+                continue;
+            }
+
+            if ($outcome === null) {
+                continue;
+            }
+            if (str_starts_with($outcome, 'STRUCTURAL:')) {
+                $errors[] = substr($outcome, strlen('STRUCTURAL:'));
+            } else {
+                $variances[] = $outcome;
             }
         }
 
-        // Structural failures → reconciliation failed
+        // Structural failures → reconciliation failed (HR70-03).
         if (! empty($errors)) {
             return ValidationResult::failed($errors);
         }
@@ -71,96 +76,86 @@ class OpeningBalanceReconciler
         return ValidationResult::passed();
     }
 
-    private function checkArSubledger(OpeningBalanceBatch $batch): ?string
-    {
-        if (! $this->tableExists('invoices') || ! $this->columnExists('invoices', 'total_amount')) {
+    /**
+     * Runs a subledger comparison for a given account type.
+     *
+     * Returns null when the check is NOT APPLICABLE (batch has no lines of the
+     * type), a `STRUCTURAL:` prefixed message when the batch DOES carry that
+     * population but the authoritative source structure is missing or the query
+     * fails (HR70-03 fail-closed), a plain variance message on a real material
+     * difference, or null when the population reconciles.
+     */
+    private function compareSubledger(
+        OpeningBalanceBatch $batch,
+        string $accountType,
+        string $table,
+        string $column,
+        callable $sourceTotal,
+    ): ?string {
+        $obBalance = $this->sumLinesByAccountType($batch, $accountType);
+
+        // Not applicable: the batch carries no lines for this population.
+        $hasPopulation = DB::table('opening_balance_lines as obl')
+            ->join('chart_of_accounts as coa', 'coa.id', '=', 'obl.account_id')
+            ->where('obl.batch_id', $batch->id)
+            ->where('obl.status', 'active')
+            ->where('coa.type', $accountType)
+            ->exists();
+        if (! $hasPopulation) {
             return null;
         }
 
-        try {
-            $arBalance = DB::table('invoices')
-                ->where('status', '!=', 'cancelled')
-                ->sum(DB::raw('COALESCE(total_amount, 0) - COALESCE(amount_paid, 0)'));
+        // The batch asserts this population — the authoritative source must
+        // exist and be queryable, else reconciliation cannot be trusted.
+        if (! $this->tableExists($table) || ! $this->columnExists($table, $column)) {
+            return "STRUCTURAL: source table/column '{$table}.{$column}' missing for required {$accountType} population";
+        }
 
-            $obArBalance = $this->sumLinesByAccountType($batch, 'receivable');
+        $sourceBalance = $sourceTotal();
 
-            if (abs($arBalance - $obArBalance) > 0.01) {
-                return "AR subledger ({$arBalance}) ≠ opening balance AR ({$obArBalance})";
-            }
-        } catch (\Throwable $e) {
-            // Structural failure
-            return null;
+        if (abs($sourceBalance - $obBalance) > 0.01) {
+            return "{$accountType} subledger ({$sourceBalance}) ≠ opening balance ({$obBalance})";
         }
 
         return null;
+    }
+
+    private function checkArSubledger(OpeningBalanceBatch $batch): ?string
+    {
+        return $this->compareSubledger(
+            $batch, 'receivable', 'invoices', 'total_amount',
+            fn () => (float) DB::table('invoices')
+                ->where('status', '!=', 'cancelled')
+                ->sum(DB::raw('COALESCE(total_amount, 0) - COALESCE(amount_paid, 0)')),
+        );
     }
 
     private function checkApSubledger(OpeningBalanceBatch $batch): ?string
     {
-        if (! $this->tableExists('bills') || ! $this->columnExists('bills', 'total_amount')) {
-            return null;
-        }
-
-        try {
-            $apBalance = DB::table('bills')
+        return $this->compareSubledger(
+            $batch, 'payable', 'bills', 'total_amount',
+            fn () => (float) DB::table('bills')
                 ->where('status', '!=', 'cancelled')
-                ->sum(DB::raw('COALESCE(total_amount, 0) - COALESCE(amount_paid, 0)'));
-
-            $obApBalance = $this->sumLinesByAccountType($batch, 'payable');
-
-            if (abs($apBalance - $obApBalance) > 0.01) {
-                return "AP subledger ({$apBalance}) ≠ opening balance AP ({$obApBalance})";
-            }
-        } catch (\Throwable $e) {
-            return null;
-        }
-
-        return null;
+                ->sum(DB::raw('COALESCE(total_amount, 0) - COALESCE(amount_paid, 0)')),
+        );
     }
 
     private function checkFixedAssets(OpeningBalanceBatch $batch): ?string
     {
-        if (! $this->tableExists('fixed_assets') || ! $this->columnExists('fixed_assets', 'cost')) {
-            return null;
-        }
-
-        try {
-            $faBalance = DB::table('fixed_assets')
+        return $this->compareSubledger(
+            $batch, 'fixed_asset', 'fixed_assets', 'cost',
+            fn () => (float) DB::table('fixed_assets')
                 ->where('status', '!=', 'disposed')
-                ->sum(DB::raw('COALESCE(cost, 0) - COALESCE(accumulated_depreciation, 0)'));
-
-            $obFaBalance = $this->sumLinesByAccountType($batch, 'fixed_asset');
-
-            if (abs($faBalance - $obFaBalance) > 0.01) {
-                return "FA register ({$faBalance}) ≠ opening balance FA ({$obFaBalance})";
-            }
-        } catch (\Throwable $e) {
-            return null;
-        }
-
-        return null;
+                ->sum(DB::raw('COALESCE(cost, 0) - COALESCE(accumulated_depreciation, 0)')),
+        );
     }
 
     private function checkInventory(OpeningBalanceBatch $batch): ?string
     {
-        if (! $this->tableExists('inventory_valuations') || ! $this->columnExists('inventory_valuations', 'total_value')) {
-            return null;
-        }
-
-        try {
-            $invBalance = DB::table('inventory_valuations')
-                ->sum('total_value');
-
-            $obInvBalance = $this->sumLinesByAccountType($batch, 'inventory');
-
-            if (abs($invBalance - $obInvBalance) > 0.01) {
-                return "Inventory valuation ({$invBalance}) ≠ opening balance inventory ({$obInvBalance})";
-            }
-        } catch (\Throwable $e) {
-            return null;
-        }
-
-        return null;
+        return $this->compareSubledger(
+            $batch, 'inventory', 'inventory_valuations', 'total_value',
+            fn () => (float) DB::table('inventory_valuations')->sum('total_value'),
+        );
     }
 
     private function sumLinesByAccountType(OpeningBalanceBatch $batch, string $accountType): float

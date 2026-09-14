@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { todayDateOnly, addCalendarDays, diffCalendarDays, isValidProductQuantity } from '@/lib/dateOnly';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -110,6 +111,10 @@ interface InvoiceDocumentSnapshot {
   company_registration_number: string;
   tax_registration_number: string;
 }
+
+// Date-only + quantity-domain helpers are imported at the top of this file
+// from '@/lib/dateOnly' so they are unit-tested rather than duplicated inline
+// (issue #71). See the import block below.
 
 const emptyLine = (): InvoiceLine => ({
   line_type: 'product',
@@ -254,14 +259,13 @@ export const CreateInvoicePage: React.FC = () => {
         : '/accounting/customers/bills';
 
   const [customerId, setCustomerId] = useState('');
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [invoiceDate, setInvoiceDate] = useState(() => todayDateOnly());
   const [paymentTerms, setPaymentTerms] = useState(30);
-  const calcDueDate = (invDate: string, termsDays: number) => {
-    const d = new Date(invDate + 'T00:00:00');
-    d.setDate(d.getDate() + termsDays);
-    return d.toISOString().split('T')[0];
-  };
-  const [dueDate, setDueDate] = useState(() => calcDueDate(new Date().toISOString().split('T')[0], 30));
+  // HR71-04: explicit override intent. Once the user manually edits terms or
+  // due date, a later customer change must not silently overwrite it.
+  const [termsOverridden, setTermsOverridden] = useState(false);
+  const calcDueDate = (invDate: string, termsDays: number) => addCalendarDays(invDate, termsDays);
+  const [dueDate, setDueDate] = useState(() => calcDueDate(todayDateOnly(), 30));
   const [caseNumber, setCaseNumber] = useState('');
   const [prNo, setPrNo] = useState('');
   const [contractNo, setContractNo] = useState('');
@@ -384,9 +388,12 @@ export const CreateInvoicePage: React.FC = () => {
     setDoctorContactId('');
     setRequestorContactId('');
 
-    // WRK-A: Use customer payment terms to calculate due date
+    // WRK-A / HR71-04: Use the customer's authoritative payment terms to
+    // populate a DEFAULT only when the user has NOT intentionally overridden
+    // terms/due date, and never re-derives a saved invoice's historical due
+    // date while editing (originalCustomerId guard above returns early).
     const customerTerms = Number(selectedCustomer.payment_terms);
-    if (Number.isFinite(customerTerms) && customerTerms >= 0) {
+    if (!termsOverridden && Number.isFinite(customerTerms) && customerTerms >= 0) {
       setPaymentTerms(customerTerms);
       setDueDate(calcDueDate(invoiceDate, customerTerms));
     }
@@ -400,6 +407,20 @@ export const CreateInvoicePage: React.FC = () => {
     setCustomerId(savedCustomerId);
     setInvoiceDate(existingInvoice.invoice_date ? String(existingInvoice.invoice_date).split('T')[0] : '');
     setDueDate(existingInvoice.due_date ? String(existingInvoice.due_date).split('T')[0] : '');
+    // HR71-03: restore the invoice's saved payment-term basis so the visible
+    // term state is coherent with the saved historical Due Date. Prefer a
+    // saved payment_terms field; otherwise derive the day-count from the
+    // saved dates. Mark as established (overridden) so a later customer
+    // default does not silently rewrite historical invoice intent.
+    const savedInvoiceDate = existingInvoice.invoice_date ? String(existingInvoice.invoice_date).split('T')[0] : '';
+    const savedDueDate = existingInvoice.due_date ? String(existingInvoice.due_date).split('T')[0] : '';
+    const restoredTerms = Number.isFinite(Number(existingInvoice.payment_terms))
+      ? Number(existingInvoice.payment_terms)
+      : (savedInvoiceDate && savedDueDate ? diffCalendarDays(savedInvoiceDate, savedDueDate) : null);
+    if (restoredTerms !== null) {
+      setPaymentTerms(restoredTerms);
+      setTermsOverridden(true);
+    }
     setCaseNumber(existingInvoice.case_number || '');
     setPrNo(existingInvoice.pr_no || '');
     setContractNo(existingInvoice.contract_no || '');
@@ -722,6 +743,27 @@ export const CreateInvoicePage: React.FC = () => {
       return;
     }
 
+    // HR71-08 — explicit quantity domain rule (approved): a product line's
+    // quantity must be a finite number strictly greater than 0 with at most
+    // 4 decimals. Blank, zero, negative, NaN, or over-precision are REJECTED
+    // with a clear message — never silently coerced to 1. Note/section lines
+    // carry quantity 0 and are exempt. isValidProductQuantity is unit-tested.
+    const badQty = lines.find((line) => {
+      const type = line.line_type ?? 'product';
+      if (type !== 'product') return false;
+      if (!line.description && !line.product_id) return false; // empty row skipped
+      return !isValidProductQuantity(line.quantity);
+    });
+    if (badQty) {
+      const idx = lines.indexOf(badQty) + 1;
+      toast({
+        variant: 'destructive',
+        title: `Invalid quantity on line ${idx}`,
+        description: 'Quantity must be a positive number (up to 4 decimal places).',
+      });
+      return;
+    }
+
     const payload = {
       customer_id: parseInt(customerId, 10),
       invoice_date: invoiceDate,
@@ -766,7 +808,7 @@ export const CreateInvoicePage: React.FC = () => {
           product_notes: line.product_notes || null,
           lot_number: line.lot_number || null,
           expiry_date: line.expiry_date || null,
-          quantity: line.quantity === '' || line.quantity < 1 ? 1 : line.quantity,
+          quantity: line.quantity === '' ? 0 : Number(line.quantity),
           unit_price: line.unit_price === '' ? 0 : line.unit_price,
           tax_rate: line.tax_rate === '' ? 0 : line.tax_rate,
           discount_amount: line.discount_amount === '' ? 0 : line.discount_amount,
@@ -899,6 +941,8 @@ export const CreateInvoicePage: React.FC = () => {
                         const days = Math.max(0, parseInt(event.target.value, 10) || 0);
                         setPaymentTerms(days);
                         setDueDate(calcDueDate(invoiceDate, days));
+                        // HR71-04: an intentional term edit is an override.
+                        setTermsOverridden(true);
                       }}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
@@ -909,7 +953,11 @@ export const CreateInvoicePage: React.FC = () => {
                   <input
                     type="date"
                     value={dueDate}
-                    onChange={(event) => setDueDate(event.target.value)}
+                    onChange={(event) => {
+                      setDueDate(event.target.value);
+                      // HR71-04: an intentional due-date edit is an override.
+                      setTermsOverridden(true);
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -1371,16 +1419,18 @@ export const CreateInvoicePage: React.FC = () => {
                         <td className="py-2 px-2">
                           <input
                             type="number"
-                            min="1"
+                            min="0"
+                            step="0.0001"
+                            inputMode="decimal"
                             value={line.quantity}
                             onChange={(event) => {
                               const raw = event.target.value;
+                              // HR71-08: keep the user's literal intent, do
+                              // not silently substitute 1. Empty is allowed
+                              // while typing and is caught on submit.
                               if (raw === '') { updateLine(index, 'quantity', ''); return; }
-                              const parsed = parseInt(raw, 10);
-                              if (!isNaN(parsed) && parsed >= 1) updateLine(index, 'quantity', parsed);
-                            }}
-                            onBlur={(event) => {
-                              if (!event.target.value || parseInt(event.target.value, 10) < 1) updateLine(index, 'quantity', 1);
+                              const parsed = Number(raw);
+                              if (!Number.isNaN(parsed)) updateLine(index, 'quantity', parsed);
                             }}
                             className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right text-gray-900 dark:text-gray-100 font-medium"
                           />

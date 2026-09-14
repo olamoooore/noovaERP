@@ -247,7 +247,7 @@ export function AiFindingsPage() {
                           </div>
                           {finding.source_refs[0]?.route && (
                             <button
-                              onClick={() => navigate(finding.source_refs![0].route!)}
+                              onClick={() => navigate((finding.source_refs![0].route || '').split('?')[0])}
                               className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-violet-700 hover:underline dark:text-violet-300"
                             >
                               View all in accounting

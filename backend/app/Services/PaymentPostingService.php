@@ -18,6 +18,16 @@ use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
  * draft (no ledger impact) to posted (locked, journal_entry_id set).
  * Invoice allocation happens at creation time — this service only
  * creates the journal entry and flips the status.
+ *
+ * Shared correction contract with PaymentCorrectionService (issue #45):
+ *   This service posts BOTH invoice/bill-linked and STANDALONE payments
+ *   (a standalone payment leaves an AR customer credit that nets against
+ *   future invoices). Because a standalone payment is a supported,
+ *   intentional posting shape, it MUST also be correctable
+ *   (reverse/refund/unapply) via PaymentCorrectionService. Do not post a
+ *   shape here that PaymentCorrectionService cannot later reverse, and do
+ *   not reject a standalone payment in correction. See PaymentCorrectionService
+ *   class docblock for the full contract and Issue45StandalonePaymentCorrectionTest.
  */
 class PaymentPostingService
 {

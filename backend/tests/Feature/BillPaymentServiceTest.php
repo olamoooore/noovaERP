@@ -19,10 +19,13 @@ class BillPaymentServiceTest extends TenantTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // Bind a tenant context so PostingEngine::post() passes the
-        // MISSING_TENANT_CONTEXT gate evaluation introduced at SHA 91d50469.
-        $this->bindTenantContext(\Illuminate\Support\Str::uuid()->toString());
+        // Bind a tenant context and seed Spatie roles + permissions so
+        // PostingEngine::post() passes the MISSING_TENANT_CONTEXT and
+        // INSUFFICIENT_PERMISSION gates introduced by the ACC-002 authority
+        // work (issue #37). The Admin role carries accounting.write.
+        $tenantId = \Illuminate\Support\Str::uuid()->toString();
         $this->user = User::factory()->create();
+        $this->bindTenantContextWithPermissions($tenantId, $this->user);
         $this->service = app(BillPaymentService::class);
     }
 

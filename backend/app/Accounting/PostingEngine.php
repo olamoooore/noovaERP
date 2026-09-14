@@ -152,6 +152,7 @@ class PostingEngine implements PostingEngineInterface
             recordType: 'JournalEntry',
             recordId: $request->documentId ?? 'new',
             context: [
+                'action' => 'POST_JOURNAL',
                 'tenant_id' => (string) $tenantId,
                 'entity_id' => $request->legalEntityId ? (string) $request->legalEntityId : null,
                 'actor_id' => $userId ? (string) $userId : null,
@@ -176,6 +177,11 @@ class PostingEngine implements PostingEngineInterface
                     'credit' => $l->credit,
                 ], $request->lines),
                 'tax_determination_result' => $request->taxDeterminationResult ?? ($request->metadata['tax_determination_result'] ?? null),
+                // HR69-01: thread period admission context so PeriodOpenGate
+                // can bind the mandatory posting period (Opening Balance, etc.)
+                // rather than resolving to NOT_APPLICABLE on a missing period.
+                'period_id' => $request->metadata['period_id'] ?? ($request->metadata['fiscal_period_id'] ?? null),
+                'period_required' => $request->metadata['period_required'] ?? false,
             ],
             requireSnapshot: true,
         );
@@ -436,7 +442,7 @@ class PostingEngine implements PostingEngineInterface
             postingDate: $request->postingDate,
             description: $request->ledgerDescription ?? "Domain posting: {$request->sourceCapability}/{$request->postingProfileCode}",
             lines: $postingRequestLines,
-            reference: $request->idempotencyKey,
+            reference: $request->reference,
             currencyCode: $request->currencyCode,
             exchangeRate: $request->exchangeRate,
             requestId: $request->postingRequestId,
@@ -959,13 +965,22 @@ class PostingEngine implements PostingEngineInterface
         return match ($documentType) {
             'invoice', 'sales_invoice', 'credit_note' => 'accounting.write',
             'bill', 'purchase_invoice', 'debit_note' => 'accounting.write',
-            'payment', 'bill_payment' => 'accounting.write',
+            'payment', 'bill_payment', 'payment_refund' => 'accounting.write',
             'journal_entry' => 'accounting.write',
             'adjustment' => 'accounting.write',
             'reversal' => 'accounting.reverse',
-            // POS, bank reconciliation, asset, and other module-specific types
-            // are expected to provide required_permission in metadata or skip
-            // the permission gate via module-level RBAC instead.
+            // Vendor document variants (module postings that create AP GL lines).
+            'vendor_credit_note', 'vendor_debit_note' => 'accounting.write',
+            // Accountant-owned ledger operations.
+            'opening_balance', 'period_close', 'bank_adjustment',
+            'fx_revaluation', 'intercompany', 'asset_disposal', 'payroll_run' => 'accounting.write',
+            // Retail / ecommerce sales posting — coarse module permission held
+            // by the actors who create these documents (module-level RBAC aligned).
+            'pos_order', 'pos_refund_payment' => 'pos.create',
+            'web_order' => 'sales.write',
+            // Genuinely unknown document types resolve to null; the
+            // PermissionGate treats a null required_permission on a material
+            // posting action as a fail-closed ERROR (#37 AC4).
             default => null,
         };
     }

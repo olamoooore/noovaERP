@@ -321,7 +321,7 @@ export default function CompanySettingsPage() {
           <TabsTrigger value="fiscal">Fiscal Year</TabsTrigger>
           <TabsTrigger value="currency">Currency & Formats</TabsTrigger>
           <TabsTrigger value="accounts">Default Accounts</TabsTrigger>
-          {/* <TabsTrigger value="country">Country Plugin</TabsTrigger> */}
+          <TabsTrigger value="country">Country Plugin</TabsTrigger>
           <TabsTrigger value="chart-of-accounts">Chart of Accounts</TabsTrigger>
           <TabsTrigger value="multi-currency">Multi-Currency</TabsTrigger>
           {/* <TabsTrigger value="onboarding">Onboarding</TabsTrigger> */}

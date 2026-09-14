@@ -292,7 +292,8 @@ class MyInvoiceSubmissionProviderTest extends TestCase
         }
 
         $this->assertSame('EI00000000010', $valuesByScheme['TIN'] ?? null);
-        $this->assertSame('00000000000', $valuesByScheme['NRIC'] ?? null);
+        $this->assertSame('NA', $valuesByScheme['BRN'] ?? null);
+        $this->assertArrayNotHasKey('NRIC', $valuesByScheme);
         $this->assertSame('17', $postalAddress['CountrySubentityCode'][0]['_']);
     }
 
@@ -716,5 +717,10 @@ class MyInvoiceSubmissionProviderTest extends TestCase
         $ubl = $this->captureUbl($container);
         $this->assertSame('01', $ubl['Invoice'][0]['InvoiceTypeCode'][0]['_'],
             'Consolidated invoice uses type 01 per LHDN spec; buyer TIN EI00000000010 distinguishes it');
+        $this->assertArrayNotHasKey(
+            'BillingPeriod',
+            $ubl['Invoice'][0],
+            'MyInvois JSON 1.0 rejects BillingPeriod as an additional property'
+        );
     }
 }

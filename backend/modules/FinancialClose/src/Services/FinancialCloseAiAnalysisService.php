@@ -409,8 +409,8 @@ class FinancialCloseAiAnalysisService
         $sourceRefs = $lines->take(10)->map(fn ($l) => [
             'type' => 'journal_entry',
             'id' => (string) $l->journal_entry_id,
-            'label' => 'Journal Entry #'.$l->journal_entry_id,
-            'route' => '/accounting/core/journal-entries',
+            'label' => $this->journalLabel($l->journal_entry_id, $l->journalEntry?->entry_number),
+            'route' => '/accounting/core/journal-entries?entry_id='.$l->journal_entry_id,
             'meta' => [
                 'line_id' => (string) $l->id,
                 'amount' => number_format((float) $l->debit + (float) $l->credit, 2),
@@ -458,14 +458,28 @@ class FinancialCloseAiAnalysisService
         return $lines->map(fn ($l) => [
             'type' => 'journal_entry',
             'id' => (string) $l->journal_entry_id,
-            'label' => 'Journal Entry #'.$l->journal_entry_id,
-            'route' => '/accounting/core/journal-entries',
+            'label' => $this->journalLabel($l->journal_entry_id, $l->journalEntry?->entry_number),
+            'route' => '/accounting/core/journal-entries?entry_id='.$l->journal_entry_id,
             'meta' => [
                 'line_id' => (string) $l->id,
                 'amount' => number_format((float) $l->debit + (float) $l->credit, 2),
                 'reference' => $l->reference,
             ],
         ])->values()->all();
+    }
+
+    /**
+     * Human-readable journal reference for AI-finding source chips.
+     *
+     * Uses the real entry number (e.g. JE-2026-0238) so reviewers can track
+     * the transaction, instead of an opaque internal id. Falls back to the id
+     * only if the number is somehow unavailable.
+     */
+    private function journalLabel($journalEntryId, ?string $entryNumber): string
+    {
+        $number = trim((string) ($entryNumber ?? ''));
+
+        return $number !== '' ? $number : ('Journal Entry #'.$journalEntryId);
     }
 
     private function updateReviewRisk(AccountReview $review): void
@@ -518,13 +532,13 @@ class FinancialCloseAiAnalysisService
             ->where('status', 'draft')
             ->orderBy('entry_date', 'desc')
             ->limit(15)
-            ->get(['id', 'entry_date', 'reference', 'description']);
+            ->get(['id', 'entry_number', 'entry_date', 'reference', 'description']);
 
         $sourceRefs = $draftEntries->map(fn ($je) => [
             'type' => 'journal_entry',
             'id' => (string) $je->id,
-            'label' => 'Journal Entry #'.$je->id,
-            'route' => '/accounting/core/journal-entries',
+            'label' => $this->journalLabel($je->id, $je->entry_number ?? null),
+            'route' => '/accounting/core/journal-entries?entry_id='.$je->id,
             'meta' => [
                 'date' => $je->entry_date,
                 'reference' => $je->reference,

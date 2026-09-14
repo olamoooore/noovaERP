@@ -61,51 +61,60 @@ class DepreciationService
                     throw new \InvalidArgumentException('Useful life must be at least one month.');
                 }
 
+                // Issue #64 TOCTOU guard: wrap the schedule read-then-create
+                // loop in a DB::transaction after locking the FixedAsset row
+                // so concurrent requests for the same asset serialise on the
+                // asset lock; the unique (asset_id, period_date) index
+                // backstops any race that slips through.
                 $period = $start->copy();
                 $scheduleEnd = $start->copy()->addMonths($months - 1)->endOfMonth();
                 $created = 0;
-                while ($period->lte($scheduleEnd)) {
-                    $periodEnd = $period->copy()->endOfMonth();
-                    $existing = DepreciationSchedule::where('asset_id', $asset->id)
-                        ->whereDate('period_date', $periodEnd->toDateString())
-                        ->first();
+                DB::transaction(function () use ($asset, &$period, $scheduleEnd, &$created) {
+                    FixedAsset::where('id', $asset->id)->lockForUpdate()->first();
 
-                    if (! $existing) {
-                        $draftScheduledBefore = (float) DepreciationSchedule::where('asset_id', $asset->id)
-                            ->where('is_posted', false)
-                            ->sum('depreciation_amount');
-                        $projectedAccumulated = (float) $asset->accumulated_depreciation + $draftScheduledBefore;
-                        $remaining = (float) $asset->purchase_cost - (float) $asset->salvage_value - $projectedAccumulated;
-                        if ($remaining <= 0.01) {
-                            break;
-                        }
+                    while ($period->lte($scheduleEnd)) {
+                        $periodEnd = $period->copy()->endOfMonth();
+                        $existing = DepreciationSchedule::where('asset_id', $asset->id)
+                            ->whereDate('period_date', $periodEnd->toDateString())
+                            ->first();
 
-                        $amount = min($this->calculateDepreciationAmount($asset, $period), $remaining);
-                        if ($amount <= 0) {
-                            break;
+                        if (! $existing) {
+                            $draftScheduledBefore = (float) DepreciationSchedule::where('asset_id', $asset->id)
+                                ->where('is_posted', false)
+                                ->sum('depreciation_amount');
+                            $projectedAccumulated = (float) $asset->accumulated_depreciation + $draftScheduledBefore;
+                            $remaining = (float) $asset->purchase_cost - (float) $asset->salvage_value - $projectedAccumulated;
+                            if ($remaining <= 0.01) {
+                                break;
+                            }
+
+                            $amount = min($this->calculateDepreciationAmount($asset, $period), $remaining);
+                            if ($amount <= 0) {
+                                break;
+                            }
+                            $accumulated = $projectedAccumulated + $amount;
+                            $bookValue = (float) $asset->purchase_cost - $accumulated;
+                            $schedule = DepreciationSchedule::create([
+                                'asset_id' => $asset->id,
+                                'period_date' => $periodEnd->toDateString(),
+                                'depreciation_amount' => $amount,
+                                'accumulated_depreciation' => $accumulated,
+                                'book_value' => max($bookValue, (float) $asset->salvage_value),
+                                'is_posted' => false,
+                            ]);
+                            try {
+                                $journalEntry = $this->createDepreciationDraftJournalEntry($asset, $schedule, $periodEnd);
+                            } catch (\Throwable $e) {
+                                // Do not leave an orphaned schedule when draft creation fails.
+                                $schedule->delete();
+                                throw $e;
+                            }
+                            $schedule->update(['journal_entry_id' => $journalEntry->id]);
+                            $created++;
                         }
-                        $accumulated = $projectedAccumulated + $amount;
-                        $bookValue = (float) $asset->purchase_cost - $accumulated;
-                        $schedule = DepreciationSchedule::create([
-                            'asset_id' => $asset->id,
-                            'period_date' => $periodEnd->toDateString(),
-                            'depreciation_amount' => $amount,
-                            'accumulated_depreciation' => $accumulated,
-                            'book_value' => max($bookValue, (float) $asset->salvage_value),
-                            'is_posted' => false,
-                        ]);
-                        try {
-                            $journalEntry = $this->createDepreciationDraftJournalEntry($asset, $schedule, $periodEnd);
-                        } catch (\Throwable $e) {
-                            // Do not leave an orphaned schedule when draft creation fails.
-                            $schedule->delete();
-                            throw $e;
-                        }
-                        $schedule->update(['journal_entry_id' => $journalEntry->id]);
-                        $created++;
+                        $period->addMonth();
                     }
-                    $period->addMonth();
-                }
+                });
 
                 $results[] = [
                     'asset_id' => $asset->id,
@@ -182,6 +191,7 @@ class DepreciationService
 
             if ($existing) {
                 $results['skipped_existing']++;
+
                 continue;
             }
 
@@ -233,6 +243,7 @@ class DepreciationService
 
                 if ($schedule === null) {
                     $results['skipped_existing']++;
+
                     continue;
                 }
 

@@ -26,6 +26,7 @@ import { useToast } from '@/hooks/use-toast'
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   created:     { label: 'Created',     variant: 'secondary' },
+  assigned:    { label: 'Assigned',    variant: 'secondary' },
   in_progress: { label: 'In Progress', variant: 'default' },
   submitted:   { label: 'Submitted',   variant: 'outline' },
   completed:   { label: 'Completed',   variant: 'outline' },
@@ -295,7 +296,7 @@ export function MyTasksPage() {
                     </div>
 
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                      {task.status === 'created' && (
+                      {['created', 'assigned'].includes(task.status) && (
                         <Button size="sm" variant="outline" onClick={(event) => { stopCardClick(event); startMutation.mutate(task.id) }} disabled={startMutation.isPending}>
                           Start
                         </Button>

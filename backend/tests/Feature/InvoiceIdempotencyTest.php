@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Customer;
+use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLink;
 use App\Models\Product;
@@ -72,5 +73,10 @@ class InvoiceIdempotencyTest extends TenantTestCase
         $jeId = $links->first()->journal_entry_id ?? null;
         $this->assertNotNull($jeId, 'There should be a journal entry linked to the posting');
         $this->assertEquals(1, JournalEntry::where('id', $jeId)->count(), 'There should be exactly one journal entry for this posting');
+        $this->assertSame(
+            Invoice::findOrFail($invoice['id'])->invoice_number,
+            JournalEntry::findOrFail($jeId)->reference,
+            'The journal reference should show the invoice number, not the technical idempotency key',
+        );
     }
 }

@@ -136,6 +136,11 @@ class PosPostingService
             userId: TenantUserHelper::resolveTenantUserId(),
             legalEntityId: request()->attributes->get('legal_entity_id'),
             entityBookId: request()->attributes->get('entity_book_id'),
+            // #37: the PermissionGate fails-closed on an unresolvable
+            // required_permission for material postings. POS declares its own
+            // coarse action permission here (module-level RBAC); the actor
+            // creating a sale holds pos.create.
+            requiredPermission: 'pos.create',
         ));
 
         if (!$result->success) {

@@ -85,9 +85,10 @@ Route::middleware([\App\Http\Middleware\RequirePermission::using('accounting.clo
     Route::post('/signoffs/{signoffId}/revoke', [SignoffController::class, 'revoke']);
 });
 
-// ── Period close / reopen: accounting.close.admin ──────────────────────────
+// ── Period close / reopen / archive: accounting.close.admin ────────────────
 Route::middleware([\App\Http\Middleware\RequirePermission::using('accounting.close.admin')])->group(function () {
     Route::post('/cycles/{cycleId}/close', [CloseCycleController::class, 'close']);
+    Route::post('/cycles/{cycleId}/archive', [CloseCycleController::class, 'archive']);
     Route::post('/cycles/reopen-period', [CloseCycleController::class, 'reopenPeriod']);
 });
 

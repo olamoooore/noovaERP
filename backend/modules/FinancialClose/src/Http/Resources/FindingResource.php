@@ -18,6 +18,20 @@ class FindingResource extends JsonResource
         $structuredOutput = is_array($this->structured_output) ? $this->structured_output : [];
         $sourceRefs = is_array($structuredOutput['source_refs'] ?? null) ? $structuredOutput['source_refs'] : [];
 
+        // Resolve real journal entry numbers at read time so BOTH newly
+        // generated and previously-stored findings surface "JE-2026-0238"
+        // (trackable) instead of an opaque id, and deep-link to the exact
+        // entry rather than the journal list. Batched to avoid N+1.
+        $journalIds = collect($sourceRefs)
+            ->filter(fn ($ref) => is_array($ref) && ($ref['type'] ?? null) === 'journal_entry' && ! empty($ref['id']))
+            ->map(fn ($ref) => (int) $ref['id'])
+            ->unique()
+            ->values()
+            ->all();
+        $journalNumbers = $journalIds
+            ? \App\Models\JournalEntry::withTrashed()->whereIn('id', $journalIds)->pluck('entry_number', 'id')
+            : collect();
+
         return [
             'id' => $this->id,
             'review_id' => $this->review_id,
@@ -32,13 +46,29 @@ class FindingResource extends JsonResource
             'recommendation' => isset($structuredOutput['recommendation']) ? (string) $structuredOutput['recommendation'] : null,
             'source_refs' => collect($sourceRefs)
                 ->filter(fn ($ref) => is_array($ref) && ! empty($ref['id']))
-                ->map(fn ($ref) => [
-                    'type' => $ref['type'] ?? 'transaction',
-                    'id' => (string) $ref['id'],
-                    'label' => $ref['label'] ?? ('#'.$ref['id']),
-                    'route' => $ref['route'] ?? null,
-                    'meta' => is_array($ref['meta'] ?? null) ? $ref['meta'] : null,
-                ])
+                ->map(function ($ref) use ($journalNumbers) {
+                    $type = $ref['type'] ?? 'transaction';
+                    $id = (string) $ref['id'];
+                    $label = $ref['label'] ?? ('#'.$id);
+                    $route = $ref['route'] ?? null;
+
+                    if ($type === 'journal_entry') {
+                        $number = $journalNumbers[$id] ?? null;
+                        if ($number) {
+                            $label = (string) $number;
+                        }
+                        // Always deep-link to the exact entry dialog.
+                        $route = '/accounting/core/journal-entries?entry_id='.$id;
+                    }
+
+                    return [
+                        'type' => $type,
+                        'id' => $id,
+                        'label' => $label,
+                        'route' => $route,
+                        'meta' => is_array($ref['meta'] ?? null) ? $ref['meta'] : null,
+                    ];
+                })
                 ->values()
                 ->all(),
             'detail_items' => collect($structuredOutput)

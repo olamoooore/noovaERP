@@ -27,6 +27,55 @@ class AccountingAccessService
     /** Roles in the central user_company_access table that can write. */
     private const TENANT_WRITE_ROLES = ['owner', 'admin', 'accountant'];
 
+    /**
+     * Material accounting permissions (HR37-03).
+     *
+     * These gate actions that mutate the ledger or control ledger mutability:
+     * posting, reversing, correcting, locking, closing, reopening, opening
+     * balances, overrides and threshold approvals.
+     *
+     * Authority rule: for a material permission, an unseeded permission /
+     * unavailable authority definition must FAIL CLOSED. Authority may only be
+     * proven by (a) the super-admin flag, (b) the canonical role→permission
+     * mapping in userHasPermission()'s match arm for the exact permission, or
+     * (c) an explicit Spatie permission grant. The foundation-phase fallback
+     * and the broad role-name fallback are mechanically isolated to
+     * NON-material permissions and can never participate in material
+     * accounting authority.
+     */
+    private const MATERIAL_ACCOUNTING_PERMISSIONS = [
+        // posting
+        'accounting.write',
+        'accounting.post',
+        // reversing
+        'accounting.reverse',
+        'accounting.reversal_approve',
+        'accounting.reversal_threshold',
+        // correcting / adjustments
+        'accounting.audit_adjustment',
+        'accounting.approve_high_value',
+        'accounting.account_resolution',
+        'accounting.manual_journal_threshold',
+        // locking / date overrides
+        'accounting.lock',
+        'accounting.lock_date_override',
+        'accounting.backdate_override',
+        // period close
+        'accounting.close.admin',
+        'accounting.close.manage',
+        'accounting.close.signoff',
+        'accounting.close.escalation_write',
+        'accounting.close.finding_write',
+        'accounting.close.task_write',
+        'accounting.close.template_write',
+        // opening balance
+        'accounting.opening_balance.post',
+        'accounting.opening_balance.approve',
+        'accounting.opening_balance.write',
+        // settings (affects ledger behaviour)
+        'accounting.settings',
+    ];
+
     public function __construct(
         private readonly EntitlementService $entitlements,
     ) {}
@@ -72,9 +121,16 @@ class AccountingAccessService
      * Generic permission check used by the authority gate framework (ADR-005 §8.4).
      * Maps a permission string to the appropriate access check.
      *
-     * Fail-closed: if the permission IS seeded and the user lacks it → false.
-     * Foundation-phase: if the permission is NOT seeded and no role matches → true
-     *   (system not yet bootstrapped, cannot enforce what doesn't exist).
+     * Authority chain for a MATERIAL accounting permission (HR37-03):
+     *   super-admin flag → canonical role→permission match (write/post/reverse/lock)
+     *   → explicit Spatie grant → seeded-but-lacking = DENY
+     *   → NOT seeded = DENY (authority definition unavailable; never bootstrap
+     *     authority from absence of configuration, never substitute a broad
+     *     role-name fallback for the exact material action).
+     *
+     * Foundation-phase fallback (NOT seeded and no role matches → allow) is
+     * mechanically isolated to NON-material permissions only and can never
+     * participate in material accounting authority.
      */
     public function userHasPermission(int $userId, string $permission, ?string $tenantId = null): bool
     {
@@ -120,18 +176,33 @@ class AccountingAccessService
             return false;
         }
 
-        // Permission NOT seeded — fall back to role-based check
-        $roleAllowed = match ($permission) {
-            'accounting.write', 'accounting.post', 'accounting.reverse', 'accounting.lock', 'accounting.settings' => $this->canPost($user),
-            default => $this->canWrite($user),
-        };
+        // Permission NOT seeded.
+        //
+        // HR37-03: for a MATERIAL accounting action, an unseeded permission
+        // means the authority definition is unavailable. FAIL CLOSED — never
+        // bootstrap production accounting authority from absence of
+        // configuration, and never substitute a broad role-name fallback for a
+        // canonical role→permission mapping for the exact material action.
+        // (The canonical mappings for accounting.write/post/reverse/lock are
+        // handled by the match arm above and return early; any other material
+        // permission reaching here has no canonical authority source.)
+        if (in_array($permission, self::MATERIAL_ACCOUNTING_PERMISSIONS, true)) {
+            return false;
+        }
+
+        // NON-material permission NOT seeded — foundation/development role
+        // fallback. This branch is mechanically isolated from material
+        // accounting authority by the guard above, so it can never convert a
+        // missing material permission into a PASS.
+        $roleAllowed = $this->canWrite($user);
 
         if ($roleAllowed) {
             return true;
         }
 
-        // Neither Spatie permission nor role matched, AND the permission isn't seeded.
-        // Foundation phase: allow — can't enforce what doesn't exist yet.
+        // Neither Spatie permission nor role matched, AND the (non-material)
+        // permission isn't seeded. Foundation phase: allow — can't enforce what
+        // doesn't exist yet. Isolated from material accounting authority.
         return true;
     }
 

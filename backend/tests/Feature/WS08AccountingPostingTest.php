@@ -73,6 +73,12 @@ class WS08AccountingPostingTest extends TenantTestCase
         $debitAccount = ChartOfAccount::factory()->create(['type' => 'expense',   'is_active' => true]);
         $creditAccount = ChartOfAccount::factory()->create(['type' => 'liability', 'is_active' => true]);
 
+        // Issue #37 made the PostingEngine gate fail-closed on a null
+        // required_permission for material posting actions. The test's synthetic
+        // documentType 'test_doc' is not in the platform type→permission map,
+        // so the gate returned "Authority gate evaluation failed". Declare the
+        // required permission explicitly on the request so the test is
+        // self-contained and independent of the type→permission mapping.
         return new PostingRequest(
             documentType: $documentType,
             documentId: $documentId,
@@ -95,6 +101,7 @@ class WS08AccountingPostingTest extends TenantTestCase
                 ),
             ],
             userId: 1,
+            requiredPermission: 'accounting.write',
         );
     }
 

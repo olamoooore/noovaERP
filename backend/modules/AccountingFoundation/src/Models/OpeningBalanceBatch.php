@@ -44,6 +44,9 @@ class OpeningBalanceBatch extends Model
         'posted_at',
         'posted_by',
         'journal_entry_id',
+        'posting_document_id',
+        'supersedes_batch_id',
+        'scope_key',
         'created_by',
     ];
 
@@ -53,6 +56,7 @@ class OpeningBalanceBatch extends Model
         'posted_at' => 'datetime',
         'approval_snapshot' => 'array',
         'source_version' => 'integer',
+        'posting_document_id' => 'integer',
     ];
 
     // ── Relationships ─────────────────────────────────────────────
@@ -90,6 +94,28 @@ class OpeningBalanceBatch extends Model
     }
 
     // ── Scope helpers ─────────────────────────────────────────────
+
+    /**
+     * Canonical, DB-index-safe scope key: the controlled scope used for the
+     * economic-baseline uniqueness invariant (issue #70 HR70-02). Built from
+     * the canonical population-scope catalogue value + tenant/entity/book/
+     * cutover, with '*' sentinels for nullable entity/book.
+     */
+    public static function buildScopeKey(
+        string $tenantId,
+        ?string $legalEntityId,
+        ?string $accountingBookId,
+        string $cutoverDate,
+        string $populationScope,
+    ): string {
+        return implode('|', [
+            $tenantId,
+            $legalEntityId ?: '*',
+            $accountingBookId ?: '*',
+            $cutoverDate,
+            $populationScope,
+        ]);
+    }
 
     /**
      * Unique scope key: tenant + entity + book + cutover + population.

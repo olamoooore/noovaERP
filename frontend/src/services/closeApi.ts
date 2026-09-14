@@ -50,7 +50,7 @@ export interface CloseTask {
   id: string
   cycle_id: string
   title: string
-  status: 'created' | 'in_progress' | 'submitted' | 'completed' | 'blocked' | 'cancelled'
+  status: 'created' | 'assigned' | 'in_progress' | 'submitted' | 'completed' | 'blocked' | 'cancelled'
   priority: 'low' | 'medium' | 'high' | 'critical'
   assigned_to: string | null
   due_date: string | null
@@ -223,6 +223,9 @@ export const closeCyclesApi = {
 
   close: (cycleId: string) =>
     api.post(`/close/cycles/${cycleId}/close`),
+
+  archive: (cycleId: string, reason?: string) =>
+    api.post(`/close/cycles/${cycleId}/archive`, { reason }),
 
   signoff: (cycleId: string, role: string, notes?: string) =>
     api.post(`/close/cycles/${cycleId}/signoff`, { role, notes }),

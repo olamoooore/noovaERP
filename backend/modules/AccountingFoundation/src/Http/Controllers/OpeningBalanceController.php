@@ -59,7 +59,7 @@ class OpeningBalanceController extends Controller
             'source_reference' => 'nullable|string|max:255',
             'cutover_date' => 'required|date',
             'fiscal_period_id' => 'required|integer|exists:fiscal_periods,id',
-            'population_scope' => 'required|string|max:100',
+            'population_scope' => ['required', 'string', \Illuminate\Validation\Rule::in(\Modules\AccountingFoundation\Enums\PopulationScope::values())],
             'mapping_version' => 'nullable|string|max:50',
             'mapping_hash' => 'nullable|string|max:64',
         ]);
@@ -122,13 +122,9 @@ class OpeningBalanceController extends Controller
     {
         $batch = OpeningBalanceBatch::findOrFail($id);
 
-        // Direct transition: reconciled → pending_approval
-        $lifecycle = app(\Modules\AccountingFoundation\Services\OpeningBalanceLifecycle::class);
-        $from = $batch->getStatusEnum();
-        $to = \Modules\AccountingFoundation\Enums\OpeningBalanceStatus::PENDING_APPROVAL;
-        $lifecycle->validateTransition($from, $to);
-
-        $batch->update(['status' => $to->value]);
+        // HR70-11: route the governance-significant RECONCILED → PENDING_APPROVAL
+        // transition through the service so it is recorded in the audit trail.
+        $this->service->submitForApproval($batch, (string) request()->user()->id);
 
         return response()->json(['status' => $batch->fresh()->status]);
     }
