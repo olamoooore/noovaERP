@@ -30,6 +30,22 @@ export default function CompanySettingsPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'company');
 
+  // Acme tenants — Acme has its own country plugin configuration managed
+  // elsewhere, so the Country Plugin tab is suppressed here for that tenant.
+  // Both Acme tenant IDs (legacy + new production) are covered.
+  const tenantId = localStorage.getItem('tenant_id') || '';
+  const isAcmeTenant =
+    tenantId === '00000000-0000-0000-0000-000000000001' ||
+    tenantId === '00000000-0000-0000-0000-000000000002';
+
+  // Redirect away from the country tab on Acme if a deep link brings them in.
+  useEffect(() => {
+    if (isAcmeTenant && activeTab === 'country') {
+      setActiveTab('company');
+      setSearchParams({ tab: 'company' }, { replace: true });
+    }
+  }, [isAcmeTenant, activeTab, setSearchParams]);
+
   // Controlled state for Currency form (Radix Select doesn't reliably emit to FormData)
   const [currencyForm, setCurrencyForm] = useState({
     base_currency: 'SGD',
@@ -321,7 +337,9 @@ export default function CompanySettingsPage() {
           <TabsTrigger value="fiscal">Fiscal Year</TabsTrigger>
           <TabsTrigger value="currency">Currency & Formats</TabsTrigger>
           <TabsTrigger value="accounts">Default Accounts</TabsTrigger>
-          <TabsTrigger value="country">Country Plugin</TabsTrigger>
+          {!isAcmeTenant && (
+            <TabsTrigger value="country">Country Plugin</TabsTrigger>
+          )}
           <TabsTrigger value="chart-of-accounts">Chart of Accounts</TabsTrigger>
           <TabsTrigger value="multi-currency">Multi-Currency</TabsTrigger>
           {/* <TabsTrigger value="onboarding">Onboarding</TabsTrigger> */}
@@ -833,10 +851,12 @@ export default function CompanySettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* Country Plugin Tab */}
-        <TabsContent value="country" className="space-y-4">
-          <CountryPluginSettings />
-        </TabsContent>
+        {/* Country Plugin Tab — suppressed for Acme (managed elsewhere). */}
+        {!isAcmeTenant && (
+          <TabsContent value="country" className="space-y-4">
+            <CountryPluginSettings />
+          </TabsContent>
+        )}
 
         <TabsContent value="chart-of-accounts" className="space-y-4">
           <ChartOfAccountsPage embedded />

@@ -271,6 +271,11 @@ const baseNavItems: NavItem[] = [
         href: '/sales/settings',
         icon: 'solar:settings-bold-duotone',
       },
+      {
+        title: 'Template Builder',
+        href: '/template-builder',
+        icon: 'solar:document-text-bold-duotone',
+      },
     ],
   },
   {
@@ -762,11 +767,6 @@ const baseNavItems: NavItem[] = [
             icon: 'solar:clock-circle-bold-duotone',
           },
         ],
-      },
-      {
-        title: 'Template Builder',
-        href: '/template-builder',
-        icon: 'solar:document-text-bold-duotone',
       },
       {
         title: 'Settings',
