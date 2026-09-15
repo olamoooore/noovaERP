@@ -46,18 +46,30 @@ export default function MultiCurrencyPage({ embedded = false }: { embedded?: boo
     decimal_places: 2,
   });
 
-  // Fetch currencies
-  const { data: currenciesResponse, isLoading } = useQuery({
+  // Fetch currencies. Issue: the page sometimes showed "No currencies found"
+  // immediately after a tab switch because isLoading is false (cached data)
+  // but the defensive array coercion produced an empty list during the brief
+  // refetch window. Fix: track isFetching explicitly and never show
+  // "No currencies found" while a request is still in-flight (including
+  // background refetches). Also keep previous data on the table render so a
+  // transient refetch failure / empty response doesn't blank the UI.
+  const { data: currenciesResponse, isLoading, isFetching, isError } = useQuery({
     queryKey: ['currencies'],
     queryFn: () => currenciesApi.getCurrencies(),
+    refetchOnWindowFocus: false,
+    staleTime: 30_000, // 30s — avoids redundant refetches on tab navigation
   });
 
   // Safely extract currencies array from response
-  const currencies: Currency[] = Array.isArray(currenciesResponse) 
-    ? currenciesResponse 
+  const currencies: Currency[] = Array.isArray(currenciesResponse)
+    ? currenciesResponse
     : (currenciesResponse?.data && Array.isArray(currenciesResponse.data))
       ? currenciesResponse.data
       : [];
+
+  // While any request is in flight (initial or background refetch) and we
+  // don't have data yet, we are still loading — show the spinner.
+  const isStillLoading = isLoading || (isFetching && currencies.length === 0);
 
   // Create currency mutation
   const createMutation = useMutation({
@@ -204,15 +216,28 @@ export default function MultiCurrencyPage({ embedded = false }: { embedded?: boo
               </Button>
             </div>
 
-            {isLoading ? (
+            {isStillLoading ? (
               <div className="text-center py-12">
                 <Icon icon="svg-spinners:ring-resize" className="w-8 h-8 mx-auto" />
                 <p className="text-muted-foreground mt-2">Loading currencies...</p>
+              </div>
+            ) : isError && currencies.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Icon icon="solar:danger-triangle-bold-duotone" className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                <p>Failed to load currencies. Please retry.</p>
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => window.location.reload()}
+                >
+                  Retry
+                </Button>
               </div>
             ) : currencies.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <Icon icon="solar:dollar-bold-duotone" className="w-16 h-16 mx-auto mb-4 opacity-50" />
                 <p>No currencies found</p>
+                <p className="text-xs mt-2">Click "Add Currency" to seed your first currency.</p>
               </div>
             ) : (
               <Table>
