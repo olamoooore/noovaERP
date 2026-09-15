@@ -52,7 +52,7 @@ class BankStatementMatchingService
                 $glRef = $this->normalize($gl->reference ?: $gl->journalEntry->reference);
                 $payment = DB::table('payments as p')->leftJoin('customers as c', 'c.id', '=', 'p.customer_id')
                     ->leftJoin('invoices as i', 'i.id', '=', 'p.invoice_id')->where('p.journal_entry_id', $gl->journal_entry_id)
-                    ->whereNull('p.deleted_at')->select('p.reference', 'p.payment_number', 'c.code as customer_code', 'c.name as customer_name', 'i.invoice_number')->first();
+                    ->whereNull('p.deleted_at')->select('p.id', 'p.reference', 'p.payment_number', 'p.invoice_id', 'p.customer_id', 'c.code as customer_code', 'c.name as customer_name', 'i.invoice_number')->first();
                 $paymentRefs = collect([$glRef, $this->normalize($payment?->reference), $this->normalize($payment?->payment_number)])->filter();
                 $referenceMatch = $statementRef !== '' && $paymentRefs->contains($statementRef);
                 $referenceConflict = $statementRef !== '' && $paymentRefs->isNotEmpty() && ! $referenceMatch;
@@ -74,7 +74,10 @@ class BankStatementMatchingService
                     'allocation' => abs($glRemaining) < abs((float) $statement->residual_amount) ? $glRemaining : (float) $statement->residual_amount,
                     'reasons' => ['exact_amount' => $amountScore > 0, 'reference_match' => $referenceMatch, 'reference_conflict' => $referenceConflict,
                         'invoice_match' => $invoiceMatch, 'customer_code_match' => $customerCodeMatch, 'customer_name_match' => $customerNameMatch,
-                        'customer_conflict' => $customerConflict, 'date_gap_days' => $dateGap]];
+                        'customer_conflict' => $customerConflict, 'date_gap_days' => $dateGap,
+                        'payment_id' => $payment?->id, 'payment_number' => $payment?->payment_number,
+                        'invoice_id' => $payment?->invoice_id, 'invoice_number' => $payment?->invoice_number,
+                        'customer_code' => $payment?->customer_code, 'customer_name' => $payment?->customer_name]];
             })->filter()->sortByDesc('score')->values();
             $topScore = $ranked->first()['score'] ?? null;
             $ambiguous = $topScore !== null && $ranked->filter(fn ($candidate) => abs($candidate['score'] - $topScore) < 0.0001)->count() > 1;
@@ -139,7 +142,10 @@ class BankStatementMatchingService
             if (abs($amount) - abs($statementRemaining) > $tolerance || abs($amount) - abs($glRemaining) > $tolerance) {
                 throw new MatchConflict('Match amount exceeds the available statement or GL amount.');
             }
-            $match = BankStatementMatch::create(['bank_statement_transaction_id' => $statement->id, 'journal_entry_line_id' => $gl->id, 'matched_amount' => $amount, 'match_type' => 'manual', 'confidence' => null, 'match_reasons' => ['manual' => true], 'review_reason' => $data['review_reason'], 'status' => 'accepted', 'accepted_by' => $userId, 'accepted_at' => now(), 'idempotency_key' => $data['idempotency_key']]);
+            $payment = DB::table('payments as p')->leftJoin('customers as c', 'c.id', '=', 'p.customer_id')
+                ->leftJoin('invoices as i', 'i.id', '=', 'p.invoice_id')->where('p.journal_entry_id', $gl->journal_entry_id)
+                ->whereNull('p.deleted_at')->select('p.id', 'p.payment_number', 'p.invoice_id', 'i.invoice_number', 'p.customer_id', 'c.code as customer_code', 'c.name as customer_name')->first();
+            $match = BankStatementMatch::create(['bank_statement_transaction_id' => $statement->id, 'journal_entry_line_id' => $gl->id, 'matched_amount' => $amount, 'match_type' => 'manual', 'confidence' => null, 'match_reasons' => ['manual' => true, 'payment_id' => $payment?->id, 'payment_number' => $payment?->payment_number, 'invoice_id' => $payment?->invoice_id, 'invoice_number' => $payment?->invoice_number, 'customer_id' => $payment?->customer_id, 'customer_code' => $payment?->customer_code, 'customer_name' => $payment?->customer_name], 'review_reason' => $data['review_reason'], 'status' => 'accepted', 'accepted_by' => $userId, 'accepted_at' => now(), 'idempotency_key' => $data['idempotency_key']]);
             $this->refreshStatement($statement);
             $operation->update(['status' => 'completed', 'response_type' => BankStatementMatch::class, 'response_id' => $match->id, 'response' => ['match_id' => $match->id]]);
             $this->audit->record('match_accepted', ['actor_id' => $userId, 'bank_account_id' => $statement->bank_account_id, 'import_id' => $statement->import_id, 'statement_transaction_id' => $statement->id, 'match_id' => $match->id, 'reason' => $data['review_reason'], 'after_state' => ['journal_entry_line_id' => $gl->id, 'matched_amount' => $amount]], $operation->correlation_id);
@@ -160,6 +166,38 @@ class BankStatementMatchingService
             $this->refreshStatement($statement);
             $this->audit->record('match_removed', ['actor_id' => $actorId, 'bank_account_id' => $statement->bank_account_id, 'import_id' => $statement->import_id, 'statement_transaction_id' => $statement->id, 'match_id' => $match->id, 'before_state' => ['status' => 'accepted', 'matched_amount' => $match->matched_amount], 'after_state' => ['status' => 'reversed']]);
         });
+    }
+
+    public function acceptGroup(array $allocations, string $idempotencyKey, int $actorId): array
+    {
+        return DB::transaction(function () use ($allocations, $idempotencyKey, $actorId) {
+            $matches = [];
+            foreach ($allocations as $index => $allocation) {
+                $matches[] = $this->accept([
+                    ...$allocation,
+                    'idempotency_key' => $idempotencyKey.':'.$index,
+                ], $actorId);
+            }
+
+            return $matches;
+        });
+    }
+
+    public function bulkAccept(string $importId, string $idempotencyKey, int $actorId): array
+    {
+        $proposals = BankStatementMatch::query()->with('transaction')
+            ->whereHas('transaction', fn ($query) => $query->where('import_id', $importId))
+            ->where('status', 'proposed')->where('confidence', '>=', 0.95)->orderBy('bank_statement_transaction_id')->orderByDesc('confidence')->get()
+            ->filter(fn ($proposal) => ! ($proposal->match_reasons['ambiguous'] ?? false))
+            ->groupBy('bank_statement_transaction_id')->filter(fn ($items) => $items->count() === 1)->flatten();
+        $allocations = $proposals->map(fn ($proposal) => [
+            'bank_statement_transaction_id' => $proposal->bank_statement_transaction_id,
+            'journal_entry_line_id' => $proposal->journal_entry_line_id,
+            'matched_amount' => (float) $proposal->matched_amount,
+            'review_reason' => 'Accepted unique high-confidence deterministic suggestion.',
+        ])->values()->all();
+
+        return ['accepted' => count($this->acceptGroup($allocations, $idempotencyKey, $actorId))];
     }
 
     private function refreshStatement(BankStatementTransaction $statement): void

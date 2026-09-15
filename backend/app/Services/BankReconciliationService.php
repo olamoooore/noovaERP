@@ -10,6 +10,7 @@ use App\Models\BankReconciliation;
 use App\Models\BankStatementMatch;
 use App\Models\ChartOfAccount;
 use App\Models\JournalEntryLine;
+use App\Models\Payment;
 use App\Models\ReconciliationItem;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -98,11 +99,19 @@ class BankReconciliationService
             ->groupBy('journal_entry_line_id')
             ->pluck('allocated_amount', 'journal_entry_line_id');
 
+        $paymentsByJournal = Payment::query()
+            ->with(['invoice:id,invoice_number', 'customer:id,name,code'])
+            ->whereIn('journal_entry_id', $lines->pluck('journal_entry_id'))
+            ->whereNotNull('journal_entry_id')
+            ->get()
+            ->keyBy('journal_entry_id');
+
         // Format transactions
         $transactions = [];
         foreach ($lines as $line) {
             $movement = (float) $line->debit - (float) $line->credit;
             $allocatedAmount = (float) ($acceptedAllocations[$line->id] ?? 0);
+            $payment = $paymentsByJournal->get($line->journal_entry_id);
             $transactions[] = [
                 'id' => $line->id,
                 'date' => $line->journalEntry->entry_date->format('Y-m-d'),
@@ -112,6 +121,16 @@ class BankReconciliationService
                 'credit' => round((float) $line->credit, 2),
                 'statement_matched_amount' => round($allocatedAmount, 8),
                 'available_amount' => round($movement - $allocatedAmount, 8),
+                'payment' => $payment ? [
+                    'id' => $payment->id,
+                    'payment_number' => $payment->payment_number,
+                    'reference' => $payment->reference,
+                    'invoice_id' => $payment->invoice_id,
+                    'invoice_number' => $payment->invoice?->invoice_number,
+                    'customer_id' => $payment->customer_id,
+                    'customer_code' => $payment->customer?->code,
+                    'customer_name' => $payment->customer?->name,
+                ] : null,
                 'reconciled' => ! is_null($line->reconciliation_id),
                 'reconciliation_date' => $line->reconciliation_id ?
                     ($line->reconciliation ? $line->reconciliation->statement_date->format('Y-m-d') : null) :

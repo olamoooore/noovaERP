@@ -264,7 +264,7 @@ class BankReconciliationController extends Controller
                 'ids' => $allForAccount->pluck('id')->toArray(),
             ]);
 
-            $reconciliations = BankReconciliation::with('bankAccount')
+            $reconciliations = BankReconciliation::with(['bankAccount', 'reversal'])
                 ->where('bank_account_id', $bankAccountId)
                 ->where('status', 'completed')
                 ->orderBy('statement_date', 'desc')
@@ -289,6 +289,12 @@ class BankReconciliationController extends Controller
                         $reconciliation->reconciled_at->format('Y-m-d H:i:s') : null,
                     'reconciled_by' => $reconciliation->reconciledBy ?
                         $reconciliation->reconciledBy->name : null,
+                    'reversed' => $reconciliation->reversal?->status === 'reversed',
+                    'reversal_id' => $reconciliation->reversal?->id,
+                    'reversal_status' => $reconciliation->reversal?->status,
+                    'reversal_requested_at' => $reconciliation->reversal?->requested_at?->format('Y-m-d H:i:s'),
+                    'reversed_at' => $reconciliation->reversal?->reversed_at?->format('Y-m-d H:i:s'),
+                    'reversal_reason' => $reconciliation->reversal?->reason,
                 ];
             }
 

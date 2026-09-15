@@ -15,7 +15,10 @@ class ReconciliationItem extends Model
         'journal_entry_line_id',
         'bank_statement_transaction_id',
         'bank_statement_match_id',
+        'reversed_at',
     ];
+
+    protected $casts = ['reversed_at' => 'datetime'];
 
     /**
      * Get the reconciliation this item belongs to

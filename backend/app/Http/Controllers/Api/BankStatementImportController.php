@@ -11,11 +11,15 @@ use App\Services\BankStatements\DuplicateStatementFile;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class BankStatementImportController extends Controller
 {
-    public function __construct(private BankStatementImportService $service) {}
+    public function __construct(
+        private BankStatementImportService $service,
+        private \App\Services\BankStatements\BankStatementAuditService $audit,
+    ) {}
 
     public function preview(PreviewBankStatementImportRequest $request): JsonResponse
     {
@@ -66,5 +70,31 @@ class BankStatementImportController extends Controller
         return response()->json(DB::table('bank_statement_import_errors')
             ->where('import_id', $importId)->orderBy('source_row')
             ->paginate(min(250, max(1, $request->integer('per_page', 50)))));
+    }
+
+    public function source(Request $request, string $importId)
+    {
+        $import = BankStatementImport::findOrFail($importId);
+        if (! Storage::disk('local')->exists($import->storage_path)) {
+            abort(404, 'Original statement source file is unavailable.');
+        }
+        $this->audit->record('import_source_downloaded', [
+            'actor_id' => $request->user()->id,
+            'bank_account_id' => $import->bank_account_id,
+            'import_id' => $import->id,
+            'metadata' => ['file_hash' => $import->file_hash],
+        ]);
+
+        return Storage::disk('local')->download($import->storage_path, $import->file_name);
+    }
+
+    public function reverse(Request $request, string $importId): JsonResponse
+    {
+        $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
+        try {
+            return response()->json(['data' => $this->service->reverse($importId, $data['reason'], (int) $request->user()->id)]);
+        } catch (\DomainException $exception) {
+            return response()->json(['code' => 'IMPORT_REVERSAL_BLOCKED', 'message' => $exception->getMessage()], 409);
+        }
     }
 }

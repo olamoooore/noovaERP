@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\FinancialClose\Models\CloseCycle;
 use Modules\FinancialClose\Models\CloseTask;
 use Modules\FinancialClose\Models\JobRunHistory;
+use Modules\FinancialClose\Services\FinancialCloseBankReconciliationService;
 use Modules\FinancialClose\Services\FinancialCloseChecklistService;
 
 /**
@@ -34,7 +35,7 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
         public readonly ?string $userId = null,
     ) {}
 
-    public function handle(FinancialCloseChecklistService $checklistService): void
+    public function handle(FinancialCloseChecklistService $checklistService, FinancialCloseBankReconciliationService $bankReconciliationService): void
     {
         tenancy()->initialize($this->tenantId);
 
@@ -81,7 +82,7 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
                 ],
             ]);
         } else {
-            $generated = $this->generateConditionalTasks($this->tenantId, $this->cycleId, $this->userId);
+            $generated = $this->generateConditionalTasks($this->tenantId, $this->cycleId, $cycle, $bankReconciliationService, $this->userId);
 
             Log::info('FinancialClose: GenerateTasksFromChecklistJob complete (conditional)', [
                 'tenant_id' => $this->tenantId,
@@ -116,7 +117,7 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
      * The generation is idempotent: tasks keyed by metadata.type are only
      * created once per close cycle.
      */
-    private function generateConditionalTasks(string $tenantId, string $cycleId, ?string $userId = null): int
+    private function generateConditionalTasks(string $tenantId, string $cycleId, CloseCycle $cycle, FinancialCloseBankReconciliationService $bankReconciliationService, ?string $userId = null): int
     {
         $count = 0;
 
@@ -152,9 +153,7 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
                 if ($needsUpdate) {
                     $updatePayload = [
                         'title' => $data['title'],
-                        'metadata' => array_merge($metadata, [
-                            'document_links' => $data['metadata']['document_links'] ?? [],
-                        ]),
+                        'metadata' => array_merge($metadata, $data['metadata']),
                     ];
                     if ($newCount !== null) {
                         $updatePayload['metadata']['count'] = $newCount;
@@ -257,61 +256,26 @@ class GenerateTasksFromChecklistJob implements ShouldQueue
             ]);
         }
 
-        // 4. Unreconciled bank transactions
-        $bankAccounts = DB::table('bank_accounts')
-            ->where('is_active', true)
-            ->get(['id', 'gl_account_id'])
-            ->keyBy('gl_account_id');
-
-        if ($bankAccounts->isNotEmpty()) {
-            $bankAccountIds = $bankAccounts->pluck('gl_account_id');
-
-            $unreconciledLines = DB::table('journal_entry_lines')
-                ->whereNull('reconciliation_id')
-                ->whereIn('account_id', $bankAccountIds)
-                ->get(['journal_entry_id', 'account_id']);
-
-            if ($unreconciledLines->isNotEmpty()) {
-                $unreconciledJeIds = $unreconciledLines->pluck('journal_entry_id')->unique()->take(50);
-
-                $firstLine = $unreconciledLines->first();
-                $firstGlAccountId = $firstLine->account_id;
-                $bankAccountId = $bankAccounts->get($firstGlAccountId)?->id;
-
-                $paymentMap = DB::table('payments')
-                    ->whereIn('journal_entry_id', $unreconciledJeIds)
-                    ->get(['journal_entry_id', 'payment_number'])
-                    ->keyBy('journal_entry_id');
-
-                $journalEntries = DB::table('journal_entries')
-                    ->whereIn('id', $unreconciledJeIds)
-                    ->get(['id', 'entry_number']);
-
-                $documentLinks = $journalEntries->map(function ($je) use ($paymentMap) {
-                    $payment = $paymentMap->get($je->id);
-                    $title = $payment
-                        ? $payment->payment_number
-                        : ($je->entry_number ?: "JE #{$je->id}");
-
-                    return [
-                        'type' => 'journal_entry',
-                        'id' => $je->id,
-                        'title' => $title,
-                    ];
-                })->all();
-
-                $upsertTask([
-                    'title' => "Reconcile {$journalEntries->count()} journal entries with unreconciled bank lines",
-                    'priority' => 'high',
-                    'is_critical' => false,
-                    'metadata' => [
-                        'type' => 'unreconciled_transactions',
-                        'count' => $journalEntries->count(),
-                        'bank_account_id' => $bankAccountId,
-                        'document_links' => $documentLinks,
-                    ],
-                ]);
-            }
+        // 4. Unreconciled bank transactions, using imported statement rows once adopted.
+        $cutoff = $bankReconciliationService->cutoffForClosePeriod((string) $cycle->period_id, $cycle->metadata ?? []);
+        $bankReconciliation = $bankReconciliationService->unresolvedThrough($cutoff);
+        if ($bankReconciliation['count'] > 0) {
+            $usesPersistedStatements = $bankReconciliation['mode'] === 'persisted_statement';
+            $upsertTask([
+                'title' => 'Resolve '.$bankReconciliation['count'].' unreconciled '.($usesPersistedStatements ? 'bank statement transactions' : 'bank GL lines'),
+                'priority' => 'high',
+                'is_critical' => false,
+                'metadata' => [
+                    'type' => 'unreconciled_transactions',
+                    'count' => $bankReconciliation['count'],
+                    'bank_account_id' => $bankReconciliation['bank_account_ids'][0] ?? null,
+                    'bank_account_ids' => $bankReconciliation['bank_account_ids'],
+                    'cutoff_date' => $bankReconciliation['cutoff_date'],
+                    'source_mode' => $bankReconciliation['mode'],
+                    'total_residual_amount' => $bankReconciliation['total_residual_amount'],
+                    'document_links' => $bankReconciliation['source_refs'],
+                ],
+            ]);
         }
 
         // 5. AP Subledger Reconciliation

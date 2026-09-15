@@ -70,8 +70,10 @@ export interface CloseTask {
   checklist_completed?: string[]
   document_links?: Array<{
     type: string
-    id: number
+    id: number | string
     title: string
+    route?: string
+    meta?: Record<string, unknown>
   }>
   detail_title?: string | null
   dependencies?: Array<{

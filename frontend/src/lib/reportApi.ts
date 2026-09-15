@@ -319,6 +319,16 @@ class ReportApiClient {
     }
   }
 
+  async reverseStatementReconciliation(reconciliationId: number, reason: string): Promise<any> {
+    const response = await api.post(`/accounting/reconciliation/statement-reconciliations/${reconciliationId}/reverse`, { reason });
+    return response.data.data;
+  }
+
+  async approveStatementReconciliationReversal(reversalId: string): Promise<any> {
+    const response = await api.post(`/accounting/reconciliation/statement-reconciliation-reversals/${reversalId}/approve`);
+    return response.data.data;
+  }
+
   async previewBankStatement(file: File, bankAccountId: number, headerRow = 1): Promise<any> {
     const body = new FormData();
     body.append('file', file);
@@ -349,9 +359,9 @@ class ReportApiClient {
     return response.data;
   }
 
-  async getBankStatementTransactions(bankAccountId: number, importId?: string): Promise<any> {
+  async getBankStatementTransactions(bankAccountId: number, importId?: string, page = 1, perPage = 20, status?: string, search?: string, transactionIds?: string[]): Promise<any> {
     const response = await api.get('/accounting/reconciliation/statement-transactions', {
-      params: { bank_account_id: bankAccountId, import_id: importId },
+      params: { bank_account_id: bankAccountId, import_id: importId, page, per_page: perPage, status, search, transaction_ids: transactionIds },
     });
     return response.data;
   }
@@ -373,6 +383,63 @@ class ReportApiClient {
 
   async suggestBankStatementMatches(importId: string): Promise<any> {
     const response = await api.post(`/accounting/reconciliation/statement-imports/${importId}/suggest-matches`);
+    return response.data.data;
+  }
+
+  async excludeBankStatementTransaction(transactionId: string, request: { type: 'duplicate' | 'non_transaction'; reason: string; evidence: Record<string, string> }): Promise<any> {
+    const response = await api.post(`/accounting/reconciliation/statement-transactions/${transactionId}/exclude`, request);
+    return response.data.data;
+  }
+
+  async restoreBankStatementTransaction(transactionId: string, reason: string): Promise<any> {
+    const response = await api.post(`/accounting/reconciliation/statement-transactions/${transactionId}/restore`, { reason });
+    return response.data.data;
+  }
+
+  async downloadBankStatementSource(importId: string): Promise<Blob> {
+    const response = await api.get(`/accounting/reconciliation/statement-imports/${importId}/source`, { responseType: 'blob' });
+    return response.data;
+  }
+
+  async reverseBankStatementImport(importId: string, reason: string): Promise<any> {
+    const response = await api.post(`/accounting/reconciliation/statement-imports/${importId}/reverse`, { reason });
+    return response.data.data;
+  }
+
+  async validateBankStatementReconciliation(bankAccountId: number, importIds: string[]): Promise<any> {
+    const response = await api.post('/accounting/reconciliation/statement-reconciliations/validate', {
+      bank_account_id: bankAccountId,
+      import_ids: importIds,
+    });
+    return response.data.data;
+  }
+
+  async completeBankStatementReconciliation(bankAccountId: number, importIds: string[]): Promise<any> {
+    const response = await api.post('/accounting/reconciliation/statement-reconciliations/complete', {
+      bank_account_id: bankAccountId,
+      import_ids: importIds,
+      idempotency_key: crypto.randomUUID(),
+    });
+    return response.data.data;
+  }
+
+  async bulkAcceptBankStatementMatches(importId: string): Promise<any> {
+    const response = await api.post('/accounting/reconciliation/statement-matches/bulk-accept', { import_id: importId, idempotency_key: crypto.randomUUID() });
+    return response.data.data;
+  }
+
+  async proposeBankStatementAdjustment(transactionId: string, request: { contra_account_id: number; amount: number; description: string; reason: string }): Promise<any> {
+    const response = await api.post(`/accounting/reconciliation/statement-transactions/${transactionId}/adjustment`, { ...request, idempotency_key: crypto.randomUUID() });
+    return response.data.data;
+  }
+
+  async approveBankStatementAdjustment(adjustmentId: string): Promise<any> {
+    const response = await api.post(`/accounting/reconciliation/statement-adjustments/${adjustmentId}/approve`);
+    return response.data.data;
+  }
+
+  async createGroupedBankStatementMatches(allocations: Array<{ bank_statement_transaction_id: string; journal_entry_line_id: number; matched_amount: number; review_reason: string }>): Promise<any> {
+    const response = await api.post('/accounting/reconciliation/statement-matches/group', { allocations, idempotency_key: crypto.randomUUID() });
     return response.data.data;
   }
 

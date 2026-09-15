@@ -545,6 +545,16 @@ export interface ReconciliationTransaction {
   credit: number;
   statement_matched_amount?: number;
   available_amount?: number;
+  payment?: {
+    id: number;
+    payment_number: string;
+    reference: string | null;
+    invoice_id: number | null;
+    invoice_number: string | null;
+    customer_id: number | null;
+    customer_code: string | null;
+    customer_name: string | null;
+  } | null;
   reconciled: boolean;
   reconciliation_date: string | null;
 }

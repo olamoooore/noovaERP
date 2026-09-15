@@ -144,7 +144,12 @@ export function MyTasksPage() {
     event.stopPropagation()
   }
 
-  function navigateToDocLink(link: { type: string; id: number | string; title?: string }) {
+  function navigateToDocLink(link: { type: string; id: number | string; title?: string; route?: string }) {
+    if (link.route) {
+      navigate(link.route)
+      return
+    }
+
     if (link.type === 'journal_entry') {
       navigate(`/accounting/core/journal-entries?entry_id=${link.id}`)
       return

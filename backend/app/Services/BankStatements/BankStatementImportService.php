@@ -5,6 +5,7 @@ namespace App\Services\BankStatements;
 use App\Models\BankAccount;
 use App\Models\BankStatementAllocation;
 use App\Models\BankStatementImport;
+use App\Models\BankStatementMatch;
 use App\Models\BankStatementTransaction;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
@@ -71,6 +72,7 @@ class BankStatementImportService
                 'currency_code' => strtoupper($input['currency_code']), 'row_count' => count($parsed['rows']), 'mapping' => $input['mapping'],
                 'metadata' => ['worksheet' => $parsed['worksheet'], 'header_row' => $preview['header_row'], 'parser_version' => 1], 'imported_by' => $userId,
             ]);
+            $this->audit->record('import_confirmed', ['actor_id' => $userId, 'bank_account_id' => $import->bank_account_id, 'import_id' => $import->id, 'after_state' => ['mapping' => $input['mapping']], 'metadata' => ['file_hash' => $preview['hash']]]);
             $groups = [];
             $errors = 0;
             foreach ($parsed['rows'] as $row) {
@@ -125,6 +127,27 @@ class BankStatementImportService
             $import->update(['status' => $errors ? 'failed' : 'imported', 'transaction_count' => $created, 'duplicate_count' => $duplicates, 'error_count' => $errors, 'imported_at' => $errors ? null : now()]);
             $this->audit->record($errors ? 'import_failed' : 'import_completed', ['actor_id' => $userId, 'bank_account_id' => $import->bank_account_id, 'import_id' => $import->id, 'after_state' => ['status' => $errors ? 'failed' : 'imported', 'row_count' => count($parsed['rows']), 'transaction_count' => $created, 'duplicate_count' => $duplicates, 'error_count' => $errors]]);
             Cache::forget($key);
+
+            return $import->fresh();
+        });
+    }
+
+    public function reverse(string $importId, string $reason, int $actorId): BankStatementImport
+    {
+        return DB::transaction(function () use ($importId, $reason, $actorId) {
+            $import = BankStatementImport::lockForUpdate()->findOrFail($importId);
+            if ($import->status === 'reversed') {
+                return $import;
+            }
+            $transactions = BankStatementTransaction::where('import_id', $import->id)->orderBy('id')->lockForUpdate()->get();
+            $matches = BankStatementMatch::whereIn('bank_statement_transaction_id', $transactions->pluck('id'))->orderBy('id')->lockForUpdate()->get();
+            if ($matches->contains(fn ($match) => $match->reconciliation_id !== null)) {
+                throw new \DomainException('Reverse the completed reconciliation before reversing this import.');
+            }
+            BankStatementMatch::whereIn('id', $matches->pluck('id'))->update(['status' => 'reversed', 'version' => DB::raw('version + 1')]);
+            BankStatementTransaction::whereIn('id', $transactions->pluck('id'))->update(['status' => 'reversed']);
+            $import->update(['status' => 'reversed']);
+            $this->audit->record('import_reversed', ['actor_id' => $actorId, 'bank_account_id' => $import->bank_account_id, 'import_id' => $import->id, 'reason' => $reason, 'before_state' => ['status' => 'imported'], 'after_state' => ['status' => 'reversed']]);
 
             return $import->fresh();
         });

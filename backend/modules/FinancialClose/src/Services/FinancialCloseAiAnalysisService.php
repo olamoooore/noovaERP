@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Modules\FinancialClose\Models\AccountReview;
 use Modules\FinancialClose\Models\AiFinding;
+use Modules\FinancialClose\Models\CloseCycle;
 
 /**
  * AI Analysis Engine for Financial Close
@@ -34,6 +35,7 @@ class FinancialCloseAiAnalysisService
 
     public function __construct(
         private readonly FinancialCloseAiFindingService $findingService,
+        private readonly FinancialCloseBankReconciliationService $bankReconciliationService,
     ) {}
 
     /**
@@ -153,7 +155,13 @@ class FinancialCloseAiAnalysisService
         }
 
         // Rule 8: Unreconciled bank transactions (global)
-        $unreconciledFinding = $this->detectUnreconciledBankTransactions($tenantId, $entityId, $currentMonth);
+        $closeCycle = CloseCycle::where('tenant_id', $tenantId)
+            ->where('entity_id', $entityId)
+            ->where('period_id', $periodId)
+            ->latest()
+            ->first();
+        $bankCutoff = $this->bankReconciliationService->cutoffForClosePeriod($periodId, $closeCycle?->metadata ?? []);
+        $unreconciledFinding = $this->detectUnreconciledBankTransactions($tenantId, $entityId, $bankCutoff);
         if ($unreconciledFinding) {
             $findingsCreated++;
         }
@@ -624,51 +632,16 @@ class FinancialCloseAiAnalysisService
     /**
      * Rule 8: Detect unreconciled bank transactions.
      */
-    private function detectUnreconciledBankTransactions(string $tenantId, string $entityId, Carbon $currentMonth): ?AiFinding
+    private function detectUnreconciledBankTransactions(string $tenantId, string $entityId, Carbon $cutoff): ?AiFinding
     {
-        $bankAccountIds = DB::table('bank_accounts')
-            ->where('is_active', true)
-            ->pluck('gl_account_id');
-
-        if ($bankAccountIds->isEmpty()) {
-            return null;
-        }
-
-        $count = DB::table('journal_entry_lines')
-            ->whereNull('reconciliation_id')
-            ->whereIn('account_id', $bankAccountIds)
-            ->count();
-
+        $result = $this->bankReconciliationService->unresolvedThrough($cutoff);
+        $count = $result['count'];
         if ($count === 0) {
             return null;
         }
 
-        $totalAmount = DB::table('journal_entry_lines')
-            ->whereNull('reconciliation_id')
-            ->whereIn('account_id', $bankAccountIds)
-            ->selectRaw('COALESCE(SUM(debit), 0) as total_debit, COALESCE(SUM(credit), 0) as total_credit')
-            ->first();
-
-        $netAmount = abs((float) ($totalAmount->total_debit ?? 0) - (float) ($totalAmount->total_credit ?? 0));
-
-        $unreconciledLines = DB::table('journal_entry_lines')
-            ->whereNull('reconciliation_id')
-            ->whereIn('account_id', $bankAccountIds)
-            ->orderBy('id', 'desc')
-            ->limit(15)
-            ->get(['id', 'journal_entry_id', 'account_id', 'debit', 'credit', 'description']);
-
-        $sourceRefs = $unreconciledLines->map(fn ($line) => [
-            'type' => 'bank_transaction',
-            'id' => (string) $line->id,
-            'label' => 'Bank Line #'.$line->id,
-            'route' => '/accounting/core/reconciliation',
-            'meta' => [
-                'journal_entry_id' => (string) $line->journal_entry_id,
-                'amount' => number_format((float) $line->debit + (float) $line->credit, 2),
-                'description' => $line->description,
-            ],
-        ])->values()->all();
+        $usesPersistedStatements = $result['mode'] === 'persisted_statement';
+        $totalResidual = $result['total_residual_amount'];
 
         return $this->findingService->createFinding(
             $tenantId,
@@ -677,16 +650,18 @@ class FinancialCloseAiAnalysisService
             null,
             [
                 'finding_type' => 'unreconciled_transactions',
-                'description' => "{$count} unreconciled bank transactions found. Net unreconciled amount: ".number_format($netAmount, 2).'.',
+                'description' => "{$count} unreconciled ".($usesPersistedStatements ? 'statement transactions' : 'bank GL lines')." found through {$result['cutoff_date']}. Total residual exposure: ".number_format($totalResidual, 2).'.',
                 'confidence' => 0.95,
                 'risk_status' => 'medium',
-                'likely_cause' => 'Bank transactions have not been matched to bank statement lines.',
+                'likely_cause' => $usesPersistedStatements ? 'Imported statement transactions remain unmatched, suggested, or partially matched.' : 'This tenant has not adopted persisted statement imports, so legacy unreconciled bank GL lines were used.',
                 'recommendation' => 'Complete bank reconciliation for all active bank accounts before closing the period.',
                 'detail_items' => [
-                    ['label' => 'Unreconciled Lines', 'value' => (string) $count],
-                    ['label' => 'Net Amount',         'value' => number_format($netAmount, 2)],
+                    ['label' => $usesPersistedStatements ? 'Unreconciled Statement Transactions' : 'Unreconciled GL Lines', 'value' => (string) $count],
+                    ['label' => 'Total Residual Exposure', 'value' => number_format($totalResidual, 2)],
+                    ['label' => 'Cutoff Date', 'value' => $result['cutoff_date']],
+                    ['label' => 'Source Mode', 'value' => $result['mode']],
                 ],
-                'source_refs' => $sourceRefs,
+                'source_refs' => $result['source_refs'],
             ]
         );
     }

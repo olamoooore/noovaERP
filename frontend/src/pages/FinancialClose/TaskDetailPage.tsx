@@ -386,6 +386,11 @@ export function TaskDetailPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Button size="sm" variant="ghost" onClick={() => {
+                      if (doc.route) {
+                        navigate(doc.route)
+                        return
+                      }
+
                       if (doc.type === 'journal_entry') {
                         if (taskType === 'unreconciled_transactions' && bankAccountId) {
                           navigate(`/accounting/core/reconciliation?account=${bankAccountId}`)
