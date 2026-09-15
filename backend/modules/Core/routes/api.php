@@ -14,9 +14,11 @@ use App\Http\Controllers\Api\AutoMatchController;
 use App\Http\Controllers\Api\BankAccountsController;
 use App\Http\Controllers\Api\BankReconciliationController;
 use App\Http\Controllers\Api\BillPaymentsController;
+use App\Http\Controllers\Api\BonusSchemeController;
 use App\Http\Controllers\Api\ChartOfAccountsController;
 use App\Http\Controllers\Api\CompanySettingsController;
 use App\Http\Controllers\Api\CurrenciesController;
+use App\Http\Controllers\Api\CustomerBonusSchemeController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\CustomerCreditNotesController;
 use App\Http\Controllers\Api\CustomersController;
@@ -32,6 +34,7 @@ use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\JournalEntriesController;
 use App\Http\Controllers\Api\JournalsController;
 use App\Http\Controllers\Api\LockDatesController;
+use App\Http\Controllers\Api\MedicalCaseController;
 use App\Http\Controllers\Api\OnboardingSessionsController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentImportController;
@@ -54,9 +57,6 @@ use App\Http\Controllers\Api\VendorCreditNotesController;
 use App\Http\Controllers\Api\VendorDebitNotesController;
 use App\Http\Controllers\Api\VendorsController;
 use App\Http\Controllers\Api\WarehouseController;
-use App\Http\Controllers\Api\MedicalCaseController;
-use App\Http\Controllers\Api\BonusSchemeController;
-use App\Http\Controllers\Api\CustomerBonusSchemeController;
 use App\Http\Middleware\EnsureAccountingLockManageAccess;
 use App\Http\Middleware\EnsureAccountingPostAccess;
 use App\Http\Middleware\EnsureAccountingReverseAccess;
@@ -426,13 +426,18 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/legal-entities/{entityId}/modules/deactivate', [EntityManagementController::class, 'deactivateModule']);
         Route::post('/legal-entities/{entityId}/modules/industry-pack', [EntityManagementController::class, 'applyIndustryPack']);
 
-        // Currencies
+        // Currencies — read endpoints are open to any tenant-authenticated user;
+        // mutations require settings.write so only Owner/Admin can toggle
+        // activation (Issue: "no where to deactivate currency").
         Route::get('/currencies', [CurrenciesController::class, 'index']);
         Route::get('/currencies/active', [CurrenciesController::class, 'active']);
         Route::get('/currencies/{code}', [CurrenciesController::class, 'show']);
-        Route::post('/currencies', [CurrenciesController::class, 'store']);
-        Route::put('/currencies/{code}', [CurrenciesController::class, 'update']);
-        Route::delete('/currencies/{code}', [CurrenciesController::class, 'destroy']);
+        Route::post('/currencies', [CurrenciesController::class, 'store'])
+            ->middleware(RequirePermission::using('settings.write'));
+        Route::put('/currencies/{code}', [CurrenciesController::class, 'update'])
+            ->middleware(RequirePermission::using('settings.write'));
+        Route::delete('/currencies/{code}', [CurrenciesController::class, 'destroy'])
+            ->middleware(RequirePermission::using('settings.write'));
 
         // Exchange Rates
         Route::get('/exchange-rates', [ExchangeRatesController::class, 'index']);

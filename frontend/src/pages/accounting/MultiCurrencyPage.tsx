@@ -24,6 +24,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import currenciesApi, {
   type Currency,
@@ -95,37 +96,40 @@ export default function MultiCurrencyPage({ embedded = false }: { embedded?: boo
     },
   });
 
-  // Activate an inactive currency
-  const activateMutation = useMutation({
-    mutationFn: (code: string) => currenciesApi.updateCurrency(code, { is_active: true }),
-    onSuccess: () => {
+  // Toggle currency active/inactive state. Issue: "no where to deactivate
+  // currency all is just turned on" — the previous UI only exposed a
+  // trash-can icon (easy to miss) and a separate "Activate" button. This
+  // toggle gives a single, obvious on/off affordance per row.
+  const toggleActiveMutation = useMutation({
+    mutationFn: ({ code, isActive }: { code: string; isActive: boolean }) =>
+      currenciesApi.updateCurrency(code, { is_active: isActive }),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['currencies'] });
-      toast({ title: 'Success', description: 'Currency activated successfully' });
+      toast({
+        title: 'Success',
+        description: vars.isActive ? 'Currency activated' : 'Currency deactivated',
+      });
     },
-    onError: (error: any) => {
+    onError: (error: any, vars) => {
       toast({
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to activate currency',
+        description:
+          error.response?.data?.message ||
+          (vars.isActive ? 'Failed to activate currency' : 'Failed to deactivate currency'),
         variant: 'destructive',
       });
     },
   });
 
-  // Delete currency mutation
-  const deleteMutation = useMutation({
-    mutationFn: currenciesApi.deleteCurrency,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['currencies'] });
-      toast({ title: 'Success', description: 'Currency deactivated successfully' });
-    },
-    onError: (error: any) => {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to deactivate currency',
-        variant: 'destructive',
-      });
-    },
-  });
+  // Legacy wrappers kept so existing callers (and tests) still compile.
+  const activateMutation = {
+    mutate: (code: string) => toggleActiveMutation.mutate({ code, isActive: true }),
+    isPending: toggleActiveMutation.isPending,
+  };
+  const deleteMutation = {
+    mutate: (code: string) => toggleActiveMutation.mutate({ code, isActive: false }),
+    isPending: toggleActiveMutation.isPending,
+  };
 
   const resetForm = () => {
     setFormData({
@@ -235,34 +239,34 @@ export default function MultiCurrencyPage({ embedded = false }: { embedded?: boo
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
+                        <div className="flex justify-end items-center gap-3">
+                          <div
+                            className="flex items-center gap-2"
+                            title={currency.is_active ? 'Active — click to deactivate' : 'Inactive — click to activate'}
+                          >
+                            <Switch
+                              checked={currency.is_active}
+                              onCheckedChange={(checked) =>
+                                toggleActiveMutation.mutate({
+                                  code: currency.code,
+                                  isActive: checked,
+                                })
+                              }
+                              disabled={toggleActiveMutation.isPending}
+                              aria-label={`Toggle ${currency.code} active state`}
+                            />
+                            <span className="text-xs text-muted-foreground w-12 text-left">
+                              {currency.is_active ? 'On' : 'Off'}
+                            </span>
+                          </div>
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={() => handleOpenForm(currency)}
+                            title="Edit currency details"
                           >
                             <Icon icon="solar:pen-linear" className="w-4 h-4" />
                           </Button>
-                          {currency.is_active && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleDelete(currency.code)}
-                            >
-                              <Icon icon="solar:trash-bin-trash-linear" className="w-4 h-4" />
-                            </Button>
-                          )}
-                          {!currency.is_active && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => activateMutation.mutate(currency.code)}
-                              disabled={activateMutation.isPending}
-                            >
-                              <Icon icon="solar:check-circle-linear" className="w-4 h-4 mr-1" />
-                              Activate
-                            </Button>
-                          )}
                         </div>
                       </TableCell>
                     </TableRow>
