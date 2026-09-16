@@ -144,7 +144,12 @@ export function MyTasksPage() {
     event.stopPropagation()
   }
 
-  function navigateToDocLink(link: { type: string; id: number | string; title?: string }) {
+  function navigateToDocLink(link: { type: string; id: number | string; title?: string; route?: string }) {
+    if (link.route) {
+      navigate(link.route)
+      return
+    }
+
     if (link.type === 'journal_entry') {
       navigate(`/accounting/core/journal-entries?entry_id=${link.id}`)
       return
@@ -153,7 +158,7 @@ export function MyTasksPage() {
     if (link.type === 'report') {
       const reportRoutes: Record<string, string> = {
         'trial-balance': '/accounting/reporting/trial-balance',
-        'financial-statements': '/accounting/reporting/financial-statements',
+        'financial-statements': '/accounting/reporting/financial-statement',
         'general-ledger': '/accounting/reporting/general-ledger',
       }
       navigate(reportRoutes[link.id as string] ?? '/accounting/reporting/trial-balance')

@@ -16,6 +16,12 @@ class AccountingPermissionSeeder extends Seeder
             'accounting.reverse',
             'accounting.lock',
             'reconciliation.complete',
+            'reconciliation.view',
+            'reconciliation.import',
+            'reconciliation.match',
+            'reconciliation.adjust',
+            'reconciliation.exclude',
+            'reconciliation.reverse',
         ];
 
         foreach ($permissions as $permission) {
@@ -38,6 +44,10 @@ class AccountingPermissionSeeder extends Seeder
             'accounting.post',
             'accounting.reverse',
             'reconciliation.complete',
+            'reconciliation.view',
+            'reconciliation.import',
+            'reconciliation.match',
+            'reconciliation.adjust',
         ]);
 
         // Billing clerk gets write permission only

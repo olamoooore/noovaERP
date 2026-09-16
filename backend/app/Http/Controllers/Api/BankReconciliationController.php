@@ -45,6 +45,7 @@ class BankReconciliationController extends Controller
                     'name' => $account->account_name,
                     'account_number' => $account->account_number,
                     'bank_name' => $account->bank_name,
+                    'currency_code' => $account->currency_code,
                     'gl_account_id' => $account->gl_account_id,
                     'gl_account_name' => $account->glAccount?->name,
                     'last_reconciliation_date' => $lastReconciliation ?
@@ -263,7 +264,7 @@ class BankReconciliationController extends Controller
                 'ids' => $allForAccount->pluck('id')->toArray(),
             ]);
 
-            $reconciliations = BankReconciliation::with('bankAccount')
+            $reconciliations = BankReconciliation::with(['bankAccount', 'reversal'])
                 ->where('bank_account_id', $bankAccountId)
                 ->where('status', 'completed')
                 ->orderBy('statement_date', 'desc')
@@ -288,6 +289,12 @@ class BankReconciliationController extends Controller
                         $reconciliation->reconciled_at->format('Y-m-d H:i:s') : null,
                     'reconciled_by' => $reconciliation->reconciledBy ?
                         $reconciliation->reconciledBy->name : null,
+                    'reversed' => $reconciliation->reversal?->status === 'reversed',
+                    'reversal_id' => $reconciliation->reversal?->id,
+                    'reversal_status' => $reconciliation->reversal?->status,
+                    'reversal_requested_at' => $reconciliation->reversal?->requested_at?->format('Y-m-d H:i:s'),
+                    'reversed_at' => $reconciliation->reversal?->reversed_at?->format('Y-m-d H:i:s'),
+                    'reversal_reason' => $reconciliation->reversal?->reason,
                 ];
             }
 

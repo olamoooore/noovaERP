@@ -543,6 +543,18 @@ export interface ReconciliationTransaction {
   reference: string | null;
   debit: number;
   credit: number;
+  statement_matched_amount?: number;
+  available_amount?: number;
+  payment?: {
+    id: number;
+    payment_number: string;
+    reference: string | null;
+    invoice_id: number | null;
+    invoice_number: string | null;
+    customer_id: number | null;
+    customer_code: string | null;
+    customer_name: string | null;
+  } | null;
   reconciled: boolean;
   reconciliation_date: string | null;
 }
@@ -560,6 +572,7 @@ export interface BankAccountsData {
     name: string;
     account_number: string;
     bank_name: string;
+    currency_code: string;
     gl_account_id: number;
     gl_account_name: string | null;
     last_reconciliation_date: string | null;

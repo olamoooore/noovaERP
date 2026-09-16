@@ -13,6 +13,11 @@ use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\AutoMatchController;
 use App\Http\Controllers\Api\BankAccountsController;
 use App\Http\Controllers\Api\BankReconciliationController;
+use App\Http\Controllers\Api\BankStatementAdjustmentController;
+use App\Http\Controllers\Api\BankStatementImportController;
+use App\Http\Controllers\Api\BankStatementMatchController;
+use App\Http\Controllers\Api\BankStatementReconciliationController;
+use App\Http\Controllers\Api\BankStatementTransactionController;
 use App\Http\Controllers\Api\BillPaymentsController;
 use App\Http\Controllers\Api\BonusSchemeController;
 use App\Http\Controllers\Api\ChartOfAccountsController;
@@ -307,6 +312,52 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         Route::post('/reconciliation/complete', [BankReconciliationController::class, 'complete']);
         Route::post('/reconciliation/add-transaction', [BankReconciliationController::class, 'addTransaction']);
         Route::get('/reconciliation/history/{bankAccountId}', [BankReconciliationController::class, 'history']);
+
+        // Persisted bank-statement ingestion (statement records only; never posts GL entries)
+        Route::post('/reconciliation/statement-imports/preview', [BankStatementImportController::class, 'preview'])
+            ->middleware(RequirePermission::using('reconciliation.import'));
+        Route::post('/reconciliation/statement-imports', [BankStatementImportController::class, 'store'])
+            ->middleware(RequirePermission::using('reconciliation.import'));
+        Route::get('/reconciliation/statement-imports', [BankStatementImportController::class, 'index'])
+            ->middleware(RequirePermission::using('reconciliation.view'));
+        Route::get('/reconciliation/statement-imports/{importId}', [BankStatementImportController::class, 'show'])
+            ->middleware(RequirePermission::using('reconciliation.view'));
+        Route::get('/reconciliation/statement-imports/{importId}/errors', [BankStatementImportController::class, 'errors'])
+            ->middleware(RequirePermission::using('reconciliation.view'));
+        Route::get('/reconciliation/statement-imports/{importId}/source', [BankStatementImportController::class, 'source'])
+            ->middleware(RequirePermission::using('reconciliation.view'));
+        Route::post('/reconciliation/statement-imports/{importId}/reverse', [BankStatementImportController::class, 'reverse'])
+            ->middleware(RequirePermission::using('reconciliation.reverse'));
+        Route::get('/reconciliation/statement-transactions', [BankStatementTransactionController::class, 'index'])
+            ->middleware(RequirePermission::using('reconciliation.view'));
+        Route::get('/reconciliation/statement-transactions/{transactionId}', [BankStatementTransactionController::class, 'show'])
+            ->middleware(RequirePermission::using('reconciliation.view'));
+        Route::post('/reconciliation/statement-transactions/{transactionId}/exclude', [BankStatementTransactionController::class, 'exclude'])
+            ->middleware(RequirePermission::using('reconciliation.exclude'));
+        Route::post('/reconciliation/statement-transactions/{transactionId}/restore', [BankStatementTransactionController::class, 'restore'])
+            ->middleware(RequirePermission::using('reconciliation.exclude'));
+        Route::post('/reconciliation/statement-transactions/{transactionId}/adjustment', [BankStatementAdjustmentController::class, 'store'])
+            ->middleware(RequirePermission::using('reconciliation.adjust'));
+        Route::post('/reconciliation/statement-adjustments/{adjustmentId}/approve', [BankStatementAdjustmentController::class, 'approve'])
+            ->middleware(RequirePermission::using('reconciliation.adjust'));
+        Route::post('/reconciliation/statement-imports/{importId}/suggest-matches', [BankStatementMatchController::class, 'suggest'])
+            ->middleware(RequirePermission::using('reconciliation.match'));
+        Route::post('/reconciliation/statement-matches', [BankStatementMatchController::class, 'store'])
+            ->middleware(RequirePermission::using('reconciliation.match'));
+        Route::post('/reconciliation/statement-matches/group', [BankStatementMatchController::class, 'storeGroup'])
+            ->middleware(RequirePermission::using('reconciliation.match'));
+        Route::post('/reconciliation/statement-matches/bulk-accept', [BankStatementMatchController::class, 'bulkAccept'])
+            ->middleware(RequirePermission::using('reconciliation.match'));
+        Route::delete('/reconciliation/statement-matches/{matchId}', [BankStatementMatchController::class, 'destroy'])
+            ->middleware(RequirePermission::using('reconciliation.match'));
+        Route::post('/reconciliation/statement-reconciliations/validate', [BankStatementReconciliationController::class, 'validateReconciliation'])
+            ->middleware(RequirePermission::using('reconciliation.complete'));
+        Route::post('/reconciliation/statement-reconciliations/complete', [BankStatementReconciliationController::class, 'complete'])
+            ->middleware(RequirePermission::using('reconciliation.complete'));
+        Route::post('/reconciliation/statement-reconciliations/{reconciliationId}/reverse', [BankStatementReconciliationController::class, 'reverse'])
+            ->middleware(RequirePermission::using('reconciliation.reverse'));
+        Route::post('/reconciliation/statement-reconciliation-reversals/{reversalId}/approve', [BankStatementReconciliationController::class, 'approveReversal'])
+            ->middleware(RequirePermission::using('reconciliation.reverse'));
 
         // Auto-Matching
         Route::post('/reconciliation/auto-match/suggest', [AutoMatchController::class, 'suggestMatches']);

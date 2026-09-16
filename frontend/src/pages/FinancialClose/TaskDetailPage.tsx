@@ -386,6 +386,11 @@ export function TaskDetailPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Button size="sm" variant="ghost" onClick={() => {
+                      if (doc.route) {
+                        navigate(doc.route)
+                        return
+                      }
+
                       if (doc.type === 'journal_entry') {
                         if (taskType === 'unreconciled_transactions' && bankAccountId) {
                           navigate(`/accounting/core/reconciliation?account=${bankAccountId}`)
@@ -398,7 +403,7 @@ export function TaskDetailPage() {
                       if (doc.type === 'report') {
                         const reportRoutes: Record<string, string> = {
                           'trial-balance': '/accounting/reporting/trial-balance',
-                          'financial-statements': '/accounting/reporting/financial-statements',
+                          'financial-statements': '/accounting/reporting/financial-statement',
                           'general-ledger': '/accounting/reporting/general-ledger',
                         }
                         const reportRoute = reportRoutes[doc.id as string] ?? '/accounting/reporting/trial-balance'

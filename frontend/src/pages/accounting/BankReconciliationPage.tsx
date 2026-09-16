@@ -33,6 +33,28 @@ interface ReconciliationFilters {
   search?: string;
 }
 
+const statementMappingFields = [
+  ['transaction_date', 'Transaction date'], ['description', 'Description'], ['amount', 'Signed amount'],
+  ['debit', 'Debit (money out)'], ['credit', 'Credit (money in)'], ['bank_reference', 'Bank reference'],
+  ['customer_reference', 'Customer reference'], ['customer_code', 'Customer code'],
+  ['invoice_reference', 'Invoice reference'], ['allocation_amount', 'Allocation amount'],
+  ['running_balance', 'Running balance'],
+] as const;
+
+const normalizeMatchKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const statementIdentityValue = (transaction: any, field: 'bank_reference' | 'customer_code'): string => {
+  const persisted = transaction[field];
+  if (persisted) return String(persisted);
+
+  const aliases = field === 'bank_reference'
+    ? new Set(['ourreference', 'bankreference', 'reference'])
+    : new Set(['customercode']);
+  const rawEntry = Object.entries(transaction.raw_data ?? {}).find(([header, value]) => aliases.has(normalizeMatchKey(header)) && String(value ?? '').trim() !== '');
+
+  return rawEntry ? String(rawEntry[1]) : '';
+};
+
 export function BankReconciliationPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -43,8 +65,24 @@ export function BankReconciliationPage() {
   const [selectedBankAccount, setSelectedBankAccount] = useState<number | null>(null);
   const [statementDate, setStatementDate] = useState<string>('');
   const [statementBalance, setStatementBalance] = useState<string>('');
+  const [statementOpeningBalance, setStatementOpeningBalance] = useState<string>('');
+  const [statementFile, setStatementFile] = useState<File | null>(null);
+  const [statementPreview, setStatementPreview] = useState<any>(null);
+  const [statementMapping, setStatementMapping] = useState<Record<string, string>>({});
+  const [statementStartDate, setStatementStartDate] = useState('');
+  const [matchSelections, setMatchSelections] = useState<Record<string, { glLineId: string; amount: string; reason: string }>>({});
+  const [statementException, setStatementException] = useState<{ transactionId: string; mode: 'exclude' | 'restore' } | null>(null);
+  const [exceptionType, setExceptionType] = useState<'duplicate' | 'non_transaction'>('duplicate');
+  const [exceptionReason, setExceptionReason] = useState('');
+  const [exceptionEvidence, setExceptionEvidence] = useState('');
+  const [statementValidation, setStatementValidation] = useState<any>(null);
+  const [statementTransactionPage, setStatementTransactionPage] = useState(1);
+  const [groupStatementIds, setGroupStatementIds] = useState<Set<string>>(new Set());
+  const [groupGlIds, setGroupGlIds] = useState<Set<number>>(new Set());
+  const [groupMatchReason, setGroupMatchReason] = useState('');
   const [reconciledTransactions, setReconciledTransactions] = useState<Set<number>>(new Set());
   const [showAddTransaction, setShowAddTransaction] = useState(false);
+  const [statementAdjustmentTransactionId, setStatementAdjustmentTransactionId] = useState<string | null>(null);
   const [filters, setFilters] = useState<ReconciliationFilters>({
     status: 'all',
     search: '',
@@ -70,6 +108,7 @@ export function BankReconciliationPage() {
 
   // Pre-select bank account from query param
   const accountParam = searchParams.get('account');
+  const statementTransactionParam = searchParams.get('statement_transaction');
   useEffect(() => {
     if (accountParam && bankAccountsData?.data) {
       const accId = parseInt(accountParam, 10);
@@ -95,7 +134,7 @@ export function BankReconciliationPage() {
     queryKey: ['reconciliation-transactions', selectedBankAccount, filters],
     queryFn: () =>
       reportApi.getReconciliationTransactions(selectedBankAccount!, {
-        status: filters.status === 'all' ? undefined : filters.status,
+        status: filters.status,
         search: filters.search || undefined,
       }),
     enabled: selectedBankAccount !== null,
@@ -134,13 +173,16 @@ export function BankReconciliationPage() {
 
   // Add adjusting entry mutation
   const addAdjustingEntryMutation = useMutation({
-    mutationFn: (data: AddTransactionRequest) => reportApi.addAdjustingEntry(data),
+    mutationFn: (data: AddTransactionRequest) => statementAdjustmentTransactionId
+      ? reportApi.proposeBankStatementAdjustment(statementAdjustmentTransactionId, { contra_account_id: Number(data.contra_account_id), amount: data.type === 'debit' ? data.amount : -data.amount, description: data.description, reason: data.description })
+      : reportApi.addAdjustingEntry(data),
     onSuccess: () => {
       toast({
-        title: 'Transaction Added',
-        description: 'Adjusting entry has been created successfully.',
+        title: statementAdjustmentTransactionId ? 'Adjustment proposed' : 'Transaction Added',
+        description: statementAdjustmentTransactionId ? 'A different authorized user must approve and post this adjustment.' : 'Adjusting entry has been created successfully.',
       });
       setShowAddTransaction(false);
+      setStatementAdjustmentTransactionId(null);
       // Reset form
       setNewTransaction({
         bank_account_id: selectedBankAccount!,
@@ -152,6 +194,7 @@ export function BankReconciliationPage() {
       });
       // Refetch transactions
       refetchTransactions();
+      queryClient.invalidateQueries({ queryKey: ['bank-statement-transactions', selectedBankAccount] });
     },
     onError: (error: any) => {
       toast({
@@ -232,7 +275,7 @@ export function BankReconciliationPage() {
       return;
     }
 
-    if (!statementBalance) {
+    if (statementBalance === '') {
       toast({
         title: 'Missing Statement Balance',
         description: 'Please enter the statement ending balance.',
@@ -310,9 +353,9 @@ export function BankReconciliationPage() {
 
     // Apply status filter
     if (filters.status === 'reconciled') {
-      filtered = filtered.filter((t) => reconciledTransactions.has(t.id));
+      filtered = filtered.filter((t) => t.reconciled);
     } else if (filters.status === 'unreconciled') {
-      filtered = filtered.filter((t) => !reconciledTransactions.has(t.id));
+      filtered = filtered.filter((t) => !t.reconciled);
     }
 
     // Apply search filter
@@ -321,17 +364,205 @@ export function BankReconciliationPage() {
       filtered = filtered.filter(
         (t) =>
           t.description.toLowerCase().includes(searchLower) ||
-          t.reference.toLowerCase().includes(searchLower)
+          (t.reference ?? '').toLowerCase().includes(searchLower)
       );
     }
 
     return filtered;
-  }, [transactionsData, filters, reconciledTransactions]);
+  }, [transactionsData, filters]);
 
   const selectedAccount = bankAccountsData?.data?.find((acc) => acc.id === selectedBankAccount);
   const contraAccountOptions = chartOfAccounts.filter(
     (account) => account.is_active && account.id !== selectedAccount?.gl_account_id
   );
+
+  const statementImportsQuery = useQuery({
+    queryKey: ['bank-statement-imports', selectedBankAccount],
+    queryFn: () => reportApi.getBankStatementImports(selectedBankAccount!),
+    enabled: selectedBankAccount !== null,
+  });
+
+  const statementTransactionsQuery = useQuery({
+    queryKey: ['bank-statement-transactions', selectedBankAccount, statementTransactionPage, filters.status, filters.search, statementTransactionParam],
+    queryFn: () => reportApi.getBankStatementTransactions(selectedBankAccount!, undefined, statementTransactionPage, 20, filters.status, filters.search, statementTransactionParam ? [statementTransactionParam] : undefined),
+    enabled: selectedBankAccount !== null,
+  });
+
+  useEffect(() => setStatementTransactionPage(1), [selectedBankAccount, filters.status, filters.search]);
+
+  const filteredStatementTransactions = useMemo(() => {
+    const transactions = statementTransactionsQuery.data?.data ?? [];
+
+    return transactions.filter((transaction: any) => {
+      const isReconciled = (transaction.matches ?? []).some((match: any) => match.status === 'accepted' && match.reconciliation_id);
+      if (filters.status === 'reconciled' && !isReconciled) return false;
+      if (filters.status === 'unreconciled' && isReconciled) return false;
+      if (filters.search) {
+        const search = filters.search.toLowerCase();
+        return String(transaction.description ?? '').toLowerCase().includes(search)
+          || String(transaction.bank_reference ?? '').toLowerCase().includes(search)
+          || (transaction.allocations ?? []).some((allocation: any) => String(allocation.external_reference ?? '').toLowerCase().includes(search));
+      }
+      return true;
+    });
+  }, [statementTransactionsQuery.data, filters]);
+
+  const previewStatementMutation = useMutation({
+    mutationFn: () => reportApi.previewBankStatement(statementFile!, selectedBankAccount!),
+    onSuccess: (preview) => {
+      setStatementPreview(preview);
+      setStatementMapping(preview.proposed_mapping ?? {});
+      toast({ title: 'Statement preview ready', description: `${preview.source_rows} source rows detected.` });
+    },
+    onError: (error: any) => toast({ title: 'Statement preview failed', description: error?.response?.data?.message ?? error.message, variant: 'destructive' }),
+  });
+
+  const importStatementMutation = useMutation({
+    mutationFn: () => reportApi.confirmBankStatementImport({
+      preview_token: statementPreview.preview_token,
+      mapping: statementMapping,
+      currency_code: selectedAccount!.currency_code,
+      statement_start_date: statementStartDate || undefined,
+      statement_end_date: statementDate,
+      opening_balance: Number(statementOpeningBalance),
+      closing_balance: Number(statementBalance),
+    }),
+    onSuccess: (batch) => {
+      setStatementPreview(null); setStatementFile(null); setStatementOpeningBalance('');
+      queryClient.invalidateQueries({ queryKey: ['bank-statement-imports', selectedBankAccount] });
+      queryClient.invalidateQueries({ queryKey: ['bank-statement-transactions', selectedBankAccount] });
+      toast({ title: 'Statement imported', description: `${batch.transaction_count} unique bank transactions created.` });
+    },
+    onError: (error: any) => toast({ title: 'Statement import failed', description: error?.response?.data?.message ?? error.message, variant: 'destructive' }),
+  });
+
+  const matchStatementMutation = useMutation({
+    mutationFn: ({ transactionId, glLineId, amount, reason }: { transactionId: string; glLineId: number; amount: number; reason: string }) =>
+      reportApi.createBankStatementMatch({
+        bank_statement_transaction_id: transactionId,
+        journal_entry_line_id: glLineId,
+        matched_amount: amount,
+        idempotency_key: crypto.randomUUID(),
+        review_reason: reason,
+      }),
+    onSuccess: (_, variables) => {
+      setMatchSelections((current) => { const next = { ...current }; delete next[variables.transactionId]; return next; });
+      queryClient.invalidateQueries({ queryKey: ['bank-statement-transactions', selectedBankAccount] });
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-transactions', selectedBankAccount] });
+      toast({ title: 'Transaction matched' });
+      validateStatementReconciliationMutation.mutate();
+    },
+    onError: (error: any) => toast({ title: 'Match failed', description: error?.response?.data?.message ?? error.message, variant: 'destructive' }),
+  });
+
+  const unmatchStatementMutation = useMutation({
+    mutationFn: (matchId: string) => reportApi.removeBankStatementMatch(matchId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bank-statement-transactions', selectedBankAccount] });
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-transactions', selectedBankAccount] });
+      toast({ title: 'Match removed' });
+      validateStatementReconciliationMutation.mutate();
+    },
+    onError: (error: any) => toast({ title: 'Unmatch failed', description: error?.response?.data?.message ?? error.message, variant: 'destructive' }),
+  });
+
+  const suggestMatchesMutation = useMutation({
+    mutationFn: (importId: string) => reportApi.suggestBankStatementMatches(importId),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['bank-statement-transactions', selectedBankAccount] });
+      toast({ title: 'Suggestions generated', description: `${result.suggestions_created} candidate match(es) scored.` });
+    },
+    onError: (error: any) => toast({ title: 'Suggestion generation failed', description: error?.response?.data?.message ?? error.message, variant: 'destructive' }),
+  });
+
+  const bulkAcceptMatchesMutation = useMutation({
+    mutationFn: (importId: string) => reportApi.bulkAcceptBankStatementMatches(importId),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['bank-statement-transactions', selectedBankAccount] });
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-transactions', selectedBankAccount] });
+      toast({ title: 'High-confidence matches accepted', description: `${result.accepted} unique match(es) accepted.` });
+      validateStatementReconciliationMutation.mutate();
+    },
+    onError: (error: any) => toast({ title: 'Bulk acceptance failed', description: error?.response?.data?.message ?? error.message, variant: 'destructive' }),
+  });
+
+  const groupedMatchMutation = useMutation({
+    mutationFn: () => {
+      const statements = filteredStatementTransactions.filter((transaction: any) => groupStatementIds.has(transaction.id));
+      const remainingByGl = new Map<number, number>();
+      (transactionsData?.data ?? [])
+        .filter((line) => groupGlIds.has(line.id))
+        .forEach((line) => remainingByGl.set(
+          line.id,
+          Number(line.available_amount ?? (Number(line.debit) - Number(line.credit))),
+        ));
+      const allocations: Array<{ bank_statement_transaction_id: string; journal_entry_line_id: number; matched_amount: number; review_reason: string }> = [];
+      for (const statement of statements) {
+        let residual = Number(statement.residual_amount);
+        for (const line of transactionsData?.data ?? []) {
+          const glRemaining = remainingByGl.get(line.id) ?? 0;
+          const statementCustomerCode = normalizeMatchKey(statementIdentityValue(statement, 'customer_code'));
+          const statementReference = normalizeMatchKey(statementIdentityValue(statement, 'bank_reference'));
+          const paymentReferences = [line.payment?.reference, line.payment?.payment_number, line.reference].map(normalizeMatchKey).filter(Boolean);
+          const exactEvidence = statementCustomerCode !== '' && statementCustomerCode === normalizeMatchKey(line.payment?.customer_code)
+            && statementReference !== '' && paymentReferences.includes(statementReference);
+          if (!groupGlIds.has(line.id) || !exactEvidence || residual * glRemaining <= 0 || Math.abs(residual) < 0.00000001) continue;
+          const amount = Math.sign(residual) * Math.min(Math.abs(residual), Math.abs(glRemaining));
+          allocations.push({ bank_statement_transaction_id: statement.id, journal_entry_line_id: line.id, matched_amount: amount, review_reason: groupMatchReason });
+          residual -= amount;
+          remainingByGl.set(line.id, glRemaining - amount);
+        }
+        if (Math.abs(residual) > 0.01) throw new Error(`Selected exact GL lines do not cover statement ${statement.bank_reference ?? statement.id}.`);
+      }
+      if (allocations.length === 0) throw new Error('Select compatible statement and GL transactions.');
+      return reportApi.createGroupedBankStatementMatches(allocations);
+    },
+    onSuccess: () => {
+      setGroupStatementIds(new Set()); setGroupGlIds(new Set()); setGroupMatchReason('');
+      queryClient.invalidateQueries({ queryKey: ['bank-statement-transactions', selectedBankAccount] });
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-transactions', selectedBankAccount] });
+      toast({ title: 'Grouped match completed' });
+      validateStatementReconciliationMutation.mutate();
+    },
+    onError: (error: any) => toast({ title: 'Grouped match failed', description: error?.response?.data?.message ?? error.message, variant: 'destructive' }),
+  });
+
+  const statementExceptionMutation = useMutation({
+    mutationFn: () => {
+      if (!statementException) throw new Error('No statement transaction selected.');
+      return statementException.mode === 'exclude'
+        ? reportApi.excludeBankStatementTransaction(statementException.transactionId, { type: exceptionType, reason: exceptionReason, evidence: { reviewer_note: exceptionEvidence } })
+        : reportApi.restoreBankStatementTransaction(statementException.transactionId, exceptionReason);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bank-statement-transactions', selectedBankAccount] });
+      toast({ title: statementException?.mode === 'exclude' ? 'Transaction excluded' : 'Transaction restored' });
+      setStatementException(null); setExceptionReason(''); setExceptionEvidence('');
+      validateStatementReconciliationMutation.mutate();
+    },
+    onError: (error: any) => toast({ title: 'Statement action failed', description: error?.response?.data?.message ?? error.message, variant: 'destructive' }),
+  });
+
+  const validateStatementReconciliationMutation = useMutation({
+    mutationFn: () => {
+      const latestImport = (statementImportsQuery.data?.data ?? []).find((batch: any) => batch.status === 'imported');
+      if (!selectedBankAccount || !latestImport) throw new Error('Select an imported statement batch first.');
+      return reportApi.validateBankStatementReconciliation(selectedBankAccount, [latestImport.id]);
+    },
+    onSuccess: (result) => setStatementValidation(result),
+    onError: (error: any) => toast({ title: 'Statement validation failed', description: error?.response?.data?.message ?? error.message, variant: 'destructive' }),
+  });
+
+  const completeStatementReconciliationMutation = useMutation({
+    mutationFn: () => reportApi.completeBankStatementReconciliation(Number(selectedBankAccount), statementValidation.import_ids),
+    onSuccess: () => {
+      setStatementValidation(null);
+      queryClient.invalidateQueries({ queryKey: ['bank-statement-transactions', selectedBankAccount] });
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-transactions', selectedBankAccount] });
+      toast({ title: 'Statement reconciliation completed' });
+    },
+    onError: (error: any) => toast({ title: 'Completion blocked', description: error?.response?.data?.message ?? error.message, variant: 'destructive' }),
+  });
 
   return (
     <div className="space-y-6">
@@ -343,13 +574,16 @@ export function BankReconciliationPage() {
             Match bank statement transactions with accounting records
           </p>
         </div>
-        <Button
-          onClick={() => navigate('/accounting/core/reconciliation/history')}
-          variant="outline"
-        >
-          <Icon icon="solar:history-bold" className="mr-2 h-4 w-4" />
-          View History
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => navigate(`/accounting/core/reconciliation/import-history${selectedBankAccount ? `?account=${selectedBankAccount}` : ''}`)} variant="outline">
+            <Icon icon="solar:document-add-bold" className="mr-2 h-4 w-4" />
+            Import History
+          </Button>
+          <Button onClick={() => navigate('/accounting/core/reconciliation/history')} variant="outline">
+            <Icon icon="solar:history-bold" className="mr-2 h-4 w-4" />
+            View History
+          </Button>
+        </div>
       </div>
 
       {/* Bank Account Selection */}
@@ -402,17 +636,323 @@ export function BankReconciliationPage() {
                 <p className="text-lg font-bold mt-2">
                   {formatCurrency(selectedAccount.current_balance)}
                 </p>
+                <p className="text-sm text-muted-foreground mt-1">Currency: {selectedAccount.currency_code}</p>
               </div>
             </>
           )}
         </div>
       </Card>
 
+      {selectedBankAccount && (
+        <Card className="p-6 space-y-5">
+          <div>
+            <h2 className="text-lg font-semibold">1. Import bank statement</h2>
+            <p className="text-sm text-muted-foreground">CSV or XLSX only. Importing creates external statement records and never creates payments or journal entries.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <div className="md:col-span-2">
+              <Label htmlFor="statement-file">Statement file</Label>
+              <Input id="statement-file" type="file" accept=".csv,.xlsx" onChange={(e) => { setStatementFile(e.target.files?.[0] ?? null); setStatementPreview(null); }} />
+            </div>
+            <Button type="button" variant="outline" disabled={!statementFile || previewStatementMutation.isPending} onClick={() => previewStatementMutation.mutate()}>
+              {previewStatementMutation.isPending ? 'Inspecting…' : 'Map & Preview'}
+            </Button>
+          </div>
+          {statementPreview && (
+            <div className="rounded-lg border p-4 space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div><span className="text-muted-foreground">Rows</span><p className="font-semibold">{statementPreview.source_rows}</p></div>
+                <div><span className="text-muted-foreground">Columns</span><p className="font-semibold">{statementPreview.headers.length}</p></div>
+                <div><span className="text-muted-foreground">Date column</span><p className="font-semibold">{statementMapping.transaction_date ?? 'Not detected'}</p></div>
+                <div><span className="text-muted-foreground">Amount columns</span><p className="font-semibold">{statementMapping.amount ?? `Debit: ${statementMapping.debit ?? '?'} / Credit: ${statementMapping.credit ?? '?'}`}</p></div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {statementMappingFields.map(([field, label]) => (
+                  <div key={field}>
+                    <Label>{label}</Label>
+                    <Select value={statementMapping[field] ?? 'unmapped'} onValueChange={(value) => setStatementMapping((current) => { const next = { ...current }; if (value === 'unmapped') delete next[field]; else next[field] = value; return next; })}>
+                      <SelectTrigger><SelectValue placeholder="Not mapped" /></SelectTrigger>
+                      <SelectContent><SelectItem value="unmapped">Not mapped</SelectItem>{statementPreview.headers.map((header: string) => <SelectItem key={header} value={header}>{header}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </div>
+              {(!statementMapping.transaction_date || !statementMapping.description || (!statementMapping.amount && (!statementMapping.debit || !statementMapping.credit))) ? (
+                <p className="text-sm text-destructive">Required columns were not detected. Configure the source headers before importing.</p>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <Label htmlFor="import-statement-opening-balance">Statement Opening Balance</Label>
+                      <Input id="import-statement-opening-balance" type="number" step="0.01" placeholder="0.00" value={statementOpeningBalance} onChange={(e) => setStatementOpeningBalance(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="import-statement-start-date">Statement Start Date (optional)</Label>
+                      <Input id="import-statement-start-date" type="date" value={statementStartDate} onChange={(e) => setStatementStartDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="import-statement-end-date">Statement Ending Date</Label>
+                      <Input id="import-statement-end-date" type="date" value={statementDate} onChange={(e) => setStatementDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="import-statement-balance">Statement Ending Balance</Label>
+                      <Input id="import-statement-balance" type="number" step="0.01" placeholder="0.00" value={statementBalance} onChange={(e) => setStatementBalance(e.target.value)} />
+                    </div>
+                  </div>
+                  {(!statementDate || statementOpeningBalance === '' || statementBalance === '') && (
+                    <p className="text-sm text-amber-600">Enter the statement ending date, opening balance, and ending balance to enable import.</p>
+                  )}
+                  <Button type="button" disabled={!statementDate || statementOpeningBalance === '' || statementBalance === '' || importStatementMutation.isPending} onClick={() => importStatementMutation.mutate()}>
+                    {importStatementMutation.isPending ? 'Importing…' : 'Confirm Import'}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-medium">Imported bank transactions</h3>
+              <div className="flex gap-2">
+                {(statementImportsQuery.data?.data ?? []).find((batch: any) => batch.status === 'imported') && (
+                  <>
+                    <Button type="button" size="sm" variant="outline" disabled={suggestMatchesMutation.isPending} onClick={() => suggestMatchesMutation.mutate(statementImportsQuery.data.data.find((batch: any) => batch.status === 'imported').id)}>
+                      {suggestMatchesMutation.isPending ? 'Scoring…' : 'Suggest Matches'}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" disabled={bulkAcceptMatchesMutation.isPending} onClick={() => bulkAcceptMatchesMutation.mutate(statementImportsQuery.data.data.find((batch: any) => batch.status === 'imported').id)}>
+                      {bulkAcceptMatchesMutation.isPending ? 'Accepting…' : 'Accept 95%+ unique'}
+                    </Button>
+                  </>
+                )}
+                <Button type="button" size="sm" variant="ghost" onClick={() => statementTransactionsQuery.refetch()} disabled={statementTransactionsQuery.isFetching}>
+                  {statementTransactionsQuery.isFetching ? 'Refreshing…' : 'Refresh'}
+                </Button>
+              </div>
+            </div>
+            {groupStatementIds.size > 0 && (
+              <div className="mb-3 rounded-lg border bg-muted/20 p-3 space-y-3">
+                <div className="font-medium">Grouped match · {groupStatementIds.size} statement transaction(s)</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {(transactionsData?.data ?? []).filter((line) => {
+                    const available = Number(line.available_amount ?? (Number(line.debit) - Number(line.credit)));
+                    return Math.abs(available) > 0.00000001 && filteredStatementTransactions.some((statement: any) => groupStatementIds.has(statement.id)
+                      && available * Number(statement.residual_amount) > 0
+                      && normalizeMatchKey(statementIdentityValue(statement, 'customer_code')) !== ''
+                      && normalizeMatchKey(statementIdentityValue(statement, 'customer_code')) === normalizeMatchKey(line.payment?.customer_code)
+                      && normalizeMatchKey(statementIdentityValue(statement, 'bank_reference')) !== ''
+                      && [line.payment?.reference, line.payment?.payment_number, line.reference]
+                        .map(normalizeMatchKey)
+                        .filter(Boolean)
+                        .includes(normalizeMatchKey(statementIdentityValue(statement, 'bank_reference'))));
+                  }).map((line) => (
+                    <label key={line.id} className="flex items-center gap-2 rounded border p-2 text-sm">
+                      <Checkbox checked={groupGlIds.has(line.id)} onCheckedChange={() => setGroupGlIds((current) => { const next = new Set(current); if (next.has(line.id)) next.delete(line.id); else next.add(line.id); return next; })} />
+                      {line.date} · {line.payment?.reference ?? line.reference} · {line.payment?.customer_code} · {formatCurrency(Number(line.available_amount ?? (Number(line.debit) - Number(line.credit))))}
+                    </label>
+                  ))}
+                </div>
+                <Input value={groupMatchReason} onChange={(event) => setGroupMatchReason(event.target.value)} placeholder="Grouped match review reason" />
+                <div className="flex gap-2"><Button type="button" disabled={groupGlIds.size === 0 || !groupMatchReason.trim() || groupedMatchMutation.isPending} onClick={() => groupedMatchMutation.mutate()}>{groupedMatchMutation.isPending ? 'Matching…' : 'Match selected group'}</Button><Button type="button" variant="ghost" onClick={() => { setGroupStatementIds(new Set()); setGroupGlIds(new Set()); }}>Cancel</Button></div>
+              </div>
+            )}
+            {statementTransactionsQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading imported transactions…</p>
+            ) : statementTransactionsQuery.error ? (
+              <p className="text-sm text-destructive">Unable to load imported transactions.</p>
+            ) : filteredStatementTransactions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No imported statement transactions match the selected status and search filters.</p>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="px-3 py-2"><span className="sr-only">Select for grouped match</span></th>
+                      <th className="text-left px-3 py-2">Date</th>
+                      <th className="text-left px-3 py-2">Description</th>
+                      <th className="text-left px-3 py-2">Bank reference</th>
+                      <th className="text-left px-3 py-2">Invoice evidence</th>
+                      <th className="text-right px-3 py-2">Amount</th>
+                      <th className="text-left px-3 py-2">Status</th>
+                      <th className="text-right px-3 py-2">Residual</th>
+                      <th className="text-left px-3 py-2 min-w-[320px]">Match to posted GL line</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredStatementTransactions.map((transaction: any) => (
+                      <tr key={transaction.id} className="border-b last:border-0">
+                        <td className="px-3 py-2"><Checkbox disabled={!['unmatched', 'suggested', 'partially_matched'].includes(transaction.status)} checked={groupStatementIds.has(transaction.id)} onCheckedChange={() => setGroupStatementIds((current) => { const next = new Set(current); if (next.has(transaction.id)) next.delete(transaction.id); else next.add(transaction.id); return next; })} /></td>
+                        <td className="px-3 py-2 whitespace-nowrap">{String(transaction.transaction_date).slice(0, 10)}</td>
+                        <td className="px-3 py-2">{transaction.description}</td>
+                        <td className="px-3 py-2">{transaction.bank_reference ?? '—'}</td>
+                        <td className="px-3 py-2">
+                          {(transaction.allocations ?? []).filter((allocation: any) => allocation.allocation_type === 'invoice_reference').length > 0
+                            ? (transaction.allocations ?? []).filter((allocation: any) => allocation.allocation_type === 'invoice_reference').map((allocation: any) => allocation.external_reference).join(', ')
+                            : '—'}
+                        </td>
+                        <td className={`px-3 py-2 text-right font-medium ${Number(transaction.amount) < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          {formatCurrency(Number(transaction.amount))}
+                        </td>
+                        <td className="px-3 py-2 capitalize">
+                          {(transaction.matches ?? []).some((match: any) => match.status === 'accepted' && match.reconciliation_id)
+                            ? `Reconciled #${(transaction.matches ?? []).find((match: any) => match.status === 'accepted' && match.reconciliation_id)?.reconciliation_id} · ${String((transaction.matches ?? []).find((match: any) => match.status === 'accepted' && match.reconciliation_id)?.reconciliation?.statement_date ?? '').slice(0, 10)}`
+                            : String(transaction.status).replace('_', ' ')}
+                        </td>
+                        <td className="px-3 py-2 text-right">{formatCurrency(Number(transaction.residual_amount))}</td>
+                        <td className="px-3 py-2">
+                          {transaction.status === 'excluded' ? (
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">{transaction.exclusion_type}: {transaction.exclusion_reason}</p>
+                              <Button type="button" size="sm" variant="outline" onClick={() => { setStatementException({ transactionId: transaction.id, mode: 'restore' }); setExceptionReason(''); }}>Restore</Button>
+                            </div>
+                          ) : transaction.status === 'matched' ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-green-600 font-medium">Fully matched</span>
+                              {(transaction.matches ?? []).filter((match: any) => match.status === 'accepted' && !match.reconciliation_id).map((match: any) => (
+                                <div key={match.id} className="flex items-center gap-2">
+                                  {match.match_reasons?.invoice_id ? (
+                                    <Button type="button" size="sm" variant="link" onClick={() => navigate(`/invoices/${match.match_reasons.invoice_id}`)}>
+                                      Invoice {match.match_reasons.invoice_number ?? `#${match.match_reasons.invoice_id}`}
+                                    </Button>
+                                  ) : <span className="text-xs text-muted-foreground">No invoice linked to payment</span>}
+                                  <Button type="button" size="sm" variant="ghost" onClick={() => unmatchStatementMutation.mutate(match.id)}>Unmatch</Button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col gap-2">
+                              {(transaction.matches ?? []).filter((match: any) => match.status === 'proposed').map((match: any) => (
+                                <div key={match.id} className="rounded border bg-muted/30 px-2 py-1 text-xs">
+                                  <span className="font-medium">Suggested GL #{match.journal_entry_line_id} · {Math.round(Number(match.confidence) * 100)}%</span>
+                                  <span className="block text-muted-foreground">
+                                    {match.match_reasons?.exact_amount ? 'Amount ✓ ' : 'Amount differs · '}
+                                    {match.match_reasons?.reference_match ? 'Reference ✓ ' : ''}
+                                    {match.match_reasons?.invoice_match ? 'Invoice ✓ ' : ''}
+                                    {(match.match_reasons?.customer_code_match || match.match_reasons?.customer_name_match) ? 'Customer ✓ ' : ''}
+                                    {match.match_reasons?.ambiguous ? 'Ambiguous — review required' : ''}
+                                  </span>
+                                  {(match.match_reasons?.invoice_number || match.match_reasons?.payment_number) && (
+                                    <span className="block text-muted-foreground">
+                                      {match.match_reasons?.payment_number ? `Payment ${match.match_reasons.payment_number}` : ''}
+                                      {match.match_reasons?.invoice_number ? ` · Invoice ${match.match_reasons.invoice_number}` : ''}
+                                      {match.match_reasons?.customer_name ? ` · ${match.match_reasons.customer_name}` : ''}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                              <Select
+                                value={matchSelections[transaction.id]?.glLineId || 'select'}
+                                onValueChange={(value) => {
+                                  const gl = transactionsData?.data?.find((line) => line.id === Number(value));
+                                  const available = gl ? Number(gl.available_amount ?? (Number(gl.debit) - Number(gl.credit))) : Number(transaction.residual_amount);
+                                  const residual = Number(transaction.residual_amount);
+                                  const amount = Math.sign(residual) * Math.min(Math.abs(residual), Math.abs(available));
+                                  setMatchSelections((current) => ({ ...current, [transaction.id]: { glLineId: value, amount: String(amount), reason: current[transaction.id]?.reason ?? '' } }));
+                                }}
+                              >
+                                <SelectTrigger><SelectValue placeholder="Select GL transaction" /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="select" disabled>Select GL transaction</SelectItem>
+                                  {(transactionsData?.data ?? [])
+                                    .filter((line) => {
+                                      const available = Number(line.available_amount ?? (Number(line.debit) - Number(line.credit)));
+                                      const statementCustomerCode = normalizeMatchKey(statementIdentityValue(transaction, 'customer_code'));
+                                      const paymentCustomerCode = normalizeMatchKey(line.payment?.customer_code);
+                                      const statementReference = normalizeMatchKey(statementIdentityValue(transaction, 'bank_reference'));
+                                      const paymentReferences = [line.payment?.reference, line.payment?.payment_number, line.reference]
+                                        .map(normalizeMatchKey)
+                                        .filter(Boolean);
+                                      return Math.abs(available) > 0.00000001
+                                        && available * Number(transaction.residual_amount) > 0
+                                        && statementCustomerCode !== ''
+                                        && statementCustomerCode === paymentCustomerCode
+                                        && statementReference !== ''
+                                        && paymentReferences.includes(statementReference);
+                                    })
+                                    .map((line) => (
+                                    <SelectItem key={line.id} value={String(line.id)}>
+                                      {line.date} · {line.reference || line.description} · {formatCurrency(Number(line.available_amount ?? (Number(line.debit) - Number(line.credit))))} available
+                                      {line.payment?.invoice_number ? ` · Invoice ${line.payment.invoice_number}` : ''}
+                                      {line.payment?.customer_name ? ` · ${line.payment.customer_name}` : ''}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <p className="text-xs text-muted-foreground">Only GL lines whose linked payment has the exact customer code and bank reference are listed.</p>
+                              <Input
+                                aria-label="Match review reason" placeholder="Reason for accepting this match"
+                                value={matchSelections[transaction.id]?.reason ?? ''}
+                                onChange={(e) => setMatchSelections((current) => ({ ...current, [transaction.id]: { glLineId: current[transaction.id]?.glLineId ?? '', amount: current[transaction.id]?.amount ?? String(transaction.residual_amount), reason: e.target.value } }))}
+                              />
+                              <div className="flex gap-2">
+                                <Input
+                                  type="number" step="0.01" aria-label="Match amount"
+                                  value={matchSelections[transaction.id]?.amount ?? String(transaction.residual_amount)}
+                                  onChange={(e) => setMatchSelections((current) => ({ ...current, [transaction.id]: { glLineId: current[transaction.id]?.glLineId ?? '', amount: e.target.value, reason: current[transaction.id]?.reason ?? '' } }))}
+                                />
+                                <Button
+                                  type="button" size="sm"
+                                  disabled={!matchSelections[transaction.id]?.glLineId || !matchSelections[transaction.id]?.reason?.trim() || matchStatementMutation.isPending}
+                                  onClick={() => matchStatementMutation.mutate({ transactionId: transaction.id, glLineId: Number(matchSelections[transaction.id].glLineId), amount: Number(matchSelections[transaction.id].amount), reason: matchSelections[transaction.id].reason })}
+                                >Match</Button>
+                              </div>
+                              {(transaction.matches ?? []).filter((match: any) => match.status === 'accepted' && !match.reconciliation_id).map((match: any) => (
+                                <Button key={match.id} type="button" size="sm" variant="ghost" onClick={() => unmatchStatementMutation.mutate(match.id)}>Remove existing match</Button>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="flex items-center justify-between border-t px-3 py-2 text-sm">
+                  <span>Page {statementTransactionsQuery.data?.current_page ?? 1} of {statementTransactionsQuery.data?.last_page ?? 1} · {statementTransactionsQuery.data?.total ?? filteredStatementTransactions.length} transactions</span>
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" variant="outline" disabled={(statementTransactionsQuery.data?.current_page ?? 1) <= 1 || statementTransactionsQuery.isFetching} onClick={() => setStatementTransactionPage((page) => Math.max(1, page - 1))}>Previous</Button>
+                    <Button type="button" size="sm" variant="outline" disabled={(statementTransactionsQuery.data?.current_page ?? 1) >= (statementTransactionsQuery.data?.last_page ?? 1) || statementTransactionsQuery.isFetching} onClick={() => setStatementTransactionPage((page) => page + 1)}>Next</Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          {(statementImportsQuery.data?.data ?? []).some((batch: any) => batch.status === 'imported') && (
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div><h3 className="font-medium">Review statement reconciliation</h3><p className="text-xs text-muted-foreground">Automatically recalculated after matching against source and accepted GL totals.</p></div>
+                <Button type="button" variant="outline" disabled={validateStatementReconciliationMutation.isPending} onClick={() => validateStatementReconciliationMutation.mutate()}>
+                  {validateStatementReconciliationMutation.isPending ? 'Recalculating…' : 'Refresh totals'}
+                </Button>
+              </div>
+              {statementValidation && (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div><span className="text-muted-foreground">Opening</span><p className="font-medium">{formatCurrency(Number(statementValidation.opening_balance))}</p></div>
+                    <div><span className="text-muted-foreground">Credits (money in)</span><p className="font-medium">{formatCurrency(Number(statementValidation.deposits))}</p></div>
+                    <div><span className="text-muted-foreground">Debits (money out)</span><p className="font-medium">{formatCurrency(Number(statementValidation.withdrawals))}</p></div>
+                    <div><span className="text-muted-foreground">Closing</span><p className="font-medium">{formatCurrency(Number(statementValidation.statement_closing_balance))}</p></div>
+                    <div><span className="text-muted-foreground">Matched GL balance</span><p className="font-medium">{formatCurrency(Number(statementValidation.matched_gl_balance))}</p></div>
+                    <div><span className="text-muted-foreground">Unmatched</span><p className="font-medium">{statementValidation.unmatched_statement_count} · {formatCurrency(Number(statementValidation.unmatched_statement_amount))}</p></div>
+                    <div><span className="text-muted-foreground">Excluded</span><p className="font-medium">{statementValidation.excluded_count}</p></div>
+                    <div><span className="text-muted-foreground">Difference</span><p className={statementValidation.valid ? 'font-medium text-green-600' : 'font-medium text-red-600'}>{formatCurrency(Number(statementValidation.difference))}</p></div>
+                  </div>
+                  {statementValidation.blockers?.length > 0 ? (
+                    <div className="space-y-1">{statementValidation.blockers.map((blocker: any) => <p key={blocker.code} className="text-sm text-red-600">{blocker.message}</p>)}</div>
+                  ) : <div className="flex items-center justify-between"><p className="text-sm text-green-600">All implemented statement reconciliation controls passed.</p><Button type="button" disabled={completeStatementReconciliationMutation.isPending} onClick={() => completeStatementReconciliationMutation.mutate()}>{completeStatementReconciliationMutation.isPending ? 'Completing…' : 'Complete statement reconciliation'}</Button></div>}
+                </>
+              )}
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* Statement Information */}
       {selectedBankAccount && (
         <Card className="p-6">
           <h2 className="text-lg font-semibold mb-4">Statement Information</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="statement-start-date">Statement Start Date</Label>
+              <Input id="statement-start-date" type="date" value={statementStartDate} onChange={(e) => setStatementStartDate(e.target.value)} />
+            </div>
             <div>
               <Label htmlFor="statement-date">Statement Ending Date</Label>
               <Input
@@ -438,7 +978,7 @@ export function BankReconciliationPage() {
       )}
 
       {/* Reconciliation Summary */}
-      {selectedBankAccount && transactionsData && (
+      {selectedBankAccount && transactionsData && !(statementImportsQuery.data?.data ?? []).some((batch: any) => batch.status === 'imported') && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="p-4">
             <div>
@@ -656,7 +1196,7 @@ export function BankReconciliationPage() {
             onClick={handleComplete}
             disabled={
               !statementDate ||
-              !statementBalance ||
+              statementBalance === '' ||
               Math.abs(difference) > 0.01 ||
               completeReconciliationMutation.isPending
             }
@@ -680,9 +1220,9 @@ export function BankReconciliationPage() {
       <Dialog open={showAddTransaction} onOpenChange={setShowAddTransaction}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Adjusting Entry</DialogTitle>
+            <DialogTitle>{statementAdjustmentTransactionId ? 'Propose Statement Adjustment' : 'Add Adjusting Entry'}</DialogTitle>
             <DialogDescription>
-              Add a manual transaction to account for bank fees or other adjustments.
+              {statementAdjustmentTransactionId ? 'Create a maker-checker proposal. A different authorized user must approve it before posting and matching.' : 'Add a manual transaction to account for bank fees or other adjustments.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -778,7 +1318,7 @@ export function BankReconciliationPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddTransaction(false)}>
+            <Button variant="outline" onClick={() => { setShowAddTransaction(false); setStatementAdjustmentTransactionId(null); }}>
               Cancel
             </Button>
             <Button
@@ -791,8 +1331,42 @@ export function BankReconciliationPage() {
                   Adding...
                 </>
               ) : (
-                'Add Transaction'
+                statementAdjustmentTransactionId ? 'Submit Proposal' : 'Add Transaction'
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={statementException !== null} onOpenChange={(open) => { if (!open) setStatementException(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{statementException?.mode === 'exclude' ? 'Exclude statement transaction' : 'Restore statement transaction'}</DialogTitle>
+            <DialogDescription>
+              {statementException?.mode === 'exclude'
+                ? 'Only proven duplicates or non-transaction statement rows may be excluded. Real cash movements must be matched or resolved.'
+                : 'Restore this transaction to the unmatched matching queue.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {statementException?.mode === 'exclude' && (
+              <>
+                <div>
+                  <Label>Classification</Label>
+                  <Select value={exceptionType} onValueChange={(value: 'duplicate' | 'non_transaction') => setExceptionType(value)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="duplicate">Confirmed duplicate</SelectItem><SelectItem value="non_transaction">Non-transaction row</SelectItem></SelectContent>
+                  </Select>
+                </div>
+                <div><Label htmlFor="exception-evidence">Evidence</Label><Input id="exception-evidence" value={exceptionEvidence} onChange={(event) => setExceptionEvidence(event.target.value)} placeholder="Describe the source evidence reviewed" /></div>
+              </>
+            )}
+            <div><Label htmlFor="exception-reason">Reason</Label><Input id="exception-reason" value={exceptionReason} onChange={(event) => setExceptionReason(event.target.value)} /></div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setStatementException(null)}>Cancel</Button>
+            <Button type="button" disabled={!exceptionReason.trim() || (statementException?.mode === 'exclude' && !exceptionEvidence.trim()) || statementExceptionMutation.isPending} onClick={() => statementExceptionMutation.mutate()}>
+              {statementExceptionMutation.isPending ? 'Saving…' : statementException?.mode === 'exclude' ? 'Exclude' : 'Restore'}
             </Button>
           </DialogFooter>
         </DialogContent>

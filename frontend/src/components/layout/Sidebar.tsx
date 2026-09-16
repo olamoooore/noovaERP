@@ -546,6 +546,11 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:chart-bold-duotone',
       },
       {
+        title: 'Financial Statement',
+        href: '/accounting/reporting/financial-statement',
+        icon: 'solar:document-text-bold-duotone',
+      },
+      {
         title: 'Profit & Loss',
         href: '/accounting/reporting/profit-loss',
         icon: 'solar:chart-square-bold-duotone',

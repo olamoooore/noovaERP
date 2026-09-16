@@ -51,6 +51,11 @@ class BankAccount extends Model
         return $this->hasMany(BankReconciliation::class);
     }
 
+    public function statementImports(): HasMany
+    {
+        return $this->hasMany(BankStatementImport::class);
+    }
+
     /**
      * Get the current balance from GL account
      */

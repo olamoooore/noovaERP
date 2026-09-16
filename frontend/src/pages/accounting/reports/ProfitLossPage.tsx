@@ -27,6 +27,23 @@ export default function ProfitLossPage() {
   const [compareEnabled, setCompareEnabled] = useState(false);
   const [compareStartDate, setCompareStartDate] = useState('');
   const [compareEndDate, setCompareEndDate] = useState('');
+  const [collapsedRows, setCollapsedRows] = useState<Set<string>>(new Set());
+
+  const toggleRow = (id: string) => {
+    setCollapsedRows((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const sectionLabel = (id: string, label: string) => (
+    <button type="button" className="flex items-center gap-2" onClick={() => toggleRow(id)}>
+      <Icon icon={collapsedRows.has(id) ? 'solar:alt-arrow-right-linear' : 'solar:alt-arrow-down-linear'} className="w-4 h-4" />
+      {label}
+    </button>
+  );
 
   // Fetch profit & loss
   const { data, isLoading, error } = useQuery({
@@ -193,6 +210,16 @@ export default function ProfitLossPage() {
             </div>
 
             <Table>
+              <caption className="caption-top pb-2">
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setCollapsedRows(new Set())}>
+                    <Icon icon="solar:maximize-linear" className="w-3.5 h-3.5 mr-1" /> Expand all
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setCollapsedRows(new Set(['revenue', 'cogs', 'operating-expenses', 'other-expenses']))}>
+                    <Icon icon="solar:minimize-linear" className="w-3.5 h-3.5 mr-1" /> Collapse all
+                  </Button>
+                </div>
+              </caption>
               <TableHeader>
                 <TableRow>
                   <TableHead>Account</TableHead>
@@ -202,10 +229,10 @@ export default function ProfitLossPage() {
               <TableBody>
                 {/* Revenue Section */}
                 <TableRow className="bg-muted/50">
-                  <TableCell className="font-bold">Revenue</TableCell>
+                  <TableCell className="font-bold">{sectionLabel('revenue', 'Revenue')}</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
-                {profitLoss.revenue?.accounts?.map((account: any, index: number) => (
+                {!collapsedRows.has('revenue') && profitLoss.revenue?.accounts?.map((account: any, index: number) => (
                   <TableRow
                     key={account.account_id || account.id || `revenue-${index}`}
                     className="cursor-pointer hover:bg-muted/50"
@@ -226,10 +253,10 @@ export default function ProfitLossPage() {
 
                 {/* Cost of Goods Sold Section */}
                 <TableRow className="bg-muted/50">
-                  <TableCell className="font-bold pt-4">Cost of Goods Sold</TableCell>
+                  <TableCell className="font-bold pt-4">{sectionLabel('cogs', 'Cost of Goods Sold')}</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
-                {profitLoss.cost_of_goods_sold?.accounts?.map((account: any, index: number) => (
+                {!collapsedRows.has('cogs') && profitLoss.cost_of_goods_sold?.accounts?.map((account: any, index: number) => (
                   <TableRow
                     key={account.account_id || account.id || `cogs-${index}`}
                     className="cursor-pointer hover:bg-muted/50"
@@ -262,10 +289,10 @@ export default function ProfitLossPage() {
                 {profitLoss.operating_expenses?.accounts && profitLoss.operating_expenses.accounts.length > 0 && (
                   <>
                     <TableRow className="bg-muted/50">
-                      <TableCell className="font-bold pt-4">Operating Expenses</TableCell>
+                      <TableCell className="font-bold pt-4">{sectionLabel('operating-expenses', 'Operating Expenses')}</TableCell>
                       <TableCell></TableCell>
                     </TableRow>
-                    {profitLoss.operating_expenses.accounts.map((account: any, index: number) => (
+                    {!collapsedRows.has('operating-expenses') && profitLoss.operating_expenses.accounts.map((account: any, index: number) => (
                       <TableRow
                         key={account.account_id || account.id || `opex-${index}`}
                         className="cursor-pointer hover:bg-muted/50"
@@ -300,10 +327,10 @@ export default function ProfitLossPage() {
                 {profitLoss.other_expenses?.accounts && profitLoss.other_expenses.accounts.length > 0 && (
                   <>
                     <TableRow className="bg-muted/50">
-                      <TableCell className="font-bold pt-4">Other Expenses</TableCell>
+                      <TableCell className="font-bold pt-4">{sectionLabel('other-expenses', 'Other Expenses')}</TableCell>
                       <TableCell></TableCell>
                     </TableRow>
-                    {profitLoss.other_expenses.accounts.map((account: any, index: number) => (
+                    {!collapsedRows.has('other-expenses') && profitLoss.other_expenses.accounts.map((account: any, index: number) => (
                       <TableRow
                         key={account.account_id || account.id || `other-${index}`}
                         className="cursor-pointer hover:bg-muted/50"
