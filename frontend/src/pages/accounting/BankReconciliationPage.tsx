@@ -833,7 +833,28 @@ export function BankReconciliationPage() {
                           ) : (
                             <div className="flex flex-col gap-2">
                               {(transaction.matches ?? []).filter((match: any) => match.status === 'proposed').map((match: any) => (
-                                <div key={match.id} className="rounded border bg-muted/30 px-2 py-1 text-xs">
+                                <button
+                                  key={match.id}
+                                  type="button"
+                                  aria-pressed={matchSelections[transaction.id]?.glLineId === String(match.journal_entry_line_id)}
+                                  className={`w-full rounded border px-2 py-1 text-left text-xs transition-colors hover:border-primary hover:bg-primary/5 ${matchSelections[transaction.id]?.glLineId === String(match.journal_entry_line_id) ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'bg-muted/30'}`}
+                                  onClick={() => {
+                                    const gl = transactionsData?.data?.find((line) => line.id === Number(match.journal_entry_line_id));
+                                    const available = gl
+                                      ? Number(gl.available_amount ?? (Number(gl.debit) - Number(gl.credit)))
+                                      : Number(match.matched_amount ?? transaction.residual_amount);
+                                    const residual = Number(transaction.residual_amount);
+                                    const amount = Math.sign(residual) * Math.min(Math.abs(residual), Math.abs(available));
+                                    setMatchSelections((current) => ({
+                                      ...current,
+                                      [transaction.id]: {
+                                        glLineId: String(match.journal_entry_line_id),
+                                        amount: String(amount),
+                                        reason: current[transaction.id]?.reason ?? '',
+                                      },
+                                    }));
+                                  }}
+                                >
                                   <span className="font-medium">Suggested GL #{match.journal_entry_line_id} · {Math.round(Number(match.confidence) * 100)}%</span>
                                   <span className="block text-muted-foreground">
                                     {match.match_reasons?.exact_amount ? 'Amount ✓ ' : 'Amount differs · '}
@@ -849,7 +870,10 @@ export function BankReconciliationPage() {
                                       {match.match_reasons?.customer_name ? ` · ${match.match_reasons.customer_name}` : ''}
                                     </span>
                                   )}
-                                </div>
+                                  <span className="mt-1 block font-medium text-primary">
+                                    {matchSelections[transaction.id]?.glLineId === String(match.journal_entry_line_id) ? 'Selected for manual review' : 'Select this candidate'}
+                                  </span>
+                                </button>
                               ))}
                               <Select
                                 value={matchSelections[transaction.id]?.glLineId || 'select'}
@@ -889,7 +913,7 @@ export function BankReconciliationPage() {
                                   ))}
                                 </SelectContent>
                               </Select>
-                              <p className="text-xs text-muted-foreground">Only GL lines whose linked payment has the exact customer code and bank reference are listed.</p>
+                              <p className="text-xs text-muted-foreground">The dropdown lists exact customer-code and bank-reference matches. To review a lower-confidence candidate, select its suggestion card above and enter a reason.</p>
                               <Input
                                 aria-label="Match review reason" placeholder="Reason for accepting this match"
                                 value={matchSelections[transaction.id]?.reason ?? ''}
