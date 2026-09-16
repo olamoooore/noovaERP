@@ -47,37 +47,17 @@
             body {
                 padding: {{ ($margin['top'] ?? 15) * 3.78 }}px {{ ($margin['right'] ?? 12) * 3.78 }}px {{ ($margin['bottom'] ?? 15) * 3.78 }}px {{ ($margin['left'] ?? 12) * 3.78 }}px;
             }
-            /* PDF DOM order is Footer → Totals for Dompdf measurement. Explicit
-               flex ordering keeps the browser canvas at Totals → Footer. */
+            /* PDF measurement keeps Footer first in the DOM. Screen previews
+               reverse the pair so users see the intended Totals → Footer order. */
             .tb-final-summary {
                 display: flex !important;
-                flex-direction: column !important;
+                flex-direction: column-reverse !important;
             }
-            .tb-final-summary > .tb-document-totals { order: 1 !important; }
-            .tb-final-summary > .tb-document-footer {
-                order: 2 !important;
-                position: static;
-                margin-top: 20px;
-            }
+            .tb-document-footer { position: static; margin-top: 20px; }
         }
 
         @if (!empty($css))
             {!! $css !!}
-        @endif
-
-        @if (!empty($isPreview))
-            /* Authoritative canvas ordering; placed after template CSS so a
-               template's custom styles cannot put Footer above Totals. */
-            body .tb-final-summary {
-                display: flex !important;
-                flex-direction: column !important;
-            }
-            body .tb-final-summary > .tb-document-totals { order: 1 !important; }
-            body .tb-final-summary > .tb-document-footer {
-                order: 2 !important;
-                position: static !important;
-                margin-top: 20px !important;
-            }
         @endif
 
         /* Keep the physical pagination safety band authoritative even when a

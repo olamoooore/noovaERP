@@ -136,7 +136,7 @@ final class PdfGenerationService implements PdfGenerationServiceContract
         $pdf->setCallbacks([
             [
                 'event' => 'begin_frame',
-                'f' => function (Frame $frame, Canvas $canvas) use (&$footerTop, &$totalsFrame, &$totalsPosition, $pointsPerMm): void {
+                'f' => function (Frame $frame, Canvas $canvas) use (&$footerTop, &$totalsFrame, &$totalsPosition, $margin, $pointsPerMm): void {
                     $node = $frame->get_node();
                     if (! $node instanceof DOMElement) {
                         return;
@@ -160,30 +160,37 @@ final class PdfGenerationService implements PdfGenerationServiceContract
                         return;
                     }
 
-                    // Footer placement waits for end_frame, when Dompdf has
-                    // measured all footer children and its final height is known.
+                    if (! str_contains($classes, ' tb-document-footer ')) {
+                        return;
+                    }
+
+                    $targetY = $canvas->get_height()
+                        - (((float) ($margin['bottom'] ?? 15)) * $pointsPerMm)
+                        - $frame->get_margin_height();
+                    $frame->move(0, $targetY - (float) $frame->get_position('y'));
+                    $footerTop = $targetY;
+
+                    if ($totalsFrame instanceof Frame) {
+                        $totalsTargetY = $targetY
+                            - (3 * $pointsPerMm)
+                            - $totalsFrame->get_margin_height();
+                        $totalsFrame->move(0, $totalsTargetY - (float) $totalsFrame->get_position('y'));
+                        $totalsPosition = [
+                            'page' => $canvas->get_page_number(),
+                            'y' => $totalsTargetY,
+                        ];
+                    }
                 },
             ],
             [
                 'event' => 'end_frame',
-                'f' => function (Frame $frame, Canvas $canvas) use (&$pageSubtotals, &$seenRows, &$footerTop, &$totalsPosition, $margin, $pointsPerMm): void {
+                'f' => function (Frame $frame, Canvas $canvas) use (&$pageSubtotals, &$seenRows, &$totalsPosition): void {
                     $node = $frame->get_node();
                     if (! $node instanceof DOMElement) {
                         return;
                     }
 
-                    $classes = ' '.$node->getAttribute('class').' ';
-                    if (str_contains($classes, ' tb-document-footer ')) {
-                        $targetY = $canvas->get_height()
-                            - (((float) ($margin['bottom'] ?? 15)) * $pointsPerMm)
-                            - $frame->get_margin_height();
-                        $frame->move(0, $targetY - (float) $frame->get_position('y'));
-                        $footerTop = $targetY;
-
-                        return;
-                    }
-
-                    if (str_contains($classes, ' tb-document-totals ')) {
+                    if (str_contains(' '.$node->getAttribute('class').' ', ' tb-document-totals ')) {
                         $totalsPosition = [
                             'page' => $canvas->get_page_number(),
                             'y' => (float) $frame->get_position('y'),

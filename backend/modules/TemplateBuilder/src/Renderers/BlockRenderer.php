@@ -18,8 +18,6 @@ use Modules\TemplateBuilder\Services\MergeFieldResolver;
  */
 final class BlockRenderer implements TemplateRendererInterface
 {
-    private bool $canvasPreview = false;
-
     public function __construct(private readonly MergeFieldResolver $resolver) {}
 
     public function supports(string $mode): bool
@@ -29,7 +27,6 @@ final class BlockRenderer implements TemplateRendererInterface
 
     public function render(DocumentTemplate $template, array $data): array
     {
-        $this->canvasPreview = (bool) (($template->metadata ?? [])['_canvas_preview'] ?? false);
         $this->resolver->with($data);
         $meta = $template->metadata ?? [];
         $dateFormat = $meta['date_format'] ?? null;
@@ -53,12 +50,7 @@ final class BlockRenderer implements TemplateRendererInterface
     private function renderBlocks(array $blocks, string $context): string
     {
         if ($context === '') {
-            $totalsIndex = array_key_last(array_filter(
-                $blocks,
-                fn ($block) => is_array($block)
-                    && $this->containsBlockType($block, 'totals')
-                    && $this->conditionPasses($block),
-            ));
+            $totalsIndex = array_key_last(array_filter($blocks, fn ($block) => ($block['type'] ?? null) === 'totals'));
             $footerIndex = array_key_last(array_filter($blocks, fn ($block) => ($block['type'] ?? null) === 'footer'));
 
             if ($totalsIndex !== null && $footerIndex !== null) {
@@ -70,12 +62,7 @@ final class BlockRenderer implements TemplateRendererInterface
                     ARRAY_FILTER_USE_BOTH,
                 ));
                 $body = $this->renderBlocks($remaining, 'document');
-                // Dompdf needs Footer first for measurement. Browser preview
-                // emits the intended visual order directly instead of relying
-                // on template-overridable CSS ordering.
-                $summary = $this->canvasPreview
-                    ? $this->renderBlock($totals, 'document')."\n".$this->renderBlock($footer, 'document')
-                    : $this->renderBlock($footer, 'document')."\n".$this->renderBlock($totals, 'document');
+                $summary = $this->renderBlock($footer, 'document')."\n".$this->renderBlock($totals, 'document');
 
                 return $body."\n".'<div class="tb-final-summary" style="page-break-inside:avoid;">'.$summary.'</div>';
             }
@@ -85,22 +72,6 @@ final class BlockRenderer implements TemplateRendererInterface
             ->filter(fn ($b) => $this->conditionPasses($b))
             ->map(fn ($b) => $this->renderBlock($b, $context))
             ->implode("\n");
-    }
-
-    /** @param array<string,mixed> $block */
-    private function containsBlockType(array $block, string $type): bool
-    {
-        if (($block['type'] ?? null) === $type) {
-            return true;
-        }
-
-        foreach (is_array($block['children'] ?? null) ? $block['children'] : [] as $child) {
-            if (is_array($child) && $this->containsBlockType($child, $type)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /** @param array<string,mixed> $block */
