@@ -139,6 +139,7 @@ class BankStatementImportService
             if ($import->status === 'reversed') {
                 return $import;
             }
+            $previousStatus = $import->status;
             $transactions = BankStatementTransaction::where('import_id', $import->id)->orderBy('id')->lockForUpdate()->get();
             $matches = BankStatementMatch::whereIn('bank_statement_transaction_id', $transactions->pluck('id'))->orderBy('id')->lockForUpdate()->get();
             if ($matches->contains(fn ($match) => $match->reconciliation_id !== null)) {
@@ -147,7 +148,7 @@ class BankStatementImportService
             BankStatementMatch::whereIn('id', $matches->pluck('id'))->update(['status' => 'reversed', 'version' => DB::raw('version + 1')]);
             BankStatementTransaction::whereIn('id', $transactions->pluck('id'))->update(['status' => 'reversed']);
             $import->update(['status' => 'reversed']);
-            $this->audit->record('import_reversed', ['actor_id' => $actorId, 'bank_account_id' => $import->bank_account_id, 'import_id' => $import->id, 'reason' => $reason, 'before_state' => ['status' => 'imported'], 'after_state' => ['status' => 'reversed']]);
+            $this->audit->record('import_reversed', ['actor_id' => $actorId, 'bank_account_id' => $import->bank_account_id, 'import_id' => $import->id, 'reason' => $reason, 'before_state' => ['status' => $previousStatus], 'after_state' => ['status' => 'reversed']]);
 
             return $import->fresh();
         });
