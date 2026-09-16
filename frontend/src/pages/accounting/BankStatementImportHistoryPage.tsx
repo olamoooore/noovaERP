@@ -108,7 +108,8 @@ export default function BankStatementImportHistoryPage() {
                       <th className="text-left px-3 py-2">File</th><th className="text-left px-3 py-2">Statement period</th>
                       <th className="text-right px-3 py-2">Opening</th><th className="text-right px-3 py-2">Closing</th>
                       <th className="text-left px-3 py-2">Status</th><th className="text-right px-3 py-2">Rows</th>
-                      <th className="text-right px-3 py-2">Transactions</th><th className="text-right px-3 py-2">Actions</th>
+                      <th className="text-right px-3 py-2">Created</th><th className="text-right px-3 py-2">Duplicates</th>
+                      <th className="text-right px-3 py-2">Errors</th><th className="text-right px-3 py-2">Actions</th>
                     </tr></thead>
                     <tbody>{imports.map((batch: any) => <tr key={batch.id} className="border-b last:border-0">
                       <td className="px-3 py-2 font-medium">{batch.file_name}</td>
@@ -117,6 +118,7 @@ export default function BankStatementImportHistoryPage() {
                       <td className="px-3 py-2 text-right">{formatCurrency(Number(batch.closing_balance ?? 0))}</td>
                       <td className="px-3 py-2 capitalize">{String(batch.status).replace('_', ' ')}</td>
                       <td className="px-3 py-2 text-right">{batch.row_count ?? 0}</td><td className="px-3 py-2 text-right">{batch.transaction_count ?? 0}</td>
+                      <td className="px-3 py-2 text-right">{batch.duplicate_count ?? 0}</td><td className="px-3 py-2 text-right">{batch.error_count ?? 0}</td>
                       <td className="px-3 py-2"><div className="flex justify-end gap-2">
                         <Button type="button" size="sm" variant="ghost" disabled={downloadingImportId === batch.id} onClick={() => downloadSource(batch)}>{downloadingImportId === batch.id ? 'Downloading…' : 'Download'}</Button>
                         {batch.status === 'imported' && <Button type="button" size="sm" variant="outline" className="text-destructive" onClick={() => { setReverseImportId(batch.id); setReverseReason(''); }}>Reverse</Button>}

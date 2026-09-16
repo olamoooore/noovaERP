@@ -381,6 +381,9 @@ export function BankReconciliationPage() {
     queryFn: () => reportApi.getBankStatementImports(selectedBankAccount!),
     enabled: selectedBankAccount !== null,
   });
+  const activeStatementImport = (statementImportsQuery.data?.data ?? []).find(
+    (batch: any) => batch.status === 'imported'
+  );
 
   const statementTransactionsQuery = useQuery({
     queryKey: ['bank-statement-transactions', selectedBankAccount, statementTransactionPage, filters.status, filters.search, statementTransactionParam],
@@ -713,16 +716,26 @@ export function BankReconciliationPage() {
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-medium">Imported bank transactions</h3>
               <div className="flex gap-2">
-                {(statementImportsQuery.data?.data ?? []).find((batch: any) => batch.status === 'imported') && (
-                  <>
-                    <Button type="button" size="sm" variant="outline" disabled={suggestMatchesMutation.isPending} onClick={() => suggestMatchesMutation.mutate(statementImportsQuery.data.data.find((batch: any) => batch.status === 'imported').id)}>
-                      {suggestMatchesMutation.isPending ? 'Scoring…' : 'Suggest Matches'}
-                    </Button>
-                    <Button type="button" size="sm" variant="outline" disabled={bulkAcceptMatchesMutation.isPending} onClick={() => bulkAcceptMatchesMutation.mutate(statementImportsQuery.data.data.find((batch: any) => batch.status === 'imported').id)}>
-                      {bulkAcceptMatchesMutation.isPending ? 'Accepting…' : 'Accept 95%+ unique'}
-                    </Button>
-                  </>
-                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  title={activeStatementImport ? 'Generate match suggestions' : 'Import a statement before generating suggestions'}
+                  disabled={!activeStatementImport || suggestMatchesMutation.isPending}
+                  onClick={() => activeStatementImport && suggestMatchesMutation.mutate(activeStatementImport.id)}
+                >
+                  {suggestMatchesMutation.isPending ? 'Scoring…' : 'Suggest Matches'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  title={activeStatementImport ? 'Accept unique suggestions scoring at least 95%' : 'Import a statement before accepting suggestions'}
+                  disabled={!activeStatementImport || bulkAcceptMatchesMutation.isPending}
+                  onClick={() => activeStatementImport && bulkAcceptMatchesMutation.mutate(activeStatementImport.id)}
+                >
+                  {bulkAcceptMatchesMutation.isPending ? 'Accepting…' : 'Accept 95%+ unique'}
+                </Button>
                 <Button type="button" size="sm" variant="ghost" onClick={() => statementTransactionsQuery.refetch()} disabled={statementTransactionsQuery.isFetching}>
                   {statementTransactionsQuery.isFetching ? 'Refreshing…' : 'Refresh'}
                 </Button>
@@ -782,7 +795,7 @@ export function BankReconciliationPage() {
                         <td className="px-3 py-2"><Checkbox disabled={!['unmatched', 'suggested', 'partially_matched'].includes(transaction.status)} checked={groupStatementIds.has(transaction.id)} onCheckedChange={() => setGroupStatementIds((current) => { const next = new Set(current); if (next.has(transaction.id)) next.delete(transaction.id); else next.add(transaction.id); return next; })} /></td>
                         <td className="px-3 py-2 whitespace-nowrap">{String(transaction.transaction_date).slice(0, 10)}</td>
                         <td className="px-3 py-2">{transaction.description}</td>
-                        <td className="px-3 py-2">{transaction.bank_reference ?? '—'}</td>
+                        <td className="px-3 py-2">{statementIdentityValue(transaction, 'bank_reference') || '—'}</td>
                         <td className="px-3 py-2">
                           {(transaction.allocations ?? []).filter((allocation: any) => allocation.allocation_type === 'invoice_reference').length > 0
                             ? (transaction.allocations ?? []).filter((allocation: any) => allocation.allocation_type === 'invoice_reference').map((allocation: any) => allocation.external_reference).join(', ')
