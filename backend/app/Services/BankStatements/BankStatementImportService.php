@@ -77,7 +77,7 @@ class BankStatementImportService
             $errors = 0;
             foreach ($parsed['rows'] as $row) {
                 try {
-                    $normal = $this->normalize($row, $input, $preview['bank_account_id']);
+                    $normal = $this->normalize($row, [...$input, 'source_file_hash' => $preview['hash']], $preview['bank_account_id']);
                 } catch (\Throwable) {
                     $errors++;
                     DB::table('bank_statement_import_errors')->insert([
@@ -170,7 +170,20 @@ class BankStatementImportService
         }
         $reference = $get('bank_reference');
         $running = $get('running_balance');
-        $canonical = implode('|', [$bankAccountId, strtoupper($input['currency_code']), $date->format('Y-m-d'), number_format($amount, 8, '.', ''), strtolower(preg_replace('/\s+/', '', $reference)), strtolower(preg_replace('/\s+/', ' ', $description)), $running]);
+        // Every source row is an independently matchable allocation. The file hash and
+        // source row preserve repeated amounts/references without weakening whole-file
+        // duplicate protection at preview time.
+        $canonical = implode('|', [
+            $bankAccountId,
+            $input['source_file_hash'] ?? '',
+            $row['source_row'],
+            strtoupper($input['currency_code']),
+            $date->format('Y-m-d'),
+            number_format($amount, 8, '.', ''),
+            strtolower(preg_replace('/\s+/', '', $reference)),
+            strtolower(preg_replace('/\s+/', ' ', $description)),
+            $running,
+        ]);
 
         return ['bank_account_id' => $bankAccountId, 'transaction_key' => hash('sha256', $canonical), 'source_row' => $row['source_row'], 'value_date' => $get('value_date') ?: null, 'transaction_date' => $date->format('Y-m-d'), 'transaction_time' => $get('transaction_time') ?: null, 'description' => $description, 'bank_reference' => $reference ?: null, 'customer_reference' => $get('customer_reference') ?: null, 'customer_code' => $get('customer_code') ?: null, 'amount' => $amount, 'currency_code' => strtoupper($input['currency_code']), 'running_balance' => $running === '' ? null : $numeric($running), 'status' => 'unmatched', 'matched_amount' => 0, 'residual_amount' => $amount, 'needs_review' => $reference === '', 'raw_data' => $v, 'allocation_reference' => $get('invoice_reference') ?: null, 'allocation_amount' => $get('allocation_amount') === '' ? null : $numeric($get('allocation_amount'))];
     }
