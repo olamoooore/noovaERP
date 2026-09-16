@@ -161,7 +161,9 @@ class BankStatementImportService
         $dateFormat = $input['date_format'] ?? null;
         $date = $dateFormat ? Carbon::createFromFormat($dateFormat, $get('transaction_date')) : Carbon::parse($get('transaction_date'));
         $numeric = fn ($value) => (float) str_replace([',', ' '], '', (string) $value);
-        $amount = isset($m['amount']) ? $numeric($get('amount')) : $numeric($get('deposit')) - abs($numeric($get('withdrawal')));
+        $amount = isset($m['amount'])
+            ? $numeric($get('amount'))
+            : $numeric($get('credit')) - abs($numeric($get('debit')));
         $description = $get('description');
         if ($description === '') {
             throw new \InvalidArgumentException('Missing description.');

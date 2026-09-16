@@ -19,8 +19,8 @@ class BankStatementParserTest extends TestCase
 
             self::assertSame('Date', $mapping['transaction_date']);
             self::assertSame('Description', $mapping['description']);
-            self::assertSame('Deposit', $mapping['deposit']);
-            self::assertSame('Withdrawal', $mapping['withdrawal']);
+            self::assertSame('Withdrawal', $mapping['debit']);
+            self::assertSame('Deposit', $mapping['credit']);
             self::assertSame('Invoice_Numbers', $mapping['invoice_reference']);
             self::assertCount(1, $result['rows']);
             self::assertSame(2, $result['rows'][0]['source_row']);

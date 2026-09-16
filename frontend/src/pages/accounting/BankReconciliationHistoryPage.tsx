@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,6 +9,7 @@ import reportApi from '@/lib/reportApi';
 import { useToast } from '@/hooks/use-toast';
 
 export default function BankReconciliationHistoryPage() {
+  const navigate = useNavigate();
   const [selectedBankAccount, setSelectedBankAccount] = useState<string>('');
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -45,11 +47,17 @@ export default function BankReconciliationHistoryPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Bank Reconciliation History</h1>
-        <p className="text-muted-foreground mt-1">
-          Review completed reconciliations by bank account.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Bank Reconciliation History</h1>
+          <p className="text-muted-foreground mt-1">
+            Review completed reconciliations by bank account.
+          </p>
+        </div>
+        <Button type="button" variant="outline" onClick={() => navigate(`/accounting/core/reconciliation${selectedBankAccount ? `?account=${selectedBankAccount}` : ''}`)}>
+          <Icon icon="solar:arrow-left-bold" className="mr-2 h-4 w-4" />
+          Back to Reconcile
+        </Button>
       </div>
 
       <Card className="p-6">

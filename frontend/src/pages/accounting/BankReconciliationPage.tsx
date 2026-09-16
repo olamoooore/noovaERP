@@ -35,13 +35,25 @@ interface ReconciliationFilters {
 
 const statementMappingFields = [
   ['transaction_date', 'Transaction date'], ['description', 'Description'], ['amount', 'Signed amount'],
-  ['deposit', 'Deposit'], ['withdrawal', 'Withdrawal'], ['bank_reference', 'Bank reference'],
+  ['debit', 'Debit (money out)'], ['credit', 'Credit (money in)'], ['bank_reference', 'Bank reference'],
   ['customer_reference', 'Customer reference'], ['customer_code', 'Customer code'],
   ['invoice_reference', 'Invoice reference'], ['allocation_amount', 'Allocation amount'],
   ['running_balance', 'Running balance'],
 ] as const;
 
 const normalizeMatchKey = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const statementIdentityValue = (transaction: any, field: 'bank_reference' | 'customer_code'): string => {
+  const persisted = transaction[field];
+  if (persisted) return String(persisted);
+
+  const aliases = field === 'bank_reference'
+    ? new Set(['ourreference', 'bankreference', 'reference'])
+    : new Set(['customercode']);
+  const rawEntry = Object.entries(transaction.raw_data ?? {}).find(([header, value]) => aliases.has(normalizeMatchKey(header)) && String(value ?? '').trim() !== '');
+
+  return rawEntry ? String(rawEntry[1]) : '';
+};
 
 export function BankReconciliationPage() {
   const navigate = useNavigate();
@@ -191,17 +203,6 @@ export function BankReconciliationPage() {
         variant: 'destructive',
       });
     },
-  });
-
-  const approveStatementAdjustmentMutation = useMutation({
-    mutationFn: (adjustmentId: string) => reportApi.approveBankStatementAdjustment(adjustmentId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bank-statement-transactions', selectedBankAccount] });
-      queryClient.invalidateQueries({ queryKey: ['reconciliation-transactions', selectedBankAccount] });
-      toast({ title: 'Adjustment approved, posted, and matched' });
-      validateStatementReconciliationMutation.mutate();
-    },
-    onError: (error: any) => toast({ title: 'Adjustment approval failed', description: error?.response?.data?.message ?? error.message, variant: 'destructive' }),
   });
 
   // Handle bank account selection
@@ -500,8 +501,11 @@ export function BankReconciliationPage() {
         let residual = Number(statement.residual_amount);
         for (const line of transactionsData?.data ?? []) {
           const glRemaining = remainingByGl.get(line.id) ?? 0;
-          const exactEvidence = normalizeMatchKey(statement.customer_code) !== '' && normalizeMatchKey(statement.customer_code) === normalizeMatchKey(line.payment?.customer_code)
-            && normalizeMatchKey(statement.bank_reference) !== '' && normalizeMatchKey(statement.bank_reference) === normalizeMatchKey(line.payment?.reference);
+          const statementCustomerCode = normalizeMatchKey(statementIdentityValue(statement, 'customer_code'));
+          const statementReference = normalizeMatchKey(statementIdentityValue(statement, 'bank_reference'));
+          const paymentReferences = [line.payment?.reference, line.payment?.payment_number, line.reference].map(normalizeMatchKey).filter(Boolean);
+          const exactEvidence = statementCustomerCode !== '' && statementCustomerCode === normalizeMatchKey(line.payment?.customer_code)
+            && statementReference !== '' && paymentReferences.includes(statementReference);
           if (!groupGlIds.has(line.id) || !exactEvidence || residual * glRemaining <= 0 || Math.abs(residual) < 0.00000001) continue;
           const amount = Math.sign(residual) * Math.min(Math.abs(residual), Math.abs(glRemaining));
           allocations.push({ bank_statement_transaction_id: statement.id, journal_entry_line_id: line.id, matched_amount: amount, review_reason: groupMatchReason });
@@ -570,13 +574,16 @@ export function BankReconciliationPage() {
             Match bank statement transactions with accounting records
           </p>
         </div>
-        <Button
-          onClick={() => navigate('/accounting/core/reconciliation/history')}
-          variant="outline"
-        >
-          <Icon icon="solar:history-bold" className="mr-2 h-4 w-4" />
-          View History
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => navigate(`/accounting/core/reconciliation/import-history${selectedBankAccount ? `?account=${selectedBankAccount}` : ''}`)} variant="outline">
+            <Icon icon="solar:document-add-bold" className="mr-2 h-4 w-4" />
+            Import History
+          </Button>
+          <Button onClick={() => navigate('/accounting/core/reconciliation/history')} variant="outline">
+            <Icon icon="solar:history-bold" className="mr-2 h-4 w-4" />
+            View History
+          </Button>
+        </div>
       </div>
 
       {/* Bank Account Selection */}
@@ -657,7 +664,7 @@ export function BankReconciliationPage() {
                 <div><span className="text-muted-foreground">Rows</span><p className="font-semibold">{statementPreview.source_rows}</p></div>
                 <div><span className="text-muted-foreground">Columns</span><p className="font-semibold">{statementPreview.headers.length}</p></div>
                 <div><span className="text-muted-foreground">Date column</span><p className="font-semibold">{statementMapping.transaction_date ?? 'Not detected'}</p></div>
-                <div><span className="text-muted-foreground">Amount columns</span><p className="font-semibold">{statementMapping.amount ?? `${statementMapping.deposit ?? '?'} / ${statementMapping.withdrawal ?? '?'}`}</p></div>
+                <div><span className="text-muted-foreground">Amount columns</span><p className="font-semibold">{statementMapping.amount ?? `Debit: ${statementMapping.debit ?? '?'} / Credit: ${statementMapping.credit ?? '?'}`}</p></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {statementMappingFields.map(([field, label]) => (
@@ -670,7 +677,7 @@ export function BankReconciliationPage() {
                   </div>
                 ))}
               </div>
-              {(!statementMapping.transaction_date || !statementMapping.description || (!statementMapping.amount && !statementMapping.deposit && !statementMapping.withdrawal)) ? (
+              {(!statementMapping.transaction_date || !statementMapping.description || (!statementMapping.amount && (!statementMapping.debit || !statementMapping.credit))) ? (
                 <p className="text-sm text-destructive">Required columns were not detected. Configure the source headers before importing.</p>
               ) : (
                 <div className="space-y-4">
@@ -729,10 +736,13 @@ export function BankReconciliationPage() {
                     const available = Number(line.available_amount ?? (Number(line.debit) - Number(line.credit)));
                     return Math.abs(available) > 0.00000001 && filteredStatementTransactions.some((statement: any) => groupStatementIds.has(statement.id)
                       && available * Number(statement.residual_amount) > 0
-                      && normalizeMatchKey(statement.customer_code) !== ''
-                      && normalizeMatchKey(statement.customer_code) === normalizeMatchKey(line.payment?.customer_code)
-                      && normalizeMatchKey(statement.bank_reference) !== ''
-                      && normalizeMatchKey(statement.bank_reference) === normalizeMatchKey(line.payment?.reference));
+                      && normalizeMatchKey(statementIdentityValue(statement, 'customer_code')) !== ''
+                      && normalizeMatchKey(statementIdentityValue(statement, 'customer_code')) === normalizeMatchKey(line.payment?.customer_code)
+                      && normalizeMatchKey(statementIdentityValue(statement, 'bank_reference')) !== ''
+                      && [line.payment?.reference, line.payment?.payment_number, line.reference]
+                        .map(normalizeMatchKey)
+                        .filter(Boolean)
+                        .includes(normalizeMatchKey(statementIdentityValue(statement, 'bank_reference'))));
                   }).map((line) => (
                     <label key={line.id} className="flex items-center gap-2 rounded border p-2 text-sm">
                       <Checkbox checked={groupGlIds.has(line.id)} onCheckedChange={() => setGroupGlIds((current) => { const next = new Set(current); if (next.has(line.id)) next.delete(line.id); else next.add(line.id); return next; })} />
@@ -844,16 +854,18 @@ export function BankReconciliationPage() {
                                   {(transactionsData?.data ?? [])
                                     .filter((line) => {
                                       const available = Number(line.available_amount ?? (Number(line.debit) - Number(line.credit)));
-                                      const statementCustomerCode = normalizeMatchKey(transaction.customer_code);
+                                      const statementCustomerCode = normalizeMatchKey(statementIdentityValue(transaction, 'customer_code'));
                                       const paymentCustomerCode = normalizeMatchKey(line.payment?.customer_code);
-                                      const statementReference = normalizeMatchKey(transaction.bank_reference);
-                                      const paymentReference = normalizeMatchKey(line.payment?.reference);
+                                      const statementReference = normalizeMatchKey(statementIdentityValue(transaction, 'bank_reference'));
+                                      const paymentReferences = [line.payment?.reference, line.payment?.payment_number, line.reference]
+                                        .map(normalizeMatchKey)
+                                        .filter(Boolean);
                                       return Math.abs(available) > 0.00000001
                                         && available * Number(transaction.residual_amount) > 0
                                         && statementCustomerCode !== ''
                                         && statementCustomerCode === paymentCustomerCode
                                         && statementReference !== ''
-                                        && statementReference === paymentReference;
+                                        && paymentReferences.includes(statementReference);
                                     })
                                     .map((line) => (
                                     <SelectItem key={line.id} value={String(line.id)}>
@@ -885,24 +897,6 @@ export function BankReconciliationPage() {
                               {(transaction.matches ?? []).filter((match: any) => match.status === 'accepted' && !match.reconciliation_id).map((match: any) => (
                                 <Button key={match.id} type="button" size="sm" variant="ghost" onClick={() => unmatchStatementMutation.mutate(match.id)}>Remove existing match</Button>
                               ))}
-                              {transaction.status !== 'partially_matched' && (
-                                <Button type="button" size="sm" variant="outline" onClick={() => { setStatementException({ transactionId: transaction.id, mode: 'exclude' }); setExceptionReason(''); setExceptionEvidence(''); }}>
-                                  Exclude with evidence
-                                </Button>
-                              )}
-                              {(transaction.adjustments ?? []).filter((adjustment: any) => adjustment.status === 'proposed').map((adjustment: any) => (
-                                <div key={adjustment.id} className="rounded border border-amber-300 bg-amber-50 p-2 text-xs">
-                                  Adjustment proposed: {formatCurrency(Number(adjustment.amount))} · awaiting a different approver
-                                  <Button type="button" size="sm" variant="outline" className="ml-2" disabled={approveStatementAdjustmentMutation.isPending} onClick={() => approveStatementAdjustmentMutation.mutate(adjustment.id)}>Approve & post</Button>
-                                </div>
-                              ))}
-                              {!(transaction.adjustments ?? []).some((adjustment: any) => adjustment.status === 'proposed') && (
-                                <Button type="button" size="sm" variant="outline" onClick={() => {
-                                  setStatementAdjustmentTransactionId(transaction.id);
-                                  setNewTransaction({ bank_account_id: selectedBankAccount!, date: String(transaction.transaction_date).slice(0, 10), description: transaction.description, amount: Math.abs(Number(transaction.residual_amount)), type: Number(transaction.residual_amount) >= 0 ? 'debit' : 'credit', reference: transaction.bank_reference ?? undefined, contra_account_id: undefined });
-                                  setShowAddTransaction(true);
-                                }}>Propose adjustment</Button>
-                              )}
                             </div>
                           )}
                         </td>
@@ -932,8 +926,8 @@ export function BankReconciliationPage() {
                 <>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                     <div><span className="text-muted-foreground">Opening</span><p className="font-medium">{formatCurrency(Number(statementValidation.opening_balance))}</p></div>
-                    <div><span className="text-muted-foreground">Deposits</span><p className="font-medium">{formatCurrency(Number(statementValidation.deposits))}</p></div>
-                    <div><span className="text-muted-foreground">Withdrawals</span><p className="font-medium">{formatCurrency(Number(statementValidation.withdrawals))}</p></div>
+                    <div><span className="text-muted-foreground">Credits (money in)</span><p className="font-medium">{formatCurrency(Number(statementValidation.deposits))}</p></div>
+                    <div><span className="text-muted-foreground">Debits (money out)</span><p className="font-medium">{formatCurrency(Number(statementValidation.withdrawals))}</p></div>
                     <div><span className="text-muted-foreground">Closing</span><p className="font-medium">{formatCurrency(Number(statementValidation.statement_closing_balance))}</p></div>
                     <div><span className="text-muted-foreground">Matched GL balance</span><p className="font-medium">{formatCurrency(Number(statementValidation.matched_gl_balance))}</p></div>
                     <div><span className="text-muted-foreground">Unmatched</span><p className="font-medium">{statementValidation.unmatched_statement_count} · {formatCurrency(Number(statementValidation.unmatched_statement_amount))}</p></div>

@@ -71,7 +71,7 @@ class BankStatementParser
             'account_number' => ['accountnumber', 'accountno'], 'value_date' => ['valuedate'], 'transaction_date' => ['date', 'transactiondate'],
             'transaction_time' => ['time', 'transactiontime'], 'description' => ['description', 'narrative', 'details'],
             'bank_reference' => ['ourreference', 'bankreference', 'reference'], 'customer_reference' => ['yourreference', 'customerreference'],
-            'customer_code' => ['customercode'], 'deposit' => ['deposit', 'credit'], 'withdrawal' => ['withdrawal', 'debit'], 'amount' => ['amount'],
+            'customer_code' => ['customercode'], 'debit' => ['debit', 'withdrawal'], 'credit' => ['credit', 'deposit'], 'amount' => ['amount'],
             'running_balance' => ['ledgerbalance', 'runningbalance', 'balance'], 'invoice_reference' => ['invoicenumbers', 'correctedinvoicenumber', 'invoicereference'],
             'allocation_amount' => ['amountdepositperinvoice', 'allocationamount'],
         ];

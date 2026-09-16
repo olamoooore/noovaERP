@@ -105,6 +105,7 @@ const AgedReceivablesPage = lazy(() => import('@/pages/accounting/reports/AgedRe
 const AgedPayablesPage = lazy(() => import('@/pages/accounting/reports/AgedPayablesPage').then(m => ({ default: m.AgedPayablesPage })))
 const BankReconciliationPage = lazy(() => import('@/pages/accounting/BankReconciliationPage').then(m => ({ default: m.BankReconciliationPage })))
 const BankReconciliationHistoryPage = lazy(() => import('@/pages/accounting/BankReconciliationHistoryPage'))
+const BankStatementImportHistoryPage = lazy(() => import('@/pages/accounting/BankStatementImportHistoryPage'))
 const ApSubledgerReconciliationPage = lazy(() => import('@/pages/accounting/ApSubledgerReconciliationPage').then(m => ({ default: m.ApSubledgerReconciliationPage })))
 const AssetsManagementPage = lazy(() => import('@/pages/accounting/AssetsManagementPage'))
 const FixedAssetImportPage = lazy(() => import('@/pages/accounting/FixedAssetImportPage'))
@@ -424,6 +425,7 @@ function App() {
                 <Route path="/accounting/core/journals" element={<JournalsPage />} />
                 <Route path="/accounting/core/reconciliation" element={<BankReconciliationPage />} />
                 <Route path="/accounting/core/reconciliation/history" element={<BankReconciliationHistoryPage />} />
+                <Route path="/accounting/core/reconciliation/import-history" element={<BankStatementImportHistoryPage />} />
                 <Route path="/accounting/ap-reconciliation" element={<ApSubledgerReconciliationPage />} />
                 <Route path="/accounting/core/assets" element={<AssetsManagementPage />} />
                 <Route path="/accounting/core/assets/import" element={<FixedAssetImportPage />} />

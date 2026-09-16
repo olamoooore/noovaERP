@@ -23,6 +23,9 @@ class BankStatementMatchingService
             throw new \DomainException('Only successfully imported statements can be matched.');
         }
         $lines = BankStatementTransaction::with(['allocations', 'import'])->where('import_id', $importId)->whereIn('status', ['unmatched', 'suggested', 'partially_matched'])->get();
+        BankStatementMatch::whereIn('bank_statement_transaction_id', $lines->pluck('id'))
+            ->where('status', 'proposed')
+            ->delete();
         $glLines = $this->eligibleGlLines((int) $import->bank_account_id)->get();
         $acceptedByGl = BankStatementMatch::query()
             ->whereIn('journal_entry_line_id', $glLines->pluck('id'))
@@ -36,6 +39,10 @@ class BankStatementMatchingService
             $tolerance = (float) $this->tolerances->for($statement->currency_code);
             $invoiceReferences = $statement->allocations->where('allocation_type', 'invoice_reference')
                 ->pluck('external_reference')->map(fn ($value) => $this->normalize($value))->filter()->values();
+            $rawInvoiceReference = $this->rawValue($statement->raw_data ?? [], ['invoicenumbers', 'invoicereference', 'correctedinvoicenumber']);
+            if ($rawInvoiceReference !== null) {
+                $invoiceReferences->push($this->normalize($rawInvoiceReference));
+            }
             $ranked = $glLines->map(function ($gl) use ($statement, $invoiceReferences, $tolerance, $acceptedByGl, $searchWindowDays) {
                 $movement = (float) $gl->debit - (float) $gl->credit;
                 $glRemaining = $movement - (float) ($acceptedByGl[$gl->id] ?? 0);
@@ -48,7 +55,8 @@ class BankStatementMatchingService
                 }
                 $amountScore = abs(abs($glRemaining) - abs((float) $statement->residual_amount)) <= $tolerance ? 0.45 : 0;
                 $dateScore = $dateGap <= 3 ? 0.05 : ($dateGap <= 10 ? 0.05 * ((10 - $dateGap) / 7) : 0);
-                $statementRef = $this->normalize($statement->bank_reference);
+                $statementRef = $this->normalize($statement->bank_reference
+                    ?: $this->rawValue($statement->raw_data ?? [], ['ourreference', 'bankreference', 'reference']));
                 $glRef = $this->normalize($gl->reference ?: $gl->journalEntry->reference);
                 $payment = DB::table('payments as p')->leftJoin('customers as c', 'c.id', '=', 'p.customer_id')
                     ->leftJoin('invoices as i', 'i.id', '=', 'p.invoice_id')->where('p.journal_entry_id', $gl->journal_entry_id)
@@ -60,7 +68,8 @@ class BankStatementMatchingService
                 $importMapping = $statement->import->mapping ?? [];
                 $mappedCustomerHeader = $importMapping['customer_code'] ?? null;
                 $statementCustomerCode = $this->normalize($statement->customer_code
-                    ?: ($mappedCustomerHeader ? ($statement->raw_data[$mappedCustomerHeader] ?? null) : null));
+                    ?: ($mappedCustomerHeader ? ($statement->raw_data[$mappedCustomerHeader] ?? null) : null)
+                    ?: $this->rawValue($statement->raw_data ?? [], ['customercode']));
                 $customerCodeMatch = $statementCustomerCode !== '' && $statementCustomerCode === $this->normalize($payment?->customer_code);
                 $customerName = $this->normalize($payment?->customer_name);
                 $payerText = $this->normalize(($statement->customer_reference ?? '').' '.$statement->description);
@@ -69,6 +78,10 @@ class BankStatementMatchingService
                 $score = $amountScore + ($referenceMatch ? 0.25 : 0) + ($invoiceMatch ? 0.15 : 0)
                     + (($customerCodeMatch || $customerNameMatch) ? 0.10 : 0) + $dateScore
                     - ($referenceConflict ? 0.15 : 0) - ($customerConflict ? 0.20 : 0);
+
+                if ($amountScore === 0 && ! $referenceMatch && ! $invoiceMatch && ! $customerCodeMatch && ! $customerNameMatch) {
+                    return null;
+                }
 
                 return ['line' => $gl, 'score' => max(0, $score),
                     'allocation' => abs($glRemaining) < abs((float) $statement->residual_amount) ? $glRemaining : (float) $statement->residual_amount,
@@ -219,5 +232,17 @@ class BankStatementMatchingService
     private function normalize(?string $value): string
     {
         return strtolower(preg_replace('/[^a-z0-9]/i', '', $value ?? ''));
+    }
+
+    private function rawValue(array $rawData, array $normalizedHeaders): ?string
+    {
+        foreach ($rawData as $header => $value) {
+            $normalizedHeader = preg_replace('/[^a-z0-9]/i', '', strtolower((string) $header));
+            if (in_array($normalizedHeader, $normalizedHeaders, true) && trim((string) $value) !== '') {
+                return trim((string) $value);
+            }
+        }
+
+        return null;
     }
 }
