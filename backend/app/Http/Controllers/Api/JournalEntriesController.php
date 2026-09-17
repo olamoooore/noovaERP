@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Exports\JournalEntriesExport;
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\DraftJournalRequest;
 use App\Accounting\DTOs\ReversalRequest;
+use App\Exports\JournalEntriesExport;
 use App\Http\Controllers\Controller;
-use App\Models\Journal;
 use App\Models\ChartOfAccount;
+use App\Models\Journal;
 use App\Models\JournalEntry;
 use App\Services\FiscalPeriodValidator;
 use App\Services\LockDateValidationService;
@@ -114,14 +114,23 @@ class JournalEntriesController extends Controller
             'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(JournalEntriesExport::COLUMNS))],
         ]);
         $query = JournalEntry::query();
-        if ($request->filled('status')) $query->where('status', $request->status);
-        if ($request->has('is_reversal')) $query->where('is_reversal', filter_var($request->is_reversal, FILTER_VALIDATE_BOOLEAN));
-        if ($request->filled('start_date')) $query->whereDate('entry_date', '>=', $request->start_date);
-        if ($request->filled('end_date')) $query->whereDate('entry_date', '<=', $request->end_date);
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+        if ($request->has('is_reversal')) {
+            $query->where('is_reversal', filter_var($request->is_reversal, FILTER_VALIDATE_BOOLEAN));
+        }
+        if ($request->filled('start_date')) {
+            $query->whereDate('entry_date', '>=', $request->start_date);
+        }
+        if ($request->filled('end_date')) {
+            $query->whereDate('entry_date', '<=', $request->end_date);
+        }
         if ($request->filled('search')) {
             $search = (string) $request->search;
             $query->where(fn ($q) => $q->where('entry_number', 'LIKE', "%{$search}%")->orWhere('description', 'LIKE', "%{$search}%")->orWhere('reference', 'LIKE', "%{$search}%"));
         }
+
         return Excel::download(new JournalEntriesExport($query->orderByDesc('entry_date')->orderByDesc('id'), $validated['columns']), 'journal_entries_'.now()->format('Y-m-d').'.xlsx');
     }
 
@@ -161,6 +170,7 @@ class JournalEntriesController extends Controller
         $header = fgetcsv($handle);
         if ($header === false) {
             fclose($handle);
+
             return response()->json(['message' => 'The CSV file is empty.'], 422);
         }
         $header = array_map(fn ($value) => strtolower(trim((string) $value)), $header);
@@ -168,6 +178,7 @@ class JournalEntriesController extends Controller
         $missing = array_values(array_diff($required, $header));
         if ($missing !== []) {
             fclose($handle);
+
             return response()->json(['message' => 'Missing required CSV columns: '.implode(', ', $missing)], 422);
         }
 
@@ -184,6 +195,7 @@ class JournalEntriesController extends Controller
             $key = trim((string) ($row['entry_key'] ?? ''));
             if ($key === '') {
                 $errors[] = ['row' => $rowNumber, 'message' => 'entry_key is required.'];
+
                 continue;
             }
             $groups[$key][] = ['row_number' => $rowNumber, 'data' => $row];
