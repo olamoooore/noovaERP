@@ -83,6 +83,12 @@ class PaymentController extends Controller
             });
         }
 
+        if ($request->boolean('ids_only')) {
+            $ids = $query->pluck('id');
+
+            return response()->json(['data' => $ids, 'total' => $ids->count()]);
+        }
+
         $perPage = (int) ($request->per_page ?? 20);
         $perPage = max(1, min($perPage, 200));
 

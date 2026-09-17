@@ -13,6 +13,8 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { INVOICE_EXPORT_COLUMNS, SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu';
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility';
+import { useBulkSelection } from '@/hooks/use-bulk-selection';
+import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice';
 
 /**
  * Customer Invoices Page
@@ -29,7 +31,6 @@ export const CustomerBills: React.FC = () => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -132,6 +133,20 @@ export const CustomerBills: React.FC = () => {
   const currentPage = invoicesData?.current_page || 1;
   const lastPage = invoicesData?.last_page || 1;
   const totalRecords = invoicesData?.total || 0;
+  const {
+    selectedIds, clearSelection, toggleSelect, togglePageSelection,
+    selectAllMatching, allPageSelected, allMatchingSelected, isSelectingAll,
+  } = useBulkSelection({
+    pageIds: invoices.map((invoice: any) => invoice.id),
+    scopeKey: JSON.stringify({ ...activeExportFilters(), agingBucketFilter }),
+    fetchAllIds: async () => {
+      if (isAgingDrilldown) return invoices.map((invoice: any) => invoice.id);
+      const response = await api.get('/invoices', { params: { ...activeExportFilters(), ids_only: 1 } });
+      return response.data.data;
+    },
+    onSelectAllError: () => toast({ variant: 'destructive', title: 'Failed to select all invoices' }),
+  });
+  const selectedIdSet = new Set(selectedIds);
 
   // Send invoice mutation
   const postInvoiceMutation = useMutation({
@@ -159,7 +174,7 @@ export const CustomerBills: React.FC = () => {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['customer-bills'] });
-      setSelectedIds(new Set());
+      clearSelection();
       const skipped = data?.skipped?.length || 0;
       const deleted = data?.deleted?.length || 0;
       toast({
@@ -176,55 +191,24 @@ export const CustomerBills: React.FC = () => {
     },
   });
 
-  const toggleSelect = (invoiceId: number) => {
-    setSelectedIds((current) => {
-      const next = new Set(current);
-      if (next.has(invoiceId)) {
-        next.delete(invoiceId);
-      } else {
-        next.add(invoiceId);
-      }
-      return next;
-    });
-  };
-
-  const allSelected = invoices.length > 0 && invoices.every((inv: any) => selectedIds.has(inv.id));
-  const someSelected = invoices.some((inv: any) => selectedIds.has(inv.id));
-
-  const toggleSelectAll = () => {
-    if (allSelected) {
-      setSelectedIds((current) => {
-        const next = new Set(current);
-        invoices.forEach((inv: any) => next.delete(inv.id));
-        return next;
-      });
-    } else {
-      setSelectedIds((current) => {
-        const next = new Set(current);
-        invoices.forEach((inv: any) => next.add(inv.id));
-        return next;
-      });
-    }
-  };
-
   const handleBulkDelete = () => {
-    const count = selectedIds.size;
+    const count = selectedIds.length;
     if (count === 0) return;
     if (!window.confirm(`Delete ${count} selected draft invoice(s)? Posted invoices will be skipped. This cannot be undone.`)) return;
-    bulkDeleteMutation.mutateAsync(Array.from(selectedIds));
+    bulkDeleteMutation.mutateAsync(selectedIds);
   };
 
   const handleStatusFilterChange = (value: string) => {
     setStatusFilter(value);
     setPage(1);
-    setSelectedIds(new Set());
+    clearSelection();
   };
 
   const handleCustomerFilterChange = (value: string) => {
     setCustomerFilter(value || null);
     setAgingBucketFilter(null);
     setPage(1);
-    setSelectedIds(new Set());
+    clearSelection();
 
     const next = new URLSearchParams(searchParams);
     if (value) next.set('customer_id', value);
@@ -297,8 +281,8 @@ export const CustomerBills: React.FC = () => {
             filenamePrefix="customer_invoices"
             columns={INVOICE_EXPORT_COLUMNS}
             filters={activeExportFilters()}
-            selectedIds={selectedIds.size > 0
-              ? Array.from(selectedIds)
+            selectedIds={selectedIds.length > 0
+              ? selectedIds
               : isAgingDrilldown
                 ? invoices.map((invoice: any) => invoice.id)
                 : []}
@@ -463,15 +447,13 @@ export const CustomerBills: React.FC = () => {
       </Card>
 
       {/* Bulk action bar */}
-      {selectedIds.size > 0 && (
+      {selectedIds.length > 0 && (
         <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950 dark:border-blue-800">
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
-              <span className="font-medium text-blue-900 dark:text-blue-100">
-                {selectedIds.size} invoice(s) selected
-              </span>
+              <BulkSelectionNotice pageSize={invoices.length} allPageSelected={allPageSelected} selectedCount={selectedIds.length} allMatchingSelected={allMatchingSelected} isSelectingAll={isSelectingAll} onSelectAllMatching={selectAllMatching} noun="invoices" />
               <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                <Button variant="ghost" size="sm" onClick={clearSelection}>
                   Clear selection
                 </Button>
                 <Button
@@ -533,9 +515,8 @@ export const CustomerBills: React.FC = () => {
                     <TableHead className="w-10">
                       <input
                         type="checkbox"
-                        checked={allSelected}
-                        ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
-                        onChange={toggleSelectAll}
+                        checked={allPageSelected}
+                        onChange={togglePageSelection}
                         title="Select all invoices on this page"
                       />
                     </TableHead>
@@ -561,7 +542,7 @@ export const CustomerBills: React.FC = () => {
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
-                          checked={selectedIds.has(invoice.id)}
+                          checked={selectedIdSet.has(invoice.id)}
                           onChange={() => toggleSelect(invoice.id)}
                         />
                       </TableCell>
@@ -706,7 +687,7 @@ export const CustomerBills: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Selected</p>
-                  <p className="text-2xl font-bold">{selectedIds.size}</p>
+                  <p className="text-2xl font-bold">{selectedIds.length}</p>
                 </div>
                 <Icon icon="solar:check-circle-bold-duotone" className="h-8 w-8 text-orange-500" />
               </div>

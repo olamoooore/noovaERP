@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,8 @@ import { useNavigate } from 'react-router-dom'
 import { formatDate } from '@/lib/utils'
 import { SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { useBulkSelection } from '@/hooks/use-bulk-selection'
+import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
 
 const DELIVERY_ORDER_EXPORT_COLUMNS = [
   { key: 'delivery_order_number', label: 'Delivery Order No', group: 'Delivery Order', default: true },
@@ -55,7 +57,6 @@ export function DeliveryOrdersPage() {
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('all')
-  const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [page, setPage] = useState(1)
   const [perPage] = useState(20)
 
@@ -76,6 +77,29 @@ export function DeliveryOrdersPage() {
     last_page: response?.last_page || 1,
     total: response?.total || 0,
   }
+
+  const selectionFilters = {
+    ...(typeFilter !== 'all' ? { type: typeFilter } : {}),
+    ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
+  }
+  const {
+    selectedIds,
+    clearSelection,
+    toggleSelect,
+    togglePageSelection,
+    selectAllMatching,
+    allPageSelected,
+    allMatchingSelected,
+    isSelectingAll,
+  } = useBulkSelection({
+    pageIds: deliveryOrders.map((deliveryOrder: any) => deliveryOrder.id),
+    scopeKey: JSON.stringify(selectionFilters),
+    fetchAllIds: async () => {
+      const res = await api.get('/sales/delivery-orders', { params: { ...selectionFilters, ids_only: 1 } })
+      return res.data.data
+    },
+    onSelectAllError: () => toast({ variant: 'destructive', title: 'Failed to select all delivery orders' }),
+  })
 
   const confirmMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -103,7 +127,7 @@ export function DeliveryOrdersPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
-      setSelectedIds([])
+      clearSelection()
       toast({ title: `${data.deleted} delivery order(s) deleted` })
     },
     onError: (error: any) => {
@@ -114,18 +138,6 @@ export function DeliveryOrdersPage() {
       })
     },
   })
-
-  const toggleSelectAll = () => {
-    if (selectedIds.length === deliveryOrders.length) {
-      setSelectedIds([])
-    } else {
-      setSelectedIds(deliveryOrders.map((d: any) => d.id))
-    }
-  }
-
-  const toggleSelect = (id: number) => {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]))
-  }
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
@@ -171,6 +183,8 @@ export function DeliveryOrdersPage() {
           <CardTitle className="flex items-center justify-between">
             <span>Delivery Orders</span>
             {selectedIds.length > 0 && (
+              <div className="flex items-center gap-2">
+              <BulkSelectionNotice pageSize={deliveryOrders.length} allPageSelected={allPageSelected} selectedCount={selectedIds.length} allMatchingSelected={allMatchingSelected} isSelectingAll={isSelectingAll} onSelectAllMatching={selectAllMatching} noun="delivery orders" />
               <Button
                 variant="destructive"
                 size="sm"
@@ -183,6 +197,7 @@ export function DeliveryOrdersPage() {
                 <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4 mr-1" />
                 Delete ({selectedIds.length})
               </Button>
+              </div>
             )}
           </CardTitle>
         </CardHeader>
@@ -223,7 +238,12 @@ export function DeliveryOrdersPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[40px]">
-                      <input type="checkbox" checked={selectedIds.length === deliveryOrders.length && deliveryOrders.length > 0} onChange={toggleSelectAll} />
+                      <input
+                        type="checkbox"
+                        checked={allPageSelected}
+                        onChange={togglePageSelection}
+                        aria-label="Select delivery orders on this page"
+                      />
                     </TableHead>
                     <TableHead>Delivery #</TableHead>
                     <TableHead>Type</TableHead>

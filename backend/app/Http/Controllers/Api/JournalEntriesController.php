@@ -100,6 +100,12 @@ class JournalEntriesController extends Controller
             });
         }
 
+        if ($request->boolean('ids_only')) {
+            $ids = $query->orderBy('entry_date', 'desc')->orderBy('id', 'desc')->pluck('id');
+
+            return response()->json(['data' => $ids, 'total' => $ids->count()]);
+        }
+
         $entries = $query->orderBy('entry_date', 'desc')
             ->orderBy('id', 'desc')
             ->paginate($request->input('per_page', 50));
@@ -112,8 +118,13 @@ class JournalEntriesController extends Controller
         $validated = $request->validate([
             'columns' => ['required', 'array', 'min:1', 'max:'.count(JournalEntriesExport::COLUMNS)],
             'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(JournalEntriesExport::COLUMNS))],
+            'document_ids' => ['nullable', 'array'],
+            'document_ids.*' => ['integer', 'distinct', 'exists:journal_entries,id'],
         ]);
         $query = JournalEntry::query();
+        if ($request->filled('document_ids')) {
+            $query->whereIn('id', $request->input('document_ids'));
+        }
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
@@ -480,6 +491,40 @@ class JournalEntriesController extends Controller
     }
 
     /**
+     * Delete multiple draft journal entries. Posted entries are skipped so a
+     * mixed selection cannot remove posted accounting history.
+     */
+    public function bulkDestroy(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'distinct'],
+        ]);
+
+        $entries = JournalEntry::whereIn('id', $validated['ids'])->get()->keyBy('id');
+        $deleted = [];
+        $skipped = [];
+
+        foreach ($validated['ids'] as $id) {
+            $entry = $entries->get($id);
+            if (! $entry) {
+                $skipped[] = ['id' => $id, 'reason' => 'Journal entry not found'];
+            } elseif ($entry->status !== 'draft') {
+                $skipped[] = ['id' => $id, 'reason' => 'Only draft journal entries can be deleted'];
+            } else {
+                $entry->delete();
+                $deleted[] = $id;
+            }
+        }
+
+        return response()->json([
+            'message' => count($deleted).' journal entry(s) deleted',
+            'deleted' => $deleted,
+            'skipped' => $skipped,
+        ]);
+    }
+
+    /**
      * Post a journal entry in-place via ManualJournalPostingService.
      *
      * The draft entry is transitioned to 'posted' WITHOUT being deleted and
@@ -538,6 +583,47 @@ class JournalEntriesController extends Controller
         return response()->json([
             'message' => 'Journal entry posted successfully',
             'entry' => $result->journalEntry->load('lines.account'),
+        ]);
+    }
+
+    /**
+     * Post multiple draft journal entries using the exact single-entry posting
+     * path, including lock-date, approval, balance, and permission checks.
+     */
+    public function bulkPost(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'distinct'],
+        ]);
+
+        $posted = [];
+        $skipped = [];
+
+        foreach ($validated['ids'] as $id) {
+            try {
+                $response = $this->post($id, $request);
+                $payload = $response->getData(true);
+
+                if ($response->getStatusCode() < 300) {
+                    $posted[] = $id;
+
+                    continue;
+                }
+
+                $skipped[] = [
+                    'id' => $id,
+                    'reason' => $payload['message'] ?? $payload['error'] ?? 'Unable to post journal entry',
+                ];
+            } catch (\Throwable $exception) {
+                $skipped[] = ['id' => $id, 'reason' => $exception->getMessage()];
+            }
+        }
+
+        return response()->json([
+            'message' => count($posted).' journal entry(s) posted',
+            'posted' => $posted,
+            'skipped' => $skipped,
         ]);
     }
 

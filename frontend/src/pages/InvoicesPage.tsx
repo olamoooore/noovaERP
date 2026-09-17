@@ -12,6 +12,8 @@ import { useNavigate } from 'react-router-dom'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 import { INVOICE_EXPORT_COLUMNS, SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { useBulkSelection } from '@/hooks/use-bulk-selection'
+import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
 
 export function InvoicesPage() {
   const { toast } = useToast()
@@ -26,7 +28,6 @@ export function InvoicesPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
-  const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [page, setPage] = useState(1)
   const [perPage] = useState(20)
 
@@ -65,6 +66,25 @@ export function InvoicesPage() {
     total: response?.total || 0,
   }
 
+  const {
+    selectedIds,
+    clearSelection,
+    toggleSelect,
+    togglePageSelection,
+    selectAllMatching,
+    allPageSelected,
+    allMatchingSelected,
+    isSelectingAll,
+  } = useBulkSelection({
+    pageIds: invoices.map((invoice: any) => invoice.id),
+    scopeKey: JSON.stringify(activeFilterParams()),
+    fetchAllIds: async () => {
+      const res = await api.get('/invoices', { params: { ...activeFilterParams(), ids_only: 1 } })
+      return res.data.data
+    },
+    onSelectAllError: () => toast({ variant: 'destructive', title: 'Failed to select all invoices' }),
+  })
+
   const sendInvoiceMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await api.post(`/invoices/${id}/send`)
@@ -86,7 +106,7 @@ export function InvoicesPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
-      setSelectedIds([])
+      clearSelection()
       toast({ title: `${data.deleted} invoice(s) deleted` })
     },
     onError: (error: any) => {
@@ -101,7 +121,7 @@ export function InvoicesPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
-      setSelectedIds([])
+      clearSelection()
       const postedCount = data.posted?.length || 0
       const skippedCount = data.skipped?.length || 0
       if (skippedCount > 0) {
@@ -118,18 +138,6 @@ export function InvoicesPage() {
       toast({ variant: 'destructive', title: 'Bulk post failed', description: error.response?.data?.message })
     },
   })
-
-  const toggleSelectAll = () => {
-    if (selectedIds.length === invoices.length) {
-      setSelectedIds([])
-    } else {
-      setSelectedIds(invoices.map((i: any) => i.id))
-    }
-  }
-
-  const toggleSelect = (id: number) => {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]))
-  }
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
@@ -176,6 +184,7 @@ export function InvoicesPage() {
             <span>All Invoices</span>
             {selectedIds.length > 0 && (
               <div className="flex gap-2">
+                <BulkSelectionNotice pageSize={invoices.length} allPageSelected={allPageSelected} selectedCount={selectedIds.length} allMatchingSelected={allMatchingSelected} isSelectingAll={isSelectingAll} onSelectAllMatching={selectAllMatching} noun="invoices" />
                 <Button
                   size="sm"
                   onClick={() => {
@@ -294,7 +303,12 @@ export function InvoicesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[40px]">
-                      <input type="checkbox" checked={selectedIds.length === invoices.length && invoices.length > 0} onChange={toggleSelectAll} />
+                      <input
+                        type="checkbox"
+                        checked={allPageSelected}
+                        onChange={togglePageSelection}
+                        aria-label="Select invoices on this page"
+                      />
                     </TableHead>
                     <TableHead>Invoice #</TableHead>
                     <TableHead>Customer</TableHead>

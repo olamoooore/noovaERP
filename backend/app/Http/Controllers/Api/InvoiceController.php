@@ -29,8 +29,15 @@ class InvoiceController extends Controller
 
     public function index(Request $request)
     {
-        $query = $this->filteredInvoiceQuery($request)
-            ->with(['customer', 'lines']);
+        $query = $this->filteredInvoiceQuery($request);
+
+        if ($request->boolean('ids_only')) {
+            $ids = $query->pluck('id');
+
+            return response()->json(['data' => $ids, 'total' => $ids->count()]);
+        }
+
+        $query->with(['customer', 'lines']);
 
         $invoices = $query->paginate($request->per_page ?? 20);
 

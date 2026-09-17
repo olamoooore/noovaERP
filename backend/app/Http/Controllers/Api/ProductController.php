@@ -192,6 +192,12 @@ class ProductController extends Controller
 
         $query->reorder($sortBy, $sortDir);
 
+        if ($request->boolean('ids_only')) {
+            $ids = $query->pluck('products.id');
+
+            return response()->json(['data' => $ids, 'total' => $ids->count()]);
+        }
+
         $perPage = (int) $request->input('per_page', 20);
         $perPage = max(1, min(200, $perPage));
 
