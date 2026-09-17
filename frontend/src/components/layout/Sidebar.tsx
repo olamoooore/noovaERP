@@ -216,11 +216,11 @@ const baseNavItems: NavItem[] = [
         href: '/sales',
         icon: 'solar:chart-square-bold-duotone',
       },
-      {
-        title: 'Orders',
-        href: '/sales/orders',
-        icon: 'solar:document-text-bold-duotone',
-      },
+      // {
+      //   title: 'Orders',
+      //   href: '/sales/orders',
+      //   icon: 'solar:document-text-bold-duotone',
+      // },
       {
         title: 'Quotations',
         href: '/quotations',

@@ -50,6 +50,16 @@ class Quotation extends Model
         'shipping_method',
         'shipping_terms',
         'validity',
+        'case_number',
+        'date_of_case',
+        'case_location',
+        'patient_name',
+        'cost_center_id',
+        'delivery_date',
+        'pr_no',
+        'contract_no',
+        'plant_code',
+        'company_code',
         'billing_address_snapshot',
         'shipping_address_snapshot',
         'sales_order_id',
@@ -63,6 +73,8 @@ class Quotation extends Model
         'tax_amount' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'total' => 'decimal:2',
+        'date_of_case' => 'date',
+        'delivery_date' => 'date',
     ];
 
     public function customer(): BelongsTo

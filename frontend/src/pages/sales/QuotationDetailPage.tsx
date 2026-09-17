@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { QuotationCaseInformationDisplay } from '@/components/sales/QuotationCaseInformation'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
 import { ChatterDialog } from '@/components/chatter'
@@ -505,6 +506,8 @@ export function QuotationDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <QuotationCaseInformationDisplay quotation={quotation} />
 
       <Card>
         <CardHeader>

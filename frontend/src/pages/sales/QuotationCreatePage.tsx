@@ -11,6 +11,7 @@ import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombo
 import { SalesLineColumnMenu, SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { DocumentTextLineRow, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
+import { QuotationCaseInformation, emptyQuotationCaseInformation } from '@/components/sales/QuotationCaseInformation';
 
 const QUOTATION_CREATE_COLUMNS = ['#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax %', 'Line Total', 'Actions']
   .map((label, index) => ({ label, index: index + 1 }));
@@ -78,6 +79,7 @@ export const QuotationCreatePage: React.FC = () => {
   const [shippingMethod, setShippingMethod] = useState('');
   const [shippingTerms, setShippingTerms] = useState('');
   const [validity, setValidity] = useState('');
+  const [caseInformation, setCaseInformation] = useState(emptyQuotationCaseInformation);
 
   const { data: customers } = useQuery<CustomerRecord[]>({
     queryKey: ['customers-list'],
@@ -219,6 +221,7 @@ export const QuotationCreatePage: React.FC = () => {
       shipping_method: shippingMethod || undefined,
       shipping_terms: shippingTerms || undefined,
       validity: validity || undefined,
+      ...Object.fromEntries(Object.entries(caseInformation).map(([key, value]) => [key, value || null])),
       notes: notes || undefined,
       terms: terms || undefined,
       discount_amount: discountAmt || 0,
@@ -461,6 +464,8 @@ export const QuotationCreatePage: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        <QuotationCaseInformation value={caseInformation} onChange={setCaseInformation} />
 
         <Card className="mb-6">
           <CardHeader>
