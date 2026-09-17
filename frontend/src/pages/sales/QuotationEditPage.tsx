@@ -11,6 +11,7 @@ import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombo
 import { SalesLineColumnMenu, SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { DocumentTextLineRow } from '@/components/sales/DocumentTextLineRow';
+import { QuotationCaseInformation, emptyQuotationCaseInformation } from '@/components/sales/QuotationCaseInformation';
 
 const QUOTATION_EDIT_COLUMNS = ['#', 'Product', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax %', 'Discount', 'Line Total', 'Actions']
   .map((label, index) => ({ label, index: index + 1 }));
@@ -74,6 +75,7 @@ export const QuotationEditPage: React.FC = () => {
   const [shippingMethod, setShippingMethod] = useState('');
   const [shippingTerms, setShippingTerms] = useState('');
   const [validity, setValidity] = useState('');
+  const [caseInformation, setCaseInformation] = useState(emptyQuotationCaseInformation);
 
   const { data: customers } = useQuery<CustomerRecord[]>({
     queryKey: ['customers-list'],
@@ -121,6 +123,18 @@ export const QuotationEditPage: React.FC = () => {
     setShippingMethod(quotation.shipping_method || '');
     setShippingTerms(quotation.shipping_terms || '');
     setValidity(quotation.validity || '');
+    setCaseInformation({
+      case_number: quotation.case_number || '',
+      date_of_case: quotation.date_of_case ? String(quotation.date_of_case).split('T')[0] : '',
+      case_location: quotation.case_location || '',
+      patient_name: quotation.patient_name || '',
+      cost_center_id: quotation.cost_center_id || '',
+      delivery_date: quotation.delivery_date ? String(quotation.delivery_date).split('T')[0] : '',
+      pr_no: quotation.pr_no || '',
+      contract_no: quotation.contract_no || '',
+      plant_code: quotation.plant_code || '',
+      company_code: quotation.company_code || '',
+    });
 
     const mappedLines = (quotation.lines || []).map((line: any): QuotationLine => ({
       line_type: line.line_type || 'product',
@@ -259,6 +273,7 @@ export const QuotationEditPage: React.FC = () => {
       shipping_method: shippingMethod || null,
       shipping_terms: shippingTerms || null,
       validity: validity || null,
+      ...Object.fromEntries(Object.entries(caseInformation).map(([key, value]) => [key, value || null])),
       notes: notes || null,
       terms: terms || null,
       discount_amount: discountAmt || 0,
@@ -519,6 +534,8 @@ export const QuotationEditPage: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        <QuotationCaseInformation value={caseInformation} onChange={setCaseInformation} />
 
         <Card className="mb-6">
           <CardHeader>
