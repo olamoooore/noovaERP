@@ -33,6 +33,7 @@ const QUOTATION_EXPORT_COLUMNS = [
   { key: 'customer_code', label: 'Customer Code', group: 'Quotation' },
   { key: 'customer_reference', label: 'Customer Reference', group: 'Quotation' },
   { key: 'internal_reference', label: 'Internal Reference', group: 'Quotation Details' },
+  { key: 'credit_terms', label: 'Credit Terms', group: 'Quotation Details' },
   { key: 'salesperson', label: 'Salesperson', group: 'Quotation Details' },
   { key: 'delivery_lead_time', label: 'Delivery Lead Time', group: 'Quotation Details' },
   { key: 'shipping_method', label: 'Shipping Method', group: 'Quotation Details' },

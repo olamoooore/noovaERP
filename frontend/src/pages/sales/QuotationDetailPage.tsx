@@ -411,7 +411,15 @@ export function QuotationDetailPage() {
               </div>
               <div>
                 <div className="text-muted-foreground">Internal Reference</div>
-                <div className="font-medium">{quotation.internal_reference || '-'}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {quotation.internal_reference ? quotation.internal_reference.split(',').map((reference: string) => reference.trim()).filter(Boolean).map((reference: string) => (
+                    <span key={reference} className="rounded-full bg-primary/10 px-2 py-1 font-medium text-primary">{reference}</span>
+                  )) : <span className="font-medium">-</span>}
+                </div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Credit Terms</div>
+                <div className="font-medium">{quotation.credit_terms || '-'}</div>
               </div>
               <div>
                 <div className="text-muted-foreground">Salesperson</div>
@@ -495,7 +503,9 @@ export function QuotationDetailPage() {
             </div>
             {Number(quotation.discount_amount) > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Discount</span>
+              <span className="text-muted-foreground">
+                Discount{quotation.discount_type === 'percentage' && quotation.discount_value != null ? ` (${Number(quotation.discount_value)}%)` : ''}
+              </span>
                 <span className="text-green-600">-{formatCurrency(quotation.discount_amount)}</span>
               </div>
             )}

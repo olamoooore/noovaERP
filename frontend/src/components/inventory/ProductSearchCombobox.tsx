@@ -31,6 +31,7 @@ interface ProductSearchComboboxProps {
   onValueChange: (value: string, product?: Product) => void
   placeholder?: string
   disabled?: boolean
+  wrapText?: boolean
 }
 
 export function ProductSearchCombobox({
@@ -38,6 +39,7 @@ export function ProductSearchCombobox({
   onValueChange,
   placeholder = 'Search products...',
   disabled = false,
+  wrapText = false,
 }: ProductSearchComboboxProps) {
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -115,10 +117,13 @@ export function ProductSearchCombobox({
           disabled={disabled}
           className={cn(
             'w-full justify-between font-normal',
+            wrapText && 'h-auto min-h-10 py-2',
             !value && 'text-muted-foreground'
           )}
         >
-          <span className="truncate">{getDisplayValue()}</span>
+          <span className={cn('min-w-0', wrapText ? 'whitespace-normal break-words text-left leading-5' : 'truncate')}>
+            {getDisplayValue()}
+          </span>
           <div className="flex items-center gap-1 ml-2 shrink-0">
             {value && (
               <Icon

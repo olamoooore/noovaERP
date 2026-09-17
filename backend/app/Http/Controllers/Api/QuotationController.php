@@ -106,12 +106,17 @@ class QuotationController extends Controller
 
     public function store(Request $request)
     {
+        if ($request->input('discount_type') === 'percentage') {
+            $request->validate(['discount_value' => 'nullable|numeric|min:0|max:100']);
+        }
+
         $validated = $request->validate([
             'customer_id' => 'required|exists:customers,id',
             'quotation_date' => 'nullable|date',
             'valid_until' => 'nullable|date',
             'customer_reference' => 'nullable|string|max:100',
-            'internal_reference' => 'nullable|string|max:100',
+            'internal_reference' => 'nullable|string|max:255',
+            'credit_terms' => 'nullable|string|max:255',
             'attention_to' => 'nullable|string|max:255',
             'billing_contact_id' => 'nullable|exists:core_contacts,id',
             'shipping_contact_id' => 'nullable|exists:core_contacts,id',
@@ -137,6 +142,8 @@ class QuotationController extends Controller
             'notes' => 'nullable|string',
             'terms' => 'nullable|string',
             'discount_amount' => 'nullable|numeric|min:0',
+            'discount_type' => 'nullable|in:fixed,percentage',
+            'discount_value' => 'nullable|numeric|min:0|required_with:discount_type',
             'lines' => 'required|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.product_id' => 'nullable|exists:products,id',
@@ -157,6 +164,7 @@ class QuotationController extends Controller
                     'customer_id' => $validated['customer_id'],
                     'customer_reference' => $validated['customer_reference'] ?? null,
                     'internal_reference' => $validated['internal_reference'] ?? null,
+                    'credit_terms' => $validated['credit_terms'] ?? null,
                     'attention_to' => $validated['attention_to'] ?? null,
                     'billing_contact_id' => $validated['billing_contact_id'] ?? null,
                     'shipping_contact_id' => $validated['shipping_contact_id'] ?? null,
@@ -182,6 +190,8 @@ class QuotationController extends Controller
                     'notes' => $validated['notes'] ?? null,
                     'terms' => $validated['terms'] ?? null,
                     'discount_amount' => $validated['discount_amount'] ?? null,
+                    'discount_type' => $validated['discount_type'] ?? 'fixed',
+                    'discount_value' => $validated['discount_value'] ?? ($validated['discount_amount'] ?? null),
                     'created_by' => Auth::id(),
                 ], fn ($v) => $v !== null);
 
@@ -248,12 +258,17 @@ class QuotationController extends Controller
             return response()->json(['message' => 'Only draft quotations can be edited'], 403);
         }
 
+        if ($request->input('discount_type') === 'percentage') {
+            $request->validate(['discount_value' => 'nullable|numeric|min:0|max:100']);
+        }
+
         $validated = $request->validate([
             'customer_id' => 'exists:customers,id',
             'quotation_date' => 'date',
             'valid_until' => 'nullable|date',
             'customer_reference' => 'nullable|string|max:100',
-            'internal_reference' => 'nullable|string|max:100',
+            'internal_reference' => 'nullable|string|max:255',
+            'credit_terms' => 'nullable|string|max:255',
             'attention_to' => 'nullable|string|max:255',
             'billing_contact_id' => 'nullable|exists:core_contacts,id',
             'shipping_contact_id' => 'nullable|exists:core_contacts,id',
@@ -279,6 +294,8 @@ class QuotationController extends Controller
             'notes' => 'nullable|string',
             'terms' => 'nullable|string',
             'discount_amount' => 'nullable|numeric|min:0',
+            'discount_type' => 'nullable|in:fixed,percentage',
+            'discount_value' => 'nullable|numeric|min:0|required_with:discount_type',
             'lines' => 'nullable|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.sequence' => 'nullable|integer|min:0',
@@ -291,6 +308,11 @@ class QuotationController extends Controller
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_amount' => 'nullable|numeric|min:0',
         ]);
+
+        if (array_key_exists('discount_amount', $validated) && ! array_key_exists('discount_value', $validated)) {
+            $validated['discount_type'] = 'fixed';
+            $validated['discount_value'] = $validated['discount_amount'];
+        }
 
         $quotation->update($validated);
 
@@ -481,6 +503,7 @@ class QuotationController extends Controller
                     'contract_no' => $quotation->contract_no,
                     'plant_code' => $quotation->plant_code,
                     'company_code' => $quotation->company_code,
+                    'payment_terms_snapshot' => $quotation->credit_terms,
                 ]);
 
                 return $invoice->load(['customer', 'lines.product', 'quotation', 'salesOrder']);
@@ -713,6 +736,7 @@ class QuotationController extends Controller
                     'customer_id' => $customer->id,
                     'customer_reference' => $headerRow['customer_reference'] ?? null,
                     'internal_reference' => $this->readImportValue($headerRow['internal_reference'] ?? null),
+                    'credit_terms' => $this->readImportValue($headerRow['credit_terms'] ?? null),
                     'attention_to' => $this->readImportValue($headerRow['attention_to'] ?? null),
                     'contact_email' => $this->readImportValue($headerRow['contact_email'] ?? null),
                     'contact_phone' => $this->readImportValue($headerRow['contact_phone'] ?? null),

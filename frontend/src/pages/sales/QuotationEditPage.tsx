@@ -12,6 +12,7 @@ import { SalesLineColumnMenu, SalesLineColumnVisibility } from '@/components/sal
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { DocumentTextLineRow } from '@/components/sales/DocumentTextLineRow';
 import { QuotationCaseInformation, emptyQuotationCaseInformation } from '@/components/sales/QuotationCaseInformation';
+import { InternalReferenceTags } from '@/components/sales/InternalReferenceTags';
 
 const QUOTATION_EDIT_COLUMNS = ['#', 'Product', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax %', 'Discount', 'Line Total', 'Actions']
   .map((label, index) => ({ label, index: index + 1 }));
@@ -62,9 +63,11 @@ export const QuotationEditPage: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
   const [discountAmount, setDiscountAmount] = useState<number | ''>('');
+  const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
   const [lines, setLines] = useState<QuotationLine[]>([emptyLine()]);
   const [customerReference, setCustomerReference] = useState('');
   const [internalReference, setInternalReference] = useState('');
+  const [creditTerms, setCreditTerms] = useState('');
   const [attentionTo, setAttentionTo] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
@@ -110,9 +113,11 @@ export const QuotationEditPage: React.FC = () => {
     setValidUntil(quotation.valid_until ? String(quotation.valid_until).split('T')[0] : '');
     setNotes(quotation.notes || '');
     setTerms(quotation.terms || '');
-    setDiscountAmount(quotation.discount_amount ? Number(quotation.discount_amount) : '');
+    setDiscountMode(quotation.discount_type === 'percentage' ? 'percentage' : 'fixed');
+    setDiscountAmount(quotation.discount_value != null ? Number(quotation.discount_value) : (quotation.discount_amount ? Number(quotation.discount_amount) : ''));
     setCustomerReference(quotation.customer_reference || '');
     setInternalReference(quotation.internal_reference || '');
+    setCreditTerms(quotation.credit_terms || '');
     setAttentionTo(quotation.attention_to || '');
     setContactEmail(quotation.contact_email || '');
     setContactPhone(quotation.contact_phone || '');
@@ -243,8 +248,13 @@ export const QuotationEditPage: React.FC = () => {
     return sum + (base - discount) * (taxRate / 100);
   }, 0);
   const lineDiscounts = lines.reduce((sum, line) => sum + (line.discount_amount === '' ? 0 : line.discount_amount), 0);
-  const discountAmt = discountAmount === '' ? 0 : discountAmount;
-  const total = subtotal + taxTotal - lineDiscounts - discountAmt;
+  const discountValue = discountAmount === '' ? 0 : discountAmount;
+  const subtotalAfterLineDiscounts = Math.max(subtotal - lineDiscounts, 0);
+  const requestedDocumentDiscount = discountMode === 'percentage' ? subtotal * (discountValue / 100) : discountValue;
+  const documentDiscountAmount = Math.min(requestedDocumentDiscount, subtotalAfterLineDiscounts);
+  const taxableAmount = Math.max(subtotalAfterLineDiscounts - documentDiscountAmount, 0);
+  const taxAfterDocumentDiscount = subtotalAfterLineDiscounts > 0 ? taxTotal * (taxableAmount / subtotalAfterLineDiscounts) : 0;
+  const total = taxableAmount + taxAfterDocumentDiscount;
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
@@ -257,12 +267,18 @@ export const QuotationEditPage: React.FC = () => {
       return;
     }
 
+    if (discountMode === 'percentage' && discountValue > 100) {
+      toast({ variant: 'destructive', title: 'Percentage discount cannot exceed 100%' });
+      return;
+    }
+
     const payload = {
       customer_id: parseInt(customerId, 10),
       quotation_date: quotationDate,
       valid_until: validUntil || null,
       customer_reference: customerReference || null,
       internal_reference: internalReference || null,
+      credit_terms: creditTerms || null,
       attention_to: attentionTo || null,
       contact_email: contactEmail || null,
       contact_phone: contactPhone || null,
@@ -276,7 +292,9 @@ export const QuotationEditPage: React.FC = () => {
       ...Object.fromEntries(Object.entries(caseInformation).map(([key, value]) => [key, value || null])),
       notes: notes || null,
       terms: terms || null,
-      discount_amount: discountAmt || 0,
+      discount_amount: documentDiscountAmount || 0,
+      discount_type: discountMode,
+      discount_value: discountValue,
   lines: lines
     .filter((line) => line.description || line.product_id)
     .map((line) => ({
@@ -379,13 +397,11 @@ export const QuotationEditPage: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Internal Reference</label>
-                <input
-                  type="text"
-                  value={internalReference}
-                  onChange={(event) => setInternalReference(event.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  placeholder="Sales order / project"
-                />
+                <InternalReferenceTags value={internalReference} onChange={setInternalReference} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Credit Terms</label>
+                <input type="text" value={creditTerms} onChange={(event) => setCreditTerms(event.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm" placeholder="e.g. Net 30 days" />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Attention To</label>
@@ -497,21 +513,6 @@ export const QuotationEditPage: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Header Discount Amount</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={discountAmount === '' ? '' : discountAmount}
-                  onChange={(event) => setDiscountAmount(event.target.value === '' ? '' : parseFloat(event.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              <div>
                 <label className="block text-sm font-medium mb-1">Notes</label>
                 <textarea
                   value={notes}
@@ -549,12 +550,12 @@ export const QuotationEditPage: React.FC = () => {
           <CardContent>
             <div className="overflow-x-auto">
               <SalesLineColumnVisibility tableClass="quotation-edit-columns" columns={QUOTATION_EDIT_COLUMNS} hiddenColumns={hiddenLineColumns} onHiddenColumnsChange={setHiddenLineColumns} showMenu={false}>
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[1450px] table-fixed text-sm">
                 <thead>
   <tr className="border-b">
     <th className="text-left py-2 px-2 w-12">#</th>
-    <th className="text-left py-2 px-2">Product</th>
-    <th className="text-left py-2 px-2">Description</th>
+    <th className="text-left py-2 px-2 w-[260px]">Product</th>
+    <th className="text-left py-2 px-2 w-[320px]">Description</th>
     <th className="text-left py-2 px-2 w-32">Model #</th>
     <th className="text-left py-2 px-2 w-40">Product Notes</th>
     <th className="text-right py-2 px-2 w-24">Qty</th>
@@ -570,7 +571,7 @@ export const QuotationEditPage: React.FC = () => {
                     <tr key={index} className="border-b" draggable onDragStart={() => setDraggedLineIndex(index)} onDragOver={(e) => e.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) { const reordered = [...lines]; const [dragged] = reordered.splice(draggedLineIndex, 1); reordered.splice(index, 0, dragged); setLines(reordered); } setDraggedLineIndex(null) }}>
                       {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={11} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) { const reordered = [...lines]; const [dragged] = reordered.splice(draggedLineIndex, 1); reordered.splice(index, 0, dragged); setLines(reordered); } setDraggedLineIndex(null); }} /> : <>
                       <td className="py-2 px-2 text-sm font-medium text-slate-500">{index + 1}</td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-2 align-top whitespace-normal break-words">
                         <ProductSearchCombobox
                           value={line.product_id}
                           onValueChange={(val, product) => {
@@ -587,14 +588,15 @@ export const QuotationEditPage: React.FC = () => {
                             }
                           }}
                           placeholder="Search product..."
+                          wrapText
                         />
                       </td>
-                      <td className="py-2 px-2">
-                        <input
-                          type="text"
+                      <td className="py-2 px-2 align-top">
+                        <textarea
                           value={line.description}
                           onChange={(event) => updateLine(index, 'description', event.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                          rows={2}
+                          className="w-full whitespace-pre-wrap break-words px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm resize-y"
                           placeholder="Description"
                           required
                         />
@@ -705,14 +707,39 @@ export const QuotationEditPage: React.FC = () => {
                   <span className="text-muted-foreground">Subtotal:</span>
                   <span className="font-medium">{formatCurrency(subtotal)}</span>
                 </div>
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <label htmlFor="quotation-header-discount" className="text-muted-foreground">Discount:</label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      aria-label="Header discount type"
+                      value={discountMode}
+                      onChange={(event) => setDiscountMode(event.target.value as 'fixed' | 'percentage')}
+                      className="rounded border bg-background px-2 py-1 text-sm"
+                    >
+                      <option value="fixed">Fixed</option>
+                      <option value="percentage">%</option>
+                    </select>
+                    <input
+                      id="quotation-header-discount"
+                      type="number"
+                      min="0"
+                      max={discountMode === 'percentage' ? 100 : undefined}
+                      step="0.01"
+                      value={discountAmount}
+                      onChange={(event) => setDiscountAmount(event.target.value === '' ? '' : Number(event.target.value))}
+                      className="w-28 rounded border bg-background px-2 py-1 text-right text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Tax:</span>
-                  <span className="font-medium">{formatCurrency(taxTotal)}</span>
+                  <span className="font-medium">{formatCurrency(taxAfterDocumentDiscount)}</span>
                 </div>
-                {(lineDiscounts > 0 || discountAmt > 0) && (
+                {(lineDiscounts > 0 || documentDiscountAmount > 0) && (
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Discount:</span>
-                    <span className="font-medium text-green-600">-{formatCurrency(lineDiscounts + discountAmt)}</span>
+                    <span className="font-medium text-green-600">-{formatCurrency(lineDiscounts + documentDiscountAmount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-lg font-bold pt-2 border-t">
