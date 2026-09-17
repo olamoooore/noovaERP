@@ -52,6 +52,9 @@ import journalsApi from '@/lib/journalsApi';
 import chartOfAccountsApi from '@/lib/chartOfAccountsApi';
 import type { ChartOfAccount } from '@/lib/chartOfAccountsApi';
 import { cn, formatCurrency, mapCommandError } from '@/lib/utils';
+import api from '@/lib/api';
+import { useBulkSelection } from '@/hooks/use-bulk-selection';
+import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice';
 
 const JOURNAL_EXPORT_COLUMNS = [
   { key: 'entry_number', label: 'Entry No', group: 'Entry', default: true }, { key: 'entry_date', label: 'Date', group: 'Entry', default: true },
@@ -464,6 +467,44 @@ export default function JournalEntriesPage() {
   const entries = entriesData?.data || [];
   const totalPages = entriesData?.last_page || 1;
   const totalRecords = entriesData?.total || 0;
+  const journalFilters = { status: activeTab === 'all' || activeTab === 'reversed' ? undefined : activeTab, is_reversal: activeTab === 'reversed' ? 1 : undefined, search: searchTerm || undefined, start_date: dateFrom || undefined, end_date: dateTo || undefined };
+  const {
+    selectedIds, clearSelection, toggleSelect, togglePageSelection, selectAllMatching,
+    allPageSelected, allMatchingSelected, isSelectingAll,
+  } = useBulkSelection({
+    pageIds: entries.map((entry) => entry.id),
+    scopeKey: JSON.stringify(journalFilters),
+    fetchAllIds: async () => {
+      const response = await api.get('/accounting/journal-entries', { params: { ...journalFilters, ids_only: 1 } });
+      return response.data.data;
+    },
+    onSelectAllError: () => toast({ variant: 'destructive', title: 'Failed to select all journal entries' }),
+  });
+  const selectedIdSet = new Set(selectedIds);
+  const bulkPostMutation = useMutation({
+    mutationFn: async (ids: number[]) => (await api.post('/accounting/journal-entries/bulk-post', { ids })).data,
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      clearSelection();
+      toast({
+        title: `${data.posted?.length || 0} journal entry(s) posted`,
+        description: data.skipped?.length ? `${data.skipped.length} skipped: ${data.skipped[0]?.reason}` : undefined,
+      });
+    },
+    onError: (error: any) => toast(mapCommandError(error)),
+  });
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: number[]) => (await api.post('/accounting/journal-entries/bulk-delete', { ids })).data,
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      clearSelection();
+      toast({
+        title: `${data.deleted?.length || 0} journal entry(s) deleted`,
+        description: data.skipped?.length ? `${data.skipped.length} skipped: ${data.skipped[0]?.reason}` : undefined,
+      });
+    },
+    onError: (error: any) => toast(mapCommandError(error)),
+  });
   const totals = calculateTotals();
 
   return (
@@ -492,7 +533,7 @@ export default function JournalEntriesPage() {
             <TabsTrigger value="reversed">Reversed</TabsTrigger>
           </TabsList>
           <div className="flex flex-wrap justify-end gap-2">
-            <SalesDocumentExportMenu endpoint="/accounting/journal-entries/export" filenamePrefix="journal_entries" columns={JOURNAL_EXPORT_COLUMNS} filters={{ status: activeTab === 'all' || activeTab === 'reversed' ? undefined : activeTab, is_reversal: activeTab === 'reversed' ? 1 : undefined, search: searchTerm || undefined, start_date: dateFrom || undefined, end_date: dateTo || undefined }} />
+            <SalesDocumentExportMenu endpoint="/accounting/journal-entries/export" filenamePrefix="journal_entries" columns={JOURNAL_EXPORT_COLUMNS} filters={journalFilters} selectedIds={selectedIds} />
             <Input
               placeholder="Search entry no., reference, description..."
               value={searchTerm}
@@ -535,9 +576,45 @@ export default function JournalEntriesPage() {
                 <p>No journal entries found</p>
               </div>
             ) : (
+              <>
+              {selectedIds.length > 0 && (
+                <div className="mb-3 flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-2">
+                  <BulkSelectionNotice pageSize={entries.length} allPageSelected={allPageSelected} selectedCount={selectedIds.length} allMatchingSelected={allMatchingSelected} isSelectingAll={isSelectingAll} onSelectAllMatching={selectAllMatching} noun="journal entries" />
+                  <div className="flex gap-2">
+                    {canPost && (
+                      <Button
+                        size="sm"
+                        disabled={bulkPostMutation.isPending}
+                        onClick={() => {
+                          if (confirm(`Post ${selectedIds.length} selected journal entry(s)? Non-draft entries will be skipped.`)) bulkPostMutation.mutate(selectedIds);
+                        }}
+                      >
+                        <Icon icon="solar:check-circle-bold" className="mr-1 h-4 w-4" />
+                        {bulkPostMutation.isPending ? 'Posting…' : `Bulk Post (${selectedIds.length})`}
+                      </Button>
+                    )}
+                    {canWrite && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={bulkDeleteMutation.isPending}
+                        onClick={() => {
+                          if (confirm(`Delete ${selectedIds.length} selected journal entry(s)? Only drafts will be deleted.`)) bulkDeleteMutation.mutate(selectedIds);
+                        }}
+                      >
+                        <Icon icon="solar:trash-bin-trash-bold" className="mr-1 h-4 w-4" />
+                        {bulkDeleteMutation.isPending ? 'Deleting…' : `Bulk Delete (${selectedIds.length})`}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <input type="checkbox" checked={allPageSelected} onChange={togglePageSelection} aria-label="Select journal entries on this page" />
+                    </TableHead>
                     <TableHead>Entry Number</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Journal</TableHead>
@@ -551,6 +628,9 @@ export default function JournalEntriesPage() {
                 <TableBody>
                   {entries.map((entry) => (
                     <TableRow key={entry.id} className="cursor-pointer" onClick={() => handleViewEntry(entry.id)}>
+                      <TableCell onClick={(event) => event.stopPropagation()}>
+                        <input type="checkbox" checked={selectedIdSet.has(entry.id)} onChange={() => toggleSelect(entry.id)} aria-label={`Select ${entry.entry_number}`} />
+                      </TableCell>
                       <TableCell className="font-mono">{entry.entry_number}</TableCell>
                       <TableCell>{new Date(entry.entry_date).toLocaleDateString()}</TableCell>
                       <TableCell className="text-sm">{entry.journal?.name || '-'}</TableCell>
@@ -594,6 +674,7 @@ export default function JournalEntriesPage() {
                   ))}
                 </TableBody>
               </Table>
+              </>
             )}
             {totalPages > 1 && (
               <div className="flex items-center justify-between mt-4">

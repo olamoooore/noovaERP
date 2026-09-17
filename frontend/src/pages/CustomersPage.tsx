@@ -16,6 +16,8 @@ import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils'
 import api from '@/lib/api'
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { useBulkSelection } from '@/hooks/use-bulk-selection'
+import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
 import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu'
 
 const CUSTOMER_EXPORT_COLUMNS = [
@@ -145,7 +147,6 @@ export function CustomersPage() {
   const [page, setPage] = useState(1)
   const [editMode, setEditMode] = useState(false)
   const [formData, setFormData] = useState<CustomerFormData>(initialFormData)
-  const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [customerInvoicesPage, setCustomerInvoicesPage] = useState(1)
 
   const { toast } = useToast()
@@ -166,6 +167,20 @@ export function CustomersPage() {
       return response.data
     },
     placeholderData: (prev) => prev,
+  })
+
+  const customers = customersData?.data || []
+  const {
+    selectedIds, clearSelection, toggleSelect, togglePageSelection,
+    selectAllMatching, allPageSelected, allMatchingSelected, isSelectingAll,
+  } = useBulkSelection({
+    pageIds: customers.map((customer: Customer) => customer.id),
+    scopeKey: JSON.stringify({ search: searchTerm, type: filterType }),
+    fetchAllIds: async () => {
+      const response = await api.get('/customers', { params: { search: searchTerm || undefined, type: filterType === 'all' ? undefined : filterType, ids_only: 1 } })
+      return response.data.data
+    },
+    onSelectAllError: () => toast({ variant: 'destructive', title: 'Failed to select all customers' }),
   })
 
   // Reset to first page whenever the search/filter changes
@@ -281,7 +296,7 @@ export function CustomersPage() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['customers'] })
-      setSelectedIds([])
+      clearSelection()
       toast({
         title: `${data.deleted?.length || 0} customer(s) deleted`,
         description: data.skipped?.length ? `${data.skipped.length} skipped (has invoices/quotations)` : undefined,
@@ -300,14 +315,6 @@ export function CustomersPage() {
     if (selectedIds.length === 0) return
     if (!window.confirm(`Delete ${selectedIds.length} customer(s)? Customers with invoices or quotations will be skipped.`)) return
     bulkDeleteMutation.mutate(selectedIds)
-  }
-
-  const toggleSelect = (id: number) => {
-    setSelectedIds((prev) => prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id])
-  }
-
-  const toggleSelectAll = () => {
-    setSelectedIds((prev) => prev.length === customers.length ? [] : customers.map((c: Customer) => c.id))
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -351,7 +358,6 @@ export function CustomersPage() {
     }
   }
 
-  const customers = customersData?.data || []
   const categories = categoriesData || []
   const totalPages = customersData?.last_page || 1
   const totalCustomers = customersData?.total || 0
@@ -698,7 +704,7 @@ export function CustomersPage() {
             <>
               {selectedIds.length > 0 && (
                 <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-2">
-                  <span className="text-sm font-medium">{selectedIds.length} customer(s) selected</span>
+                  <BulkSelectionNotice pageSize={customers.length} allPageSelected={allPageSelected} selectedCount={selectedIds.length} allMatchingSelected={allMatchingSelected} isSelectingAll={isSelectingAll} onSelectAllMatching={selectAllMatching} noun="customers" />
                   <Button size="sm" variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleteMutation.isPending}>
                     <Icon icon="solar:trash-bin-trash-bold" className="mr-2 h-4 w-4" />
                     Delete Selected
@@ -712,8 +718,9 @@ export function CustomersPage() {
                   <TableHead className="w-[40px]">
                     <input
                       type="checkbox"
-                      checked={customers.length > 0 && selectedIds.length === customers.length}
-                      onChange={toggleSelectAll}
+                      checked={allPageSelected}
+                      onChange={togglePageSelection}
+                      aria-label="Select customers on this page"
                       className="h-4 w-4 rounded border-gray-300"
                     />
                   </TableHead>

@@ -74,6 +74,12 @@ class CustomerController extends Controller
         $sortDir = $request->sort_dir ?? 'asc';
         $query->orderBy($sortBy, $sortDir);
 
+        if ($request->boolean('ids_only')) {
+            $ids = $query->pluck('id');
+
+            return response()->json(['data' => $ids, 'total' => $ids->count()]);
+        }
+
         $customers = $query->paginate($request->per_page ?? 20);
 
         // Transform data to include loyalty info for POS

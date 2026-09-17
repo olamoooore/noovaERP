@@ -27,6 +27,8 @@ import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
 import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu';
+import { useBulkSelection } from '@/hooks/use-bulk-selection';
+import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice';
 import {
   PaymentCorrectionDialog,
   type PaymentCorrectionAction,
@@ -138,7 +140,6 @@ export const CustomerPayments: React.FC = () => {
   const [dateFrom, setDateFrom] = useState(searchParams.get('date_from') || '');
   const [dateTo, setDateTo] = useState(searchParams.get('date_to') || '');
   const [page, setPage] = useState(Number(searchParams.get('page') || 1));
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [viewingPayment, setViewingPayment] = useState<Payment | null>(null);
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
@@ -180,6 +181,20 @@ export const CustomerPayments: React.FC = () => {
   const paymentList = payments?.data || [];
   const totalPages = payments?.last_page || 1;
   const totalRecords = payments?.total || 0;
+  const paymentFilters = { search: searchQuery || undefined, payment_status: statusFilter || undefined, method: methodFilter || undefined, customer_id: customerFilter || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined, invoice_id: invoiceIdParam || undefined };
+  const {
+    selectedIds, clearSelection, toggleSelect, togglePageSelection,
+    selectAllMatching, allPageSelected, allMatchingSelected, isSelectingAll,
+  } = useBulkSelection({
+    pageIds: paymentList.map((payment) => payment.id),
+    scopeKey: JSON.stringify(paymentFilters),
+    fetchAllIds: async () => {
+      const response = await api.get('/payments', { params: { ...paymentFilters, ids_only: 1 } });
+      return response.data.data;
+    },
+    onSelectAllError: () => toast({ variant: 'destructive', title: 'Failed to select all payments' }),
+  });
+  const selectedIdSet = new Set(selectedIds);
 
   // Fetch unpaid invoices for payment allocation.
   const { data: unpaidInvoices } = useQuery({
@@ -226,30 +241,13 @@ export const CustomerPayments: React.FC = () => {
     );
   };
 
-  const toggleSelect = (id: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedIds.size === paymentList.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(paymentList.map((p) => p.id)));
-    }
-  };
-
   const draftSelected = paymentList.filter(
-    (p) => selectedIds.has(p.id) && p.payment_status === 'draft',
+    (p) => selectedIdSet.has(p.id) && p.payment_status === 'draft',
   );
   const postableSelected = paymentList.filter(
-    (p) => selectedIds.has(p.id) && p.payment_status === 'draft' && !p.journal_entry_id,
+    (p) => selectedIdSet.has(p.id) && p.payment_status === 'draft' && !p.journal_entry_id,
   );
-  const lockedSelected = selectedIds.size - draftSelected.length;
+  const lockedSelected = allMatchingSelected ? 0 : selectedIds.length - draftSelected.length;
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['customer-payments'] });
 
@@ -274,7 +272,7 @@ export const CustomerPayments: React.FC = () => {
     },
     onSuccess: (data) => {
       invalidate();
-      setSelectedIds(new Set());
+      clearSelection();
       toast({
         title: `${data.posted?.length || 0} payment(s) posted`,
         description: data.skipped?.length
@@ -326,7 +324,7 @@ export const CustomerPayments: React.FC = () => {
           <p className="text-muted-foreground mt-1">Track payments received from customers</p>
         </div>
         <div className="flex gap-2">
-          <SalesDocumentExportMenu endpoint="/payments/export" filenamePrefix="payments" columns={PAYMENT_EXPORT_COLUMNS} filters={{ search: searchQuery || undefined, payment_status: statusFilter || undefined, method: methodFilter || undefined, customer_id: customerFilter || undefined, date_from: dateFrom || undefined, date_to: dateTo || undefined }} selectedIds={Array.from(selectedIds)} />
+          <SalesDocumentExportMenu endpoint="/payments/export" filenamePrefix="payments" columns={PAYMENT_EXPORT_COLUMNS} filters={paymentFilters} selectedIds={selectedIds} />
           <Button variant="outline" onClick={() => window.location.href = '/accounting/customers/payments/import'}>
             <Icon icon="solar:upload-bold-duotone" className="h-4 w-4 mr-2" />
             Import
@@ -472,39 +470,42 @@ export const CustomerPayments: React.FC = () => {
       </Card>
 
       {/* Bulk actions bar */}
-      {selectedIds.size > 0 && (
+      {selectedIds.length > 0 && (
         <Card>
           <CardContent className="py-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Icon icon="solar:check-square-bold" className="h-4 w-4 text-primary" />
-              <span className="text-sm font-medium">{selectedIds.size} selected</span>
+              <BulkSelectionNotice pageSize={paymentList.length} allPageSelected={allPageSelected} selectedCount={selectedIds.length} allMatchingSelected={allMatchingSelected} isSelectingAll={isSelectingAll} onSelectAllMatching={selectAllMatching} noun="payments" />
               {lockedSelected > 0 && (
                 <span className="text-xs text-muted-foreground">
                   ({lockedSelected} locked, only drafts can be deleted)
                 </span>
               )}
+              {allMatchingSelected && (
+                <span className="text-xs text-muted-foreground">Non-draft payments will be skipped by bulk actions.</span>
+              )}
             </div>
             <div className="flex gap-2">
               <Button
                 size="sm"
-                onClick={() => bulkPostMutation.mutate(postableSelected.map((p) => p.id))}
-                disabled={postableSelected.length === 0 || bulkPostMutation.isPending}
+                onClick={() => bulkPostMutation.mutate(allMatchingSelected ? selectedIds : postableSelected.map((p) => p.id))}
+                disabled={(!allMatchingSelected && postableSelected.length === 0) || bulkPostMutation.isPending}
               >
                 <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4 mr-2" />
                 {bulkPostMutation.isPending
                   ? 'Posting...'
-                  : `Post ${postableSelected.length > 0 ? `${postableSelected.length} draft(s)` : ''}`}
+                  : allMatchingSelected ? 'Post Selected Drafts' : `Post ${postableSelected.length > 0 ? `${postableSelected.length} draft(s)` : ''}`}
               </Button>
               <Button
                 variant="destructive"
                 size="sm"
                 onClick={() => setShowBulkDeleteDialog(true)}
-                disabled={draftSelected.length === 0}
+                disabled={!allMatchingSelected && draftSelected.length === 0}
               >
                 <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 mr-2" />
-                Delete {draftSelected.length > 0 ? `${draftSelected.length} draft(s)` : ''}
+                {allMatchingSelected ? 'Delete Selected Drafts' : `Delete ${draftSelected.length > 0 ? `${draftSelected.length} draft(s)` : ''}`}
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())}>
+              <Button variant="outline" size="sm" onClick={clearSelection}>
                 Clear selection
               </Button>
             </div>
@@ -560,9 +561,9 @@ export const CustomerPayments: React.FC = () => {
                     <TableRow>
                       <TableHead className="w-10">
                         <Checkbox
-                          checked={selectedIds.size === paymentList.length && paymentList.length > 0}
-                          onCheckedChange={toggleSelectAll}
-                          aria-label="Select all"
+                          checked={allPageSelected}
+                          onCheckedChange={togglePageSelection}
+                          aria-label="Select payments on this page"
                         />
                       </TableHead>
                       <TableHead>Payment #</TableHead>
@@ -587,7 +588,7 @@ export const CustomerPayments: React.FC = () => {
                         <TableRow key={payment.id} className="hover:bg-accent/50">
                           <TableCell>
                             <Checkbox
-                              checked={selectedIds.has(payment.id)}
+                              checked={selectedIdSet.has(payment.id)}
                               onCheckedChange={() => toggleSelect(payment.id)}
                               aria-label={`Select ${payment.payment_number}`}
                             />
@@ -778,7 +779,7 @@ export const CustomerPayments: React.FC = () => {
       <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {draftSelected.length} draft payment(s)?</AlertDialogTitle>
+            <AlertDialogTitle>Delete selected draft payments?</AlertDialogTitle>
             <AlertDialogDescription>
               {lockedSelected > 0 && (
                 <p className="mb-2 text-amber-600">
@@ -794,12 +795,13 @@ export const CustomerPayments: React.FC = () => {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (draftSelected.length === 0) return;
-                api.post('/payments/bulk-delete', { ids: draftSelected.map((p) => p.id) })
+                const ids = allMatchingSelected ? selectedIds : draftSelected.map((p) => p.id);
+                if (ids.length === 0) return;
+                api.post('/payments/bulk-delete', { ids })
                   .then((res) => {
                     const data = res.data;
                     queryClient.invalidateQueries({ queryKey: ['customer-payments'] });
-                    setSelectedIds(new Set());
+                    clearSelection();
                     setShowBulkDeleteDialog(false);
                     toast({
                       title: `${data.deleted?.length || 0} payment(s) deleted`,

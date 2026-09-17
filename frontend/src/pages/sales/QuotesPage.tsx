@@ -21,6 +21,8 @@ import { useNavigate } from 'react-router-dom'
 import { formatDate } from '@/lib/utils'
 import { SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { useBulkSelection } from '@/hooks/use-bulk-selection'
+import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
 
 const PER_PAGE = 20
 const QUOTATION_EXPORT_COLUMNS = [
@@ -68,7 +70,6 @@ export function QuotesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(1)
-  const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
 
   const queryParams = new URLSearchParams()
@@ -89,6 +90,29 @@ export function QuotesPage() {
   const currentPage = quotesResponse?.current_page || page
   const lastPage = quotesResponse?.last_page || 1
   const totalRecords = quotesResponse?.total || 0
+
+  const selectionFilters = {
+    ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
+    ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+  }
+  const {
+    selectedIds,
+    clearSelection,
+    toggleSelect,
+    togglePageSelection,
+    selectAllMatching,
+    allPageSelected,
+    allMatchingSelected,
+    isSelectingAll,
+  } = useBulkSelection({
+    pageIds: quotes.filter((quote: any) => ['draft', 'sent', 'confirmed'].includes(quote.status)).map((quote: any) => quote.id),
+    scopeKey: JSON.stringify(selectionFilters),
+    fetchAllIds: async () => {
+      const response = await api.get('/quotations', { params: { ...selectionFilters, ids_only: 1 } })
+      return response.data.data
+    },
+    onSelectAllError: () => toast({ variant: 'destructive', title: 'Failed to select all quotations' }),
+  })
 
   const confirmMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -137,7 +161,7 @@ export function QuotesPage() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['quotations'] })
-      setSelectedIds([])
+      clearSelection()
       toast({
         title: `${data.deleted?.length || 0} quotation(s) deleted`,
         description: data.skipped?.length ? `${data.skipped.length} skipped (confirmed/cancelled)` : undefined,
@@ -156,17 +180,6 @@ export function QuotesPage() {
     if (selectedIds.length === 0) return
     setShowBulkDeleteDialog(true)
   }
-
-  const toggleSelect = (id: number) => {
-    setSelectedIds((prev) => prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id])
-  }
-
-  const toggleSelectAll = () => {
-    const deletableIds = quotes.filter((q: any) => ['draft', 'sent', 'confirmed'].includes(q.status)).map((q: any) => q.id)
-    setSelectedIds((prev) => prev.length === deletableIds.length ? [] : deletableIds)
-  }
-
-  const allDeletableSelected = quotes.length > 0 && quotes.filter((q: any) => ['draft', 'sent', 'confirmed'].includes(q.status)).every((q: any) => selectedIds.includes(q.id))
 
   const formatCurrency = (amount: number | string) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount || 0))
@@ -269,7 +282,7 @@ export function QuotesPage() {
             <>
               {selectedIds.length > 0 && (
                 <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-2">
-                  <span className="text-sm font-medium">{selectedIds.length} quotation(s) selected</span>
+                  <BulkSelectionNotice pageSize={quotes.filter((quote: any) => ['draft', 'sent', 'confirmed'].includes(quote.status)).length} allPageSelected={allPageSelected} selectedCount={selectedIds.length} allMatchingSelected={allMatchingSelected} isSelectingAll={isSelectingAll} onSelectAllMatching={selectAllMatching} noun="quotations" />
                   <Button size="sm" variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleteMutation.isPending}>
                     <Icon icon="solar:trash-bin-trash-bold" className="mr-2 h-4 w-4" />
                     Delete Selected
@@ -284,8 +297,9 @@ export function QuotesPage() {
                       <TableHead className="w-[40px]">
                         <input
                           type="checkbox"
-                          checked={allDeletableSelected}
-                          onChange={toggleSelectAll}
+                          checked={allPageSelected}
+                          onChange={togglePageSelection}
+                          aria-label="Select quotations on this page"
                           className="h-4 w-4 rounded border-gray-300"
                         />
                       </TableHead>

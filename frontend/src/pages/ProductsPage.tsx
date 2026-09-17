@@ -18,6 +18,8 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu'
+import { useBulkSelection } from '@/hooks/use-bulk-selection'
+import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
 
 const PRODUCT_EXPORT_COLUMNS = [
   { key: 'sku', label: 'SKU', group: 'Product', default: true }, { key: 'name', label: 'Product Name', group: 'Product', default: true },
@@ -68,7 +70,6 @@ export function ProductsPage() {
   const [categoryId, setCategoryId] = useState<string>('all')
   const [sortBy, setSortBy] = useState<SortBy>('created_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [page, setPage] = useState(1)
 
   const clearFilters = () => {
@@ -118,6 +119,19 @@ export function ProductsPage() {
   const products = productsResponse?.data || []
   const totalPages = productsResponse?.last_page || 1
   const totalProducts = productsResponse?.total || 0
+  const productFilters = { search: search.trim() || undefined, type: type === 'all' ? undefined : type, category_id: categoryId === 'all' ? undefined : Number(categoryId), is_active: status === 'active' ? 1 : status === 'inactive' ? 0 : undefined, is_new_arrival: status === 'new_arrival' ? 1 : undefined, is_preorder: status === 'preorder' ? 1 : undefined, out_of_stock: status === 'out_of_stock' ? 1 : undefined, sort_by: sortBy, sort_dir: sortDir }
+  const {
+    selectedIds, clearSelection, toggleSelect, togglePageSelection,
+    selectAllMatching, allPageSelected, allMatchingSelected, isSelectingAll,
+  } = useBulkSelection({
+    pageIds: products.map((product: any) => product.id),
+    scopeKey: JSON.stringify(productFilters),
+    fetchAllIds: async () => {
+      const response = await api.get('/products', { params: { ...productFilters, ids_only: 1 } })
+      return response.data.data
+    },
+  })
+  const selectedIdSet = new Set(selectedIds)
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -141,40 +155,19 @@ export function ProductsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
-      setSelectedIds(new Set())
+      clearSelection()
     },
   })
 
   const handleBulkDelete = async () => {
-    const count = selectedIds.size
+    const count = selectedIds.length
     if (count === 0) return
     const ok = confirm(`Delete ${count} selected product(s)? This cannot be undone.`)
     if (!ok) return
-    await bulkDeleteMutation.mutateAsync(Array.from(selectedIds))
+    await bulkDeleteMutation.mutateAsync(selectedIds)
   }
 
-  const toggleSelect = (id: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  const toggleSelectAll = () => {
-    if (!products || products.length === 0) return
-    const allIds = products.map((p: any) => p.id)
-    const allSelected = allIds.every((id: number) => selectedIds.has(id))
-    if (allSelected) {
-      setSelectedIds(new Set())
-    } else {
-      setSelectedIds(new Set(allIds))
-    }
-  }
-
-  const allSelected = products && products.length > 0 && products.every((p: any) => selectedIds.has(p.id))
-  const someSelected = selectedIds.size > 0
+  const someSelected = selectedIds.length > 0
   const sortedCategories = useMemo(() => {
     const list = [...(categories || [])]
     list.sort((a, b) => {
@@ -201,7 +194,7 @@ export function ProductsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Products</h1>
         <div className="flex items-center gap-2">
-          <SalesDocumentExportMenu endpoint="/products/export" filenamePrefix="products" columns={PRODUCT_EXPORT_COLUMNS} filters={{ search: search.trim() || undefined, type: type === 'all' ? undefined : type, category_id: categoryId === 'all' ? undefined : Number(categoryId), is_active: status === 'active' ? 1 : status === 'inactive' ? 0 : undefined, is_new_arrival: status === 'new_arrival' ? 1 : undefined, is_preorder: status === 'preorder' ? 1 : undefined, out_of_stock: status === 'out_of_stock' ? 1 : undefined }} selectedIds={Array.from(selectedIds)} />
+          <SalesDocumentExportMenu endpoint="/products/export" filenamePrefix="products" columns={PRODUCT_EXPORT_COLUMNS} filters={productFilters} selectedIds={selectedIds} />
           <Button variant="secondary" asChild>
             <Link to="/products/import">
               <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
@@ -342,11 +335,11 @@ export function ProductsPage() {
       {someSelected && (
         <div className="flex items-center gap-3 rounded-lg border bg-muted/50 px-4 py-3">
           <Checkbox
-            checked={allSelected}
-            onCheckedChange={toggleSelectAll}
+            checked={allPageSelected}
+            onCheckedChange={togglePageSelection}
           />
           <span className="text-sm font-medium">
-            {selectedIds.size} product(s) selected
+            <BulkSelectionNotice pageSize={products.length} allPageSelected={allPageSelected} selectedCount={selectedIds.length} allMatchingSelected={allMatchingSelected} isSelectingAll={isSelectingAll} onSelectAllMatching={selectAllMatching} noun="products" />
           </span>
           <Button
             type="button"
@@ -356,13 +349,13 @@ export function ProductsPage() {
             disabled={bulkDeleteMutation.isPending}
           >
             <Icon icon="solar:trash-bin-trash-bold" className="mr-2 h-4 w-4" />
-            {bulkDeleteMutation.isPending ? 'Deleting...' : `Delete ${selectedIds.size} Selected`}
+            {bulkDeleteMutation.isPending ? 'Deleting...' : `Delete ${selectedIds.length} Selected`}
           </Button>
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => setSelectedIds(new Set())}
+            onClick={clearSelection}
           >
             Clear Selection
           </Button>
@@ -381,8 +374,9 @@ export function ProductsPage() {
                 <TableRow>
                   <TableHead className="w-10">
                     <Checkbox
-                      checked={allSelected}
-                      onCheckedChange={toggleSelectAll}
+                      checked={allPageSelected}
+                      onCheckedChange={togglePageSelection}
+                      aria-label="Select products on this page"
                     />
                   </TableHead>
                   <TableHead>Product</TableHead>
@@ -399,10 +393,10 @@ export function ProductsPage() {
               </TableHeader>
               <TableBody>
                 {products?.map((product: any) => (
-                  <TableRow key={product.id} className={`cursor-pointer ${selectedIds.has(product.id) ? 'bg-muted/50' : ''}`} onClick={() => navigate(`/products/${product.id}`)}>
+                  <TableRow key={product.id} className={`cursor-pointer ${selectedIdSet.has(product.id) ? 'bg-muted/50' : ''}`} onClick={() => navigate(`/products/${product.id}`)}>
                     <TableCell onClick={(event) => event.stopPropagation()}>
                       <Checkbox
-                        checked={selectedIds.has(product.id)}
+                        checked={selectedIdSet.has(product.id)}
                         onCheckedChange={() => toggleSelect(product.id)}
                       />
                     </TableCell>
@@ -508,10 +502,10 @@ export function ProductsPage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {products?.map((product: any) => (
-                <Card key={product.id} onClick={() => navigate(`/products/${product.id}`)} className={`cursor-pointer overflow-hidden relative group ${selectedIds.has(product.id) ? 'ring-2 ring-primary' : ''}`}>
+                <Card key={product.id} onClick={() => navigate(`/products/${product.id}`)} className={`cursor-pointer overflow-hidden relative group ${selectedIdSet.has(product.id) ? 'ring-2 ring-primary' : ''}`}>
                   <div className="absolute top-2 left-2 z-10" onClick={(event) => event.stopPropagation()}>
                     <Checkbox
-                      checked={selectedIds.has(product.id)}
+                      checked={selectedIdSet.has(product.id)}
                       onCheckedChange={() => toggleSelect(product.id)}
                       className="bg-white/80 backdrop-blur-sm"
                     />

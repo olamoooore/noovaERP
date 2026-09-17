@@ -33,7 +33,15 @@ class QuotationController extends Controller
 
     public function index(Request $request)
     {
-        $query = $this->filteredQuotationQuery($request)->with(['customer', 'lines']);
+        $query = $this->filteredQuotationQuery($request);
+
+        if ($request->boolean('ids_only')) {
+            $ids = $query->whereIn('status', ['draft', 'sent', 'confirmed'])->pluck('id');
+
+            return response()->json(['data' => $ids, 'total' => $ids->count()]);
+        }
+
+        $query->with(['customer', 'lines']);
 
         return response()->json($query->paginate($request->per_page ?? 20));
     }
