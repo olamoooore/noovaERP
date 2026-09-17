@@ -33,6 +33,8 @@ interface ReconciliationFilters {
   search?: string;
 }
 
+type StatementTransactionStatus = 'all' | 'unmatched' | 'suggested' | 'partially_matched' | 'matched' | 'reconciled' | 'excluded' | 'reversed';
+
 const statementMappingFields = [
   ['transaction_date', 'Transaction date'], ['description', 'Description'], ['amount', 'Signed amount'],
   ['debit', 'Debit (money out)'], ['credit', 'Credit (money in)'], ['bank_reference', 'Bank reference'],
@@ -77,6 +79,7 @@ export function BankReconciliationPage() {
   const [exceptionEvidence, setExceptionEvidence] = useState('');
   const [statementValidation, setStatementValidation] = useState<any>(null);
   const [statementTransactionPage, setStatementTransactionPage] = useState(1);
+  const [statementTransactionStatus, setStatementTransactionStatus] = useState<StatementTransactionStatus>('all');
   const [groupStatementIds, setGroupStatementIds] = useState<Set<string>>(new Set());
   const [groupGlIds, setGroupGlIds] = useState<Set<number>>(new Set());
   const [groupMatchReason, setGroupMatchReason] = useState('');
@@ -386,20 +389,20 @@ export function BankReconciliationPage() {
   );
 
   const statementTransactionsQuery = useQuery({
-    queryKey: ['bank-statement-transactions', selectedBankAccount, statementTransactionPage, filters.status, filters.search, statementTransactionParam],
-    queryFn: () => reportApi.getBankStatementTransactions(selectedBankAccount!, undefined, statementTransactionPage, 20, filters.status, filters.search, statementTransactionParam ? [statementTransactionParam] : undefined),
+    queryKey: ['bank-statement-transactions', selectedBankAccount, statementTransactionPage, statementTransactionStatus, filters.search, statementTransactionParam],
+    queryFn: () => reportApi.getBankStatementTransactions(selectedBankAccount!, undefined, statementTransactionPage, 20, statementTransactionStatus, filters.search, statementTransactionParam ? [statementTransactionParam] : undefined),
     enabled: selectedBankAccount !== null,
   });
 
-  useEffect(() => setStatementTransactionPage(1), [selectedBankAccount, filters.status, filters.search]);
+  useEffect(() => setStatementTransactionPage(1), [selectedBankAccount, statementTransactionStatus, filters.search]);
 
   const filteredStatementTransactions = useMemo(() => {
     const transactions = statementTransactionsQuery.data?.data ?? [];
 
     return transactions.filter((transaction: any) => {
       const isReconciled = (transaction.matches ?? []).some((match: any) => match.status === 'accepted' && match.reconciliation_id);
-      if (filters.status === 'reconciled' && !isReconciled) return false;
-      if (filters.status === 'unreconciled' && isReconciled) return false;
+      if (statementTransactionStatus === 'reconciled' && !isReconciled) return false;
+      if (statementTransactionStatus !== 'all' && statementTransactionStatus !== 'reconciled' && transaction.status !== statementTransactionStatus) return false;
       if (filters.search) {
         const search = filters.search.toLowerCase();
         return String(transaction.description ?? '').toLowerCase().includes(search)
@@ -408,7 +411,7 @@ export function BankReconciliationPage() {
       }
       return true;
     });
-  }, [statementTransactionsQuery.data, filters]);
+  }, [statementTransactionsQuery.data, filters.search, statementTransactionStatus]);
 
   const previewStatementMutation = useMutation({
     mutationFn: () => reportApi.previewBankStatement(statementFile!, selectedBankAccount!),
@@ -715,7 +718,22 @@ export function BankReconciliationPage() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-medium">Imported bank transactions</h3>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Select value={statementTransactionStatus} onValueChange={(value) => setStatementTransactionStatus(value as StatementTransactionStatus)}>
+                  <SelectTrigger className="w-[190px]" aria-label="Imported transaction status">
+                    <SelectValue placeholder="Filter by status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="unmatched">Unmatched</SelectItem>
+                    <SelectItem value="suggested">Suggested</SelectItem>
+                    <SelectItem value="partially_matched">Partially matched</SelectItem>
+                    <SelectItem value="matched">Matched</SelectItem>
+                    <SelectItem value="reconciled">Reconciled</SelectItem>
+                    <SelectItem value="excluded">Excluded</SelectItem>
+                    <SelectItem value="reversed">Reversed</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button
                   type="button"
                   size="sm"
