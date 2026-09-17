@@ -15,6 +15,7 @@ class QuotationsExport extends SalesDocumentExport
         'customer_code' => ['heading' => 'Customer Code', 'type' => 'text'],
         'customer_reference' => ['heading' => 'Customer Reference', 'type' => 'text'],
         'internal_reference' => ['heading' => 'Internal Reference', 'type' => 'text'],
+        'credit_terms' => ['heading' => 'Credit Terms', 'type' => 'text'],
         'salesperson' => ['heading' => 'Salesperson', 'type' => 'text'],
         'delivery_lead_time' => ['heading' => 'Delivery Lead Time', 'type' => 'text'],
         'shipping_method' => ['heading' => 'Shipping Method', 'type' => 'text'],

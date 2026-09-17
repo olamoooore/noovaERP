@@ -35,11 +35,14 @@ class Quotation extends Model
         'subtotal',
         'tax_amount',
         'discount_amount',
+        'discount_type',
+        'discount_value',
         'total',
         'notes',
         'terms',
         'customer_reference',
         'internal_reference',
+        'credit_terms',
         'attention_to',
         'billing_contact_id',
         'shipping_contact_id',
@@ -72,6 +75,7 @@ class Quotation extends Model
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'discount_amount' => 'decimal:2',
+        'discount_value' => 'decimal:4',
         'total' => 'decimal:2',
         'date_of_case' => 'date',
         'delivery_date' => 'date',
@@ -161,6 +165,7 @@ class Quotation extends Model
     {
         $subtotal = 0;
         $taxAmount = 0;
+        $grossSubtotal = 0;
 
         // Recompute each line's tax_amount + line_total from base fields so the
         // header totals are always derived from accurate line data.
@@ -171,20 +176,33 @@ class Quotation extends Model
             }
             $subtotal += (float) $line->line_total - (float) $line->tax_amount;
             $taxAmount += (float) $line->tax_amount;
+            if (! in_array($line->line_type, ['note', 'section'], true)) {
+                $grossSubtotal += (float) $line->quantity * (float) $line->unit_price;
+            }
         }
 
         $this->subtotal = round($subtotal, 2);
         $discount = (float) ($this->discount_amount ?? 0);
+        if ($this->discount_value !== null) {
+            $discount = $this->discount_type === 'percentage'
+                ? round($grossSubtotal * ((float) $this->discount_value / 100), 2)
+                : round((float) $this->discount_value, 2);
+        }
+        $discount = min($discount, (float) $this->subtotal);
+        $this->discount_amount = round($discount, 2);
 
+        // Header discounts reduce the taxable amount. Distribute the document
+        // discount proportionally across lines so mixed tax rates retain their
+        // relative contribution without recalculating each persisted line.
         if ($discount > 0 && $this->subtotal > 0) {
             $taxableAmount = max($this->subtotal - $discount, 0);
-            $taxRatio = $this->subtotal > 0 ? $taxableAmount / $this->subtotal : 0;
+            $taxRatio = $taxableAmount / $this->subtotal;
             $this->tax_amount = round($taxAmount * $taxRatio, 2);
         } else {
             $this->tax_amount = round($taxAmount, 2);
         }
 
-        $this->total = round($this->subtotal - $discount + $this->tax_amount, 2);
+        $this->total = round(max($this->subtotal - $discount, 0) + $this->tax_amount, 2);
         $this->save();
     }
 

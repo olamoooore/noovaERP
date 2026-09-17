@@ -12,6 +12,7 @@ import { SalesLineColumnMenu, SalesLineColumnVisibility } from '@/components/sal
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { DocumentTextLineRow, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 import { QuotationCaseInformation, emptyQuotationCaseInformation } from '@/components/sales/QuotationCaseInformation';
+import { InternalReferenceTags } from '@/components/sales/InternalReferenceTags';
 
 const QUOTATION_CREATE_COLUMNS = ['#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax %', 'Line Total', 'Actions']
   .map((label, index) => ({ label, index: index + 1 }));
@@ -66,9 +67,11 @@ export const QuotationCreatePage: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [terms, setTerms] = useState('');
   const [discountAmount, setDiscountAmount] = useState<number | ''>('');
+  const [discountMode, setDiscountMode] = useState<'fixed' | 'percentage'>('fixed');
   const [lines, setLines] = useState<QuotationLine[]>([emptyLine()]);
   const [customerReference, setCustomerReference] = useState('');
   const [internalReference, setInternalReference] = useState('');
+  const [creditTerms, setCreditTerms] = useState('');
   const [attentionTo, setAttentionTo] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
@@ -185,8 +188,13 @@ export const QuotationCreatePage: React.FC = () => {
     return sum + (base - discount) * (taxRate / 100);
   }, 0);
   const lineDiscounts = lines.reduce((sum, line) => sum + (line.discount_amount === '' ? 0 : line.discount_amount), 0);
-  const discountAmt = discountAmount === '' ? 0 : discountAmount;
-  const total = subtotal + taxTotal - lineDiscounts - discountAmt;
+  const discountValue = discountAmount === '' ? 0 : discountAmount;
+  const subtotalAfterLineDiscounts = Math.max(subtotal - lineDiscounts, 0);
+  const requestedDocumentDiscount = discountMode === 'percentage' ? subtotal * (discountValue / 100) : discountValue;
+  const documentDiscountAmount = Math.min(requestedDocumentDiscount, subtotalAfterLineDiscounts);
+  const taxableAmount = Math.max(subtotalAfterLineDiscounts - documentDiscountAmount, 0);
+  const taxAfterDocumentDiscount = subtotalAfterLineDiscounts > 0 ? taxTotal * (taxableAmount / subtotalAfterLineDiscounts) : 0;
+  const total = taxableAmount + taxAfterDocumentDiscount;
   const quoteNumberPreview = `QUO-${new Date(quotationDate).getFullYear()}-XXXX`;
 
   const formatCurrency = (amount: number) =>
@@ -205,12 +213,18 @@ export const QuotationCreatePage: React.FC = () => {
       return;
     }
 
+    if (discountMode === 'percentage' && discountValue > 100) {
+      toast({ variant: 'destructive', title: 'Percentage discount cannot exceed 100%' });
+      return;
+    }
+
     const payload = {
       customer_id: parseInt(customerId, 10),
       quotation_date: quotationDate,
       valid_until: validUntil,
       customer_reference: customerReference || undefined,
       internal_reference: internalReference || undefined,
+      credit_terms: creditTerms || undefined,
       attention_to: attentionTo || undefined,
       contact_email: contactEmail || undefined,
       contact_phone: contactPhone || undefined,
@@ -224,7 +238,9 @@ export const QuotationCreatePage: React.FC = () => {
       ...Object.fromEntries(Object.entries(caseInformation).map(([key, value]) => [key, value || null])),
       notes: notes || undefined,
       terms: terms || undefined,
-      discount_amount: discountAmt || 0,
+      discount_amount: documentDiscountAmount || 0,
+      discount_type: discountMode,
+      discount_value: discountValue,
     lines: lines
       .filter((line) => line.description || line.product_id)
       .map((line) => ({
@@ -324,13 +340,11 @@ export const QuotationCreatePage: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Internal Reference</label>
-                <input
-                  type="text"
-                  value={internalReference}
-                  onChange={(event) => setInternalReference(event.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  placeholder="Sales order / project"
-                />
+                <InternalReferenceTags value={internalReference} onChange={setInternalReference} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Credit Terms</label>
+                <input type="text" value={creditTerms} onChange={(event) => setCreditTerms(event.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm" placeholder="e.g. Net 30 days" />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Attention To</label>
@@ -483,13 +497,13 @@ export const QuotationCreatePage: React.FC = () => {
           <CardContent>
             <div className="overflow-x-auto">
               <SalesLineColumnVisibility tableClass="quotation-create-columns" columns={QUOTATION_CREATE_COLUMNS} hiddenColumns={hiddenLineColumns} onHiddenColumnsChange={setHiddenLineColumns} showMenu={false}>
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[1500px] table-fixed text-sm">
                 <thead>
     <tr className="border-b">
       <th className="text-left py-2 px-2 w-12">#</th>
-      <th className="text-left py-2 px-2 w-[200px]">Product</th>
+      <th className="text-left py-2 px-2 w-[260px]">Product</th>
       <th className="text-left py-2 px-2 w-24">SKU</th>
-      <th className="text-left py-2 px-2">Description</th>
+      <th className="text-left py-2 px-2 w-[320px]">Description</th>
       <th className="text-left py-2 px-2 w-28">Model #</th>
       <th className="text-left py-2 px-2 w-36">Product Notes</th>
       <th className="text-right py-2 px-2 w-20">Qty</th>
@@ -504,7 +518,7 @@ export const QuotationCreatePage: React.FC = () => {
                     <tr key={index} className="border-b">
                       {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={11} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
                       <td className="py-2 px-2 text-sm font-medium text-slate-500">{index + 1}</td>
-                      <td className="py-2 px-2 w-[200px] max-w-[200px] overflow-hidden">
+                      <td className="py-2 px-2 align-top whitespace-normal break-words">
                         <ProductSearchCombobox
                           value={line.product_id}
                           onValueChange={(val, product) => {
@@ -523,6 +537,7 @@ export const QuotationCreatePage: React.FC = () => {
                             }
                           }}
                           placeholder="Search product..."
+                          wrapText
                         />
                       </td>
                       <td className="py-2 px-2">
@@ -534,12 +549,12 @@ export const QuotationCreatePage: React.FC = () => {
                           placeholder="SKU"
                         />
                       </td>
-                      <td className="py-2 px-2">
-                        <input
-                          type="text"
+                      <td className="py-2 px-2 align-top">
+                        <textarea
                           value={line.description}
                           onChange={(event) => updateLine(index, 'description', event.target.value)}
-                          className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm"
+                          rows={2}
+                          className="w-full whitespace-pre-wrap break-words px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm resize-y"
                           placeholder="Description"
                           required
                         />
@@ -639,14 +654,24 @@ export const QuotationCreatePage: React.FC = () => {
                   <span className="text-muted-foreground">Subtotal:</span>
                   <span className="font-medium">{formatCurrency(subtotal)}</span>
                 </div>
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="text-muted-foreground">Discount:</span>
+                  <div className="flex items-center gap-2">
+                    <select value={discountMode} onChange={(event) => setDiscountMode(event.target.value as 'fixed' | 'percentage')} className="rounded border bg-background px-2 py-1 text-sm">
+                      <option value="fixed">Fixed</option>
+                      <option value="percentage">%</option>
+                    </select>
+                    <input type="number" min="0" max={discountMode === 'percentage' ? 100 : undefined} step="0.01" value={discountAmount} onChange={(event) => setDiscountAmount(event.target.value === '' ? '' : Number(event.target.value))} className="w-28 rounded border bg-background px-2 py-1 text-right text-sm" placeholder="0" />
+                  </div>
+                </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Tax:</span>
-                  <span className="font-medium">{formatCurrency(taxTotal)}</span>
+                  <span className="font-medium">{formatCurrency(taxAfterDocumentDiscount)}</span>
                 </div>
-                {lineDiscounts > 0 && (
+                {(lineDiscounts > 0 || documentDiscountAmount > 0) && (
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Discount:</span>
-                    <span className="font-medium text-green-600">-{formatCurrency(lineDiscounts)}</span>
+                    <span className="font-medium text-green-600">-{formatCurrency(lineDiscounts + documentDiscountAmount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-lg font-bold pt-2 border-t">

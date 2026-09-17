@@ -29,7 +29,8 @@ const TEMPLATE_COLUMNS = [
   { name: 'quotation_date', required: false, description: 'Quote date (M/D/YYYY or YYYY-MM-DD). Default: today.' },
   { name: 'valid_until', required: false, description: 'Expiration / valid-until date.' },
   { name: 'customer_reference', required: false, description: 'Customer PO / reference number.' },
-  { name: 'internal_reference', required: false, description: 'Internal reference (sales order, project).' },
+  { name: 'internal_reference', required: false, description: 'Project, field service, or document numbers. Separate multiple references with commas.' },
+  { name: 'credit_terms', required: false, description: 'Customer credit terms (e.g. Net 30 days).' },
   { name: 'attention_to', required: false, description: 'Attention To — primary contact name for this quote.' },
   { name: 'contact_email', required: false, description: 'Contact email address.' },
   { name: 'contact_phone', required: false, description: 'Contact phone number.' },
@@ -155,8 +156,8 @@ export function QuotationImportPage() {
     const sampleCustomerName = customers?.[0]?.name || 'Your Customer Name'
 
         const sampleRows = [
-      ['QUO-2026-0001', sampleCustomerCode, sampleCustomerName, '7/10/2026', '8/9/2026', 'PO-123', 'INT-001', 'Dr. Tan', 'contact@hospital.com', '+65 9123 4567', 'Billing Dept', 'Dr. Lee', '100 Pasir Panjang Rd, Singapore 118530', '50 Science Park Rd, Singapore 117588', 'John Sales', '2 weeks', 'Express', 'FOB', '30 days', 'INV-2026-0001', 'Please deliver by end of month', 'Net 30', '0', 'SKU-001', 'Widget A', '10', '50.00', '10', '0'],
-      ['QUO-2026-0001', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', 'SKU-002', 'Widget B', '5', '20.00', '10', '0'],
+      ['QUO-2026-0001', sampleCustomerCode, sampleCustomerName, '7/10/2026', '8/9/2026', 'PO-123', 'PROJECT-001, FST-002', 'Net 30 days', 'Dr. Tan', 'contact@hospital.com', '+65 9123 4567', 'Billing Dept', 'Dr. Lee', '100 Pasir Panjang Rd, Singapore 118530', '50 Science Park Rd, Singapore 117588', 'John Sales', '2 weeks', 'Express', 'FOB', '30 days', 'INV-2026-0001', 'Please deliver by end of month', 'Net 30', '0', 'SKU-001', 'Widget A', '10', '50.00', '10', '0'],
+      ['QUO-2026-0001', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', 'SKU-002', 'Widget B', '5', '20.00', '10', '0'],
     ].map((row) => row.map(csvValue).join(','))
 
     const csvContent = `${headers}\n${sampleRows.join('\n')}`
