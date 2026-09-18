@@ -470,6 +470,7 @@ class FinancialReportController extends Controller
             // If no account_id provided, show multi-account summary
             if (! isset($validated['account_id'])) {
                 $reportData = $this->generalLedgerService->getMultiAccountSummary($filter);
+                $hierarchy = $this->generalLedgerService->getHierarchy($filter);
 
                 // Transform accounts into transaction-like format for frontend compatibility
                 $transactions = array_map(function ($account) {
@@ -491,6 +492,7 @@ class FinancialReportController extends Controller
                         'transactions' => $transactions,
                         'closing_balance' => array_sum(array_column($reportData['accounts'], 'net_change')),
                         'pagination' => null,
+                        'hierarchy' => $hierarchy,
                     ],
                 ])->header('Cache-Control', 'no-cache, no-store, must-revalidate')
                     ->header('Pragma', 'no-cache')

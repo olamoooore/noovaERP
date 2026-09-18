@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '@iconify/react';
 import { Card } from '@/components/ui/card';
@@ -12,6 +13,7 @@ import { useReportAutoRefresh } from '@/hooks/useReportAutoRefresh';
 import reportApi from '@/lib/reportApi';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { ReportFilters as ReportFiltersType } from '@/types/reports';
+import type { GeneralLedgerData } from '@/types/reports';
 
 // ─── Comparison period math ─────────────────────────────────────────
 // Yearly/Quarterly/Monthly shift the selected window back by 12/3/1
@@ -47,6 +49,68 @@ function shiftDateStr(dateStr: string, monthsBack: number): string {
 }
 
 const num = (v: unknown): number => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+type LedgerHierarchy = NonNullable<GeneralLedgerData['hierarchy']>;
+
+function GeneralLedgerHierarchy({ hierarchy }: { hierarchy: LedgerHierarchy }) {
+  const navigate = useNavigate();
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggle = (key: string) => setCollapsed((previous) => {
+    const next = new Set(previous);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+  const naturalBalance = (type: string, debit: number, credit: number) => ['asset', 'expense'].includes(type) ? debit - credit : credit - debit;
+  const row = (key: string, label: React.ReactNode, debit: number, credit: number, balance: number, depth: number, expandable: boolean, className = '') => (
+    <tr key={key} className={`border-b ${className}`}>
+      <td className="py-2 pr-3" style={{ paddingLeft: `${12 + depth * 24}px` }}>
+        <div className="flex items-center gap-2">
+          {expandable ? <button type="button" onClick={() => toggle(key)} className="rounded p-0.5 hover:bg-muted" aria-label={`${collapsed.has(key) ? 'Expand' : 'Collapse'} ledger group`}><Icon icon={collapsed.has(key) ? 'solar:alt-arrow-right-linear' : 'solar:alt-arrow-down-linear'} className="h-4 w-4" /></button> : <span className="w-5" />}
+          {label}
+        </div>
+      </td>
+      <td className="px-3 py-2 text-right font-mono">{debit ? formatCurrency(debit) : '—'}</td>
+      <td className="px-3 py-2 text-right font-mono">{credit ? formatCurrency(credit) : '—'}</td>
+      <td className="px-3 py-2 text-right font-mono font-medium">{formatCurrency(balance)}</td>
+    </tr>
+  );
+
+  return <div className="overflow-x-auto rounded-md border">
+    <table className="w-full text-sm">
+      <thead><tr className="border-b bg-muted/50"><th className="px-3 py-2 text-left"></th><th className="px-3 py-2 text-right">Debit</th><th className="px-3 py-2 text-right">Credit</th><th className="px-3 py-2 text-right">Balance</th></tr></thead>
+      <tbody>{hierarchy.types.flatMap((type) => {
+        const typeKey = `type:${type.type}`;
+        const rows: React.ReactNode[] = [row(typeKey, <span className="font-bold uppercase">{type.type}</span>, type.total_debit, type.total_credit, naturalBalance(type.type, type.total_debit, type.total_credit), 0, type.groups.length > 0, 'bg-purple-50/70')];
+        if (collapsed.has(typeKey)) return rows;
+        type.groups.forEach((group) => {
+          const groupKey = `${typeKey}:group:${group.code || group.name}`;
+          rows.push(row(groupKey, <>{group.code && <span className="font-mono text-muted-foreground">{group.code}</span>}<span className="font-semibold">{group.name}</span></>, group.total_debit, group.total_credit, naturalBalance(type.type, group.total_debit, group.total_credit), 1, group.accounts.length > 0, 'bg-blue-50/60'));
+          if (collapsed.has(groupKey)) return;
+          group.accounts.forEach((account) => {
+            const accountKey = `${groupKey}:account:${account.id}`;
+            rows.push(row(accountKey, <><span className="font-mono">{account.code}</span><span>{account.name}</span></>, account.total_debit, account.total_credit, naturalBalance(type.type, account.total_debit, account.total_credit), 2, account.fiscal_years.length > 0, 'font-medium'));
+            if (collapsed.has(accountKey)) return;
+            account.fiscal_years.forEach((year) => {
+              const yearKey = `${accountKey}:fy:${year.year}`;
+              rows.push(row(yearKey, <span className="font-semibold">Fiscal Year {year.year}</span>, year.total_debit, year.total_credit, naturalBalance(type.type, year.total_debit, year.total_credit), 3, year.months.length > 0, 'bg-muted/20'));
+              if (collapsed.has(yearKey)) return;
+              year.months.forEach((month) => {
+                const monthKey = `${yearKey}:month:${month.key}`;
+                rows.push(row(monthKey, <span>{month.label}</span>, month.total_debit, month.total_credit, naturalBalance(type.type, month.total_debit, month.total_credit), 4, month.transactions.length > 0));
+                if (collapsed.has(monthKey)) return;
+                month.transactions.forEach((transaction, index) => {
+                  const transactionKey = `${monthKey}:tx:${transaction.journal_entry_id}:${index}`;
+                  rows.push(row(transactionKey, <button type="button" className="grid min-w-0 w-full grid-cols-[6rem_9rem_1fr] gap-3 text-left text-xs text-primary hover:underline" onClick={() => navigate(`/accounting/core/journal-entries?entry_id=${transaction.journal_entry_id}`)}><span>{formatDate(transaction.date)}</span><span className="font-mono">{transaction.reference || '—'}</span><span className="truncate">{transaction.description || '—'}</span></button>, transaction.debit, transaction.credit, transaction.balance, 5, false));
+                });
+              });
+            });
+          });
+        });
+        return rows;
+      })}</tbody>
+    </table>
+  </div>;
+}
 
 // ─── Balance Sheet tree merging ─────────────────────────────────────
 
@@ -568,7 +632,6 @@ export function FinancialReportsPage() {
         initialFilters={filters}
         showDateRange
         showComparePeriod
-        showDepartment
         showRefresh
         onRefresh={() => {
           queryClient.invalidateQueries({ queryKey: ['profit-loss'] });
@@ -866,14 +929,22 @@ export function FinancialReportsPage() {
                   </Card>
                 )}
 
-                {/* Transactions */}
-                <ReportTable
-                  columns={glColumns}
-                  data={generalLedgerData?.transactions ?? []}
-                  showPagination
-                  showSearch
-                  pageSize={20}
-                />
+                {/* Account hierarchy for the all-accounts ledger; retain the transaction table for a single-account drill-down. */}
+                {generalLedgerData.hierarchy ? (
+                  generalLedgerData.hierarchy.types.length > 0 ? (
+                    <GeneralLedgerHierarchy hierarchy={generalLedgerData.hierarchy} />
+                  ) : (
+                    <Card className="p-8 text-center text-muted-foreground">No posted ledger transactions found for this period.</Card>
+                  )
+                ) : (
+                  <ReportTable
+                    columns={glColumns}
+                    data={generalLedgerData?.transactions ?? []}
+                    showPagination
+                    showSearch
+                    pageSize={20}
+                  />
+                )}
 
                 {/* Closing Balance */}
                 <Card className="p-6 bg-gray-50 dark:bg-gray-800">

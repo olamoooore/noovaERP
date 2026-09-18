@@ -350,7 +350,7 @@ export function DeliveryOrderEditPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[200px]">Product</TableHead>
-                <TableHead>Description</TableHead>
+                <TableHead className="min-w-[320px]">Description</TableHead>
                 <TableHead className="w-[180px]">Product Notes</TableHead>
                 <TableHead className="w-[180px]">Patient Name</TableHead>
                 <TableHead className="text-right w-[100px]">Quantity</TableHead>
@@ -376,8 +376,8 @@ export function DeliveryOrderEditPage() {
                       placeholder="Search product..."
                     />
                   </TableCell>
-                  <TableCell>
-                    <Input value={line.description} onChange={(e) => updateLine(idx, 'description', e.target.value)} placeholder="Description" />
+                  <TableCell className="min-w-[320px] align-top">
+                    <textarea value={line.description} onChange={(e) => updateLine(idx, 'description', e.target.value)} rows={2} className="w-full whitespace-pre-wrap break-words rounded border border-gray-300 bg-white px-2 py-1 text-sm resize-y dark:border-gray-600 dark:bg-gray-800" placeholder="Description" />
                   </TableCell>
                   <TableCell>
                     <Input value={line.product_notes} onChange={(e) => updateLine(idx, 'product_notes', e.target.value)} placeholder="Product notes" />

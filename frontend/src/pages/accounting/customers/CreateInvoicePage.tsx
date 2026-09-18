@@ -296,9 +296,9 @@ export const CreateInvoicePage: React.FC = () => {
   const [customerForm, setCustomerForm] = useState<CustomerFormState>(initialCustomerForm);
   const [originalCustomerId, setOriginalCustomerId] = useState('');
   const [visibleLineColumns, setVisibleLineColumns] = useState<Record<string, boolean>>(() => {
-    const defaults = { sku: true, description: true, model_number: true, product_notes: true, lot_number: true, expiry_date: true, tax_rate: true };
+    const defaults = { sku: true, description: true, model_number: true, product_notes: false, lot_number: true, expiry_date: true, tax_rate: true };
     try {
-      return { ...defaults, ...JSON.parse(localStorage.getItem('invoice-line-columns') || '{}') };
+      return { ...defaults, ...JSON.parse(localStorage.getItem('invoice-line-columns-v2') || '{}') };
     } catch {
       return defaults;
     }
@@ -307,7 +307,7 @@ export const CreateInvoicePage: React.FC = () => {
   const toggleLineColumn = (column: string) => {
     setVisibleLineColumns((current) => {
       const next = { ...current, [column]: !current[column] };
-      localStorage.setItem('invoice-line-columns', JSON.stringify(next));
+      localStorage.setItem('invoice-line-columns-v2', JSON.stringify(next));
       return next;
     });
   };

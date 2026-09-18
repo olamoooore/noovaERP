@@ -2,6 +2,7 @@
 
 namespace Modules\FinancialReporting\Services\Reports;
 
+use App\Models\CompanySettings;
 use Carbon\Carbon;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -339,5 +340,104 @@ class GeneralLedgerService extends BaseReportService
             ],
             'generated_at' => now()->toIso8601String(),
         ];
+    }
+
+    /**
+     * Build the drill-down used by the financial reports ledger tab:
+     * account type -> account group -> posting account -> fiscal year -> month -> transactions.
+     */
+    public function getHierarchy(ReportFilter $filter): array
+    {
+        $settings = CompanySettings::query()->first();
+        $fiscalStartMonth = max(1, min(12, (int) ($settings?->fiscal_year_start_month ?? 1)));
+
+        $query = DB::table('journal_entry_lines as jel')
+            ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
+            ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
+            ->leftJoin('chart_of_accounts as parent', 'parent.id', '=', 'coa.parent_id')
+            ->where('je.status', 'posted')
+            ->where('je.is_active_version', true);
+
+        if ($filter->startDate) $query->where('je.entry_date', '>=', $filter->startDate);
+        if ($filter->endDate) $query->where('je.entry_date', '<=', $filter->endDate);
+        if ($filter->accountType) $query->where('coa.type', $filter->accountType);
+
+        $rows = $query->select([
+            'coa.id as account_id', 'coa.code as account_code', 'coa.name as account_name',
+            'coa.type as account_type', 'coa.subtype', 'coa.account_group',
+            'parent.code as parent_code', 'parent.name as parent_name',
+            'je.id as journal_entry_id', 'je.entry_date', 'je.entry_number',
+            'je.reference as journal_reference', 'je.description as journal_description',
+            'jel.reference as line_reference', 'jel.description as line_description',
+            'jel.debit', 'jel.credit',
+        ])->orderBy('coa.type')->orderBy('coa.code')->orderBy('je.entry_date')->orderBy('je.id')->get();
+
+        $types = [];
+        $runningBalances = [];
+        foreach ($rows as $row) {
+            $date = Carbon::parse($row->entry_date);
+            // Fiscal years are labelled by their ending year (e.g. Sep 2025-Aug 2026 = FY 2026).
+            $fiscalYear = $fiscalStartMonth === 1 || $date->month < $fiscalStartMonth ? $date->year : $date->year + 1;
+            $typeKey = (string) $row->account_type;
+            $groupCode = (string) ($row->account_group ?: $row->parent_code ?: $row->subtype ?: 'ungrouped');
+            // Only expose a real configured/group account code. A subtype such as
+            // "current_asset" is an internal grouping key, not a user-facing code.
+            $displayGroupCode = (string) ($row->account_group ?: $row->parent_code ?: '');
+            $groupName = (string) ($row->parent_name ?: str($row->subtype ?: 'Ungrouped')->replace('_', ' ')->title());
+            $accountKey = (string) $row->account_id;
+            $yearKey = (string) $fiscalYear;
+            $monthKey = $date->format('Y-m');
+
+            $types[$typeKey] ??= ['type' => $typeKey, 'total_debit' => 0.0, 'total_credit' => 0.0, 'groups' => []];
+            $types[$typeKey]['groups'][$groupCode] ??= ['code' => $displayGroupCode, 'name' => $groupName, 'total_debit' => 0.0, 'total_credit' => 0.0, 'accounts' => []];
+            $types[$typeKey]['groups'][$groupCode]['accounts'][$accountKey] ??= [
+                'id' => (int) $row->account_id, 'code' => $row->account_code, 'name' => $row->account_name,
+                'total_debit' => 0.0, 'total_credit' => 0.0, 'fiscal_years' => [],
+            ];
+            $account =& $types[$typeKey]['groups'][$groupCode]['accounts'][$accountKey];
+            $account['fiscal_years'][$yearKey] ??= ['year' => $fiscalYear, 'total_debit' => 0.0, 'total_credit' => 0.0, 'months' => []];
+            $account['fiscal_years'][$yearKey]['months'][$monthKey] ??= [
+                'key' => $monthKey, 'label' => $date->format('F Y'), 'total_debit' => 0.0, 'total_credit' => 0.0, 'transactions' => [],
+            ];
+
+            $debit = round((float) $row->debit, 2);
+            $credit = round((float) $row->credit, 2);
+            $runningBalances[$accountKey] ??= 0.0;
+            $runningBalances[$accountKey] += in_array($typeKey, ['asset', 'expense'], true)
+                ? $debit - $credit
+                : $credit - $debit;
+            foreach ([&$types[$typeKey], &$types[$typeKey]['groups'][$groupCode], &$account, &$account['fiscal_years'][$yearKey], &$account['fiscal_years'][$yearKey]['months'][$monthKey]] as &$level) {
+                $level['total_debit'] += $debit;
+                $level['total_credit'] += $credit;
+            }
+            unset($level);
+            $account['fiscal_years'][$yearKey]['months'][$monthKey]['transactions'][] = [
+                'journal_entry_id' => (int) $row->journal_entry_id,
+                'date' => $date->format('Y-m-d'),
+                'reference' => $row->line_reference ?: $row->journal_reference ?: $row->entry_number,
+                'description' => $row->line_description ?: $row->journal_description ?: '',
+                'debit' => $debit, 'credit' => $credit,
+                'balance' => round($runningBalances[$accountKey], 2),
+            ];
+            unset($account);
+        }
+
+        foreach ($types as &$type) {
+            $type['groups'] = array_values($type['groups']);
+            foreach ($type['groups'] as &$group) {
+                $group['accounts'] = array_values($group['accounts']);
+                foreach ($group['accounts'] as &$account) {
+                    $account['fiscal_years'] = array_values($account['fiscal_years']);
+                    usort($account['fiscal_years'], fn ($a, $b) => $b['year'] <=> $a['year']);
+                    foreach ($account['fiscal_years'] as &$year) $year['months'] = array_values($year['months']);
+                    unset($year);
+                }
+                unset($account);
+            }
+            unset($group);
+        }
+        unset($type);
+
+        return ['fiscal_year_start_month' => $fiscalStartMonth, 'types' => array_values($types)];
     }
 }

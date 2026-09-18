@@ -49,7 +49,9 @@ export function SalesLineColumnVisibility({ tableClass, columns, children, hidde
   onHiddenColumnsChange?: React.Dispatch<React.SetStateAction<number[]>>
   showMenu?: boolean
 }) {
-  const [internalHidden, setInternalHidden] = useState<number[]>([])
+  const [internalHidden, setInternalHidden] = useState<number[]>(() =>
+    columns.filter((column) => column.label.toLowerCase() === 'product notes').map((column) => column.index)
+  )
   const hidden = hiddenColumns ?? internalHidden
   const setHidden = onHiddenColumnsChange ?? setInternalHidden
   const css = hidden

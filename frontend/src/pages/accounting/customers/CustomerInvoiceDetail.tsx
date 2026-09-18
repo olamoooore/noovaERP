@@ -23,6 +23,7 @@ import InvoiceCreditNotes from '../components/InvoiceCreditNotes';
 import CreateCreditNoteDialog from '../components/CreateCreditNoteDialog';
 import { useAuthStore } from '@/store/authStore';
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow';
+import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility';
 
 const formatSnapshotAddress = (snapshot: string | null | undefined): string => {
   if (!snapshot) return '';
@@ -294,6 +295,39 @@ export const CustomerInvoiceDetail: React.FC = () => {
         </div>
       </div>
 
+      {/* Related document smart buttons */}
+      {(invoice.quotation || (invoice.delivery_orders && invoice.delivery_orders.length > 0)) && (
+        <div className="flex flex-wrap gap-3 print:hidden">
+          {invoice.quotation && (
+            <button
+              type="button"
+              onClick={() => navigate(`/quotations/${invoice.quotation.id}`)}
+              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+            >
+              <Icon icon="solar:document-text-bold-duotone" className="h-5 w-5 text-purple-600" />
+              <div className="text-left">
+                <div className="font-bold text-foreground">{invoice.quotation.quotation_number}</div>
+                <div className="text-xs text-muted-foreground">Quotation</div>
+              </div>
+            </button>
+          )}
+          {invoice.delivery_orders?.map((deliveryOrder: any) => (
+            <button
+              type="button"
+              key={deliveryOrder.id}
+              onClick={() => navigate(`/delivery-orders/${deliveryOrder.id}`)}
+              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+            >
+              <Icon icon="solar:package-bold" className="h-5 w-5 text-orange-600" />
+              <div className="text-left">
+                <div className="font-bold text-foreground">{deliveryOrder.delivery_order_number}</div>
+                <div className="text-xs text-muted-foreground">Delivery Order</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Invoice Header */}
       <Card>
         <CardHeader>
@@ -513,6 +547,9 @@ export const CustomerInvoiceDetail: React.FC = () => {
           <CardTitle>Line Items</CardTitle>
         </CardHeader>
         <CardContent>
+          <SalesLineColumnVisibility tableClass="customer-invoice-detail-columns" columns={[
+            'Product/Service', 'SKU', 'Description', 'Model #', 'Product Notes', 'Lot Number', 'Expiry Date', 'Quantity', 'Unit Price', 'Tax Rate', 'Tax Amount', 'Line Total',
+          ].map((label, index) => ({ label, index: index + 1 }))}>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -578,6 +615,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
               </TableBody>
             </Table>
           </div>
+          </SalesLineColumnVisibility>
           {invoice.lines && invoice.lines.length > 0 && (
             <div className="mt-6 flex justify-end">
               <div className="w-full max-w-sm space-y-2">

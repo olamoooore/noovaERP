@@ -48,7 +48,7 @@ const emptyLine = (): QuotationLine => ({
 });
 
 export const QuotationEditPage: React.FC = () => {
-  const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>([])
+  const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>([5])
   const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null)
   const { id } = useParams();
   const navigate = useNavigate();

@@ -535,7 +535,7 @@ export function DeliveryOrderCreatePage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Product</TableHead>
-                  <TableHead>Description</TableHead>
+                  <TableHead className="min-w-[320px]">Description</TableHead>
                   <TableHead>Product Notes</TableHead>
                   <TableHead className="text-right">Ordered</TableHead>
                   <TableHead className="text-right">Already Delivered</TableHead>
@@ -553,7 +553,7 @@ export function DeliveryOrderCreatePage() {
                   return (
                     <TableRow key={line.sales_order_line_id}>
                       <TableCell className="font-medium">{line.product_name || '-'}</TableCell>
-                      <TableCell>{line.description}</TableCell>
+                      <TableCell className="min-w-[320px] whitespace-pre-wrap break-words align-top">{line.description || '-'}</TableCell>
                       <TableCell>
                         <Input
                           type="text"
@@ -629,7 +629,7 @@ export function DeliveryOrderCreatePage() {
                 <TableRow>
                   <TableHead className="w-[160px]">Product</TableHead>
                   <TableHead className="w-[90px]">SKU</TableHead>
-                  <TableHead>Description</TableHead>
+                  <TableHead className="min-w-[320px]">Description</TableHead>
                   <TableHead className="w-[100px]">Model #</TableHead>
                   <TableHead className="w-[180px]">Product Notes</TableHead>
                   <TableHead className="w-[180px]">Patient Name</TableHead>
@@ -669,10 +669,12 @@ export function DeliveryOrderCreatePage() {
                         placeholder="SKU"
                       />
                     </TableCell>
-                    <TableCell>
-                      <Input
+                    <TableCell className="min-w-[320px] align-top">
+                      <textarea
                         value={line.description}
                         onChange={(e) => updateStandaloneLine(idx, 'description', e.target.value)}
+                        rows={2}
+                        className="w-full whitespace-pre-wrap break-words rounded border border-gray-300 bg-white px-2 py-1 text-sm resize-y dark:border-gray-600 dark:bg-gray-800"
                         placeholder="Description"
                       />
                     </TableCell>

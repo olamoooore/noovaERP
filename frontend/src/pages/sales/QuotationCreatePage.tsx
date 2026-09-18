@@ -53,7 +53,7 @@ const emptyLine = (): QuotationLine => ({
 });
 
 export const QuotationCreatePage: React.FC = () => {
-  const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>([])
+  const [hiddenLineColumns, setHiddenLineColumns] = useState<number[]>([6])
   const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null)
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -517,7 +517,7 @@ export const QuotationCreatePage: React.FC = () => {
                   {lines.map((line, index) => (
                     <tr key={index} className="border-b" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
                       {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={11} total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
-                      <td className="py-2 px-2 text-sm font-medium text-slate-500">{index + 1}</td>
+                      <td className="py-2 px-2 text-sm font-medium text-slate-500">{lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}</td>
                       <td className="py-2 px-2 align-top whitespace-normal break-words">
                         <ProductSearchCombobox
                           value={line.product_id}
