@@ -206,6 +206,47 @@ export interface GeneralLedgerData {
     per_page: number;
     total: number;
   } | null;
+  hierarchy?: {
+    fiscal_year_start_month: number;
+    types: Array<{
+      type: string;
+      total_debit: number;
+      total_credit: number;
+      groups: Array<{
+        code: string;
+        name: string;
+        total_debit: number;
+        total_credit: number;
+        accounts: Array<{
+          id: number;
+          code: string;
+          name: string;
+          total_debit: number;
+          total_credit: number;
+          fiscal_years: Array<{
+            year: number;
+            total_debit: number;
+            total_credit: number;
+            months: Array<{
+              key: string;
+              label: string;
+              total_debit: number;
+              total_credit: number;
+              transactions: Array<{
+                journal_entry_id: number;
+                date: string;
+                reference: string;
+                description: string;
+                debit: number;
+                credit: number;
+                balance: number;
+              }>;
+            }>;
+          }>;
+        }>;
+      }>;
+    }>;
+  };
 }
 
 // Inventory Report Types
