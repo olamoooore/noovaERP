@@ -14,6 +14,10 @@ evidence-screenshots-FC/
 # Secrets - Keep .env.production for CI/CD
 **/.env
 **/.env.local
+**/.env.bak
+**/.env.backup
+**/*.env.bak
+**/*.env.backup
 !**/.env.example
 !**/.env.sample
 !**/.env.production
