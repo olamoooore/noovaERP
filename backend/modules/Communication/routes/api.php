@@ -13,9 +13,18 @@ use Modules\Communication\Http\Controllers\TemplateController;
 | Central communication bus API endpoints.
 | All routes are prefixed with /api/communication and require auth.
 |
+| Issue #76 (CRITICAL): EnsureCommunicationAccess middleware validates
+| `model` + `record_id` parameters against the ChatterModelRegistry
+| whitelist and resolves the actual record before the controller runs.
+|
 */
 
-Route::middleware(['api', 'auth:sanctum', 'entitlement:communication'])->prefix('api/communication')->group(function () {
+Route::middleware([
+    'api',
+    'auth:sanctum',
+    'entitlement:communication',
+    \App\Http\Middleware\EnsureCommunicationAccess::class,
+])->prefix('api/communication')->group(function () {
 
     // Messages / Thread (Chatter)
     Route::get('/messages', [CommunicationController::class, 'getMessages']);
