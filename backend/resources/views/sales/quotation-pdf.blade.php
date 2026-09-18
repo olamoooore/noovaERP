@@ -98,11 +98,24 @@
         </thead>
         <tbody>
             @php $i = 0; @endphp
-            @foreach($quotation->lines as $line)
+            @foreach($quotation->lines as $lineIndex => $line)
                 @php $i++; @endphp
                 @if(in_array($line->line_type ?? 'product', ['note', 'section'], true))
                 <tr>
-                    <td colspan="6" style="{{ ($line->line_type ?? '') === 'section' ? 'font-weight:bold;background:#f3f4f6;' : 'color:#6b7280;font-style:italic;' }}">{{ $line->description }}</td>
+                    @if(($line->line_type ?? '') === 'section')
+                        @php
+                            $sectionTotal = 0;
+                            for ($nextIndex = $lineIndex + 1; $nextIndex < $quotation->lines->count(); $nextIndex++) {
+                                $nextLine = $quotation->lines[$nextIndex];
+                                if (($nextLine->line_type ?? 'product') === 'section') break;
+                                if (($nextLine->line_type ?? 'product') === 'product') $sectionTotal += (float) $nextLine->line_total;
+                            }
+                        @endphp
+                        <td colspan="5" style="font-weight:bold;background:#f3f4f6;">{{ $line->description }}</td>
+                        <td class="num" style="font-weight:bold;background:#f3f4f6;">{{ number_format($sectionTotal, 2) }}</td>
+                    @else
+                        <td colspan="6" style="color:#6b7280;font-style:italic;">{{ $line->description }}</td>
+                    @endif
                 </tr>
                 @else
                 <tr>

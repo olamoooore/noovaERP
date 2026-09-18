@@ -7,11 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { QuotationCaseInformationDisplay } from '@/components/sales/QuotationCaseInformation'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
-import { ChatterDialog } from '@/components/chatter'
+import { ChatterDock } from '@/components/chatter'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { formatDate } from '@/lib/utils'
 import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 
 export function QuotationDetailPage() {
   const { id } = useParams()
@@ -223,17 +224,6 @@ export function QuotationDetailPage() {
             <Icon icon="solar:download-minimistic-bold-duotone" className="mr-2 h-4 w-4" />
             {isDownloading ? 'Preparing...' : 'Download PDF'}
           </Button>
-          <Button variant="outline" onClick={() => setChatterOpen(true)}>
-            <Icon icon="solar:chat-round-dots-bold-duotone" className="mr-2 h-4 w-4" />
-            Chatter
-          </Button>
-          <ChatterDialog
-            open={chatterOpen}
-            onOpenChange={setChatterOpen}
-            subjectType="App\\Models\\Quotation"
-            subjectId={id as string}
-            documentLabel={quotation.quotation_number}
-          />
           {quotation.status === 'draft' && (
             <>
               <Button
@@ -547,7 +537,7 @@ export function QuotationDetailPage() {
                   <TableRow key={line.id}>
                     {line.line_type === 'note' || line.line_type === 'section' ? (
                       <TableCell colSpan={10} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}>
-                        {line.description}
+                        <div className="flex items-center justify-between gap-4"><span>{line.description}</span>{line.line_type === 'section' && <span className="whitespace-nowrap tabular-nums">{formatCurrency(getDocumentSectionTotal(quotation.lines || [], index, (item: any) => Number(item.line_total || 0)))}</span>}</div>
                       </TableCell>
                     ) : (<>
                     <TableCell>{index + 1}</TableCell>
@@ -593,6 +583,13 @@ export function QuotationDetailPage() {
           )}
         </div>
       )}
+      <ChatterDock
+        subjectType={String.raw`App\Models\Quotation`}
+        subjectId={id as string}
+        documentLabel={quotation.quotation_number}
+        open={chatterOpen}
+        onOpenChange={setChatterOpen}
+      />
     </div>
   )
 }

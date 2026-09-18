@@ -10,7 +10,7 @@ import api from '@/lib/api';
 import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 import { SalesLineColumnMenu, SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
-import { DocumentTextLineRow } from '@/components/sales/DocumentTextLineRow';
+import { DocumentTextLineRow, getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow';
 import { QuotationCaseInformation, emptyQuotationCaseInformation } from '@/components/sales/QuotationCaseInformation';
 import { InternalReferenceTags } from '@/components/sales/InternalReferenceTags';
 
@@ -568,8 +568,8 @@ export const QuotationEditPage: React.FC = () => {
                 </thead>
                 <tbody>
                   {lines.map((line, index) => (
-                    <tr key={index} className="border-b" draggable onDragStart={() => setDraggedLineIndex(index)} onDragOver={(e) => e.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) { const reordered = [...lines]; const [dragged] = reordered.splice(draggedLineIndex, 1); reordered.splice(index, 0, dragged); setLines(reordered); } setDraggedLineIndex(null) }}>
-                      {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={11} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) { const reordered = [...lines]; const [dragged] = reordered.splice(draggedLineIndex, 1); reordered.splice(index, 0, dragged); setLines(reordered); } setDraggedLineIndex(null); }} /> : <>
+                    <tr key={index} className="border-b" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(e) => e.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) { const reordered = [...lines]; const [dragged] = reordered.splice(draggedLineIndex, 1); reordered.splice(index, 0, dragged); setLines(reordered); } setDraggedLineIndex(null) }}>
+                      {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={11} total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) { const reordered = [...lines]; const [dragged] = reordered.splice(draggedLineIndex, 1); reordered.splice(index, 0, dragged); setLines(reordered); } setDraggedLineIndex(null); }} /> : <>
                       <td className="py-2 px-2 text-sm font-medium text-slate-500">{index + 1}</td>
                       <td className="py-2 px-2 align-top whitespace-normal break-words">
                         <ProductSearchCombobox

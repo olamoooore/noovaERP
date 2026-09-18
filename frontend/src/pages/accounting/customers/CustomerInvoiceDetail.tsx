@@ -22,6 +22,7 @@ import api from '@/lib/api';
 import InvoiceCreditNotes from '../components/InvoiceCreditNotes';
 import CreateCreditNoteDialog from '../components/CreateCreditNoteDialog';
 import { useAuthStore } from '@/store/authStore';
+import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow';
 
 const formatSnapshotAddress = (snapshot: string | null | undefined): string => {
   if (!snapshot) return '';
@@ -534,7 +535,7 @@ export const CustomerInvoiceDetail: React.FC = () => {
                 {invoice.lines && invoice.lines.length > 0 ? (
                   invoice.lines.map((line: any, index: number) => (
                     <TableRow key={index}>
-                      {line.line_type === 'note' || line.line_type === 'section' ? <TableCell colSpan={12} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}>{line.description}</TableCell> : <>
+                      {line.line_type === 'note' || line.line_type === 'section' ? <TableCell colSpan={12} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}><div className="flex items-center justify-between gap-4"><span>{line.description}</span>{line.line_type === 'section' && <span className="whitespace-nowrap tabular-nums">{formatCurrency(getDocumentSectionTotal(invoice.lines || [], index, (item: any) => Number(item.line_total || 0)))}</span>}</div></TableCell> : <>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           {line.product?.image ? (

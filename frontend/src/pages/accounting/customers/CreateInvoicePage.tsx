@@ -19,7 +19,7 @@ import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
-import { DocumentTextLineRow, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
+import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 
 interface InvoiceLine {
   line_type?: 'product' | 'note' | 'section';
@@ -1356,7 +1356,7 @@ export const CreateInvoicePage: React.FC = () => {
                   <tbody>
                     {lines.map((line, index) => (
                       <tr key={index} className="border-b" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
-                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={12} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
+                        {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={12} total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
                         <td className="py-2 px-2 text-sm font-medium text-slate-500">{lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}</td>
                         <td className="py-2 px-2 min-w-[200px]">
                           <ProductSearchCombobox
