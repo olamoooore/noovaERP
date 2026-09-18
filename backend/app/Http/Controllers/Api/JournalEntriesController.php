@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ChartOfAccount;
 use App\Models\Journal;
 use App\Models\JournalEntry;
+use App\Services\EntityAccessService;
 use App\Services\FiscalPeriodValidator;
 use App\Services\LockDateValidationService;
 use App\Services\ManualJournalPostingService;
@@ -28,6 +29,7 @@ class JournalEntriesController extends Controller
         private FiscalPeriodValidator $fiscalValidator,
         private PostingEngineInterface $postingEngine,
         private ManualJournalPostingService $manualJournalService,
+        private EntityAccessService $entityAccessService,
     ) {}
 
     private function getDraftJournalRequest(Request $request): DraftJournalRequest
@@ -146,10 +148,24 @@ class JournalEntriesController extends Controller
     }
 
     /**
-     * Get a single journal entry
+     * Get a single journal entry.
+     *
+     * Issue #97 (CRITICAL, ENTITY-1): cross-entity data isolation. The query
+     * is scoped to the requesting user's accessible legal entities so an
+     * Accountant scoped to Entity A cannot read Entity B's journal entry by
+     * ID. findOrFail returns 404 for cross-entity requests (the entry exists
+     * but is not in the user's scope) — not 200 with the record's data.
      */
-    public function show($id)
+    public function show($id, Request $request)
     {
+        $user = $request->user();
+        $accessibleEntityIds = $user
+            ? array_column(
+                $this->entityAccessService->getAccessibleEntities((int) $user->id),
+                'legal_entity_id'
+            )
+            : [];
+
         $entry = JournalEntry::with([
             'lines.account',
             'lines.currency',
@@ -161,7 +177,9 @@ class JournalEntriesController extends Controller
             'postedBy',
             'reversedEntry',
             'reversalEntry',
-        ])->findOrFail($id);
+        ])
+            ->accessibleBy($accessibleEntityIds)
+            ->findOrFail($id);
 
         return response()->json($entry);
     }

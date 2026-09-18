@@ -41,13 +41,18 @@ class EntityAccessService
 
     /**
      * Get all entities a user can access.
+     *
+     * Issue #97 (CRITICAL, ENTITY-1): filter uses legal_entities.status = 'active'
+     * (the actual column in this schema); the previous is_active reference was a
+     * pre-existing bug that caused EntityAccessService::getAccessibleEntities
+     * to throw QueryException on every call once the column was renamed.
      */
     public function getAccessibleEntities(int $userId): array
     {
         return DB::table('user_entity_access as uea')
             ->join('legal_entities as le', 'le.id', '=', 'uea.legal_entity_id')
             ->where('uea.user_id', $userId)
-            ->where('le.is_active', true)
+            ->where('le.status', 'active')
             ->select('le.*', 'uea.role', 'uea.is_default')
             ->orderByDesc('uea.is_default')
             ->orderBy('le.name')

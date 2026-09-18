@@ -319,6 +319,23 @@ class JournalEntry extends Model
     }
 
     /**
+     * Issue #97 (CRITICAL, ENTITY-1): scope query to legal entities the user
+     * can access. If $userId is null or has no accessible entities, the
+     * query returns NO rows — fail-closed on cross-entity leakage.
+     *
+     * @param  array<int>  $accessibleEntityIds  the user's accessible entity IDs
+     */
+    public function scopeAccessibleBy($query, array $accessibleEntityIds)
+    {
+        if (empty($accessibleEntityIds)) {
+            // Fail-closed: no accessible entities means no rows visible.
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereIn('legal_entity_id', $accessibleEntityIds);
+    }
+
+    /**
      * Scope to get only draft entries
      */
     public function scopeDraft($query)
