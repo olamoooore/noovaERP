@@ -14,6 +14,37 @@ class CommunicationController extends Controller
         protected CommunicationEngine $engine,
     ) {}
 
+    /**
+     * Issue #77 (CRITICAL): resolve the current user's role for internal-note
+     * visibility. Returns null when the user has no recognised role (treat
+     * as non-staff = fail-closed).
+     */
+    private function resolveUserRole(?\App\Models\User $user): ?string
+    {
+        if (! $user) {
+            return null;
+        }
+
+        // Try Spatie roles first.
+        if (method_exists($user, 'getRoleNames')) {
+            $names = $user->getRoleNames();
+            if (! empty($names)) {
+                return strtolower((string) $names[0]);
+            }
+        }
+
+        // Fall back to user_company_access row.
+        $access = \Illuminate\Support\Facades\DB::table('user_company_access')
+            ->where('user_id', $user->id)
+            ->orderByDesc('is_default')
+            ->first();
+        if ($access && isset($access->role)) {
+            return strtolower((string) $access->role);
+        }
+
+        return null;
+    }
+
     // ════════════════════════════════════════════════════════
     //  MESSAGE THREAD (Chatter)
     // ════════════════════════════════════════════════════════
@@ -22,6 +53,9 @@ class CommunicationController extends Controller
      * GET /api/communication/messages
      *
      * Get message thread for a record.
+     *
+     * Issue #77 (CRITICAL): pass current user context so internal notes are
+     * filtered. The engine's getThread() enforces role-based visibility.
      */
     public function getMessages(Request $request): JsonResponse
     {
@@ -32,12 +66,17 @@ class CommunicationController extends Controller
             'limit' => 'nullable|integer|min:1|max:200',
         ]);
 
+        $user = $request->user();
+        $userRole = $this->resolveUserRole($user);
+
         $messages = $this->engine->getThread(
             model: $request->model,
             recordId: $request->record_id,
             tenantId: $request->header('X-Tenant-ID'),
             limit: $request->input('limit', 50),
             messageType: $request->message_type,
+            currentUserId: $user?->id,
+            userRole: $userRole,
         );
 
         return response()->json([

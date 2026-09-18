@@ -34,6 +34,14 @@ use Modules\Communication\Models\CommunicationSubscriber;
  */
 class CommunicationEngine
 {
+    /**
+     * Roles that can see all internal notes regardless of authorship.
+     * Issue #77 (CRITICAL): keep in sync with role-permission seeder and
+     * the DB-level row-level security policy in
+     * 2026_09_18_000002_communication_messages_internal_note_rls.
+     */
+    public const STAFF_ROLES = ['owner', 'admin', 'manager', 'staff'];
+
     public function __construct(
         protected ChannelRouter $channelRouter,
         protected TemplateRenderer $templateRenderer,
@@ -355,6 +363,16 @@ class CommunicationEngine
 
     /**
      * Get the message thread for a record (chatter).
+     *
+     * Issue #77 (CRITICAL): internal notes must NEVER be returned to non-staff
+     * users. The previous implementation returned all messages regardless of
+     * caller role. Defence-in-depth: this application-level filter is paired
+     * with a PostgreSQL row-level security policy installed by migration
+     * 2026_09_18_000002_communication_messages_internal_note_rls.
+     *
+     * Internal notes are visible only to:
+     *   - the author of the note, OR
+     *   - users with one of $staffRoles (Owner/Admin/Staff/Manager).
      */
     public function getThread(
         string $model,
@@ -362,11 +380,28 @@ class CommunicationEngine
         ?string $tenantId = null,
         int $limit = 50,
         ?string $messageType = null,
+        ?int $currentUserId = null,
+        ?string $userRole = null,
     ): \Illuminate\Support\Collection {
-        return CommunicationMessage::forRecord($model, $recordId)
+        $query = CommunicationMessage::forRecord($model, $recordId)
             ->when($tenantId, fn ($q) => $q->forTenant($tenantId))
             ->when($messageType, fn ($q) => $q->ofType($messageType))
-            ->with('author')
+            ->with('author');
+
+        // Internal-note visibility gate (Issue #77). If we don't know the user,
+        // fail closed: do not return internal notes.
+        $isStaff = $userRole !== null && in_array($userRole, self::STAFF_ROLES, true);
+        if (! $isStaff) {
+            $query->where(function ($q) use ($currentUserId) {
+                $q->where('message_type', '!=', CommunicationMessage::TYPE_INTERNAL_NOTE);
+                if ($currentUserId !== null) {
+                    // Authors can see their own internal notes regardless of role.
+                    $q->orWhere('author_id', $currentUserId);
+                }
+            });
+        }
+
+        return $query
             ->orderByDesc('created_at')
             ->limit($limit)
             ->get();
