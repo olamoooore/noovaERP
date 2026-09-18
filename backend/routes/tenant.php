@@ -233,14 +233,20 @@ Route::middleware([
     });
 
     // ─── ADR-005 Reversals (§15.3) ──────────────────────────────────────────
-    Route::prefix('accounting/reversals')->group(function () {
-        Route::post('/full', [\App\Http\Controllers\Api\ReversalController::class, 'fullReversal']);
-        Route::post('/partial', [\App\Http\Controllers\Api\ReversalController::class, 'partialReversal']);
-        Route::post('/schedule-auto', [\App\Http\Controllers\Api\ReversalController::class, 'scheduleAutoReversal']);
-        Route::post('/execute-due', [\App\Http\Controllers\Api\ReversalController::class, 'executeDueAutoReversals']);
-        Route::get('/relationship/{id}', [\App\Http\Controllers\Api\ReversalController::class, 'showRelationship']);
-        Route::get('/original/{journalEntryId}', [\App\Http\Controllers\Api\ReversalController::class, 'forOriginal']);
-    });
+    // Issue #90 (BLOCKER, RBAC-1): reversal routes must require
+    // accounting.reverse permission — same pattern as sibling corrections
+    // prefix and PeriodCloseController. Without this guard, any authenticated
+    // tenant user can reverse a posted journal entry.
+    Route::prefix('accounting/reversals')
+        ->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.reverse')
+        ->group(function () {
+            Route::post('/full', [\App\Http\Controllers\Api\ReversalController::class, 'fullReversal']);
+            Route::post('/partial', [\App\Http\Controllers\Api\ReversalController::class, 'partialReversal']);
+            Route::post('/schedule-auto', [\App\Http\Controllers\Api\ReversalController::class, 'scheduleAutoReversal']);
+            Route::post('/execute-due', [\App\Http\Controllers\Api\ReversalController::class, 'executeDueAutoReversals']);
+            Route::get('/relationship/{id}', [\App\Http\Controllers\Api\ReversalController::class, 'showRelationship']);
+            Route::get('/original/{journalEntryId}', [\App\Http\Controllers\Api\ReversalController::class, 'forOriginal']);
+        });
 
     // ─── ADR-005 Document Revisions (§27) ───────────────────────────────────
     Route::prefix('accounting/revisions')->group(function () {
