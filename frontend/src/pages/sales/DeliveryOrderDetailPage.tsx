@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
-import { ChatterDialog } from '@/components/chatter'
+import { ChatterDock } from '@/components/chatter'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
-import { formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DeliveryOrderColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 
 export function DeliveryOrderDetailPage() {
   const { id } = useParams()
@@ -245,17 +246,6 @@ export function DeliveryOrderDetailPage() {
         </div>
 
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setChatterOpen(true)}>
-            <Icon icon="solar:chat-round-dots-bold-duotone" className="mr-2 h-4 w-4" />
-            Chatter
-          </Button>
-          <ChatterDialog
-            open={chatterOpen}
-            onOpenChange={setChatterOpen}
-            subjectType="Modules\\Sales\\src\\Models\\DeliveryOrder"
-            subjectId={id as string}
-            documentLabel={deliveryOrder.delivery_order_number}
-          />
           {deliveryOrder.status === 'draft' && (
             <>
               <Button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}>
@@ -539,7 +529,7 @@ export function DeliveryOrderDetailPage() {
             <TableBody>
               {deliveryOrder.lines?.map((line: any, index: number) => (
                 <TableRow key={line.id}>
-                  {line.line_type === 'note' || line.line_type === 'section' ? <TableCell colSpan={14} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}>{line.description}</TableCell> : <>
+                  {line.line_type === 'note' || line.line_type === 'section' ? <TableCell colSpan={14} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}><div className="flex items-center justify-between gap-4"><span>{line.description}</span>{line.line_type === 'section' && <span className="whitespace-nowrap tabular-nums">{formatCurrency(getDocumentSectionTotal(deliveryOrder.lines || [], index, (item: any) => Number(item.line_total ?? (Number(item.quantity || 0) * Number(item.unit_price || 0)))))}</span>}</div></TableCell> : <>
                   <TableCell>{index + 1}</TableCell>
                   <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
                   <TableCell className="text-muted-foreground">{line.product?.sku || '-'}</TableCell>
@@ -577,6 +567,13 @@ export function DeliveryOrderDetailPage() {
           )}
         </CardContent>
       </Card>
+      <ChatterDock
+        subjectType={String.raw`Modules\Sales\Models\DeliveryOrder`}
+        subjectId={id as string}
+        documentLabel={deliveryOrder.delivery_order_number}
+        open={chatterOpen}
+        onOpenChange={setChatterOpen}
+      />
     </div>
   )
 }

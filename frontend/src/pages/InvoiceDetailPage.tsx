@@ -15,6 +15,7 @@ import api from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 
 interface Invoice {
   id: number
@@ -79,6 +80,7 @@ interface Invoice {
 
 interface InvoiceLine {
   id: number
+  line_type?: 'product' | 'note' | 'section'
   product_id: number
   product?: {
     id: number
@@ -294,29 +296,6 @@ export function InvoiceDetailPage() {
               Record Payment
             </Button>
           )}
-          <Button
-            variant={chatterOpen ? 'default' : 'outline'}
-            onClick={() => setChatterOpen((v) => !v)}
-            aria-pressed={chatterOpen}
-          >
-            <Icon
-              icon={
-                chatterOpen
-                  ? 'solar:chat-round-dots-bold'
-                  : 'solar:chat-round-dots-bold-duotone'
-              }
-              className="mr-2 h-4 w-4"
-            />
-            Chatter
-            <Icon
-              icon={
-                chatterOpen
-                  ? 'solar:alt-arrow-up-linear'
-                  : 'solar:alt-arrow-down-linear'
-              }
-              className="ml-2 h-4 w-4"
-            />
-          </Button>
         </div>
       </div>
 
@@ -437,9 +416,9 @@ export function InvoiceDetailPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {invoice.lines?.map((line) => (
+                {invoice.lines?.map((line, index) => (
                   <TableRow key={line.id}>
-                    {line.line_type === 'note' || line.line_type === 'section' ? <TableCell colSpan={11} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}>{line.description}</TableCell> : <>
+                    {line.line_type === 'note' || line.line_type === 'section' ? <TableCell colSpan={11} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}><div className="flex items-center justify-between gap-4"><span>{line.description}</span>{line.line_type === 'section' && <span className="whitespace-nowrap tabular-nums">{formatCurrency(getDocumentSectionTotal(invoice.lines || [], index, (item: any) => Number(item.line_total || 0)))}</span>}</div></TableCell> : <>
                     <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.product?.sku || '-'}</TableCell>
                     <TableCell>{line.description || '-'}</TableCell>
