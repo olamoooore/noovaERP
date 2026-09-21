@@ -29,7 +29,7 @@ class ContactModuleContract extends BaseModuleContract
 
     public function getDescription(): string
     {
-        return 'Shared Contact Master: identity, roles, identifiers, addresses, methods, relationships, visibility, hierarchy, and module profiles.';
+        return 'Shared Contact Master: identity, roles, identifiers, addresses, methods, relationships, hierarchy, and module profiles.';
     }
 
     public function getVersion(): string
@@ -57,7 +57,6 @@ class ContactModuleContract extends BaseModuleContract
             'contacts.addresses.manage',
             'contacts.methods.manage',
             'contacts.relationships.manage',
-            'contacts.visibility.manage',
             'contacts.profiles.view',
             'contacts.profiles.manage',
             'contacts.bank_accounts.view',
@@ -123,7 +122,6 @@ class ContactModuleContract extends BaseModuleContract
             \Modules\Contact\src\Models\ContactAddress::class,
             \Modules\Contact\src\Models\ContactMethod::class,
             \Modules\Contact\src\Models\ContactRelationship::class,
-            \Modules\Contact\src\Models\ContactVisibility::class,
             \Modules\Contact\src\Models\ContactGroup::class,
             \Modules\Contact\src\Models\ContactGroupMember::class,
             \Modules\Contact\src\Models\ContactRegistration::class,

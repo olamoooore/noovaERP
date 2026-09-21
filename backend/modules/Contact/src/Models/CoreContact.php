@@ -75,11 +75,6 @@ class CoreContact extends Model
         return $this->hasMany(ContactRelationship::class, 'contact_id');
     }
 
-    public function visibility(): HasMany
-    {
-        return $this->hasMany(ContactVisibility::class, 'contact_id');
-    }
-
     public function groups(): HasMany
     {
         return $this->hasMany(ContactGroupMember::class, 'contact_id');
