@@ -24,10 +24,20 @@ class SalesOrderService
         private CreditCheckService $creditCheckService,
     ) {}
 
+    /**
+     * Issue #137: advisory lock key for SO-number generation. Tenant-scoped so
+     * one tenant's order creation never blocks another tenant's on the shared
+     * Postgres database (pg_advisory locks ignore search_path).
+     */
+    public static function salesOrderNumberLockKey(?string $tenantId = null): int
+    {
+        return crc32('sales_order_create:'.($tenantId ?? tenant('id') ?? ''));
+    }
+
     public function createOrder(array $data): SalesOrder
     {
         $maxRetries = 5;
-        $lockKey = crc32('sales_order_create');
+        $lockKey = self::salesOrderNumberLockKey();
 
         for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
             try {

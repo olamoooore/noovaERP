@@ -119,6 +119,16 @@ class DeliveryOrderService
     }
 
     /**
+     * Issue #137: advisory lock key for DO-number generation. Tenant-scoped so
+     * one tenant's delivery-order creation never blocks another tenant's on the
+     * shared Postgres database (pg_advisory locks ignore search_path).
+     */
+    public static function deliveryOrderNumberLockKey(?string $tenantId = null): int
+    {
+        return crc32('delivery_order_create:'.($tenantId ?? tenant('id') ?? ''));
+    }
+
+    /**
      * Create a standalone delivery order (not linked to a sales order).
      */
     public function createStandaloneDeliveryOrder(array $data): DeliveryOrder
@@ -139,12 +149,13 @@ class DeliveryOrderService
         }
 
         $maxRetries = 5;
-        $lockKey = crc32('delivery_order_create');
+        $lockKey = self::deliveryOrderNumberLockKey();
 
         for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
             try {
                 return DB::transaction(function () use ($data, $customerId, $warehouseId, $lines, $lockKey) {
                     DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+
                     return $this->createStandaloneDeliveryOrderInsideTransaction($data, $customerId, $warehouseId, $lines);
                 });
             } catch (\Illuminate\Database\QueryException $e) {
@@ -154,6 +165,7 @@ class DeliveryOrderService
                         Log::warning('DO number collision on insert, retrying', [
                             'attempt' => $attempt + 1,
                         ]);
+
                         continue;
                     }
                 }
@@ -163,6 +175,7 @@ class DeliveryOrderService
 
         return DB::transaction(function () use ($data, $customerId, $warehouseId, $lines, $lockKey) {
             DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+
             return $this->createStandaloneDeliveryOrderInsideTransaction($data, $customerId, $warehouseId, $lines);
         });
     }
