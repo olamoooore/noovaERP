@@ -1,44 +1,91 @@
 <?php
 
+use App\Http\Middleware\RequirePermission;
 use Illuminate\Support\Facades\Route;
 use Modules\Fulfillment\Http\Controllers\AdminFulfillmentController;
 use Modules\Fulfillment\Http\Controllers\FulfillmentController;
 use Modules\Fulfillment\Http\Controllers\ProviderController;
 
-// Public routes - for storefront checkout
-Route::prefix('fulfillment')->middleware(['api', 'tenant'])->group(function () {
-    Route::get('/providers', [ProviderController::class, 'index']);
-    Route::post('/providers', [ProviderController::class, 'store']);
-    Route::get('/providers/available-carriers', [ProviderController::class, 'getAvailableCarriers']);
-    Route::get('/providers/{id}', [ProviderController::class, 'show']);
-    Route::put('/providers/{id}', [ProviderController::class, 'update']);
-    Route::delete('/providers/{id}', [ProviderController::class, 'destroy']);
-    Route::post('/providers/{id}/test', [ProviderController::class, 'testCredentials']);
+/*
+|--------------------------------------------------------------------------
+| Fulfillment API Routes
+|--------------------------------------------------------------------------
+|
+| Issue #143 (BLOCKER) remediation:
+|
+| 1. The old "public" group used ->middleware(['api', 'tenant']), but NO
+|    'tenant' alias exists in bootstrap/app.php — every request to the whole
+|    group crashed at middleware resolution. These module routes are loaded
+|    from routes/tenant.php INSIDE the authenticated tenant group, which
+|    already applies ['api', 'auth:sanctum', SetTenantFromUserPreference,
+|    EnsureTenantSearchPath, SyncTenantUserFromCentralAuth, SubstituteBindings]
+|    under the api/v1 prefix. So the group inherits real auth + tenant
+|    resolution; the broken/redundant ['api','tenant'] is removed.
+|
+| 2. Carrier-credential CRUD (store/update/destroy/testCredentials) is REMOVED
+|    from ProviderController's group. That capability already exists, correctly,
+|    in AdminFulfillmentController. ProviderController keeps only read actions
+|    (index/show/available-carriers) plus the storefront-appropriate rates and
+|    shipment/tracking lookups via FulfillmentController.
+|
+| 3. AdminFulfillmentController routes now carry RequirePermission:
+|    reads -> fulfillment.view, shipment writes -> fulfillment.write,
+|    carrier-credential CRUD -> fulfillment.settings (Owner/Admin only, since
+|    these manage encrypted carrier API keys/secrets).
+|
+*/
 
-    Route::post('/rates', [FulfillmentController::class, 'calculateRates']);
+// ─── Operational fulfillment routes (authenticated via parent tenant group) ──
+Route::prefix('fulfillment')->group(function () {
+    // Read-only carrier/provider lookups (NO credential CRUD here — see #143).
+    Route::get('/providers', [ProviderController::class, 'index'])
+        ->middleware(RequirePermission::using('fulfillment.view'));
+    Route::get('/providers/available-carriers', [ProviderController::class, 'getAvailableCarriers'])
+        ->middleware(RequirePermission::using('fulfillment.view'));
+    Route::get('/providers/{id}', [ProviderController::class, 'show'])
+        ->middleware(RequirePermission::using('fulfillment.view'));
 
-    Route::get('/shipments', [FulfillmentController::class, 'listShipments']);
-    Route::post('/shipments', [FulfillmentController::class, 'createShipment']);
-    Route::get('/shipments/{id}', [FulfillmentController::class, 'getShipment']);
-    Route::post('/shipments/{id}/cancel', [FulfillmentController::class, 'cancelShipment']);
-    Route::get('/shipments/{id}/tracking', [FulfillmentController::class, 'getTracking']);
-    Route::post('/shipments/{id}/sync-tracking', [FulfillmentController::class, 'syncTracking']);
+    // Rate calculation + shipment lifecycle.
+    Route::post('/rates', [FulfillmentController::class, 'calculateRates'])
+        ->middleware(RequirePermission::using('fulfillment.view'));
+    Route::get('/shipments', [FulfillmentController::class, 'listShipments'])
+        ->middleware(RequirePermission::using('fulfillment.view'));
+    Route::get('/shipments/{id}', [FulfillmentController::class, 'getShipment'])
+        ->middleware(RequirePermission::using('fulfillment.view'));
+    Route::get('/shipments/{id}/tracking', [FulfillmentController::class, 'getTracking'])
+        ->middleware(RequirePermission::using('fulfillment.view'));
+    Route::post('/shipments', [FulfillmentController::class, 'createShipment'])
+        ->middleware(RequirePermission::using('fulfillment.write'));
+    Route::post('/shipments/{id}/cancel', [FulfillmentController::class, 'cancelShipment'])
+        ->middleware(RequirePermission::using('fulfillment.write'));
+    Route::post('/shipments/{id}/sync-tracking', [FulfillmentController::class, 'syncTracking'])
+        ->middleware(RequirePermission::using('fulfillment.write'));
 });
 
-// Admin routes - require authentication
-Route::middleware(['auth:sanctum'])->group(function () {
-    Route::prefix('admin/fulfillment')->group(function () {
-        Route::get('/providers', [AdminFulfillmentController::class, 'providers']);
-        Route::post('/providers', [AdminFulfillmentController::class, 'createProvider']);
-        Route::get('/providers/available', [AdminFulfillmentController::class, 'availableCarriers']);
-        Route::get('/providers/{id}', [AdminFulfillmentController::class, 'showProvider']);
-        Route::put('/providers/{id}', [AdminFulfillmentController::class, 'updateProvider']);
-        Route::delete('/providers/{id}', [AdminFulfillmentController::class, 'deleteProvider']);
-        Route::post('/providers/{id}/test', [AdminFulfillmentController::class, 'testCredentials']);
-        Route::post('/providers/{id}/toggle', [AdminFulfillmentController::class, 'toggleProvider']);
+// ─── Admin carrier-credential + shipment management ──────────────────────────
+// Credential CRUD is gated by fulfillment.settings (Owner/Admin only).
+Route::prefix('admin/fulfillment')->group(function () {
+    Route::get('/providers', [AdminFulfillmentController::class, 'providers'])
+        ->middleware(RequirePermission::using('fulfillment.view'));
+    Route::get('/providers/available', [AdminFulfillmentController::class, 'availableCarriers'])
+        ->middleware(RequirePermission::using('fulfillment.view'));
+    Route::get('/providers/{id}', [AdminFulfillmentController::class, 'showProvider'])
+        ->middleware(RequirePermission::using('fulfillment.view'));
+    Route::post('/providers', [AdminFulfillmentController::class, 'createProvider'])
+        ->middleware(RequirePermission::using('fulfillment.settings'));
+    Route::put('/providers/{id}', [AdminFulfillmentController::class, 'updateProvider'])
+        ->middleware(RequirePermission::using('fulfillment.settings'));
+    Route::delete('/providers/{id}', [AdminFulfillmentController::class, 'deleteProvider'])
+        ->middleware(RequirePermission::using('fulfillment.settings'));
+    Route::post('/providers/{id}/test', [AdminFulfillmentController::class, 'testCredentials'])
+        ->middleware(RequirePermission::using('fulfillment.settings'));
+    Route::post('/providers/{id}/toggle', [AdminFulfillmentController::class, 'toggleProvider'])
+        ->middleware(RequirePermission::using('fulfillment.settings'));
 
-        Route::get('/shipments', [AdminFulfillmentController::class, 'shipments']);
-        Route::get('/shipments/{id}', [AdminFulfillmentController::class, 'showShipment']);
-        Route::post('/shipments/{id}/create-label', [AdminFulfillmentController::class, 'createLabel']);
-    });
+    Route::get('/shipments', [AdminFulfillmentController::class, 'shipments'])
+        ->middleware(RequirePermission::using('fulfillment.view'));
+    Route::get('/shipments/{id}', [AdminFulfillmentController::class, 'showShipment'])
+        ->middleware(RequirePermission::using('fulfillment.view'));
+    Route::post('/shipments/{id}/create-label', [AdminFulfillmentController::class, 'createLabel'])
+        ->middleware(RequirePermission::using('fulfillment.write'));
 });

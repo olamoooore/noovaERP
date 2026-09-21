@@ -55,6 +55,16 @@ class RolePermissionSeeder extends Seeder
         'sales.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'sales.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
+        // Fulfillment / shipping (issue #143 BLOCKER). FulfillmentModuleContract
+        // declared fulfillment.* permissions but nothing seeded them, so the
+        // RequirePermission wiring had nothing valid to check. Using the coarse
+        // platform convention (fulfillment.view/write/settings) per the module's
+        // own CLAUDE.md guidance. Carrier-credential CRUD is fulfillment.settings
+        // (Owner/Admin only) given its sensitivity (encrypted API keys/secrets).
+        'fulfillment.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::VIEWER],
+        'fulfillment.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        'fulfillment.settings' => [UserRole::OWNER, UserRole::ADMIN],
+
         // Customers / CRM Contacts (ADR-003A CT-VEN-020)
         'customers.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::VIEWER],
         'customers.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
