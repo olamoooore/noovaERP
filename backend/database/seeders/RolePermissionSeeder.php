@@ -33,6 +33,11 @@ class RolePermissionSeeder extends Seeder
         'inventory.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'inventory.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
+        // Product catalogue — destructive bulk purge (issue #127 BLOCKER).
+        // Strictest possible grant: Owner/Admin only. This guards
+        // DELETE /products/delete-all, which hard-deletes the entire catalogue.
+        'products.delete_all' => [UserRole::OWNER, UserRole::ADMIN],
+
         // Sales
         'sales.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::VIEWER],
         'sales.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],

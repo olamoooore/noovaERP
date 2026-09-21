@@ -15,9 +15,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Maatwebsite\Excel\Facades\Excel;
 use Modules\Inventory\Models\Brand;
 use Modules\Inventory\Services\InventoryService;
-use Maatwebsite\Excel\Facades\Excel;
 
 class ProductController extends Controller
 {
@@ -227,17 +227,31 @@ class ProductController extends Controller
         ]);
 
         $query = Product::query();
-        if ($request->filled('document_ids')) $query->whereIn('id', $request->input('document_ids'));
+        if ($request->filled('document_ids')) {
+            $query->whereIn('id', $request->input('document_ids'));
+        }
         if ($request->filled('search')) {
             $search = strtolower((string) $request->search);
             $query->where(fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])->orWhereRaw('LOWER(sku) LIKE ?', ["%{$search}%"])->orWhereRaw('LOWER(barcode) LIKE ?', ["%{$search}%"]));
         }
-        if ($request->filled('category_id')) $query->where('category_id', (int) $request->category_id);
-        if ($request->filled('type')) $query->where('type', $request->type);
-        if ($request->filled('is_active')) $query->where('is_active', $request->boolean('is_active'));
-        if ($request->filled('is_new_arrival')) $query->where('is_new_arrival', true);
-        if ($request->filled('is_preorder')) $query->where('is_preorder', true);
-        if ($request->filled('out_of_stock')) $query->where('stock_quantity', '<=', 0);
+        if ($request->filled('category_id')) {
+            $query->where('category_id', (int) $request->category_id);
+        }
+        if ($request->filled('type')) {
+            $query->where('type', $request->type);
+        }
+        if ($request->filled('is_active')) {
+            $query->where('is_active', $request->boolean('is_active'));
+        }
+        if ($request->filled('is_new_arrival')) {
+            $query->where('is_new_arrival', true);
+        }
+        if ($request->filled('is_preorder')) {
+            $query->where('is_preorder', true);
+        }
+        if ($request->filled('out_of_stock')) {
+            $query->where('stock_quantity', '<=', 0);
+        }
 
         return Excel::download(new ProductsExport($query->orderBy('name'), $validated['columns']), 'products_'.now()->format('Y-m-d').'.xlsx');
     }
@@ -1202,42 +1216,135 @@ class ProductController extends Controller
     }
 
     /**
-     * Delete all products
+     * Delete all products (danger-zone bulk purge).
+     *
+     * Issue #127 (BLOCKER) remediation:
+     *  - Authorization is enforced at the route via
+     *    RequirePermission('products.delete_all') (Owner/Admin only); this
+     *    method additionally re-checks the permission as defence in depth so
+     *    the destructive action can never run if the route guard is ever
+     *    removed or bypassed.
+     *  - SOFT-delete, not forceDelete. product_audit_logs.product_id has
+     *    ON DELETE CASCADE, so a hard delete destroyed the audit trail this
+     *    action should leave behind (finding #3) and removed any recovery path
+     *    (finding #4). A soft delete keeps the row, so no cascade fires, the
+     *    audit history survives, and products are restorable.
+     *  - Transactional/financial tables (invoice_lines, purchase_order_items,
+     *    pos_order_items) are NEVER touched. Products still referenced by
+     *    historical transactions are reported and skipped rather than
+     *    cascade-deleting the transactions (finding #2).
+     *  - The silent empty catch is removed: failures surface, roll back, and
+     *    report exactly what failed (finding #5).
+     *  - The action is written to the log (who/when/how many) BEFORE the
+     *    destructive step, so a record survives.
      */
-    public function destroyAll(): JsonResponse
+    public function destroyAll(Request $request): JsonResponse
     {
-        $count = Product::count();
+        // Defence in depth: re-check the permission even though the route guard
+        // already enforces it. Uses the SAME TenantRoleService mechanism as
+        // RequirePermission (central role -> Spatie mapping), never a raw
+        // $user->can() which would false-negative because the authoritative
+        // role lives in central user_company_access, not the tenant schema.
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
+        }
+
+        $tenantId = (function_exists('tenant') && tenant())
+            ? (string) tenant('id')
+            : (string) $request->header('X-Tenant-ID', '');
+        $centralUserId = (int) (DB::table('public.users')->where('email', $user->email)->value('id') ?? $user->id);
+
+        $isSuperAdmin = (bool) ($user->is_super_admin ?? false) || ($user->role === 'platform_super_admin');
+        $authorized = $isSuperAdmin
+            || ($tenantId !== '' && app(\App\Services\TenantRoleService::class)
+                ->hasPermission($centralUserId, $tenantId, 'products.delete_all'));
+
+        if (! $authorized) {
+            return response()->json([
+                'message' => 'Forbidden: products.delete_all permission required.',
+            ], 403);
+        }
+
+        // Products referenced by immutable financial/transactional records must
+        // NOT be deleted (and we must never delete those records to make room).
+        $referencedProductIds = $this->productIdsReferencedByTransactions();
+
+        $query = Product::query();
+        if (! empty($referencedProductIds)) {
+            $query->whereNotIn('id', $referencedProductIds);
+        }
+
+        $deletable = (clone $query)->get();
+        $count = $deletable->count();
+        $skipped = count($referencedProductIds);
+
+        // Audit BEFORE the destructive step so the record survives the purge.
+        \Illuminate\Support\Facades\Log::warning('Product catalogue bulk purge requested', [
+            'actor_user_id' => $user->id,
+            'tenant_id' => function_exists('tenant') ? (tenant('id') ?? null) : null,
+            'deletable_count' => $count,
+            'skipped_referenced_count' => $skipped,
+        ]);
 
         DB::beginTransaction();
         try {
-            // Clear FK references first
-            $fkTables = [
-                'product_suppliers', 'product_uoms', 'product_bundles',
-                'stock_movements', 'product_variants', 'product_relationships',
-                'product_feature_values', 'product_custom_field_values', 'stock_levels',
-                'product_price_tiers', 'product_batches', 'product_serials',
-                'product_audit_logs', 'product_documents', 'invoice_lines',
-                'purchase_order_items', 'pos_order_items',
-            ];
-            foreach ($fkTables as $table) {
-                try {
-                    DB::table($table)->delete();
-                } catch (\Throwable $e) {
-                }
-            }
-
-            Product::query()->forceDelete();
+            // SOFT-delete, not forceDelete (issue #127 findings #3 and #4):
+            //  - product_audit_logs.product_id has ON DELETE CASCADE, so a hard
+            //    delete would destroy the very audit trail this action should
+            //    leave behind. A soft delete keeps the row, so no cascade fires
+            //    and the audit history survives.
+            //  - Soft delete also preserves a recovery path (SoftDeletes trait),
+            //    matching the rest of the codebase.
+            //  - Product-owned child/config rows (suppliers, uoms, variants,
+            //    stock, batches, serials, etc.) are intentionally LEFT intact:
+            //    the product row still exists, so the FKs stay valid and a
+            //    restore brings back the full configuration. We never touch
+            //    transactional/financial tables or the audit log.
+            $query->get()->each->delete();
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
 
-            return response()->json(['message' => 'Failed to delete all products: '.$e->getMessage()], 500);
+            return response()->json([
+                'message' => 'Failed to delete all products: '.$e->getMessage(),
+            ], 500);
         }
 
         return response()->json([
-            'message' => "{$count} product(s) deleted successfully",
+            'message' => "{$count} product(s) deleted successfully"
+                .($skipped > 0 ? "; {$skipped} product(s) skipped (referenced by financial records)" : ''),
             'deleted' => $count,
+            'skipped_referenced' => $skipped,
         ]);
+    }
+
+    /**
+     * Product IDs still referenced by immutable financial/transactional records.
+     * These must never be hard-deleted (and their referencing rows must never be
+     * wiped to make room). Issue #127.
+     *
+     * @return int[]
+     */
+    private function productIdsReferencedByTransactions(): array
+    {
+        $ids = [];
+        $transactionTables = [
+            'invoice_lines' => 'product_id',
+            'purchase_order_items' => 'product_id',
+            'pos_order_items' => 'product_id',
+        ];
+        foreach ($transactionTables as $table => $column) {
+            if (\Illuminate\Support\Facades\Schema::hasTable($table)
+                && \Illuminate\Support\Facades\Schema::hasColumn($table, $column)) {
+                $ids = array_merge(
+                    $ids,
+                    DB::table($table)->whereNotNull($column)->distinct()->pluck($column)->all()
+                );
+            }
+        }
+
+        return array_values(array_unique(array_map('intval', $ids)));
     }
 
     /**

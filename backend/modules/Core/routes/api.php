@@ -123,8 +123,12 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
     Route::get('/products/export', [ProductController::class, 'export']);
     Route::post('/products/import', [ProductController::class, 'import']);
-    Route::post('/products/bulk-delete', [ProductController::class, 'bulkDestroy']);
-    Route::delete('/products/delete-all', [ProductController::class, 'destroyAll']);
+    Route::post('/products/bulk-delete', [ProductController::class, 'bulkDestroy'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('inventory.write'));
+    // Issue #127 (BLOCKER): destructive bulk purge guarded by the strictest
+    // permission (Owner/Admin only). The controller re-checks as defence in depth.
+    Route::delete('/products/delete-all', [ProductController::class, 'destroyAll'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.delete_all'));
     Route::apiResource('products', ProductController::class);
 
     // Warehouses
