@@ -194,7 +194,7 @@ class RuntimeAuthVerificationTest extends TenantTestCase
     // CLAIM 3 — Financial reporting routes have no permission gate
     // ('reports.view' is seeded but Sales role does NOT have it)
     // ─────────────────────────────────────────────────────────────────────
-    public function test_claim3_sales_role_without_reports_view_can_access_financial_reports(): void
+    public function test_claim3_sales_role_without_reports_view_is_denied_financial_reports(): void
     {
         $this->assertFalse(
             $this->salesUser->hasPermissionTo('reports.view'),
@@ -211,9 +211,7 @@ class RuntimeAuthVerificationTest extends TenantTestCase
 
         foreach ($endpoints as $endpoint) {
             $response = $this->actingAs($this->salesUser)->getJson($endpoint);
-            fwrite(STDERR, "\n[CLAIM3] {$endpoint} status=".$response->getStatusCode()."\n");
-            $this->assertNotEquals(403, $response->getStatusCode(), "CLAIM3 REFUTED if 403 for {$endpoint}: reports.view IS enforced.");
-            $this->assertNotEquals(401, $response->getStatusCode());
+            $this->assertEquals(403, $response->getStatusCode(), "Regression: {$endpoint} no longer enforces reports.view.");
         }
     }
 

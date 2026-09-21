@@ -160,6 +160,11 @@ class RolePermissionSeeder extends Seeder
 
         // Reports
         'reports.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
+        // Issue #103: reporting configuration/mutations (schedules, exports
+        // cleanup, cache, templates) — the read permission alone must not allow
+        // these. Accountant keeps manage capability so existing reporting
+        // workflows do not regress.
+        'reports.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
 
         // Settings
         'settings.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::VIEWER],
