@@ -3,13 +3,13 @@
 namespace Modules\OCRBookkeeping\Services;
 
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Modules\OCRBookkeeping\Models\OcrDocument;
 
 /**
  * OCR Processing Service
- * 
+ *
  * Orchestrates the OCR extraction workflow by calling the Python OCR service
  */
 class OcrProcessingService
@@ -46,9 +46,7 @@ class OcrProcessingService
 
     /**
      * Process uploaded document through OCR
-     * 
-     * @param OcrDocument $document
-     * @return void
+     *
      * @throws \Exception
      */
     public function processDocument(OcrDocument $document): void
@@ -61,29 +59,29 @@ class OcrProcessingService
 
             // Get file from storage (use local storage for now)
             $storageDisk = 'ocr-documents-local';
-            
+
             $disk = Storage::disk($storageDisk);
-            
+
             if (empty($document->file_path)) {
-                throw new \Exception("OCR source file path is missing.");
+                throw new \Exception('OCR source file path is missing.');
             }
 
-            if (!$disk->exists($document->file_path)) {
-                throw new \Exception("OCR source file is missing from storage.");
+            if (! $disk->exists($document->file_path)) {
+                throw new \Exception('OCR source file is missing from storage.');
             }
-            
+
             $fileContents = $disk->get($document->file_path);
-            
+
             if ($fileContents === false || $fileContents === '') {
-                 throw new \Exception("Failed to retrieve OCR source file from storage.");
+                throw new \Exception('Failed to retrieve OCR source file from storage.');
             }
 
             // Call OCR model
             $ocrData = $this->callOcrModel($fileContents, $document->file_name, $document->mime_type);
 
             // Validate extraction
-            if (!$this->validateExtraction($ocrData)) {
-                throw new \Exception("OCR extraction validation failed");
+            if (! $this->validateExtraction($ocrData)) {
+                throw new \Exception('OCR extraction validation failed');
             }
 
             // Mark as needs review with extracted data
@@ -103,27 +101,39 @@ class OcrProcessingService
 
     /**
      * Call external OCR model (Python service)
-     * 
-     * @param string $fileContents The file binary content
-     * @param string $fileName Original file name
-     * @param string $mimeType File MIME type
+     *
+     * @param  string  $fileContents  The file binary content
+     * @param  string  $fileName  Original file name
+     * @param  string  $mimeType  File MIME type
      * @return array Extracted OCR data
+     *
      * @throws \Exception
      */
     private function callOcrModel(string $fileContents, string $fileName, string $mimeType): array
     {
+        // Issue #174: the OCR microservice requires its shared secret; refuse
+        // to call it unauthenticated rather than relying on the network.
+        $serviceKey = trim((string) config('ocr.service.key', ''));
+
+        if ($serviceKey === '') {
+            throw new \RuntimeException(
+                'OCR_SERVICE_KEY is not configured — refusing to call the OCR service without authentication.'
+            );
+        }
+
         try {
             $response = null;
 
             foreach ($this->uploadEndpoints as $endpoint) {
-                $targetUrl = $this->ocrServiceUrl . $endpoint;
+                $targetUrl = $this->ocrServiceUrl.$endpoint;
 
                 Log::info("Calling OCR service at: {$targetUrl}");
 
                 $candidateResponse = Http::connectTimeout(5)
-                 ->timeout($this->timeout)
-                 ->attach('file', $fileContents, $fileName, ['Content-Type' => $mimeType])
-                 ->post($targetUrl);
+                    ->timeout($this->timeout)
+                    ->withHeaders(['X-OCR-Service-Key' => $serviceKey])
+                    ->attach('file', $fileContents, $fileName, ['Content-Type' => $mimeType])
+                    ->post($targetUrl);
 
                 $response = $candidateResponse;
 
@@ -136,7 +146,7 @@ class OcrProcessingService
                 throw new \Exception('OCR service did not return a response');
             }
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 $errorMessage = $response->json('detail') ?? $response->body();
                 throw new \Exception("OCR service error: {$errorMessage}");
             }
@@ -144,7 +154,7 @@ class OcrProcessingService
             $result = $response->json();
 
             if ($result['status'] !== 'success') {
-                throw new \Exception("OCR service returned non-success status");
+                throw new \Exception('OCR service returned non-success status');
             }
 
             // Extract and format the data
@@ -178,10 +188,10 @@ class OcrProcessingService
 
         } catch (\Illuminate\Http\Client\ConnectionException $e) {
             Log::error("OCR service connection failed: {$e->getMessage()}");
-            throw new \Exception("Failed to connect to OCR service. Please ensure the service is running.");
+            throw new \Exception('Failed to connect to OCR service. Please ensure the service is running.');
         } catch (\Illuminate\Http\Client\RequestException $e) {
             Log::error("OCR service request failed: {$e->getMessage()}");
-            throw new \Exception("OCR service request failed: " . $e->response->body());
+            throw new \Exception('OCR service request failed: '.$e->response->body());
         } catch (\Exception $e) {
             Log::error("OCR model call failed: {$e->getMessage()}");
             throw $e;
@@ -190,10 +200,7 @@ class OcrProcessingService
 
     /**
      * Calculate confidence score for a specific field
-     * 
-     * @param array $extractedData
-     * @param string $fieldName
-     * @param array $processingDetails
+     *
      * @return float Confidence score between 0 and 1
      */
     private function calculateFieldConfidence(array $extractedData, string $fieldName, array $processingDetails): float
@@ -203,7 +210,7 @@ class OcrProcessingService
 
         // Check if field has a value
         $fieldValue = $extractedData[$fieldName] ?? null;
-        
+
         if ($fieldValue === null || $fieldValue === '' || $fieldValue === 'Unknown') {
             return 0.0;
         }
@@ -213,14 +220,14 @@ class OcrProcessingService
 
         // Reduce confidence for critical fields if they look suspicious
         if ($fieldName === 'total_amount') {
-            if (!is_numeric($fieldValue) || $fieldValue <= 0) {
+            if (! is_numeric($fieldValue) || $fieldValue <= 0) {
                 $confidence *= 0.5;
             }
         }
 
         if ($fieldName === 'document_date') {
             // Check if date is valid
-            if (!strtotime($fieldValue)) {
+            if (! strtotime($fieldValue)) {
                 $confidence *= 0.3;
             }
         }
@@ -234,7 +241,6 @@ class OcrProcessingService
      * OCR only detects and flags inconsistencies. It must not recalculate,
      * correct, or overwrite subtotal, tax, discount, freight, rounding, or total.
      *
-     * @param array $extractedData
      * @return array<int, string>
      */
     private function detectReviewFlags(array $extractedData): array
@@ -302,12 +308,11 @@ class OcrProcessingService
     /**
      * Extract line amount for reconciliation.
      *
-     * @param mixed $item
-     * @return float
+     * @param  mixed  $item
      */
     private function extractLineAmount($item): float
     {
-        if (!is_array($item)) {
+        if (! is_array($item)) {
             return 0.0;
         }
 
@@ -335,10 +340,6 @@ class OcrProcessingService
 
     /**
      * Detect whether total-subtotal difference could be tax-inclusive pricing.
-     *
-     * @param float $subtotal
-     * @param float $total
-     * @return bool
      */
     private function canBeExplainedByTaxInclusivePricing(float $subtotal, float $total): bool
     {
@@ -355,8 +356,7 @@ class OcrProcessingService
     /**
      * Convert OCR amount value to money without changing the source value.
      *
-     * @param mixed $value
-     * @return float|null
+     * @param  mixed  $value
      */
     private function toMoney($value): ?float
     {
@@ -373,7 +373,7 @@ class OcrProcessingService
             return null;
         }
 
-        if (!is_numeric($value)) {
+        if (! is_numeric($value)) {
             return null;
         }
 
@@ -382,31 +382,31 @@ class OcrProcessingService
 
     /**
      * Validate OCR extraction quality
-     * 
-     * @param array $ocrData
-     * @return bool
      */
     private function validateExtraction(array $ocrData): bool
     {
         $totalAmount = $ocrData['total_amount'] ?? null;
         $rawText = trim((string) ($ocrData['raw_text'] ?? ''));
 
-        if (!is_numeric($totalAmount) || (float) $totalAmount <= 0) {
+        if (! is_numeric($totalAmount) || (float) $totalAmount <= 0) {
             if ($rawText !== '') {
                 Log::info('OCR validation: allowing manual review despite missing total amount because raw text was extracted');
+
                 return true;
             }
 
-            Log::warning("OCR validation failed: Invalid total amount");
+            Log::warning('OCR validation failed: Invalid total amount');
+
             return false;
         }
 
-        $hasIdentifyingData = !empty($ocrData['document_reference'])
-            || !empty($ocrData['line_items'])
-            || (!empty($ocrData['vendor_name']) && $ocrData['vendor_name'] !== 'Unknown');
+        $hasIdentifyingData = ! empty($ocrData['document_reference'])
+            || ! empty($ocrData['line_items'])
+            || (! empty($ocrData['vendor_name']) && $ocrData['vendor_name'] !== 'Unknown');
 
-        if (!$hasIdentifyingData) {
+        if (! $hasIdentifyingData) {
             Log::warning('OCR validation failed: No identifying data extracted');
+
             return false;
         }
 
@@ -414,6 +414,7 @@ class OcrProcessingService
             $score = $ocrData['confidence_scores']['total_amount'] ?? null;
             if ($score !== null && $score < 0.3) {
                 Log::warning("OCR validation failed: Very low confidence for 'total_amount': {$score}");
+
                 return false;
             }
         }
@@ -423,30 +424,28 @@ class OcrProcessingService
 
     /**
      * Check if OCR service is available
-     * 
-     * @return bool
      */
     public function isServiceAvailable(): bool
     {
         try {
             $response = Http::timeout(5)->get("{$this->ocrServiceUrl}/health");
+
             return $response->successful();
         } catch (\Exception $e) {
             Log::warning("OCR service health check failed: {$e->getMessage()}");
+
             return false;
         }
     }
 
     /**
      * Get OCR service status
-     * 
-     * @return array
      */
     public function getServiceStatus(): array
     {
         try {
             $response = Http::timeout(5)->get("{$this->ocrServiceUrl}/health");
-            
+
             if ($response->successful()) {
                 return [
                     'available' => true,
