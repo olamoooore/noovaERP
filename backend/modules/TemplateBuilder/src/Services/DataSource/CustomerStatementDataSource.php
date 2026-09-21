@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Modules\TemplateBuilder\Services\DataSource;
 
 use App\Models\CustomerStatement;
-use App\Models\Invoice;
 use Carbon\Carbon;
 use Modules\TemplateBuilder\Contracts\DataSourceContract;
 
@@ -199,8 +198,29 @@ final class CustomerStatementDataSource implements DataSourceContract
 
     private function computeAging(CustomerStatement $statement): array
     {
+        $payload = $statement->payload ?? [];
+
+        // Frozen snapshot computed by CustomerStatementService at build time
+        // (#197/#198): aging and the transaction list always describe the same
+        // document set, because neither re-queries live data.
+        if (isset($payload['aging']) && is_array($payload['aging'])) {
+            return array_map(
+                'floatval',
+                array_merge([
+                    'current' => 0,
+                    'days_1_30' => 0,
+                    'days_31_60' => 0,
+                    'days_61_90' => 0,
+                    'days_90_plus' => 0,
+                    'total' => 0,
+                ], $payload['aging'])
+            );
+        }
+
+        // Legacy statements (generated before snapshots existed): derive from
+        // the frozen invoice rows in the payload. Null due dates bucket as
+        // current (#203) — never Carbon::parse(null).
         $endDate = Carbon::parse($statement->end_date ?? now());
-        $customerId = $statement->customer_id;
 
         $buckets = [
             'current' => 0,
@@ -211,35 +231,43 @@ final class CustomerStatementDataSource implements DataSourceContract
             'total' => 0,
         ];
 
-        $invoices = Invoice::where('customer_id', $customerId)
-            ->where('balance', '>', 0)
-            ->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
-            ->get();
+        foreach (($payload['transactions'] ?? []) as $transaction) {
+            if (($transaction['type'] ?? '') !== 'Invoice') {
+                continue;
+            }
 
-        foreach ($invoices as $invoice) {
-            $amount = (float) $invoice->balance;
+            $amount = (float) ($transaction['outstanding'] ?? $transaction['balance'] ?? 0);
             if ($amount <= 0) {
                 continue;
             }
 
-            $dueDate = Carbon::parse($invoice->due_date);
-            $daysOverdue = $dueDate->diffInDays($endDate, false);
-
-            if ($daysOverdue <= 0) {
+            $dueDate = $transaction['due_date'] ?? null;
+            if (! $dueDate) {
                 $buckets['current'] += $amount;
-            } elseif ($daysOverdue <= 30) {
-                $buckets['days_1_30'] += $amount;
-            } elseif ($daysOverdue <= 60) {
-                $buckets['days_31_60'] += $amount;
-            } elseif ($daysOverdue <= 90) {
-                $buckets['days_61_90'] += $amount;
-            } else {
-                $buckets['days_90_plus'] += $amount;
+                $buckets['total'] += $amount;
+
+                continue;
             }
 
+            $due = Carbon::parse($dueDate);
+            $bucket = 'current';
+            if ($due->lt($endDate)) {
+                $overdueDays = (int) $due->diffInDays($endDate);
+                if ($overdueDays <= 30) {
+                    $bucket = 'days_1_30';
+                } elseif ($overdueDays <= 60) {
+                    $bucket = 'days_31_60';
+                } elseif ($overdueDays <= 90) {
+                    $bucket = 'days_61_90';
+                } else {
+                    $bucket = 'days_90_plus';
+                }
+            }
+
+            $buckets[$bucket] += $amount;
             $buckets['total'] += $amount;
         }
 
-        return $buckets;
+        return array_map(fn ($value) => round((float) $value, 2), $buckets);
     }
 }

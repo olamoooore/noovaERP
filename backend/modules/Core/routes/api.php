@@ -699,17 +699,17 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/customers/{customer}/statement', [CustomerStatementController::class, 'generate']);
         Route::get('/customers/statements/history', [CustomerStatementController::class, 'history']);
         Route::get('/customers/statements/{statement}', [CustomerStatementController::class, 'show']);
-    });
 
-    // Statement of Account (no entity/accounting middleware needed)
-    // Issue #125 (HIGH): these expose customer financial data — gate with
-    // customers.view even though they skip the entity/accounting middleware.
-    Route::get('/customers/{customer}/statement/compare', [CustomerStatementController::class, 'compare'])
-        ->middleware(RequirePermission::using('customers.view'));
-    Route::get('/customers/{customer}/statement/compare/pdf', [CustomerStatementController::class, 'comparePdf'])
-        ->middleware(RequirePermission::using('customers.view'));
-    Route::get('/customers/{customer}/statement', [CustomerStatementController::class, 'statement'])
-        ->middleware(RequirePermission::using('customers.view'));
+        // Statement of Account reads (issue #195): entity-scoped exactly like
+        // generate/history/show above — previously they sat outside this group
+        // and leaked every legal entity's customer financials.
+        Route::get('/customers/{customer}/statement/compare', [CustomerStatementController::class, 'compare'])
+            ->middleware(RequirePermission::using('customers.view'));
+        Route::get('/customers/{customer}/statement/compare/pdf', [CustomerStatementController::class, 'comparePdf'])
+            ->middleware(RequirePermission::using('customers.view'));
+        Route::get('/customers/{customer}/statement', [CustomerStatementController::class, 'statement'])
+            ->middleware(RequirePermission::using('customers.view'));
+    });
 
     // Medical Cases (issues #161/#186: previously no permission middleware at all)
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
