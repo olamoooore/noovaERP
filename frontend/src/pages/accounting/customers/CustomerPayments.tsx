@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { InvoiceSearchCombobox, type InvoiceSearchItem } from '@/components/ui/InvoiceSearchCombobox';
+import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -204,16 +205,6 @@ export const CustomerPayments: React.FC = () => {
       return response.data.data || [];
     },
     enabled: showRecordPayment || editingPayment !== null,
-  });
-
-  // Customer list for the Customer filter dropdown (§7 — recommended filter).
-  // Capped at 200 customers; the search box above already covers full-text lookup.
-  const { data: customers } = useQuery({
-    queryKey: ['customers-filter-list'],
-    queryFn: async () => {
-      const response = await api.get('/customers?per_page=200');
-      return response.data.data || [];
-    },
   });
 
   const getPaymentMethodBadge = (method: string) => {
@@ -412,24 +403,17 @@ export const CustomerPayments: React.FC = () => {
             </div>
             <div>
               <Label className="text-xs">Customer</Label>
-              <Select
-                value={customerFilter || 'all'}
+              <div className="mt-1">
+              <CustomerSearchCombobox
+                value={customerFilter}
                 onValueChange={(value) => {
-                  setCustomerFilter(value === 'all' ? '' : value);
+                  setCustomerFilter(value);
                   setPage(1);
-                  updateUrl('customer_id', value === 'all' ? '' : value);
+                  updateUrl('customer_id', value);
                 }}
-              >
-                <SelectTrigger className="mt-1"><SelectValue placeholder="All customers" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All customers</SelectItem>
-                  {(customers || []).map((c: any) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.code ? `${c.code} — ${c.name}` : c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                placeholder="All customers (search name or code)..."
+              />
+              </div>
             </div>
             <div>
               <Label className="text-xs">From</Label>

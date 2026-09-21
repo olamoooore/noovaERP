@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
-import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
+import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DeliveryOrderColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog'
@@ -176,6 +176,15 @@ export function DeliveryOrderEditPage() {
 
   const handleSubmit = () => {
     const validLines = lines.filter((l) => l.line_type === 'note' || l.line_type === 'section' || l.quantity > 0)
+    const missingProductIndex = lines.findIndex((line) => (line.line_type ?? 'product') === 'product' && !line.product_id)
+    if (missingProductIndex >= 0) {
+      toast({
+        variant: 'destructive',
+        title: `Product required on line ${missingProductIndex + 1}`,
+        description: 'Select a product before saving.',
+      })
+      return
+    }
     updateMutation.mutate({
       warehouse_id: warehouseId ? parseInt(warehouseId) : undefined,
       delivery_date: deliveryDate || undefined,
@@ -371,7 +380,7 @@ export function DeliveryOrderEditPage() {
                       onValueChange={(val, product) => {
                         updateLine(idx, 'product_id', val ? parseInt(val) : null)
                         updateLine(idx, 'product_name', product?.name || '')
-                        if (!line.description && product) updateLine(idx, 'description', product.name || '')
+                        if (!line.description && product) updateLine(idx, 'description', getProductLineDescription(product))
                       }}
                       placeholder="Search product..."
                     />

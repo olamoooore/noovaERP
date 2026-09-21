@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 
 export function CustomerBonusSchemeCreatePage() {
   const navigate = useNavigate()
@@ -19,14 +20,6 @@ export function CustomerBonusSchemeCreatePage() {
     end_date: '',
     status: 'active',
     remarks: '',
-  })
-
-  const { data: customers } = useQuery({
-    queryKey: ['customers-list'],
-    queryFn: async () => {
-      const res = await api.get('/customers', { params: { per_page: 1000 } })
-      return res.data.data || []
-    },
   })
 
   const { data: schemes } = useQuery({
@@ -83,17 +76,13 @@ export function CustomerBonusSchemeCreatePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-medium">Customer *</label>
-                <select
-                  value={formData.customer_id}
-                  onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
-                  className="w-full mt-1 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  required
-                >
-                  <option value="">Select Customer</option>
-                  {customers?.map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.company_name}</option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <CustomerSearchCombobox
+                    value={formData.customer_id}
+                    onValueChange={(value) => setFormData({ ...formData, customer_id: value })}
+                    placeholder="Search customer name or code..."
+                  />
+                </div>
               </div>
               <div>
                 <label className="text-sm font-medium">Bonus Scheme *</label>

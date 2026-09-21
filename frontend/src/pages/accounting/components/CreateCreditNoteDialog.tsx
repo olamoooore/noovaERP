@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
+import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 
 interface CreateCreditNoteDialogProps {
   onClose: () => void;
@@ -37,11 +38,6 @@ interface Invoice {
   lines: InvoiceLine[];
 }
 
-interface Customer {
-  id: number;
-  name: string;
-}
-
 interface InvoiceLine {
   id: number;
   product_id: number | null;
@@ -57,12 +53,9 @@ interface InvoiceLine {
 export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }: CreateCreditNoteDialogProps) {
   const { toast } = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [open, setOpen] = useState(false);
-  const [customerOpen, setCustomerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     invoice_id: invoiceId ?? 0,
@@ -98,14 +91,6 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
   useEffect(() => {
     setIsLoading(true);
 
-    // Always fetch customers for the dropdown
-    const customersPromise = api.get('/accounting/customers', {
-      params: { per_page: 1000 },
-    }).then(res => {
-      const customersData = (res.data.data || res.data || []) as Customer[];
-      setCustomers(customersData);
-    }).catch(err => console.error('Failed to load customers:', err));
-
     if (invoiceId) {
       // When opened from an invoice detail page, fetch that specific invoice
       api.get(`/invoices/${invoiceId}`)
@@ -128,7 +113,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
           }));
         })
         .catch(err => console.error('Failed to load invoice:', err))
-        .finally(() => Promise.all([customersPromise]).then(() => setIsLoading(false)));
+        .finally(() => setIsLoading(false));
     } else {
       // When opened from the credit notes list page, fetch all posted invoices
       api.get('/invoices', {
@@ -139,7 +124,7 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
           setInvoices(data);
         })
         .catch(err => console.error('Failed to load invoices:', err))
-        .finally(() => Promise.all([customersPromise]).then(() => setIsLoading(false)));
+        .finally(() => setIsLoading(false));
     }
   }, [invoiceId]);
 
@@ -158,23 +143,6 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
     setSelectedInvoice(null);
     setFormData(prev => ({ ...prev, invoice_id: 0, customer_id: 0, lines: [] }));
   };
-
-  const getCustomerDisplayValue = () => {
-    if (!formData.customer_id) return 'Select a customer...';
-    const customer = customers.find(c => c.id === formData.customer_id);
-    return customer?.name ?? 'Unknown';
-  };
-
-  const handleCustomerSelect = (customerIdStr: string) => {
-    const id = Number(customerIdStr);
-    setFormData(prev => ({ ...prev, customer_id: id }));
-    setCustomerOpen(false);
-    setCustomerSearchQuery('');
-  };
-
-  const filteredCustomers = customerSearchQuery
-    ? customers.filter(c => c.name.toLowerCase().includes(customerSearchQuery.toLowerCase()))
-    : customers;
 
   const getDisplayValue = () => {
     if (!selectedInvoice) return 'Select an invoice...';
@@ -351,55 +319,11 @@ export default function CreateCreditNoteDialog({ onClose, onSuccess, invoiceId }
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Customer *
               </label>
-              <Popover open={customerOpen} onOpenChange={setCustomerOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={customerOpen}
-                    className={cn(
-                      'w-full justify-between font-normal',
-                      !formData.customer_id && 'text-muted-foreground'
-                    )}
-                  >
-                    <span className="truncate">{getCustomerDisplayValue()}</span>
-                    <Icon
-                      icon="solar:alt-arrow-down-linear"
-                      className={cn('h-4 w-4 transition-transform', customerOpen && 'rotate-180')}
-                    />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[400px] p-0" align="start">
-                  <Command shouldFilter={false}>
-                    <CommandInput
-                      placeholder="Search customers..."
-                      value={customerSearchQuery}
-                      onValueChange={setCustomerSearchQuery}
-                    />
-                    <CommandList>
-                      {filteredCustomers.length === 0 ? (
-                        <CommandEmpty>No customers found.</CommandEmpty>
-                      ) : (
-                        <CommandGroup heading={`Customers (${filteredCustomers.length})`}>
-                          {filteredCustomers.map((customer) => (
-                            <CommandItem
-                              key={customer.id}
-                              value={String(customer.id)}
-                              onSelect={handleCustomerSelect}
-                              className="flex items-center justify-between py-3"
-                            >
-                              <span className="font-medium">{customer.name}</span>
-                              {formData.customer_id === customer.id && (
-                                <Icon icon="solar:check-circle-bold" className="h-4 w-4 text-primary" />
-                              )}
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      )}
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              <CustomerSearchCombobox
+                value={formData.customer_id ? String(formData.customer_id) : ''}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, customer_id: value ? Number(value) : 0 }))}
+                placeholder="Search customer name or code..."
+              />
             </div>
 
             <div>

@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import api from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
+import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 
 interface StatementRecord {
   id: number;
@@ -72,7 +73,7 @@ export const CustomerStatements: React.FC = () => {
     return latest;
   }, [history]);
 
-  const formatDate = (date: string) => {
+  const formatDate = (date?: string) => {
     if (!date) return '-';
     return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -111,7 +112,6 @@ export const CustomerStatements: React.FC = () => {
               <DialogTitle>Generate Customer Statement</DialogTitle>
             </DialogHeader>
             <GenerateStatementForm
-              customers={customers || []}
               initialCustomerId={prefilledCustomerId}
               onSuccess={() => {
                 setShowGenerateDialog(false);
@@ -340,10 +340,9 @@ export const CustomerStatements: React.FC = () => {
 
 // Generate Statement Form Component
 const GenerateStatementForm: React.FC<{
-  customers: any[];
   initialCustomerId?: string;
   onSuccess: () => void;
-}> = ({ customers, initialCustomerId, onSuccess }) => {
+}> = ({ initialCustomerId, onSuccess }) => {
   const [formData, setFormData] = useState(() => {
     const endDate = new Date();
     const startDate = new Date(endDate);
@@ -410,21 +409,11 @@ const GenerateStatementForm: React.FC<{
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor="customer_id">Customer</Label>
-        <Select
+        <CustomerSearchCombobox
           value={formData.customer_id}
           onValueChange={(value) => setFormData({ ...formData, customer_id: value })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select customer" />
-          </SelectTrigger>
-          <SelectContent>
-            {customers.map((customer) => (
-              <SelectItem key={customer.id} value={customer.id.toString()}>
-                {customer.name} - {customer.email}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          placeholder="Search customer name or code..."
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4">

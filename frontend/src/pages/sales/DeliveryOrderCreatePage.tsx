@@ -9,11 +9,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
-import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
+import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DeliveryOrderColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog'
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow'
+import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 
 interface LineItem {
   line_type?: 'product' | 'note' | 'section'
@@ -66,14 +67,13 @@ export function DeliveryOrderCreatePage() {
   ])
   const [draggedLineIndex, setDraggedLineIndex] = useState<number | null>(null)
 
-  // Fetch customers for standalone mode
-  const { data: customersData } = useQuery({
-    queryKey: ['customers-list'],
+  const { data: selectedCustomer } = useQuery({
+    queryKey: ['customer-detail', customerId],
     queryFn: async () => {
-      const res = await api.get('/customers', { params: { per_page: 200 } })
-      return res.data?.data || res.data || []
+      const res = await api.get(`/customers/${customerId}`)
+      return res.data?.data || res.data
     },
-    enabled: mode === 'standalone',
+    enabled: mode === 'standalone' && !!customerId,
   })
 
   // Fetch warehouses
@@ -156,14 +156,12 @@ export function DeliveryOrderCreatePage() {
   }, [warehousesData, warehouseId])
 
   // Auto-fill shipping address when customer is selected
-  const handleCustomerChange = (val: string) => {
-    setCustomerId(val)
-    const customer = customers.find((c: any) => c.id === parseInt(val))
-    if (customer) {
-      const addr = customer.shipping_address || customer.billing_address || ''
-      setShippingAddress(addr)
-    }
-  }
+  const handleCustomerChange = (val: string) => setCustomerId(val)
+
+  useEffect(() => {
+    if (!selectedCustomer) return
+    setShippingAddress(selectedCustomer.shipping_address || selectedCustomer.billing_address || '')
+  }, [selectedCustomer])
 
   const handleSubmit = () => {
     if (mode === 'linked') {
@@ -236,9 +234,13 @@ export function DeliveryOrderCreatePage() {
       return
     }
 
-    const linesWithoutProduct = validLines.filter((l) => (l.line_type ?? 'product') === 'product' && !l.product_id)
-    if (linesWithoutProduct.length > 0) {
-      toast({ variant: 'destructive', title: 'Each line must have a product selected' })
+    const missingProductIndex = standaloneLines.findIndex((line) => (line.line_type ?? 'product') === 'product' && !line.product_id)
+    if (missingProductIndex >= 0) {
+      toast({
+        variant: 'destructive',
+        title: `Product required on line ${missingProductIndex + 1}`,
+        description: 'Select a product before saving.',
+      })
       return
     }
 
@@ -300,7 +302,6 @@ export function DeliveryOrderCreatePage() {
     setStandaloneLines((prev) => prev.map((line, i) => (i === index ? { ...line, [field]: value } : line)))
   }
 
-  const customers = Array.isArray(customersData) ? customersData : []
   const products = Array.isArray(productsData) ? productsData : []
   const warehouses = Array.isArray(warehousesData) ? warehousesData : []
   const invoices = Array.isArray(invoicesData) ? invoicesData : []
@@ -397,18 +398,11 @@ export function DeliveryOrderCreatePage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Customer <span className="text-destructive">*</span></Label>
-                <Select value={customerId} onValueChange={handleCustomerChange}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customers.map((c: any) => (
-                      <SelectItem key={c.id} value={c.id.toString()}>
-                        {c.code ? `${c.code} — ` : ''}{c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CustomerSearchCombobox
+                  value={customerId}
+                  onValueChange={handleCustomerChange}
+                  placeholder="Search customer name or code..."
+                />
               </div>
               <div>
                 <Label>Warehouse <span className="text-destructive">*</span></Label>
@@ -651,7 +645,7 @@ export function DeliveryOrderCreatePage() {
                         onValueChange={(val, product) => {
                           updateStandaloneLine(idx, 'product_id', val ? parseInt(val) : null)
                           updateStandaloneLine(idx, 'product_name', product?.name || '')
-                          if (!line.description && product) updateStandaloneLine(idx, 'description', product.name || '')
+                          if (!line.description && product) updateStandaloneLine(idx, 'description', getProductLineDescription(product))
                           if (product) {
                             updateStandaloneLine(idx, 'sku', (product as any).sku || '')
                             updateStandaloneLine(idx, 'model_number', (product as any).manufacturer_part_number || '')

@@ -94,38 +94,32 @@ export function CustomerSearchCombobox({
     setSearchQuery('')
   }
 
-  const handleClear = (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleClear = () => {
     onValueChange('', undefined)
+    setSearchQuery('')
+    setOpen(false)
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className={cn(
-            'w-full justify-between font-normal',
-            !value && 'text-muted-foreground'
-          )}
-        >
-          <span className="truncate">{getDisplayValue()}</span>
-          <div className="flex items-center gap-1 ml-2 shrink-0">
-            {value && (
-              <Icon
-                icon="solar:close-circle-bold"
-                className="h-4 w-4 opacity-50 hover:opacity-100 cursor-pointer"
-                onClick={handleClear}
-              />
+    <div className="relative w-full">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            disabled={disabled}
+            className={cn(
+              'w-full justify-between font-normal',
+              value && 'pr-16',
+              !value && 'text-muted-foreground'
             )}
-            <Icon icon="solar:alt-arrow-down-linear" className="h-4 w-4 opacity-50" />
-          </div>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+          >
+            <span className="truncate">{getDisplayValue()}</span>
+            <Icon icon="solar:alt-arrow-down-linear" className="h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         <Command shouldFilter={false}>
           <CommandInput
             placeholder="Type to search..."
@@ -161,7 +155,19 @@ export function CustomerSearchCombobox({
             </CommandGroup>
           </CommandList>
         </Command>
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+      {value && (
+        <button
+          type="button"
+          aria-label="Clear selected customer"
+          disabled={disabled}
+          className="absolute right-8 top-1/2 z-10 -translate-y-1/2 rounded-sm p-1 text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:pointer-events-none disabled:opacity-50"
+          onClick={handleClear}
+        >
+          <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
+        </button>
+      )}
+    </div>
   )
 }

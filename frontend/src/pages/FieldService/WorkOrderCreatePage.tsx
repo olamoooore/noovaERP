@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
 import fieldServiceApi from '@/lib/fieldServiceApi'
+import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 
 const defaultForm = {
   title: '',
@@ -149,6 +150,16 @@ export function WorkOrderCreatePage() {
         <Card>
           <CardHeader className="pb-3"><CardTitle className="text-base">Assignment</CardTitle></CardHeader>
           <CardContent className="space-y-4">
+            <div>
+              <Label>Customer</Label>
+              <div className="mt-1">
+                <CustomerSearchCombobox
+                  value={form.customer_id}
+                  onValueChange={v => set('customer_id', v)}
+                  placeholder="Search customer name or code..."
+                />
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Team</Label>

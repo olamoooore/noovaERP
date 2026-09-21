@@ -7,12 +7,13 @@ import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api';
-import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
+import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 import { SalesLineColumnMenu, SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 import { QuotationCaseInformation, emptyQuotationCaseInformation } from '@/components/sales/QuotationCaseInformation';
 import { InternalReferenceTags } from '@/components/sales/InternalReferenceTags';
+import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 
 const QUOTATION_CREATE_COLUMNS = ['#', 'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Qty', 'Unit Price', 'Tax %', 'Line Total', 'Actions']
   .map((label, index) => ({ label, index: index + 1 }));
@@ -28,15 +29,6 @@ interface QuotationLine {
   unit_price: number | '';
   tax_rate: number | '';
   discount_amount: number | '';
-}
-
-interface CustomerRecord {
-  id: number;
-  name?: string;
-  code?: string | null;
-  email?: string | null;
-  phone?: string | null;
-  payment_terms?: number | null;
 }
 
 const emptyLine = (): QuotationLine => ({
@@ -83,14 +75,6 @@ export const QuotationCreatePage: React.FC = () => {
   const [shippingTerms, setShippingTerms] = useState('');
   const [validity, setValidity] = useState('');
   const [caseInformation, setCaseInformation] = useState(emptyQuotationCaseInformation);
-
-  const { data: customers } = useQuery<CustomerRecord[]>({
-    queryKey: ['customers-list'],
-    queryFn: async () => {
-      const response = await api.get('/customers?per_page=1000');
-      return response.data.data || response.data || [];
-    },
-  });
 
   const { data: products } = useQuery({
     queryKey: ['products-list'],
@@ -213,6 +197,18 @@ export const QuotationCreatePage: React.FC = () => {
       return;
     }
 
+    const missingProductIndex = lines.findIndex((line) =>
+      (line.line_type ?? 'product') === 'product' && !line.product_id
+    );
+    if (missingProductIndex >= 0) {
+      toast({
+        variant: 'destructive',
+        title: `Product required on line ${missingProductIndex + 1}`,
+        description: 'Select a product before saving.',
+      });
+      return;
+    }
+
     if (discountMode === 'percentage' && discountValue > 100) {
       toast({ variant: 'destructive', title: 'Percentage discount cannot exceed 100%' });
       return;
@@ -286,19 +282,11 @@ export const QuotationCreatePage: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Customer *</label>
-                <select
+                <CustomerSearchCombobox
                   value={customerId}
-                  onChange={(event) => setCustomerId(event.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                >
-                  <option value="">Select customer...</option>
-                  {customers?.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={setCustomerId}
+                  placeholder="Search customer name or code..."
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Quote Date</label>
@@ -528,7 +516,7 @@ export const QuotationCreatePage: React.FC = () => {
                               updated[index] = {
                                 ...updated[index],
                                 product_id: val,
-                                description: product.name || updated[index].description,
+                                description: getProductLineDescription(product) || updated[index].description,
                                 unit_price: parseFloat((product as any).price || (product as any).selling_price || '0') || updated[index].unit_price,
                                 model_number: (product as any).manufacturer_part_number || updated[index].model_number,
                                 sku: (product as any).sku || updated[index].sku,

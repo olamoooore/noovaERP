@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useARTransactions, useCustomerBalance, useExportARTransactions } from '@/hooks/useTransactions';
 import type { TransactionFilters } from '@/types/transactions';
-import api from '@/lib/api';
+import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 
 function StatusBadge({ status }: { status: string }) {
   const colors = {
@@ -43,17 +43,10 @@ export default function ARTransactionsPage() {
   const [searchParams] = useSearchParams();
   const [filters, setFilters] = useState<TransactionFilters>({});
   const [page, setPage] = useState(1);
-  const [customers, setCustomers] = useState<any[]>([]);
 
   const { data, isLoading, error } = useARTransactions(filters, page);
   const { data: balanceData } = useCustomerBalance(filters.customer_id || 0);
   const exportMutation = useExportARTransactions();
-
-  useEffect(() => {
-    api.get('/accounting/customers', { params: { per_page: 100 } })
-      .then(res => setCustomers(res.data.data || []))
-      .catch(err => console.error('Failed to load customers:', err));
-  }, []);
 
   useEffect(() => {
     const customerId = searchParams.get('customer_id');
@@ -139,16 +132,11 @@ export default function ARTransactionsPage() {
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
-              <select
-                value={filters.customer_id || ''}
-                onChange={(e) => handleFilterChange('customer_id', e.target.value ? Number(e.target.value) : undefined)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Customers</option>
-                {customers.map(customer => (
-                  <option key={customer.id} value={customer.id}>{customer.name}</option>
-                ))}
-              </select>
+              <CustomerSearchCombobox
+                value={filters.customer_id ? String(filters.customer_id) : ''}
+                onValueChange={(value) => handleFilterChange('customer_id', value ? Number(value) : undefined)}
+                placeholder="All customers (search name or code)..."
+              />
             </div>
 
             <div>
