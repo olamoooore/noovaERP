@@ -76,8 +76,14 @@ jobs:
 
   deploy:
     name: Deploy to Server
+    # Concurrency: one deploy at a time. New pushes wait for the running
+    # deploy to finish (cancel-in-progress: false) so concurrent deploys can't
+    # mutate the same tree/database at once (issue: today's incident).
     runs-on: ubuntu-latest
     needs: [build-frontend, build-superadmin]
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
