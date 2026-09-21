@@ -37,6 +37,8 @@ class MedicalCase extends Model
     protected $casts = [
         'case_date' => 'date',
         'procedure_date' => 'date',
+        // Issue #159: PHI must actually be encrypted, not just named so.
+        'patient_name_encrypted' => 'encrypted',
     ];
 
     protected static function boot(): void
@@ -60,7 +62,8 @@ class MedicalCase extends Model
             }
             Log::warning('Medical case number collision, retrying', ['attempt' => $attempt]);
         }
-        return 'CASE-' . date('Y') . '-' . date('is');
+
+        return 'CASE-'.date('Y').'-'.date('is');
     }
 
     private static function generateCaseNumberRaw(): string
@@ -73,13 +76,13 @@ class MedicalCase extends Model
         }
 
         $latest = static::withTrashed()
-            ->where('case_no', 'like', 'CASE-' . date('Y') . '-%')
+            ->where('case_no', 'like', 'CASE-'.date('Y').'-%')
             ->orderBy('id', 'desc')
             ->first();
 
         $number = $latest ? (int) substr($latest->case_no, -4) + 1 : 1;
 
-        return 'CASE-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+        return 'CASE-'.date('Y').'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 
     // Status helpers
@@ -160,6 +163,11 @@ class MedicalCase extends Model
     }
 
     // Scopes
+    /**
+     * Issue #159: virtual `patient_name` attribute. The underlying
+     * patient_name_encrypted column carries Laravel's `encrypted` cast, so this
+     * returns the decrypted value; raw DB reads see ciphertext only.
+     */
     public function getPatientNameAttribute(): ?string
     {
         return $this->patient_name_encrypted;
