@@ -9,7 +9,9 @@ use Tests\TenantTestCase;
  *
  * Required closure evidence:
  * - POS/Web checkout flows use atomic model: GL + stock are wrapped together.
- * - InventoryPostingEngine uses deferred model: stock mutation first, accounting outbox later.
+ * - The dead InventoryPostingEngine "deferred" boundary was removed (issue
+ *   #108): its accounting dispatch pointed at a job that never existed, so it
+ *   documented a model the system does not implement.
  */
 class AFM001AccountingFailureModelTest extends TenantTestCase
 {
@@ -105,15 +107,11 @@ class AFM001AccountingFailureModelTest extends TenantTestCase
             'GL reversal must happen before stock restoration within the same transaction.');
     }
 
-    public function test_inventory_posting_engine_uses_deferred_accounting_model(): void
+    public function test_dead_inventory_posting_engine_boundary_is_removed(): void
     {
-        $source = file_get_contents(base_path('app/Accounting/InventoryPostingEngine.php'));
-
-        $this->assertStringContainsString('outbox', $source,
-            'InventoryPostingEngine must document deferred/outbox accounting dispatch model.');
-        $this->assertStringContainsString('does NOT call PostingEngine::post()', $source,
-            'InventoryPostingEngine must explicitly state it does not post GL inline.');
-        $this->assertStringNotContainsString('postingEngine->post(', $source,
-            'InventoryPostingEngine must not invoke PostingEngine::post() directly.');
+        $this->assertFalse(
+            class_exists(\App\Accounting\InventoryPostingEngine::class),
+            'The dead InventoryPostingEngine boundary must stay removed (issue #108).'
+        );
     }
 }

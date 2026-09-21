@@ -8,8 +8,9 @@ use Tests\TenantTestCase;
  * AR-001: Central Mutation Ownership
  *
  * No direct stock mutation must be possible outside InventoryService::adjustStock()
- * or the InventoryPostingEngine.  This test suite validates the structural
- * and route-level guards that enforce the invariant.
+ * (delegated to by the module services). The dead InventoryPostingEngine was
+ * removed under issue #108. This test suite validates the structural and
+ * route-level guards that enforce the invariant.
  *
  * Evidence required (from closure checklist):
  *   - products.stock_quantity is not directly settable via fillable
@@ -154,26 +155,24 @@ class AR001MutationOwnershipTest extends TenantTestCase
             'SalesOrderService must reference InventoryService for stock operations.');
     }
 
-    // ── InventoryPostingEngine boundary ──────────────────────────────────────
+    // ── Dead boundary class removal (issue #108) ─────────────────────────────
 
-    public function test_inventory_posting_engine_class_exists(): void
+    public function test_dead_inventory_posting_engine_is_removed(): void
     {
-        $this->assertTrue(
+        $this->assertFalse(
             class_exists(\App\Accounting\InventoryPostingEngine::class),
-            'InventoryPostingEngine class must exist as the declared engine-level mutation boundary.'
+            'InventoryPostingEngine must stay removed — it had zero production callers (issue #108).'
         );
     }
 
-    public function test_inventory_posting_engine_delegates_to_inventory_service(): void
+    public function test_inventory_service_remains_the_mutation_authority(): void
     {
         $source = file_get_contents(
-            base_path('app/Accounting/InventoryPostingEngine.php')
+            base_path('modules/Inventory/src/Services/InventoryService.php')
         );
 
-        $this->assertStringContainsString('InventoryService', $source,
-            'InventoryPostingEngine must delegate stock mutations to InventoryService.');
-        $this->assertStringContainsString('adjustStock', $source,
-            'InventoryPostingEngine must call adjustStock() for all stock mutations.');
+        $this->assertStringContainsString('function adjustStock', $source,
+            'InventoryService::adjustStock must remain the single stock mutation path.');
     }
 
     public function test_accounting_posting_engine_does_not_directly_mutate_stock(): void
