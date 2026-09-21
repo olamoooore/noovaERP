@@ -215,14 +215,7 @@ class SetTenantFromUserPreference
             // 2. Raw json column fallback.
             if (! $suspended) {
                 $raw = DB::table('public.tenants')->where('id', $resolvedTenant->id)->value('data');
-                if (is_string($raw) && $raw !== '' && $raw !== 'null') {
-                    $decoded = json_decode($raw, true);
-                    if (is_array($decoded) && (bool) ($decoded['suspended'] ?? false)) {
-                        $suspended = true;
-                    }
-                } elseif (is_array($raw) && (bool) ($raw['suspended'] ?? false)) {
-                    $suspended = true;
-                }
+                $suspended = self::isSuspendedFlagSet($raw);
             }
 
             if ($suspended) {
@@ -244,5 +237,26 @@ class SetTenantFromUserPreference
         }
 
         return $response;
+    }
+
+    /**
+     * Issue #172 — pure evaluator for the suspended flag as stored in
+     * public.tenants.data. Accepts either the raw json string (as returned by
+     * the DB driver for a json/jsonb column) or an already-decoded array, and
+     * returns true only when `suspended` is truthy. Extracted so the read
+     * decision is independently unit-testable without the DB/tenancy layer.
+     */
+    public static function isSuspendedFlagSet(mixed $raw): bool
+    {
+        if (is_array($raw)) {
+            return (bool) ($raw['suspended'] ?? false);
+        }
+        if (is_string($raw) && $raw !== '' && $raw !== 'null') {
+            $decoded = json_decode($raw, true);
+
+            return is_array($decoded) && (bool) ($decoded['suspended'] ?? false);
+        }
+
+        return false;
     }
 }

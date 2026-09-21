@@ -25,8 +25,16 @@ class TenantOperationService
     {
         $tenant = Tenant::findOrFail($tenantId);
 
-        $before = $tenant->data ?? [];
-        $tenant->update(['data' => array_merge($before, ['suspended' => true])]);
+        // Issue #172 (CRITICAL): the previous $tenant->update(['data' => ...])
+        // did NOT persist the flag — the stancl/tenancy Tenant model manages the
+        // `data` column via custom-column internals and the virtual `data`
+        // attribute round-trips as null, so suspend() wrote nothing anyone could
+        // read. Write the flag directly into the raw json column (merging, so the
+        // tenant's custom columns survive) — the same representation
+        // SetTenantFromUserPreference reads to enforce the block.
+        $before = $this->readRawTenantData($tenantId);
+        $this->writeSuspendedFlag($tenantId, true);
+        $after = array_merge($before, ['suspended' => true]);
 
         $operation = TenantOperation::create([
             'tenant_id' => $tenantId,
@@ -42,7 +50,7 @@ class TenantOperationService
             action: 'tenant.suspended',
             target: $tenant,
             before: $before,
-            after: array_merge($before, ['suspended' => true]),
+            after: $after,
             reason: $reason,
             status: 'success',
         );
@@ -54,8 +62,9 @@ class TenantOperationService
     {
         $tenant = Tenant::findOrFail($tenantId);
 
-        $before = $tenant->data ?? [];
-        $tenant->update(['data' => array_merge($before, ['suspended' => false])]);
+        $before = $this->readRawTenantData($tenantId);
+        $this->writeSuspendedFlag($tenantId, false);
+        $after = array_merge($before, ['suspended' => false]);
 
         $operation = TenantOperation::create([
             'tenant_id' => $tenantId,
@@ -71,12 +80,43 @@ class TenantOperationService
             action: 'tenant.reinstated',
             target: $tenant,
             before: $before,
-            after: array_merge($before, ['suspended' => false]),
+            after: $after,
             reason: $reason,
             status: 'success',
         );
 
         return $operation;
+    }
+
+    /**
+     * Read the raw public.tenants.data json column as an array (issue #172).
+     *
+     * @return array<string, mixed>
+     */
+    private function readRawTenantData(string $tenantId): array
+    {
+        $raw = DB::table('public.tenants')->where('id', $tenantId)->value('data');
+        if (is_array($raw)) {
+            return $raw;
+        }
+        if (is_string($raw) && $raw !== '' && $raw !== 'null') {
+            return json_decode($raw, true) ?: [];
+        }
+
+        return [];
+    }
+
+    /**
+     * Persist the suspended flag into the raw public.tenants.data json column,
+     * merging with the existing custom-column data so nothing is lost (#172).
+     */
+    private function writeSuspendedFlag(string $tenantId, bool $suspended): void
+    {
+        $data = $this->readRawTenantData($tenantId);
+        $data['suspended'] = $suspended;
+        DB::table('public.tenants')->where('id', $tenantId)->update([
+            'data' => json_encode($data),
+        ]);
     }
 
     public function pingHealth(string $tenantId): TenantHealthSnapshot
