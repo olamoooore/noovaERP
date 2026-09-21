@@ -38,6 +38,18 @@ class RolePermissionSeeder extends Seeder
         // DELETE /products/delete-all, which hard-deletes the entire catalogue.
         'products.delete_all' => [UserRole::OWNER, UserRole::ADMIN],
 
+        // Product catalogue CRUD (issue #128 CRITICAL). Granular permissions
+        // mirroring the inventory.* role mappings so no legitimate user loses
+        // access: products.view == inventory.view roles, products.* write ==
+        // inventory.write roles. Export exposes the full catalogue (incl. cost)
+        // so it follows the view roles; import mutates data so it follows write.
+        'products.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::SALES, UserRole::VIEWER],
+        'products.create' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        'products.edit' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        'products.delete' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        'products.export' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::SALES, UserRole::VIEWER],
+        'products.import' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+
         // Sales
         'sales.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::VIEWER],
         'sales.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],

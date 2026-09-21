@@ -121,31 +121,60 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
 
     // Vendor Credit Notes
 
-    Route::get('/products/export', [ProductController::class, 'export']);
-    Route::post('/products/import', [ProductController::class, 'import']);
+    // Products — issue #128 (CRITICAL): every product route now carries an
+    // explicit RequirePermission gate (was: only auth:sanctum + tenant resolve,
+    // i.e. ANY authenticated user could read/write/export/import/delete the
+    // whole catalogue). products.* permissions mirror inventory.* role mappings
+    // so no legitimate user loses access.
+    Route::get('/products/export', [ProductController::class, 'export'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.export'));
+    Route::post('/products/import', [ProductController::class, 'import'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.import'));
     Route::post('/products/bulk-delete', [ProductController::class, 'bulkDestroy'])
-        ->middleware(\App\Http\Middleware\RequirePermission::using('inventory.write'));
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.delete'));
     // Issue #127 (BLOCKER): destructive bulk purge guarded by the strictest
     // permission (Owner/Admin only). The controller re-checks as defence in depth.
     Route::delete('/products/delete-all', [ProductController::class, 'destroyAll'])
         ->middleware(\App\Http\Middleware\RequirePermission::using('products.delete_all'));
-    Route::apiResource('products', ProductController::class);
+    // Explicit verb routes (replaces apiResource) so each verb maps to the
+    // correct granular permission.
+    Route::get('/products', [ProductController::class, 'index'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.view'));
+    Route::post('/products', [ProductController::class, 'store'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.create'));
+    Route::get('/products/{product}', [ProductController::class, 'show'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.view'));
+    Route::match(['put', 'patch'], '/products/{product}', [ProductController::class, 'update'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.edit'));
+    Route::delete('/products/{product}', [ProductController::class, 'destroy'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.delete'));
 
     // Warehouses
     Route::apiResource('warehouses', WarehouseController::class);
 
-    // Product categories
-    Route::get('/product-categories', [ProductCategoryController::class, 'index']);
+    // Product categories — issue #128: read requires products.view.
+    Route::get('/product-categories', [ProductCategoryController::class, 'index'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.view'));
 
     // Vendor AP Transactions
     Route::get('/vendors/transactions', [APTransactionsController::class, 'index']);
     Route::get('/vendors/transactions/export', [APTransactionsController::class, 'export']);
 
-    // Product Settings (Units, Attributes, Features)
-    Route::apiResource('product-units', ProductUnitController::class);
-    Route::apiResource('product-attributes', ProductAttributeController::class);
-    Route::apiResource('product-features', ProductFeatureController::class);
-    Route::apiResource('product-custom-fields', ProductCustomFieldController::class);
+    // Product Settings (Units, Attributes, Features, Custom Fields) — issue #128:
+    // reads require products.view, writes require products.edit. Split via
+    // ->only() so a Viewer/Accountant can still read config when viewing a
+    // product, but only write-capable roles can mutate it.
+    foreach ([
+        'product-units' => ProductUnitController::class,
+        'product-attributes' => ProductAttributeController::class,
+        'product-features' => ProductFeatureController::class,
+        'product-custom-fields' => ProductCustomFieldController::class,
+    ] as $settingsUri => $settingsController) {
+        Route::apiResource($settingsUri, $settingsController)->only(['index', 'show'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('products.view'));
+        Route::apiResource($settingsUri, $settingsController)->only(['store', 'update', 'destroy'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('products.edit'));
+    }
     // Vendors
     Route::get('/vendors', [VendorsController::class, 'index']);
     Route::post('/vendors', [VendorsController::class, 'store']);
@@ -154,11 +183,15 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::put('/vendors/{id}', [VendorsController::class, 'update']);
     Route::delete('/vendors/{id}', [VendorsController::class, 'destroy']);
     Route::get('/vendors/{vendorId}/balance', [APTransactionsController::class, 'getBalance']);
-    // Product variants
-    Route::get('/products/{product}/variants', [ProductVariantController::class, 'index']);
-    Route::post('/products/{product}/variants', [ProductVariantController::class, 'store']);
-    Route::put('/product-variants/{productVariant}', [ProductVariantController::class, 'update']);
-    Route::delete('/product-variants/{productVariant}', [ProductVariantController::class, 'destroy']);
+    // Product variants — issue #128: guard with the same products.* granularity.
+    Route::get('/products/{product}/variants', [ProductVariantController::class, 'index'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.view'));
+    Route::post('/products/{product}/variants', [ProductVariantController::class, 'store'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.create'));
+    Route::put('/product-variants/{productVariant}', [ProductVariantController::class, 'update'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.edit'));
+    Route::delete('/product-variants/{productVariant}', [ProductVariantController::class, 'destroy'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.delete'));
 
     // Customer Categories (must be before customers resource to avoid route conflicts)
     Route::get('customer-categories', [CustomerController::class, 'categories']);
