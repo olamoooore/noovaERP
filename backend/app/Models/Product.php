@@ -657,43 +657,62 @@ class Product extends Model
 
     // ==================== PRICING METHODS ====================
 
-    public function getPriceForQuantity(int $quantity, ?int $customerId = null): float
-    {
-        // Check for customer-specific pricing first
-        if ($customerId) {
-            $customerTier = $this->priceTiers()
-                ->where('customer_id', $customerId)
-                ->where('is_active', true)
-                ->where('min_quantity', '<=', $quantity)
-                ->where(function ($q) use ($quantity) {
-                    $q->whereNull('max_quantity')
-                        ->orWhere('max_quantity', '>=', $quantity);
-                })
-                ->orderBy('min_quantity', 'desc')
-                ->first();
+    /**
+     * Issue #132: resolve the effective unit price for a quantity, honouring
+     * volume tiers, customer-specific tiers, variant-specific tiers and each
+     * tier's validity window (via ProductPriceTier::isValidFor()).
+     *
+     * The previous implementation ignored valid_from/valid_until and
+     * product_variant_id entirely, so expired tiers kept applying and
+     * variant-specific tiers never did.
+     */
+    public function getPriceForQuantity(
+        int $quantity,
+        ?int $customerId = null,
+        ?\Carbon\CarbonInterface $date = null,
+        ?int $variantId = null,
+    ): float {
+        $date = $date ?? now();
 
-            if ($customerTier) {
-                return $customerTier->calculatePrice($this->price);
-            }
-        }
+        $variant = $variantId !== null
+            ? $this->variants()->whereKey($variantId)->first()
+            : null;
 
-        // Check for volume pricing
-        $tier = $this->priceTiers()
-            ->whereNull('customer_id')
+        $basePrice = (float) ($variant?->price ?? $this->price);
+
+        $tiers = $this->priceTiers()
             ->where('is_active', true)
-            ->where('min_quantity', '<=', $quantity)
-            ->where(function ($q) use ($quantity) {
-                $q->whereNull('max_quantity')
-                    ->orWhere('max_quantity', '>=', $quantity);
+            ->where(function ($q) use ($customerId) {
+                $q->whereNull('customer_id');
+                if ($customerId !== null) {
+                    $q->orWhere('customer_id', $customerId);
+                }
             })
-            ->orderBy('min_quantity', 'desc')
-            ->first();
+            ->get()
+            ->filter(fn (ProductPriceTier $tier) => $tier->isValidFor($quantity, $date));
 
-        if ($tier) {
-            return $tier->calculatePrice($this->price);
+        if ($tiers->isEmpty()) {
+            return $basePrice;
         }
 
-        return (float) $this->price;
+        $best = $tiers->sort(function (ProductPriceTier $a, ProductPriceTier $b) use ($customerId, $basePrice) {
+            // Customer-specific tiers always win over generic ones.
+            $aCustomer = ($customerId !== null && (int) $a->customer_id === $customerId) ? 1 : 0;
+            $bCustomer = ($customerId !== null && (int) $b->customer_id === $customerId) ? 1 : 0;
+
+            if ($aCustomer !== $bCustomer) {
+                return $bCustomer <=> $aCustomer;
+            }
+
+            // Then the cheapest resulting price, then the deepest quantity break.
+            $priceComparison = $a->calculatePrice($basePrice) <=> $b->calculatePrice($basePrice);
+
+            return $priceComparison !== 0
+                ? $priceComparison
+                : ($b->min_quantity <=> $a->min_quantity);
+        })->first();
+
+        return round($best->calculatePrice($basePrice), 2);
     }
 
     // ==================== BUNDLE METHODS ====================

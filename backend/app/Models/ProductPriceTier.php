@@ -8,32 +8,40 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * ProductPriceTier Model
- * Volume pricing and customer-specific pricing
+ * Volume pricing and customer-specific pricing.
+ *
+ * Issue #132: the model previously advertised product_variant_id / name /
+ * price / discount_percent, none of which exist in the real
+ * product_price_tiers table (discount_type + discount_value do), so every
+ * calculation fell through to the base price.
  */
 class ProductPriceTier extends Model
 {
     use HasFactory;
 
+    public const TYPE_PERCENTAGE = 'percentage';
+
+    public const TYPE_FIXED = 'fixed';
+
+    public const TYPE_FIXED_PRICE = 'fixed_price';
+
     protected $fillable = [
         'product_id',
-        'product_variant_id',
-        'name',
-        'min_quantity',
-        'max_quantity',
-        'price',
-        'discount_percent',
-        'valid_from',
-        'valid_until',
         'customer_id',
         'customer_group',
+        'min_quantity',
+        'max_quantity',
+        'discount_type',
+        'discount_value',
+        'valid_from',
+        'valid_until',
         'is_active',
     ];
 
     protected $casts = [
         'min_quantity' => 'integer',
         'max_quantity' => 'integer',
-        'price' => 'decimal:2',
-        'discount_percent' => 'decimal:2',
+        'discount_value' => 'decimal:2',
         'valid_from' => 'date',
         'valid_until' => 'date',
         'is_active' => 'boolean',
@@ -44,11 +52,6 @@ class ProductPriceTier extends Model
         return $this->belongsTo(Product::class);
     }
 
-    public function variant(): BelongsTo
-    {
-        return $this->belongsTo(ProductVariant::class, 'product_variant_id');
-    }
-
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
@@ -57,7 +60,7 @@ class ProductPriceTier extends Model
     /**
      * Check if this tier is valid for given quantity and date
      */
-    public function isValidFor(int $quantity, ?\Carbon\Carbon $date = null): bool
+    public function isValidFor(int $quantity, ?\Carbon\CarbonInterface $date = null): bool
     {
         $date = $date ?? now();
 
@@ -77,22 +80,21 @@ class ProductPriceTier extends Model
             return false;
         }
 
-        return $this->is_active;
+        return (bool) $this->is_active;
     }
 
     /**
-     * Calculate price for given base price
+     * Calculate the per-unit price for this tier from a base price.
      */
     public function calculatePrice(float $basePrice): float
     {
-        if ($this->price !== null) {
-            return (float) $this->price;
-        }
+        $value = (float) $this->discount_value;
 
-        if ($this->discount_percent !== null) {
-            return $basePrice * (1 - $this->discount_percent / 100);
-        }
-
-        return $basePrice;
+        return match ($this->discount_type) {
+            self::TYPE_FIXED_PRICE => $value,
+            self::TYPE_FIXED => max($basePrice - $value, 0.0),
+            self::TYPE_PERCENTAGE => max($basePrice * (1 - $value / 100), 0.0),
+            default => $basePrice,
+        };
     }
 }

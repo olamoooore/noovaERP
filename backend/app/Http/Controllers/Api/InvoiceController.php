@@ -1102,7 +1102,13 @@ class InvoiceController extends Controller
                                 $line['description'] = $product->name;
                             }
                             if (! $hasExplicitUnitPrice) {
-                                $line['unit_price'] = (float) $product->price;
+                                // Issue #132: honour the product's price tiers
+                                // (volume/customer/variant/date) when the import
+                                // row does not specify a unit price.
+                                $line['unit_price'] = $product->getPriceForQuantity(
+                                    (int) ceil((float) ($line['quantity'] ?? 1)),
+                                    $customer?->id,
+                                );
                             }
                         }
                     }

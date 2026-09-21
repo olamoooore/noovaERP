@@ -107,11 +107,38 @@ class SalesOrderService
                     if (! isset($lineData['unit_price']) || (float) $lineData['unit_price'] <= 0) {
                         $product = \App\Models\Product::find($lineData['product_id']);
                         if ($product) {
-                            $lineData['unit_price'] = $this->uomConverter->baseUnitPrice($product, $uom);
+                            // Compose with #132 tier pricing: resolve the
+                            // per-base tier price first, then apply the UOM
+                            // multiplier.
+                            $tierBasePrice = $product->getPriceForQuantity(
+                                (int) ceil((float) $lineData['quantity']),
+                                ! empty($data['customer_id']) ? (int) $data['customer_id'] : null,
+                                null,
+                                ! empty($lineData['variant_id']) ? (int) $lineData['variant_id'] : null,
+                            );
+
+                            $lineData['unit_price'] = $this->uomConverter->baseUnitPrice($product, $uom, $tierBasePrice);
                         }
                     }
 
                     $lineData['unit'] = $uom->abbreviation ?: ($lineData['unit'] ?? 'pcs');
+                }
+
+                // Issue #132: when the caller does not supply a price, resolve it
+                // through the product's tier logic (volume/customer/variant/date)
+                // instead of leaving the line at zero or the flat catalog price.
+                if (! isset($lineData['unit_price']) || (float) $lineData['unit_price'] <= 0) {
+                    if (! empty($lineData['product_id'])) {
+                        $product = $product ?? \App\Models\Product::find($lineData['product_id']);
+                        if ($product) {
+                            $lineData['unit_price'] = $product->getPriceForQuantity(
+                                (int) ceil((float) ($lineData['quantity'] ?? 0)),
+                                ! empty($data['customer_id']) ? (int) $data['customer_id'] : null,
+                                null,
+                                ! empty($lineData['variant_id']) ? (int) $lineData['variant_id'] : null,
+                            );
+                        }
+                    }
                 }
 
                 $line = $order->lines()->create([

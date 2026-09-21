@@ -263,7 +263,14 @@ class PosOrderController extends Controller
                 $qty = (int) $line['quantity'];
                 $unitPrice = array_key_exists('unit_price', $line) && $line['unit_price'] !== null
                     ? (float) $line['unit_price']
-                    : (float) ($variant ? $variant->price : $product->price);
+                    // Issue #132: resolve the effective price through the
+                    // product's volume/customer/variant/date price tiers.
+                    : $product->getPriceForQuantity(
+                        $qty,
+                        ! empty($validated['customer_id']) ? (int) $validated['customer_id'] : null,
+                        null,
+                        $variant?->id,
+                    );
 
                 $lineSubtotal = $qty * $unitPrice;
 

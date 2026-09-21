@@ -49,8 +49,12 @@ class ProductUomConverter
      * storage scale (2dp). Non-divisible conversion factors can introduce
      * cent-level rounding — callers should prefer conversion factors that
      * divide the currency cleanly where exact totals are required.
+     *
+     * Mathematically identical to ProductUom::calculatePrice($basePrice) /
+     * conversion_factor, but takes the already-resolved (e.g. tier) base-unit
+     * price when the caller has one.
      */
-    public function baseUnitPrice(Product $product, ProductUom $uom): float
+    public function baseUnitPrice(Product $product, ProductUom $uom, ?float $baseUnitPrice = null): float
     {
         $factor = (float) $uom->conversion_factor;
 
@@ -60,6 +64,8 @@ class ProductUomConverter
             ]);
         }
 
-        return round($uom->calculatePrice((float) $product->price) / $factor, 2);
+        $price = $baseUnitPrice ?? (float) $product->price;
+
+        return round($price * (float) $uom->price_multiplier, 2);
     }
 }
