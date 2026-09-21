@@ -31,7 +31,9 @@ return new class extends Migration
 
     public function down(): void
     {
-        DB::statement('DROP INDEX IF EXISTS vendors_code_unique');
+        // Schema-qualified: unqualified DROP INDEX can leak to public via search_path.
+        $schema = DB::selectOne('SELECT current_schema() AS s')->s;
+        DB::statement("DROP INDEX IF EXISTS \"{$schema}\".vendors_code_unique");
 
         Schema::table('vendors', function (Blueprint $table) {
             $table->dropColumn(['code', 'billing_address', 'shipping_address']);

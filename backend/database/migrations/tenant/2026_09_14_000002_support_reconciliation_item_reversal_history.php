@@ -16,7 +16,9 @@ return new class extends Migration
 
     public function down(): void
     {
-        DB::statement('DROP INDEX IF EXISTS reconciliation_items_active_gl_unique');
+        // Schema-qualified: unqualified DROP INDEX can leak to public via search_path.
+        $schema = DB::selectOne('SELECT current_schema() AS s')->s;
+        DB::statement("DROP INDEX IF EXISTS \"{$schema}\".reconciliation_items_active_gl_unique");
         Schema::table('reconciliation_items', fn (Blueprint $table) => $table->dropColumn('reversed_at'));
         Schema::table('reconciliation_items', fn (Blueprint $table) => $table->unique('journal_entry_line_id'));
     }

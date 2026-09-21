@@ -313,7 +313,7 @@ return new class extends Migration
     {
         $exists = DB::scalar("
             SELECT 1 FROM pg_indexes
-            WHERE tablename = ? AND indexname = ?
+            WHERE schemaname = current_schema() AND tablename = ? AND indexname = ?
         ", [$table, "{$table}_{$column}_index"]);
         if ($exists) {
             return;

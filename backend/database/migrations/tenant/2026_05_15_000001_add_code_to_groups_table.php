@@ -38,7 +38,9 @@ return new class extends Migration
             return;
         }
 
-        DB::statement('DROP INDEX IF EXISTS entity_groups_code_unique');
+        // Schema-qualified: unqualified DROP INDEX can leak to public via search_path.
+        $schema = DB::selectOne('SELECT current_schema() AS s')->s;
+        DB::statement("DROP INDEX IF EXISTS \"{$schema}\".entity_groups_code_unique");
 
         Schema::table('entity_groups', function (Blueprint $table) {
             $table->dropColumn('code');
