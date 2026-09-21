@@ -22,6 +22,7 @@ class SalesOrderService
         private \Modules\Inventory\Services\InventoryService $inventoryService,
         private \Modules\Inventory\Services\StockReservationService $reservationService,
         private CreditCheckService $creditCheckService,
+        private \App\Services\ProductUomConverter $uomConverter,
     ) {}
 
     /**
@@ -95,6 +96,24 @@ class SalesOrderService
             $order = SalesOrder::create($data);
 
             foreach ($lines as $lineData) {
+                // Issue #135: a line entered in a non-base UOM must be converted
+                // to base units before it can reach stock/COGS. The base-unit
+                // price is derived from the UOM rate; an explicit unit_price is
+                // treated as the per-base-unit price.
+                if (! empty($lineData['uom_id']) && ! empty($lineData['product_id'])) {
+                    $uom = $this->uomConverter->resolve((int) $lineData['product_id'], (int) $lineData['uom_id']);
+                    $lineData['quantity'] = $this->uomConverter->toBase($uom, (float) ($lineData['quantity'] ?? 0));
+
+                    if (! isset($lineData['unit_price']) || (float) $lineData['unit_price'] <= 0) {
+                        $product = \App\Models\Product::find($lineData['product_id']);
+                        if ($product) {
+                            $lineData['unit_price'] = $this->uomConverter->baseUnitPrice($product, $uom);
+                        }
+                    }
+
+                    $lineData['unit'] = $uom->abbreviation ?: ($lineData['unit'] ?? 'pcs');
+                }
+
                 $line = $order->lines()->create([
                     'legal_entity_id' => $order->legal_entity_id,
                     'line_type' => $lineData['line_type'] ?? 'product',

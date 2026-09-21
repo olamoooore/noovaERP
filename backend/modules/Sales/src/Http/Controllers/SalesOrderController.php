@@ -82,6 +82,7 @@ class SalesOrderController extends Controller
             'lines.*.description' => 'required|string',
             'lines.*.quantity' => 'nullable|numeric|min:0',
             'lines.*.unit_price' => 'nullable|numeric|min:0',
+            'lines.*.uom_id' => 'nullable|integer|exists:product_uoms,id',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_type' => 'nullable|in:percentage,fixed',
             'lines.*.discount_value' => 'nullable|numeric|min:0',

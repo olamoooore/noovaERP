@@ -600,11 +600,14 @@ class ProductController extends Controller
             $validated['customer_id'] ?? null
         );
 
-        // Apply UOM multiplier if specified
+        // Apply UOM pricing if specified. Use the canonical ProductUom::
+        // calculatePrice() (basePrice × conversion_factor × price_multiplier)
+        // — the previous `$unitPrice * price_multiplier` ignored the
+        // conversion factor entirely (issue #135).
         if (! empty($validated['uom_id'])) {
             $uom = $product->uoms()->find($validated['uom_id']);
             if ($uom) {
-                $unitPrice = $unitPrice * $uom->price_multiplier;
+                $unitPrice = $uom->calculatePrice($unitPrice);
             }
         }
 

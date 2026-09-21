@@ -260,6 +260,7 @@ class PurchaseOrderController extends Controller
             'items' => 'required|array|min:1',
             'items.*.id' => 'required|exists:purchase_order_items,id',
             'items.*.quantity_received' => 'required|integer|min:0',
+            'items.*.uom_id' => 'nullable|integer|exists:product_uoms,id',
             'invoice_number' => 'nullable|string|max:100',
             'notes' => 'nullable|string',
         ]);
@@ -272,6 +273,15 @@ class PurchaseOrderController extends Controller
                 $item = PurchaseOrderItem::find($itemData['id']);
                 if ($item && $item->purchase_order_id === $purchaseOrder->id) {
                     $requestedQty = (int) $itemData['quantity_received'];
+
+                    // Issue #135: convert a non-base UOM quantity to base units
+                    // before it touches PO received-quantity arithmetic or stock.
+                    if (! empty($itemData['uom_id']) && $item->product_id) {
+                        $uom = app(\App\Services\ProductUomConverter::class)
+                            ->resolve((int) $item->product_id, (int) $itemData['uom_id']);
+                        $requestedQty = (int) round($uom->convertToBase($requestedQty));
+                    }
+
                     $remainingQty = max(0, (int) $item->quantity_ordered - (int) $item->quantity_received);
                     $acceptedQty = min($requestedQty, $remainingQty);
                     $newReceived = $item->quantity_received + $acceptedQty;

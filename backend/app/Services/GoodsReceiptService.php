@@ -18,6 +18,7 @@ class GoodsReceiptService
 {
     public function __construct(
         private readonly InventoryService $inventoryService,
+        private readonly \App\Services\ProductUomConverter $uomConverter,
         private readonly PostingEngine $postingEngine,
     ) {}
 
@@ -47,6 +48,15 @@ class GoodsReceiptService
                 $receivedQty = $lineData['quantity_received'];
                 $acceptedQty = $lineData['quantity_accepted'] ?? $receivedQty;
                 $rejectedQty = $lineData['quantity_rejected'] ?? 0;
+
+                // Issue #135: a quantity entered in a non-base UOM must be
+                // converted before it reaches stock (1 Box = 12 Pieces).
+                if (! empty($lineData['uom_id']) && $poLine->product_id) {
+                    $uom = $this->uomConverter->resolve((int) $poLine->product_id, (int) $lineData['uom_id']);
+                    $receivedQty = $this->uomConverter->toBase($uom, (float) $receivedQty);
+                    $acceptedQty = $this->uomConverter->toBase($uom, (float) $acceptedQty);
+                    $rejectedQty = $this->uomConverter->toBase($uom, (float) $rejectedQty);
+                }
 
                 GoodsReceiptLine::create([
                     'goods_receipt_id' => $grn->id,
