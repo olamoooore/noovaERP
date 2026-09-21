@@ -528,33 +528,48 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
 
         // Entity Management (Phase 4 — Multi-Entity)
         Route::get('/groups', [EntityManagementController::class, 'indexGroups']);
-        Route::post('/groups', [EntityManagementController::class, 'storeGroup']);
+        Route::post('/groups', [EntityManagementController::class, 'storeGroup'])
+            ->middleware(RequirePermission::using('entities.manage'));
         Route::get('/groups/{id}', [EntityManagementController::class, 'showGroup']);
-        Route::put('/groups/{id}', [EntityManagementController::class, 'updateGroup']);
-        Route::delete('/groups/{id}', [EntityManagementController::class, 'destroyGroup']);
+        Route::put('/groups/{id}', [EntityManagementController::class, 'updateGroup'])
+            ->middleware(RequirePermission::using('entities.manage'));
+        Route::delete('/groups/{id}', [EntityManagementController::class, 'destroyGroup'])
+            ->middleware(RequirePermission::using('entities.manage'));
 
         Route::get('/legal-entities', [EntityManagementController::class, 'indexEntities']);
-        Route::post('/legal-entities', [EntityManagementController::class, 'storeEntity']);
+        Route::post('/legal-entities', [EntityManagementController::class, 'storeEntity'])
+            ->middleware(RequirePermission::using('entities.manage'));
         Route::get('/legal-entities/{id}', [EntityManagementController::class, 'showEntity']);
-        Route::put('/legal-entities/{id}', [EntityManagementController::class, 'updateEntity']);
-        Route::delete('/legal-entities/{id}', [EntityManagementController::class, 'destroyEntity']);
+        Route::put('/legal-entities/{id}', [EntityManagementController::class, 'updateEntity'])
+            ->middleware(RequirePermission::using('entities.manage'));
+        Route::delete('/legal-entities/{id}', [EntityManagementController::class, 'destroyEntity'])
+            ->middleware(RequirePermission::using('entities.manage'));
 
         Route::get('/branches', [EntityManagementController::class, 'indexBranches']);
-        Route::post('/branches', [EntityManagementController::class, 'storeBranch']);
+        Route::post('/branches', [EntityManagementController::class, 'storeBranch'])
+            ->middleware(RequirePermission::using('entities.manage'));
         Route::get('/branches/{id}', [EntityManagementController::class, 'showBranch']);
-        Route::put('/branches/{id}', [EntityManagementController::class, 'updateBranch']);
-        Route::delete('/branches/{id}', [EntityManagementController::class, 'destroyBranch']);
+        Route::put('/branches/{id}', [EntityManagementController::class, 'updateBranch'])
+            ->middleware(RequirePermission::using('entities.manage'));
+        Route::delete('/branches/{id}', [EntityManagementController::class, 'destroyBranch'])
+            ->middleware(RequirePermission::using('entities.manage'));
 
         Route::get('/entity-books', [EntityManagementController::class, 'indexBooks']);
-        Route::post('/entity-books', [EntityManagementController::class, 'storeBook']);
+        Route::post('/entity-books', [EntityManagementController::class, 'storeBook'])
+            ->middleware(RequirePermission::using('entities.manage'));
         Route::get('/entity-books/{id}', [EntityManagementController::class, 'showBook']);
-        Route::put('/entity-books/{id}', [EntityManagementController::class, 'updateBook']);
-        Route::delete('/entity-books/{id}', [EntityManagementController::class, 'destroyBook']);
+        Route::put('/entity-books/{id}', [EntityManagementController::class, 'updateBook'])
+            ->middleware(RequirePermission::using('entities.manage'));
+        Route::delete('/entity-books/{id}', [EntityManagementController::class, 'destroyBook'])
+            ->middleware(RequirePermission::using('entities.manage'));
 
         Route::get('/legal-entities/{entityId}/modules', [EntityManagementController::class, 'indexModules']);
-        Route::post('/legal-entities/{entityId}/modules/activate', [EntityManagementController::class, 'activateModule']);
-        Route::post('/legal-entities/{entityId}/modules/deactivate', [EntityManagementController::class, 'deactivateModule']);
-        Route::post('/legal-entities/{entityId}/modules/industry-pack', [EntityManagementController::class, 'applyIndustryPack']);
+        Route::post('/legal-entities/{entityId}/modules/activate', [EntityManagementController::class, 'activateModule'])
+            ->middleware(RequirePermission::using('entities.manage'));
+        Route::post('/legal-entities/{entityId}/modules/deactivate', [EntityManagementController::class, 'deactivateModule'])
+            ->middleware(RequirePermission::using('entities.manage'));
+        Route::post('/legal-entities/{entityId}/modules/industry-pack', [EntityManagementController::class, 'applyIndustryPack'])
+            ->middleware(RequirePermission::using('entities.manage'));
 
         // Currencies — read endpoints are open to any tenant-authenticated user;
         // mutations require settings.write so only Owner/Admin can toggle

@@ -166,6 +166,12 @@ class RolePermissionSeeder extends Seeder
         // workflows do not regress.
         'reports.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
 
+        // Issue #164: legal entity / group / branch / entity-book structure and
+        // per-entity module activation. Tenant-structural authority — Owner and
+        // Admin only; the routine 'accountant' role must NOT reshape the org
+        // chart or switch modules on/off per entity.
+        'entities.manage' => [UserRole::OWNER, UserRole::ADMIN],
+
         // Settings
         'settings.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::VIEWER],
         'settings.write' => [UserRole::OWNER, UserRole::ADMIN],
