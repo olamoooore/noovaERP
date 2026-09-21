@@ -23,6 +23,7 @@ class WebOrderPostingService
         private readonly PostingEngineInterface $postingEngine,
         private readonly InventoryService $inventoryService,
         private readonly StockReservationService $stockReservationService,
+        private readonly \App\Services\BundleDecompositionService $bundleDecomposition,
     ) {}
 
     /**
@@ -36,22 +37,34 @@ class WebOrderPostingService
             : null;
 
         foreach ($order->items as $item) {
-            $productId = $item->product_id;
-            $trackInventory = $item->product?->track_inventory ?? false;
+            $product = $item->product;
 
-            if ($productId && $trackInventory) {
+            if (! $product) {
+                continue;
+            }
+
+            // Issue #130: a bundle consumes its components; a non-bundle
+            // consumes itself (only when inventory-tracked).
+            foreach ($this->bundleDecomposition->stockConsumingComponents($product, (float) $item->quantity) as $component) {
+                $productId = $component['product']->id;
+                $componentQty = (int) round($component['quantity']);
+
+                if ($componentQty <= 0) {
+                    continue;
+                }
+
                 $alreadyDeducted = (int) StockMovement::where('reference_type', 'WebOrder')
                     ->where('reference_id', $order->id)
                     ->where('type', 'sale')
                     ->where('product_id', $productId)
                     ->sum('quantity');
-                $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
+                $remainingToDeduct = $componentQty - $alreadyDeducted;
 
                 if ($remainingToDeduct <= 0) {
                     Log::info('WebOrderPostingService::deductStock skip already deducted line', [
                         'order_id' => $order->id,
                         'product_id' => $productId,
-                        'ordered_qty' => (int) $item->quantity,
+                        'ordered_qty' => $componentQty,
                         'already_deducted' => $alreadyDeducted,
                     ]);
 
@@ -99,10 +112,21 @@ class WebOrderPostingService
             : null;
 
         foreach ($order->items as $item) {
-            $productId = $item->product_id;
-            $trackInventory = $item->product?->track_inventory ?? false;
+            $product = $item->product;
 
-            if ($productId && $trackInventory) {
+            if (! $product) {
+                continue;
+            }
+
+            // Issue #130: restore the decomposed components for bundle lines.
+            foreach ($this->bundleDecomposition->stockConsumingComponents($product, (float) $item->quantity) as $component) {
+                $productId = $component['product']->id;
+                $componentQty = (int) round($component['quantity']);
+
+                if ($componentQty <= 0) {
+                    continue;
+                }
+
                 $alreadyDeducted = (int) StockMovement::where('reference_type', 'WebOrder')
                     ->where('reference_id', $order->id)
                     ->where('type', 'sale')
@@ -113,7 +137,7 @@ class WebOrderPostingService
                     ->where('type', 'return')
                     ->where('product_id', $productId)
                     ->sum('quantity');
-                $remainingToRestore = $alreadyDeducted - $alreadyRestored;
+                $remainingToRestore = min($componentQty, $alreadyDeducted - $alreadyRestored);
 
                 if ($remainingToRestore <= 0) {
                     Log::info('WebOrderPostingService::restoreStock skip already restored line', [
@@ -248,13 +272,12 @@ class WebOrderPostingService
             }
 
             // COGS / Inventory
+            // Issue #130: bundle lines cost the SUM of their components.
             $totalCost = 0.0;
             foreach ($order->items as $item) {
-                $cost = 0.0;
                 if ($item->product) {
-                    $cost = (float) $item->product->cost;
+                    $totalCost += $this->bundleDecomposition->cost($item->product, (float) $item->quantity);
                 }
-                $totalCost += $cost * (int) $item->quantity;
             }
 
             // Entitlement safety / no-silent-no-op guard:
@@ -297,7 +320,7 @@ class WebOrderPostingService
                 entityBookId: request()->attributes->get('entity_book_id'),
             ));
 
-            if (!$result->success) {
+            if (! $result->success) {
                 throw new \RuntimeException(
                     "GL posting failed for web order {$order->order_number}: {$result->error}"
                 );
@@ -351,7 +374,7 @@ class WebOrderPostingService
                 approvalUserId: null,
             ));
 
-            if (!$result->success) {
+            if (! $result->success) {
                 throw new \RuntimeException(
                     "GL reversal failed for web order {$order->order_number}: {$result->error}"
                 );
@@ -420,7 +443,15 @@ class WebOrderPostingService
 
     private function orderHasTrackedInventoryItems(WebOrder $order): bool
     {
-        return $order->items->contains(fn ($item) => (bool) ($item->product?->track_inventory ?? false));
+        // Issue #130: a virtual bundle has no stock of its own but its tracked
+        // components do — the order still needs a warehouse context.
+        return $order->items->contains(function ($item) {
+            if (! $item->product) {
+                return false;
+            }
+
+            return $this->bundleDecomposition->stockConsumingComponents($item->product, (float) $item->quantity) !== [];
+        });
     }
 
     private function requireInventoryWarehouseId(WebOrder $order, string $operation): int

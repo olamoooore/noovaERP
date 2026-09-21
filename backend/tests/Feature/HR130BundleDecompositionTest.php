@@ -13,6 +13,9 @@ use App\Models\Warehouse;
 use App\Services\BundleDecompositionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\Ecommerce\Models\WebOrder;
+use Modules\Ecommerce\Models\WebOrderItem;
+use Modules\Ecommerce\Services\WebOrderPostingService;
 use Modules\Inventory\Models\StockLevel;
 use Modules\Sales\Services\DeliveryOrderService;
 use Tests\TenantTestCase;
@@ -199,6 +202,44 @@ class HR130BundleDecompositionTest extends TenantTestCase
 
         $this->assertSame(5.0, (float) $byId[$this->componentA->id]['quantity']);
         $this->assertSame(2.5, (float) $byId[$this->componentB->id]['quantity']);
+    }
+
+    public function test_web_order_channel_decomposes_bundle_stock(): void
+    {
+        $order = WebOrder::create([
+            'order_number' => 'WEB-'.Str::upper(Str::random(8)),
+            'customer_id' => Customer::factory()->create()->id,
+            'email' => 'bundle-'.uniqid().'@test.local',
+            'first_name' => 'Bundle',
+            'last_name' => 'Buyer',
+            'status' => 'pending',
+            'payment_status' => 'pending',
+            'subtotal' => 100,
+            'shipping_cost' => 0,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total' => 100,
+            'currency' => 'USD',
+            'fulfillment_warehouse_id' => $this->warehouse->id,
+        ]);
+
+        WebOrderItem::create([
+            'web_order_id' => $order->id,
+            'product_id' => $this->bundle->id,
+            'product_name' => 'Gift Basket',
+            'product_sku' => $this->bundle->sku,
+            'unit_price' => 50,
+            'quantity' => 2,
+            'tax_rate' => 0,
+            'tax_amount' => 0,
+            'line_total' => 100,
+        ]);
+
+        app(WebOrderPostingService::class)->deductStock($order->fresh('items.product'));
+
+        // 2 Gift Baskets = 4 Red Wine + 2 Chocolate.
+        $this->assertSame(6, $this->stockOf($this->componentA), 'Web order must deduct 2 x 2 components');
+        $this->assertSame(8, $this->stockOf($this->componentB), 'Web order must deduct 2 x 1 components');
     }
 
     public function test_bundle_discount_columns_match_the_real_schema(): void

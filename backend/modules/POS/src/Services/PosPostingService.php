@@ -81,15 +81,19 @@ class PosPostingService
         }
 
         // COGS / Inventory
+        // Issue #130: bundle lines cost the SUM of their components.
         $totalCost = 0.0;
+        $bundleDecomposition = app(\App\Services\BundleDecompositionService::class);
         foreach ($order->items as $item) {
-            $cost = 0.0;
             if ($item->product_variant_id && $item->variant) {
-                $cost = (float) $item->variant->cost;
-            } elseif ($item->product_id && $item->product) {
-                $cost = (float) $item->product->cost;
+                $totalCost += (float) $item->variant->cost * (int) $item->quantity;
+
+                continue;
             }
-            $totalCost += $cost * (int) $item->quantity;
+
+            if ($item->product) {
+                $totalCost += $bundleDecomposition->cost($item->product, (float) $item->quantity);
+            }
         }
 
         // Entitlement safety / no-silent-no-op guard:
@@ -143,7 +147,7 @@ class PosPostingService
             requiredPermission: 'pos.create',
         ));
 
-        if (!$result->success) {
+        if (! $result->success) {
             throw new \RuntimeException("POS posting failed: {$result->error}");
         }
 
@@ -172,24 +176,21 @@ class PosPostingService
 
     private function missingCostBasisItems(PosOrder $order): array
     {
+        $bundleDecomposition = app(\App\Services\BundleDecompositionService::class);
+
         $items = $order->items
-            ->filter(function ($item) {
-                $trackInventory = $item->product_variant_id && $item->variant
-                    ? (bool) $item->variant->track_inventory
-                    : (bool) ($item->product?->track_inventory ?? false);
-
-                if (! $trackInventory) {
-                    return false;
-                }
-
-                $cost = 0.0;
+            ->filter(function ($item) use ($bundleDecomposition) {
                 if ($item->product_variant_id && $item->variant) {
-                    $cost = (float) $item->variant->cost;
-                } elseif ($item->product_id && $item->product) {
-                    $cost = (float) $item->product->cost;
+                    return (bool) $item->variant->track_inventory && (float) $item->variant->cost <= 0;
                 }
 
-                return $cost <= 0;
+                if ($item->product_id && $item->product) {
+                    // Issue #130: a bundle's cost basis is the sum of its
+                    // components, not the bundle's own (usually unset) cost.
+                    return $bundleDecomposition->cost($item->product, (float) $item->quantity) <= 0;
+                }
+
+                return false;
             })
             ->map(function ($item) {
                 if ($item->product_variant_id && $item->variant) {
@@ -246,7 +247,7 @@ class PosPostingService
             approvalUserId: null,
         ));
 
-        if (!$result->success) {
+        if (! $result->success) {
             throw new \RuntimeException(
                 "GL reversal failed for POS return of order {$originalOrder->order_number}: {$result->error}"
             );
@@ -314,7 +315,7 @@ class PosPostingService
             entityBookId: request()->attributes->get('entity_book_id'),
         ));
 
-        if (!$result->success) {
+        if (! $result->success) {
             throw new \RuntimeException("Refund payment posting failed: {$result->error}");
         }
 
