@@ -120,8 +120,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     Route::post('/modules/{key}/activate', [App\Http\Controllers\Api\PlatformModuleController::class, 'activate'])->where('key', '[a-z][a-z0-9._-]+');
     Route::post('/modules/{key}/deactivate', [App\Http\Controllers\Api\PlatformModuleController::class, 'deactivate'])->where('key', '[a-z][a-z0-9._-]+');
 
-    // Dashboard
-    Route::get('/dashboard', [DashboardController::class, 'index']);
+    // Dashboard (issue #113: resolve entity context so the controller can scope
+    // its financial aggregates to the user's accessible legal entities).
+    Route::get('/dashboard', [DashboardController::class, 'index'])
+        ->middleware([ResolveEntityContext::class, EnsureEntityAccess::class]);
 
     // Vendor Credit Notes
 
