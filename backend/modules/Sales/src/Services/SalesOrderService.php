@@ -21,6 +21,7 @@ class SalesOrderService
         private InvoiceService $invoiceService,
         private \Modules\Inventory\Services\InventoryService $inventoryService,
         private \Modules\Inventory\Services\StockReservationService $reservationService,
+        private CreditCheckService $creditCheckService,
     ) {}
 
     public function createOrder(array $data): SalesOrder
@@ -45,6 +46,7 @@ class SalesOrderService
                         Log::warning('SalesOrder SO number collision on insert, retrying', [
                             'attempt' => $attempt + 1,
                         ]);
+
                         continue;
                     }
                 }
@@ -55,6 +57,7 @@ class SalesOrderService
         // Final attempt — should not reach here
         return DB::transaction(function () use ($data, $lockKey) {
             DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+
             return $this->createOrderInsideTransaction($data);
         });
     }
@@ -129,6 +132,20 @@ class SalesOrderService
     {
         if (! $order->isDraft()) {
             throw new \Exception('Only draft orders can be confirmed.');
+        }
+
+        // Issue #139: the credit verdict must gate confirmation. Previously the
+        // controller computed it and silently ignored the result, so an order
+        // over the limit still confirmed, reserved stock and unlocked invoicing.
+        if ($order->customer !== null) {
+            $creditCheck = $this->creditCheckService->checkCreditLimit(
+                $order->customer,
+                (float) $order->total
+            );
+
+            if (! $creditCheck->approved) {
+                throw new \Exception('Credit check failed: '.$creditCheck->reason);
+            }
         }
 
         return DB::transaction(function () use ($order) {
@@ -254,6 +271,7 @@ class SalesOrderService
                         'tax_rate' => 0,
                         'discount_amount' => 0,
                     ];
+
                     continue;
                 }
                 $policy = $line->invoicing_policy ?? 'ordered_qty';

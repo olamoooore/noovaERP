@@ -20,7 +20,7 @@ class CustomerFactory extends Factory
             'company' => $this->faker->optional()->company(),
             'billing_address' => $this->faker->optional()->address(),
             'shipping_address' => $this->faker->optional()->address(),
-            'credit_limit' => 0,
+            'credit_limit' => null,
             'payment_terms' => 30,
             'total_outstanding' => 0,
             'is_active' => true,
