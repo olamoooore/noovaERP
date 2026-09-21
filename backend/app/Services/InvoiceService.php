@@ -177,14 +177,16 @@ class InvoiceService
             }
 
             // ── COGS lines for inventory items ───────────────
+            // Issue #130: bundle lines cost the SUM of their components, not the
+            // bundle product's own (usually unset) cost field.
             $totalCogs = 0;
+            $bundleDecomposition = app(\App\Services\BundleDecompositionService::class);
             foreach ($invoice->lines as $line) {
                 if (($line->line_type ?? 'product') !== 'product') {
                     continue;
                 }
-                if ($line->product && $line->product->track_inventory) {
-                    $unitCost = (float) ($line->product->cost ?? 0);
-                    $lineCogs = $unitCost * $line->quantity;
+                if ($line->product) {
+                    $lineCogs = $bundleDecomposition->cost($line->product, (float) $line->quantity);
 
                     if ($lineCogs > 0) {
                         $totalCogs += $lineCogs;

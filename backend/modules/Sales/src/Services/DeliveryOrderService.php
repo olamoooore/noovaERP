@@ -21,6 +21,7 @@ class DeliveryOrderService
         private OrderLifecycleService $lifecycleService,
         private InventoryService $inventoryService,
         private StockReservationService $reservationService,
+        private \App\Services\BundleDecompositionService $bundleDecomposition,
     ) {}
 
     // ════════════════════════════════════════════════════════════════════════
@@ -341,14 +342,16 @@ class DeliveryOrderService
                 }
             }
 
-            // Deduct stock for each stock-tracked line
+            // Deduct stock for each stock-tracked line. Issue #130: a bundle
+            // sale consumes its components — decompose before mutating stock so
+            // component inventory actually moves.
             foreach ($deliveryOrder->lines as $line) {
                 if (! $line->product_id) {
                     continue;
                 }
 
                 $product = $line->product;
-                if (! $product || ! (bool) ($product->track_inventory ?? false)) {
+                if (! $product) {
                     continue;
                 }
 
@@ -357,21 +360,36 @@ class DeliveryOrderService
                     continue;
                 }
 
-                $key = $idempotencyKey ?: "do-complete-{$deliveryOrder->id}-line-{$line->id}";
+                $components = $this->bundleDecomposition->stockConsumingComponents($product, $qty);
 
-                $this->inventoryService->adjustStock(
-                    productId: $line->product_id,
-                    warehouseId: $warehouseId,
-                    quantity: $qty,
-                    type: 'sale',
-                    reference: $deliveryOrder->delivery_order_number,
-                    referenceType: 'DeliveryOrder',
-                    referenceId: $deliveryOrder->id,
-                    notes: "Stock deducted for delivery order {$deliveryOrder->delivery_order_number}",
-                    batchNumber: $line->lot_number ?? $line->batch_number,
-                    expiryDate: $line->expiry_date ? new \DateTime($line->expiry_date) : null,
-                    idempotencyKey: $key,
-                );
+                foreach ($components as $component) {
+                    $componentQty = (int) round($component['quantity']);
+                    if ($componentQty <= 0) {
+                        continue;
+                    }
+
+                    $key = ($idempotencyKey ?: "do-complete-{$deliveryOrder->id}-line-{$line->id}").
+                        ($product->is_bundle ? "-component-{$component['product']->id}" : '');
+
+                    $this->inventoryService->adjustStock(
+                        productId: $component['product']->id,
+                        warehouseId: $warehouseId,
+                        quantity: $componentQty,
+                        type: 'sale',
+                        reference: $deliveryOrder->delivery_order_number,
+                        referenceType: 'DeliveryOrder',
+                        referenceId: $deliveryOrder->id,
+                        notes: "Stock deducted for delivery order {$deliveryOrder->delivery_order_number}".
+                            ($product->is_bundle ? " (bundle: {$product->name})" : ''),
+                        batchNumber: $product->is_bundle ? null : ($line->lot_number ?? $line->batch_number),
+                        expiryDate: (! $product->is_bundle && $line->expiry_date) ? new \DateTime($line->expiry_date) : null,
+                        idempotencyKey: $key,
+                    );
+                }
+
+                if ($components === []) {
+                    continue;
+                }
 
                 // Fulfil corresponding stock reservation (if linked to SO)
                 if ($deliveryOrder->sales_order_id && $line->salesOrderLine) {

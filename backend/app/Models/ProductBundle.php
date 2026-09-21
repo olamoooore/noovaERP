@@ -14,19 +14,27 @@ class ProductBundle extends Model
 {
     use HasFactory;
 
+    /**
+     * Issue #130: realign to the actual product_bundles schema
+     * (component_variant_id + discount_type/discount_value; the previous
+     * discount_percent column does not exist, so bundle discounts silently
+     * never applied).
+     */
     protected $fillable = [
         'bundle_product_id',
         'component_product_id',
+        'component_variant_id',
         'quantity',
+        'discount_type',
+        'discount_value',
         'is_optional',
-        'discount_percent',
         'sort_order',
     ];
 
     protected $casts = [
         'quantity' => 'decimal:3',
+        'discount_value' => 'decimal:2',
         'is_optional' => 'boolean',
-        'discount_percent' => 'decimal:2',
         'sort_order' => 'integer',
     ];
 
@@ -51,10 +59,15 @@ class ProductBundle extends Model
      */
     public function getDiscountedPriceAttribute(): float
     {
-        $basePrice = $this->componentProduct->price * $this->quantity;
-        $discount = $basePrice * ($this->discount_percent / 100);
+        $basePrice = (float) $this->componentProduct->price * (float) $this->quantity;
+        $value = (float) $this->discount_value;
 
-        return $basePrice - $discount;
+        return match ($this->discount_type) {
+            'fixed_price' => $value * (float) $this->quantity,
+            'fixed' => max($basePrice - $value, 0.0),
+            'percentage' => max($basePrice * (1 - $value / 100), 0.0),
+            default => $basePrice,
+        };
     }
 
     /**
@@ -62,6 +75,6 @@ class ProductBundle extends Model
      */
     public function getTotalCostAttribute(): float
     {
-        return $this->componentProduct->cost * $this->quantity;
+        return (float) ($this->componentProduct->cost ?? 0) * (float) $this->quantity;
     }
 }
