@@ -4,26 +4,33 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\Response;
 
 class PlatformRateLimitMiddleware
 {
     /**
-     * Maximum requests per minute per IP address
+     * Maximum requests per minute per IP address.
      */
     private const RATE_LIMIT_PER_MINUTE = 120;
 
     /**
-     * Skip rate limiting for these paths.
+     * Window for rate limiting in seconds (1 minute).
+     */
+    private const WINDOW_SECONDS = 60;
+
+    /**
+     * Paths exempt from platform rate limiting.
      *
-     * Per Pillar 2 Part 2 §2.2: the original `/admin/api/` substring
-     * never matched the real admin path `/api/v1/admin/...` (the
-     * admin/API substring order never occurs), making the exemption
-     * dead code — the admin API was always rate-limited, contrary
-     * to the intent. The new path matches the actual `v1/admin/`
-     * prefix used by `routes/api.php:152` (Route::prefix('v1/admin')).
+     * Per Pillar 2 Part 2 §2.2: the original `/admin/api/` substring never
+     * matched the real admin path `/api/v1/admin/...`, making the exemption
+     * dead code. `/v1/admin/` matches the actual prefix in routes/api.php.
+     *
+     * `/api/v1/features` and `/api/v1/dashboard` are deliberately NOT exempt:
+     * they are normal tenant endpoints. The fix for their burst behaviour is
+     * the canonical RateLimiter below (which always carries a TTL), not an
+     * exemption.
      */
     private const SKIP_PATHS = [
         '/api/v1/webhooks/',
@@ -32,49 +39,54 @@ class PlatformRateLimitMiddleware
         '/v1/admin/',
     ];
 
-    /**
-     * Window for rate limiting in seconds (1 minute)
-     */
-    private const WINDOW_SECONDS = 60;
-
     public function handle(Request $request, Closure $next): Response
     {
-        // Skip rate limiting for admin API and other exempt paths
         foreach (self::SKIP_PATHS as $skipPath) {
             if (str_contains($request->getPathInfo(), $skipPath)) {
                 return $next($request);
             }
         }
 
-        $clientIp = $request->ip();
-        $key = "rate_limit:platform:{$clientIp}";
+        // Use the canonical Laravel RateLimiter. Unlike the previous
+        // hand-rolled Cache::increment() + conditional Cache::put(),
+        // RateLimiter::attempt() sets the decay window TTL atomically and
+        // reliably on EVERY cache driver — including the `file` driver, where
+        // Cache::increment() silently drops the expiration and would otherwise
+        // leave the counter stuck above the limit FOREVER (permanent 429).
+        //
+        // This was the root cause of the "sidebar shows only 3 items and the
+        // page keeps refetching" report: a transient burst tripped the limit,
+        // the file-cache TTL was lost, and /api/v1/features returned 429
+        // indefinitely, which the frontend treated as "no features enabled".
+        $key = 'rate_limit:platform:'.$request->ip();
 
-        // Use atomic increment with TTL on first request
-        $attempts = Cache::get($key, 0);
-        $attempts = Cache::increment($key);
+        if (RateLimiter::tooManyAttempts($key, self::RATE_LIMIT_PER_MINUTE)) {
+            $seconds = RateLimiter::availableIn($key);
 
-        // Set TTL only on first request (when value becomes 1)
-        if ($attempts === 1) {
-            // For Redis: use put with TTL. For file: increment already sets no expiry but file cache handles cleanup
-            Cache::put($key, $attempts, self::WINDOW_SECONDS);
-        }
-
-        if ($attempts > self::RATE_LIMIT_PER_MINUTE) {
             Log::warning('Platform API rate limit exceeded', [
-                'ip' => $clientIp,
+                'ip' => $request->ip(),
                 'path' => $request->getPathInfo(),
                 'method' => $request->method(),
-                'attempts' => $attempts,
+                'retry_after' => $seconds,
                 'user_id' => auth()->id(),
             ]);
 
             return response()->json([
                 'error' => 'Too many requests',
                 'message' => 'Rate limit exceeded. Please try again later.',
-                'retry_after' => self::WINDOW_SECONDS,
-            ], 429);
+                'retry_after' => $seconds,
+            ], 429)->withHeaders([
+                'Retry-After' => $seconds,
+                'X-RateLimit-Limit' => self::RATE_LIMIT_PER_MINUTE,
+                'X-RateLimit-Remaining' => 0,
+            ]);
         }
 
-        return $next($request);
+        RateLimiter::hit($key, self::WINDOW_SECONDS);
+
+        return $next($request)->withHeaders([
+            'X-RateLimit-Limit' => self::RATE_LIMIT_PER_MINUTE,
+            'X-RateLimit-Remaining' => max(0, self::RATE_LIMIT_PER_MINUTE - RateLimiter::attempts($key)),
+        ]);
     }
 }

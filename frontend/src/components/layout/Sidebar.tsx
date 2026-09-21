@@ -797,17 +797,38 @@ export function Sidebar() {
     })
   }
 
-  const { data: features } = useQuery({
+  // Issue: sidebar blanked (only Master Dashboard / Website / Settings showed)
+  // whenever GET /features returned 429 (platform rate limit) or any error.
+  // Root causes fixed here:
+  //   1. Removed the `X-Feature-Gate-Fresh: 1` header — it forced a server-side
+  //      cache bypass (full DB re-resolve) on EVERY sidebar render, feeding the
+  //      request storm that tripped the rate limit in the first place.
+  //   2. `retry` now retries transient failures (429/5xx) with backoff so a
+  //      momentary throttle self-recovers instead of permanently hiding modules.
+  //   3. `placeholderData: keepPreviousData` keeps the last-known-good feature
+  //      set on screen during background refetch — the nav never blanks.
+  //   4. `isError` is consumed below so a FAILED fetch fails OPEN (modules shown)
+  //      rather than closed. The sidebar is UX only; entitlements are still
+  //      enforced server-side by EnsureEntitlementAccess on every API route, so
+  //      failing open here cannot bypass any real authorization.
+  const { data: features, isError: featuresError } = useQuery({
     queryKey: ['features', tenantId],
     queryFn: async () => {
-      const response = await api.get('/features', {
-        headers: { 'X-Feature-Gate-Fresh': '1' },
-      })
+      const response = await api.get('/features')
       const data = response.data
       return Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : [])
     },
-    retry: false,
-    staleTime: 1000 * 30,
+    retry: (failureCount, error: any) => {
+      const status = error?.response?.status
+      // Retry transient throttles / server errors with backoff; give up on 4xx
+      // client errors (except 429) which won't fix themselves.
+      if (status === 429 || (status >= 500 && status < 600)) return failureCount < 3
+      if (status >= 400 && status < 500) return false
+      return failureCount < 3
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 15000),
+    staleTime: 1000 * 60 * 5,
+    placeholderData: (prev: any) => prev,
   })
 
   const normalizeFeatureKey = (key: string) => key.toLowerCase().replace(/[\s_]+/g, '-')
@@ -832,7 +853,16 @@ export function Sidebar() {
 
   const isFeatureEnabled = (featureKey?: string) => {
     if (!featureKey) return true
-    if (!features) return false
+
+    // Fail-closed only while the FIRST fetch is genuinely in flight (no data
+    // yet and no error). Once the fetch has ERRORED (e.g. a 429 rate-limit or
+    // network blip), fail OPEN: show the module rather than blanking the whole
+    // sidebar. This is safe because the sidebar is UX only — every API route
+    // independently enforces entitlements via EnsureEntitlementAccess, so a
+    // visible-but-unentitled module still cannot read or write data.
+    if (!features) {
+      return featuresError ? true : false
+    }
 
     const normalizedKey = normalizeFeatureKey(featureKey)
     const forceDisabledForTenant = (tenantForceDisabledFeatures[tenantId] || []).map((key) =>
