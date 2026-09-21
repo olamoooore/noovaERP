@@ -647,7 +647,7 @@ class ContactMasterService
             return false;
         }
 
-        return DB::transaction(function () use ($primary, $merged, $tenantId, $userId) {
+        return DB::transaction(function () use ($primary, $merged, $primaryId, $mergedId, $tenantId, $userId) {
             // Move roles
             ContactRole::where('tenant_id', $tenantId)->where('contact_id', $merged->id)
                 ->update(['contact_id' => $primary->id]);

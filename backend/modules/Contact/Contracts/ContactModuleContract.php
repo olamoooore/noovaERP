@@ -131,7 +131,7 @@ class ContactModuleContract extends BaseModuleContract
             \Modules\Contact\src\Models\ContactBankAccount::class,
             \Modules\Contact\src\Models\ContactSearchIndex::class,
             \Modules\Contact\src\Models\ContactRelatedRecord::class,
-            \Modules\Contact\src\Models\ContactDuplicate::class,
+            \Modules\Contact\src\Models\ContactDuplicateCandidate::class,
             \Modules\Contact\src\Models\AccountingCustomerProfile::class,
             \Modules\Contact\src\Models\AccountingVendorProfile::class,
             \Modules\Contact\src\Models\CrmContactProfile::class,
