@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Accounting\DTOs\DomainPostingLine;
+use App\Accounting\DTOs\DomainPostingRequest;
+use App\Accounting\PostingEngine;
 use App\Models\GoodsReceipt;
 use App\Models\GoodsReceiptLine;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +18,7 @@ class GoodsReceiptService
 {
     public function __construct(
         private readonly InventoryService $inventoryService,
+        private readonly PostingEngine $postingEngine,
     ) {}
 
     public function create(array $data): GoodsReceipt
@@ -87,6 +91,11 @@ class GoodsReceiptService
 
             $this->updatePurchaseOrderReceivedQty($grn);
 
+            // Issue #105: a confirmed receipt is an inventory asset increase and
+            // a GRNI (goods received not invoiced) liability — post it through the
+            // canonical posting engine in the same transaction.
+            $this->postReceiptValuation($grn);
+
             Log::info('Goods receipt confirmed', [
                 'grn_number' => $grn->grn_number,
                 'purchase_order_id' => $grn->purchase_order_id,
@@ -94,6 +103,84 @@ class GoodsReceiptService
 
             return $grn->fresh(['lines', 'purchaseOrder']);
         });
+    }
+
+    /**
+     * Issue #105: DR Inventory / CR GRNI for the accepted quantity valued at the
+     * purchase-order unit cost. Posted through the controlled domain contract
+     * (ADR-005 §12 / ACC-RM-001) — PostingEngine::domainPosting with the
+     * INVENTORY_RECEIPT profile. The matching Vendor Bill later relieves GRNI
+     * (see VendorBillService::postBill) so inventory is not double-counted.
+     */
+    private function postReceiptValuation(GoodsReceipt $grn): void
+    {
+        $grn->loadMissing('lines.purchaseOrderItem', 'purchaseOrder');
+
+        $businessLines = [];
+        $total = 0.0;
+
+        foreach ($grn->lines as $line) {
+            $acceptedQty = (int) $line->quantity_accepted;
+
+            if ($acceptedQty <= 0) {
+                continue;
+            }
+
+            $unitCost = (float) ($line->purchaseOrderItem?->unit_cost ?? 0);
+            $amount = round($acceptedQty * $unitCost, 2);
+
+            if ($amount <= 0) {
+                continue;
+            }
+
+            $total += $amount;
+
+            $productLabel = $line->product_id ? "product #{$line->product_id}" : 'line';
+            $businessLines[] = new DomainPostingLine(
+                accountRole: 'inventory',
+                amount: $amount,
+                description: "GRN {$grn->grn_number} — {$productLabel} × {$acceptedQty} @ {$unitCost}",
+            );
+        }
+
+        if ($businessLines === [] || $total <= 0) {
+            Log::info('Goods receipt has zero valuation — no GL posting', [
+                'grn_number' => $grn->grn_number,
+            ]);
+
+            return;
+        }
+
+        $businessLines[] = new DomainPostingLine(
+            accountRole: 'grni',
+            amount: round($total, 2),
+            description: "GRNI — GRN {$grn->grn_number}",
+        );
+
+        $result = $this->postingEngine->domainPosting(new DomainPostingRequest(
+            postingRequestId: DomainPostingRequest::generateRequestId(),
+            idempotencyKey: "goods_receipt:{$grn->id}:post",
+            tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+            entityId: '',
+            accountingBookId: '',
+            sourceCapability: 'ACC-012',
+            sourceRecordType: 'goods_receipt',
+            sourceRecordId: (string) $grn->id,
+            sourceRecordVersion: 1,
+            postingProfileCode: 'INVENTORY_RECEIPT',
+            transactionDate: ($grn->received_date ?? now())->toDateString(),
+            postingDate: ($grn->received_date ?? now())->toDateString(),
+            lines: $businessLines,
+            userId: $grn->received_by ?? TenantUserHelper::resolveTenantUserId(),
+            ledgerDescription: "Goods receipt {$grn->grn_number} — PO {$grn->purchaseOrder?->po_number}",
+            reference: $grn->grn_number,
+        ));
+
+        if (! $result->success) {
+            throw new \RuntimeException(
+                "Goods receipt GL posting failed for {$grn->grn_number}: ".($result->error ?? 'unknown error')
+            );
+        }
     }
 
     public function cancel(GoodsReceipt $grn): GoodsReceipt

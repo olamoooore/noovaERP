@@ -971,6 +971,8 @@ class PostingEngine implements PostingEngineInterface
             // Issue #106: manual stock adjustments route here; the actor holds
             // the inventory operation permission, the GL entry is a consequence.
             'stock_adjustment' => 'inventory.write',
+            // Issue #105: goods receipt recognition is an inventory operation.
+            'goods_receipt' => 'inventory.write',
             'reversal' => 'accounting.reverse',
             // Vendor document variants (module postings that create AP GL lines).
             'vendor_credit_note', 'vendor_debit_note' => 'accounting.write',

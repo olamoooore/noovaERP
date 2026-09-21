@@ -293,11 +293,19 @@ class AuditFixesTest extends TenantTestCase
     {
         $source = file_get_contents(base_path('modules/Inventory/src/Http/Controllers/StockController.php'));
 
-        // StockController must route through InventoryService, not direct DB writes
-        $this->assertStringContainsString('adjustStock', $source,
-            'StockController must route through InventoryService::adjustStock().');
-        $this->assertStringContainsString('inventoryService', $source,
-            'StockController must inject inventoryService.');
+        // Issue #106: mutations route through StockAdjustmentService, which
+        // delegates the stock write to InventoryService::adjustStock() and
+        // posts the GL valuation change. The invariant is enforced at both
+        // layers (not in the controller itself).
+        $this->assertStringContainsString('StockAdjustmentService', $source,
+            'StockController must route mutations through StockAdjustmentService.');
+
+        $service = file_get_contents(base_path('modules/Inventory/src/Services/StockAdjustmentService.php'));
+        $this->assertStringContainsString('adjustStock', $service,
+            'StockAdjustmentService must route through InventoryService::adjustStock().');
+        $this->assertStringContainsString('inventoryService', $service,
+            'StockAdjustmentService must inject inventoryService.');
+
         $this->assertStringNotContainsString('StockLevel::create', $source,
             'StockController must not directly create StockLevel records.');
     }
@@ -485,7 +493,7 @@ class AuditFixesTest extends TenantTestCase
         $this->assertStringContainsString("hash('sha256', json_encode(\$data))", $source);
 
         // The webhook_id line should NOT use time() — verify the deterministic pattern is used
-        $this->assertStringContainsString("hitpay_", $source, 'Webhook ID must use deterministic hitpay_ prefix.');
+        $this->assertStringContainsString('hitpay_', $source, 'Webhook ID must use deterministic hitpay_ prefix.');
         $this->assertStringContainsString("hash('sha256'", $source, 'Webhook ID must use SHA-256 hash.');
         // Ensure time() is not used in actual code (comments are acceptable)
         preg_match_all('/^[^\/\/]*time\(\)/m', $source, $matches);

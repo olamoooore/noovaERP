@@ -319,6 +319,19 @@ class PostingPolicyMapper
                     ],
                 ],
             ],
+            // Issue #105: procurement goods receipt recognition. Account roles
+            // resolve through AccountRoleResolver/AccountMappingService using the
+            // canonical 'inventory' and 'grni' keys.
+            'ACC-012' => [
+                'INVENTORY_RECEIPT' => [
+                    'id' => 'INVENTORY_RECEIPT',
+                    'version' => '1.0',
+                    'mappings' => [
+                        'inventory' => ['account_id' => null, 'direction' => 'debit'],
+                        'grni' => ['account_id' => null, 'direction' => 'credit'],
+                    ],
+                ],
+            ],
             'ACC-011' => [
                 'CLOSE_PERIODIC' => [
                     'id' => 'CLOSE_PERIODIC',
