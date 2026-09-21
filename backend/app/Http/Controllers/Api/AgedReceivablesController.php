@@ -47,7 +47,13 @@ class AgedReceivablesController extends Controller
                 'errors' => $e->errors(),
             ], 422);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            // Issue #170: catch \Throwable, not just \Exception. A null-property
+            // access on a soft-deleted customer relation throws a PHP \Error,
+            // which does NOT extend \Exception — the old catch let it escape as
+            // an unhandled fatal that took down the report for the whole tenant.
+            // The service is now null-safe (withTrashed + fallback), but this is
+            // defence in depth so any future Error degrades to a clean 500.
             return response()->json([
                 'message' => 'Failed to generate aged receivables report',
                 'error' => $e->getMessage(),
@@ -83,7 +89,7 @@ class AgedReceivablesController extends Controller
                 'errors' => $e->errors(),
             ], 422);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Failed to retrieve invoice details',
                 'error' => $e->getMessage(),
@@ -178,7 +184,7 @@ class AgedReceivablesController extends Controller
                 'invoices' => $invoiceDetails,
             ]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Failed to retrieve aging data',
                 'error' => $e->getMessage(),
@@ -196,7 +202,10 @@ class AgedReceivablesController extends Controller
         try {
             $now = Carbon::now();
 
-            $invoices = Invoice::with('customer')
+            // Issue #170 (defence in depth): load customer WITH trashed so a
+            // soft-deleted customer's real debt still appears in the aging
+            // matrix instead of resolving to null and crashing the report.
+            $invoices = Invoice::with(['customer' => fn ($q) => $q->withTrashed()])
                 ->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
                 ->where('balance', '>', 0)
                 ->get();
@@ -231,10 +240,12 @@ class AgedReceivablesController extends Controller
                     $bucketKey = '180_plus';
                 }
 
-                if (!isset($customerData[$customerId])) {
+                if (! isset($customerData[$customerId])) {
                     $customerData[$customerId] = [
                         'customer_id' => $customerId,
-                        'customer_name' => $customer->name,
+                        // Null-safe: a genuinely missing/orphaned customer_id
+                        // degrades to a fallback label, not an uncaught Error.
+                        'customer_name' => $customer->name ?? 'Unknown / Deleted Customer',
                         'not_due' => 0,
                         '1_30' => 0,
                         '31_60' => 0,
@@ -282,7 +293,7 @@ class AgedReceivablesController extends Controller
                 'data' => $data,
             ]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Failed to generate aging report',
                 'error' => $e->getMessage(),
@@ -293,6 +304,7 @@ class AgedReceivablesController extends Controller
     private function resolveCurrency(): string
     {
         $setting = \App\Models\Setting::first();
+
         return $setting->currency ?? 'MYR';
     }
 }

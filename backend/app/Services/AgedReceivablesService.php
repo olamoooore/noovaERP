@@ -20,8 +20,12 @@ class AgedReceivablesService
      */
     public function getAgedReceivables(array $filters = []): array
     {
-        // Query all posted/overdue invoices with outstanding balances
-        $invoicesQuery = Invoice::with('customer')
+        // Query all posted/overdue invoices with outstanding balances.
+        // Issue #170 (defence in depth): eager-load the customer WITH trashed
+        // rows. A soft-deleted customer's real outstanding debt must NOT vanish
+        // from AR aging, and resolving the relation through the default
+        // soft-delete scope would return null and crash the report below.
+        $invoicesQuery = Invoice::with(['customer' => fn ($q) => $q->withTrashed()])
             ->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
             ->where('balance', '>', 0);
 
@@ -33,7 +37,7 @@ class AgedReceivablesService
         if (! empty($filters['search'])) {
             $search = $filters['search'];
             $invoicesQuery->whereHas('customer', function ($query) use ($search) {
-                $query->where('name', 'ILIKE', "%{$search}%");
+                $query->withTrashed()->where('name', 'ILIKE', "%{$search}%");
             });
         }
 
@@ -48,11 +52,15 @@ class AgedReceivablesService
             $amount = (float) $invoice->balance;
 
             if (! isset($customerData[$customerId])) {
+                // Null-safe: even with withTrashed(), guard against a genuinely
+                // missing/orphaned customer_id so the report degrades gracefully
+                // (fallback label) instead of throwing an uncaught Error.
+                $customer = $invoice->customer;
                 $customerData[$customerId] = [
                     'customer_id' => $customerId,
-                    'customer_name' => $invoice->customer->name,
-                    'contact_email' => $invoice->customer->email,
-                    'contact_phone' => $invoice->customer->phone,
+                    'customer_name' => $customer->name ?? 'Unknown / Deleted Customer',
+                    'contact_email' => $customer->email ?? null,
+                    'contact_phone' => $customer->phone ?? null,
                     'current' => 0,
                     'days_1_30' => 0,
                     'days_31_60' => 0,
@@ -175,7 +183,9 @@ class AgedReceivablesService
      */
     public function getInvoiceDetails(int $customerId, string $bucket): array
     {
-        $invoices = Invoice::with('customer')
+        // Issue #170 (defence in depth): withTrashed so a soft-deleted customer's
+        // payment_terms still resolve for the invoice detail rows.
+        $invoices = Invoice::with(['customer' => fn ($q) => $q->withTrashed()])
             ->where('customer_id', $customerId)
             ->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
             ->where('balance', '>', 0)

@@ -105,14 +105,22 @@ class CustomerController extends Controller
         ]);
 
         $query = Customer::query();
-        if ($request->filled('document_ids')) $query->whereIn('id', $request->input('document_ids'));
+        if ($request->filled('document_ids')) {
+            $query->whereIn('id', $request->input('document_ids'));
+        }
         if ($request->filled('search')) {
             $search = (string) $request->search;
             $query->where(fn ($q) => $q->where('name', 'ilike', "%{$search}%")->orWhere('email', 'ilike', "%{$search}%")->orWhere('phone', 'ilike', "%{$search}%")->orWhere('company', 'ilike', "%{$search}%")->orWhere('code', 'ilike', "%{$search}%"));
         }
-        if ($request->filled('type')) $query->where('type', $request->type);
-        if ($request->filled('is_active')) $query->where('is_active', $request->boolean('is_active'));
-        if ($request->filled('category_id')) $query->whereHas('categories', fn ($q) => $q->where('customer_categories.id', $request->category_id));
+        if ($request->filled('type')) {
+            $query->where('type', $request->type);
+        }
+        if ($request->filled('is_active')) {
+            $query->where('is_active', $request->boolean('is_active'));
+        }
+        if ($request->filled('category_id')) {
+            $query->whereHas('categories', fn ($q) => $q->where('customer_categories.id', $request->category_id));
+        }
 
         return Excel::download(new CustomersExport($query->orderBy('name'), $validated['columns']), 'customers_'.now()->format('Y-m-d').'.xlsx');
     }
@@ -380,9 +388,45 @@ class CustomerController extends Controller
     public function destroy($id): JsonResponse
     {
         $customer = Customer::findOrFail($id);
+
+        // Issue #170 (CRITICAL): port the same dependency guard bulkDestroy()
+        // already uses. Soft-deleting a customer that still has invoices or
+        // quotations leaves those invoices pointing at a soft-deleted customer,
+        // which crashes the AR Aging report (Invoice::with('customer') resolves
+        // to null under the soft-delete global scope). Block the delete with a
+        // clear 409 instead.
+        $blockers = $this->customerDependencyBlockers($customer->id);
+        if (! empty($blockers)) {
+            return response()->json([
+                'message' => 'Customer has associated invoices or quotations',
+                'blockers' => $blockers,
+            ], 409);
+        }
+
         $customer->delete();
 
         return response()->json(['message' => 'Customer deleted successfully']);
+    }
+
+    /**
+     * Shared dependency guard for customer deletion (issue #170). Returns the
+     * list of blocking relationship types, empty when the customer is safe to
+     * delete. Used by both destroy() and bulkDestroy() so the single-record and
+     * bulk paths can never diverge again.
+     *
+     * @return string[]
+     */
+    private function customerDependencyBlockers(int $customerId): array
+    {
+        $blockers = [];
+        if (\App\Models\Invoice::where('customer_id', $customerId)->exists()) {
+            $blockers[] = 'invoices';
+        }
+        if (\App\Models\Quotation::where('customer_id', $customerId)->exists()) {
+            $blockers[] = 'quotations';
+        }
+
+        return $blockers;
     }
 
     // ==========================================
@@ -1112,11 +1156,12 @@ class CustomerController extends Controller
         $skipped = [];
 
         foreach ($customers as $customer) {
-            $hasInvoices = \App\Models\Invoice::where('customer_id', $customer->id)->exists();
-            $hasQuotations = \App\Models\Quotation::where('customer_id', $customer->id)->exists();
-
-            if ($hasInvoices || $hasQuotations) {
+            // Issue #170: use the same shared guard as destroy() so the bulk and
+            // single-record paths can never diverge.
+            $blockers = $this->customerDependencyBlockers($customer->id);
+            if (! empty($blockers)) {
                 $skipped[] = ['id' => $customer->id, 'reason' => 'Customer has associated invoices or quotations'];
+
                 continue;
             }
 
@@ -1134,7 +1179,7 @@ class CustomerController extends Controller
         }
 
         return response()->json([
-            'message' => count($deletedIds) . ' customer(s) deleted.',
+            'message' => count($deletedIds).' customer(s) deleted.',
             'deleted' => $deletedIds,
             'skipped' => $skipped,
         ]);
