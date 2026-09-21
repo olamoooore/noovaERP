@@ -194,29 +194,62 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         ->middleware(\App\Http\Middleware\RequirePermission::using('products.delete'));
 
     // Customer Categories (must be before customers resource to avoid route conflicts)
-    Route::get('customer-categories', [CustomerController::class, 'categories']);
-    Route::post('customer-categories', [CustomerController::class, 'storeCategory']);
+    // Issue #125 (HIGH): guard with customers.* — was previously ungated.
+    Route::get('customer-categories', [CustomerController::class, 'categories'])
+        ->middleware(RequirePermission::using('customers.view'));
+    Route::post('customer-categories', [CustomerController::class, 'storeCategory'])
+        ->middleware(RequirePermission::using('customers.write'));
 
     // Customers - static routes first (before apiResource)
-    Route::get('customers/statistics', [CustomerController::class, 'statistics']);
-    Route::get('customers/search', [CustomerController::class, 'search']);
-    Route::get('customers/export', [CustomerController::class, 'export']);
-    Route::get('customers/{customer}/invoices', [CustomerController::class, 'invoices']);
-    Route::post('customers/bulk-delete', [CustomerController::class, 'bulkDestroy']);
+    // Issue #125 (HIGH): base customer CRUD + static routes were ungated while
+    // the contacts sub-resource on the same controller was protected. Now every
+    // route carries customers.view (read) / customers.write (write) /
+    // customers.delete (destroy) consistently.
+    Route::get('customers/statistics', [CustomerController::class, 'statistics'])
+        ->middleware(RequirePermission::using('customers.view'));
+    Route::get('customers/search', [CustomerController::class, 'search'])
+        ->middleware(RequirePermission::using('customers.view'));
+    Route::get('customers/export', [CustomerController::class, 'export'])
+        ->middleware(RequirePermission::using('customers.view'));
+    Route::get('customers/{customer}/invoices', [CustomerController::class, 'invoices'])
+        ->middleware(RequirePermission::using('customers.view'));
+    Route::post('customers/bulk-delete', [CustomerController::class, 'bulkDestroy'])
+        ->middleware(RequirePermission::using('customers.delete'));
 
-    // Customers - resource routes
-    Route::apiResource('customers', CustomerController::class);
+    // Customers - resource routes (explicit verbs so each maps to the correct
+    // granular permission; replaces the ungated apiResource — issue #125).
+    Route::get('customers', [CustomerController::class, 'index'])
+        ->middleware(RequirePermission::using('customers.view'));
+    Route::post('customers', [CustomerController::class, 'store'])
+        ->middleware(RequirePermission::using('customers.write'));
+    Route::get('customers/{customer}', [CustomerController::class, 'show'])
+        ->middleware(RequirePermission::using('customers.view'));
+    Route::match(['put', 'patch'], 'customers/{customer}', [CustomerController::class, 'update'])
+        ->middleware(RequirePermission::using('customers.write'));
+    Route::delete('customers/{customer}', [CustomerController::class, 'destroy'])
+        ->middleware(RequirePermission::using('customers.delete'));
 
-    // Customers - dynamic routes with {customer} parameter (must be after apiResource)
-    Route::get('customers/{customer}/statistics', [CustomerController::class, 'customerStatistics']);
-    Route::get('customers/{customer}/activity', [CustomerController::class, 'activity']);
-    Route::get('customers/{customer}/loyalty', [CustomerController::class, 'loyaltyHistory']);
-    Route::post('customers/{customer}/loyalty/adjust', [CustomerController::class, 'adjustLoyalty']);
-    Route::post('customers/{customer}/recalculate-stats', [CustomerController::class, 'recalculateStats']);
-    Route::post('customers/{customer}/send-email', [CustomerController::class, 'sendEmail']);
-    Route::post('customers/{customer}/addresses', [CustomerController::class, 'addAddress']);
-    Route::put('customers/{customer}/addresses/{address}', [CustomerController::class, 'updateAddress']);
-    Route::delete('customers/{customer}/addresses/{address}', [CustomerController::class, 'deleteAddress']);
+    // Customers - dynamic routes with {customer} parameter (must be after the
+    // explicit resource routes). Issue #125: reads -> customers.view,
+    // writes -> customers.write.
+    Route::get('customers/{customer}/statistics', [CustomerController::class, 'customerStatistics'])
+        ->middleware(RequirePermission::using('customers.view'));
+    Route::get('customers/{customer}/activity', [CustomerController::class, 'activity'])
+        ->middleware(RequirePermission::using('customers.view'));
+    Route::get('customers/{customer}/loyalty', [CustomerController::class, 'loyaltyHistory'])
+        ->middleware(RequirePermission::using('customers.view'));
+    Route::post('customers/{customer}/loyalty/adjust', [CustomerController::class, 'adjustLoyalty'])
+        ->middleware(RequirePermission::using('customers.write'));
+    Route::post('customers/{customer}/recalculate-stats', [CustomerController::class, 'recalculateStats'])
+        ->middleware(RequirePermission::using('customers.write'));
+    Route::post('customers/{customer}/send-email', [CustomerController::class, 'sendEmail'])
+        ->middleware(RequirePermission::using('customers.write'));
+    Route::post('customers/{customer}/addresses', [CustomerController::class, 'addAddress'])
+        ->middleware(RequirePermission::using('customers.write'));
+    Route::put('customers/{customer}/addresses/{address}', [CustomerController::class, 'updateAddress'])
+        ->middleware(RequirePermission::using('customers.write'));
+    Route::delete('customers/{customer}/addresses/{address}', [CustomerController::class, 'deleteAddress'])
+        ->middleware(RequirePermission::using('customers.write'));
     Route::post('customers/{customer}/contacts', [CustomerController::class, 'addContact'])
         ->middleware(RequirePermission::using('customers.write'));
     Route::put('customers/{customer}/contacts/{contact}', [CustomerController::class, 'updateContact'])
@@ -665,9 +698,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     });
 
     // Statement of Account (no entity/accounting middleware needed)
-    Route::get('/customers/{customer}/statement/compare', [CustomerStatementController::class, 'compare']);
-    Route::get('/customers/{customer}/statement/compare/pdf', [CustomerStatementController::class, 'comparePdf']);
-    Route::get('/customers/{customer}/statement', [CustomerStatementController::class, 'statement']);
+    // Issue #125 (HIGH): these expose customer financial data — gate with
+    // customers.view even though they skip the entity/accounting middleware.
+    Route::get('/customers/{customer}/statement/compare', [CustomerStatementController::class, 'compare'])
+        ->middleware(RequirePermission::using('customers.view'));
+    Route::get('/customers/{customer}/statement/compare/pdf', [CustomerStatementController::class, 'comparePdf'])
+        ->middleware(RequirePermission::using('customers.view'));
+    Route::get('/customers/{customer}/statement', [CustomerStatementController::class, 'statement'])
+        ->middleware(RequirePermission::using('customers.view'));
 
     // Medical Cases
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
@@ -694,5 +732,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     });
 
     // Per-customer aging (customer detail page — no entity/accounting middleware needed)
-    Route::get('/customers/{customerId}/aging', [AgedReceivablesController::class, 'customerAging']);
+    // Issue #125 (HIGH): exposes customer AR aging — gate with customers.view.
+    Route::get('/customers/{customerId}/aging', [AgedReceivablesController::class, 'customerAging'])
+        ->middleware(RequirePermission::using('customers.view'));
 });
