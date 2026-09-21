@@ -124,6 +124,7 @@ class PaymentImportService
                 $rowErrors = $this->validateRow($row, $rowNum);
                 if (! empty($rowErrors)) {
                     $errors = array_merge($errors, $rowErrors);
+
                     continue;
                 }
 
@@ -136,6 +137,7 @@ class PaymentImportService
                         }
                     }
                     $errors[] = ['row' => $rowNum, 'message' => 'Customer not found'.($parts ? ' ('.implode(', ', $parts).')' : '')];
+
                     continue;
                 }
 
@@ -155,6 +157,7 @@ class PaymentImportService
                 $amount = $this->parseNumericValue($row['amount']);
                 if ($invoice && $amount > (float) $invoice->balance) {
                     $errors[] = ['row' => $rowNum, 'message' => 'Payment amount ('.$amount.') exceeds invoice balance ('.((float) $invoice->balance).') for invoice '.$invoice->invoice_number];
+
                     continue;
                 }
 
@@ -167,6 +170,7 @@ class PaymentImportService
                 ], $customer->id, $invoice?->id);
                 if ($duplicate) {
                     $warnings[] = ['row' => $rowNum, 'message' => 'Skipped: duplicate payment (matches '.$duplicate->payment_number.')'];
+
                     continue;
                 }
 
@@ -371,7 +375,7 @@ class PaymentImportService
             'notes' => $data['notes'],
             'currency' => $data['currency'],
             'received_by' => $userId,
-            'payment_status' => 'draft',
+            'payment_status' => 'recorded',
         ]);
     }
 
@@ -452,6 +456,7 @@ class PaymentImportService
         // Try YYYY-MM-DD first
         if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
             $dt = \DateTime::createFromFormat('Y-m-d', $value);
+
             return $dt && $dt->format('Y-m-d') === $value ? $value : null;
         }
 

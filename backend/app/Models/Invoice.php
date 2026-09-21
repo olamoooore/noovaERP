@@ -302,6 +302,15 @@ class Invoice extends Model
         return $this->hasMany(Payment::class);
     }
 
+    /**
+     * Credit notes issued against this invoice (issue #169). Each posted credit
+     * note carries its own journal entry, independent of this invoice's JE.
+     */
+    public function creditNotes(): HasMany
+    {
+        return $this->hasMany(CustomerCreditNote::class, 'invoice_id');
+    }
+
     public function approvalRequest(): BelongsTo
     {
         return $this->belongsTo(ApprovalRequest::class, 'approval_request_id');

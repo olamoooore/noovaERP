@@ -403,7 +403,7 @@ class AccountingImportService
             'currency' => $data['currency'] ?? null,
             'method' => $method,
             'payment_date' => $data['payment_date'] ?? now()->toDateString(),
-            'payment_status' => 'draft',
+            'payment_status' => 'recorded',
             'notes' => $data['notes'] ?? null,
             'customer_id' => $data['customer_id'] ?? null,
             'received_by' => $userId,

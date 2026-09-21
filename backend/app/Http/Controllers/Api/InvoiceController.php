@@ -175,7 +175,9 @@ class InvoiceController extends Controller
 
         // Reject document discount exceeding the line subtotal
         $subtotal = array_reduce($validated['lines'], function ($sum, $line) {
-            if (in_array($line['line_type'] ?? 'product', ['note', 'section'], true)) return $sum;
+            if (in_array($line['line_type'] ?? 'product', ['note', 'section'], true)) {
+                return $sum;
+            }
             $qty = (int) ($line['quantity'] ?? 0);
             $price = (float) ($line['unit_price'] ?? 0);
             $lineDiscount = (float) ($line['discount_amount'] ?? 0);
@@ -501,14 +503,17 @@ class InvoiceController extends Controller
         }
 
         // Reject document discount exceeding the line subtotal
-            $subtotal = isset($validated['lines'])
-            ? array_reduce($validated['lines'], function ($sum, $line) {
-                if (in_array($line['line_type'] ?? 'product', ['note', 'section'], true)) return $sum;
-                return $sum + ($line['quantity'] * $line['unit_price']) - ($line['discount_amount'] ?? 0);
-            }, 0)
-            : $invoice->lines->reduce(function ($sum, $line) {
-                return $sum + ($line->quantity * $line->unit_price) - ($line->discount_amount ?? 0);
-            }, 0);
+        $subtotal = isset($validated['lines'])
+        ? array_reduce($validated['lines'], function ($sum, $line) {
+            if (in_array($line['line_type'] ?? 'product', ['note', 'section'], true)) {
+                return $sum;
+            }
+
+            return $sum + ($line['quantity'] * $line['unit_price']) - ($line['discount_amount'] ?? 0);
+        }, 0)
+        : $invoice->lines->reduce(function ($sum, $line) {
+            return $sum + ($line->quantity * $line->unit_price) - ($line->discount_amount ?? 0);
+        }, 0);
         $docDiscount = (float) ($validated['discount_amount'] ?? $invoice->discount_amount ?? 0);
         if ($docDiscount > 0 && $subtotal > 0 && $docDiscount > $subtotal) {
             return response()->json([
@@ -655,6 +660,15 @@ class InvoiceController extends Controller
             ], 422);
         }
 
+        // Issue #169: a posted credit note has its own journal entry; cancelling
+        // the invoice without voiding the credit note would leave that GL entry
+        // backing a cancelled document.
+        if ($invoice->creditNotes()->where('status', 'posted')->exists()) {
+            return response()->json([
+                'message' => 'Cannot cancel an invoice with posted credit notes. Void the credit notes first.',
+            ], 422);
+        }
+
         $invoice->update(['status' => 'cancelled']);
 
         return response()->json([
@@ -683,6 +697,14 @@ class InvoiceController extends Controller
         if ($invoice->payments()->active()->exists()) {
             return response()->json([
                 'message' => 'Cannot reset an invoice that has payments. Void or refund the payments first.',
+            ], 422);
+        }
+
+        // Issue #169: resetting reverses only the invoice's own journal entry —
+        // a posted credit note's separate GL entry must not be orphaned.
+        if ($invoice->creditNotes()->where('status', 'posted')->exists()) {
+            return response()->json([
+                'message' => 'Cannot reset an invoice that has posted credit notes. Void the credit notes first.',
             ], 422);
         }
 

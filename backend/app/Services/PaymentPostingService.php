@@ -39,24 +39,18 @@ class PaymentPostingService
      * Post a single payment.
      *
      * Idempotent:
-     *  - already posted → returned untouched
-     *  - has a journal entry but status still 'draft' (legacy UI-recorded
-     *    payments) → status repaired to 'posted' without double-posting
+     *  - already carries a journal entry → returned untouched (status repaired
+     *    to the canonical posted status `applied` if needed)
+     *
+     * Canonical statuses (#73): a posted payment is `applied`; the legacy
+     * `posted` label no longer exists in the enum.
      *
      * @throws \RuntimeException when the posting engine rejects the request
      */
     public function post(Payment $payment, ?int $userId = null): Payment
     {
-        if ($payment->payment_status === 'posted') {
-            return $payment;
-        }
-
-        // Legacy rows created through the record-payment flow already carry
-        // a journal entry — repair the status instead of re-posting.
         if ($payment->journal_entry_id !== null) {
-            $payment->update(['payment_status' => 'posted']);
-
-            return $payment->fresh(['customer', 'invoice', 'journalEntry']);
+            return $this->repairPostedStatus($payment);
         }
 
         $resolvedUserId = $userId ?? TenantUserHelper::resolveTenantUserId() ?? $payment->received_by;
@@ -65,13 +59,8 @@ class PaymentPostingService
             // Re-fetch inside the transaction to avoid double-posting races.
             $payment = Payment::whereKey($payment->id)->lockForUpdate()->firstOrFail();
 
-            if ($payment->payment_status === 'posted') {
-                return $payment;
-            }
             if ($payment->journal_entry_id !== null) {
-                $payment->update(['payment_status' => 'posted']);
-
-                return $payment->fresh(['customer', 'invoice', 'journalEntry']);
+                return $this->repairPostedStatus($payment);
             }
 
             $bankGlAccountId = null;
@@ -137,7 +126,7 @@ class PaymentPostingService
 
             $payment->update([
                 'journal_entry_id' => $result->journalEntryId,
-                'payment_status' => 'posted',
+                'payment_status' => 'applied',
             ]);
 
             Log::info('Payment posted to ledger', [
@@ -166,6 +155,7 @@ class PaymentPostingService
             $payment = Payment::find($id);
             if (! $payment) {
                 $skipped[] = ['id' => $id, 'reason' => 'Payment not found'];
+
                 continue;
             }
 
@@ -182,5 +172,19 @@ class PaymentPostingService
         }
 
         return compact('posted', 'skipped');
+    }
+
+    /**
+     * Canonical posted status is `applied` (#73). Legacy rows may still carry
+     * `recorded` (or the removed `posted` label) alongside a journal entry —
+     * normalise the label without touching the ledger link or re-posting.
+     */
+    private function repairPostedStatus(Payment $payment): Payment
+    {
+        if ($payment->payment_status !== 'applied') {
+            $payment->update(['payment_status' => 'applied']);
+        }
+
+        return $payment->fresh(['customer', 'invoice', 'journalEntry']);
     }
 }

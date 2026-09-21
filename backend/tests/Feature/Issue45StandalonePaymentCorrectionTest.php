@@ -189,13 +189,13 @@ class Issue45StandalonePaymentCorrectionTest extends TenantTestCase
             'currency' => 'USD',
             'method' => 'cash',
             'payment_date' => now()->toDateString(),
-            'payment_status' => 'draft',
+            'payment_status' => 'recorded',
             'received_by' => $user->id,
         ]);
 
         // 1. Post standalone payment through the real posting service.
         $posted = app(\App\Services\PaymentPostingService::class)->post($payment, $user->id);
-        $this->assertContains($posted->payment_status, ['applied', 'posted']);
+        $this->assertSame('applied', $posted->payment_status);
         $originalJeId = $posted->journal_entry_id;
         $this->assertNotNull($originalJeId, 'Standalone payment must post to the GL');
 
@@ -247,7 +247,7 @@ class Issue45StandalonePaymentCorrectionTest extends TenantTestCase
         );
         $this->assertSame('reversed', $reverseResult->payment->payment_status);
 
-        // (b) A draft payment is NOT correctable (must be deleted instead).
+        // (b) An unposted payment is NOT correctable (must be deleted instead).
         $customer = Customer::firstOrCreate(
             ['name' => 'Contract Draft Customer '.uniqid()],
             ['name' => 'Contract Draft Customer '.uniqid()]
@@ -259,7 +259,7 @@ class Issue45StandalonePaymentCorrectionTest extends TenantTestCase
             'currency' => 'USD',
             'method' => 'cash',
             'payment_date' => now()->toDateString(),
-            'payment_status' => 'draft',
+            'payment_status' => 'recorded',
             'received_by' => User::factory()->create()->id,
         ]);
 
@@ -271,8 +271,8 @@ class Issue45StandalonePaymentCorrectionTest extends TenantTestCase
             );
         } catch (\RuntimeException $e) {
             $threw = true;
-            $this->assertStringContainsString('draft', strtolower($e->getMessage()));
+            $this->assertStringContainsString('not been posted', strtolower($e->getMessage()));
         }
-        $this->assertTrue($threw, 'Draft payment must be rejected for correction (assertCorrectable)');
+        $this->assertTrue($threw, 'Unposted payment must be rejected for correction (assertCorrectable)');
     }
 }

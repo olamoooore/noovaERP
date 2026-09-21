@@ -136,10 +136,16 @@ class Payment extends Model
     /**
      * Draft payments can be freely edited and deleted.
      * Once a payment has posted to the ledger (journal_entry_id set) it is locked.
+     *
+     * Canonical statuses are recorded/applied/unapplied/reversed/refunded
+     * (#73 convergence). The legacy `draft` label no longer exists, so
+     * "editable" is defined by the ledger link plus non-terminal status —
+     * comparing against `draft` made every payment read-only.
      */
     public function isEditable(): bool
     {
-        return $this->payment_status === 'draft' && $this->journal_entry_id === null;
+        return $this->journal_entry_id === null
+            && ! in_array($this->payment_status, ['reversed', 'refunded'], true);
     }
 
     public function isDeletable(): bool
@@ -154,17 +160,21 @@ class Payment extends Model
 
     public function scopeDraft($query)
     {
-        return $query->where('payment_status', 'draft')->whereNull('journal_entry_id');
+        return $query->where('payment_status', 'recorded')->whereNull('journal_entry_id');
     }
 
     public function scopePosted($query)
     {
-        return $query->where('payment_status', 'posted')->whereNotNull('journal_entry_id');
+        return $query->whereNotNull('journal_entry_id')
+            ->whereIn('payment_status', ['applied', 'unapplied']);
     }
 
     public function scopeActive($query)
     {
-        return $query->whereNotIn('payment_status', ['cancelled', 'reversed', 'refunded']);
+        // Legacy `cancelled` was mapped to `reversed` by the #73 convergence;
+        // comparing the enum column against a label that no longer exists
+        // raises SQLSTATE 22P02 on PostgreSQL.
+        return $query->whereNotIn('payment_status', ['reversed', 'refunded']);
     }
 
     public function scopeForInvoice($query, int $invoiceId)
