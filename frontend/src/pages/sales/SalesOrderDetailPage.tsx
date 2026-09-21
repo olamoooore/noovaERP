@@ -139,7 +139,7 @@ export function SalesOrderDetailPage() {
           <ChatterDialog
             open={chatterOpen}
             onOpenChange={setChatterOpen}
-            subjectType="Modules\\Sales\\src\\Models\\SalesOrder"
+            subjectType="Modules\\Sales\\Models\\SalesOrder"
             subjectId={id as string}
             documentLabel={order.sales_order_number}
           />
