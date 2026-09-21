@@ -13,9 +13,23 @@ class TenantGuardrailsCommand extends Command
 {
     protected $signature = 'ops:tenant-guardrails
                             {--fix : Apply fixes for detected issues}
-                            {--tenant= : Run guardrails for one tenant id only}';
+                            {--tenant= : Run guardrails for one tenant id only}
+                            {--mark-test= : Mark a tenant as a test tenant (per-tenant guardrails are skipped)}
+                            {--unmark-test= : Remove the test-tenant marker from a tenant}';
 
     protected $description = 'Audit/fix tenant defaults, module entitlement overrides, and gateway baseline consistency';
+
+    /** Tables every provisioned tenant schema must have. */
+    private const CORE_TABLES = [
+        'users',
+        'products',
+        'warehouses',
+        'customers',
+        'invoices',
+        'journal_entries',
+        'sales_orders',
+        'company_settings',
+    ];
 
     public function __construct(
         private readonly EntitlementService $entitlementService,
@@ -30,8 +44,41 @@ class TenantGuardrailsCommand extends Command
 
         DB::statement('SET search_path TO public');
 
+        if ($markTest = $this->option('mark-test')) {
+            return $this->setTestMarker((string) $markTest, true);
+        }
+
+        if ($unmarkTest = $this->option('unmark-test')) {
+            return $this->setTestMarker((string) $unmarkTest, false);
+        }
+
         $this->line('Running tenant guardrails...');
         $this->line($applyFixes ? 'Mode: FIX' : 'Mode: AUDIT');
+
+        $tenants = DB::table('public.tenants')->get(['id', 'name', 'data']);
+        $testTenantIds = $tenants
+            ->filter(fn ($tenant) => $this->isTestTenant($tenant->data))
+            ->pluck('id')
+            ->values()
+            ->all();
+
+        // Inspect each non-test tenant schema once: used both for the core-data
+        // report and to decide which tenants are "empty" (no business data) and
+        // therefore exempt from the baseline checks.
+        $inspection = [];
+        foreach ($tenants as $tenant) {
+            if (in_array($tenant->id, $testTenantIds, true)) {
+                continue;
+            }
+            $inspection[$tenant->id] = $this->inspectTenant((string) $tenant->id);
+        }
+
+        $skipTenantIds = $testTenantIds;
+        foreach ($inspection as $tenantId => $data) {
+            if (! $data['missing'] && ! $data['has_business_data']) {
+                $skipTenantIds[] = (string) $tenantId;
+            }
+        }
 
         $issues = 0;
         $fixed = 0;
@@ -44,7 +91,7 @@ class TenantGuardrailsCommand extends Command
         $issues += $issuesMultiTenantUsers;
         $fixed += $fixedMultiTenantUsers;
 
-        [$issuesEntitlements, $fixedEntitlements] = $this->syncTenantEntitlements($applyFixes);
+        [$issuesEntitlements, $fixedEntitlements] = $this->syncTenantEntitlements($applyFixes, $skipTenantIds);
         $issues += $issuesEntitlements;
         $fixed += $fixedEntitlements;
 
@@ -52,32 +99,10 @@ class TenantGuardrailsCommand extends Command
         $issues += $issuesGateways;
         $fixed += $fixedGateways;
 
-        $this->newLine();
-        // --- Tenant Core Data Integrity Check ---
-        $this->info('Tenant Core Data Integrity Check');
-        $tenantIds = DB::table('public.tenants')->pluck('id');
-        foreach ($tenantIds as $tenantId) {
-            DB::statement("SET search_path TO '".$tenantId."', public");
-            $productCount = DB::table('products')->count();
-            $warehouseCount = DB::table('warehouses')->count();
-            $company = DB::table('company_settings')->first();
-            $companyName = $company->company_name ?? '[none]';
-            $companyEmail = $company->email ?? '[none]';
-            $this->line("Tenant {$tenantId}: Products={$productCount}, Warehouses={$warehouseCount}, Company={$companyName} <{$companyEmail}>");
-            // Flag anomalies
-            if ($productCount === 0) {
-                $this->warn('  [!] No products found');
-                $issues++;
-            }
-            if ($warehouseCount === 0) {
-                $this->warn('  [!] No warehouses found');
-                $issues++;
-            }
-            if ($companyName === '[none]') {
-                $this->warn('  [!] Company name missing');
-                $issues++;
-            }
-        }
+        [$issuesCoreData, $fixedCoreData] = $this->auditCoreData($tenants, $testTenantIds, $inspection);
+        $issues += $issuesCoreData;
+        $fixed += $fixedCoreData;
+
         DB::statement('SET search_path TO public');
 
         $this->newLine();
@@ -87,11 +112,183 @@ class TenantGuardrailsCommand extends Command
 
         if ($issues > 0 && ! $applyFixes) {
             $this->warn('Guardrails found issues. Re-run with --fix to auto-remediate.');
+            $this->line('Test/sandbox tenants can be exempted: php artisan ops:tenant-guardrails --mark-test=<tenant-id>');
 
             return self::FAILURE;
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Core data integrity report. Test tenants are skipped, empty schemas are
+     * informational, and a missing core table set is always an issue.
+     *
+     * @param  \Illuminate\Support\Collection<int, object>  $tenants
+     * @param  array<int, string>  $testTenantIds
+     * @param  array<string, array>  $inspection
+     */
+    private function auditCoreData($tenants, array $testTenantIds, array $inspection): array
+    {
+        $issues = 0;
+        $fixed = 0;
+
+        $this->newLine();
+        $this->info('Tenant Core Data Integrity Check');
+
+        foreach ($tenants as $tenant) {
+            $tenantId = (string) $tenant->id;
+            $label = $tenant->name ? "Tenant {$tenantId} ({$tenant->name})" : "Tenant {$tenantId}";
+
+            if (in_array($tenantId, $testTenantIds, true)) {
+                $this->line("{$label}: skipped (test tenant)");
+
+                continue;
+            }
+
+            $data = $inspection[$tenantId] ?? $this->inspectTenant($tenantId);
+
+            if ($data['missing']) {
+                $issues++;
+                $this->warn("{$label}: missing core tables: ".implode(', ', $data['missing']));
+
+                continue;
+            }
+
+            $counts = $data['counts'];
+            $this->line(sprintf(
+                '%s: Products=%d, Warehouses=%d, Company=%s <%s>',
+                $label,
+                $counts['products'],
+                $counts['warehouses'],
+                $data['company_name'],
+                $data['company_email'],
+            ));
+
+            if (! $data['has_business_data']) {
+                $this->line('  skipped (empty tenant — no business data)');
+
+                continue;
+            }
+
+            if ($counts['products'] === 0) {
+                $this->warn('  [!] No products found');
+                $issues++;
+            }
+            if ($counts['warehouses'] === 0) {
+                $this->warn('  [!] No warehouses found');
+                $issues++;
+            }
+            if ($data['company_name'] === '[none]') {
+                $this->warn('  [!] Company name missing');
+                $issues++;
+            }
+        }
+
+        return [$issues, $fixed];
+    }
+
+    /**
+     * Inspect a tenant schema: core table presence, baseline counts, and whether
+     * any business data exists at all.
+     */
+    private function inspectTenant(string $tenantId): array
+    {
+        $missing = [];
+        foreach (self::CORE_TABLES as $table) {
+            $exists = DB::table('information_schema.tables')
+                ->where('table_schema', $tenantId)
+                ->where('table_name', $table)
+                ->exists();
+
+            if (! $exists) {
+                $missing[] = $table;
+            }
+        }
+
+        $counts = [
+            'products' => 0,
+            'warehouses' => 0,
+            'customers' => 0,
+            'invoices' => 0,
+            'journal_entries' => 0,
+            'sales_orders' => 0,
+            'company_settings' => 0,
+        ];
+        $companyName = '[missing schema]';
+        $companyEmail = '[missing schema]';
+
+        if ($missing === []) {
+            DB::statement("SET search_path TO '{$tenantId}', public");
+
+            foreach (array_keys($counts) as $table) {
+                $counts[$table] = DB::table($table)->count();
+            }
+
+            $company = DB::table('company_settings')->first();
+            $companyName = $company->company_name ?? '[none]';
+            $companyEmail = $company->email ?? '[none]';
+
+            DB::statement('SET search_path TO public');
+        }
+
+        $hasBusinessData = (
+            $counts['products'] + $counts['warehouses'] + $counts['customers']
+            + $counts['invoices'] + $counts['journal_entries'] + $counts['sales_orders']
+            + $counts['company_settings']
+        ) > 0;
+
+        return [
+            'missing' => $missing,
+            'counts' => $counts,
+            'company_name' => $companyName,
+            'company_email' => $companyEmail,
+            'has_business_data' => $hasBusinessData,
+        ];
+    }
+
+    /**
+     * Persist or remove the `data.is_test` marker on a tenant.
+     */
+    private function setTestMarker(string $tenantId, bool $isTest): int
+    {
+        $tenant = DB::table('public.tenants')->where('id', $tenantId)->first(['id', 'name', 'data']);
+
+        if (! $tenant) {
+            $this->error("tenant not found: {$tenantId}");
+
+            return self::FAILURE;
+        }
+
+        $data = json_decode((string) ($tenant->data ?? ''), true);
+        $data = is_array($data) ? $data : [];
+
+        if ($isTest) {
+            $data['is_test'] = true;
+        } else {
+            unset($data['is_test']);
+        }
+
+        DB::table('public.tenants')->where('id', $tenantId)->update([
+            'data' => json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            'updated_at' => now(),
+        ]);
+
+        $this->info(sprintf(
+            'tenant %s (%s) %s as test tenant',
+            $tenantId,
+            $tenant->name,
+            $isTest ? 'marked' : 'unmarked',
+        ));
+
+        return self::SUCCESS;
+    }
+
+    private function isTestTenant(?string $data): bool
+    {
+        $decoded = json_decode((string) $data, true);
+
+        return is_array($decoded) && ($decoded['is_test'] ?? false) === true;
     }
 
     /**
@@ -217,8 +414,10 @@ class TenantGuardrailsCommand extends Command
 
     /**
      * Ensure tenant entitlements are present and configured module overrides are enforced.
+     *
+     * @param  array<int, string>  $skipTenantIds  Test/empty tenants exempt from the zero-entitlement check.
      */
-    private function syncTenantEntitlements(bool $applyFixes): array
+    private function syncTenantEntitlements(bool $applyFixes, array $skipTenantIds = []): array
     {
         $issues = 0;
         $fixed = 0;
@@ -243,18 +442,22 @@ class TenantGuardrailsCommand extends Command
                 ->count();
 
             if ($entitledCount === 0) {
-                $issues++;
-                $this->warn("tenant_id={$tenantId} has zero active entitlements");
+                if (in_array((string) $tenantId, $skipTenantIds, true)) {
+                    $this->line("tenant_id={$tenantId} has zero active entitlements — skipped (test/empty tenant)");
+                } else {
+                    $issues++;
+                    $this->warn("tenant_id={$tenantId} has zero active entitlements");
 
-                if ($applyFixes) {
-                    $this->entitlementService->rebuild(
-                        tenantId: (string) $tenantId,
-                        adminId: null,
-                        reason: 'guardrail_rebuild_empty_entitlements'
-                    );
-                    $this->featureGateService->invalidate((string) $tenantId);
-                    $fixed++;
-                    $this->info("  rebuilt entitlements for tenant_id={$tenantId}");
+                    if ($applyFixes) {
+                        $this->entitlementService->rebuild(
+                            tenantId: (string) $tenantId,
+                            adminId: null,
+                            reason: 'guardrail_rebuild_empty_entitlements'
+                        );
+                        $this->featureGateService->invalidate((string) $tenantId);
+                        $fixed++;
+                        $this->info("  rebuilt entitlements for tenant_id={$tenantId}");
+                    }
                 }
             }
 
