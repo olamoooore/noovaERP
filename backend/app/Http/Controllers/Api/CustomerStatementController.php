@@ -16,8 +16,6 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract;
 
-use function Safe\json_decode;
-
 class CustomerStatementController extends Controller
 {
     /**
@@ -38,9 +36,11 @@ class CustomerStatementController extends Controller
         $asOf = Carbon::parse($validated['as_of'] ?? now());
 
         // Get outstanding invoices: posted, balance > 0, invoice_date <= as_of
+        // Issue #96: exclude voided/reversed/superseded documents.
         $invoices = Invoice::where('customer_id', $customer->id)
             ->where('status', 'posted')
             ->where('balance', '>', 0)
+            ->notSuperseded()
             ->where('invoice_date', '<=', $asOf)
             ->orderBy('invoice_date', 'asc')
             ->get();
@@ -94,7 +94,7 @@ class CustomerStatementController extends Controller
                 'billing_address' => $billingAddress
                     ? collect([$billingAddress->street, $billingAddress->street2, $billingAddress->city, $billingAddress->state, $billingAddress->zip, $billingAddress->country])->filter()->implode(', ')
                     : $customer->billing_address,
-                'payment_terms' => $customer->payment_terms ? $customer->payment_terms . ' Days from Invoice Date' : '',
+                'payment_terms' => $customer->payment_terms ? $customer->payment_terms.' Days from Invoice Date' : '',
             ],
             'period' => [
                 'start_date' => null,
@@ -254,6 +254,7 @@ class CustomerStatementController extends Controller
             $invoices = Invoice::where('customer_id', $customer->id)
                 ->where('status', 'posted')
                 ->where('balance', '>', 0)
+                ->notSuperseded() // Issue #96: exclude voided/reversed/superseded
                 ->where('invoice_date', '<=', $asOf)
                 ->orderBy('invoice_date', 'asc')
                 ->get();
@@ -400,6 +401,7 @@ class CustomerStatementController extends Controller
             $invoices = Invoice::where('customer_id', $customer->id)
                 ->where('status', 'posted')
                 ->where('balance', '>', 0)
+                ->notSuperseded() // Issue #96: exclude voided/reversed/superseded
                 ->where('invoice_date', '<=', $asOf)
                 ->orderBy('invoice_date', 'asc')
                 ->get();
@@ -449,7 +451,7 @@ class CustomerStatementController extends Controller
                 'name' => $customer->name,
                 'attention_to' => $attentionTo,
                 'address' => $customerAddress,
-                'payment_terms' => $customer->payment_terms ? $customer->payment_terms . ' Days' : '',
+                'payment_terms' => $customer->payment_terms ? $customer->payment_terms.' Days' : '',
             ],
             'comparisons' => $comparisons,
             'deltas' => $deltas,
@@ -485,6 +487,7 @@ class CustomerStatementController extends Controller
         foreach ($invoices as $invoice) {
             if (! $invoice->due_date) {
                 $aging['current'] += round((float) $invoice->balance, 2);
+
                 continue;
             }
 

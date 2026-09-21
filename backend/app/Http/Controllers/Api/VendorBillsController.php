@@ -669,6 +669,9 @@ class VendorBillsController extends Controller
 
             $query = Bill::with('vendor')
                 ->whereIn('status', ['posted', 'partial', 'overdue'])
+                // Issue #96: a voided/reversed/superseded bill keeps its legacy
+                // status+balance, but must never be selectable for payment.
+                ->notSuperseded()
                 ->where(function ($q) {
                     $q->whereNull('balance')
                         ->orWhere('balance', '>', 0);

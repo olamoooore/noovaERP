@@ -10,7 +10,6 @@ use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
 
 class PaymentController extends Controller
@@ -106,12 +105,24 @@ class PaymentController extends Controller
             'document_ids.*' => ['integer', 'distinct', 'exists:payments,id'],
         ]);
         $query = Payment::query();
-        if ($request->filled('document_ids')) $query->whereIn('id', $request->input('document_ids'));
-        if ($request->filled('customer_id')) $query->where('customer_id', $request->customer_id);
-        if ($request->filled('payment_status')) $query->whereIn('payment_status', array_filter(array_map('trim', explode(',', (string) $request->payment_status))));
-        if ($request->filled('method')) $query->whereIn('method', array_filter(array_map('trim', explode(',', (string) $request->method))));
-        if ($request->filled('date_from')) $query->whereDate('payment_date', '>=', $request->date_from);
-        if ($request->filled('date_to')) $query->whereDate('payment_date', '<=', $request->date_to);
+        if ($request->filled('document_ids')) {
+            $query->whereIn('id', $request->input('document_ids'));
+        }
+        if ($request->filled('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
+        }
+        if ($request->filled('payment_status')) {
+            $query->whereIn('payment_status', array_filter(array_map('trim', explode(',', (string) $request->payment_status))));
+        }
+        if ($request->filled('method')) {
+            $query->whereIn('method', array_filter(array_map('trim', explode(',', (string) $request->method))));
+        }
+        if ($request->filled('date_from')) {
+            $query->whereDate('payment_date', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('payment_date', '<=', $request->date_to);
+        }
         if ($request->filled('search')) {
             $search = (string) $request->search;
             $query->where(fn ($q) => $q->where('payment_number', 'ILIKE', "%{$search}%")
@@ -119,6 +130,7 @@ class PaymentController extends Controller
                 ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'ILIKE', "%{$search}%"))
                 ->orWhereHas('invoice', fn ($iq) => $iq->where('invoice_number', 'ILIKE', "%{$search}%")));
         }
+
         return Excel::download(new PaymentsExport($query->orderByDesc('payment_date')->orderByDesc('id'), $validated['columns']), 'payments_'.now()->format('Y-m-d').'.xlsx');
     }
 
@@ -134,6 +146,9 @@ class PaymentController extends Controller
 
         $query = Invoice::with('customer')
             ->whereIn('status', ['posted', 'sent', 'partial'])
+            // Issue #96: a voided/reversed/superseded invoice keeps its legacy
+            // status+balance, but must never be selectable for payment.
+            ->notSuperseded()
             ->where(function ($q) {
                 $q->whereNull('balance')
                     ->orWhere('balance', '>', 0);
@@ -458,6 +473,7 @@ class PaymentController extends Controller
             $payment = Payment::find($id);
             if (! $payment) {
                 $skipped[] = ['id' => $id, 'reason' => 'Payment not found'];
+
                 continue;
             }
 
@@ -466,6 +482,7 @@ class PaymentController extends Controller
                     ? 'Posted payments cannot be deleted. Use refund or reversal.'
                     : "Payment in status '{$payment->payment_status}' cannot be deleted.";
                 $skipped[] = ['id' => $id, 'reason' => $reason];
+
                 continue;
             }
 
@@ -518,11 +535,11 @@ class PaymentController extends Controller
             if ($payment->invoice_id) {
                 $invoice = Invoice::find($payment->invoice_id);
                 if ($invoice) {
-$invoice->paid_amount = max(0, (float) $invoice->paid_amount - (float) $payment->amount);
-                $invoice->balance = $invoice->total - $invoice->paid_amount;
-                $invoice->status = $this->resolveInvoiceStatus($invoice);
-                $invoice->settlement_status = $invoice->paid_amount <= 0 ? 'unpaid' : 'partially_paid';
-                $invoice->save();
+                    $invoice->paid_amount = max(0, (float) $invoice->paid_amount - (float) $payment->amount);
+                    $invoice->balance = $invoice->total - $invoice->paid_amount;
+                    $invoice->status = $this->resolveInvoiceStatus($invoice);
+                    $invoice->settlement_status = $invoice->paid_amount <= 0 ? 'unpaid' : 'partially_paid';
+                    $invoice->save();
                 }
             }
             $payment->delete();
@@ -547,7 +564,7 @@ $invoice->paid_amount = max(0, (float) $invoice->paid_amount - (float) $payment-
         try {
             $correctionRequest = new \App\Services\CorrectionRequest(
                 reasonCode: 'PAYMENT_CANCELLATION',
-                reasonText: 'Payment cancelled by user ' . auth()->id(),
+                reasonText: 'Payment cancelled by user '.auth()->id(),
                 userId: auth()->id(),
             );
 

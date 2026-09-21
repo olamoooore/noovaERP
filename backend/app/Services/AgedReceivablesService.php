@@ -27,7 +27,10 @@ class AgedReceivablesService
         // soft-delete scope would return null and crash the report below.
         $invoicesQuery = Invoice::with(['customer' => fn ($q) => $q->withTrashed()])
             ->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
-            ->where('balance', '>', 0);
+            ->where('balance', '>', 0)
+            // Issue #96: voided/reversed/superseded documents must not count as
+            // outstanding AR — DocumentLifecycleService does not touch `status`.
+            ->notSuperseded();
 
         if (! empty($filters['customer_id'])) {
             $invoicesQuery->where('customer_id', (int) $filters['customer_id']);
@@ -189,6 +192,8 @@ class AgedReceivablesService
             ->where('customer_id', $customerId)
             ->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
             ->where('balance', '>', 0)
+            // Issue #96: exclude voided/reversed/superseded documents.
+            ->notSuperseded()
             ->get();
 
         $filteredInvoices = [];

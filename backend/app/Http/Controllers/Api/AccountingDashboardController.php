@@ -75,6 +75,8 @@ class AccountingDashboardController extends Controller
     {
         $result = DB::table('invoices')
             ->whereIn('status', ['posted', 'sent', 'overdue', 'partial'])
+            // Issue #96: voided/reversed/superseded invoices are not outstanding AR.
+            ->whereNotIn('lifecycle_status', ['voided', 'reversed', 'superseded'])
             ->where(function ($q) {
                 $q->whereNull('balance')
                     ->orWhere('balance', '>', 0);
@@ -101,6 +103,8 @@ class AccountingDashboardController extends Controller
     {
         $result = DB::table('bills')
             ->whereIn('status', ['posted', 'overdue', 'partial'])
+            // Issue #96: voided/reversed/superseded bills are not outstanding AP.
+            ->whereNotIn('lifecycle_status', ['voided', 'reversed', 'superseded'])
             ->selectRaw('COALESCE(SUM(GREATEST(total - COALESCE(paid_amount, 0), 0)), 0) as total')
             ->first();
 

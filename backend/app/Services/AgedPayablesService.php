@@ -23,7 +23,10 @@ class AgedPayablesService
         // Query all posted/overdue bills with outstanding balances
         $billsQuery = Bill::with('vendor')
             ->whereIn('status', ['posted', 'partial', 'overdue'])
-            ->where('balance', '>', 0);
+            ->where('balance', '>', 0)
+            // Issue #96: voided/reversed/superseded documents must not count as
+            // outstanding AP — DocumentLifecycleService does not touch `status`.
+            ->notSuperseded();
 
         if (! empty($filters['vendor_id'])) {
             $billsQuery->where('vendor_id', (int) $filters['vendor_id']);
@@ -179,6 +182,8 @@ class AgedPayablesService
             ->where('vendor_id', $vendorId)
             ->whereIn('status', ['posted', 'partial', 'overdue'])
             ->where('balance', '>', 0)
+            // Issue #96: exclude voided/reversed/superseded documents.
+            ->notSuperseded()
             ->get();
 
         $filteredBills = [];
