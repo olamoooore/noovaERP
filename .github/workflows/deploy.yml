@@ -153,6 +153,10 @@ jobs:
             
             mkdir -p /var/www/backups "$DB_BACKUP_DIR"
 
+            # Clear stale release staging left behind by failed deployments
+            # (2026-09-21 disk-full incident: 66G of orphaned /tmp releases).
+            rm -rf /tmp/noovaerp-release-* 2>/dev/null || true
+
             # Create backup of current deployment and allow automatic rollback
             # only until migrations begin.
             if [ -d "$PROJECT_PATH" ]; then
@@ -286,8 +290,20 @@ jobs:
       - name: Cleanup old backups
         run: |
           ssh ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }} << 'ENDSSH'
-            # Keep only last 5 backups
-            cd /var/www/backups 2>/dev/null && ls -dt noovaerp-* | tail -n +6 | xargs rm -rf 2>/dev/null || true
+            # Keep only the last 2 release backups — rollback never needs more.
+            cd /var/www/backups 2>/dev/null && ls -dt noovaerp-* 2>/dev/null | tail -n +3 | xargs -r rm -rf 2>/dev/null || true
+
+            # Keep only the last 2 database dump batches. Files without a
+            # timestamp stamp (manual dumps) are left untouched.
+            cd /var/www/backups/database 2>/dev/null || exit 0
+            STAMPS=$(ls 2>/dev/null | grep -oE '[0-9]{8}_[0-9]{6}' | sort -u | tail -2 | tr '\n' '|' | sed 's/|$//')
+            if [ -n "$STAMPS" ]; then
+              find . -maxdepth 1 -type f \( -name '*.sql' -o -name '*.sql.gz' -o -name '*.dump' \) \
+                | grep -E '[0-9]{8}_[0-9]{6}' | grep -vE "($STAMPS)" | xargs -r rm -f 2>/dev/null || true
+            fi
+
+            # Remove stale release staging dirs.
+            rm -rf /tmp/noovaerp-release-* 2>/dev/null || true
           ENDSSH
 
       - name: Health check
