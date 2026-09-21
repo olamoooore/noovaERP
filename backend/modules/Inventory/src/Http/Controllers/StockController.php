@@ -10,11 +10,13 @@ use Illuminate\Validation\ValidationException;
 use Modules\Inventory\Models\StockAdjustmentReason;
 use Modules\Inventory\Models\StockLevel;
 use Modules\Inventory\Services\InventoryService;
+use Modules\Inventory\Services\StockAdjustmentService;
 
 class StockController extends Controller
 {
     public function __construct(
-        private InventoryService $inventoryService
+        private InventoryService $inventoryService,
+        private StockAdjustmentService $stockAdjustmentService,
     ) {}
 
     private function resolveReasonForType(int $reasonId, string $expectedType): StockAdjustmentReason
@@ -76,15 +78,14 @@ class StockController extends Controller
         try {
             $this->resolveReasonForType((int) $validated['adjustment_reason_id'], 'in');
 
-            $movement = $this->inventoryService->adjustStock(
+            // Issue #106: route manual movements through StockAdjustmentService so
+            // the valuation change is posted to the GL in the same transaction.
+            $movement = $this->stockAdjustmentService->stockIn(
                 (int) $validated['product_id'],
                 (int) $validated['warehouse_id'],
                 (int) $validated['quantity'],
-                'in',
-                $validated['reference'] ?? null,
-                'manual_stock_in',
-                null,
                 (int) $validated['adjustment_reason_id'],
+                $validated['reference'] ?? null,
                 $validated['notes'] ?? null,
                 $validated['batch_number'] ?? null,
                 isset($validated['expiry_date']) ? new \DateTime($validated['expiry_date']) : null
@@ -114,15 +115,13 @@ class StockController extends Controller
         try {
             $this->resolveReasonForType((int) $validated['adjustment_reason_id'], 'out');
 
-            $movement = $this->inventoryService->adjustStock(
+            // Issue #106: GL posting for the write-off happens inside the service.
+            $movement = $this->stockAdjustmentService->stockOut(
                 (int) $validated['product_id'],
                 (int) $validated['warehouse_id'],
                 (int) $validated['quantity'],
-                'out',
-                $validated['reference'] ?? null,
-                'manual_stock_out',
-                null,
                 (int) $validated['adjustment_reason_id'],
+                $validated['reference'] ?? null,
                 $validated['notes'] ?? null
             );
 
@@ -149,14 +148,11 @@ class StockController extends Controller
         try {
             $this->resolveReasonForType((int) $validated['adjustment_reason_id'], 'both');
 
-            $movement = $this->inventoryService->adjustStock(
+            // Issue #106: cycle-count corrections post the valuation delta to the GL.
+            $movement = $this->stockAdjustmentService->adjust(
                 (int) $validated['product_id'],
                 (int) $validated['warehouse_id'],
                 (int) $validated['new_quantity'],
-                'adjustment',
-                null,
-                'manual_adjustment',
-                null,
                 (int) $validated['adjustment_reason_id'],
                 $validated['notes'] ?? null
             );

@@ -74,10 +74,20 @@ class AR001MutationOwnershipTest extends TenantTestCase
             base_path('modules/Inventory/src/Http/Controllers/StockController.php')
         );
 
-        $this->assertStringContainsString('adjustStock', $controller,
-            'StockController::stockIn() must route through adjustStock().');
-        $this->assertStringContainsString('inventoryService', $controller,
-            'StockController must use inventoryService for all mutations.');
+        // Issue #106: manual movements now go through StockAdjustmentService,
+        // which posts the GL valuation change AND delegates the stock mutation
+        // to InventoryService::adjustStock(). The mutation-ownership invariant
+        // is enforced at both layers.
+        $this->assertStringContainsString('StockAdjustmentService', $controller,
+            'StockController mutations must route through StockAdjustmentService.');
+
+        $service = file_get_contents(
+            base_path('modules/Inventory/src/Services/StockAdjustmentService.php')
+        );
+
+        $this->assertStringContainsString('adjustStock', $service,
+            'StockAdjustmentService must route stock mutations through InventoryService::adjustStock().');
+
         $this->assertStringNotContainsString('StockLevel::create', $controller,
             'StockController must not directly create StockLevel records.');
         $this->assertStringNotContainsString('DB::raw', $controller,

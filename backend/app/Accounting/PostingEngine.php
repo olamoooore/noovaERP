@@ -968,6 +968,9 @@ class PostingEngine implements PostingEngineInterface
             'payment', 'bill_payment', 'payment_refund' => 'accounting.write',
             'journal_entry' => 'accounting.write',
             'adjustment' => 'accounting.write',
+            // Issue #106: manual stock adjustments route here; the actor holds
+            // the inventory operation permission, the GL entry is a consequence.
+            'stock_adjustment' => 'inventory.write',
             'reversal' => 'accounting.reverse',
             // Vendor document variants (module postings that create AP GL lines).
             'vendor_credit_note', 'vendor_debit_note' => 'accounting.write',
