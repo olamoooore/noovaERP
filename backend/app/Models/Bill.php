@@ -67,6 +67,7 @@ class Bill extends Model
         'is_active_version',
         'approved_by',
         'approved_at',
+        'currency_code',
     ];
 
     protected $casts = [
@@ -107,6 +108,11 @@ class Bill extends Model
             }
             if (! $bill->version_number) {
                 $bill->version_number = 1;
+            }
+            // Issue #98: AP documents are base-currency denominated unless an
+            // explicit currency is supplied; keep the reporting views truthful.
+            if (! $bill->currency_code) {
+                $bill->currency_code = \App\Services\DocumentCurrencyResolver::resolve();
             }
             if ($bill->is_active_version === null) {
                 $bill->is_active_version = true;

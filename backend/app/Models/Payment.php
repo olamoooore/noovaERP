@@ -58,6 +58,11 @@ class Payment extends Model
             if (! $payment->payment_status) {
                 $payment->payment_status = 'recorded';
             }
+            // Issue #98: payments are base-currency denominated unless an
+            // explicit currency is supplied; keep the reporting views truthful.
+            if (! $payment->currency) {
+                $payment->currency = \App\Services\DocumentCurrencyResolver::resolve();
+            }
         });
 
         // Workstream 2 (2026-04-15): Prevent deletion of posted payments

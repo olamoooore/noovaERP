@@ -33,6 +33,7 @@ class BillPayment extends Model
         'unapplied_at',
         'refunded_at',
         'reversal_journal_entry_id',
+        'currency_code',
     ];
 
     protected $casts = [
@@ -45,6 +46,14 @@ class BillPayment extends Model
     protected static function boot(): void
     {
         parent::boot();
+
+        // Issue #98: AP payments are base-currency denominated unless an
+        // explicit currency is supplied; keep the reporting views truthful.
+        static::creating(function ($payment) {
+            if (! $payment->currency_code) {
+                $payment->currency_code = \App\Services\DocumentCurrencyResolver::resolve();
+            }
+        });
 
         // Workstream 2 (2026-04-15): Prevent deletion of posted bill payments
         static::deleting(function ($payment) {

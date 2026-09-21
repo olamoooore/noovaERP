@@ -12,6 +12,35 @@ class Invoice extends Model
 {
     use HasFactory, SoftDeletes;
 
+    // Approval dimension (writer: InvoiceApprovalService)
+    public const APPROVAL_NOT_REQUIRED = 'not_required';
+
+    public const APPROVAL_PENDING = 'pending';
+
+    public const APPROVAL_APPROVED = 'approved';
+
+    public const APPROVAL_REJECTED = 'rejected';
+
+    public const APPROVAL_EXPIRED = 'expired';
+
+    public const APPROVAL_WITHDRAWN = 'withdrawn';
+
+    // Delivery dimension (writer: InvoiceDeliveryService)
+    public const DELIVERY_NOT_SENT = 'not_sent';
+
+    public const DELIVERY_PARTIALLY_SENT = 'partially_sent';
+
+    public const DELIVERY_SENT = 'sent';
+
+    public const DELIVERY_FAILED = 'failed';
+
+    // Evidence dimension (writer: InvoiceEvidenceService)
+    public const EVIDENCE_NOT_REQUIRED = 'not_required';
+
+    public const EVIDENCE_PENDING = 'pending';
+
+    public const EVIDENCE_SATISFIED = 'satisfied';
+
     protected static function boot(): void
     {
         parent::boot();
@@ -34,6 +63,11 @@ class Invoice extends Model
             }
             if ($invoice->is_active_version === null) {
                 $invoice->is_active_version = true;
+            }
+            // Issue #98: AR/AP documents are base-currency denominated unless an
+            // explicit currency is supplied; keep the reporting views truthful.
+            if (! $invoice->currency_code) {
+                $invoice->currency_code = \App\Services\DocumentCurrencyResolver::resolve();
             }
         });
 
@@ -165,6 +199,13 @@ class Invoice extends Model
         'tax_regime',
         'tax_treatment',
         'status',
+        'requires_approval',
+        'approval_status',
+        'approval_request_id',
+        'delivery_status',
+        'evidence_status',
+        'payment_link_url',
+        'payment_link_expires_at',
         'subtotal',
         'tax_amount',
         'discount_amount',
@@ -205,6 +246,7 @@ class Invoice extends Model
         'credit_note_id',
         'version_number',
         'is_active_version',
+        'currency_code',
     ];
 
     protected $casts = [
@@ -213,6 +255,8 @@ class Invoice extends Model
         'date_of_case' => 'date',
         'delivery_date' => 'date',
         'sent_at' => 'datetime',
+        'requires_approval' => 'boolean',
+        'payment_link_expires_at' => 'datetime',
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'discount_amount' => 'decimal:2',
@@ -256,6 +300,26 @@ class Invoice extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function approvalRequest(): BelongsTo
+    {
+        return $this->belongsTo(ApprovalRequest::class, 'approval_request_id');
+    }
+
+    public function deliveries(): HasMany
+    {
+        return $this->hasMany(InvoiceDelivery::class);
+    }
+
+    public function evidence(): HasMany
+    {
+        return $this->hasMany(InvoiceEvidence::class);
+    }
+
+    public function activityLog(): HasMany
+    {
+        return $this->hasMany(InvoiceActivityLog::class);
     }
 
     public function createdBy(): BelongsTo
