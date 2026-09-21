@@ -51,6 +51,7 @@ class Shipment extends Model
         'dimensions' => 'array',
         'shipper' => 'array',
         'recipient' => 'array',
+        'metadata' => 'array',
         'signature_required' => 'boolean',
         'saturday_delivery' => 'boolean',
         'insurance_enabled' => 'boolean',

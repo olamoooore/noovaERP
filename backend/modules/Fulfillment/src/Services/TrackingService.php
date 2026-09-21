@@ -22,6 +22,26 @@ class TrackingService
 
     public function syncTracking(Shipment $shipment): void
     {
+        $carrier = $this->configService->getCarrier($shipment->provider);
+
+        // Issue #146: never persist fabricated tracking data. Simulated carriers
+        // are only synced when sandbox use is explicitly enabled; a real carrier
+        // would still require the automated sync to be switched on.
+        $simulated = method_exists($carrier, 'isSimulatedCarrier') && $carrier->isSimulatedCarrier();
+
+        if ($simulated && ! config('fulfillment.simulated_carriers_enabled', false)) {
+            throw new \RuntimeException(
+                'Refusing to sync simulated tracking data for shipment '.
+                "{$shipment->shipment_number}: {$carrier->getName()} has no real tracking integration."
+            );
+        }
+
+        if (! $simulated && ! config('fulfillment.tracking_sync_enabled', false)) {
+            throw new \RuntimeException(
+                "Automated tracking sync is disabled (FULFILLMENT_TRACKING_SYNC_ENABLED). Shipment {$shipment->shipment_number}."
+            );
+        }
+
         $response = $this->getTracking($shipment);
 
         DB::transaction(function () use ($shipment, $response) {
@@ -54,6 +74,18 @@ class TrackingService
 
     public function syncAllActiveShipments(): int
     {
+        // Issue #146: this job must not run while every carrier integration is
+        // simulated — each run would write fabricated statuses into shipments.
+        if (! config('fulfillment.tracking_sync_enabled', false)
+            && ! config('fulfillment.simulated_carriers_enabled', false)) {
+            \Log::warning(
+                'Tracking sync skipped: no real carrier tracking integration is enabled. '.
+                'Set FULFILLMENT_TRACKING_SYNC_ENABLED once a real integration exists.'
+            );
+
+            return 0;
+        }
+
         $shipments = Shipment::whereIn('status', [
             Shipment::STATUS_CREATED,
             Shipment::STATUS_PICKED_UP,

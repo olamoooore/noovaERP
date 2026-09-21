@@ -106,14 +106,10 @@ class AramexCarrier extends AbstractCarrier
 
     public function createShipment(ShipmentRequest $request): ShipmentResponse
     {
-        $trackingNumber = 'ARN'.strtoupper(bin2hex(random_bytes(8)));
-        $trackingUrl = "https://www.aramex.com/track/results?number={$trackingNumber}";
+        $this->guardSimulatedOperation('Creating a shipment');
 
         $serviceType = $request->serviceType ?? 'EXPRESS';
-        $baseRate = 30.00;
-        $ratePerKg = 4.00;
-
-        $shippingCost = $baseRate + ($request->weight * $ratePerKg);
+        $shippingCost = 30.00 + ($request->weight * 4.00);
 
         if ($request->signatureRequired) {
             $shippingCost += 3.00;
@@ -124,57 +120,40 @@ class AramexCarrier extends AbstractCarrier
         }
 
         return new ShipmentResponse(
-            shipmentId: uniqid('SHP-'),
-            trackingNumber: $trackingNumber,
-            trackingUrl: $trackingUrl,
-            labelUrl: "https://api.aramex.com/labels/{$trackingNumber}.pdf",
-            labelFormat: 'pdf',
-            estimatedDelivery: now()->addDays(3)->format('Y-m-d'),
+            shipmentId: $this->simulatedShipmentId($request),
+            trackingNumber: $this->simulatedTrackingNumber($request),
+            trackingUrl: null,
+            labelUrl: null,
+            labelFormat: 'none',
+            estimatedDelivery: $this->simulatedEstimatedDelivery(),
             shippingCost: round($shippingCost, 2),
             currency: 'MYR',
             metadata: [
                 'service_type' => $serviceType,
                 'shipper' => $request->shipper,
                 'recipient' => $request->recipient,
+                'simulated' => true,
+                'cost_source' => 'simulated_estimate',
             ]
         );
     }
 
     public function getTracking(string $trackingNumber): TrackingResponse
     {
-        $mockStatuses = [
-            [
-                'status' => 'picked_up',
-                'description' => 'Shipment collected from sender',
-                'location' => 'Kuala Lumpur, MY',
-                'timestamp' => now()->subDays(2),
-            ],
-            [
-                'status' => 'in_transit',
-                'description' => 'Shipment in transit',
-                'location' => 'Subang, MY',
-                'timestamp' => now()->subDays(1),
-            ],
-        ];
+        $this->guardSimulatedOperation('Tracking lookup');
 
-        return new TrackingResponse(
-            trackingNumber: $trackingNumber,
-            status: 'in_transit',
-            statusDescription: 'Shipment in transit',
-            estimatedDelivery: now()->addDays(2)->format('Y-m-d'),
-            actualDelivery: null,
-            events: array_map(fn ($e) => [
-                'status' => $e['status'],
-                'description' => $e['description'],
-                'location' => $e['location'],
-                'timestamp' => $e['timestamp']->toIso8601String(),
-            ], $mockStatuses)
-        );
+        return $this->simulatedTrackingResponse($trackingNumber);
     }
 
     public function cancelShipment(string $shipmentId): bool
     {
-        return true;
+        if (str_starts_with($shipmentId, self::SIMULATION_PREFIX.'-')) {
+            return true;
+        }
+
+        $this->guardSimulatedOperation('Cancelling a shipment');
+
+        throw new \RuntimeException("Real shipment cancellation is not implemented for {$this->name}.");
     }
 
     public function validateCredentials(array $config): bool

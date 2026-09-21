@@ -30,6 +30,7 @@ class AdminFulfillmentController extends Controller
         $carriers = [
             [
                 'code' => 'dhl',
+                'simulated' => $this->configService->isCarrierSimulated('dhl'),
                 'name' => 'DHL Express',
                 'description' => 'Express delivery worldwide, 12PM and end-of-day options',
                 'services' => ['EXPRESS_WORLDWIDE', 'EXPRESS_12PM', 'ECONOMIC_SELECT'],
@@ -38,6 +39,7 @@ class AdminFulfillmentController extends Controller
             ],
             [
                 'code' => 'fedex',
+                'simulated' => $this->configService->isCarrierSimulated('fedex'),
                 'name' => 'FedEx Express',
                 'description' => 'International priority and economy shipping',
                 'services' => ['INTERNATIONAL_PRIORITY', 'INTERNATIONAL_ECONOMY', 'FEDEX_GROUND'],
@@ -46,6 +48,7 @@ class AdminFulfillmentController extends Controller
             ],
             [
                 'code' => 'aramex',
+                'simulated' => $this->configService->isCarrierSimulated('aramex'),
                 'name' => 'Aramex',
                 'description' => 'Express, economy and Drop And Ship services',
                 'services' => ['EXPRESS', 'ECONOMY', 'DROP_AND_SHIP', 'DOMESTIC'],
@@ -54,6 +57,7 @@ class AdminFulfillmentController extends Controller
             ],
             [
                 'code' => 'gdex',
+                'simulated' => $this->configService->isCarrierSimulated('gdex'),
                 'name' => 'GD Express (GDEX)',
                 'description' => 'Domestic Malaysia & Singapore, COD, GrabExpress same-day',
                 'services' => ['STANDARD', 'EXPRESS', 'SAME_DAY', 'COD', 'PICKUP_POINT'],

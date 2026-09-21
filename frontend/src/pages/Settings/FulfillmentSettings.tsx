@@ -31,6 +31,7 @@ interface AvailableCarrier {
   services: string[]
   supports_domestic: boolean
   supports_international: boolean
+  simulated?: boolean
 }
 
 export function FulfillmentSettings() {
@@ -251,6 +252,9 @@ export function FulfillmentSettings() {
                         <div className="flex items-center gap-2">
                           <Icon icon={getCarrierLogo(carrier.code)} className="h-4 w-4" />
                           {carrier.name}
+                          {carrier.simulated && (
+                            <span className="text-xs text-destructive">(sandbox)</span>
+                          )}
                         </div>
                       </SelectItem>
                     ))}
@@ -506,7 +510,10 @@ export function FulfillmentSettings() {
                 <div>
                   <p className="font-medium">{carrier.name}</p>
                   <p className="text-xs text-muted-foreground">{carrier.description}</p>
-                  <div className="flex gap-1 mt-2">
+                  <div className="flex gap-1 mt-2 flex-wrap">
+                    {carrier.simulated && (
+                      <Badge variant="destructive" className="text-xs">Sandbox — not connected</Badge>
+                    )}
                     {carrier.supports_domestic && (
                       <Badge variant="outline" className="text-xs">Domestic</Badge>
                     )}

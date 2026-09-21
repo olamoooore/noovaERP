@@ -308,14 +308,10 @@ class FedExCarrier extends AbstractCarrier
 
     public function createShipment(ShipmentRequest $request): ShipmentResponse
     {
-        $trackingNumber = '7489'.str_pad(rand(0, 99999999), 8, '0', STR_PAD_LEFT);
-        $trackingUrl = "https://www.fedex.com/fedextrack/?trknbr={$trackingNumber}";
+        $this->guardSimulatedOperation('Creating a shipment');
 
         $serviceType = $request->serviceType ?? 'INTERNATIONAL_PRIORITY';
-        $baseRate = 55.00;
-        $ratePerKg = 6.50;
-
-        $shippingCost = $baseRate + ($request->weight * $ratePerKg);
+        $shippingCost = 55.00 + ($request->weight * 6.50);
 
         if ($request->signatureRequired) {
             $shippingCost += 6.00;
@@ -326,63 +322,40 @@ class FedExCarrier extends AbstractCarrier
         }
 
         return new ShipmentResponse(
-            shipmentId: uniqid('SHP-'),
-            trackingNumber: $trackingNumber,
-            trackingUrl: $trackingUrl,
-            labelUrl: "https://api.fedex.com/labels/{$trackingNumber}.pdf",
-            labelFormat: 'pdf',
-            estimatedDelivery: now()->addDays(3)->format('Y-m-d'),
+            shipmentId: $this->simulatedShipmentId($request),
+            trackingNumber: $this->simulatedTrackingNumber($request),
+            trackingUrl: null,
+            labelUrl: null,
+            labelFormat: 'none',
+            estimatedDelivery: $this->simulatedEstimatedDelivery(),
             shippingCost: round($shippingCost, 2),
             currency: 'MYR',
             metadata: [
                 'service_type' => $serviceType,
                 'shipper' => $request->shipper,
                 'recipient' => $request->recipient,
+                'simulated' => true,
+                'cost_source' => 'simulated_estimate',
             ]
         );
     }
 
     public function getTracking(string $trackingNumber): TrackingResponse
     {
-        $mockStatuses = [
-            [
-                'status' => 'picked_up',
-                'description' => 'Package picked up',
-                'location' => 'Kuala Lumpur, MY',
-                'timestamp' => now()->subDays(2),
-            ],
-            [
-                'status' => 'in_transit',
-                'description' => 'In transit',
-                'location' => 'Petaling Jaya, MY',
-                'timestamp' => now()->subDays(1),
-            ],
-            [
-                'status' => 'in_transit',
-                'description' => 'Departed FedEx location',
-                'location' => 'Singapore, SG',
-                'timestamp' => now(),
-            ],
-        ];
+        $this->guardSimulatedOperation('Tracking lookup');
 
-        return new TrackingResponse(
-            trackingNumber: $trackingNumber,
-            status: 'in_transit',
-            statusDescription: 'Package in transit to destination',
-            estimatedDelivery: now()->addDays(2)->format('Y-m-d'),
-            actualDelivery: null,
-            events: array_map(fn ($e) => [
-                'status' => $e['status'],
-                'description' => $e['description'],
-                'location' => $e['location'],
-                'timestamp' => $e['timestamp']->toIso8601String(),
-            ], $mockStatuses)
-        );
+        return $this->simulatedTrackingResponse($trackingNumber);
     }
 
     public function cancelShipment(string $shipmentId): bool
     {
-        return true;
+        if (str_starts_with($shipmentId, self::SIMULATION_PREFIX.'-')) {
+            return true;
+        }
+
+        $this->guardSimulatedOperation('Cancelling a shipment');
+
+        throw new \RuntimeException("Real shipment cancellation is not implemented for {$this->name}.");
     }
 
     public function validateCredentials(array $config): bool

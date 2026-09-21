@@ -43,6 +43,23 @@ class CarrierConfigService
         return array_keys($this->carrierMap);
     }
 
+    /**
+     * Issue #146: whether a carrier code maps to a simulated (non-real-API)
+     * integration. Used by the API/UI to label carriers as sandbox-only.
+     */
+    public function isCarrierSimulated(string $carrierCode): bool
+    {
+        $carrierClass = $this->carrierMap[$carrierCode] ?? null;
+
+        if (! $carrierClass || ! class_exists($carrierClass)) {
+            return false;
+        }
+
+        $carrier = new $carrierClass([]);
+
+        return method_exists($carrier, 'isSimulatedCarrier') && $carrier->isSimulatedCarrier();
+    }
+
     public function testCredentials(FulfillmentProvider $provider): bool
     {
         $carrier = $this->getCarrier($provider);

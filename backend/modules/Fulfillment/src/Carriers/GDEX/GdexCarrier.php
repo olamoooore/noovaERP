@@ -117,14 +117,10 @@ class GdexCarrier extends AbstractCarrier
 
     public function createShipment(ShipmentRequest $request): ShipmentResponse
     {
-        $trackingNumber = 'GDEX'.str_pad(rand(0, 99999999), 8, '0', STR_PAD_LEFT);
-        $trackingUrl = "https://www.gdexpress.com/shipment/tracking/{$trackingNumber}";
+        $this->guardSimulatedOperation('Creating a shipment');
 
         $serviceType = $request->serviceType ?? 'STANDARD';
-        $baseRate = 10.00;
-        $ratePerKg = 2.00;
-
-        $shippingCost = $baseRate + ($request->weight * $ratePerKg);
+        $shippingCost = 10.00 + ($request->weight * 2.00);
 
         if ($serviceType === 'COD') {
             $shippingCost += 5.00;
@@ -139,66 +135,42 @@ class GdexCarrier extends AbstractCarrier
         }
 
         return new ShipmentResponse(
-            shipmentId: uniqid('SHP-'),
-            trackingNumber: $trackingNumber,
-            trackingUrl: $trackingUrl,
-            labelUrl: "https://api.gdexpress.com/labels/{$trackingNumber}.pdf",
-            labelFormat: 'pdf',
+            shipmentId: $this->simulatedShipmentId($request),
+            trackingNumber: $this->simulatedTrackingNumber($request),
+            trackingUrl: null,
+            labelUrl: null,
+            labelFormat: 'none',
             estimatedDelivery: $serviceType === 'SAME_DAY'
-                ? 'Same Day'
-                : now()->addDays(2)->format('Y-m-d'),
+                ? now()->toDateString()
+                : $this->simulatedEstimatedDelivery(),
             shippingCost: round($shippingCost, 2),
             currency: 'MYR',
             metadata: [
                 'service_type' => $serviceType,
                 'shipper' => $request->shipper,
                 'recipient' => $request->recipient,
-                'grabexpress_integration' => true,
+                'simulated' => true,
+                'cost_source' => 'simulated_estimate',
             ]
         );
     }
 
     public function getTracking(string $trackingNumber): TrackingResponse
     {
-        $mockStatuses = [
-            [
-                'status' => 'picked_up',
-                'description' => 'Parcel picked up from sender',
-                'location' => 'Kuala Lumpur, MY',
-                'timestamp' => now()->subDays(1),
-            ],
-            [
-                'status' => 'in_transit',
-                'description' => 'Parcel at sorting center',
-                'location' => 'Petaling Jaya, MY',
-                'timestamp' => now()->subHours(12),
-            ],
-            [
-                'status' => 'out_for_delivery',
-                'description' => 'Out for delivery',
-                'location' => 'Kuala Lumpur, MY',
-                'timestamp' => now(),
-            ],
-        ];
+        $this->guardSimulatedOperation('Tracking lookup');
 
-        return new TrackingResponse(
-            trackingNumber: $trackingNumber,
-            status: 'out_for_delivery',
-            statusDescription: 'Package is out for delivery',
-            estimatedDelivery: 'Today',
-            actualDelivery: null,
-            events: array_map(fn ($e) => [
-                'status' => $e['status'],
-                'description' => $e['description'],
-                'location' => $e['location'],
-                'timestamp' => $e['timestamp']->toIso8601String(),
-            ], $mockStatuses)
-        );
+        return $this->simulatedTrackingResponse($trackingNumber);
     }
 
     public function cancelShipment(string $shipmentId): bool
     {
-        return true;
+        if (str_starts_with($shipmentId, self::SIMULATION_PREFIX.'-')) {
+            return true;
+        }
+
+        $this->guardSimulatedOperation('Cancelling a shipment');
+
+        throw new \RuntimeException("Real shipment cancellation is not implemented for {$this->name}.");
     }
 
     public function validateCredentials(array $config): bool

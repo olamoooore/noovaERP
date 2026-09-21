@@ -2,11 +2,14 @@
 
 namespace Modules\Fulfillment\Models;
 
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TrackingEvent extends Model
 {
+    use HasUuids;
+
     protected $table = 'tracking_events';
 
     protected $fillable = [

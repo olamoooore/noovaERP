@@ -94,66 +94,52 @@ class DhlCarrier extends AbstractCarrier
 
     public function createShipment(ShipmentRequest $request): ShipmentResponse
     {
-        $trackingNumber = 'DHL'.strtoupper(uniqid());
-        $trackingUrl = "https://www.dhl.com/en/express/tracking.html?AWB={$trackingNumber}";
+        $this->guardSimulatedOperation('Creating a shipment');
 
-        $baseRate = 45.00;
-        $ratePerKg = 5.50;
-        $shippingCost = $baseRate + ($request->weight * $ratePerKg);
+        $shippingCost = 45.00 + ($request->weight * 5.50);
 
         if ($request->signatureRequired) {
             $shippingCost += 5.00;
         }
 
         return new ShipmentResponse(
-            shipmentId: uniqid('SHP-'),
-            trackingNumber: $trackingNumber,
-            trackingUrl: $trackingUrl,
-            labelUrl: "https://api.dhl.com/labels/{$trackingNumber}.pdf",
-            labelFormat: 'pdf',
-            estimatedDelivery: now()->addDays(2)->format('Y-m-d'),
+            shipmentId: $this->simulatedShipmentId($request),
+            trackingNumber: $this->simulatedTrackingNumber($request),
+            trackingUrl: null,
+            labelUrl: null,
+            labelFormat: 'none',
+            estimatedDelivery: $this->simulatedEstimatedDelivery(),
             shippingCost: round($shippingCost, 2),
             currency: 'MYR',
             metadata: [
                 'service_type' => $request->serviceType ?? 'EXPRESS_WORLDWIDE',
                 'shipper' => $request->shipper,
                 'recipient' => $request->recipient,
+                'simulated' => true,
+                'cost_source' => 'simulated_estimate',
             ]
         );
     }
 
     public function getTracking(string $trackingNumber): TrackingResponse
     {
-        $statuses = [
-            'pending' => ['In Transit', 'Out for Delivery', 'Delivered'],
-            'in_transit' => ['In Transit', 'Arrival', 'Departure'],
-            'delivered' => ['Delivered'],
-        ];
+        $this->guardSimulatedOperation('Tracking lookup');
 
-        $mockStatuses = [
-            ['status' => 'picked_up', 'description' => 'Shipment picked up', 'location' => 'Kuala Lumpur, MY', 'timestamp' => now()->subDays(2)],
-            ['status' => 'in_transit', 'description' => 'In transit to destination', 'location' => 'Petaling Jaya, MY', 'timestamp' => now()->subDays(1)],
-            ['status' => 'out_for_delivery', 'description' => 'Out for delivery', 'location' => 'Singapore, SG', 'timestamp' => now()],
-        ];
-
-        return new TrackingResponse(
-            trackingNumber: $trackingNumber,
-            status: $mockStatuses[array_rand($mockStatuses)]['status'],
-            statusDescription: 'Package in transit',
-            estimatedDelivery: now()->addDays(1)->format('Y-m-d'),
-            actualDelivery: null,
-            events: array_map(fn ($e) => [
-                'status' => $e['status'],
-                'description' => $e['description'],
-                'location' => $e['location'],
-                'timestamp' => $e['timestamp']->toIso8601String(),
-            ], $mockStatuses)
-        );
+        return $this->simulatedTrackingResponse($trackingNumber);
     }
 
     public function cancelShipment(string $shipmentId): bool
     {
-        return true;
+        // Simulated shipments never existed at the carrier, so a local cancel
+        // is a correct no-op. A non-simulated reference cannot be cancelled
+        // because no real integration exists.
+        if (str_starts_with($shipmentId, self::SIMULATION_PREFIX.'-')) {
+            return true;
+        }
+
+        $this->guardSimulatedOperation('Cancelling a shipment');
+
+        throw new \RuntimeException("Real shipment cancellation is not implemented for {$this->name}.");
     }
 
     public function validateCredentials(array $config): bool
