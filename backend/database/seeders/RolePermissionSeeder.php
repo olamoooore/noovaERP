@@ -60,6 +60,30 @@ class RolePermissionSeeder extends Seeder
         'customers.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'customers.delete' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
 
+        // Contact Master (issue #116 CRITICAL). The contract declared these 18
+        // permission strings but none were seeded or enforced. Role mappings
+        // mirror customers.* sensitivity: read is broad, write is Manager+,
+        // delete/merge/visibility are Manager+, and bank-account data is
+        // restricted to Owner/Admin/Accountant given its sensitivity.
+        'contacts.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::VIEWER],
+        'contacts.search' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::VIEWER],
+        'contacts.export' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::VIEWER],
+        'contacts.profiles.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::VIEWER],
+        'contacts.create' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        'contacts.edit' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        'contacts.import' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        'contacts.roles.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        'contacts.identifiers.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        'contacts.addresses.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        'contacts.methods.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        'contacts.relationships.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+        'contacts.profiles.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::SALES],
+        'contacts.delete' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'contacts.merge' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'contacts.visibility.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+        'contacts.bank_accounts.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::ACCOUNTANT],
+        'contacts.bank_accounts.edit' => [UserRole::OWNER, UserRole::ADMIN, UserRole::ACCOUNTANT],
+
         // Accounting
         'accounting.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
         'accounting.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
