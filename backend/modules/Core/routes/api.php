@@ -711,28 +711,52 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     Route::get('/customers/{customer}/statement', [CustomerStatementController::class, 'statement'])
         ->middleware(RequirePermission::using('customers.view'));
 
-    // Medical Cases
+    // Medical Cases (issues #161/#186: previously no permission middleware at all)
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
-        Route::apiResource('medical-cases', MedicalCaseController::class);
-        Route::post('/medical-cases/{id}/allocate', [MedicalCaseController::class, 'allocate']);
-        Route::post('/medical-cases/{id}/deliver', [MedicalCaseController::class, 'deliver']);
-        Route::post('/medical-cases/{id}/invoice', [MedicalCaseController::class, 'invoice']);
-        Route::post('/medical-cases/{id}/complete', [MedicalCaseController::class, 'complete']);
-        Route::post('/medical-cases/{id}/cancel', [MedicalCaseController::class, 'cancel']);
+        Route::apiResource('medical-cases', MedicalCaseController::class)
+            ->only(['index', 'show'])
+            ->middleware(RequirePermission::using('medical_cases.view'));
+        Route::apiResource('medical-cases', MedicalCaseController::class)
+            ->only(['store', 'update', 'destroy'])
+            ->middleware(RequirePermission::using('medical_cases.write'));
+
+        Route::middleware(RequirePermission::using('medical_cases.write'))->group(function () {
+            Route::post('/medical-cases/{id}/allocate', [MedicalCaseController::class, 'allocate']);
+            Route::post('/medical-cases/{id}/deliver', [MedicalCaseController::class, 'deliver']);
+            Route::post('/medical-cases/{id}/invoice', [MedicalCaseController::class, 'invoice']);
+            Route::post('/medical-cases/{id}/complete', [MedicalCaseController::class, 'complete']);
+            Route::post('/medical-cases/{id}/cancel', [MedicalCaseController::class, 'cancel']);
+        });
     });
 
-    // Bonus Schemes
+    // Bonus Schemes (issues #161/#186)
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
-        Route::apiResource('bonus-schemes', BonusSchemeController::class);
-        Route::post('/bonus-schemes/{id}/activate', [BonusSchemeController::class, 'activate']);
-        Route::post('/bonus-schemes/{id}/deactivate', [BonusSchemeController::class, 'deactivate']);
+        Route::apiResource('bonus-schemes', BonusSchemeController::class)
+            ->only(['index', 'show'])
+            ->middleware(RequirePermission::using('bonus_schemes.view'));
+        Route::apiResource('bonus-schemes', BonusSchemeController::class)
+            ->only(['store', 'update', 'destroy'])
+            ->middleware(RequirePermission::using('bonus_schemes.write'));
+
+        Route::middleware(RequirePermission::using('bonus_schemes.write'))->group(function () {
+            Route::post('/bonus-schemes/{id}/activate', [BonusSchemeController::class, 'activate']);
+            Route::post('/bonus-schemes/{id}/deactivate', [BonusSchemeController::class, 'deactivate']);
+        });
     });
 
-    // Customer Bonus Scheme Assignments
+    // Customer Bonus Scheme Assignments (issues #161/#186 — same bonus_schemes domain)
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
-        Route::apiResource('customer-bonus-schemes', CustomerBonusSchemeController::class);
-        Route::post('/customer-bonus-schemes/{id}/suspend', [CustomerBonusSchemeController::class, 'suspend']);
-        Route::post('/customer-bonus-schemes/{id}/reactivate', [CustomerBonusSchemeController::class, 'reactivate']);
+        Route::apiResource('customer-bonus-schemes', CustomerBonusSchemeController::class)
+            ->only(['index', 'show'])
+            ->middleware(RequirePermission::using('bonus_schemes.view'));
+        Route::apiResource('customer-bonus-schemes', CustomerBonusSchemeController::class)
+            ->only(['store', 'update', 'destroy'])
+            ->middleware(RequirePermission::using('bonus_schemes.write'));
+
+        Route::middleware(RequirePermission::using('bonus_schemes.write'))->group(function () {
+            Route::post('/customer-bonus-schemes/{id}/suspend', [CustomerBonusSchemeController::class, 'suspend']);
+            Route::post('/customer-bonus-schemes/{id}/reactivate', [CustomerBonusSchemeController::class, 'reactivate']);
+        });
     });
 
     // Per-customer aging (customer detail page — no entity/accounting middleware needed)

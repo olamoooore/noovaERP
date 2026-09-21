@@ -33,6 +33,17 @@ class RolePermissionSeeder extends Seeder
         'inventory.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'inventory.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
+        // Medical cases — transactional medical-vertical documents (issues
+        // #161/#186). Reads follow inventory.view; writes follow inventory.write.
+        'medical_cases.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::SALES, UserRole::VIEWER],
+        'medical_cases.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+
+        // Bonus schemes — pricing/reward configuration (issues #161/#186).
+        // Writes are deliberately Manager+; Sales can read schemes but not
+        // create/activate/deactivate them or suspend/reactivate assignments.
+        'bonus_schemes.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::SALES, UserRole::VIEWER],
+        'bonus_schemes.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+
         // Product catalogue — destructive bulk purge (issue #127 BLOCKER).
         // Strictest possible grant: Owner/Admin only. This guards
         // DELETE /products/delete-all, which hard-deletes the entire catalogue.
