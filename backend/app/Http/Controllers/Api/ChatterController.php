@@ -6,17 +6,23 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Chatter\ChatterService;
+use App\Services\TenantRoleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class ChatterController extends Controller
 {
-    public function __construct(private readonly ChatterService $chatter) {}
+    public function __construct(
+        private readonly ChatterService $chatter,
+        private readonly TenantRoleService $roleService,
+    ) {}
 
     public function show(Request $request, string $subjectType, int|string $subjectId): JsonResponse
     {
         $this->validateSubject($subjectType, $subjectId);
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
 
         $bundle = $this->chatter->bundle($subjectType, $subjectId);
 
@@ -26,6 +32,7 @@ class ChatterController extends Controller
     public function addMessage(Request $request, string $subjectType, int|string $subjectId): JsonResponse
     {
         $this->validateSubject($subjectType, $subjectId);
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
         $data = $request->validate([
             'body' => 'required|string|min:1|max:10000',
         ]);
@@ -49,6 +56,7 @@ class ChatterController extends Controller
     public function addActivity(Request $request, string $subjectType, int|string $subjectId): JsonResponse
     {
         $this->validateSubject($subjectType, $subjectId);
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
         $data = $request->validate([
             'activity_type' => ['required', Rule::in(['follow_up', 'call', 'meeting', 'todo', 'reminder'])],
             'summary' => 'required|string|min:1|max:255',
@@ -65,6 +73,7 @@ class ChatterController extends Controller
     public function markActivityDone(Request $request, string $subjectType, int|string $subjectId, int $activityId): JsonResponse
     {
         $this->validateSubject($subjectType, $subjectId);
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
 
         $activity = $this->chatter->markActivityDone($subjectType, $subjectId, $activityId);
 
@@ -74,6 +83,7 @@ class ChatterController extends Controller
     public function uploadAttachment(Request $request, string $subjectType, int|string $subjectId): JsonResponse
     {
         $this->validateSubject($subjectType, $subjectId);
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
         $request->validate([
             'file' => 'required|file|max:25600', // 25 MB
         ]);
@@ -98,6 +108,7 @@ class ChatterController extends Controller
     public function deleteAttachment(Request $request, string $subjectType, int|string $subjectId, int $attachmentId): JsonResponse
     {
         $this->validateSubject($subjectType, $subjectId);
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
 
         $this->chatter->deleteAttachment($subjectType, $subjectId, $attachmentId);
 
@@ -152,6 +163,68 @@ class ChatterController extends Controller
         // 5. Numeric subject id.
         if (! is_numeric($subjectId)) {
             abort(422, 'Invalid subject id.');
+        }
+    }
+
+    /**
+     * Issue #74 (CRITICAL, CWE-639 broken access control): record-level access
+     * control for chatter. validateSubject() only proves the subject_type is a
+     * whitelisted model class — it does NOT prove the record exists or that the
+     * caller may access it. Without this, any authenticated user could read the
+     * chatter (messages/activities/attachments) of ANY record by guessing the
+     * model + id.
+     *
+     * Enforcement, in order:
+     *  1. Resolve the subject record — 404 if it does not exist (also stops
+     *     blind id enumeration returning empty-but-200 bundles).
+     *  2. Look up the module view-permission that gates the record itself
+     *     (config/chatter.php subject_permissions). No mapping => fail closed 403.
+     *  3. Check the caller holds that permission via TenantRoleService (the same
+     *     central-role -> Spatie mechanism RequirePermission uses). Super-admins
+     *     bypass, matching the platform convention.
+     *
+     * NOTE: this is record-TYPE-level authorization. Row-level legal-entity
+     * scoping is not possible on these models yet (no legal_entity_id column) —
+     * that residual gap is tracked separately in #97/#140.
+     */
+    private function authorizeSubjectAccess(Request $request, string $subjectType, int|string $subjectId): void
+    {
+        // 1. Resolve the permission that gates this record type; fail closed if
+        //    the subject has no mapping (defence in depth alongside the #75
+        //    whitelist).
+        $permission = config('chatter.subject_permissions')[$subjectType] ?? null;
+        if (! $permission) {
+            abort(403, 'Chatter access is not permitted for this subject type.');
+        }
+
+        // 2. Check the caller's permission BEFORE resolving the record, so an
+        //    unauthorized caller gets 403 regardless of whether the id exists —
+        //    they cannot enumerate which record ids are real. Super-admins
+        //    bypass, matching RequirePermission / TenantRoleService.
+        $user = $request->user();
+        if (! $user) {
+            abort(401, 'Unauthenticated.');
+        }
+        $isSuperAdmin = ($user->is_super_admin ?? false) || ($user->role ?? null) === 'platform_super_admin';
+        if (! $isSuperAdmin) {
+            $tenantId = (function_exists('tenant') && tenant())
+                ? (string) tenant('id')
+                : (string) $request->header('X-Tenant-ID', '');
+            if ($tenantId === '') {
+                abort(403, 'Tenant context required.');
+            }
+
+            $centralUserId = (int) (DB::table('public.users')->where('email', $user->email)->value('id') ?? $user->id);
+
+            if (! $this->roleService->hasPermission($centralUserId, $tenantId, $permission)) {
+                abort(403, 'You do not have permission to view this record\'s chatter.');
+            }
+        }
+
+        // 3. The record must actually exist (only reached once authorized).
+        $record = $subjectType::find($subjectId);
+        if (! $record) {
+            abort(404, 'Subject record not found.');
         }
     }
 

@@ -51,4 +51,32 @@ return [
         \Modules\Sales\Models\DeliveryOrder::class,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Subject record-level access map (issue #74)
+    |--------------------------------------------------------------------------
+    |
+    | Reading chatter about a record requires the SAME module view-permission
+    | that gates reading the record itself. ChatterController resolves the
+    | subject record (404 if it does not exist) and then checks the mapped
+    | permission via TenantRoleService (403 if denied). A subject with no
+    | mapping fails closed (403).
+    |
+    | NOTE: this is record-TYPE-level access control. True row-level entity
+    | scoping (legal_entity_id) is not possible on these models because the
+    | columns do not exist yet — that is the separate gap tracked in #97/#140.
+    |
+    */
+    'subject_permissions' => [
+        \App\Models\Invoice::class => 'accounting.view',
+        \App\Models\Bill::class => 'accounting.view',
+        \App\Models\Payment::class => 'accounting.view',
+        \App\Models\JournalEntry::class => 'accounting.view',
+        \App\Models\Vendor::class => 'accounting.view',
+        \App\Models\Customer::class => 'customers.view',
+        \App\Models\Quotation::class => 'sales.view',
+        \Modules\Sales\Models\SalesOrder::class => 'sales.view',
+        \Modules\Sales\Models\DeliveryOrder::class => 'sales.view',
+    ],
+
 ];
