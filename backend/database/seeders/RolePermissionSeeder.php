@@ -55,6 +55,18 @@ class RolePermissionSeeder extends Seeder
         'sales.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'sales.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
+        // Invoices — standardized flow (MRD invoice-standardized-flow-mrd.md §7.1).
+        // invoices.post is intentionally absent: posting reuses accounting.post
+        // (EnsureAccountingPostAccess) rather than forking a parallel permission.
+        'invoices.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::CASHIER, UserRole::VIEWER],
+        'invoices.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT],
+        'invoices.submit' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT],
+        // SoD is enforced at action time (requester ≠ approver), not by role design.
+        'invoices.approve' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        'invoices.send' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT],
+        'invoices.evidence.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT],
+        'invoices.request_payment' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT],
+
         // Fulfillment / shipping (issue #143 BLOCKER). FulfillmentModuleContract
         // declared fulfillment.* permissions but nothing seeded them, so the
         // RequirePermission wiring had nothing valid to check. Using the coarse
