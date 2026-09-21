@@ -104,11 +104,52 @@ class ChatterController extends Controller
         return response()->json(['data' => ['deleted' => true]]);
     }
 
+    /**
+     * Validate the polymorphic chatter subject.
+     *
+     * Issue #75 (CRITICAL, CWE-94 code injection): the previous check was only
+     * `class_exists($subjectType)`, which EVERY autoloadable class satisfies —
+     * including framework/vendor classes whose constructors have side effects
+     * (mailers, cache managers, jobs). An attacker could pass an arbitrary FQCN
+     * as subject_type and attempt to trigger instantiation via the polymorphic
+     * relation.
+     *
+     * Defence in depth, in order:
+     *  1. Whitelist: subject_type must be one of config('chatter.allowed_models')
+     *     (strict comparison — no URL-decode or case bypass).
+     *  2. The class must actually exist.
+     *  3. It must be an Eloquent Model subclass (not an arbitrary object).
+     *  4. It must NOT be a framework/vendor class (Illuminate\, Symfony\,
+     *     Composer\) — belt-and-braces in case the whitelist is ever mis-edited.
+     *  5. subject_id must be numeric.
+     */
     private function validateSubject(string $subjectType, int|string $subjectId): void
     {
+        $allowed = config('chatter.allowed_models', []);
+
+        // 1. Strict whitelist check (rejects URL-encoded / arbitrary FQCNs).
+        if (! in_array($subjectType, $allowed, true)) {
+            abort(422, 'Invalid subject type.');
+        }
+
+        // 2. Class must exist.
         if (! class_exists($subjectType)) {
             abort(422, 'Invalid subject type.');
         }
+
+        // 3. Must be an Eloquent Model subclass.
+        if (! is_subclass_of($subjectType, \Illuminate\Database\Eloquent\Model::class)) {
+            abort(422, 'Subject type must be an Eloquent model.');
+        }
+
+        // 4. Reject framework/vendor namespaces even if whitelisted by mistake.
+        foreach (['Illuminate\\', 'Symfony\\', 'Composer\\'] as $forbiddenPrefix) {
+            if (str_starts_with($subjectType, $forbiddenPrefix)) {
+                abort(422, 'Framework classes are not allowed as chatter subjects.');
+            }
+        }
+
+        // 5. Numeric subject id.
         if (! is_numeric($subjectId)) {
             abort(422, 'Invalid subject id.');
         }
