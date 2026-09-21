@@ -256,16 +256,9 @@ class SalesOrderController extends Controller
             return response()->json(['message' => 'Cannot reset an order that has linked invoices. Create a new order instead.'], 422);
         }
 
-        $order->update([
-            'status' => 'draft',
-            'cancellation_reason' => null,
-            'cancelled_by' => null,
-            'cancelled_at' => null,
-        ]);
-
-        foreach ($order->lines as $line) {
-            $line->update(['quantity_cancelled' => 0]);
-        }
+        // Issue #141: go through the state machine (cancelled -> draft) instead
+        // of a raw status write so the transition is validated and audited.
+        $order = $this->lifecycleService->resetToDraft($order, 'Order reset to draft');
 
         return response()->json([
             'message' => 'Order reset to draft',
