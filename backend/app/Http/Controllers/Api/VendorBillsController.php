@@ -730,10 +730,29 @@ class VendorBillsController extends Controller
                 ], 404);
             }
 
-            // Check if bill is posted
-            if ($bill->status === 'posted') {
+            // Issue #171 (CRITICAL): the old guard only blocked
+            // `status === 'posted'`, but a bill progresses to 'partial' (once
+            // any payment is applied) and 'overdue' (posted, unpaid, past due)
+            // — both real post-posting states with a live GL journal entry.
+            // Deleting those orphaned the AP journal entry (unrecoverable
+            // AP-subledger-to-GL break) and, for 'partial' bills, leaked a raw
+            // SQL FK-restrict error instead of a clean 422.
+            //
+            // Fix: invert to a WHITELIST of the one truly-safe-to-delete state
+            // ('draft'), matching InvoiceController::destroy() on the AR side.
+            // Use void/reversal for any posted-family bill.
+            if ($bill->status !== 'draft') {
                 return response()->json([
-                    'message' => 'Cannot delete a posted bill',
+                    'message' => 'Only draft bills can be deleted. Use void/reversal for posted bills.',
+                ], 422);
+            }
+
+            // Defence in depth: even a draft bill must not be deletable if a
+            // payment somehow exists against it (avoids the FK-restrict raw
+            // error leak and any AP/GL inconsistency).
+            if ($bill->payments()->exists()) {
+                return response()->json([
+                    'message' => 'Cannot delete a bill that has payments applied. Use void/reversal instead.',
                 ], 422);
             }
 
@@ -751,13 +770,13 @@ class VendorBillsController extends Controller
                 'message' => 'Vendor bill deleted successfully',
             ]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('Failed to delete vendor bill: '.$e->getMessage());
 
+            // Issue #171: do not leak raw SQL/constraint messages to the caller.
             return response()->json([
                 'message' => 'Failed to delete vendor bill',
-                'error' => $e->getMessage(),
             ], 500);
         }
     }
