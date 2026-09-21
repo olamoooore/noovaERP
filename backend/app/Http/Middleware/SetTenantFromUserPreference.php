@@ -189,6 +189,54 @@ class SetTenantFromUserPreference
             }
         }
 
+        // Issue #172 (CRITICAL): enforce tenant.data.suspended. The flag is set
+        // by the SuperAdmin console (TenantOperationService::suspend) but is
+        // never consulted at the tenant-resolution layer, so a suspended tenant
+        // has full unrestricted access. Block non-super-admin requests with 403
+        // here. Super-admin bypasses — they need to manage a suspended tenant
+        // via the SuperAdmin console and the X-Tenant-ID impersonation path.
+        //
+        // Read the flag via both the Eloquent accessor (the canonical path that
+        // TenantOperationService::suspend uses to write) AND the raw json
+        // column — the latter is a defence-in-depth fallback in case the model's
+        // internal storage path differs (some stancl/tenancy configurations
+        // store tenant.data via internal keys rather than the raw json column,
+        // and the model accessor may not reflect the raw column). Either path
+        // being true is enough to trigger the block.
+        if ($resolvedTenant && ! ($user->is_super_admin ?? false)) {
+            $suspended = false;
+
+            // 1. Eloquent accessor (the production write path).
+            $modelData = $resolvedTenant->data ?? [];
+            if (is_array($modelData) && (bool) ($modelData['suspended'] ?? false)) {
+                $suspended = true;
+            }
+
+            // 2. Raw json column fallback.
+            if (! $suspended) {
+                $raw = DB::table('public.tenants')->where('id', $resolvedTenant->id)->value('data');
+                if (is_string($raw) && $raw !== '' && $raw !== 'null') {
+                    $decoded = json_decode($raw, true);
+                    if (is_array($decoded) && (bool) ($decoded['suspended'] ?? false)) {
+                        $suspended = true;
+                    }
+                } elseif (is_array($raw) && (bool) ($raw['suspended'] ?? false)) {
+                    $suspended = true;
+                }
+            }
+
+            if ($suspended) {
+                Log::warning('SetTenantFromUserPreference: blocked suspended tenant', [
+                    'user_id' => $user->id,
+                    'tenant_id' => $resolvedTenant->id,
+                ]);
+
+                return response()->json([
+                    'message' => 'Tenant is suspended. Contact your platform administrator.',
+                ], 403);
+            }
+        }
+
         $response = $next($request);
 
         if ($resolvedTenant) {
