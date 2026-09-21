@@ -139,16 +139,15 @@ class HR115ContactMergeTest extends TenantTestCase
         $primaryId = $this->makeContact('Primary Reassign');
         $mergedId = $this->makeContact('Merged Reassign');
 
-        // Attach an identifier to the merged contact.
+        // Attach an identifier to the merged contact (via the model so the
+        // #118 encrypted cast applies).
         if (\Illuminate\Support\Facades\Schema::hasTable('contact_identifiers')) {
-            DB::table('contact_identifiers')->insert([
+            \Modules\Contact\src\Models\ContactIdentifier::create([
                 'id' => (string) Str::uuid(),
                 'tenant_id' => $this->tenantId,
                 'contact_id' => $mergedId,
                 'identifier_type' => 'registration_number',
                 'identifier_value' => 'REASSIGN-TEST-1',
-                'created_at' => now(),
-                'updated_at' => now(),
             ]);
         } else {
             $this->markTestSkipped('contact_identifiers table not provisioned');
@@ -161,10 +160,11 @@ class HR115ContactMergeTest extends TenantTestCase
         $this->assertSame(200, $response->getStatusCode(), $response->getContent());
 
         // The identifier must now belong to the primary contact.
-        $moved = DB::table('contact_identifiers')
-            ->where('identifier_value', 'REASSIGN-TEST-1')
-            ->first();
-        $this->assertNotNull($moved);
+        // Issue #118: identifier_value is encrypted at rest, so resolve it
+        // through the model (which decrypts) rather than a raw column match.
+        $moved = \Modules\Contact\src\Models\ContactIdentifier::where('contact_id', $primaryId)->get()
+            ->first(fn ($identifier) => $identifier->identifier_value === 'REASSIGN-TEST-1');
+        $this->assertNotNull($moved, 'The identifier must have been reassigned to the primary contact');
         $this->assertSame($primaryId, $moved->contact_id, 'Child rows must be reassigned to the primary contact');
     }
 }
