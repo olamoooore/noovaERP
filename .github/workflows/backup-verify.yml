@@ -1,0 +1,50 @@
+name: Verify Database Backup (test restore)
+
+# P0 (2026-09-21 incident): a backup that has never been restored is a hope,
+# not a backup. This workflow restores the newest VERIFIED batch into a
+# scratch database on the server (deployment/scripts/test-restore.sh),
+# validates tenant/schema counts, and fails loudly if the dump cannot be
+# restored. It is scheduled weekly and can be dispatched on demand.
+
+on:
+  schedule:
+    - cron: '0 3 * * 0' # Sundays 03:00 UTC
+  workflow_dispatch:
+
+env:
+  SERVER_HOST: 72.61.126.166
+  SERVER_USER: root
+  PROJECT_PATH: /var/www/noovaerp
+
+jobs:
+  verify:
+    name: Restore latest verified backup into a scratch DB
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -T 10 -H ${{ env.SERVER_HOST }} >> ~/.ssh/known_hosts
+          echo "Host ${{ env.SERVER_HOST }}" >> ~/.ssh/config
+          echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+          echo "  ConnectTimeout 30" >> ~/.ssh/config
+
+      - name: Restore latest verified backup
+        run: |
+          ssh ${{ env.SERVER_USER }}@${{ env.SERVER_HOST }} << 'ENDSSH'
+            set -e
+
+            LATEST=$(ls -t /var/www/backups/database/.batch_*.verified 2>/dev/null \
+              | head -1 | sed 's#^.*/\.batch_##; s#\.verified$##')
+
+            if [ -z "$LATEST" ]; then
+              echo "❌ No verified backup batch found — cannot verify restore."
+              exit 1
+            fi
+
+            echo "Verifying backup batch: $LATEST"
+            bash "${{ env.PROJECT_PATH }}/deployment/scripts/test-restore.sh" \
+              "/var/www/backups/database/central_${LATEST}.sql.gz"
+          ENDSSH

@@ -211,6 +211,20 @@ jobs:
             TIMESTAMP="$DEPLOY_TIMESTAMP" bash "$RELEASE_PATH/deployment/scripts/backup-database.sh"
             echo "Database backup created at $DB_BACKUP_DIR for deployment $DEPLOY_TIMESTAMP"
 
+            # P0 (2026-09-21 incident): never run migrations on an unverified
+            # backup. The backup script fails hard, but re-check here so the
+            # deploy aborts BEFORE the tree is replaced and migrations run.
+            BACKUP_FILE="$DB_BACKUP_DIR/central_${DEPLOY_TIMESTAMP}.sql.gz"
+            if [ ! -f "$BACKUP_FILE" ]; then
+              echo "ABORT: pre-migration backup missing: $BACKUP_FILE"; exit 1
+            fi
+            if ! gzip -t "$BACKUP_FILE" 2>/dev/null; then
+              echo "ABORT: pre-migration backup is corrupt: $BACKUP_FILE"; exit 1
+            fi
+            if [ ! -f "$DB_BACKUP_DIR/.batch_${DEPLOY_TIMESTAMP}.verified" ]; then
+              echo "ABORT: backup batch ${DEPLOY_TIMESTAMP} was not verified (see $DB_BACKUP_DIR/.batch_${DEPLOY_TIMESTAMP}.failed)"; exit 1
+            fi
+
             # Replace the deployed tree cleanly so deleted files do not survive.
             which rsync > /dev/null 2>&1 || apt-get install -y rsync
             mkdir -p "$PROJECT_PATH"
@@ -299,13 +313,17 @@ jobs:
             # Keep only the last 2 release backups — rollback never needs more.
             cd /var/www/backups 2>/dev/null && ls -dt noovaerp-* 2>/dev/null | tail -n +3 | xargs -r rm -rf 2>/dev/null || true
 
-            # Keep only the last 2 database dump batches. Files without a
-            # timestamp stamp (manual dumps) are left untouched.
+            # Keep only the dumps of the two newest VERIFIED batches. A batch is
+            # verified only when every dump passed gzip integrity (written by
+            # deployment/scripts/backup-database.sh). Unverified/manual dumps
+            # without a stamp are left untouched. Never prune below the newest
+            # verified dump (2026-09-21 incident: pruning the last good backup
+            # before a failure cascade made recovery impossible).
             cd /var/www/backups/database 2>/dev/null || exit 0
-            STAMPS=$(ls 2>/dev/null | grep -oE '[0-9]{8}_[0-9]{6}' | sort -u | tail -2 | tr '\n' '|' | sed 's/|$//')
-            if [ -n "$STAMPS" ]; then
+            KEEP_STAMPS=$(ls -t .batch_*.verified 2>/dev/null | sed 's#^\.batch_##; s#\.verified$##' | head -2 | tr '\n' '|' | sed 's/|$//')
+            if [ -n "$KEEP_STAMPS" ]; then
               find . -maxdepth 1 -type f \( -name '*.sql' -o -name '*.sql.gz' -o -name '*.dump' \) \
-                | grep -E '[0-9]{8}_[0-9]{6}' | grep -vE "($STAMPS)" | xargs -r rm -f 2>/dev/null || true
+                | grep -E '[0-9]{8}_[0-9]{6}' | grep -vE "($KEEP_STAMPS)" | xargs -r rm -f 2>/dev/null || true
             fi
 
             # Remove stale release staging dirs.
