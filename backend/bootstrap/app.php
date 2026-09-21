@@ -48,6 +48,11 @@ return Application::configure(basePath: dirname(__DIR__))
             'ensure.tenant.search_path' => \App\Http\Middleware\EnsureTenantSearchPath::class,
             'inventory.access' => \App\Http\Middleware\EnsureInventoryAccess::class,
             'correlation.id' => \App\Http\Middleware\CorrelationIdMiddleware::class,
+            // Issue #173 (CRITICAL): SuperAdmin impersonation. Must run AFTER
+            // auth:sanctum and BEFORE the tenant-resolution middleware. Applied
+            // in routes/tenant.php and modules/Core/routes/api.php; other module
+            // groups can opt in with ->middleware('impersonation').
+            'impersonation' => \App\Http\Middleware\ImpersonationMiddleware::class,
         ]);
 
         // Ensure auth.agent_or_user runs before SetTenantFromUserPreference

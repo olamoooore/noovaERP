@@ -98,6 +98,14 @@ Route::middleware([
 Route::middleware([
     'api',
     'auth:sanctum',
+    // Issue #173 (CRITICAL): SuperAdmin impersonation. Runs AFTER auth:sanctum
+    // (so the actor is authenticated) but BEFORE SetTenantFromUserPreference —
+    // when the X-Impersonation-Token header is present it swaps the authenticated
+    // user to the target tenant user and initializes tenancy for that user's
+    // tenant, so every downstream tenant middleware runs as the impersonated
+    // user. Before this registration the middleware was never wired anywhere,
+    // making the whole impersonation feature a silent no-op.
+    \App\Http\Middleware\ImpersonationMiddleware::class,
     \App\Http\Middleware\SetTenantFromUserPreference::class,
     \App\Http\Middleware\EnsureTenantSearchPath::class,
     \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,

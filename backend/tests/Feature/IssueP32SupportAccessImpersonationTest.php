@@ -63,10 +63,30 @@ class IssueP32SupportAccessImpersonationTest extends TenantTestCase
 
     public function test_impersonation_middleware_checks_token(): void
     {
+        // Issue #173 (CRITICAL): the previous version of this test was a pure
+        // source-string check that passed even while the middleware was never
+        // registered on ANY route (i.e. the whole feature was dead). Assert the
+        // real wiring instead: the middleware must appear in at least one live
+        // api/v1 route's middleware stack. See HR173ImpersonationWiringTest for
+        // the full HTTP-level proof.
+        $wired = false;
+        foreach (\Illuminate\Support\Facades\Route::getRoutes() as $route) {
+            if (! str_starts_with($route->uri(), 'api/v1/')) {
+                continue;
+            }
+            foreach ($route->middleware() as $mw) {
+                if (str_contains((string) $mw, 'ImpersonationMiddleware')) {
+                    $wired = true;
+                    break 2;
+                }
+            }
+        }
+        $this->assertTrue($wired, 'ImpersonationMiddleware must be registered on tenant api/v1 routes');
+
+        // The implementation must still hash the token before lookup.
         $source = file_get_contents(
             __DIR__.'/../../app/Http/Middleware/ImpersonationMiddleware.php'
         );
-
         $this->assertStringContainsString('X-Impersonation-Token', $source);
         $this->assertStringContainsString('hash(\'sha256\'', $source);
         $this->assertStringContainsString('Impersonation::where', $source);

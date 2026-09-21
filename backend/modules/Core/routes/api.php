@@ -92,7 +92,11 @@ Route::middleware([
 // All accounting routes require authentication — see EDR-ACC-ARCH-2026-03-29 §7
 
 // Protected routes (with tenant context)
-Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPreference::class, \App\Http\Middleware\EnsureTenantSearchPath::class, \App\Http\Middleware\SyncTenantUserFromCentralAuth::class])->group(function () {
+// Issue #173 (CRITICAL): ImpersonationMiddleware runs after auth:sanctum so a
+// SuperAdmin's X-Impersonation-Token swaps the authenticated user to the target
+// tenant user (and initializes their tenancy) before the tenant-resolution
+// middleware below. Without this the impersonation feature was a silent no-op.
+Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware::class, \App\Http\Middleware\SetTenantFromUserPreference::class, \App\Http\Middleware\EnsureTenantSearchPath::class, \App\Http\Middleware\SyncTenantUserFromCentralAuth::class])->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
 
     // Settings
