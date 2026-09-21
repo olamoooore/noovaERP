@@ -173,10 +173,13 @@ Route::middleware([
 
     // ─── XBRL / Compliance Reports (optional, gated by feature flag) ──────────
     if (config('compliance.enabled', false)) {
-        Route::prefix('accounting/compliance')->group(function () {
-            Route::get('/reports/{country_code}/{report_type}', [\App\Http\Controllers\Accounting\ComplianceController::class, 'exportReport']);
-            Route::get('/reports/{country_code}/{report_type}/download', [\App\Http\Controllers\Accounting\ComplianceController::class, 'downloadReport']);
-        });
+        // Issue #100: reporting reads require accounting.view (previously ungated).
+        Route::prefix('accounting/compliance')
+            ->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.view')
+            ->group(function () {
+                Route::get('/reports/{country_code}/{report_type}', [\App\Http\Controllers\Accounting\ComplianceController::class, 'exportReport']);
+                Route::get('/reports/{country_code}/{report_type}/download', [\App\Http\Controllers\Accounting\ComplianceController::class, 'downloadReport']);
+            });
     }
 
     $modules = app(\App\Modules\ModuleManager::class);

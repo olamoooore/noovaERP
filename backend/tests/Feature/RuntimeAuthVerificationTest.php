@@ -143,7 +143,7 @@ class RuntimeAuthVerificationTest extends TenantTestCase
     // ─────────────────────────────────────────────────────────────────────
     // CLAIM 1 — Reversal endpoints have no permission gate
     // ─────────────────────────────────────────────────────────────────────
-    public function test_claim1_viewer_can_call_full_reversal_with_no_permission_gate(): void
+    public function test_claim1_viewer_cannot_call_full_reversal_permission_gate_enforced(): void
     {
         $entry = $this->createPostedJournalEntry(555101);
 
@@ -153,12 +153,9 @@ class RuntimeAuthVerificationTest extends TenantTestCase
             'reason' => 'Runtime audit test reversal by low-privilege Viewer',
         ]);
 
-        fwrite(STDERR, "\n[CLAIM1] status=".$response->getStatusCode()." body=".$response->getContent()."\n");
-
-        // The claim is that NO permission check exists at all — i.e. the
-        // request is never rejected with 401/403 for lack of permission.
-        $this->assertNotEquals(403, $response->getStatusCode(), 'CLAIM1 REFUTED if 403: a permission gate does exist.');
-        $this->assertNotEquals(401, $response->getStatusCode());
+        // The original claim (no permission gate) was fixed with
+        // accounting.reverse enforcement. Viewer must now be rejected.
+        $this->assertEquals(403, $response->getStatusCode(), 'Reversal routes must enforce accounting.reverse.');
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -178,12 +175,12 @@ class RuntimeAuthVerificationTest extends TenantTestCase
         ]);
 
         $closeResponse = $this->actingAs($this->viewer)->postJson("/api/v1/accounting/periods/{$period->id}/close");
-        fwrite(STDERR, "\n[CLAIM2-close] status=".$closeResponse->getStatusCode()." body=".$closeResponse->getContent()."\n");
+        fwrite(STDERR, "\n[CLAIM2-close] status=".$closeResponse->getStatusCode().' body='.$closeResponse->getContent()."\n");
 
         $reopenResponse = $this->actingAs($this->viewer)->postJson("/api/v1/accounting/periods/{$period->id}/reopen", [
             'reason' => 'Runtime audit test reopen by low-privilege Viewer',
         ]);
-        fwrite(STDERR, "\n[CLAIM2-reopen] status=".$reopenResponse->getStatusCode()." body=".$reopenResponse->getContent()."\n");
+        fwrite(STDERR, "\n[CLAIM2-reopen] status=".$reopenResponse->getStatusCode().' body='.$reopenResponse->getContent()."\n");
 
         // Inverted from the original claim: the close/reopen endpoints now
         // enforce accounting.close / accounting.reopen, so a Viewer with no
@@ -223,16 +220,14 @@ class RuntimeAuthVerificationTest extends TenantTestCase
     // ─────────────────────────────────────────────────────────────────────
     // CLAIM 4 — Malaysia e-invoicing compliance routes have no permission gate
     // ─────────────────────────────────────────────────────────────────────
-    public function test_claim4_sales_role_can_call_einvoice_compliance_sync_endpoint(): void
+    public function test_claim4_sales_role_cannot_call_einvoice_compliance_sync_endpoint(): void
     {
+        // Sales has accounting.write but NOT accounting.post (issue #100 gate).
         $response = $this->actingAs($this->salesUser)->postJson('/api/v1/accounting/compliance/sync-pending', [
             'country_code' => 'MY',
         ]);
 
-        fwrite(STDERR, "\n[CLAIM4] status=".$response->getStatusCode()." body=".$response->getContent()."\n");
-
-        $this->assertNotEquals(403, $response->getStatusCode(), 'CLAIM4 REFUTED if 403: compliance routes ARE permission-gated.');
-        $this->assertNotEquals(401, $response->getStatusCode());
+        $this->assertEquals(403, $response->getStatusCode(), 'Compliance submission routes must enforce accounting.post.');
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -289,7 +284,7 @@ class RuntimeAuthVerificationTest extends TenantTestCase
                 'reason_text' => 'Runtime audit claim 5 verification',
             ]);
 
-            fwrite(STDERR, "\n[CLAIM5] {$case['label']} status=".$response->getStatusCode()." body=".$response->getContent()."\n");
+            fwrite(STDERR, "\n[CLAIM5] {$case['label']} status=".$response->getStatusCode().' body='.$response->getContent()."\n");
 
             // A TypeError bubbling out of an uncaught \RuntimeException catch
             // block surfaces to Laravel's exception handler as HTTP 500 in a
@@ -346,7 +341,7 @@ class RuntimeAuthVerificationTest extends TenantTestCase
 
         $response = $this->actingAs($this->salesUser)->postJson("/api/v1/accounting/vendor-bills/{$bill->id}/post");
 
-        fwrite(STDERR, "\n[CLAIM6] status=".$response->getStatusCode()." body=".$response->getContent()."\n");
+        fwrite(STDERR, "\n[CLAIM6] status=".$response->getStatusCode().' body='.$response->getContent()."\n");
 
         // Sales must be blocked (403) — gate enforces accounting.post which they lack.
         $this->assertEquals(403, $response->getStatusCode(), 'REGRESSION: Sales role can post vendor bills; expected 403 (gate uses accounting.write or accounting.post, neither of which Sales has).');
@@ -413,7 +408,7 @@ class RuntimeAuthVerificationTest extends TenantTestCase
             ->withHeaders(['X-Entity-Id' => (string) $entityA])
             ->getJson("/api/v1/accounting/journal-entries/{$jeB->id}");
 
-        fwrite(STDERR, "\n[CLAIM7] status=".$response->getStatusCode()." body=".$response->getContent()."\n");
+        fwrite(STDERR, "\n[CLAIM7] status=".$response->getStatusCode().' body='.$response->getContent()."\n");
 
         if ($response->getStatusCode() === 200) {
             $this->assertEquals($jeB->id, $response->json('id'), 'CLAIM7 CONFIRMED: entity-B journal entry returned to a user scoped to entity A.');

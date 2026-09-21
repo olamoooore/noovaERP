@@ -1044,10 +1044,15 @@ class ComplianceController extends Controller
      */
     public function listCountries()
     {
+        // Issue #100 drive-by fix: the previous `->groupBy('country_code')`
+        // produced invalid Postgres SQL (selected columns not aggregated) and
+        // 500'd on every call. One row per country, portable across drivers.
         $countries = CountryConfiguration::where('tenant_id', $this->currentTenantId())
             ->select('country_code', 'provider_name', 'is_enabled', 'test_mode')
-            ->groupBy('country_code')
-            ->get();
+            ->orderBy('country_code')
+            ->get()
+            ->unique('country_code')
+            ->values();
 
         return response()->json([
             'success' => true,
