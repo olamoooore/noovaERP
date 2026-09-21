@@ -11,6 +11,8 @@ class SalesOrderLine extends Model
         'line_type',
         'sequence',
         'sales_order_id',
+        // Issue #140: mirrors the parent order's legal entity.
+        'legal_entity_id',
         'product_id',
         'model_number',
         'variant_id',
@@ -97,6 +99,7 @@ class SalesOrderLine extends Model
             $this->tax_amount = 0;
             $this->discount_amount = 0;
             $this->line_total = 0;
+
             return;
         }
         $baseTotal = $this->quantity * $this->unit_price;

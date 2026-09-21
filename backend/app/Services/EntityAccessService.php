@@ -61,6 +61,19 @@ class EntityAccessService
     }
 
     /**
+     * Just the ids of the entities a user can access (see getAccessibleEntities).
+     *
+     * @return int[]
+     */
+    public function accessibleEntityIds(int $userId): array
+    {
+        return array_values(array_map(
+            fn ($entity) => (int) $entity->id,
+            $this->getAccessibleEntities($userId),
+        ));
+    }
+
+    /**
      * Get user's default entity.
      */
     public function getDefaultEntity(int $userId): ?object

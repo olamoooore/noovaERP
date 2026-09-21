@@ -23,6 +23,8 @@ class SalesOrderController extends Controller
             ->withCount(['invoiceLinks', 'deliveryOrders'])
             ->orderBy('created_at', 'desc');
 
+        $this->applyEntityScope($request, $query);
+
         if ($request->has('status')) {
             $query->whereIn('status', explode(',', $request->status));
         }
@@ -102,16 +104,40 @@ class SalesOrderController extends Controller
         }
     }
 
-    public function show($id)
+    public function show(Request $request, $id)
     {
-        $order = SalesOrder::with(['customer', 'lines.product', 'statusHistory.actor', 'channelReferences', 'quotation', 'invoices', 'deliveryOrders.lines'])
-            ->find($id);
+        $query = SalesOrder::with(['customer', 'lines.product', 'statusHistory.actor', 'channelReferences', 'quotation', 'invoices', 'deliveryOrders.lines']);
+
+        // Issue #140: a user must not read another legal entity's order.
+        $this->applyEntityScope($request, $query);
+
+        $order = $query->find($id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
         }
 
         return response()->json($order);
+    }
+
+    /**
+     * Issue #140: scope a SalesOrder query to the user's accessible legal
+     * entities. Users with no entity grants keep the historical unscoped view
+     * (same fail-open default as EnsureEntityAccess / #113).
+     */
+    private function applyEntityScope(Request $request, $query): void
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return;
+        }
+
+        $entityIds = app(\App\Services\EntityAccessService::class)->accessibleEntityIds((int) $user->id);
+
+        if ($entityIds !== []) {
+            $query->accessibleBy($entityIds);
+        }
     }
 
     public function update(Request $request, $id)

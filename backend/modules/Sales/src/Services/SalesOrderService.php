@@ -85,10 +85,18 @@ class SalesOrderService
             $data['accounting_status'] = $data['accounting_status'] ?? 'not_posted';
             $data['order_date'] = $data['order_date'] ?? now()->toDateString();
 
+            // Issue #140: stamp the legal entity from the customer (explicit
+            // caller-supplied value wins) so orders are entity-scopable.
+            if (empty($data['legal_entity_id']) && ! empty($data['customer_id'])) {
+                $data['legal_entity_id'] = \App\Models\Customer::whereKey($data['customer_id'])
+                    ->value('legal_entity_id');
+            }
+
             $order = SalesOrder::create($data);
 
             foreach ($lines as $lineData) {
                 $line = $order->lines()->create([
+                    'legal_entity_id' => $order->legal_entity_id,
                     'line_type' => $lineData['line_type'] ?? 'product',
                     'sequence' => $lineData['sequence'] ?? 0,
                     'product_id' => $lineData['product_id'] ?? null,

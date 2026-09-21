@@ -16,6 +16,9 @@ class SalesOrder extends Model
     protected $fillable = [
         'sales_order_number',
         'customer_id',
+        // Issue #140: legal entity the order belongs to (backfilled and set at
+        // creation from the customer's entity).
+        'legal_entity_id',
         'channel',
         'status',
         'accounting_status',
@@ -86,6 +89,23 @@ class SalesOrder extends Model
     public function lines(): HasMany
     {
         return $this->hasMany(SalesOrderLine::class);
+    }
+
+    /**
+     * Issue #140: scope to an explicit set of legal entities. Fail-closed when
+     * the set is empty (no accessible entities means no rows visible).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @param  int[]  $accessibleEntityIds
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeAccessibleBy($query, array $accessibleEntityIds)
+    {
+        if (empty($accessibleEntityIds)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereIn('legal_entity_id', $accessibleEntityIds);
     }
 
     public function warehouse(): BelongsTo
