@@ -24,6 +24,11 @@ interface Product {
   name: string
   sku: string
   stock_quantity: number
+  short_description?: string | null
+  description?: string | null
+  price?: number | string | null
+  selling_price?: number | string | null
+  manufacturer_part_number?: string | null
 }
 
 interface ProductSearchComboboxProps {
@@ -33,6 +38,12 @@ interface ProductSearchComboboxProps {
   disabled?: boolean
   wrapText?: boolean
 }
+
+const plainText = (value?: string | null) =>
+  value ? value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : ''
+
+export const getProductLineDescription = (product?: Product) =>
+  plainText(product?.short_description) || plainText(product?.description) || product?.name || ''
 
 export function ProductSearchCombobox({
   value,
@@ -102,44 +113,38 @@ export function ProductSearchCombobox({
     setSearchQuery('')
   }
 
-  const handleClear = (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleClear = () => {
     onValueChange('', undefined)
+    setSearchQuery('')
+    setOpen(false)
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className={cn(
-            'w-full justify-between font-normal',
-            wrapText && 'h-auto min-h-10 py-2',
-            !value && 'text-muted-foreground'
-          )}
-        >
-          <span className={cn('min-w-0', wrapText ? 'whitespace-normal break-words text-left leading-5' : 'truncate')}>
-            {getDisplayValue()}
-          </span>
-          <div className="flex items-center gap-1 ml-2 shrink-0">
-            {value && (
-              <Icon
-                icon="solar:close-circle-bold"
-                className="h-4 w-4 opacity-50 hover:opacity-100 cursor-pointer"
-                onClick={handleClear}
-              />
+    <div className="relative w-full">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            disabled={disabled}
+            className={cn(
+              'w-full justify-between font-normal',
+              value && 'pr-16',
+              wrapText && 'h-auto min-h-10 py-2',
+              !value && 'text-muted-foreground'
             )}
+          >
+            <span className={cn('min-w-0', wrapText ? 'whitespace-normal break-words text-left leading-5' : 'truncate')}>
+              {getDisplayValue()}
+            </span>
             <Icon
               icon="solar:alt-arrow-down-linear"
-              className={cn('h-4 w-4 transition-transform', open && 'rotate-180')}
+              className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')}
             />
-          </div>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[400px] p-0" align="start">
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[400px] p-0" align="start">
         <Command shouldFilter={false}>
           <CommandInput
             placeholder="Type to search products..."
@@ -168,6 +173,11 @@ export function ProductSearchCombobox({
                     <div className="flex flex-col">
                       <span className="font-medium">{product.name}</span>
                       <span className="text-xs text-muted-foreground">SKU: {product.sku}</span>
+                      {plainText(product.short_description) && (
+                        <span className="mt-1 max-w-[260px] whitespace-normal text-xs text-muted-foreground">
+                          {plainText(product.short_description)}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="text-xs">
@@ -183,7 +193,19 @@ export function ProductSearchCombobox({
             )}
           </CommandList>
         </Command>
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+      {value && (
+        <button
+          type="button"
+          aria-label="Clear selected product"
+          disabled={disabled}
+          className="absolute right-8 top-1/2 z-10 -translate-y-1/2 rounded-sm p-1 text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:pointer-events-none disabled:opacity-50"
+          onClick={handleClear}
+        >
+          <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
+        </button>
+      )}
+    </div>
   )
 }

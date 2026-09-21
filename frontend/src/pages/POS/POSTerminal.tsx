@@ -2594,7 +2594,7 @@ export function POSTerminal() {
             <div className="relative flex-1">
               <Icon icon="solar:magnifer-linear" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, phone, or email..."
+                placeholder="Search by customer name, code, phone, or email..."
                 value={customerSearch}
                 onChange={(e) => setCustomerSearch(e.target.value)}
                 className="pl-9"
@@ -2680,6 +2680,7 @@ export function POSTerminal() {
                       </div>
                       <div className="text-left flex-1 min-w-0">
                         <p className="font-medium truncate">{customer.name}</p>
+                        {customer.code && <p className="text-xs text-muted-foreground truncate">{customer.code}</p>}
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           {customer.phone && <span>{customer.phone}</span>}
                           {customer.loyalty_tier_name ? (

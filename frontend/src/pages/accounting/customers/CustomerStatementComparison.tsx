@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import api from '@/lib/api';
+import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 
 interface AgingData {
   current: number;
@@ -88,14 +89,6 @@ export const CustomerStatementComparison: React.FC = () => {
   const [dates, setDates] = useState<string[]>(['', '']);
   const [showResults, setShowResults] = useState(false);
 
-  const { data: customers, isLoading: isLoadingCustomers } = useQuery({
-    queryKey: ['customers-list-for-compare'],
-    queryFn: async () => {
-      const response = await api.get('/customers?has_balance=true');
-      return response.data.data || [];
-    },
-  });
-
   const { data: comparison, isLoading: isLoadingComparison, refetch } = useQuery({
     queryKey: ['customer-statement-compare', selectedCustomerId, dates],
     queryFn: async () => {
@@ -167,21 +160,11 @@ export const CustomerStatementComparison: React.FC = () => {
           {/* Customer Selector */}
           <div className="space-y-2">
             <Label>Customer</Label>
-            <Select
+            <CustomerSearchCombobox
               value={selectedCustomerId}
               onValueChange={setSelectedCustomerId}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select customer" />
-              </SelectTrigger>
-              <SelectContent>
-                {customers?.map((customer: any) => (
-                  <SelectItem key={customer.id} value={customer.id.toString()}>
-                    {customer.name} ({customer.code})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder="Search customer name or code..."
+            />
           </div>
 
           {/* Date Pickers */}

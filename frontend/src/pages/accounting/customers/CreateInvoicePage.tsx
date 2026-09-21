@@ -17,7 +17,7 @@ import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api';
 import { ContactSearchCombobox } from '@/components/ui/ContactSearchCombobox';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
-import { ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
+import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
 
@@ -738,6 +738,18 @@ export const CreateInvoicePage: React.FC = () => {
       return;
     }
 
+    const missingProductIndex = lines.findIndex((line) =>
+      (line.line_type ?? 'product') === 'product' && !line.product_id
+    );
+    if (missingProductIndex >= 0) {
+      toast({
+        variant: 'destructive',
+        title: `Product required on line ${missingProductIndex + 1}`,
+        description: 'Select a product before saving.',
+      });
+      return;
+    }
+
     if (discountMode === 'percentage' && (discountAmount === '' ? 0 : discountAmount) > 100) {
       toast({ variant: 'destructive', title: 'Percentage discount cannot exceed 100%' });
       return;
@@ -1365,7 +1377,7 @@ export const CreateInvoicePage: React.FC = () => {
                               const updated = [...lines];
                               updated[index] = { ...updated[index], product_id: productId };
                               if (product) {
-                                updated[index].description = (product as any).description || (product as any).short_description || '';
+                                updated[index].description = getProductLineDescription(product);
                                 updated[index].unit_price = parseFloat((product as any).price || (product as any).selling_price || '0');
                                 updated[index].model_number = (product as any).manufacturer_part_number || '';
                                 updated[index].sku = (product as any).sku || '';
