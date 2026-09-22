@@ -316,7 +316,10 @@ class SettingsController extends Controller
 
     public function show()
     {
-        $currency = Setting::getValue('currency', ['code' => 'USD']);
+        $currency = array_merge(
+            ['code' => 'USD', 'display_format' => 'symbol'],
+            Setting::getValue('currency', [])
+        );
         $tax = Setting::getValue('tax', [
             'enabled' => true,
             'pricing_mode' => 'exclusive', // exclusive | inclusive
@@ -359,6 +362,7 @@ class SettingsController extends Controller
         $validated = $request->validate([
             'currency' => 'nullable|array',
             'currency.code' => 'nullable|string|max:10',
+            'currency.display_format' => 'nullable|in:symbol,narrow_symbol,code',
 
             'tax' => 'nullable|array',
             'tax.enabled' => 'nullable|boolean',
@@ -377,7 +381,12 @@ class SettingsController extends Controller
         ]);
 
         if (array_key_exists('currency', $validated)) {
-            Setting::setValue('currency', array_merge(['code' => 'USD'], $validated['currency'] ?? []));
+            $existingCurrency = Setting::getValue('currency', []);
+            Setting::setValue('currency', array_merge(
+                ['code' => 'USD', 'display_format' => 'symbol'],
+                $existingCurrency,
+                $validated['currency'] ?? []
+            ));
         }
 
         if (array_key_exists('tax', $validated)) {

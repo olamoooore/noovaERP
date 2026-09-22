@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast'
 import { ChatterDock } from '@/components/chatter'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
-import { formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 
@@ -160,9 +160,6 @@ export function QuotationDetailPage() {
       setIsDownloading(false)
     }
   }
-
-  const formatCurrency = (amount: number | string) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount || 0))
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {

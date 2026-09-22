@@ -44,8 +44,9 @@ export function formatCurrency(amount: number, currencyCode?: string): string {
 
   const normalizedCode = (activeCurrencyCode || 'USD').toUpperCase()
   const locale = localeForCurrency(normalizedCode)
+  const displayFormat = useSettingsStore.getState().currencyDisplayFormat ?? 'symbol'
 
-  // Intl commonly renders SGD as "S$"; product requirement is "$S".
+  // Keep the three tenant-selectable Singapore dollar formats predictable.
   if (normalizedCode === 'SGD') {
     const number = new Intl.NumberFormat(locale, {
       style: 'decimal',
@@ -54,14 +55,16 @@ export function formatCurrency(amount: number, currencyCode?: string): string {
     }).format(Math.abs(value))
 
     const sign = value < 0 ? '-' : ''
-    return `${sign}$S${number}`
+    if (displayFormat === 'code') return `${sign}SGD ${number}`
+    if (displayFormat === 'narrow_symbol') return `${sign}$${number}`
+    return `${sign}S$${number}`
   }
 
   try {
     return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: normalizedCode,
-      currencyDisplay: 'symbol',
+      currencyDisplay: displayFormat === 'narrow_symbol' ? 'narrowSymbol' : displayFormat,
     }).format(value)
   } catch {
     const fallbackNumber = new Intl.NumberFormat('en-US', {
@@ -78,14 +81,18 @@ export function getCurrencySymbol(currencyCode?: string): string {
     currencyCode ?? useSettingsStore.getState().currencyCode ?? 'USD'
 
   const normalizedCode = (activeCurrencyCode || 'USD').toUpperCase()
+  const displayFormat = useSettingsStore.getState().currencyDisplayFormat ?? 'symbol'
 
-  if (normalizedCode === 'SGD') return '$S'
+  if (normalizedCode === 'SGD') {
+    if (displayFormat === 'code') return 'SGD'
+    return displayFormat === 'narrow_symbol' ? '$' : 'S$'
+  }
 
   try {
     const parts = new Intl.NumberFormat(localeForCurrency(normalizedCode), {
       style: 'currency',
       currency: normalizedCode,
-      currencyDisplay: 'symbol',
+      currencyDisplay: displayFormat === 'narrow_symbol' ? 'narrowSymbol' : displayFormat,
       maximumFractionDigits: 0,
     }).formatToParts(0)
 

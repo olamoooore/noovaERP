@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@iconify/react';
 import { useToast } from '@/hooks/use-toast';
-import { getApiErrorMessage } from '@/lib/utils';
+import { formatCurrency, getApiErrorMessage } from '@/lib/utils';
 import api from '@/lib/api';
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 import { SalesLineColumnMenu, SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility';
@@ -242,9 +242,6 @@ export const QuotationEditPage: React.FC = () => {
   const taxableAmount = Math.max(subtotalAfterLineDiscounts - documentDiscountAmount, 0);
   const taxAfterDocumentDiscount = subtotalAfterLineDiscounts > 0 ? taxTotal * (taxableAmount / subtotalAfterLineDiscounts) : 0;
   const total = taxableAmount + taxAfterDocumentDiscount;
-
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
