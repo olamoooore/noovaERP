@@ -15,6 +15,15 @@ use Tests\TenantTestCase;
  */
 class AFM001AccountingFailureModelTest extends TenantTestCase
 {
+    /**
+     * Read a source file with all whitespace runs collapsed to single spaces so
+     * assertions survive Pint re-formatting (e.g. `!$x` -> `! $x`).
+     */
+    private function normalizedSource(string $relativePath): string
+    {
+        return (string) preg_replace('/\s+/', ' ', (string) file_get_contents(base_path($relativePath)));
+    }
+
     public function test_pos_completion_flow_is_atomic_gl_then_stock_in_single_transaction(): void
     {
         $source = file_get_contents(
@@ -39,11 +48,9 @@ class AFM001AccountingFailureModelTest extends TenantTestCase
 
     public function test_pos_posting_service_fails_closed_when_gl_posting_fails(): void
     {
-        $source = file_get_contents(
-            base_path('modules/POS/src/Services/PosPostingService.php')
-        );
+        $source = $this->normalizedSource('modules/POS/src/Services/PosPostingService.php');
 
-        $this->assertStringContainsString('if (!$result->success)', $source,
+        $this->assertStringContainsString('if (! $result->success)', $source,
             'POS posting service must check posting result success flag.');
         $this->assertStringContainsString('throw new \\RuntimeException("POS posting failed:', $source,
             'POS posting service must throw when GL posting fails (no silent continuation).');
@@ -73,11 +80,9 @@ class AFM001AccountingFailureModelTest extends TenantTestCase
 
     public function test_web_order_posting_throws_when_gl_fails_before_stock_mutation(): void
     {
-        $source = file_get_contents(
-            base_path('modules/Ecommerce/src/Services/WebOrderPostingService.php')
-        );
+        $source = $this->normalizedSource('modules/Ecommerce/src/Services/WebOrderPostingService.php');
 
-        $this->assertStringContainsString('if (!$result->success)', $source,
+        $this->assertStringContainsString('if (! $result->success)', $source,
             'Web posting service must inspect posting result success flag.');
         $this->assertStringContainsString('throw new \\RuntimeException(', $source,
             'Web posting service must throw on GL posting failure.');
