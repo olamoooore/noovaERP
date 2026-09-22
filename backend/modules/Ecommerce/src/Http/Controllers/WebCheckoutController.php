@@ -249,7 +249,10 @@ class WebCheckoutController extends Controller
                 $taxInfo = $taxResolutionService->resolveTaxForProduct($product);
                 $taxRate = $taxInfo['rate'];
 
-                $lineSubtotal = $product->price * $item['quantity'];
+                // Issue #244: price the line through the tier resolver (#132)
+                // like POS/SalesOrderService, not the flat catalog price.
+                $unitPrice = $product->getPriceForQuantity((int) $item['quantity'], $customerId ?? null);
+                $lineSubtotal = $unitPrice * $item['quantity'];
 
                 // Calculate tax using canonical service
                 $taxCalc = $taxResolutionService->calculateTax($lineSubtotal, $taxRate, $taxInfo['is_inclusive']);
@@ -260,7 +263,7 @@ class WebCheckoutController extends Controller
                 $items[] = [
                     'product' => $product,
                     'quantity' => $item['quantity'],
-                    'unit_price' => $product->price,
+                    'unit_price' => $unitPrice,
                     'tax_rate' => $taxRate,
                     'tax_amount' => $taxCalc['tax'],
                     'line_total' => $taxCalc['gross'],

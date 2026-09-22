@@ -671,8 +671,15 @@ class Product extends Model
         ?int $customerId = null,
         ?\Carbon\CarbonInterface $date = null,
         ?int $variantId = null,
+        ?string $customerGroup = null,
     ): float {
         $date = $date ?? now();
+
+        // Issue #245: resolve the customer's group when the caller did not pass
+        // one, so group-scoped tiers are matched (and cannot leak to others).
+        if ($customerGroup === null && $customerId !== null) {
+            $customerGroup = \App\Models\Customer::whereKey($customerId)->value('customer_group');
+        }
 
         $variant = $variantId !== null
             ? $this->variants()->whereKey($variantId)->first()
@@ -682,26 +689,46 @@ class Product extends Model
 
         $tiers = $this->priceTiers()
             ->where('is_active', true)
-            ->where(function ($q) use ($customerId) {
-                $q->whereNull('customer_id');
-                if ($customerId !== null) {
-                    $q->orWhere('customer_id', $customerId);
-                }
-            })
             ->get()
-            ->filter(fn (ProductPriceTier $tier) => $tier->isValidFor($quantity, $date));
+            ->filter(function (ProductPriceTier $tier) use ($customerId, $customerGroup, $quantity, $date) {
+                if (! $tier->isValidFor($quantity, $date)) {
+                    return false;
+                }
+
+                // Customer-specific tier: only for that customer.
+                if ($tier->customer_id !== null) {
+                    return $customerId !== null && (int) $tier->customer_id === $customerId;
+                }
+
+                // Ungrouped tier: usable by anyone.
+                if ($tier->customer_group === null || $tier->customer_group === '') {
+                    return true;
+                }
+
+                // Issue #245: group-scoped tier only for members of that group.
+                return $customerGroup !== null && $tier->customer_group === $customerGroup;
+            });
 
         if ($tiers->isEmpty()) {
             return $basePrice;
         }
 
-        $best = $tiers->sort(function (ProductPriceTier $a, ProductPriceTier $b) use ($customerId, $basePrice) {
-            // Customer-specific tiers always win over generic ones.
-            $aCustomer = ($customerId !== null && (int) $a->customer_id === $customerId) ? 1 : 0;
-            $bCustomer = ($customerId !== null && (int) $b->customer_id === $customerId) ? 1 : 0;
+        $rank = function (ProductPriceTier $tier) use ($customerId): int {
+            if ($customerId !== null && $tier->customer_id !== null && (int) $tier->customer_id === $customerId) {
+                return 2; // customer-specific
+            }
+            if ($tier->customer_group !== null && $tier->customer_group !== '') {
+                return 1; // group-scoped
+            }
 
-            if ($aCustomer !== $bCustomer) {
-                return $bCustomer <=> $aCustomer;
+            return 0; // generic
+        };
+
+        $best = $tiers->sort(function (ProductPriceTier $a, ProductPriceTier $b) use ($rank, $basePrice) {
+            // Specificity first: customer-specific > group > generic.
+            $rankComparison = $rank($b) <=> $rank($a);
+            if ($rankComparison !== 0) {
+                return $rankComparison;
             }
 
             // Then the cheapest resulting price, then the deepest quantity break.
