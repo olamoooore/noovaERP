@@ -18,6 +18,29 @@ class ProductAuditLog extends Model
     // Disable timestamps since we only use created_at
     public $timestamps = false;
 
+    /**
+     * Issue #129: "immutable" was only a docblock claim — block Eloquent
+     * updates/deletes like PostingAuditLog does (DB-level triggers in
+     * migration 2026_09_22_000018 cover raw writes).
+     */
+    public static function boot()
+    {
+        parent::boot();
+
+        static::updating(function ($model) {
+            throw new \RuntimeException(
+                'ProductAuditLog records are immutable and cannot be updated. '
+                .'Create a new audit entry instead.'
+            );
+        });
+
+        static::deleting(function ($model) {
+            throw new \RuntimeException(
+                'ProductAuditLog records are immutable and cannot be deleted.'
+            );
+        });
+    }
+
     protected $fillable = [
         'product_id',
         'user_id',
