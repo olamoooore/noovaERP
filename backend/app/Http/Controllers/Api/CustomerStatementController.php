@@ -6,7 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Mail\CustomerStatementMail;
 use App\Models\Customer;
 use App\Models\CustomerStatement;
-use App\Services\CustomerStatementService;
+use App\Models\Invoice;
+use App\Models\Setting;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -32,20 +33,99 @@ class CustomerStatementController extends Controller
     {
         $validated = $request->validate([
             'as_of' => 'nullable|date',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
         ]);
 
         $customer = Customer::with(['customerContacts', 'addresses'])->findOrFail($customerId);
-        $asOf = Carbon::parse($validated['as_of'] ?? now());
+        $asOf = Carbon::parse($validated['end_date'] ?? $validated['as_of'] ?? now());
+        $startDate = isset($validated['start_date']) ? Carbon::parse($validated['start_date']) : null;
 
-        // Canonical as-of snapshot (issues #192/#193/#194/#196/#199).
-        $payload = $this->statementService->buildAsOfPayload($customer, $asOf);
+        // Get outstanding invoices: posted, balance > 0, invoice_date <= as_of
+        // Issue #96: exclude voided/reversed/superseded documents.
+        $invoices = Invoice::where('customer_id', $customer->id)
+            ->where('status', 'posted')
+            ->where('balance', '>', 0)
+            ->notSuperseded()
+            ->where('invoice_date', '<=', $asOf)
+            ->when($startDate, fn ($query) => $query->where('invoice_date', '>=', $startDate))
+            ->orderBy('invoice_date', 'asc')
+            ->get();
+
+        // Build transaction lines for the template
+        $transactions = [];
+        $runningBalance = 0;
+        foreach ($invoices as $invoice) {
+            $reference = collect([
+                $invoice->po_number,
+                $invoice->customer_reference,
+            ])->filter()->implode(', ');
+
+            $invAmount = round((float) $invoice->total, 2);
+            $runningBalance += $invAmount;
+
+            $transactions[] = [
+                'date' => $invoice->invoice_date->format('Y-m-d'),
+                'type' => 'Invoice',
+                'document_number' => $invoice->invoice_number,
+                'description' => $reference ?: ($invoice->lines->pluck('description')->filter()->first() ?? ''),
+                'reference' => $reference,
+                'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : '',
+                'inv_amount' => $invAmount,
+                'balance' => round((float) $invoice->balance, 2),
+                'total' => $runningBalance,
+                'debit' => $invAmount,
+                'credit' => 0.00,
+                'status' => $invoice->status,
+            ];
+        }
+
+        // Get billing address
+        $billingAddress = $customer->addresses()
+            ->where('type', 'billing')
+            ->where('is_default', true)
+            ->first();
+
+        $attentionTo = $customer->customerContacts()
+            ->where('is_primary', true)
+            ->first()?->name ?? $customer->name;
+
+        // Build payload matching CustomerStatementDataSource expectations
+        $payload = [
+            'customer' => [
+                'id' => $customer->id,
+                'code' => $customer->code,
+                'name' => $customer->name,
+                'email' => $customer->email,
+                'attention_to' => $attentionTo,
+                'billing_address' => $billingAddress
+                    ? collect([$billingAddress->street, $billingAddress->street2, $billingAddress->city, $billingAddress->state, $billingAddress->zip, $billingAddress->country])->filter()->implode(', ')
+                    : $customer->billing_address,
+                'payment_terms' => $customer->payment_terms ? $customer->payment_terms.' Days from Invoice Date' : '',
+            ],
+            'period' => [
+                'start_date' => $startDate?->format('Y-m-d'),
+                'end_date' => $asOf->format('Y-m-d'),
+                'type' => $startDate ? 'custom' : 'as_of',
+            ],
+            'opening_balance' => 0,
+            'closing_balance' => round($invoices->sum('balance'), 2),
+            'total_amount_due' => round($invoices->sum('balance'), 2),
+            'total_debits' => round($invoices->sum('total'), 2),
+            'total_credits' => 0,
+            'transactions' => $transactions,
+            'generated_at' => now()->toISOString(),
+            'include_paid' => false,
+            'as_of_date' => $asOf->format('Y-m-d'),
+            'bank' => $this->resolveBankSettings(),
+        ];
 
         // Save a CustomerStatement record (required by template builder's DataSource)
         $statement = CustomerStatement::create([
             'customer_id' => $customer->id,
-            'start_date' => null,
+            'start_date' => $startDate?->toDateString(),
             'end_date' => $asOf->toDateString(),
-            'period_type' => 'as_of',
+            'period_type' => $startDate ? 'custom' : 'as_of',
             'include_paid' => false,
             'payload' => $payload,
             'generated_by' => Auth::id(),
@@ -305,6 +385,109 @@ class CustomerStatementController extends Controller
      * previous template expected keys the payload never contained, so every
      * generate() call fatally errored).
      */
+    private function computeAgingAtDate($invoices, Carbon $asOf): array
+    {
+        $aging = [
+            'current' => 0,
+            'days_1_30' => 0,
+            'days_31_60' => 0,
+            'days_61_90' => 0,
+            'days_90_plus' => 0,
+        ];
+
+        foreach ($invoices as $invoice) {
+            if (! $invoice->due_date) {
+                $aging['current'] += round((float) $invoice->balance, 2);
+
+                continue;
+            }
+
+            $dueDate = Carbon::parse($invoice->due_date);
+            $daysOverdue = $asOf->diffInDays($dueDate, false); // negative = past due
+
+            if ($daysOverdue >= 0) {
+                $aging['current'] += round((float) $invoice->balance, 2);
+            } elseif ($daysOverdue >= -30) {
+                $aging['days_1_30'] += round((float) $invoice->balance, 2);
+            } elseif ($daysOverdue >= -60) {
+                $aging['days_31_60'] += round((float) $invoice->balance, 2);
+            } elseif ($daysOverdue >= -90) {
+                $aging['days_61_90'] += round((float) $invoice->balance, 2);
+            } else {
+                $aging['days_90_plus'] += round((float) $invoice->balance, 2);
+            }
+        }
+
+        return $aging;
+    }
+
+    protected function buildStatementPayload(Customer $customer, array $validated): array
+    {
+        $query = DB::table('ar_transactions')
+            ->where('customer_id', $customer->id)
+            ->where('transaction_type', 'invoice')
+            ->where('status', 'posted')
+            ->where('transaction_date', '>=', $validated['start_date'])
+            ->where('transaction_date', '<=', $validated['end_date'])
+            ->orderBy('transaction_date', 'asc')
+            ->orderBy('created_at', 'asc');
+
+        $transactions = $query->get();
+
+        $openingBalance = DB::table('ar_transactions')
+            ->where('customer_id', $customer->id)
+            ->where('transaction_type', 'invoice')
+            ->where('status', 'posted')
+            ->where('transaction_date', '<', $validated['start_date'])
+            ->selectRaw('COALESCE(SUM(debit - credit), 0) as balance')
+            ->value('balance');
+
+        $runningBalance = (float) $openingBalance;
+        $statementLines = $transactions->map(function ($transaction) use (&$runningBalance) {
+            $runningBalance += $transaction->debit - $transaction->credit;
+
+            return [
+                'date' => $transaction->transaction_date,
+                'type' => $transaction->transaction_type,
+                'document_number' => $transaction->document_number,
+                'description' => ucfirst($transaction->transaction_type).' '.$transaction->document_number,
+                'due_date' => $transaction->due_date,
+                'debit' => (float) $transaction->debit,
+                'credit' => (float) $transaction->credit,
+                'balance' => round($runningBalance, 2),
+                'status' => $transaction->status,
+            ];
+        });
+
+        return [
+            'customer' => [
+                'id' => $customer->id,
+                'code' => $customer->code,
+                'name' => $customer->name,
+                'email' => $customer->email,
+                'address' => $customer->billing_address,
+                'payment_terms' => $customer->payment_terms,
+            ],
+            'period' => [
+                'start_date' => $validated['start_date'],
+                'end_date' => $validated['end_date'],
+                'type' => $validated['period_type'] ?? 'custom',
+            ],
+            'opening_balance' => round((float) $openingBalance, 2),
+            'closing_balance' => round($runningBalance, 2),
+            'total_debits' => round((float) $transactions->sum('debit'), 2),
+            'total_credits' => round((float) $transactions->sum('credit'), 2),
+            'transactions' => $statementLines->values(),
+            'total_amount_due' => round($runningBalance, 2),
+            'currency' => data_get(Setting::getValue('currency', ['code' => 'USD']), 'code', 'USD'),
+            'as_of_date' => $validated['end_date'],
+            'company' => $this->resolveCompanySettings(),
+            'bank' => $this->resolveBankSettings(),
+            'generated_at' => now()->toISOString(),
+            'include_paid' => (bool) ($validated['include_paid'] ?? false),
+        ];
+    }
+
     protected function storeStatementPdf(CustomerStatement $statement, array $payload): string
     {
         $pdf = Pdf::loadView('accounting.customer-statement-pdf', [

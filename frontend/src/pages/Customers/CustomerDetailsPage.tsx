@@ -698,7 +698,7 @@ export function CustomerDetailsPage() {
 
       {/* Main Content with Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview">
             <Icon icon="solar:home-2-bold" className="h-4 w-4 mr-2" />
             Overview
@@ -707,10 +707,6 @@ export function CustomerDetailsPage() {
             <Icon icon="solar:history-bold" className="h-4 w-4 mr-2" />
             Activity
           </TabsTrigger>
-          <TabsTrigger value="orders">
-            <Icon icon="solar:cart-large-2-bold" className="h-4 w-4 mr-2" />
-            Orders
-          </TabsTrigger>
           <TabsTrigger value="invoices">
             <Icon icon="solar:document-text-bold" className="h-4 w-4 mr-2" />
             Invoices
@@ -718,10 +714,6 @@ export function CustomerDetailsPage() {
           <TabsTrigger value="contacts">
             <Icon icon="solar:users-group-rounded-bold" className="h-4 w-4 mr-2" />
             Contacts
-          </TabsTrigger>
-          <TabsTrigger value="loyalty">
-            <Icon icon="solar:star-bold" className="h-4 w-4 mr-2" />
-            Loyalty
           </TabsTrigger>
           <TabsTrigger value="financial">
             <Icon icon="solar:wallet-bold" className="h-4 w-4 mr-2" />

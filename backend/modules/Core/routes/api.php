@@ -683,7 +683,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(\App\Http\Middleware\RequirePermission::using('customers.write'));
         Route::post('/customers/import/{batch}/commit', [CustomersController::class, 'commitImport'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('customers.write'));
-        Route::get('/customers/{id}', [CustomersController::class, 'show']);
+        Route::get('/customers/{id}', [CustomersController::class, 'show'])->whereNumber('id');
 
         // Vendor Credit Notes (must be before /vendors/{id} to avoid route conflict)
         Route::get('/vendors/credit-notes', [VendorCreditNotesController::class, 'index']);
@@ -707,7 +707,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
 
         // Vendors List
         Route::get('/vendors', [VendorsController::class, 'index']);
-        Route::get('/vendors/{id}', [VendorsController::class, 'show']);
+        Route::get('/vendors/{id}', [VendorsController::class, 'show'])->whereNumber('id');
         Route::post('/vendors', [VendorsController::class, 'store']);
         Route::put('/vendors/{id}', [VendorsController::class, 'update']);
         Route::delete('/vendors/{id}', [VendorsController::class, 'destroy']);

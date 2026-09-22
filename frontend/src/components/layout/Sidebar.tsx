@@ -561,6 +561,11 @@ const baseNavItems: NavItem[] = [
         icon: 'solar:wallet-money-bold-duotone',
       },
       {
+        title: 'Customer Account Statement',
+        href: '/accounting/reporting/customer-statements',
+        icon: 'solar:document-text-bold-duotone',
+      },
+      {
         title: 'Compliance Reports',
         href: '/accounting/reporting/compliance',
         icon: 'solar:shield-check-bold-duotone',

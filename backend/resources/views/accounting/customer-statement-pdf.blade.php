@@ -40,12 +40,9 @@
 </head>
 <body>
     @php
-        $transactions = collect($payload['transactions'] ?? []);
-        $currency = $payload['currency'] ?? 'MYR';
-        $asOfDate = $payload['as_of_date'] ?? ($payload['period']['end_date'] ?? '');
-        $periodStart = $payload['period']['start_date'] ?? null;
+        $statementLines = collect($payload['transactions'] ?? $payload['lines'] ?? []);
+        $amountDue = $payload['total_amount_due'] ?? $payload['closing_balance'] ?? 0;
     @endphp
-
     {{-- Company Header --}}
     <div class="header">
         <div class="company-name">{{ $payload['company']['name'] ?? 'Your Company' }}</div>
@@ -101,8 +98,8 @@
         </div>
     </div>
 
-    {{-- Ledger Table --}}
-    @if($transactions->count() > 0)
+    {{-- Invoice Table --}}
+    @if($statementLines->count() > 0)
     <table>
         <thead>
             <tr>
@@ -117,26 +114,20 @@
             </tr>
         </thead>
         <tbody>
-            @foreach($transactions as $line)
+            @foreach($statementLines as $line)
             <tr>
-                <td>{{ $line['date'] ?? '' }}</td>
-                <td>{{ $line['type'] ?? '' }}</td>
-                <td>{{ $line['document_number'] ?? '' }}</td>
-                <td>
-                    {{ $line['description'] ?? '' }}
-                    @if(!empty($line['reference']))<br/><span style="color:#6b7280;">Ref: {{ $line['reference'] }}</span>@endif
-                </td>
-                <td>{{ $line['due_date'] ?? '' }}</td>
-                <td class="num">{{ number_format((float) ($line['debit'] ?? 0), 2) }}</td>
-                <td class="num">{{ number_format((float) ($line['credit'] ?? 0), 2) }}</td>
-                <td class="num">{{ number_format((float) ($line['balance'] ?? 0), 2) }}</td>
+                <td>{{ $line['invoice_date'] ?? $line['date'] ?? '' }}</td>
+                <td>{{ $line['invoice_number'] ?? $line['document_number'] ?? '' }}</td>
+                <td>{{ $line['reference'] ?? $line['description'] ?? '' }}</td>
+                <td>{{ $line['due_date'] ?? '-' }}</td>
+                <td class="num">{{ number_format($line['total'] ?? $line['debit'] ?? 0, 2) }}</td>
+                <td class="num">{{ number_format($line['balance'] ?? 0, 2) }}</td>
             </tr>
             @endforeach
             <tr class="total-row">
-                <td colspan="5" style="text-align: right;">Total</td>
-                <td class="num">{{ number_format((float) ($payload['total_debits'] ?? 0), 2) }}</td>
-                <td class="num">{{ number_format((float) ($payload['total_credits'] ?? 0), 2) }}</td>
-                <td class="num">{{ number_format((float) ($payload['closing_balance'] ?? 0), 2) }}</td>
+                <td colspan="4" style="text-align: right;">Total</td>
+                <td class="num">{{ number_format($statementLines->sum(fn ($line) => $line['total'] ?? $line['debit'] ?? 0), 2) }}</td>
+                <td class="num">{{ number_format($amountDue, 2) }}</td>
             </tr>
         </tbody>
     </table>
@@ -146,7 +137,7 @@
 
     {{-- Total Amount Due --}}
     <div class="amount-due">
-        Total Amount Due ({{ $currency }}): <span class="value">{{ number_format((float) ($payload['total_amount_due'] ?? 0), 2) }}</span>
+        Total Amount Due ({{ $payload['currency'] ?? 'USD' }}): <span class="value">{{ number_format($amountDue, 2) }}</span>
     </div>
 
     {{-- Bank Info Footer --}}

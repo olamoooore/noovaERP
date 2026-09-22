@@ -1,526 +1,267 @@
-import React, { useMemo, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Icon } from '@iconify/react';
-import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/hooks/use-toast';
-import api from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
-import { useNavigate } from 'react-router-dom';
-import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
+import { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Icon } from '@iconify/react'
+import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { useToast } from '@/hooks/use-toast'
+import api from '@/lib/api'
+import { formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils'
 
-interface StatementRecord {
-  id: number;
-  customer_id: number;
-  customer?: {
-    name: string;
-    email?: string;
-  };
-  period: {
-    start_date: string;
-    end_date: string;
-    type: string;
-  };
-  email_sent: boolean;
-  recipient_email?: string | null;
-  pdf_url?: string | null;
-  generated_at?: string;
-  closing_balance: number;
+interface CustomerTransaction {
+  transaction_type: string
+  transaction_id: number
+  document_number: string
+  customer_id: number
+  customer_name: string
+  transaction_date: string
+  due_date?: string | null
+  debit: number
+  credit: number
+  balance: number
+  status: string
 }
 
-export const CustomerStatements: React.FC = () => {
-  const [showGenerateDialog, setShowGenerateDialog] = useState(false);
-  const [prefilledCustomerId, setPrefilledCustomerId] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
+function defaultPdfDates() {
+  const to = new Date()
+  const from = new Date(to.getFullYear(), to.getMonth() - 1, to.getDate())
+  return {
+    from: from.toISOString().split('T')[0],
+    to: to.toISOString().split('T')[0],
+  }
+}
 
-  // Fetch customers with outstanding balances
-  const { data: customers, isLoading } = useQuery({
-    queryKey: ['customers-with-balances', searchQuery],
+export const CustomerStatements = () => {
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const { toast } = useToast()
+  const [customerId, setCustomerId] = useState(searchParams.get('customer_id') || '')
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
+  const [pdfDates, setPdfDates] = useState(defaultPdfDates)
+
+  useEffect(() => {
+    setCustomerId(searchParams.get('customer_id') || '')
+  }, [searchParams])
+
+  const transactionsQuery = useQuery({
+    queryKey: ['customer-account-statement-transactions', customerId],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (searchQuery) params.append('search', searchQuery);
-      params.append('has_balance', 'true');
-      
-      const response = await api.get(`/customers?${params.toString()}`);
-      return response.data.data || [];
+      const response = await api.get('/accounting/customers/transactions', {
+        params: {
+          customer_id: customerId,
+          transaction_type: 'invoice',
+          per_page: 1000,
+        },
+      })
+      return ((response.data?.data || []) as CustomerTransaction[]).filter(
+        (transaction) => transaction.status === 'posted' || transaction.status === 'paid'
+      )
     },
-  });
+    enabled: Boolean(customerId),
+  })
 
-  const { data: history = [], isLoading: isLoadingHistory } = useQuery({
-    queryKey: ['customer-statement-history'],
+  const selectedCustomerQuery = useQuery({
+    queryKey: ['customer-statement-customer', customerId],
     queryFn: async () => {
-      const response = await api.get('/accounting/customers/statements/history');
-      return response.data.data || [];
+      const response = await api.get(`/customers/${customerId}`)
+      return response.data?.data ?? response.data
     },
-  });
+    enabled: Boolean(customerId),
+  })
 
-  const latestStatementByCustomer = useMemo(() => {
-    const latest = new Map<number, StatementRecord>();
-    (history as StatementRecord[]).forEach((statement) => {
-      if (!latest.has(statement.customer_id)) {
-        latest.set(statement.customer_id, statement);
-      }
-    });
-    return latest;
-  }, [history]);
+  const transactions = transactionsQuery.data || []
+  const totals = useMemo(() => transactions.reduce(
+    (result, transaction) => ({
+      debit: result.debit + Number(transaction.debit || 0),
+      credit: result.credit + Number(transaction.credit || 0),
+    }),
+    { debit: 0, credit: 0 }
+  ), [transactions])
 
-  const formatDate = (date?: string) => {
-    if (!date) return '-';
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
+  const generatePdf = useMutation({
+    mutationFn: async () => {
+      const response = await api.get(`/customers/${customerId}/statement`, {
+        params: {
+          start_date: pdfDates.from,
+          end_date: pdfDates.to,
+        },
+        responseType: 'blob',
+      })
+      return response.data as BlobPart
+    },
+    onSuccess: (pdfBytes) => {
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      const customerCode = selectedCustomerQuery.data?.code || customerId || 'UNKNOWN'
+      link.download = `SOA_${customerCode}_${pdfDates.to.replaceAll('-', '')}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      setPdfDialogOpen(false)
+      toast({ title: 'Statement of Account generated successfully' })
+    },
+    onError: (error) => toast({
+      title: 'Failed to generate PDF',
+      description: getApiErrorMessage(error, 'The customer statement could not be generated.'),
+      variant: 'destructive',
+    }),
+  })
+
+  const openPdfDialog = () => {
+    setPdfDates(defaultPdfDates())
+    setPdfDialogOpen(true)
+  }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Customer Statements</h1>
-          <p className="text-muted-foreground mt-1">
-            Generate and send account statements to customers
+          <h1 className="text-3xl font-bold">Customer Account Statement</h1>
+          <p className="mt-1 text-muted-foreground">
+            Select a customer to review their transactions and generate a statement PDF.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => navigate('/accounting/customers/statements/compare')}
-          >
-            <Icon icon="solar:chart-bold-duotone" className="h-4 w-4 mr-2" />
-            Compare SOA
-          </Button>
-          <Dialog open={showGenerateDialog} onOpenChange={setShowGenerateDialog}>
-          <DialogTrigger asChild>
-            <Button>
-              <Icon icon="solar:document-add-bold-duotone" className="h-4 w-4 mr-2" />
-              Generate Statement
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Generate Customer Statement</DialogTitle>
-            </DialogHeader>
-            <GenerateStatementForm
-              initialCustomerId={prefilledCustomerId}
-              onSuccess={() => {
-                setShowGenerateDialog(false);
-                setPrefilledCustomerId('');
-                queryClient.invalidateQueries({ queryKey: ['customer-statement-history'] });
-                toast({ title: 'Statement generated successfully' });
-              }}
-            />
-          </DialogContent>
-        </Dialog>
-        </div>
-      </div>
-
-      {/* Search */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <input
-              type="text"
-              placeholder="Search by customer name, email..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Customers List */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Customers</span>
-            {customers && customers.length > 0 && (
-              <span className="text-sm font-normal text-muted-foreground">
-                {customers.length} customer(s)
-              </span>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-              <p className="text-muted-foreground mt-4">Loading customers...</p>
-            </div>
-          ) : !customers || customers.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Icon icon="solar:users-group-rounded-bold-duotone" className="h-16 w-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium mb-2">No customers found</p>
-              <p className="text-sm">Customers with outstanding balances will appear here</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Customer Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead className="text-right">Outstanding Balance</TableHead>
-                    <TableHead>Last Statement</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {customers.map((customer: any) => {
-                    const latestStatement = latestStatementByCustomer.get(customer.id);
-
-                    return (
-                    <TableRow key={customer.id} className="hover:bg-accent/50">
-                      <TableCell className="font-medium">{customer.name}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {customer.email || '-'}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {customer.phone || '-'}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(customer.outstanding_balance || 0)}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {latestStatement?.generated_at ? formatDate(latestStatement.generated_at) : 'Never'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex gap-1 justify-end">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setPrefilledCustomerId(customer.id.toString());
-                              setShowGenerateDialog(true);
-                            }}
-                          >
-                            <Icon icon="solar:document-add-bold-duotone" className="h-4 w-4 mr-1" />
-                            Generate
-                          </Button>
-                          {latestStatement?.pdf_url && (
-                            <Button size="sm" variant="ghost" asChild>
-                              <a href={latestStatement.pdf_url} target="_blank" rel="noreferrer">
-                                <Icon icon="solar:download-minimalistic-bold" className="h-4 w-4" />
-                              </a>
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Statement History</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoadingHistory ? (
-            <div className="text-sm text-muted-foreground">Loading statement history...</div>
-          ) : !(history as StatementRecord[]).length ? (
-            <div className="text-sm text-muted-foreground">No statements generated yet.</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Period</TableHead>
-                  <TableHead className="text-right">Closing Balance</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Generated</TableHead>
-                  <TableHead className="text-right">PDF</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(history as StatementRecord[]).map((statement) => (
-                  <TableRow key={statement.id}>
-                    <TableCell className="font-medium">
-                      {statement.customer?.name || `Customer #${statement.customer_id}`}
-                    </TableCell>
-                    <TableCell>
-                      {formatDate(statement.period.start_date)} to {formatDate(statement.period.end_date)}
-                    </TableCell>
-                    <TableCell className="text-right">{formatCurrency(statement.closing_balance)}</TableCell>
-                    <TableCell>
-                      {statement.email_sent ? (
-                        <Badge variant="outline">Sent{statement.recipient_email ? ` to ${statement.recipient_email}` : ''}</Badge>
-                      ) : (
-                        <Badge variant="secondary">Not sent</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>{formatDate(statement.generated_at)}</TableCell>
-                    <TableCell className="text-right">
-                      {statement.pdf_url ? (
-                        <Button size="sm" variant="ghost" asChild>
-                          <a href={statement.pdf_url} target="_blank" rel="noreferrer">Download</a>
-                        </Button>
-                      ) : (
-                        '-'
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Quick Stats */}
-      {customers && customers.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Customers</p>
-                  <p className="text-2xl font-bold">{customers.length}</p>
-                </div>
-                <Icon icon="solar:users-group-rounded-bold-duotone" className="h-8 w-8 text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Outstanding</p>
-                  <p className="text-2xl font-bold">
-                    {formatCurrency(
-                      customers.reduce((sum: number, c: any) => sum + (c.outstanding_balance || 0), 0)
-                    )}
-                  </p>
-                </div>
-                <Icon icon="solar:dollar-bold-duotone" className="h-8 w-8 text-green-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Statements This Month</p>
-                  <p className="text-2xl font-bold">
-                    {customers.filter((c: any) => {
-                      if (!c.last_statement_date) return false;
-                      const statementDate = new Date(c.last_statement_date);
-                      const now = new Date();
-                      return statementDate.getMonth() === now.getMonth() && 
-                             statementDate.getFullYear() === now.getFullYear();
-                    }).length}
-                  </p>
-                </div>
-                <Icon icon="solar:document-text-bold-duotone" className="h-8 w-8 text-orange-500" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// Generate Statement Form Component
-const GenerateStatementForm: React.FC<{
-  initialCustomerId?: string;
-  onSuccess: () => void;
-}> = ({ initialCustomerId, onSuccess }) => {
-  const [formData, setFormData] = useState(() => {
-    const endDate = new Date();
-    const startDate = new Date(endDate);
-    startDate.setMonth(startDate.getMonth() - 1);
-    return {
-      customer_id: initialCustomerId || '',
-      period_type: 'monthly',
-      start_date: startDate.toISOString().split('T')[0],
-      end_date: endDate.toISOString().split('T')[0],
-      include_paid: false,
-      send_email: false,
-    };
-  });
-
-  const { toast } = useToast();
-
-  const generateStatementMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const response = await api.post(`/accounting/customers/${data.customer_id}/statement`, data);
-      return response.data;
-    },
-    onSuccess: (data) => {
-      onSuccess();
-    },
-    onError: (error: any) => {
-      toast({
-        variant: 'destructive',
-        title: 'Failed to generate statement',
-        description: error.response?.data?.message || 'An error occurred',
-      });
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    generateStatementMutation.mutate(formData);
-  };
-
-  // Auto-calculate start date based on period type
-  const handlePeriodTypeChange = (value: string) => {
-    const endDate = new Date(formData.end_date);
-    let startDate = new Date(endDate);
-
-    switch (value) {
-      case 'monthly':
-        startDate.setMonth(startDate.getMonth() - 1);
-        break;
-      case 'quarterly':
-        startDate.setMonth(startDate.getMonth() - 3);
-        break;
-      case 'yearly':
-        startDate.setFullYear(startDate.getFullYear() - 1);
-        break;
-    }
-
-    setFormData({
-      ...formData,
-      period_type: value,
-      start_date: startDate.toISOString().split('T')[0],
-    });
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="customer_id">Customer</Label>
-        <CustomerSearchCombobox
-          value={formData.customer_id}
-          onValueChange={(value) => setFormData({ ...formData, customer_id: value })}
-          placeholder="Search customer name or code..."
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="period_type">Period Type</Label>
-          <Select
-            value={formData.period_type}
-            onValueChange={handlePeriodTypeChange}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="monthly">Monthly</SelectItem>
-              <SelectItem value="quarterly">Quarterly</SelectItem>
-              <SelectItem value="yearly">Yearly</SelectItem>
-              <SelectItem value="custom">Custom Range</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="end_date">End Date</Label>
-          <Input
-            id="end_date"
-            type="date"
-            value={formData.end_date}
-            onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-            required
-          />
-        </div>
-      </div>
-
-      {formData.period_type === 'custom' && (
-        <div className="space-y-2">
-          <Label htmlFor="start_date">Start Date</Label>
-          <Input
-            id="start_date"
-            type="date"
-            value={formData.start_date}
-            onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-            required
-          />
-        </div>
-      )}
-
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="include_paid"
-            checked={formData.include_paid}
-            onChange={(e) => setFormData({ ...formData, include_paid: e.target.checked })}
-            className="rounded border-gray-300"
-          />
-          <Label htmlFor="include_paid" className="cursor-pointer">
-            Include paid invoices
-          </Label>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="send_email"
-            checked={formData.send_email}
-            onChange={(e) => setFormData({ ...formData, send_email: e.target.checked })}
-            className="rounded border-gray-300"
-          />
-          <Label htmlFor="send_email" className="cursor-pointer">
-            Send statement via email
-          </Label>
-        </div>
-      </div>
-
-      <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg">
-        <div className="flex items-start gap-3">
-          <Icon icon="solar:info-circle-bold-duotone" className="h-5 w-5 text-blue-600 mt-0.5" />
-          <div className="text-sm">
-            <p className="font-medium text-blue-900 dark:text-blue-100 mb-1">Statement Preview</p>
-            <p className="text-blue-700 dark:text-blue-300">
-              The statement will include all transactions (invoices, payments, credits) for the selected period.
-              {formData.send_email && ' An email will be sent to the customer with the PDF attachment.'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex justify-end gap-2 pt-4">
-        <Button
-          type="submit"
-          disabled={generateStatementMutation.isPending || !formData.customer_id}
-        >
-          {generateStatementMutation.isPending ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-              Generating...
-            </>
-          ) : (
-            <>
-              <Icon icon="solar:document-add-bold-duotone" className="h-4 w-4 mr-2" />
-              Generate Statement
-            </>
-          )}
+        <Button onClick={openPdfDialog} disabled={!customerId || transactionsQuery.isLoading}>
+          <Icon icon="solar:file-download-bold-duotone" className="mr-2 h-4 w-4" />
+          Generate PDF
         </Button>
       </div>
-    </form>
-  );
-};
 
-export default CustomerStatements;
+      <Card>
+        <CardHeader><CardTitle>Customer</CardTitle></CardHeader>
+        <CardContent>
+          <div className="max-w-xl">
+            <CustomerSearchCombobox
+              value={customerId}
+              onValueChange={setCustomerId}
+              placeholder="Search customer name or code..."
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {!customerId ? (
+        <Card>
+          <CardContent className="py-16 text-center text-muted-foreground">
+            <Icon icon="solar:user-id-bold-duotone" className="mx-auto mb-3 h-12 w-12 opacity-50" />
+            Select a customer to view their account transactions.
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle>Transactions</CardTitle>
+              <div className="flex gap-4 text-sm">
+                <span>Debit: <strong>{formatCurrency(totals.debit)}</strong></span>
+                <span>Credit: <strong>{formatCurrency(totals.credit)}</strong></span>
+                <span>Balance: <strong>{formatCurrency(totals.debit - totals.credit)}</strong></span>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {transactionsQuery.isLoading ? (
+              <div className="py-12 text-center text-muted-foreground">Loading transactions...</div>
+            ) : transactionsQuery.isError ? (
+              <div className="py-12 text-center text-destructive">Could not load customer transactions.</div>
+            ) : transactions.length === 0 ? (
+              <div className="py-12 text-center text-muted-foreground">No transactions found for this customer.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Document</TableHead>
+                      <TableHead>Due Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Debit</TableHead>
+                      <TableHead className="text-right">Credit</TableHead>
+                      <TableHead className="text-right">Balance</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {transactions.map((transaction) => (
+                      <TableRow
+                        key={`${transaction.transaction_type}-${transaction.transaction_id}`}
+                        role="link"
+                        tabIndex={0}
+                        className="cursor-pointer"
+                        aria-label={`View invoice ${transaction.document_number}`}
+                        onClick={() => navigate(`/accounting/customers/bills/${transaction.transaction_id}`)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            navigate(`/accounting/customers/bills/${transaction.transaction_id}`)
+                          }
+                        }}
+                      >
+                        <TableCell>{formatDate(transaction.transaction_date)}</TableCell>
+                        <TableCell className="capitalize">{transaction.transaction_type.replaceAll('_', ' ')}</TableCell>
+                        <TableCell className="font-mono">{transaction.document_number || '-'}</TableCell>
+                        <TableCell>{formatDate(transaction.due_date)}</TableCell>
+                        <TableCell><Badge variant="outline" className="capitalize">{transaction.status}</Badge></TableCell>
+                        <TableCell className="text-right">{transaction.debit ? formatCurrency(transaction.debit) : '-'}</TableCell>
+                        <TableCell className="text-right">{transaction.credit ? formatCurrency(transaction.credit) : '-'}</TableCell>
+                        <TableCell className="text-right font-medium">{formatCurrency(transaction.balance)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={pdfDialogOpen} onOpenChange={setPdfDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Generate Customer Statement PDF</DialogTitle></DialogHeader>
+          <div className="grid grid-cols-1 gap-4 py-2 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="statement-from-date">From Date</Label>
+              <Input
+                id="statement-from-date"
+                type="date"
+                value={pdfDates.from}
+                max={pdfDates.to}
+                onChange={(event) => setPdfDates({ ...pdfDates, from: event.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="statement-to-date">To Date</Label>
+              <Input
+                id="statement-to-date"
+                type="date"
+                value={pdfDates.to}
+                min={pdfDates.from}
+                onChange={(event) => setPdfDates({ ...pdfDates, to: event.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPdfDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => generatePdf.mutate()}
+              disabled={generatePdf.isPending || !pdfDates.from || !pdfDates.to || pdfDates.from > pdfDates.to}
+            >
+              {generatePdf.isPending ? 'Generating...' : 'Generate PDF'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+export default CustomerStatements

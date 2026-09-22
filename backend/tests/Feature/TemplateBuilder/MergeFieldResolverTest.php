@@ -15,7 +15,7 @@ class MergeFieldResolverTest extends TestCase
             'invoice' => ['number' => 'INV-2026-0001', 'issue_date' => '2026-07-08'],
             'customer' => ['name' => 'Globex Corporation'],
             'totals' => ['total' => 8056.00, 'discount' => 0],
-            'meta' => ['currency_symbol' => 'RM ', 'number_format' => '1,234.56'],
+            'meta' => ['currency_code' => 'MYR', 'currency_symbol' => 'RM ', 'number_format' => '1,234.56'],
         ]);
     }
 

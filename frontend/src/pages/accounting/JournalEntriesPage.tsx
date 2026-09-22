@@ -399,10 +399,18 @@ export default function JournalEntriesPage() {
     }
   };
 
-  const handleViewEntry = async (id: number) => {
-    const entry = await journalEntriesApi.getJournalEntry(id);
+  const handleViewEntry = async (entry: JournalEntry) => {
+    // The list response already contains the entry lines and account data, so
+    // open immediately instead of making the dialog depend on another request.
     setSelectedEntry(entry);
     setViewOpen(true);
+
+    try {
+      const detailedEntry = await journalEntriesApi.getJournalEntry(entry.id);
+      setSelectedEntry(detailedEntry);
+    } catch {
+      // Keep showing the complete data already supplied by the list response.
+    }
   };
 
   const handlePost = (id: number) => {
@@ -627,7 +635,7 @@ export default function JournalEntriesPage() {
                 </TableHeader>
                 <TableBody>
                   {entries.map((entry) => (
-                    <TableRow key={entry.id} className="cursor-pointer" onClick={() => handleViewEntry(entry.id)}>
+                    <TableRow key={entry.id} className="cursor-pointer" onClick={() => handleViewEntry(entry)}>
                       <TableCell onClick={(event) => event.stopPropagation()}>
                         <input type="checkbox" checked={selectedIdSet.has(entry.id)} onChange={() => toggleSelect(entry.id)} aria-label={`Select ${entry.entry_number}`} />
                       </TableCell>
@@ -944,10 +952,10 @@ export default function JournalEntriesPage() {
                           {line.description || '-'}
                         </TableCell>
                         <TableCell className="text-right font-mono">
-                          {line.debit > 0 ? `$${parseFloat(String(line.debit)).toFixed(2)}` : '-'}
+                          {line.debit > 0 ? formatCurrency(Number(line.debit), line.currency_code) : '-'}
                         </TableCell>
                         <TableCell className="text-right font-mono">
-                          {line.credit > 0 ? `$${parseFloat(String(line.credit)).toFixed(2)}` : '-'}
+                          {line.credit > 0 ? formatCurrency(Number(line.credit), line.currency_code) : '-'}
                         </TableCell>
                       </TableRow>
                     ))}

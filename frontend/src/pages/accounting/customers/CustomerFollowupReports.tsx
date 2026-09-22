@@ -215,7 +215,7 @@ export const CustomerFollowupReports: React.FC = () => {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => navigate(`/accounting/customers/statements?customer_id=${customer.customer_id}`)}
+                            onClick={() => navigate(`/accounting/reporting/customer-statements?customer_id=${customer.customer_id}`)}
                           >
                             <Icon icon="solar:document-text-bold-duotone" className="h-4 w-4 mr-1" />
                             Statement
