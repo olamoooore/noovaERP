@@ -341,6 +341,20 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/invoices/{invoice}/reset-to-draft', [InvoiceController::class, 'resetToDraft'])
             ->middleware(RequirePermission::using('invoices.write'));
 
+        // Issue #92: Budget Management (real budgets; the dashboard no longer
+        // fabricates budget as 110% of actual).
+        Route::middleware(RequirePermission::using('accounting.view'))->group(function () {
+            Route::get('/accounting/budgets', [\App\Http\Controllers\Api\BudgetController::class, 'index']);
+            Route::get('/accounting/budgets/{budget}', [\App\Http\Controllers\Api\BudgetController::class, 'show']);
+            Route::get('/accounting/budgets/{budget}/variance', [\App\Http\Controllers\Api\BudgetController::class, 'variance']);
+        });
+        Route::middleware(RequirePermission::using('accounting.write'))->group(function () {
+            Route::post('/accounting/budgets', [\App\Http\Controllers\Api\BudgetController::class, 'store']);
+            Route::put('/accounting/budgets/{budget}', [\App\Http\Controllers\Api\BudgetController::class, 'update']);
+            Route::delete('/accounting/budgets/{budget}', [\App\Http\Controllers\Api\BudgetController::class, 'destroy']);
+            Route::post('/accounting/budgets/{budget}/approve', [\App\Http\Controllers\Api\BudgetController::class, 'approve']);
+        });
+
         // Quotations
         Route::post('/quotations/import', [QuotationController::class, 'import']);
         Route::get('/quotations/export', [QuotationController::class, 'export']);
@@ -546,6 +560,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/assets/{id}/dispose', [FixedAssetsController::class, 'dispose']);
         Route::post('/assets/{id}/impair', [FixedAssetsController::class, 'impair'])
             ->middleware(RequirePermission::using('accounting.write'));
+
         Route::post('/assets/{id}/generate-schedule', [FixedAssetsController::class, 'generateSchedule']);
         Route::post('/assets/{id}/post-pending-schedules', [FixedAssetsController::class, 'postPendingSchedules']);
         Route::post('/assets/calculate-depreciation', [FixedAssetsController::class, 'calculateDepreciation']);
