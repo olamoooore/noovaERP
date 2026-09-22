@@ -10,6 +10,7 @@ use App\Models\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class MedicalCaseController extends Controller
 {
@@ -48,14 +49,19 @@ class MedicalCaseController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        // Issue #187: the contact/address ids must belong to the case's own
+        // customer, otherwise a direct API call can attribute a doctor to the
+        // wrong hospital.
+        $customerId = $request->input('customer_id');
+
         $validated = $request->validate([
             'customer_id' => 'required|exists:customers,id',
             'invoice_id' => 'nullable|exists:invoices,id',
             'bonus_scheme_id' => 'nullable|exists:bonus_schemes,id',
-            'delivery_address_id' => 'nullable|exists:customer_addresses,id',
-            'doctor_contact_id' => 'nullable|exists:customer_contacts,id',
-            'requestor_contact_id' => 'nullable|exists:customer_contacts,id',
-            'buyer_contact_id' => 'nullable|exists:customer_contacts,id',
+            'delivery_address_id' => ['nullable', Rule::exists('customer_addresses', 'id')->where('customer_id', $customerId)],
+            'doctor_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
+            'requestor_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
+            'buyer_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
             'patient_reference' => 'nullable|string|max:255',
             'patient_name_encrypted' => 'nullable|string',
             'case_date' => 'nullable|date',
@@ -158,14 +164,17 @@ class MedicalCaseController extends Controller
             return response()->json(['message' => 'Only draft cases can be edited'], 403);
         }
 
+        // Issue #187: validate against the case's (possibly new) customer.
+        $customerId = $request->input('customer_id', $case->customer_id);
+
         $validated = $request->validate([
             'customer_id' => 'sometimes|required|exists:customers,id',
             'invoice_id' => 'nullable|exists:invoices,id',
             'bonus_scheme_id' => 'nullable|exists:bonus_schemes,id',
-            'delivery_address_id' => 'nullable|exists:customer_addresses,id',
-            'doctor_contact_id' => 'nullable|exists:customer_contacts,id',
-            'requestor_contact_id' => 'nullable|exists:customer_contacts,id',
-            'buyer_contact_id' => 'nullable|exists:customer_contacts,id',
+            'delivery_address_id' => ['nullable', Rule::exists('customer_addresses', 'id')->where('customer_id', $customerId)],
+            'doctor_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
+            'requestor_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
+            'buyer_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
             'patient_reference' => 'nullable|string|max:255',
             'patient_name_encrypted' => 'nullable|string',
             'case_date' => 'nullable|date',
