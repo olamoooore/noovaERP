@@ -3,6 +3,7 @@
 namespace Modules\Communication\Services;
 
 use Illuminate\Support\Facades\DB;
+use Modules\Communication\Support\EventSubtypeRegistry;
 use Illuminate\Support\Facades\Log;
 use Modules\Communication\Jobs\ProcessOutboxBatch;
 use Modules\Communication\Models\CommunicationChannelLog;
@@ -71,6 +72,8 @@ class CommunicationEngine
         array $metadata = [],
         ?\Carbon\Carbon $scheduledAt = null,
     ): CommunicationMessage {
+        // Issue #82: reject unknown subtypes instead of silently skipping delivery.
+        EventSubtypeRegistry::assertValid($subtype);
         // If template key is provided, render it
         if ($templateKey) {
             $rendered = $this->templateRenderer->render($templateKey, $templateVariables, 'en', $tenantId);
@@ -140,6 +143,9 @@ class CommunicationEngine
         array $templateVariables = [],
         array $metadata = [],
     ): CommunicationMessage {
+        if ($subtype !== null) {
+            EventSubtypeRegistry::assertValid($subtype);
+        }
         // Render template if provided
         if ($templateKey) {
             $rendered = $this->templateRenderer->render($templateKey, $templateVariables, 'en', $tenantId);
@@ -264,6 +270,9 @@ class CommunicationEngine
         ?string $tenantId = null,
         array $metadata = [],
     ): CommunicationMessage {
+        // Issue #82: unknown subtypes fail loudly.
+        EventSubtypeRegistry::assertValid($subtype);
+
         return CommunicationMessage::create([
             'tenant_id' => $tenantId,
             'model' => $model,
