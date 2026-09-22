@@ -25,6 +25,7 @@ class ContactMasterController extends Controller
 
     public function __construct(
         private readonly ContactMasterService $service,
+        private readonly \App\Services\EntityAccessService $entityAccessService,
     ) {}
 
     // ─── Contact CRUD ─────────────────────────────────────────────
@@ -32,9 +33,17 @@ class ContactMasterController extends Controller
     public function index(Request $request): JsonResponse
     {
         $tenantId = tenant()->id;
+
+        // Issue #232: contacts must be filtered by the requester's accessible
+        // legal entities, not only by a client-supplied entity_id.
+        $user = auth()->user();
+        $accessibleEntityIds = $user
+            ? $this->entityAccessService->accessibleEntityIds((int) $user->id)
+            : [];
+
         $contacts = $this->service->list($tenantId, $request->only([
-            'entity_id', 'contact_type', 'is_active', 'role', 'search', 'per_page',
-        ]));
+            'entity_id', 'legal_entity_id', 'contact_type', 'is_active', 'role', 'search', 'per_page',
+        ]), $accessibleEntityIds);
 
         return $this->success($contacts, 'Contacts retrieved.');
     }
@@ -54,6 +63,7 @@ class ContactMasterController extends Controller
             'website' => 'nullable|url|max:255',
             'notes' => 'nullable|string',
             'entity_id' => 'nullable|uuid',
+            'legal_entity_id' => 'nullable|integer',
             'legacy_id' => 'nullable|string|max:255',
             // ADR-003A compatibility inputs (non-authoritative, §7.2)
             'contact_category' => 'nullable|string|max:100',
@@ -110,6 +120,7 @@ class ContactMasterController extends Controller
             'website' => 'nullable|url|max:255',
             'notes' => 'nullable|string',
             'entity_id' => 'nullable|uuid',
+            'legal_entity_id' => 'nullable|integer',
             'is_active' => 'sometimes|boolean',
             // ADR-003A compatibility inputs (non-authoritative, §7.2)
             'contact_category' => 'nullable|string|max:100',
@@ -185,6 +196,7 @@ class ContactMasterController extends Controller
             'role' => 'required|string|max:50',
             'role_label' => 'nullable|string|max:255',
             'entity_id' => 'nullable|uuid',
+            'legal_entity_id' => 'nullable|integer',
             'is_primary' => 'sometimes|boolean',
         ]);
 

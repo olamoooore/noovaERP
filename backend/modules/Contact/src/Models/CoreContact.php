@@ -24,6 +24,7 @@ class CoreContact extends Model
         'id',
         'tenant_id',
         'entity_id',
+        'legal_entity_id',
         'contact_type',
         'first_name',
         'last_name',
@@ -157,6 +158,23 @@ class CoreContact extends Model
     public function scopeForEntity($query, $entityId)
     {
         return $query->where('entity_id', $entityId);
+    }
+
+    /**
+     * Issue #232: scope to an explicit set of legal entities. Fail-closed when
+     * the set is empty — mirrors JournalEntry/FixedAsset (#97/#163).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @param  int[]  $accessibleEntityIds
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeAccessibleBy($query, array $accessibleEntityIds)
+    {
+        if (empty($accessibleEntityIds)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereIn('legal_entity_id', $accessibleEntityIds);
     }
 
     public function scopeOfType($query, $type)

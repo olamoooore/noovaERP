@@ -72,6 +72,7 @@ class ContactMasterService
                 'id' => Str::uuid(),
                 'tenant_id' => $tenantId,
                 'entity_id' => $data['entity_id'] ?? null,
+                'legal_entity_id' => $data['legal_entity_id'] ?? null,
                 'contact_type' => self::normalizeEntityType($data['contact_type'] ?? $data['entity_type'] ?? 'individual'),
                 'first_name' => $data['first_name'] ?? null,
                 'last_name' => $data['last_name'] ?? null,
@@ -113,6 +114,7 @@ class ContactMasterService
 
         $contact->update(array_filter([
             'entity_id' => $data['entity_id'] ?? null,
+            'legal_entity_id' => $data['legal_entity_id'] ?? null,
             'contact_type' => isset($data['contact_type']) || isset($data['entity_type'])
                 ? self::normalizeEntityType($data['contact_type'] ?? $data['entity_type'])
                 : null,
@@ -174,9 +176,20 @@ class ContactMasterService
         return CoreContact::where('tenant_id', $tenantId)->where('id', $id)->first();
     }
 
-    public function list(string $tenantId, array $filters = [])
+    public function list(string $tenantId, array $filters = [], array $accessibleEntityIds = [])
     {
         $query = CoreContact::where('tenant_id', $tenantId)->with('addresses');
+
+        // Issue #232: entity scoping. Applied only when the user has entity
+        // grants (platform convention shared with JournalEntry/FixedAsset
+        // #97/#163: no grants keeps the legacy fail-open visibility).
+        if (! empty($accessibleEntityIds)) {
+            $query->accessibleBy($accessibleEntityIds);
+        }
+
+        if (! empty($filters['legal_entity_id'])) {
+            $query->where('legal_entity_id', $filters['legal_entity_id']);
+        }
 
         if (! empty($filters['entity_id'])) {
             $query->where('entity_id', $filters['entity_id']);
