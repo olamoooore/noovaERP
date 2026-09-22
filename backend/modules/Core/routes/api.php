@@ -366,6 +366,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::delete('/payments/{payment}', [PaymentController::class, 'destroy']);
         Route::post('/payments/{payment}/cancel', [PaymentController::class, 'cancel']);
         Route::post('/payments/{payment}/post', [PaymentController::class, 'post']);
+        // Issue #155: split payments / unapplied credit.
+        Route::get('/payments/{payment}/allocations', [PaymentController::class, 'allocations']);
+        Route::post('/payments/{payment}/allocations', [PaymentController::class, 'allocate']);
     });
 
     // Accounting

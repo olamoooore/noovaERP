@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Payment extends Model
@@ -102,6 +103,15 @@ class Payment extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    /**
+     * Issue #155: explicit payment→invoice applications (split payments /
+     * unapplied credit). A payment with zero applications is held on account.
+     */
+    public function applications(): HasMany
+    {
+        return $this->hasMany(PaymentApplication::class);
     }
 
     public function bill(): BelongsTo

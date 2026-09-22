@@ -700,9 +700,39 @@ class InvoiceService
             'settlement_method' => $payment?->payment_method ?? 'unknown',
         ]);
 
+        // Issue #155: record the explicit payment→invoice application so the
+        // allocation ledger is authoritative for split/unapplied payments.
+        if ($payment) {
+            \App\Models\PaymentApplication::firstOrCreate(
+                [
+                    'payment_id' => $payment->id,
+                    'invoice_id' => $invoice->id,
+                ],
+                [
+                    'tenant_id' => $invoice->tenant_id
+                        ?? (function_exists('tenant') && tenant() ? tenant()->id : null),
+                    'applied_amount' => $paymentAmount,
+                    'currency_code' => $invoice->currency_code ?? null,
+                    'created_by' => TenantUserHelper::resolveTenantUserId(),
+                ]
+            );
+        }
+
         if ($invoice->customer) {
             $invoice->customer->updateOutstanding();
         }
+    }
+
+    /**
+     * Issue #155: apply an allocated portion of a payment to an invoice through
+     * the canonical settlement path (used by PaymentAllocationService for split
+     * payments / statement-level allocations).
+     */
+    public function applyAllocatedPayment(Invoice $invoice, float $amount, ?Payment $payment = null): void
+    {
+        DB::transaction(function () use ($invoice, $amount, $payment) {
+            $this->syncInvoicePaymentState($invoice, $amount, $payment);
+        });
     }
 
     public function createPaymentLink(Invoice $invoice, float $amount, \DateTimeInterface $expiresAt): array
