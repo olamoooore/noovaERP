@@ -382,6 +382,8 @@ class SalesOrderService
                 $lines[] = [
                     'line_type' => 'product',
                     'sequence' => $line->sequence ?? 0,
+                    // Issue #138: stable order-line reference for bookkeeping.
+                    'sales_order_line_id' => $line->id,
                     'product_id' => $line->product_id,
                     'model_number' => $line->model_number,
                     'product_notes' => $line->product_notes,
@@ -675,7 +677,11 @@ class SalesOrderService
         $billByDelivered = (bool) $order->bill_by_delivered_qty;
 
         foreach ($order->lines as $orderLine) {
-            $matchedInvoiceLine = $invoiceLines->first(function ($invoiceLine) use ($orderLine) {
+            // Issue #138: prefer the stable persisted link; only fall back to
+            // the legacy product+description heuristic for pre-link rows.
+            $matchedInvoiceLine = $invoiceLines->firstWhere('sales_order_line_id', $orderLine->id);
+
+            $matchedInvoiceLine = $matchedInvoiceLine ?? $invoiceLines->first(function ($invoiceLine) use ($orderLine) {
                 if ($orderLine->source_line_type === 'PosOrderItem' || $orderLine->source_line_type === 'WebOrderItem') {
                     return (int) $invoiceLine->product_id === (int) $orderLine->product_id
                         && str_starts_with($invoiceLine->description, $orderLine->description);
