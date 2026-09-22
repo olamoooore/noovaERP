@@ -991,6 +991,50 @@ class QuotationController extends Controller
      * Reset a cancelled quotation back to draft.
      * Allows re-editing and re-confirming.
      */
+    /**
+     * Issue #178/#179: reject a quotation — voids the original and creates an
+     * auto-versioned replacement draft (same correction group, version+1).
+     */
+    public function reject(Request $request, $id)
+    {
+        $quotation = Quotation::find($id);
+
+        if (! $quotation) {
+            return response()->json(['message' => 'Quotation not found'], 404);
+        }
+
+        if ($quotation->status === 'cancelled') {
+            return response()->json(['message' => 'Quotation is already cancelled/rejected'], 422);
+        }
+
+        $validated = $request->validate([
+            'reason_code' => 'nullable|string|max:50',
+            'reason_text' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $replacement = app(\App\Services\ReplacementDraftService::class)->createQuotationReplacementDraft(
+                $quotation,
+                \App\Services\CorrectionRequest::fromRequest([
+                    'reason_code' => $validated['reason_code'] ?? 'rejection',
+                    'reason_text' => $validated['reason_text'] ?? 'Quotation rejected',
+                    'user_id' => \Illuminate\Support\Facades\Auth::id(),
+                ])
+            );
+
+            return response()->json([
+                'message' => 'Quotation rejected; replacement draft created',
+                'quotation' => $replacement->load('lines.product'),
+                'superseded_quotation_id' => $quotation->id,
+            ], 201);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to reject quotation',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function resetToDraft($id)
     {
         $quotation = Quotation::find($id);

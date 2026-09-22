@@ -467,6 +467,50 @@ class DeliveryOrderController extends Controller
     /**
      * Reset a cancelled delivery order back to draft.
      */
+    /**
+     * Issue #178/#179: reject a delivery order — voids the original and creates
+     * an auto-versioned replacement draft.
+     */
+    public function reject(Request $request, $id)
+    {
+        $deliveryOrder = DeliveryOrder::find($id);
+
+        if (! $deliveryOrder) {
+            return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        if (in_array($deliveryOrder->status, ['cancelled', 'done'], true)) {
+            return response()->json(['message' => 'This delivery order cannot be rejected in its current status'], 422);
+        }
+
+        $validated = $request->validate([
+            'reason_code' => 'nullable|string|max:50',
+            'reason_text' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $replacement = app(\App\Services\ReplacementDraftService::class)->createDeliveryOrderReplacementDraft(
+                $deliveryOrder,
+                \App\Services\CorrectionRequest::fromRequest([
+                    'reason_code' => $validated['reason_code'] ?? 'rejection',
+                    'reason_text' => $validated['reason_text'] ?? 'Delivery order rejected',
+                    'user_id' => \Illuminate\Support\Facades\Auth::id(),
+                ])
+            );
+
+            return response()->json([
+                'message' => 'Delivery order rejected; replacement draft created',
+                'data' => $replacement->load('lines.product'),
+                'superseded_delivery_order_id' => $deliveryOrder->id,
+            ], 201);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to reject delivery order',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function resetToDraft($id)
     {
         $deliveryOrder = DeliveryOrder::find($id);

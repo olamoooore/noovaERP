@@ -68,6 +68,16 @@ class Quotation extends Model
         'shipping_address_snapshot',
         'sales_order_id',
         'created_by',
+        // Issue #178: rejection/replacement revision chain.
+        'correction_group_id',
+        'version_number',
+        'is_active_version',
+        'original_document_id',
+        'replacement_document_id',
+        'superseded_at',
+        'correction_type',
+        'correction_reason_code',
+        'correction_reason_text',
     ];
 
     protected $casts = [
@@ -81,6 +91,8 @@ class Quotation extends Model
         'total' => 'decimal:2',
         'date_of_case' => 'date',
         'delivery_date' => 'date',
+        'is_active_version' => 'boolean',
+        'superseded_at' => 'datetime',
     ];
 
     public function customer(): BelongsTo

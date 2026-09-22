@@ -348,6 +348,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::apiResource('quotations', QuotationController::class);
         Route::post('/quotations/{id}/confirm', [QuotationController::class, 'confirm']);
         Route::post('/quotations/{id}/cancel', [QuotationController::class, 'cancel']);
+        // Issue #178/#179: rejection with auto-versioned replacement draft.
+        Route::post('/quotations/{id}/reject', [QuotationController::class, 'reject']);
         Route::post('/quotations/{id}/reset-to-draft', [QuotationController::class, 'resetToDraft']);
         Route::post('/quotations/{id}/create-invoice', [QuotationController::class, 'createInvoice']);
 

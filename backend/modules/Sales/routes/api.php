@@ -77,6 +77,8 @@ Route::middleware([
             Route::post('/sales/delivery-orders/{id}/complete', [DeliveryOrderController::class, 'complete']);
             Route::post('/sales/delivery-orders/{id}/reverse', [DeliveryOrderController::class, 'reverse']);
             Route::post('/sales/delivery-orders/{id}/cancel', [DeliveryOrderController::class, 'cancel']);
+            // Issue #178/#179: rejection with auto-versioned replacement draft.
+            Route::post('/sales/delivery-orders/{id}/reject', [DeliveryOrderController::class, 'reject']);
             Route::post('/sales/delivery-orders/{id}/reset-to-draft', [DeliveryOrderController::class, 'resetToDraft']);
             Route::post('/sales/delivery-orders/bulk-delete', [DeliveryOrderController::class, 'bulkDestroy']);
             Route::post('/sales/delivery-orders/import', [DeliveryOrderController::class, 'import']);
