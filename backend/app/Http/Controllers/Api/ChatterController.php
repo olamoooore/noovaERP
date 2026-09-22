@@ -62,10 +62,38 @@ class ChatterController extends Controller
             'summary' => 'required|string|min:1|max:255',
             'note' => 'nullable|string|max:10000',
             'due_date' => 'nullable|date',
+            // Issue #83: assigning to SOMEONE ELSE is a supervisory action
+            // (spam/harassment guard); self-assignment stays open to everyone.
             'assigned_to_id' => 'nullable|integer|exists:users,id',
         ]);
 
+        $assigneeId = isset($data['assigned_to_id']) ? (int) $data['assigned_to_id'] : null;
+        $actorId = (int) $request->user()->id;
+
+        if ($assigneeId !== null && $assigneeId !== $actorId) {
+            $role = $this->roleService->getRole($actorId, (string) tenant()->id);
+
+            if (! $role || ! in_array($role, [\App\Enums\UserRole::OWNER, \App\Enums\UserRole::ADMIN, \App\Enums\UserRole::MANAGER], true)) {
+                return response()->json([
+                    'message' => 'You do not have permission to assign activities to other users.',
+                ], 403);
+            }
+        }
+
         $activity = $this->chatter->addActivity($subjectType, $subjectId, $data);
+
+        // Issue #83 priority 2: audit who assigned what to whom.
+        if ($assigneeId !== null && $assigneeId !== $actorId) {
+            \App\Models\AuditLog::create([
+                'operation' => 'activity_assigned',
+                'reference_type' => 'ChatterActivity',
+                'reference_id' => $activity->id,
+                'actor_id' => $actorId,
+                'source_route' => 'chatter.activities.store',
+                'metadata' => ['assigned_to_user_id' => $assigneeId],
+                'ip_address' => $request->ip(),
+            ]);
+        }
 
         return response()->json(['data' => $this->serializeActivity($activity)], 201);
     }
