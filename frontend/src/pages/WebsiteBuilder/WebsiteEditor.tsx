@@ -500,13 +500,13 @@ export function WebsiteEditor() {
     const toPlainJson = (value: any) =>
       value && typeof value.toJSON === 'function' ? value.toJSON() : value
 
-    saveMutation.mutate({
+    saveMutation.mutateAsync({
       ...data,
       components: toPlainJson(data.components),
       styles: toPlainJson(data.styles),
       header_js: data.header_js ?? headerJs,
       body_js: data.body_js ?? bodyJs,
-    })
+    }).catch(() => undefined) // onError already surfaces the failure; keep callers await-safe
   }, [saveMutation, headerJs, bodyJs])
 
   // Manual save trigger — compresses inline images before sending so the
@@ -547,7 +547,7 @@ export function WebsiteEditor() {
       })
     }
 
-    handleSave({
+    await handleSave({
       html,
       css: editorInstance.getCss() || '',
       components: compressedComponents,
@@ -571,11 +571,12 @@ export function WebsiteEditor() {
   // Preview in new tab — opens the server-rendered /w/ URL so it persists
   // on refresh and is shareable.  Falls back to client-side render for
   // unpublished content that has never been pushed to the server.
-  const handlePreview = () => {
+  const handlePreview = async () => {
     if (!editorInstance) return
 
-    // First, save current content so the backend has the latest version
-    triggerSave()
+    // Save current content BEFORE opening the preview so the server-rendered
+    // page cannot race the in-flight save and show the previous version.
+    await triggerSave()
 
     // Normalize: strip trailing slash to avoid //w/ double-slash
     const basePath = (import.meta.env.VITE_BASE_PATH || '').replace(/\/+$/, '')

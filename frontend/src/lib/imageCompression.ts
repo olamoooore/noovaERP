@@ -113,6 +113,12 @@ export async function compressGrapesJsComponents(
     : components
 
   const walk = async (node: any): Promise<any> => {
+    // The root is an array of component definitions; nested component lists are
+    // arrays too. Without this branch the walk returned [] for any array input,
+    // which saved an EMPTY components tree and blanked the editor canvas.
+    if (Array.isArray(node)) {
+      return Promise.all(node.map(walk))
+    }
     if (!node || typeof node !== 'object') return node
 
     // Clone shallowly to avoid mutating the original tree.
