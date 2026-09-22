@@ -30,7 +30,15 @@ class FulfillmentServiceProvider extends ServiceProvider
         $this->app->bind(\Modules\Fulfillment\Services\TrackingService::class);
         $this->app->bind(\Modules\Fulfillment\Services\ShippingRuleEngine::class);
         $this->app->bind(\Modules\Fulfillment\Services\CarrierConfigService::class);
+        $this->app->bind(\Modules\Fulfillment\Services\DeliveryOrderShipmentService::class);
     }
 
-    public function boot(): void {}
+    public function boot(): void
+    {
+        // Issue #147: keep the linked Sales delivery order's carrier/tracking
+        // fields in sync when a shipment is updated.
+        \Modules\Fulfillment\Models\Shipment::observe(
+            \Modules\Fulfillment\Observers\ShipmentObserver::class
+        );
+    }
 }

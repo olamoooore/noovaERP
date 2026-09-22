@@ -68,6 +68,9 @@ Route::prefix('fulfillment')->group(function () {
         ->middleware(RequirePermission::using('fulfillment.view'));
     Route::post('/shipments', [FulfillmentController::class, 'createShipment'])
         ->middleware(RequirePermission::using('fulfillment.write'));
+    // Issue #147: Sales delivery order -> Fulfillment shipment integration.
+    Route::post('/delivery-orders/{deliveryOrderId}/shipment', [FulfillmentController::class, 'createShipmentForDeliveryOrder'])
+        ->middleware(RequirePermission::using('fulfillment.write'));
     Route::post('/shipments/{id}/cancel', [FulfillmentController::class, 'cancelShipment'])
         ->middleware(RequirePermission::using('fulfillment.write'));
     Route::post('/shipments/{id}/sync-tracking', [FulfillmentController::class, 'syncTracking'])
