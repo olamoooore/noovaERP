@@ -312,4 +312,103 @@ class CustomerStatementTest extends TenantTestCase
             $this->assertContains(\App\Http\Middleware\EnsureEntityAccess::class, $route->middleware(), "{$uri} lacks EnsureEntityAccess.");
         }
     }
+
+    /** #204 — the opening balance is seeded into the running balance AND encoded in the synthetic row; it must count once. */
+    public function test_opening_balance_is_not_double_counted_in_running_balance(): void
+    {
+        $this->invoice(['invoice_date' => '2025-12-01', 'due_date' => '2025-12-31']);
+        $inRange = $this->invoice(['invoice_date' => '2026-01-10']);
+        $this->payment($inRange, 300, '2026-01-20');
+
+        $payload = app(CustomerStatementService::class)->buildRangePayload(
+            $this->customer,
+            Carbon::parse('2026-01-01'),
+            Carbon::parse('2026-01-31'),
+            true,
+        );
+
+        $this->assertSame(1000.0, round($payload['opening_balance'], 2));
+        $this->assertSame(1700.0, round($payload['closing_balance'], 2));
+
+        $balances = collect($payload['transactions'])->pluck('balance', 'type');
+        $this->assertSame(1000.0, round((float) $balances['Opening Balance'], 2), 'Opening row must show the opening balance once');
+        $this->assertSame(2000.0, round((float) $balances['Invoice'], 2));
+        $this->assertSame(1700.0, round((float) $balances['Payment'], 2));
+
+        // #193 invariant: the range statement and the as-of snapshot ending on
+        // the same date must agree, even with a pre-range invoice.
+        $asOf = app(CustomerStatementService::class)->buildAsOfPayload($this->customer, Carbon::parse('2026-01-31'));
+        $this->assertSame(1700.0, round($asOf['closing_balance'], 2));
+    }
+
+    /** #205 — a payment cancelled via unapplyPayment must not count as a credit. */
+    public function test_unapplied_payments_do_not_count_as_credits(): void
+    {
+        $invoice = $this->invoice();
+        $this->payment($invoice, 1000, '2026-01-20', 'unapplied');
+
+        $payload = app(CustomerStatementService::class)->buildRangePayload(
+            $this->customer,
+            Carbon::parse('2026-01-01'),
+            Carbon::parse('2026-01-31'),
+            true,
+        );
+
+        $this->assertSame(1000.0, round($payload['closing_balance'], 2));
+        $this->assertSame(0.0, round($payload['total_credits'], 2));
+        $this->assertNotContains('Payment', collect($payload['transactions'])->pluck('type')->all());
+    }
+
+    /** #207 — draft ('recorded', still editable) payments are not real credits. */
+    public function test_recorded_draft_payments_do_not_count_as_credits(): void
+    {
+        $invoice = $this->invoice();
+        $this->payment($invoice, 1000, '2026-01-20', 'recorded');
+
+        $payload = app(CustomerStatementService::class)->buildRangePayload(
+            $this->customer,
+            Carbon::parse('2026-01-01'),
+            Carbon::parse('2026-01-31'),
+            true,
+        );
+
+        $this->assertSame(1000.0, round($payload['closing_balance'], 2));
+        $this->assertSame(0.0, round($payload['total_credits'], 2));
+    }
+
+    /** #206 — a settlement of a pre-range invoice must still reduce the running balance. */
+    public function test_in_period_settlement_of_a_pre_period_invoice_reduces_the_balance(): void
+    {
+        $old = $this->invoice(['invoice_date' => '2025-12-01', 'due_date' => '2025-12-31']);
+        $this->payment($old, 1000, '2026-01-15');
+
+        $payload = app(CustomerStatementService::class)->buildRangePayload(
+            $this->customer,
+            Carbon::parse('2026-01-01'),
+            Carbon::parse('2026-01-31'),
+            false,
+        );
+
+        $this->assertSame(1000.0, round($payload['opening_balance'], 2));
+        $this->assertSame(0.0, round($payload['closing_balance'], 2), 'The settlement must clear the opening balance');
+        $this->assertContains('Payment', collect($payload['transactions'])->pluck('type')->all());
+    }
+
+    /** #206 — same rule for credit notes applied in-period against a pre-range invoice. */
+    public function test_in_period_credit_note_against_a_pre_period_invoice_reduces_the_balance(): void
+    {
+        $old = $this->invoice(['invoice_date' => '2025-12-01', 'due_date' => '2025-12-31']);
+        $this->creditNote($old, 1000, 'posted', '2026-01-15');
+
+        $payload = app(CustomerStatementService::class)->buildRangePayload(
+            $this->customer,
+            Carbon::parse('2026-01-01'),
+            Carbon::parse('2026-01-31'),
+            false,
+        );
+
+        $this->assertSame(1000.0, round($payload['opening_balance'], 2));
+        $this->assertSame(0.0, round($payload['closing_balance'], 2));
+        $this->assertContains('Credit Note', collect($payload['transactions'])->pluck('type')->all());
+    }
 }

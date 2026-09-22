@@ -213,9 +213,13 @@ class CustomerStatementService
             ->orderBy('id')
             ->get();
 
+        // Issue #205/#207: only actually-applied, active payments count as
+        // credits. 'unapplied' (cancelled via unapplyPayment) restores the
+        // invoice balance, and 'recorded' is still an editable draft with no
+        // ledger impact — neither may reduce what the customer owes.
         $payments = Payment::query()
             ->where('customer_id', $customer->id)
-            ->whereNotIn('payment_status', ['reversed', 'refunded'])
+            ->where('payment_status', 'applied')
             ->where('payment_date', '<=', $end->toDateString())
             ->orderBy('payment_date')
             ->orderBy('id')
@@ -252,6 +256,19 @@ class CustomerStatementService
                 0.0,
                 round((float) $invoice->total - ($appliedByInvoice[$invoice->id] ?? 0.0), 2)
             );
+        }
+
+        // Issue #206: invoices dated before the range start are folded whole
+        // into opening_balance and their rows are never shown — a settlement of
+        // one of them must still reduce the running balance, so they must be
+        // distinguishable from invoices hidden because they are fully settled.
+        $prePeriodInvoiceIds = [];
+        if ($start !== null) {
+            foreach ($invoices as $invoice) {
+                if ($this->before($invoice->invoice_date, $start)) {
+                    $prePeriodInvoiceIds[$invoice->id] = true;
+                }
+            }
         }
 
         // Pre-period net (all countable documents before the range start).
@@ -334,7 +351,10 @@ class CustomerStatementService
             }
             // Without include_paid, a receipt whose invoice is already settled
             // is skipped together with that invoice — no orphan credit (#199).
+            // Issue #206: but never skip when the invoice was excluded because
+            // it predates the range (its settlement still applies here).
             if (! $includePaid && $payment->invoice_id !== null
+                && ! isset($prePeriodInvoiceIds[$payment->invoice_id])
                 && ($outstandingByInvoice[$payment->invoice_id] ?? 0.0) < self::EPSILON) {
                 continue;
             }
@@ -364,6 +384,7 @@ class CustomerStatementService
                 continue;
             }
             if (! $includePaid && $creditNote->invoice_id !== null
+                && ! isset($prePeriodInvoiceIds[$creditNote->invoice_id])
                 && ($outstandingByInvoice[$creditNote->invoice_id] ?? 0.0) < self::EPSILON) {
                 continue;
             }
@@ -389,15 +410,18 @@ class CustomerStatementService
             return [$a['sort_date'], $a['sort_id']] <=> [$b['sort_date'], $b['sort_id']];
         });
 
+        // Issue #204: the running balance is seeded with the opening balance,
+        // and the synthetic "Opening Balance" row's debit/credit encode that
+        // same amount — so that row must NOT be accumulated again, or every
+        // balance (and the closing balance) is inflated by the opening balance.
         $runningBalance = $openingBalance;
         $totalDebits = 0.0;
         $totalCredits = 0.0;
         $transactions = [];
 
         foreach ($rows as $row) {
-            $runningBalance = round($runningBalance + $row['debit'] - $row['credit'], 2);
-
             if (! ($row['is_opening'] ?? false)) {
+                $runningBalance = round($runningBalance + $row['debit'] - $row['credit'], 2);
                 $totalDebits += $row['debit'];
                 $totalCredits += $row['credit'];
             }
