@@ -7,6 +7,9 @@ use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Product;
 use App\Services\EntityAccessService;
+use Modules\Ecommerce\Models\WebOrder;
+use Modules\POS\Models\PosOrder;
+use Modules\Sales\Models\SalesOrder;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -55,6 +58,11 @@ class DashboardController extends Controller
             // Products have no legal entity dimension (tenant-global catalogue) —
             // deliberately unscoped, unlike the financial figures above.
             'total_products' => Product::where('is_active', true)->count(),
+            // Issue #112: the Reports tab reads orders_today (falling back to
+            // pos_orders_today) — the backend previously returned neither, so
+            // the metric (and its CSV export) was silently always 0.
+            'orders_today' => $this->getOrdersToday(),
+            'pos_orders_today' => $this->getPosOrdersToday(),
             'low_stock_products' => $this->getLowStockProducts(),
             'recent_invoices' => $this->getRecentInvoices(),
             'revenue_trend' => $this->getRevenueTrend($startDate, $endDate),
@@ -143,6 +151,29 @@ class DashboardController extends Controller
             'count' => $base()->count(),
             'amount' => (float) $base()->sum('balance'),
         ];
+    }
+
+    /**
+     * Issue #112: orders created today across the sales channels. Sales orders
+     * are entity-scoped like the rest of the dashboard (#113); POS and web
+     * orders have no legal-entity column and are counted tenant-wide.
+     */
+    private function getOrdersToday(): int
+    {
+        $today = now()->toDateString();
+
+        $salesOrders = $this->applyEntityScope(
+            SalesOrder::whereDate('created_at', $today)
+        )->count();
+
+        return $salesOrders
+            + PosOrder::whereDate('created_at', $today)->count()
+            + WebOrder::whereDate('created_at', $today)->count();
+    }
+
+    private function getPosOrdersToday(): int
+    {
+        return PosOrder::whereDate('created_at', now()->toDateString())->count();
     }
 
     private function getLowStockProducts()

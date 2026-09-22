@@ -452,22 +452,35 @@ class PaymentController extends Controller
             ], 422);
         }
 
+        // Issue #110: durable write-ahead intent BEFORE the external gateway
+        // call, so a gateway success followed by a ledger failure is
+        // recoverable instead of silently leaving no GL trace.
+        $refundRecord = $this->refundService->beginGatewayRefund(
+            $transaction,
+            (float) $validated['amount'],
+            $validated['reason'],
+            TenantUserHelper::resolveTenantUserId(),
+        );
+
         try {
             $gateway = $transaction->gateway;
             $gatewayService = PaymentGatewayFactory::create($gateway);
 
-            // Process refund with payment gateway first
+            // Process refund with payment gateway first (external call).
             $refundResult = $gatewayService->refund($transaction->transaction_id, $validated['amount']);
 
             if (! $refundResult['success']) {
+                $this->refundService->markGatewayFailed($refundRecord, $refundResult['message'] ?? 'Refund failed');
+
                 throw new \Exception($refundResult['message'] ?? 'Refund failed');
             }
 
+            // Gateway accepted — record the durable marker before touching the GL.
+            $this->refundService->markGatewayRefunded($refundRecord, $refundResult);
+
             // Process refund with GL reversal via canonical service
-            $result = $this->refundService->processRefund(
-                $transaction,
-                $validated['amount'],
-                $validated['reason'],
+            $result = $this->refundService->completeGatewayRefundLedger(
+                $refundRecord,
                 TenantUserHelper::resolveTenantUserId(),
             );
 

@@ -118,6 +118,7 @@ Route::middleware([
         Route::post('/{subjectType}/{subjectId}/activities', [\App\Http\Controllers\Api\ChatterController::class, 'addActivity']);
         Route::post('/{subjectType}/{subjectId}/activities/{activityId}/done', [\App\Http\Controllers\Api\ChatterController::class, 'markActivityDone']);
         Route::post('/{subjectType}/{subjectId}/attachments', [\App\Http\Controllers\Api\ChatterController::class, 'uploadAttachment']);
+        Route::get('/{subjectType}/{subjectId}/attachments/{attachmentId}/download', [\App\Http\Controllers\Api\ChatterController::class, 'downloadAttachment']);
         Route::delete('/{subjectType}/{subjectId}/attachments/{attachmentId}', [\App\Http\Controllers\Api\ChatterController::class, 'deleteAttachment']);
     });
 

@@ -105,6 +105,18 @@ class ChatterController extends Controller
         ]], 201);
     }
 
+    /**
+     * Issue #78: download an attachment via the authenticated API. The storage
+     * path is never exposed to clients.
+     */
+    public function downloadAttachment(Request $request, string $subjectType, int|string $subjectId, int $attachmentId)
+    {
+        $this->validateSubject($subjectType, $subjectId);
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
+
+        return $this->chatter->downloadAttachment($subjectType, $subjectId, $attachmentId);
+    }
+
     public function deleteAttachment(Request $request, string $subjectType, int|string $subjectId, int $attachmentId): JsonResponse
     {
         $this->validateSubject($subjectType, $subjectId);

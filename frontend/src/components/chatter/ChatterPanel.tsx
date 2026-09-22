@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
+import api from '@/lib/api'
 import chatterApi, {
   type ActivityType,
   type ChatterActivity,
@@ -415,14 +416,24 @@ function AttachmentItem({
     <div className="flex items-center justify-between rounded-md border bg-card px-3 py-2">
       <div className="flex min-w-0 items-center gap-2">
         <Icon icon="solar:paperclip-bold-duotone" width={16} className="text-indigo-600" />
-        <a
-          href={attachment.url}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              // Issue #78: attachments are fetched through the authenticated API
+              // (the storage path is never exposed), so download as a blob.
+              const response = await api.get(attachment.url, { responseType: 'blob' })
+              const blobUrl = URL.createObjectURL(response.data as Blob)
+              window.open(blobUrl, '_blank', 'noopener,noreferrer')
+              window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
+            } catch {
+              // Surfaced by the global api interceptor; keep the row inert.
+            }
+          }}
           className="truncate text-sm font-medium hover:underline"
         >
           {attachment.filename}
-        </a>
+        </button>
         <span className="text-xs text-muted-foreground">{formatBytes(attachment.size)}</span>
       </div>
       {!readOnly && (

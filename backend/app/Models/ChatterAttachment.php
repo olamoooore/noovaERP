@@ -37,15 +37,13 @@ class ChatterAttachment extends Model
 
     public function getUrlAttribute(): string
     {
-        // For the public disk, build the URL via Storage::url so the
-        // application's ASSET_URL/APP_URL is respected and the storage
-        // symlink (public/storage -> storage/app/public) serves the file.
-        $disk = $this->storage_disk ?: 'public';
-
-        try {
-            return \Storage::disk($disk)->url($this->storage_path);
-        } catch (\Throwable $e) {
-            return asset('storage/' . $this->storage_path);
-        }
+        // Issue #78: never expose the storage path/URL structure. Clients fetch
+        // attachments through the authenticated download endpoint.
+        return url(sprintf(
+            '/api/v1/chatter/%s/%s/attachments/%s/download',
+            rawurlencode((string) $this->subject_type),
+            rawurlencode((string) $this->subject_id),
+            (string) $this->id,
+        ));
     }
 }

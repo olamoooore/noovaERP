@@ -117,7 +117,9 @@ class ChatterService
             'subject_type' => $subjectType,
             'subject_id' => (string) $normalizedId,
             'author_id' => Auth::id(),
-            'body' => $body,
+            // Issue #79: chatter bodies are plain text — strip markup so the
+            // API can never return stored HTML/script to any consumer.
+            'body' => $this->sanitizeBody($body),
         ]);
 
         $this->logEvent($subjectType, $normalizedId, 'message', 'Message posted', [
@@ -137,8 +139,9 @@ class ChatterService
             'assigned_to_id' => $payload['assigned_to_id'] ?? null,
             'created_by_id' => Auth::id(),
             'activity_type' => $payload['activity_type'],
-            'summary' => $payload['summary'],
-            'note' => $payload['note'] ?? null,
+            // Issue #79: plain-text fields must not persist markup.
+            'summary' => $this->sanitizeBody($payload['summary']),
+            'note' => isset($payload['note']) ? $this->sanitizeBody($payload['note']) : null,
             'due_date' => $payload['due_date'] ?? null,
             'status' => 'planned',
         ]);
@@ -215,6 +218,25 @@ class ChatterService
         return $attachment->fresh(['uploadedBy']);
     }
 
+    /**
+     * Issue #78: stream an attachment through the authenticated API instead of
+     * exposing the underlying storage path/URL structure.
+     */
+    public function downloadAttachment(string $subjectType, int|string $subjectId, int $attachmentId): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $attachment = ChatterAttachment::query()
+            ->where('subject_type', $subjectType)
+            ->where('subject_id', (string) (int) $subjectId)
+            ->where('id', $attachmentId)
+            ->firstOrFail();
+
+        $disk = $attachment->storage_disk ?: 'public';
+
+        abort_unless(Storage::disk($disk)->exists($attachment->storage_path), 404, 'Attachment file not found.');
+
+        return Storage::disk($disk)->download($attachment->storage_path, $attachment->filename);
+    }
+
     public function deleteAttachment(string $subjectType, int|string $subjectId, int $attachmentId): void
     {
         $attachment = ChatterAttachment::query()
@@ -229,6 +251,22 @@ class ChatterService
         $this->logEvent($subjectType, (int) $subjectId, 'attachment_deleted', 'Attachment deleted', [
             'attachment_id' => $attachmentId,
         ]);
+    }
+
+    /**
+     * Issue #79: chatter content is plain text. Strip any HTML/script markup
+     * and control characters so stored XSS can never be returned by the API,
+     * regardless of how a consumer renders it.
+     */
+    private function sanitizeBody(string $body): string
+    {
+        // strip_tags() keeps the CONTENT of <script>/<style> blocks, so remove
+        // those blocks entirely first (their inner JS/CSS is not text content).
+        $clean = preg_replace('#<(script|style)\b[^>]*>.*?</\1>#is', '', $body) ?? $body;
+        $clean = strip_tags($clean);
+        $clean = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $clean) ?? $clean;
+
+        return trim($clean);
     }
 
     public function logEvent(string $subjectType, int|string $subjectId, string $event, string $description, array $properties = []): void
