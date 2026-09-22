@@ -2,6 +2,7 @@
 
 namespace Modules\Sales\Http\Controllers;
 
+use App\Services\CustomerCreditNoteService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\Sales\Models\SalesOrder;
@@ -15,6 +16,7 @@ class SalesOrderController extends Controller
         private SalesOrderService $orderService,
         private OrderLifecycleService $lifecycleService,
         private CreditCheckService $creditCheckService,
+        private CustomerCreditNoteService $creditNoteService,
     ) {}
 
     public function index(Request $request)
@@ -350,6 +352,68 @@ class SalesOrderController extends Controller
         $creditCheck = $this->creditCheckService->checkCreditLimit($order->customer, (float) $order->total);
 
         return response()->json($creditCheck);
+    }
+
+    /**
+     * Issue #154: issue a draft credit note for an invoiced order, carrying the
+     * lineage back to the sales order. Pre-populates the lines from the order so
+     * the user has an editable draft instead of a dead-end error message.
+     */
+    public function creditNote(Request $request, $id)
+    {
+        $order = $this->findScopedOrder($request, $id);
+
+        if (! $order) {
+            return response()->json(['message' => 'Sales order not found'], 404);
+        }
+
+        if (! $order->isInvoiced()) {
+            return response()->json(['message' => 'Only invoiced orders can be credited'], 422);
+        }
+
+        $invoice = $order->invoices()->latest('invoices.id')->first();
+
+        if (! $invoice) {
+            return response()->json(['message' => 'The order has no linked invoice to credit'], 422);
+        }
+
+        $lines = $order->lines
+            ->filter(fn ($line) => ! in_array($line->line_type ?? 'product', ['note', 'section'], true))
+            ->map(fn ($line) => [
+                'description' => $line->description,
+                'product_id' => $line->product_id,
+                'quantity' => (float) $line->quantity,
+                'unit_price' => (float) $line->unit_price,
+                'tax_rate' => (float) ($line->tax_rate ?? 0),
+            ])
+            ->values()
+            ->all();
+
+        if (empty($lines)) {
+            return response()->json(['message' => 'The order has no creditable lines'], 422);
+        }
+
+        try {
+            $creditNote = $this->creditNoteService->createCreditNote([
+                'customer_id' => $order->customer_id,
+                'invoice_id' => $invoice->id,
+                'sales_order_id' => $order->id,
+                'credit_note_date' => now()->toDateString(),
+                'currency_code' => $invoice->currency_code,
+                'reason' => $request->input('reason', "Credit note for sales order {$order->sales_order_number}"),
+                'lines' => $lines,
+            ]);
+
+            return response()->json([
+                'message' => 'Credit note draft created',
+                'credit_note' => $creditNote,
+            ], 201);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to create credit note',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function destroy($id)

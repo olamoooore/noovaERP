@@ -435,7 +435,9 @@ class SalesOrderService
     public function cancelOrder(SalesOrder $order, string $reason): SalesOrder
     {
         if ($order->isInvoiced()) {
-            throw new \Exception('Invoiced orders cannot be cancelled. Use credit notes instead.');
+            // Issue #154: point at the real, reachable path
+            // (POST /sales/orders/{id}/credit-note).
+            throw new \Exception('Invoiced orders cannot be cancelled. Issue a credit note from the order instead.');
         }
 
         return DB::transaction(function () use ($order, $reason) {

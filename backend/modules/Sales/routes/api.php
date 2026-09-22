@@ -36,6 +36,8 @@ Route::middleware([
 
             // Linked documents (mutating)
             Route::post('/sales/orders/{id}/invoice', [SalesOrderController::class, 'createInvoice']);
+            // Issue #154: the credit-note path the cancel error points at.
+            Route::post('/sales/orders/{id}/credit-note', [SalesOrderController::class, 'creditNote']);
             Route::post('/sales/orders/{id}/bill-by-delivered', [SalesOrderController::class, 'setBillByDelivered']);
         });
 

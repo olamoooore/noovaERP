@@ -16,6 +16,8 @@ class CustomerCreditNote extends Model
         'credit_note_number',
         'customer_id',
         'invoice_id',
+        // Issue #154: lineage back to the originating sales order.
+        'sales_order_id',
         'credit_note_date',
         'due_date',
         'status',
@@ -66,6 +68,11 @@ class CustomerCreditNote extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function salesOrder(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Sales\Models\SalesOrder::class, 'sales_order_id');
     }
 
     public function invoice(): BelongsTo
