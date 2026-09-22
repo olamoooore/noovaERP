@@ -113,6 +113,10 @@ class AgedReceivablesController extends Controller
             $invoices = Invoice::where('customer_id', $customerId)
                 ->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
                 ->where('balance', '>', 0)
+                // Issue #229: a voided/reversed/superseded invoice keeps its
+                // legacy status+balance; exclude it like the primary aging
+                // report (#96) already does.
+                ->notSuperseded()
                 ->get();
 
             $buckets = [
@@ -208,6 +212,9 @@ class AgedReceivablesController extends Controller
             $invoices = Invoice::with(['customer' => fn ($q) => $q->withTrashed()])
                 ->whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
                 ->where('balance', '>', 0)
+                // Issue #229: exclude voided/reversed/superseded invoices so
+                // this matrix agrees with the primary AR aging report (#96).
+                ->notSuperseded()
                 ->get();
 
             $customerData = [];
