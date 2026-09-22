@@ -293,10 +293,18 @@ class DepreciationService
             }
         }
 
-        // Persist final running totals on the asset
+        // Issue #216: persist POSTED-only accumulated depreciation.
+        // calculateDepreciationForPeriod() treats asset.accumulated_depreciation
+        // as the posted baseline and adds SUM(is_posted = false) drafts on top,
+        // so persisting the all-rows running total here made the two entry
+        // points double-count unposted periods.
+        $postedAccumulated = (float) DepreciationSchedule::where('asset_id', $asset->id)
+            ->where('is_posted', true)
+            ->sum('depreciation_amount');
+
         $asset->update([
-            'accumulated_depreciation' => $cumulative,
-            'book_value' => max($bookValue, (float) $asset->salvage_value),
+            'accumulated_depreciation' => $postedAccumulated,
+            'book_value' => max(round((float) $asset->purchase_cost - $postedAccumulated, 2), (float) $asset->salvage_value),
             'last_depreciation_date' => optional($this->advancePeriod($startDate, $frequency, $results['generated'] - 1))->format('Y-m-d'),
         ]);
 
