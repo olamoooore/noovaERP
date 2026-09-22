@@ -48,6 +48,12 @@ Schedule::command('pos:recover-stuck --fix-syncing')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Issue #109 - Inventory subledger vs GL control-account reconciliation.
+Schedule::command('inventory:reconcile-gl')
+    ->dailyAt('05:45')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Issue #102 - Exchange-rate sync. The FX revaluation side of the same issue
 // is wired into PeriodCloseService::runAutomaticAdjustments(), so closing a
 // period with open FX balances posts the unrealised gain/loss automatically.
