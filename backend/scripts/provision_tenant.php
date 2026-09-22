@@ -1,9 +1,10 @@
 <?php
 
-require __DIR__.'/vendor/autoload.php';
-$app = require_once __DIR__.'/bootstrap/app.php';
+require __DIR__.'/../vendor/autoload.php';
+$app = require_once __DIR__.'/../bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
+use App\Enums\UserRole;
 use App\Models\Tenant;
 use App\Models\User;
 use App\SuperAdmin\Application\EntitlementService;
@@ -13,12 +14,18 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Stancl\Tenancy\Database\Models\Domain;
 
-// Usage: php provision_tenant.php "<Company>" "<admin email>" "<Admin Name>" "<domain>" "<password>"
+// Usage: php scripts/provision_tenant.php "<Company>" "<admin email>" "<Admin Name>" "<domain>" "<password>" ["<role: owner|admin|manager|sales|accountant|cashier|viewer>"]
 $company  = $argv[1] ?? 'Acme Production';
 $email    = $argv[2] ?? 'admin@acme-production';
 $name     = $argv[3] ?? $company.' Admin';
 $domain   = $argv[4] ?? 'acme-production.localhost';
 $password = $argv[5] ?? 'password';
+$roleArg  = $argv[6] ?? 'owner';
+$userRole = UserRole::tryFrom(strtolower($roleArg));
+if (! $userRole) {
+    fwrite(STDERR, "Invalid role '{$roleArg}'. Valid: ".implode(', ', UserRole::values()).PHP_EOL);
+    exit(2);
+}
 
 function out(string $msg): void
 {
@@ -78,12 +85,12 @@ try {
     DB::table('user_company_access')->insert([
         'user_id' => $userId,
         'tenant_id' => $tenant->id,
-        'role' => 'owner',
+        'role' => $userRole->value,
         'is_default' => true,
         'created_at' => now(),
         'updated_at' => now(),
     ]);
-    out('user_company_access linked (role=owner, is_default=true)');
+    out("user_company_access linked (role={$userRole->value}, is_default=true)");
 
     // 3. Tenant-schema user + Owner role
     tenancy()->initialize($tenant);
@@ -98,17 +105,17 @@ try {
         ['email' => $email],
         ['name' => $name, 'password' => Hash::make($password)]
     );
-    $ownerRole = \Spatie\Permission\Models\Role::where('name', 'Owner')->first();
+    $ownerRole = \Spatie\Permission\Models\Role::where('name', $userRole->spatieName())->first();
     if (! $ownerRole) {
         // Roles/permissions are not part of DatabaseSeeder; seed them explicitly.
         \Illuminate\Support\Facades\Artisan::call('db:seed', ['--class' => 'Database\Seeders\RolePermissionSeeder', '--force' => true]);
-        $ownerRole = \Spatie\Permission\Models\Role::where('name', 'Owner')->first();
+        $ownerRole = \Spatie\Permission\Models\Role::where('name', $userRole->spatieName())->first();
     }
     if ($ownerRole) {
         $tenantUser->syncRoles([$ownerRole->name]);
-        out("tenant user id={$tenantUser->id} created, Owner role assigned");
+        out("tenant user id={$tenantUser->id} created, {$ownerRole->name} role assigned");
     } else {
-        out('WARNING: Owner role not found in tenant schema');
+        out("WARNING: {$userRole->spatieName()} role not found in tenant schema");
     }
 
     tenancy()->end();
@@ -133,7 +140,7 @@ try {
     out('tenant_selected_items: '.count($catalogIds).' override_include rows');
 
     // 5. Rebuild entitlements
-    $job = app(EntitlementService::class)->rebuild($tenant->id, null, 'provision_cast_to_wine_all_modules');
+    $job = app(EntitlementService::class)->rebuild($tenant->id, null, 'provision_'.Str::slug($company, '_').'_all_modules');
     out("entitlement rebuild job: status={$job->status}, items={$job->items_processed}");
 
     // 6. Verification
@@ -159,6 +166,7 @@ try {
         'domain' => $domain,
         'login_email' => $email,
         'password' => $password,
+        'role' => $userRole->value,
         'schema_exists' => $schemaExists,
         'tenant_migrations' => $migrationCount,
         'entitled_modules' => $entitled,
