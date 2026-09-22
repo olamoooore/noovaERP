@@ -1,0 +1,43 @@
+name: Backend setup
+description: >-
+  Shared setup for Backend CI jobs: PHP, composer deps, Laravel .env and central
+  migrations. Extracted so the test suites can run as parallel jobs instead of
+  one serial job that timed out at 10 minutes.
+
+runs:
+  using: composite
+  steps:
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.2'
+        extensions: mbstring, dom, fileinfo, pdo_pgsql, pgsql, sqlite3
+        coverage: none
+
+    - name: Cache Composer dependencies
+      uses: actions/cache@v4
+      with:
+        path: backend/vendor
+        key: ${{ runner.os }}-php-8.2-${{ hashFiles('backend/composer.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-php-8.2-
+
+    - name: Install backend dependencies
+      shell: bash
+      working-directory: backend
+      run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+    - name: Prepare Laravel environment
+      shell: bash
+      working-directory: backend
+      run: |
+        set -euo pipefail
+        cp .env.example .env
+        php artisan key:generate
+
+    - name: Run central migrations
+      shell: bash
+      working-directory: backend
+      run: |
+        set -euo pipefail
+        php artisan migrate --force
