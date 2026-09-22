@@ -17,6 +17,8 @@ use Modules\FinancialReporting\Controllers\ReportTemplateController;
 
 Route::middleware([
     'auth:sanctum',
+    // Issue #220 audit: this standalone group also lacked impersonation support.
+    \App\Http\Middleware\ImpersonationMiddleware::class,
     \App\Http\Middleware\SetTenantFromUserPreference::class,
     \App\Http\Middleware\EnsureTenantSearchPath::class,
     \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
