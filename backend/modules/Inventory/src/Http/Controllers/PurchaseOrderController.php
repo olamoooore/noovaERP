@@ -4,9 +4,11 @@ namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Services\GoodsReceiptService;
+use App\Models\ProductSupplier;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Modules\Inventory\Models\PurchaseOrder;
 use Modules\Inventory\Models\PurchaseOrderItem;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
@@ -77,6 +79,10 @@ class PurchaseOrderController extends Controller
             'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'items.*.discount_percent' => 'nullable|numeric|min:0|max:100',
         ]);
+
+        // Issue #134: enforce the per-supplier MOQ / order-multiple data that
+        // ProductSupplier captures but nothing ever consumed.
+        $this->assertSupplierOrderQuantities($validated['supplier_id'], $validated['items']);
 
         $purchaseOrder = DB::transaction(function () use ($validated) {
             $po = PurchaseOrder::create([
@@ -158,6 +164,14 @@ class PurchaseOrderController extends Controller
             'items.*.discount_percent' => 'nullable|numeric|min:0|max:100',
         ]);
 
+        // Issue #134: same supplier-quantity enforcement as store().
+        if (isset($validated['items'])) {
+            $this->assertSupplierOrderQuantities(
+                (int) ($validated['supplier_id'] ?? $purchaseOrder->supplier_id),
+                $validated['items'],
+            );
+        }
+
         DB::transaction(function () use ($purchaseOrder, $validated) {
             $purchaseOrder->update(collect($validated)->except('items')->toArray());
 
@@ -190,6 +204,43 @@ class PurchaseOrderController extends Controller
         });
 
         return response()->json($purchaseOrder->fresh(['supplier', 'warehouse', 'items.product']));
+    }
+
+    /**
+     * Issue #134: reject purchase-order lines whose quantity violates the
+     * supplier's ProductSupplier MOQ / order-multiple constraints, reporting
+     * the suggested (rounded) quantity.
+     */
+    private function assertSupplierOrderQuantities(int $supplierId, array $items): void
+    {
+        foreach ($items as $index => $itemData) {
+            $productId = $itemData['product_id'] ?? null;
+            $quantity = (int) ($itemData['quantity_ordered'] ?? 0);
+
+            if (! $productId || $quantity <= 0) {
+                continue;
+            }
+
+            $link = ProductSupplier::query()
+                ->where('product_id', $productId)
+                ->where('supplier_id', $supplierId)
+                ->where('is_active', true)
+                ->first();
+
+            if (! $link || $link->validateOrderQuantity($quantity)) {
+                continue;
+            }
+
+            throw ValidationException::withMessages([
+                "items.{$index}.quantity_ordered" => sprintf(
+                    'Quantity %d violates the supplier constraint for this product (minimum %d, order multiple %d). Suggested quantity: %d.',
+                    $quantity,
+                    (int) $link->moq,
+                    max(1, (int) $link->order_multiple),
+                    $link->getSuggestedOrderQuantity($quantity),
+                ),
+            ]);
+        }
     }
 
     public function destroy(int $purchase_order_id)

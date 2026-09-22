@@ -128,6 +128,22 @@ class GoodsReceiptService
                     $this->costingService->recordReceipt($product, $acceptedQty, $unitCost, $qtyBefore);
                 }
 
+                // Issue #134: propagate the real purchase price into the
+                // supplier-product procurement record (same transaction), so
+                // last_cost reflects what was actually paid, not the value
+                // typed when the link was created.
+                $supplierId = $grn->purchaseOrder?->supplier_id;
+
+                if ($supplierId && $unitCost > 0) {
+                    \App\Models\ProductSupplier::query()
+                        ->where('product_id', $line->product_id)
+                        ->where('supplier_id', $supplierId)
+                        ->update([
+                            'last_cost' => $unitCost,
+                            'last_purchase_date' => now()->toDateString(),
+                        ]);
+                }
+
                 // Issue #249: every line that adjusted stock advances the basis —
                 // a free (zero-cost) line still adds quantity, so omitting it
                 // skewed the next paid line's weighted average upward.
