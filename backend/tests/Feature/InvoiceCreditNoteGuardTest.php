@@ -123,7 +123,10 @@ class InvoiceCreditNoteGuardTest extends TenantTestCase
             ->postJson('/api/v1/invoices/'.$invoice->id.'/cancel')
             ->assertStatus(422);
 
-        $creditNote->update(['status' => 'voided']);
+        // Issue #228: void through the real endpoint, not a direct model write.
+        $this->actingAs($this->user)
+            ->postJson('/api/v1/accounting/customers/credit-notes/'.$creditNote->id.'/void')
+            ->assertOk();
 
         $this->actingAs($this->user)
             ->postJson('/api/v1/invoices/'.$invoice->id.'/cancel')

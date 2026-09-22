@@ -29,6 +29,10 @@ class CustomerCreditNote extends Model
         'created_by',
         'posted_by',
         'posted_at',
+        // Issue #228: void transition metadata.
+        'voided_at',
+        'voided_by',
+        'reversal_journal_entry_id',
     ];
 
     protected $casts = [

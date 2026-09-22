@@ -551,6 +551,40 @@ class InvoiceService
     }
 
     /**
+     * Issue #228: inverse of applyRefundToInvoice — used when a posted credit
+     * note is voided. Re-adds the credited amount to paid_amount and rebuilds
+     * balance/status from the canonical total/paid pair.
+     */
+    public function restoreRefundToInvoice(Invoice $invoice, float $refundAmount): Invoice
+    {
+        Invoice::where('id', $invoice->id)
+            ->increment('paid_amount', $refundAmount);
+
+        $invoice->refresh();
+
+        $newBalance = max(0, (float) $invoice->total - (float) $invoice->paid_amount);
+
+        $status = match (true) {
+            (float) $invoice->paid_amount <= 0 => 'sent',
+            $newBalance > 0 => 'partial',
+            default => 'paid',
+        };
+
+        Invoice::where('id', $invoice->id)->update([
+            'balance' => $newBalance,
+            'status' => $status,
+        ]);
+
+        $invoice->refresh();
+
+        if ($invoice->customer) {
+            $invoice->customer->updateOutstanding();
+        }
+
+        return $invoice;
+    }
+
+    /**
      * Atomically sync invoice paid_amount / balance / status after a payment.
      *
      * This is the single canonical path for invoice balance reconciliation

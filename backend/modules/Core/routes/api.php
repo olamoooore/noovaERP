@@ -672,8 +672,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::put('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'update']);
         Route::delete('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'destroy']);
         Route::post('/customers/credit-notes/{creditNote}/post', [CustomerCreditNotesController::class, 'post']);
+        Route::post('/customers/credit-notes/{creditNote}/void', [CustomerCreditNotesController::class, 'void'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('customers.write'));
         Route::get('/customers/invoices/{invoiceId}/credit-notes', [CustomerCreditNotesController::class, 'getByInvoice']);
-        Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validate']);
+        Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validateCreditNote']);
 
         // Customers List
         Route::get('/customers', [CustomersController::class, 'index']);
