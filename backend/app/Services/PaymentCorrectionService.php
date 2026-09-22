@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\ReversalRequest;
 use App\Models\Bill;
 use App\Models\Invoice;
@@ -53,7 +54,7 @@ class PaymentCorrectionService
                     reasonCode: $request->reasonCode,
                     actorUserId: (int) ($request->userId ?? Auth::id()),
                 );
-                $result = app(\App\Accounting\PostingEngine::class)->reverse($reversalRequest);
+                $result = app(PostingEngineInterface::class)->reverse($reversalRequest);
                 if (! $result->success) {
                     throw new \RuntimeException('GL reversal failed: '.($result->error ?? 'Unknown error'));
                 }
@@ -132,7 +133,7 @@ class PaymentCorrectionService
                     reasonCode: $request->reasonCode,
                     actorUserId: (int) ($request->userId ?? Auth::id()),
                 );
-                $result = app(\App\Accounting\PostingEngine::class)->reverse($reversalRequest);
+                $result = app(PostingEngineInterface::class)->reverse($reversalRequest);
                 if (! $result->success) {
                     throw new \RuntimeException('GL reversal failed: '.($result->error ?? 'Unknown error'));
                 }
@@ -210,7 +211,7 @@ class PaymentCorrectionService
                     reasonCode: $request->reasonCode,
                     actorUserId: (int) ($request->userId ?? Auth::id()),
                 );
-                $result = app(\App\Accounting\PostingEngine::class)->reverse($reversalRequest);
+                $result = app(PostingEngineInterface::class)->reverse($reversalRequest);
                 if (! $result->success) {
                     throw new \RuntimeException('GL reversal failed: '.($result->error ?? 'Unknown error'));
                 }
