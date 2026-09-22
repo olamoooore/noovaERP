@@ -46,7 +46,7 @@ class HR130BundleDecompositionTest extends TenantTestCase
         parent::setUp();
 
         $tenantId = (string) Str::uuid();
-        $this->bindTenantContext($tenantId);
+        $this->bindTenantContextWithPermissions($tenantId);
 
         $this->assertTenantSchemaReady(['products', 'product_bundles', 'warehouses', 'stock_levels', 'delivery_orders']);
 
@@ -58,12 +58,14 @@ class HR130BundleDecompositionTest extends TenantTestCase
         ]));
 
         $this->user = User::factory()->create();
+        $this->user->assignRole('Admin');
         $this->actingAs($this->user);
 
         $this->warehouse = Warehouse::create([
             'name' => 'Bundle Warehouse',
             'code' => 'BND-'.uniqid(),
             'is_active' => true,
+            'is_default' => true,
         ]);
 
         // Bundle is virtual (assembled on sale) — not stock-tracked itself.
@@ -240,6 +242,190 @@ class HR130BundleDecompositionTest extends TenantTestCase
         // 2 Gift Baskets = 4 Red Wine + 2 Chocolate.
         $this->assertSame(6, $this->stockOf($this->componentA), 'Web order must deduct 2 x 2 components');
         $this->assertSame(8, $this->stockOf($this->componentB), 'Web order must deduct 2 x 1 components');
+    }
+
+    /**
+     * Issue #241: direct invoice-only bundle sale — the #130/#131 fix wired
+     * bundle COGS into InvoiceService but never decomposed component stock.
+     */
+    public function test_direct_invoice_only_bundle_sale_decomposes_component_stock(): void
+    {
+        // Direct invoices have no linked order for warehouse resolution — the
+        // service falls back to the tenant default warehouse (set in setUp).
+
+        $invoice = \App\Models\Invoice::factory()->create([
+            'customer_id' => Customer::factory()->create()->id,
+            'status' => 'draft',
+            'lifecycle_status' => 'draft',
+            'created_by' => $this->user->id,
+            // Totals must match the single line below or the posting engine
+            // (correctly) rejects the journal as unbalanced.
+            'subtotal' => 100,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total' => 100,
+            'paid_amount' => 0,
+            'balance' => 100,
+        ]);
+
+        \App\Models\InvoiceLine::create([
+            'invoice_id' => $invoice->id,
+            'product_id' => $this->bundle->id,
+            'description' => 'Gift Basket',
+            'quantity' => 2,
+            'unit_price' => 50,
+            'tax_rate' => 0,
+            'tax_amount' => 0,
+            'line_total' => 100,
+        ]);
+
+        app(\App\Services\InvoiceService::class)
+            ->postInvoice($invoice->fresh(['lines.product', 'customer']));
+
+        // 2 Gift Baskets = 4 Red Wine + 2 Chocolate.
+        $this->assertSame(6, $this->stockOf($this->componentA),
+            'Invoice-only bundle sale must decompose component stock (GL already did)');
+        $this->assertSame(8, $this->stockOf($this->componentB));
+    }
+
+    /**
+     * Issue #243: a web order with a standalone component line AND a bundle
+     * line sharing that component previously skipped the bundle's share — the
+     * guard summed "already deducted" by product across the whole order.
+     */
+    public function test_shared_component_across_web_order_lines_is_fully_deducted(): void
+    {
+        $order = WebOrder::create([
+            'order_number' => 'WEB-'.Str::upper(Str::random(8)),
+            'customer_id' => Customer::factory()->create()->id,
+            'email' => 'shared-'.uniqid().'@test.local',
+            'first_name' => 'Shared',
+            'last_name' => 'Buyer',
+            'status' => 'pending',
+            'payment_status' => 'pending',
+            'subtotal' => 70,
+            'shipping_cost' => 0,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total' => 70,
+            'currency' => 'USD',
+            'fulfillment_warehouse_id' => $this->warehouse->id,
+        ]);
+
+        // Standalone: 2 Chocolate.
+        WebOrderItem::create([
+            'web_order_id' => $order->id,
+            'product_id' => $this->componentB->id,
+            'product_name' => 'Chocolate',
+            'product_sku' => $this->componentB->sku,
+            'unit_price' => 10,
+            'quantity' => 2,
+            'tax_rate' => 0,
+            'tax_amount' => 0,
+            'line_total' => 20,
+        ]);
+        // Bundle: 1 Gift Basket = 2 Red Wine + 1 Chocolate.
+        WebOrderItem::create([
+            'web_order_id' => $order->id,
+            'product_id' => $this->bundle->id,
+            'product_name' => 'Gift Basket',
+            'product_sku' => $this->bundle->sku,
+            'unit_price' => 50,
+            'quantity' => 1,
+            'tax_rate' => 0,
+            'tax_amount' => 0,
+            'line_total' => 50,
+        ]);
+
+        app(WebOrderPostingService::class)->deductStock($order->fresh('items.product'));
+
+        // Chocolate demand = 2 standalone + 1 bundle = 3 (was 2: bundle share skipped).
+        $this->assertSame(7, $this->stockOf($this->componentB),
+            'Shared component must be deducted for BOTH lines');
+        $this->assertSame(8, $this->stockOf($this->componentA), 'Bundle wine deduction');
+
+        // Restore mirrors the deduction.
+        app(WebOrderPostingService::class)->restoreStock($order->fresh('items.product'));
+        $this->assertSame(10, $this->stockOf($this->componentB));
+        $this->assertSame(10, $this->stockOf($this->componentA));
+    }
+
+    /**
+     * Issue #242: same cross-line under-deduction on the POS backfill path.
+     */
+    public function test_shared_component_across_two_pos_lines_is_fully_deducted(): void
+    {
+        $terminalId = \DB::table('pos_terminals')->insertGetId([
+            'name' => 'Bundle Terminal', 'code' => 'BND-T-'.Str::upper(Str::random(4)),
+            'warehouse_id' => $this->warehouse->id, 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $sessionId = \DB::table('pos_sessions')->insertGetId([
+            'terminal_id' => $terminalId, 'user_id' => $this->user->id,
+            'session_number' => 'BND-S-'.Str::upper(Str::random(4)), 'status' => 'open',
+            'opening_balance' => 0, 'opened_at' => now(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $journalEntryId = \DB::table('journal_entries')->insertGetId([
+            'entry_number' => 'JE-BND-'.Str::upper(Str::random(6)),
+            'entry_date' => now()->toDateString(),
+            'type' => 'general',
+            'status' => 'posted',
+            'created_by' => $this->user->id,
+            'is_reversal' => false,
+            'lifecycle_status' => 'posted',
+            'version_number' => 1,
+            'is_active_version' => true,
+            'is_period_close_entry' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $order = \Modules\POS\Models\PosOrder::create([
+            'external_id' => (string) Str::uuid(),
+            'order_number' => 'POS-'.Str::upper(Str::random(8)),
+            'status' => 'paid',
+            'session_id' => $sessionId,
+            'terminal_id' => $terminalId,
+            'created_by' => $this->user->id,
+            'subtotal' => 70,
+            'tax_amount' => 0,
+            'total' => 70,
+            'discount_value' => 0,
+            'discount_amount' => 0,
+            'is_return' => false,
+            'loyalty_points_earned' => 0,
+            'loyalty_points_redeemed' => 0,
+            'journal_entry_id' => $journalEntryId,
+            'currency' => 'USD',
+        ]);
+
+        \Modules\POS\Models\PosOrderItem::create([
+            'pos_order_id' => $order->id,
+            'product_id' => $this->componentB->id,
+            'name' => 'Chocolate',
+            'quantity' => 2,
+            'unit_price' => 10,
+            'tax_rate' => 0,
+            'tax_amount' => 0,
+            'line_total' => 20,
+        ]);
+        \Modules\POS\Models\PosOrderItem::create([
+            'pos_order_id' => $order->id,
+            'product_id' => $this->bundle->id,
+            'name' => 'Gift Basket',
+            'quantity' => 1,
+            'unit_price' => 50,
+            'tax_rate' => 0,
+            'tax_amount' => 0,
+            'line_total' => 50,
+        ]);
+
+        app(\Modules\POS\Services\PosPaymentCompletionService::class)
+            ->backfill($order->fresh(), 'cash', 'BND-REF-'.Str::upper(Str::random(6)));
+
+        $this->assertSame(7, $this->stockOf($this->componentB),
+            'POS shared component must be deducted for both lines');
+        $this->assertSame(8, $this->stockOf($this->componentA));
     }
 
     public function test_bundle_discount_columns_match_the_real_schema(): void

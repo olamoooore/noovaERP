@@ -36,35 +36,43 @@ class WebOrderPostingService
             ? $this->requireInventoryWarehouseId($order, 'deductStock')
             : null;
 
-        foreach ($order->items as $item) {
-            $product = $item->product;
+            // Issue #243: aggregate component demand across the whole order before
+            // deducting/restoring — stock_movements_ref_product_type_unique allows a
+            // single movement per (reference, product, type), and the old per-line
+            // math against an order-wide sum could skip a shared component.
+            $componentDemand = [];
+            foreach ($order->items as $item) {
+                $product = $item->product;
 
-            if (! $product) {
-                continue;
-            }
-
-            // Issue #130: a bundle consumes its components; a non-bundle
-            // consumes itself (only when inventory-tracked).
-            foreach ($this->bundleDecomposition->stockConsumingComponents($product, (float) $item->quantity) as $component) {
-                $productId = $component['product']->id;
-                $componentQty = (int) round($component['quantity']);
-
-                if ($componentQty <= 0) {
+                if (! $product) {
                     continue;
                 }
 
-                $alreadyDeducted = (int) StockMovement::where('reference_type', 'WebOrder')
+                foreach ($this->bundleDecomposition->stockConsumingComponents($product, (float) $item->quantity) as $component) {
+                    $productId = $component['product']->id;
+                    $qty = (float) $component['quantity'];
+
+                    if ($qty <= 0) {
+                        continue;
+                    }
+
+                    $componentDemand[$productId] = ($componentDemand[$productId] ?? 0.0) + $qty;
+                }
+            }
+
+            foreach ($componentDemand as $productId => $neededQty) {
+                $alreadyDeducted = (float) StockMovement::where('reference_type', 'WebOrder')
                     ->where('reference_id', $order->id)
                     ->where('type', 'sale')
                     ->where('product_id', $productId)
                     ->sum('quantity');
-                $remainingToDeduct = $componentQty - $alreadyDeducted;
+                $remainingToDeduct = $neededQty - $alreadyDeducted;
 
                 if ($remainingToDeduct <= 0) {
-                    Log::info('WebOrderPostingService::deductStock skip already deducted line', [
+                    Log::info('WebOrderPostingService::deductStock skip already deducted', [
                         'order_id' => $order->id,
                         'product_id' => $productId,
-                        'ordered_qty' => $componentQty,
+                        'needed_qty' => $neededQty,
                         'already_deducted' => $alreadyDeducted,
                     ]);
 
@@ -90,7 +98,6 @@ class WebOrderPostingService
                     throw $e;
                 }
             }
-        }
 
         Log::info('Stock deducted for web order', [
             'order_id' => $order->id,
@@ -111,36 +118,45 @@ class WebOrderPostingService
             ? $this->requireInventoryWarehouseId($order, 'restoreStock')
             : null;
 
-        foreach ($order->items as $item) {
-            $product = $item->product;
+            // Issue #243: aggregate component demand across the whole order before
+            // deducting/restoring — stock_movements_ref_product_type_unique allows a
+            // single movement per (reference, product, type), and the old per-line
+            // math against an order-wide sum could skip a shared component.
+            $componentDemand = [];
+            foreach ($order->items as $item) {
+                $product = $item->product;
 
-            if (! $product) {
-                continue;
-            }
-
-            // Issue #130: restore the decomposed components for bundle lines.
-            foreach ($this->bundleDecomposition->stockConsumingComponents($product, (float) $item->quantity) as $component) {
-                $productId = $component['product']->id;
-                $componentQty = (int) round($component['quantity']);
-
-                if ($componentQty <= 0) {
+                if (! $product) {
                     continue;
                 }
 
-                $alreadyDeducted = (int) StockMovement::where('reference_type', 'WebOrder')
+                foreach ($this->bundleDecomposition->stockConsumingComponents($product, (float) $item->quantity) as $component) {
+                    $productId = $component['product']->id;
+                    $qty = (float) $component['quantity'];
+
+                    if ($qty <= 0) {
+                        continue;
+                    }
+
+                    $componentDemand[$productId] = ($componentDemand[$productId] ?? 0.0) + $qty;
+                }
+            }
+
+            foreach ($componentDemand as $productId => $neededQty) {
+                $alreadyDeducted = (float) StockMovement::where('reference_type', 'WebOrder')
                     ->where('reference_id', $order->id)
                     ->where('type', 'sale')
                     ->where('product_id', $productId)
                     ->sum('quantity');
-                $alreadyRestored = (int) StockMovement::where('reference_type', 'WebOrder')
+                $alreadyRestored = (float) StockMovement::where('reference_type', 'WebOrder')
                     ->where('reference_id', $order->id)
                     ->where('type', 'return')
                     ->where('product_id', $productId)
                     ->sum('quantity');
-                $remainingToRestore = min($componentQty, $alreadyDeducted - $alreadyRestored);
+                $remainingToRestore = min($neededQty, $alreadyDeducted - $alreadyRestored);
 
                 if ($remainingToRestore <= 0) {
-                    Log::info('WebOrderPostingService::restoreStock skip already restored line', [
+                    Log::info('WebOrderPostingService::restoreStock skip already restored', [
                         'order_id' => $order->id,
                         'product_id' => $productId,
                         'already_deducted' => $alreadyDeducted,
@@ -169,7 +185,6 @@ class WebOrderPostingService
                     throw $e;
                 }
             }
-        }
 
         Log::info('Stock restored for web order', [
             'order_id' => $order->id,

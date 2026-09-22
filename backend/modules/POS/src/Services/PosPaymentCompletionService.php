@@ -78,6 +78,12 @@ class PosPaymentCompletionService
                 $paymentMethod
             );
 
+            // Issue #242: aggregate component demand across the whole order before
+            // deducting — stock_movements_ref_product_type_unique allows a single
+            // movement per (reference, product, type), and the old per-line math
+            // against an order-wide 'already deducted' sum under-deducted shared
+            // components (two lines consuming the same product).
+            $componentDemand = [];
             foreach ($posOrder->items as $item) {
                 $product = $item->variant ? $item->variant->product : $item->product;
 
@@ -85,37 +91,39 @@ class PosPaymentCompletionService
                     continue;
                 }
 
-                // Issue #130: a bundle consumes its components; a non-bundle
-                // consumes itself (only when inventory-tracked).
                 foreach ($this->bundleDecomposition->stockConsumingComponents($product, (float) $item->quantity) as $component) {
                     $productId = $component['product']->id;
-                    $componentQty = (int) round($component['quantity']);
+                    $qty = (float) $component['quantity'];
 
-                    if ($componentQty <= 0) {
+                    if ($qty <= 0) {
                         continue;
                     }
 
-                    $alreadyDeducted = (int) StockMovement::where('reference_type', 'PosOrder')
-                        ->where('reference_id', $posOrder->id)
-                        ->where('type', 'sale')
-                        ->where('product_id', $productId)
-                        ->sum('quantity');
-                    $remainingToDeduct = $componentQty - $alreadyDeducted;
-
-                    if ($remainingToDeduct <= 0) {
-                        continue;
-                    }
-
-                    $this->inventoryService->adjustStock(
-                        productId: $productId,
-                        warehouseId: $warehouseId,
-                        quantity: $remainingToDeduct,
-                        type: 'sale',
-                        reference: $posOrder->order_number,
-                        referenceType: 'PosOrder',
-                        referenceId: $posOrder->id,
-                    );
+                    $componentDemand[$productId] = ($componentDemand[$productId] ?? 0.0) + $qty;
                 }
+            }
+
+            foreach ($componentDemand as $productId => $neededQty) {
+                $alreadyDeducted = (float) StockMovement::where('reference_type', 'PosOrder')
+                    ->where('reference_id', $posOrder->id)
+                    ->where('type', 'sale')
+                    ->where('product_id', $productId)
+                    ->sum('quantity');
+                $remainingToDeduct = $neededQty - $alreadyDeducted;
+
+                if ($remainingToDeduct <= 0) {
+                    continue;
+                }
+
+                $this->inventoryService->adjustStock(
+                    productId: $productId,
+                    warehouseId: $warehouseId,
+                    quantity: $remainingToDeduct,
+                    type: 'sale',
+                    reference: $posOrder->order_number,
+                    referenceType: 'PosOrder',
+                    referenceId: $posOrder->id,
+                );
             }
             $posOrder->update([
                 'status' => 'paid',
@@ -175,6 +183,12 @@ class PosPaymentCompletionService
             }
 
             // Stock deduction — idempotent via already-deducted check
+            // Issue #242: aggregate component demand across the whole order before
+            // deducting — stock_movements_ref_product_type_unique allows a single
+            // movement per (reference, product, type), and the old per-line math
+            // against an order-wide 'already deducted' sum under-deducted shared
+            // components (two lines consuming the same product).
+            $componentDemand = [];
             foreach ($posOrder->items as $item) {
                 $product = $item->variant ? $item->variant->product : $item->product;
 
@@ -182,38 +196,39 @@ class PosPaymentCompletionService
                     continue;
                 }
 
-                // Issue #130: a bundle consumes its components; a non-bundle
-                // consumes itself (only when inventory-tracked).
                 foreach ($this->bundleDecomposition->stockConsumingComponents($product, (float) $item->quantity) as $component) {
                     $productId = $component['product']->id;
-                    $componentQty = (int) round($component['quantity']);
+                    $qty = (float) $component['quantity'];
 
-                    if ($componentQty <= 0) {
+                    if ($qty <= 0) {
                         continue;
                     }
 
-                    $alreadyDeducted = (int) StockMovement::where('reference_type', 'PosOrder')
-                        ->where('reference_id', $posOrder->id)
-                        ->where('type', 'sale')
-                        ->where('product_id', $productId)
-                        ->sum('quantity');
-
-                    $remainingToDeduct = $componentQty - $alreadyDeducted;
-
-                    if ($remainingToDeduct <= 0) {
-                        continue;
-                    }
-
-                    $this->inventoryService->adjustStock(
-                        productId: $productId,
-                        warehouseId: $warehouseId,
-                        quantity: $remainingToDeduct,
-                        type: 'sale',
-                        reference: $posOrder->order_number,
-                        referenceType: 'PosOrder',
-                        referenceId: $posOrder->id,
-                    );
+                    $componentDemand[$productId] = ($componentDemand[$productId] ?? 0.0) + $qty;
                 }
+            }
+
+            foreach ($componentDemand as $productId => $neededQty) {
+                $alreadyDeducted = (float) StockMovement::where('reference_type', 'PosOrder')
+                    ->where('reference_id', $posOrder->id)
+                    ->where('type', 'sale')
+                    ->where('product_id', $productId)
+                    ->sum('quantity');
+                $remainingToDeduct = $neededQty - $alreadyDeducted;
+
+                if ($remainingToDeduct <= 0) {
+                    continue;
+                }
+
+                $this->inventoryService->adjustStock(
+                    productId: $productId,
+                    warehouseId: $warehouseId,
+                    quantity: $remainingToDeduct,
+                    type: 'sale',
+                    reference: $posOrder->order_number,
+                    referenceType: 'PosOrder',
+                    referenceId: $posOrder->id,
+                );
             }
 
             return $posOrder->fresh();
