@@ -916,18 +916,38 @@ class ProductController extends Controller
             }
 
             // Validate numeric columns — flag rows with non-numeric values
-            // (e.g. "abc") instead of silently coercing them to 0.
+            // (e.g. "abc") instead of silently coercing them to 0. Negative
+            // values are also rejected explicitly (issue #136): these columns
+            // are non-negative by definition and a negative was previously
+            // accepted as valid then silently sign-stripped to positive.
             $numericColumns = ['cost', 'price', 'stock_quantity', 'shelf_life_days'];
             $invalidColumns = [];
+            $negativeColumns = [];
             foreach ($numericColumns as $column) {
-                if (array_key_exists($column, $row) && $this->isNonNumericImportValue($row[$column])) {
+                if (! array_key_exists($column, $row)) {
+                    continue;
+                }
+                if ($this->isNonNumericImportValue($row[$column])) {
                     $invalidColumns[] = $column;
+
+                    continue;
+                }
+                if ($this->parseNumericValue($row[$column]) < 0) {
+                    $negativeColumns[] = $column;
                 }
             }
             if (! empty($invalidColumns)) {
                 $errors[] = [
                     'row' => $index + 2,
                     'message' => 'Invalid numeric value(s) for: '.implode(', ', $invalidColumns),
+                ];
+
+                continue;
+            }
+            if (! empty($negativeColumns)) {
+                $errors[] = [
+                    'row' => $index + 2,
+                    'message' => 'Negative value(s) not allowed for: '.implode(', ', $negativeColumns),
                 ];
 
                 continue;
@@ -1115,16 +1135,19 @@ class ProductController extends Controller
     }
 
     /**
-     * Parse a numeric value from CSV, stripping currency symbols and non-numeric chars.
+     * Parse a numeric value from CSV, stripping currency symbols and
+     * non-numeric chars while preserving a leading sign (issue #136: the old
+     * regex dropped '-' and silently flipped negative values positive even
+     * though isNonNumericImportValue() accepted them).
      */
     private function parseNumericValue($value): float
     {
         if ($value === null || trim((string) $value) === '') {
             return 0;
         }
-        $cleaned = preg_replace('/[^0-9.]/', '', trim((string) $value));
+        $cleaned = preg_replace('/[^0-9.\-]/', '', trim((string) $value));
 
-        return $cleaned !== '' ? (float) $cleaned : 0;
+        return $cleaned !== '' && $cleaned !== '-' ? (float) $cleaned : 0;
     }
 
     /**
