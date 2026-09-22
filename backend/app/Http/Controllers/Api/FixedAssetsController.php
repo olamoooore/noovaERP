@@ -112,7 +112,9 @@ class FixedAssetsController extends Controller
             'columns' => ['required', 'array', 'min:1', 'max:'.count(FixedAssetsExport::COLUMNS)],
             'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(FixedAssetsExport::COLUMNS))],
         ]);
-        $query = FixedAsset::query();
+        // Issue #233: export() was the one action #163 left unscoped — the CSV
+        // leaked every entity's asset register to an entity-scoped user.
+        $query = $this->applyEntityScope($request, FixedAsset::query());
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
@@ -216,6 +218,11 @@ class FixedAssetsController extends Controller
                 $data['is_active'] = true;
                 $data['accumulated_depreciation'] = 0;
                 $data['book_value'] = $data['purchase_cost'];
+                // Issue #234: stamp the resolved entity/book context (same as
+                // store()) so imported rows are visible to entity-scoped users —
+                // a NULL legal_entity_id is invisible to whereIn().
+                $data['legal_entity_id'] = $request->attributes->get('legal_entity_id');
+                $data['entity_book_id'] = $request->attributes->get('entity_book_id');
                 FixedAsset::create($data);
                 $created++;
             } catch (\Throwable $e) {
