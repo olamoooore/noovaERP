@@ -330,7 +330,7 @@ class DeliveryOrderController extends Controller
         ]);
     }
 
-    public function confirm($id)
+    public function confirm(Request $request, $id)
     {
         $deliveryOrder = DeliveryOrder::find($id);
 
@@ -338,8 +338,16 @@ class DeliveryOrderController extends Controller
             return response()->json(['message' => 'Delivery order not found'], 404);
         }
 
+        $validated = $request->validate([
+            'method' => 'nullable|in:physical,digital',
+            'channel' => 'nullable|string|max:50',
+        ]);
+
         try {
-            $deliveryOrder = $this->deliveryService->confirmDeliveryOrder($deliveryOrder);
+            $deliveryOrder = $this->deliveryService->confirmDeliveryOrder($deliveryOrder, [
+                'method' => $validated['method'] ?? 'digital',
+                'channel' => $validated['channel'] ?? null,
+            ]);
 
             return response()->json([
                 'message' => 'Delivery order confirmed',
@@ -348,6 +356,38 @@ class DeliveryOrderController extends Controller
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
+    }
+
+    /**
+     * Issue #177: upload the signed copy for the physical confirmation path.
+     */
+    public function uploadSignedDocument(Request $request, $id)
+    {
+        $deliveryOrder = DeliveryOrder::find($id);
+
+        if (! $deliveryOrder) {
+            return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        if (! $deliveryOrder->isDraft()) {
+            return response()->json(['message' => 'The signed document must be uploaded before the order is confirmed.'], 422);
+        }
+
+        $validated = $request->validate([
+            'file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+        ]);
+
+        $path = $validated['file']->store('delivery-orders/signed', 'local');
+
+        $deliveryOrder->update([
+            'signed_document_path' => $path,
+            'signed_document_uploaded_at' => now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Signed delivery order uploaded',
+            'signed_document_path' => $path,
+        ]);
     }
 
     /**

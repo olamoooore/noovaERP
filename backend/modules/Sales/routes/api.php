@@ -72,6 +72,8 @@ Route::middleware([
         // Lifecycle transitions + bulk operations
         Route::middleware(\App\Http\Middleware\RequirePermission::class.':sales.write')->group(function () {
             Route::post('/sales/delivery-orders/{id}/confirm', [DeliveryOrderController::class, 'confirm']);
+            // Issue #177: signed copy upload for the physical confirmation path.
+            Route::post('/sales/delivery-orders/{id}/signed-document', [DeliveryOrderController::class, 'uploadSignedDocument']);
             Route::post('/sales/delivery-orders/{id}/complete', [DeliveryOrderController::class, 'complete']);
             Route::post('/sales/delivery-orders/{id}/reverse', [DeliveryOrderController::class, 'reverse']);
             Route::post('/sales/delivery-orders/{id}/cancel', [DeliveryOrderController::class, 'cancel']);

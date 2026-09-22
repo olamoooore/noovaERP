@@ -371,7 +371,15 @@ class DeliveryOrderService
      * DRAFT → CONFIRMED
      * Validates customer, warehouse, and lines. No stock effect.
      */
-    public function confirmDeliveryOrder(DeliveryOrder $deliveryOrder): DeliveryOrder
+    /**
+     * Issue #177: dual confirmation path.
+     *
+     * @param  array{method?: string, channel?: string|null, signed_document_path?: string|null}  $confirmation
+     *         method 'physical' requires an uploaded signed copy;
+     *         method 'digital' requires the channel the confirmation came
+     *         through (email/web/whatsapp/other).
+     */
+    public function confirmDeliveryOrder(DeliveryOrder $deliveryOrder, array $confirmation = []): DeliveryOrder
     {
         if (! $deliveryOrder->isDraft()) {
             throw new \Exception('Only draft delivery orders can be confirmed.');
@@ -381,11 +389,31 @@ class DeliveryOrderService
             throw new \Exception('Warehouse is required before this delivery order can be confirmed.');
         }
 
+        $method = $confirmation['method'] ?? 'digital';
+
+        if (! in_array($method, ['physical', 'digital'], true)) {
+            throw new \Exception('Confirmation method must be physical or digital.');
+        }
+
+        $channel = $confirmation['channel'] ?? null;
+        $signedDocumentPath = $confirmation['signed_document_path'] ?? $deliveryOrder->signed_document_path;
+
+        if ($method === 'physical' && ! $signedDocumentPath) {
+            throw new \Exception('Physical confirmation requires the signed delivery order document to be uploaded first.');
+        }
+
+        if ($method === 'digital' && ! $channel) {
+            $channel = 'system';
+        }
+
         $actorId = TenantUserHelper::requireTenantUserId(Auth::id());
 
         $deliveryOrder->update([
             'status' => 'confirmed',
             'confirmed_by' => $actorId,
+            'confirmation_method' => $method,
+            'confirmed_via_channel' => $method === 'digital' ? $channel : null,
+            'signed_document_path' => $method === 'physical' ? $signedDocumentPath : $deliveryOrder->signed_document_path,
         ]);
 
         return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder']);

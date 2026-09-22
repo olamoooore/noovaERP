@@ -17,6 +17,11 @@ class DeliveryOrder extends Model
         'customer_id',
         'warehouse_id',
         'status',
+        // Issue #177: dual confirmation path audit trail.
+        'confirmation_method',
+        'confirmed_via_channel',
+        'signed_document_path',
+        'signed_document_uploaded_at',
         'delivery_date',
         'expected_date',
         'payment_terms',
@@ -44,6 +49,7 @@ class DeliveryOrder extends Model
     ];
 
     protected $casts = [
+        'signed_document_uploaded_at' => 'datetime',
         'delivery_date' => 'date',
         'expected_date' => 'date',
         'completed_at' => 'datetime',
