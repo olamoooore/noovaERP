@@ -105,6 +105,13 @@ export async function compressGrapesJsComponents(
   let bytesBefore = 0
   let bytesAfter = 0
 
+  // GrapesJS returns a Components Collection, not an array. Walk the plain
+  // JSON definition instead: spreading a Collection copies circular internals
+  // (model/parent back-references) and makes the save payload unserialisable.
+  const source = components && typeof components.toJSON === 'function'
+    ? components.toJSON()
+    : components
+
   const walk = async (node: any): Promise<any> => {
     if (!node || typeof node !== 'object') return node
 
@@ -152,7 +159,7 @@ export async function compressGrapesJsComponents(
     return next
   }
 
-  const newTree = await walk(components)
+  const newTree = await walk(source)
   return { components: newTree, compressedCount, bytesBefore, bytesAfter }
 }
 

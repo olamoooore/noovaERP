@@ -493,8 +493,17 @@ export function WebsiteEditor() {
 
   // Handle save
   const handleSave = useCallback((data: { html: string; css: string; components: any; styles: any; header_js?: string; body_js?: string }) => {
+    // GrapesJS hands back Collections (getComponents/getStyle). Only plain JSON
+    // can be serialised for the API — a Collection carries circular
+    // model/parent references and JSON.stringify throws before the request is
+    // even sent (the transient 'Failed to save.' with no network entry).
+    const toPlainJson = (value: any) =>
+      value && typeof value.toJSON === 'function' ? value.toJSON() : value
+
     saveMutation.mutate({
       ...data,
+      components: toPlainJson(data.components),
+      styles: toPlainJson(data.styles),
       header_js: data.header_js ?? headerJs,
       body_js: data.body_js ?? bodyJs,
     })
