@@ -1034,6 +1034,8 @@ class PostingEngine implements PostingEngineInterface
             // Issue #176: DO completion recognises COGS — a sales fulfilment
             // action performed by the same actors who create web orders.
             'delivery_order' => 'sales.write',
+            // Issue #94: fixed-asset impairment posting.
+            'asset_impairment' => 'accounting.write',
             // Genuinely unknown document types resolve to null; the
             // PermissionGate treats a null required_permission on a material
             // posting action as a fail-closed ERROR (#37 AC4).

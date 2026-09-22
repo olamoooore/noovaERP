@@ -320,6 +320,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/invoices/{invoice}/evidence', [InvoiceController::class, 'uploadEvidence'])
             ->middleware(RequirePermission::using('invoices.evidence.manage'));
 
+        // Acceptance link (public portal link for customer acceptance)
+        Route::post('/invoices/{invoice}/acceptance-link', [InvoiceController::class, 'createAcceptanceLink'])
+            ->middleware(RequirePermission::using('invoices.evidence.manage'));
+
+        // E-sign envelope (Phase E — external provider abstraction)
+        Route::post('/invoices/{invoice}/send-for-esign', [InvoiceController::class, 'sendForEsign'])
+            ->middleware(RequirePermission::using('invoices.evidence.manage'));
+
         // Payment link
         Route::post('/invoices/{invoice}/payment-link', [InvoiceController::class, 'createPaymentLink'])
             ->middleware(RequirePermission::using('invoices.request_payment'));
@@ -531,6 +539,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::delete('/assets/{id}', [FixedAssetsController::class, 'destroy']);
         Route::get('/assets/{id}/depreciation', [FixedAssetsController::class, 'getDepreciationSchedule']);
         Route::post('/assets/{id}/dispose', [FixedAssetsController::class, 'dispose']);
+        Route::post('/assets/{id}/impair', [FixedAssetsController::class, 'impair'])
+            ->middleware(RequirePermission::using('accounting.write'));
         Route::post('/assets/{id}/generate-schedule', [FixedAssetsController::class, 'generateSchedule']);
         Route::post('/assets/{id}/post-pending-schedules', [FixedAssetsController::class, 'postPendingSchedules']);
         Route::post('/assets/calculate-depreciation', [FixedAssetsController::class, 'calculateDepreciation']);

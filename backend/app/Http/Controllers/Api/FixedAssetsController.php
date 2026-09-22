@@ -390,6 +390,92 @@ class FixedAssetsController extends Controller
     /**
      * Dispose asset
      */
+    /**
+     * Issue #94: impair a fixed asset — reduce its carrying amount to the
+     * recoverable amount and post the loss (Dr depreciation expense /
+     * Cr accumulated depreciation) through PostingEngine.
+     */
+    public function impair(Request $request, int $id)
+    {
+        $asset = $this->findScopedAsset($request, $id);
+
+        $validated = $request->validate([
+            'impairment_date' => 'required|date',
+            'recoverable_amount' => 'required|numeric|min:0',
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $carrying = (float) $asset->book_value;
+        $recoverable = round((float) $validated['recoverable_amount'], 2);
+        $loss = round($carrying - $recoverable, 2);
+
+        if ($loss <= 0) {
+            return response()->json([
+                'message' => 'No impairment required: the recoverable amount is not below the carrying amount.',
+            ], 422);
+        }
+
+        if (! $asset->depreciation_account_id || ! $asset->accumulated_depreciation_account_id) {
+            return response()->json([
+                'message' => 'Asset is missing its depreciation/accumulated accounts — cannot post the impairment.',
+            ], 422);
+        }
+
+        return DB::transaction(function () use ($asset, $validated, $carrying, $recoverable, $loss) {
+            $result = app(\App\Accounting\PostingEngine::class)->post(new \App\Accounting\DTOs\PostingRequest(
+                documentType: 'asset_impairment',
+                documentId: (int) $asset->id,
+                postingDate: $validated['impairment_date'],
+                description: "Impairment - {$asset->name}",
+                lines: [
+                    new \App\Accounting\DTOs\PostingRequestLine(
+                        accountMappingKey: 'depreciation_expense',
+                        accountId: (int) $asset->depreciation_account_id,
+                        debit: $loss,
+                        credit: 0.0,
+                        description: "Impairment loss - {$asset->name}",
+                    ),
+                    new \App\Accounting\DTOs\PostingRequestLine(
+                        accountMappingKey: 'accumulated_depreciation',
+                        accountId: (int) $asset->accumulated_depreciation_account_id,
+                        debit: 0.0,
+                        credit: $loss,
+                        description: "Accumulated impairment - {$asset->name}",
+                    ),
+                ],
+                reference: $asset->asset_number,
+                userId: \Modules\OCRBookkeeping\Helpers\TenantUserHelper::requireTenantUserId(),
+            ));
+
+            if (! $result->success) {
+                throw new \RuntimeException('Impairment posting failed: '.($result->error ?? 'unknown error'));
+            }
+
+            $record = \App\Models\ImpairmentRecord::create([
+                'tenant_id' => tenant()->id,
+                'fixed_asset_id' => $asset->id,
+                'impairment_date' => $validated['impairment_date'],
+                'carrying_amount_before' => $carrying,
+                'recoverable_amount' => $recoverable,
+                'impairment_loss' => $loss,
+                'reason' => $validated['reason'] ?? null,
+                'journal_entry_id' => $result->journalEntryId ?? ($result->journalEntry?->id ?? null),
+                'created_by' => \Modules\OCRBookkeeping\Helpers\TenantUserHelper::resolveTenantUserId(),
+            ]);
+
+            $asset->update([
+                'book_value' => $recoverable,
+                'accumulated_depreciation' => (float) $asset->accumulated_depreciation + $loss,
+            ]);
+
+            return response()->json([
+                'message' => 'Asset impaired',
+                'impairment' => $record,
+                'asset' => $asset->fresh(),
+            ], 201);
+        });
+    }
+
     public function dispose(Request $request, $id)
     {
         $validator = Validator::make($request->all(), [
