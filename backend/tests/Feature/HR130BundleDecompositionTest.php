@@ -61,6 +61,22 @@ class HR130BundleDecompositionTest extends TenantTestCase
         $this->user->assignRole('Admin');
         $this->actingAs($this->user);
 
+        // Issue #176: DO completion now posts COGS through the authority gate,
+        // which requires an open fiscal period.
+        \App\Models\FiscalPeriod::firstOrCreate(
+            ['code' => now()->format('Y-m')],
+            [
+                'name' => now()->format('F Y'),
+                'period_start' => now()->startOfMonth()->toDateString(),
+                'period_end' => now()->endOfMonth()->toDateString(),
+                'period_type' => 'monthly',
+                'fiscal_year' => (int) now()->format('Y'),
+                'is_locked' => false,
+                'status' => 'open',
+                'created_by' => $this->user->id,
+            ]
+        );
+
         $this->warehouse = Warehouse::create([
             'name' => 'Bundle Warehouse',
             'code' => 'BND-'.uniqid(),
@@ -124,7 +140,7 @@ class HR130BundleDecompositionTest extends TenantTestCase
             ->value('quantity');
     }
 
-    private function deliver(int $quantity): void
+    private function deliver(int $quantity): \Modules\Sales\Models\DeliveryOrder
     {
         $service = app(DeliveryOrderService::class);
 
@@ -141,6 +157,8 @@ class HR130BundleDecompositionTest extends TenantTestCase
         ]);
 
         $service->completeDeliveryOrder($do);
+
+        return $do->fresh();
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -533,6 +551,97 @@ class HR130BundleDecompositionTest extends TenantTestCase
         $webSerial = \App\Models\ProductSerial::where('serial_number', 'SN-WEB-1')->first();
         $this->assertSame('sold', $webSerial->status, 'Web sale must mark the serial sold');
         $this->assertSame($webOrder->order_number, $webSerial->sale_reference);
+    }
+
+    /**
+     * Issue #176: DO completion must post Dr COGS / Cr Inventory (and its
+     * reversal must post the matching reversing entry) independent of invoice
+     * posting.
+     */
+    public function test_delivery_order_completion_posts_cogs_and_reversal(): void
+    {
+        $do = $this->deliver(1); // 1 Gift Basket = A(2 x 5.00) + B(1 x 3.00) = 13.00
+
+        $links = \App\Models\JournalEntryLink::where('source_document_type', 'delivery_order')
+            ->where('source_document_id', $do->id)
+            ->get();
+        $this->assertCount(1, $links, 'DO completion must post one COGS journal entry');
+
+        $mapping = app(\App\Accounting\Services\AccountMappingService::class);
+        $lines = \App\Models\JournalEntryLine::where('journal_entry_id', $links->first()->journal_entry_id)->get();
+        $cogs = $lines->firstWhere('account_id', $mapping->resolveId('cogs'));
+        $inventory = $lines->firstWhere('account_id', $mapping->resolveId('inventory'));
+
+        $this->assertNotNull($cogs, 'COGS line must exist');
+        $this->assertNotNull($inventory, 'Inventory line must exist');
+        $this->assertSame(13.00, round((float) $cogs->debit, 2));
+        $this->assertSame(13.00, round((float) $inventory->credit, 2));
+
+        // Reversal posts the mirror entry.
+        app(\Modules\Sales\Services\DeliveryOrderService::class)
+            ->reverseDeliveryOrder($do->fresh(['lines.product', 'lines.salesOrderLine']), 'test reversal');
+
+        $reversalLines = \App\Models\JournalEntryLine::whereHas('journalEntry', function ($q) use ($do) {
+            $q->whereIn('id', \App\Models\JournalEntryLink::where('source_document_type', 'delivery_order')
+                ->where('source_document_id', $do->id)
+                ->pluck('journal_entry_id'));
+        })->get();
+
+        // Two entries now exist: the original and its reversal.
+        $this->assertGreaterThanOrEqual(2, \App\Models\JournalEntryLink::where('source_document_type', 'delivery_order')
+            ->where('source_document_id', $do->id)->count(), 'Reversal journal entry must be linked to the DO');
+
+        $inventoryDebits = $reversalLines->where('account_id', $mapping->resolveId('inventory'))->sum('debit');
+        $this->assertSame(13.00, round((float) $inventoryDebits, 2),
+            'Reversal must debit inventory for the full COGS amount');
+    }
+
+    /**
+     * Issue #176 (sequencing guard): when a completed DO already issued the
+     * goods, posting the linked invoice must NOT post COGS or move stock a
+     * second time.
+     */
+    public function test_invoice_linked_to_completed_do_does_not_double_post_cogs_or_stock(): void
+    {
+        $do = $this->deliver(1); // posts COGS 13.00, stock A=8, B=9
+
+        $invoice = \App\Models\Invoice::factory()->create([
+            'customer_id' => Customer::factory()->create()->id,
+            'status' => 'draft',
+            'lifecycle_status' => 'draft',
+            'created_by' => $this->user->id,
+            'subtotal' => 100,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total' => 100,
+            'paid_amount' => 0,
+            'balance' => 100,
+        ]);
+        \App\Models\InvoiceLine::create([
+            'invoice_id' => $invoice->id,
+            'product_id' => $this->bundle->id,
+            'description' => 'Gift Basket',
+            'quantity' => 1,
+            'unit_price' => 100,
+            'tax_rate' => 0,
+            'tax_amount' => 0,
+            'line_total' => 100,
+        ]);
+        // Link the completed DO to the invoice (DO.invoice_id is the relation).
+        $do->update(['invoice_id' => $invoice->id]);
+
+        app(\App\Services\InvoiceService::class)
+            ->postInvoice($invoice->fresh(['lines.product', 'customer']));
+
+        // Stock unchanged by the invoice posting.
+        $this->assertSame(8, $this->stockOf($this->componentA));
+        $this->assertSame(9, $this->stockOf($this->componentB));
+
+        // COGS recognised exactly once (by the DO), not twice.
+        $mapping = app(\App\Accounting\Services\AccountMappingService::class);
+        $cogsDebits = \App\Models\JournalEntryLine::where('account_id', $mapping->resolveId('cogs'))->sum('debit');
+        $this->assertSame(13.00, round((float) $cogsDebits, 2),
+            'Invoice must not post a second COGS when its DO already did');
     }
 
     public function test_bundle_discount_columns_match_the_real_schema(): void

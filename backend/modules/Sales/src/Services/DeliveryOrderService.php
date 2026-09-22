@@ -22,6 +22,7 @@ class DeliveryOrderService
         private InventoryService $inventoryService,
         private StockReservationService $reservationService,
         private \App\Services\BundleDecompositionService $bundleDecomposition,
+        private \App\Accounting\PostingEngine $postingEngine,
     ) {}
 
     // ════════════════════════════════════════════════════════════════════════
@@ -158,6 +159,118 @@ class DeliveryOrderService
             }
 
             return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);
+    }
+
+
+    /**
+     * Issue #176: DO completion issues inventory from the ledger's perspective
+     * too — post Dr COGS / Cr Inventory at completion, independent of invoice
+     * posting (the documented no-enforced-DO/Invoice sequencing policy).
+     */
+    private function postDeliveryCogs(DeliveryOrder $deliveryOrder, int $warehouseId, int $actorId): void
+    {
+        $totalCogs = $this->deliveryCogsTotal($deliveryOrder, $warehouseId);
+
+        if ($totalCogs <= 0) {
+            return;
+        }
+
+        $result = $this->postingEngine->domainPosting(new \App\Accounting\DTOs\DomainPostingRequest(
+            postingRequestId: \App\Accounting\DTOs\DomainPostingRequest::generateRequestId(),
+            idempotencyKey: "delivery_order:{$deliveryOrder->id}:cogs",
+            tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+            entityId: '',
+            accountingBookId: '',
+            sourceCapability: 'ACC-012',
+            sourceRecordType: 'delivery_order',
+            sourceRecordId: (string) $deliveryOrder->id,
+            sourceRecordVersion: 1,
+            postingProfileCode: 'DELIVERY_ORDER_COGS',
+            transactionDate: now()->toDateString(),
+            postingDate: now()->toDateString(),
+            lines: [
+                new \App\Accounting\DTOs\DomainPostingLine(
+                    accountRole: 'cogs',
+                    amount: round($totalCogs, 2),
+                    description: "COGS - DO {$deliveryOrder->delivery_order_number}",
+                ),
+                new \App\Accounting\DTOs\DomainPostingLine(
+                    accountRole: 'inventory',
+                    amount: round($totalCogs, 2),
+                    description: "Inventory - DO {$deliveryOrder->delivery_order_number}",
+                ),
+            ],
+            userId: $actorId,
+            ledgerDescription: "Delivery Order #{$deliveryOrder->delivery_order_number} COGS",
+            reference: $deliveryOrder->delivery_order_number,
+        ));
+
+        if (! $result->success) {
+            throw new \RuntimeException(
+                "Delivery order GL posting failed for {$deliveryOrder->delivery_order_number}: ".($result->error ?? 'unknown error')
+            );
+        }
+    }
+
+    /**
+     * Issue #176: reversing a completed DO must also reverse its COGS entry.
+     * domainPosting() dedupes by source record, so the reversal goes through
+     * PostingEngine::reverse() (relation_type=reversal links to the same DO).
+     */
+    private function postDeliveryCogsReversal(DeliveryOrder $deliveryOrder, int $warehouseId, int $actorId): void
+    {
+        $link = \App\Models\JournalEntryLink::where('source_document_type', 'delivery_order')
+            ->where('source_document_id', $deliveryOrder->id)
+            ->where('relation_type', 'post')
+            ->first();
+
+        if (! $link) {
+            return; // nothing posted (e.g. zero-cost delivery)
+        }
+
+        $result = $this->postingEngine->reverse(new \App\Accounting\DTOs\ReversalRequest(
+            journalEntryId: (int) $link->journal_entry_id,
+            reversalDate: now()->toDateString(),
+            reason: 'Delivery order reversed',
+            reasonCode: 'DELIVERY_ORDER_REVERSAL',
+            actorUserId: $actorId,
+            tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+        ));
+
+        if (! $result->success) {
+            throw new \RuntimeException(
+                "Delivery order COGS reversal posting failed for {$deliveryOrder->delivery_order_number}: ".($result->error ?? 'unknown error')
+            );
+        }
+    }
+
+    /**
+     * FEFO layer cost when available, bundle component cost otherwise.
+     */
+    private function deliveryCogsTotal(DeliveryOrder $deliveryOrder, int $warehouseId): float
+    {
+        $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
+        $total = 0.0;
+
+        foreach ($deliveryOrder->lines as $line) {
+            if (($line->line_type ?? 'product') !== 'product' || ! $line->product) {
+                continue;
+            }
+
+            $qty = (float) $line->quantity_delivered;
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $lineCogs = $batchConsumption->costForLine($line->product, $qty, $warehouseId)
+                ?? $this->bundleDecomposition->cost($line->product, $qty);
+
+            if ($lineCogs > 0) {
+                $total += $lineCogs;
+            }
+        }
+
+        return $total;
     }
 
     /**
@@ -541,6 +654,9 @@ class DeliveryOrderService
                 }
             }
 
+            // Issue #176: recognise COGS at completion time.
+            $this->postDeliveryCogs($deliveryOrder, $warehouseId, $actorId);
+
             $deliveryOrder->update([
                 'status' => 'done',
                 'completed_at' => now(),
@@ -603,6 +719,9 @@ class DeliveryOrderService
                     $soLine->update(['quantity_delivered' => $newDelivered]);
                 }
             }
+
+            // Issue #176: reverse the COGS entry that completion posted.
+            $this->postDeliveryCogsReversal($deliveryOrder, $warehouseId, $actorId);
 
             $deliveryOrder->update([
                 'status' => 'cancelled',

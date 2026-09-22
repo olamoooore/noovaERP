@@ -331,6 +331,24 @@ class PostingPolicyMapper
                         'grni' => ['account_id' => null, 'direction' => 'credit'],
                     ],
                 ],
+                // Issue #176: a completed delivery order issues inventory and must
+                // recognise COGS even before (or without) the invoice posting.
+                'DELIVERY_ORDER_COGS' => [
+                    'id' => 'DELIVERY_ORDER_COGS',
+                    'version' => '1.0',
+                    'mappings' => [
+                        'cogs' => ['account_id' => null, 'direction' => 'debit'],
+                        'inventory' => ['account_id' => null, 'direction' => 'credit'],
+                    ],
+                ],
+                'DELIVERY_ORDER_COGS_REVERSAL' => [
+                    'id' => 'DELIVERY_ORDER_COGS_REVERSAL',
+                    'version' => '1.0',
+                    'mappings' => [
+                        'inventory' => ['account_id' => null, 'direction' => 'debit'],
+                        'cogs' => ['account_id' => null, 'direction' => 'credit'],
+                    ],
+                ],
             ],
             'ACC-011' => [
                 'CLOSE_PERIODIC' => [

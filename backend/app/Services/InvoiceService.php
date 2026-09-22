@@ -178,9 +178,12 @@ class InvoiceService
             }
 
             // ── COGS lines for inventory items ───────────────
-            // Issue #130: bundle lines cost the SUM of their components, not the
-            // bundle product's own (usually unset) cost field.
+            // Issue #176: when a completed delivery order already posted COGS
+            // for this invoice's goods, the invoice must NOT post it again (the
+            // DO is the inventory-issue event; the invoice only recognises
+            // revenue/AR).
             $totalCogs = 0;
+            if (! $this->deliveryAlreadyPostedCogs($invoice)) {
             $bundleDecomposition = app(\App\Services\BundleDecompositionService::class);
             $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
 
@@ -221,6 +224,8 @@ class InvoiceService
                     amount: $totalCogs,
                     description: "Inventory - Invoice {$invoice->invoice_number}",
                 );
+            }
+
             }
 
             // ── Post via PostingEngine (domain contract) ─────
@@ -504,6 +509,13 @@ class InvoiceService
 
     private function shouldSkipInventoryAdjustment(Invoice $invoice): bool
     {
+        // Issue #176: a completed DO linked to this invoice already moved stock.
+        if (\Modules\Sales\Models\DeliveryOrder::where('invoice_id', $invoice->id)
+            ->where('status', 'done')
+            ->exists()) {
+            return true;
+        }
+
         $salesOrder = $invoice->salesOrder;
 
         if (! $salesOrder) {
@@ -524,6 +536,26 @@ class InvoiceService
         }
 
         return false;
+    }
+
+    /**
+     * Issue #176: a completed delivery order linked to this invoice already
+     * issued the goods (stock + COGS); the invoice must not repeat either.
+     */
+    private function deliveryAlreadyPostedCogs(Invoice $invoice): bool
+    {
+        $doIds = \Modules\Sales\Models\DeliveryOrder::where('invoice_id', $invoice->id)
+            ->where('status', 'done')
+            ->pluck('id');
+
+        if ($doIds->isEmpty()) {
+            return false;
+        }
+
+        return \App\Models\JournalEntryLink::where('source_document_type', 'delivery_order')
+            ->whereIn('source_document_id', $doIds)
+            ->where('relation_type', 'post')
+            ->exists();
     }
 
     /**
