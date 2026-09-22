@@ -57,6 +57,7 @@ class Quotation extends Model
         'date_of_case',
         'case_location',
         'patient_name',
+        'patient_name_encrypted',
         'cost_center_id',
         'delivery_date',
         'pr_no',
@@ -70,6 +71,7 @@ class Quotation extends Model
     ];
 
     protected $casts = [
+        'patient_name_encrypted' => \App\Casts\EncryptedOrLegacyString::class,
         'quotation_date' => 'date',
         'valid_until' => 'date',
         'subtotal' => 'decimal:2',
@@ -225,4 +227,23 @@ class Quotation extends Model
     {
         return $this->status === 'sent';
     }
+
+    // Issue #222: patient name is PHI — encrypted at rest, exposed as the
+    // virtual patient_name attribute so existing callers keep working.
+    protected $appends = ['patient_name'];
+
+    protected $hidden = ['patient_name_encrypted'];
+
+    public function getPatientNameAttribute(): ?string
+    {
+        return $this->patient_name_encrypted;
+    }
+
+    public function setPatientNameAttribute(mixed $value): void
+    {
+        $this->attributes['patient_name_encrypted'] = ($value === null || $value === '')
+            ? null
+            : \Illuminate\Support\Facades\Crypt::encryptString((string) $value);
+    }
+
 }

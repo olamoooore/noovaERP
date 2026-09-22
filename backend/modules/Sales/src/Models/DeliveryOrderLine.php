@@ -17,6 +17,7 @@ class DeliveryOrderLine extends Model
         'description',
         'product_notes',
         'patient_name',
+        'patient_name_encrypted',
         'quantity_ordered',
         'quantity_delivered',
         'unit_price',
@@ -30,6 +31,7 @@ class DeliveryOrderLine extends Model
     ];
 
     protected $casts = [
+        'patient_name_encrypted' => \App\Casts\EncryptedOrLegacyString::class,
         'sequence' => 'integer',
         'quantity_ordered' => 'decimal:4',
         'quantity_delivered' => 'decimal:4',
@@ -62,4 +64,23 @@ class DeliveryOrderLine extends Model
 
         return (float) $this->quantity_ordered - (float) $this->quantity_delivered;
     }
+
+    // Issue #222: patient name is PHI — encrypted at rest, exposed as the
+    // virtual patient_name attribute so existing callers keep working.
+    protected $appends = ['patient_name'];
+
+    protected $hidden = ['patient_name_encrypted'];
+
+    public function getPatientNameAttribute(): ?string
+    {
+        return $this->patient_name_encrypted;
+    }
+
+    public function setPatientNameAttribute(mixed $value): void
+    {
+        $this->attributes['patient_name_encrypted'] = ($value === null || $value === '')
+            ? null
+            : \Illuminate\Support\Facades\Crypt::encryptString((string) $value);
+    }
+
 }
