@@ -318,7 +318,20 @@ class ContactMasterService
             return null;
         }
 
-        return ContactAddress::create([
+        // Issue #121: only one primary / default-billing / default-shipping
+        // address per contact — unset the flag on any existing row first.
+        return DB::transaction(function () use ($contactId, $data, $tenantId) {
+            if (! empty($data['is_primary'])) {
+                ContactAddress::where('contact_id', $contactId)->update(['is_primary' => false]);
+            }
+            if (! empty($data['is_default_billing'])) {
+                ContactAddress::where('contact_id', $contactId)->update(['is_default_billing' => false]);
+            }
+            if (! empty($data['is_default_shipping'])) {
+                ContactAddress::where('contact_id', $contactId)->update(['is_default_shipping' => false]);
+            }
+
+            return ContactAddress::create([
             'id' => Str::uuid(),
             'tenant_id' => $tenantId,
             'contact_id' => $contactId,
@@ -337,7 +350,8 @@ class ContactMasterService
             'is_default_billing' => $data['is_default_billing'] ?? false,
             'is_default_shipping' => $data['is_default_shipping'] ?? false,
             'metadata' => $data['metadata'] ?? null,
-        ]);
+            ]);
+        });
     }
 
     // ─── Methods ──────────────────────────────────────────────────
@@ -349,18 +363,25 @@ class ContactMasterService
             return null;
         }
 
-        return ContactMethod::create([
-            'id' => Str::uuid(),
-            'tenant_id' => $tenantId,
-            'contact_id' => $contactId,
-            'method_type' => $data['method_type'],
-            'method_value' => $data['method_value'],
-            'method_label' => $data['method_label'] ?? null,
-            'is_primary' => $data['is_primary'] ?? false,
-            'is_verified' => $data['is_verified'] ?? false,
-            'is_for_notifications' => $data['is_for_notifications'] ?? false,
-            'metadata' => $data['metadata'] ?? null,
-        ]);
+        return DB::transaction(function () use ($contactId, $data, $tenantId) {
+            // Issue #121: only one primary method per contact.
+            if (! empty($data['is_primary'])) {
+                ContactMethod::where('contact_id', $contactId)->update(['is_primary' => false]);
+            }
+
+            return ContactMethod::create([
+                'id' => Str::uuid(),
+                'tenant_id' => $tenantId,
+                'contact_id' => $contactId,
+                'method_type' => $data['method_type'],
+                'method_value' => $data['method_value'],
+                'method_label' => $data['method_label'] ?? null,
+                'is_primary' => $data['is_primary'] ?? false,
+                'is_verified' => $data['is_verified'] ?? false,
+                'is_for_notifications' => $data['is_for_notifications'] ?? false,
+                'metadata' => $data['metadata'] ?? null,
+            ]);
+        });
     }
 
     // ─── Relationships ────────────────────────────────────────────
@@ -818,7 +839,10 @@ class ContactMasterService
     {
         $roles = $contact->roles->pluck('role')->implode(', ');
         $identifiers = $contact->identifiers->pluck('identifier_value')->implode(', ');
-        $address = $contact->addresses->first();
+        // Issue #121: the search index must use the PRIMARY address, not the
+        // first row in insertion order.
+        $address = $contact->addresses->firstWhere('is_primary', true)
+            ?? $contact->addresses->first();
         $addressText = $address ? $address->full_address : null;
 
         $data = [
