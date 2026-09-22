@@ -58,7 +58,6 @@ class MedicalCaseController extends Controller
         $validated = $request->validate([
             'customer_id' => 'required|exists:customers,id',
             'invoice_id' => 'nullable|exists:invoices,id',
-            'bonus_scheme_id' => 'nullable|exists:bonus_schemes,id',
             'delivery_address_id' => ['nullable', Rule::exists('customer_addresses', 'id')->where('customer_id', $customerId)],
             'doctor_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
             'requestor_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
@@ -84,7 +83,6 @@ class MedicalCaseController extends Controller
                 $case = MedicalCase::create([
                     'customer_id' => $validated['customer_id'],
                     'invoice_id' => $validated['invoice_id'] ?? null,
-                    'bonus_scheme_id' => $validated['bonus_scheme_id'] ?? null,
                     'delivery_address_id' => $validated['delivery_address_id'] ?? null,
                     'doctor_contact_id' => $validated['doctor_contact_id'] ?? null,
                     'requestor_contact_id' => $validated['requestor_contact_id'] ?? null,
@@ -171,7 +169,6 @@ class MedicalCaseController extends Controller
         $validated = $request->validate([
             'customer_id' => 'sometimes|required|exists:customers,id',
             'invoice_id' => 'nullable|exists:invoices,id',
-            'bonus_scheme_id' => 'nullable|exists:bonus_schemes,id',
             'delivery_address_id' => ['nullable', Rule::exists('customer_addresses', 'id')->where('customer_id', $customerId)],
             'doctor_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
             'requestor_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
@@ -296,10 +293,22 @@ class MedicalCaseController extends Controller
                         throw new \RuntimeException("Delivered quantity cannot exceed allocated quantity for item {$item->id}");
                     }
 
+                    $previouslyDelivered = (float) $item->delivered_qty;
+
                     $item->update([
                         'delivered_qty' => $itemData['delivered_qty'],
                         'delivery_order_item_id' => $itemData['delivery_order_item_id'] ?? $item->delivery_order_item_id,
                     ]);
+
+                    // Issue #184: accrue bonus usage for the newly delivered
+                    // quantity, fanned out over every active scheme assignment
+                    // the customer holds (same transaction as the delivery).
+                    $newlyDelivered = (float) $itemData['delivered_qty'] - $previouslyDelivered;
+
+                    if ($newlyDelivered > 0) {
+                        app(\App\Services\MedicalCaseBonusAccrualService::class)
+                            ->accrueForItem($item->fresh(), $newlyDelivered);
+                    }
                 }
 
                 $case->update(['status' => 'delivered']);
@@ -370,6 +379,26 @@ class MedicalCaseController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Issue #185: hospital/doctor performance report.
+     */
+    public function performanceReport(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'from_date' => 'required|date',
+            'to_date' => 'required|date|after_or_equal:from_date',
+            'date_field' => 'nullable|in:case_date,procedure_date',
+        ]);
+
+        $report = app(\App\Services\MedicalCaseReportingService::class)->performance(
+            \Carbon\Carbon::parse($validated['from_date']),
+            \Carbon\Carbon::parse($validated['to_date']),
+            $validated['date_field'] ?? 'case_date',
+        );
+
+        return response()->json(['data' => $report]);
     }
 
     public function cancel($id): JsonResponse

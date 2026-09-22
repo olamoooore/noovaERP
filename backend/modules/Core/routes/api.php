@@ -277,14 +277,61 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
 
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
         // Invoices
-        Route::post('/invoices/import', [InvoiceController::class, 'import']);
-        Route::get('/invoices/export', [InvoiceController::class, 'export']);
-        Route::post('/invoices/bulk-delete', [InvoiceController::class, 'bulkDestroy']);
-        Route::post('/invoices/bulk-post', [InvoiceController::class, 'bulkPost']);
-        Route::apiResource('invoices', InvoiceController::class);
-        Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'send']);
-        Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel']);
-        Route::post('/invoices/{invoice}/reset-to-draft', [InvoiceController::class, 'resetToDraft']);
+        Route::post('/invoices/import', [InvoiceController::class, 'import'])
+            ->middleware(RequirePermission::using('invoices.write'));
+        Route::get('/invoices/export', [InvoiceController::class, 'export'])
+            ->middleware(RequirePermission::using('invoices.view'));
+        Route::post('/invoices/bulk-delete', [InvoiceController::class, 'bulkDestroy'])
+            ->middleware(RequirePermission::using('invoices.write'));
+        Route::post('/invoices/bulk-post', [InvoiceController::class, 'bulkPost'])
+            ->middleware(RequirePermission::using('accounting.post'));
+
+        // Invoice CRUD — explicit so per-method middleware is precise
+        Route::get('/invoices', [InvoiceController::class, 'index'])
+            ->middleware(RequirePermission::using('invoices.view'));
+        Route::post('/invoices', [InvoiceController::class, 'store'])
+            ->middleware(RequirePermission::using('invoices.write'));
+        Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])
+            ->middleware(RequirePermission::using('invoices.view'));
+        Route::put('/invoices/{invoice}', [InvoiceController::class, 'update'])
+            ->middleware(RequirePermission::using('invoices.write'));
+        Route::delete('/invoices/{invoice}', [InvoiceController::class, 'destroy'])
+            ->middleware(RequirePermission::using('invoices.write'));
+
+        // Approval flow
+        Route::post('/invoices/{invoice}/submit-approval', [InvoiceController::class, 'submitApproval'])
+            ->middleware(RequirePermission::using('invoices.submit'));
+        Route::post('/invoices/{invoice}/withdraw-approval', [InvoiceController::class, 'withdrawApproval'])
+            ->middleware(RequirePermission::using('invoices.write'));
+
+        // Delivery (Phase B — delivery without GL posting)
+        Route::post('/invoices/{invoice}/deliver', [InvoiceController::class, 'deliver'])
+            ->middleware(RequirePermission::using('invoices.send'));
+
+        // Legacy /send still available for backward compat (combined send+post)
+        Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'send'])
+            ->middleware(RequirePermission::using('invoices.send'));
+
+        // GL Posting (Phase B — GL posting without delivery, separate endpoint)
+        Route::post('/invoices/{invoice}/post', [InvoiceController::class, 'post'])
+            ->middleware(RequirePermission::using('accounting.post'));
+
+        // Evidence
+        Route::post('/invoices/{invoice}/evidence', [InvoiceController::class, 'uploadEvidence'])
+            ->middleware(RequirePermission::using('invoices.evidence.manage'));
+
+        // Payment link
+        Route::post('/invoices/{invoice}/payment-link', [InvoiceController::class, 'createPaymentLink'])
+            ->middleware(RequirePermission::using('invoices.request_payment'));
+
+        // Timeline
+        Route::get('/invoices/{invoice}/timeline', [InvoiceController::class, 'getTimeline'])
+            ->middleware(RequirePermission::using('invoices.view'));
+
+        Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])
+            ->middleware(RequirePermission::using('invoices.write'));
+        Route::post('/invoices/{invoice}/reset-to-draft', [InvoiceController::class, 'resetToDraft'])
+            ->middleware(RequirePermission::using('invoices.write'));
 
         // Quotations
         Route::post('/quotations/import', [QuotationController::class, 'import']);
@@ -753,6 +800,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::apiResource('medical-cases', MedicalCaseController::class)
             ->only(['store', 'update', 'destroy'])
             ->middleware(RequirePermission::using('medical_cases.write'));
+
+        // Issue #185: report route must precede the resource {medical_case} binding.
+        Route::get('/medical-cases/reports/performance', [MedicalCaseController::class, 'performanceReport'])
+            ->middleware(RequirePermission::using('medical_cases.view'));
 
         Route::middleware(RequirePermission::using('medical_cases.write'))->group(function () {
             Route::post('/medical-cases/{id}/allocate', [MedicalCaseController::class, 'allocate']);

@@ -19,7 +19,6 @@ class MedicalCase extends Model
         'case_tag',
         'customer_id',
         'invoice_id',
-        'bonus_scheme_id',
         'delivery_address_id',
         'doctor_contact_id',
         'requestor_contact_id',
