@@ -7,6 +7,7 @@ use App\Mail\CustomerStatementMail;
 use App\Models\Customer;
 use App\Models\CustomerStatement;
 use App\Models\Invoice;
+use App\Models\Setting;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -30,10 +31,13 @@ class CustomerStatementController extends Controller
     {
         $validated = $request->validate([
             'as_of' => 'nullable|date',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
         ]);
 
         $customer = Customer::with(['customerContacts', 'addresses'])->findOrFail($customerId);
-        $asOf = Carbon::parse($validated['as_of'] ?? now());
+        $asOf = Carbon::parse($validated['end_date'] ?? $validated['as_of'] ?? now());
+        $startDate = isset($validated['start_date']) ? Carbon::parse($validated['start_date']) : null;
 
         // Get outstanding invoices: posted, balance > 0, invoice_date <= as_of
         // Issue #96: exclude voided/reversed/superseded documents.
@@ -42,6 +46,7 @@ class CustomerStatementController extends Controller
             ->where('balance', '>', 0)
             ->notSuperseded()
             ->where('invoice_date', '<=', $asOf)
+            ->when($startDate, fn ($query) => $query->where('invoice_date', '>=', $startDate))
             ->orderBy('invoice_date', 'asc')
             ->get();
 
@@ -97,9 +102,9 @@ class CustomerStatementController extends Controller
                 'payment_terms' => $customer->payment_terms ? $customer->payment_terms.' Days from Invoice Date' : '',
             ],
             'period' => [
-                'start_date' => null,
+                'start_date' => $startDate?->format('Y-m-d'),
                 'end_date' => $asOf->format('Y-m-d'),
-                'type' => 'as_of',
+                'type' => $startDate ? 'custom' : 'as_of',
             ],
             'opening_balance' => 0,
             'closing_balance' => round($invoices->sum('balance'), 2),
@@ -116,9 +121,9 @@ class CustomerStatementController extends Controller
         // Save a CustomerStatement record (required by template builder's DataSource)
         $statement = CustomerStatement::create([
             'customer_id' => $customer->id,
-            'start_date' => null,
+            'start_date' => $startDate?->toDateString(),
             'end_date' => $asOf->toDateString(),
-            'period_type' => 'as_of',
+            'period_type' => $startDate ? 'custom' : 'as_of',
             'include_paid' => false,
             'payload' => $payload,
             'generated_by' => Auth::id(),
@@ -514,22 +519,19 @@ class CustomerStatementController extends Controller
     {
         $query = DB::table('ar_transactions')
             ->where('customer_id', $customer->id)
+            ->where('transaction_type', 'invoice')
+            ->where('status', 'posted')
             ->where('transaction_date', '>=', $validated['start_date'])
             ->where('transaction_date', '<=', $validated['end_date'])
             ->orderBy('transaction_date', 'asc')
             ->orderBy('created_at', 'asc');
 
-        if (empty($validated['include_paid'])) {
-            $query->where(function ($innerQuery) {
-                $innerQuery->where('status', '!=', 'paid')
-                    ->orWhere('transaction_type', '!=', 'invoice');
-            });
-        }
-
         $transactions = $query->get();
 
         $openingBalance = DB::table('ar_transactions')
             ->where('customer_id', $customer->id)
+            ->where('transaction_type', 'invoice')
+            ->where('status', 'posted')
             ->where('transaction_date', '<', $validated['start_date'])
             ->selectRaw('COALESCE(SUM(debit - credit), 0) as balance')
             ->value('balance');
@@ -543,6 +545,7 @@ class CustomerStatementController extends Controller
                 'type' => $transaction->transaction_type,
                 'document_number' => $transaction->document_number,
                 'description' => ucfirst($transaction->transaction_type).' '.$transaction->document_number,
+                'due_date' => $transaction->due_date,
                 'debit' => (float) $transaction->debit,
                 'credit' => (float) $transaction->credit,
                 'balance' => round($runningBalance, 2),
@@ -556,6 +559,8 @@ class CustomerStatementController extends Controller
                 'code' => $customer->code,
                 'name' => $customer->name,
                 'email' => $customer->email,
+                'address' => $customer->billing_address,
+                'payment_terms' => $customer->payment_terms,
             ],
             'period' => [
                 'start_date' => $validated['start_date'],
@@ -567,6 +572,11 @@ class CustomerStatementController extends Controller
             'total_debits' => round((float) $transactions->sum('debit'), 2),
             'total_credits' => round((float) $transactions->sum('credit'), 2),
             'transactions' => $statementLines->values(),
+            'total_amount_due' => round($runningBalance, 2),
+            'currency' => data_get(Setting::getValue('currency', ['code' => 'USD']), 'code', 'USD'),
+            'as_of_date' => $validated['end_date'],
+            'company' => $this->resolveCompanySettings(),
+            'bank' => $this->resolveBankSettings(),
             'generated_at' => now()->toISOString(),
             'include_paid' => (bool) ($validated['include_paid'] ?? false),
         ];

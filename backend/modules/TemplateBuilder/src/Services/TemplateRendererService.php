@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Modules\TemplateBuilder\Services;
 
+use App\Services\TenantCurrencyFormatter;
 use Illuminate\Contracts\Container\Container;
 use Modules\TemplateBuilder\Models\DocumentTemplate;
 use Modules\TemplateBuilder\Renderers\BlockRenderer;
@@ -23,6 +24,7 @@ final class TemplateRendererService
     public function __construct(
         Container $container,
         private readonly MergeFieldResolver $resolver,
+        private readonly TenantCurrencyFormatter $currencyFormatter,
     ) {
         $this->renderers = [
             DocumentTemplate::MODE_BLOCK => $container->make(BlockRenderer::class),
@@ -42,6 +44,13 @@ final class TemplateRendererService
         if ($renderer === null) {
             throw new RuntimeException("No renderer registered for mode '{$mode}'.");
         }
+
+        $data['meta'] = is_array($data['meta'] ?? null) ? $data['meta'] : [];
+        $currencyCode = (string) ($data['meta']['currency_code'] ?? $this->currencyFormatter->preferences()['code']);
+        $data['meta']['currency_code'] = strtoupper($currencyCode);
+        // Keep direct {{ meta.currency_symbol }} fields consistent too. Monetary
+        // values themselves are formatted by MergeFieldResolver's money pipe.
+        $data['meta']['currency_symbol'] = $this->currencyFormatter->prefix($currencyCode);
 
         return $renderer->render($template, $data);
     }

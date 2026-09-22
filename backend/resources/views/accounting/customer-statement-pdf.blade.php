@@ -44,6 +44,10 @@
     </style>
 </head>
 <body>
+    @php
+        $statementLines = collect($payload['transactions'] ?? $payload['lines'] ?? []);
+        $amountDue = $payload['total_amount_due'] ?? $payload['closing_balance'] ?? 0;
+    @endphp
     {{-- Company Header --}}
     <div class="header">
         <div class="company-name">{{ $payload['company']['name'] ?? 'Your Company' }}</div>
@@ -98,7 +102,7 @@
     </div>
 
     {{-- Invoice Table --}}
-    @if($payload['lines']->count() > 0)
+    @if($statementLines->count() > 0)
     <table>
         <thead>
             <tr>
@@ -111,20 +115,20 @@
             </tr>
         </thead>
         <tbody>
-            @foreach($payload['lines'] as $line)
+            @foreach($statementLines as $line)
             <tr>
-                <td>{{ $line['invoice_date'] }}</td>
-                <td>{{ $line['invoice_number'] }}</td>
-                <td>{{ $line['reference'] }}</td>
-                <td>{{ $line['due_date'] }}</td>
-                <td class="num">{{ number_format($line['total'], 2) }}</td>
-                <td class="num">{{ number_format($line['balance'], 2) }}</td>
+                <td>{{ $line['invoice_date'] ?? $line['date'] ?? '' }}</td>
+                <td>{{ $line['invoice_number'] ?? $line['document_number'] ?? '' }}</td>
+                <td>{{ $line['reference'] ?? $line['description'] ?? '' }}</td>
+                <td>{{ $line['due_date'] ?? '-' }}</td>
+                <td class="num">{{ number_format($line['total'] ?? $line['debit'] ?? 0, 2) }}</td>
+                <td class="num">{{ number_format($line['balance'] ?? 0, 2) }}</td>
             </tr>
             @endforeach
             <tr class="total-row">
                 <td colspan="4" style="text-align: right;">Total</td>
-                <td class="num">{{ number_format($payload['lines']->sum('total'), 2) }}</td>
-                <td class="num">{{ number_format($payload['total_amount_due'], 2) }}</td>
+                <td class="num">{{ number_format($statementLines->sum(fn ($line) => $line['total'] ?? $line['debit'] ?? 0), 2) }}</td>
+                <td class="num">{{ number_format($amountDue, 2) }}</td>
             </tr>
         </tbody>
     </table>
@@ -134,7 +138,7 @@
 
     {{-- Total Amount Due --}}
     <div class="amount-due">
-        Total Amount Due ({{ $payload['currency'] ?? 'MYR' }}): <span class="value">{{ number_format($payload['total_amount_due'], 2) }}</span>
+        Total Amount Due ({{ $payload['currency'] ?? 'USD' }}): <span class="value">{{ number_format($amountDue, 2) }}</span>
     </div>
 
     {{-- Bank Info Footer --}}

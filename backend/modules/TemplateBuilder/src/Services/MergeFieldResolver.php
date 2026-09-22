@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Modules\TemplateBuilder\Services;
 
+use App\Services\TenantCurrencyFormatter;
+
 /**
  * MergeFieldResolver — resolves {{ token }} merge fields against a typed data
  * payload using dot-path lookup ONLY. No expression evaluation, no code exec.
@@ -24,8 +26,9 @@ final class MergeFieldResolver
     /** @var array<string, callable> */
     private array $formatters;
 
-    public function __construct()
+    public function __construct(?TenantCurrencyFormatter $currencyFormatter = null)
     {
+        $this->currencyFormatter = $currencyFormatter ?? new TenantCurrencyFormatter;
         $this->formatters = [
             'money' => fn ($v, $arg, $data) => $this->formatMoney($v, $data),
             'date' => fn ($v, $arg) => $this->formatDate($v, $arg),
@@ -36,6 +39,8 @@ final class MergeFieldResolver
             'percent' => fn ($v) => is_numeric($v) ? number_format((float) $v, 2, '.', '').'%' : $v,
         ];
     }
+
+    private readonly TenantCurrencyFormatter $currencyFormatter;
 
     /** @param array<string,mixed> $data */
     public function with(array $data): self
@@ -151,19 +156,11 @@ final class MergeFieldResolver
 
     private function formatMoney(mixed $value, array $data): string
     {
-        if (! is_numeric($value)) {
-            return (string) ($value ?? '');
-        }
-        $symbol = $data['meta']['currency_symbol'] ?? '';
-        $sep = ($data['meta']['number_format'] ?? '1,234.56');
-
-        if (str_contains($sep, ',') && strpos($sep, ',') < strpos($sep, '.')) {
-            $formatted = number_format((float) $value, 2, '.', ',');
-        } else {
-            $formatted = number_format((float) $value, 2, ',', '.');
-        }
-
-        return $symbol.$formatted;
+        return $this->currencyFormatter->format(
+            $value,
+            isset($data['meta']['currency_code']) ? (string) $data['meta']['currency_code'] : null,
+            (string) ($data['meta']['number_format'] ?? '1,234.56'),
+        );
     }
 
     private function formatDate(mixed $value, ?string $format): string

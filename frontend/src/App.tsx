@@ -94,7 +94,6 @@ const CustomerPayments = lazy(() => import('@/pages/accounting/customers/Custome
 const PaymentImportPage = lazy(() => import('@/pages/accounting/customers/PaymentImportPage').then(m => ({ default: m.PaymentImportPage })))
 const CustomerFollowupReports = lazy(() => import('@/pages/accounting/customers/CustomerFollowupReports').then(m => ({ default: m.CustomerFollowupReports })))
 const CustomerStatements = lazy(() => import('@/pages/accounting/customers/CustomerStatements').then(m => ({ default: m.CustomerStatements })))
-const CustomerStatementComparison = lazy(() => import('@/pages/accounting/customers/CustomerStatementComparison').then(m => ({ default: m.CustomerStatementComparison })))
 const VendorsPage = lazy(() => import('@/pages/accounting/vendors/VendorsPage'))
 const VendorImportPage = lazy(() => import('@/pages/accounting/vendors/VendorImportPage').then(m => ({ default: m.VendorImportPage })))
 const VendorBills = lazy(() => import('@/pages/accounting/vendors/VendorBills').then(m => ({ default: m.VendorBills })))
@@ -402,7 +401,6 @@ function App() {
                 <Route path="/accounting/customers/transactions" element={<ARTransactionsPage />} />
                 <Route path="/accounting/customers/followup-reports" element={<CustomerFollowupReports />} />
                 <Route path="/accounting/customers/statements" element={<CustomerStatements />} />
-                <Route path="/accounting/customers/statements/compare" element={<CustomerStatementComparison />} />
                 
                 {/* Vendor Section */}
                 <Route path="/accounting/vendors" element={<VendorsPage />} />
@@ -445,6 +443,7 @@ function App() {
                 <Route path="/accounting/reporting/trial-balance" element={<TrialBalancePage />} />
                 <Route path="/accounting/reporting/aged-receivables" element={<AgedReceivablesPage />} />
                 <Route path="/accounting/reporting/aged-payables" element={<AgedPayablesPage />} />
+                <Route path="/accounting/reporting/customer-statements" element={<CustomerStatements />} />
                 <Route path="/accounting/reporting/compliance" element={<ComplianceReportsPage />} />
                 <Route path="/accounting/reporting/myinvoice" element={<MyInvoisEinvoicePage />} />
                 <Route path="/accounting/reporting/myinvoice/:id" element={<MyInvoiceDocumentPage />} />
