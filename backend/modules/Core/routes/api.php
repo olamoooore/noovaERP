@@ -736,6 +736,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/customers/import/{batch}/commit', [CustomersController::class, 'commitImport'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('customers.write'));
         Route::get('/customers/{id}', [CustomersController::class, 'show'])
+            ->whereNumber('id')
             ->middleware(RequirePermission::using('customers.view'));
 
         // Vendor Credit Notes (must be before /vendors/{id} to avoid route conflict)
@@ -760,7 +761,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
 
         // Vendors List
         Route::get('/vendors', [VendorsController::class, 'index']);
-        Route::get('/vendors/{id}', [VendorsController::class, 'show']);
+        Route::get('/vendors/{id}', [VendorsController::class, 'show'])->whereNumber('id');
         Route::post('/vendors', [VendorsController::class, 'store']);
         Route::put('/vendors/{id}', [VendorsController::class, 'update']);
         Route::delete('/vendors/{id}', [VendorsController::class, 'destroy']);

@@ -178,15 +178,22 @@ final class BlockRenderer implements TemplateRendererInterface
                     $sectionTotal = 0.0;
                     for ($nextIndex = $index + 1; $nextIndex < count($rows); $nextIndex++) {
                         $nextLineType = (string) ($rows[$nextIndex]['line_type'] ?? 'product');
-                        if ($nextLineType === 'section') break;
+                        if ($nextLineType === 'section') {
+                            break;
+                        }
                         if ($nextLineType === 'product' && is_numeric($rows[$nextIndex][$subtotalField] ?? null)) {
                             $sectionTotal += (float) $rows[$nextIndex][$subtotalField];
                         }
                     }
-                    $body .= '<tr class="tb-line-row tb-line-row-section"><td colspan="'.(count($columns) - 1).'" style="'.$this->tdStyle([]).$textStyle.'">'.$description.'</td><td style="'.$this->tdStyle(['align' => 'right']).$textStyle.'text-align:right;white-space:nowrap;">'.number_format($sectionTotal, 2).'</td></tr>';
+                    $formattedSectionTotal = htmlspecialchars(
+                        (string) $this->resolver->formatValue($sectionTotal, (string) ($block['subtotal_format'] ?? 'money')),
+                        ENT_QUOTES,
+                    );
+                    $body .= '<tr class="tb-line-row tb-line-row-section"><td colspan="'.(count($columns) - 1).'" style="'.$this->tdStyle([]).$textStyle.'">'.$description.'</td><td style="'.$this->tdStyle(['align' => 'right']).$textStyle.'text-align:right;white-space:nowrap;">'.$formattedSectionTotal.'</td></tr>';
                 } else {
                     $body .= '<tr class="tb-line-row tb-line-row-'.$lineType.'"><td colspan="'.count($columns).'" style="'.$this->tdStyle([]).$textStyle.'">'.$description.'</td></tr>';
                 }
+
                 continue;
             }
             $amount = is_numeric($row[$subtotalField] ?? null) ? (float) $row[$subtotalField] : 0.0;
