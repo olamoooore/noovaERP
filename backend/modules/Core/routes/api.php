@@ -158,9 +158,18 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     // Warehouses
     Route::apiResource('warehouses', WarehouseController::class);
 
-    // Product categories — issue #128: read requires products.view.
+    // Product categories — issue #128: read requires products.view, writes use
+    // the same granular products.* convention as the product verbs above.
+    // (Issue #133: store/update/destroy existed on the controller but had no
+    // routes, so the Category Manager UI 404'd on create/edit/delete.)
     Route::get('/product-categories', [ProductCategoryController::class, 'index'])
         ->middleware(\App\Http\Middleware\RequirePermission::using('products.view'));
+    Route::post('/product-categories', [ProductCategoryController::class, 'store'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.create'));
+    Route::match(['put', 'patch'], '/product-categories/{id}', [ProductCategoryController::class, 'update'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.edit'));
+    Route::delete('/product-categories/{id}', [ProductCategoryController::class, 'destroy'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.delete'));
 
     // Vendor AP Transactions
     Route::get('/vendors/transactions', [APTransactionsController::class, 'index']);
