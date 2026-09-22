@@ -129,11 +129,6 @@ class MedicalCase extends Model
         return $this->belongsTo(Invoice::class);
     }
 
-    public function bonusScheme(): BelongsTo
-    {
-        return $this->belongsTo(BonusScheme::class);
-    }
-
     public function deliveryAddress(): BelongsTo
     {
         return $this->belongsTo(CustomerAddress::class, 'delivery_address_id');

@@ -140,7 +140,6 @@ class MedicalCaseController extends Controller
             'requestorContact',
             'buyerContact',
             'deliveryAddress',
-            'bonusScheme',
             'createdBy',
         ])->find($id);
 

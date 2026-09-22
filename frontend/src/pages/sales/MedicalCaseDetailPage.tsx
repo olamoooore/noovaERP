@@ -7,6 +7,16 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Separator } from '@/components/ui/separator'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import api from '@/lib/api'
@@ -63,6 +73,71 @@ export function MedicalCaseDetailPage() {
     },
   })
 
+  const [lifecycleAction, setLifecycleAction] = useState<'allocate' | 'deliver' | 'invoice' | null>(null)
+  const [qtyByItem, setQtyByItem] = useState<Record<number, string>>({})
+  const [invoiceId, setInvoiceId] = useState('')
+
+  const { data: customerInvoices } = useQuery({
+    queryKey: ['case-customer-invoices', medicalCase?.customer_id],
+    queryFn: async () => {
+      const res = await api.get('/invoices', {
+        params: { customer_id: medicalCase.customer_id, per_page: 50 },
+      })
+      return res.data.data || []
+    },
+    enabled: lifecycleAction === 'invoice' && !!medicalCase?.customer_id,
+  })
+
+  const openLifecycleDialog = (action: 'allocate' | 'deliver' | 'invoice') => {
+    const items = medicalCase?.items || []
+    const seed: Record<number, string> = {}
+    items.forEach((item: any) => {
+      if (action === 'allocate') {
+        seed[item.id] = String(item.allocated_qty ?? 0)
+      } else if (action === 'deliver') {
+        seed[item.id] = String(item.allocated_qty ?? 0)
+      } else {
+        seed[item.id] = String(item.delivered_qty ?? 0)
+      }
+    })
+    setQtyByItem(seed)
+    setInvoiceId(medicalCase?.invoice_id ? String(medicalCase.invoice_id) : '')
+    setLifecycleAction(action)
+  }
+
+  const lifecycleMutation = useMutation({
+    mutationFn: async () => {
+      const items = medicalCase?.items || []
+      if (lifecycleAction === 'allocate') {
+        return api.post(`/medical-cases/${id}/allocate`, {
+          items: items.map((item: any) => ({ id: item.id, allocated_qty: Number(qtyByItem[item.id] ?? 0) })),
+        })
+      }
+      if (lifecycleAction === 'deliver') {
+        return api.post(`/medical-cases/${id}/deliver`, {
+          items: items.map((item: any) => ({ id: item.id, delivered_qty: Number(qtyByItem[item.id] ?? 0) })),
+        })
+      }
+      return api.post(`/medical-cases/${id}/invoice`, {
+        invoice_id: Number(invoiceId),
+        items: items.map((item: any) => ({ id: item.id, invoiced_qty: Number(qtyByItem[item.id] ?? 0) })),
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['medical-case', id] })
+      queryClient.invalidateQueries({ queryKey: ['medical-cases'] })
+      toast({ title: 'Success', description: `Case ${lifecycleAction === 'allocate' ? 'allocated' : lifecycleAction === 'deliver' ? 'delivered' : 'invoiced'} successfully` })
+      setLifecycleAction(null)
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || error.response?.data?.error || 'Failed to update case',
+        variant: 'destructive',
+      })
+    },
+  })
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -99,10 +174,32 @@ export function MedicalCaseDetailPage() {
                 <Icon icon="solar:pen-bold-duotone" className="mr-2 h-4 w-4" />
                 Edit
               </Button>
+              <Button onClick={() => openLifecycleDialog('allocate')}>
+                <Icon icon="solar:box-bold-duotone" className="mr-2 h-4 w-4" />
+                Allocate
+              </Button>
               <Button variant="destructive" onClick={() => cancelMutation.mutate()}>
                 Cancel Case
               </Button>
             </>
+          )}
+          {medicalCase.status === 'allocated' && (
+            <>
+              <Button onClick={() => openLifecycleDialog('deliver')}>
+                <Icon icon="solar:delivery-bold-duotone" className="mr-2 h-4 w-4" />
+                Record Delivery
+              </Button>
+              <Button variant="outline" onClick={() => openLifecycleDialog('invoice')}>
+                <Icon icon="solar:file-text-bold-duotone" className="mr-2 h-4 w-4" />
+                Invoice
+              </Button>
+            </>
+          )}
+          {medicalCase.status === 'delivered' && (
+            <Button onClick={() => openLifecycleDialog('invoice')}>
+              <Icon icon="solar:file-text-bold-duotone" className="mr-2 h-4 w-4" />
+              Invoice
+            </Button>
           )}
           {medicalCase.status === 'invoiced' && (
             <Button onClick={() => completeMutation.mutate()}>
@@ -139,15 +236,13 @@ export function MedicalCaseDetailPage() {
             {medicalCase.invoice.invoice_number}
           </button>
         )}
-        {medicalCase.bonusScheme && (
-          <button
-            onClick={() => navigate(`/sales/bonus-schemes/${medicalCase.bonus_scheme_id}`)}
-            className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-muted transition-colors"
-          >
-            <Icon icon="solar:gift-bold-duotone" className="h-4 w-4" />
-            {medicalCase.bonusScheme.name}
-          </button>
-        )}
+        <button
+          onClick={() => navigate('/sales/bonus-schemes')}
+          className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-muted transition-colors"
+        >
+          <Icon icon="solar:gift-bold-duotone" className="h-4 w-4" />
+          Bonus Schemes
+        </button>
       </div>
 
       {/* Case Details */}
@@ -244,6 +339,73 @@ export function MedicalCaseDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={lifecycleAction !== null} onOpenChange={(open) => !open && setLifecycleAction(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {lifecycleAction === 'allocate' ? 'Allocate Case Items' : lifecycleAction === 'deliver' ? 'Record Delivery' : 'Invoice Case Items'}
+            </DialogTitle>
+            <DialogDescription>
+              {lifecycleAction === 'invoice'
+                ? 'Select the invoice and confirm the invoiced quantity per item.'
+                : 'Confirm the quantity per item.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {lifecycleAction === 'invoice' && (
+            <div className="space-y-2">
+              <Label htmlFor="case-invoice">Invoice</Label>
+              <select
+                id="case-invoice"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={invoiceId}
+                onChange={(event) => setInvoiceId(event.target.value)}
+              >
+                <option value="">Select an invoice...</option>
+                {(customerInvoices || []).map((invoice: any) => (
+                  <option key={invoice.id} value={invoice.id}>
+                    {invoice.invoice_number} — {formatCurrency(invoice.total)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {items.map((item: any) => (
+              <div key={item.id} className="flex items-center justify-between gap-4">
+                <span className="text-sm">{item.product?.name || `Item #${item.id}`}</span>
+                <Input
+                  type="number"
+                  min="0"
+                  step="any"
+                  className="w-28"
+                  value={qtyByItem[item.id] ?? ''}
+                  onChange={(event) =>
+                    setQtyByItem((previous) => ({ ...previous, [item.id]: event.target.value }))
+                  }
+                />
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLifecycleAction(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => lifecycleMutation.mutate()}
+              disabled={
+                lifecycleMutation.isPending ||
+                (lifecycleAction === 'invoice' && !invoiceId)
+              }
+            >
+              {lifecycleMutation.isPending ? 'Saving...' : 'Confirm'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delivery Address */}
       {medicalCase.delivery_address && (
