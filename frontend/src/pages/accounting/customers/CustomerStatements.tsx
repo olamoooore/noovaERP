@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from '@iconify/react'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
 import { Badge } from '@/components/ui/badge'
@@ -39,6 +39,7 @@ function defaultPdfDates() {
 
 export const CustomerStatements = () => {
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const { toast } = useToast()
   const [customerId, setCustomerId] = useState(searchParams.get('customer_id') || '')
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
@@ -191,7 +192,20 @@ export const CustomerStatements = () => {
                   </TableHeader>
                   <TableBody>
                     {transactions.map((transaction) => (
-                      <TableRow key={`${transaction.transaction_type}-${transaction.transaction_id}`}>
+                      <TableRow
+                        key={`${transaction.transaction_type}-${transaction.transaction_id}`}
+                        role="link"
+                        tabIndex={0}
+                        className="cursor-pointer"
+                        aria-label={`View invoice ${transaction.document_number}`}
+                        onClick={() => navigate(`/accounting/customers/bills/${transaction.transaction_id}`)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            navigate(`/accounting/customers/bills/${transaction.transaction_id}`)
+                          }
+                        }}
+                      >
                         <TableCell>{formatDate(transaction.transaction_date)}</TableCell>
                         <TableCell className="capitalize">{transaction.transaction_type.replaceAll('_', ' ')}</TableCell>
                         <TableCell className="font-mono">{transaction.document_number || '-'}</TableCell>
