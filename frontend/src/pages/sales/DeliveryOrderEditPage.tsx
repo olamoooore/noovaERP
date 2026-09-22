@@ -359,14 +359,14 @@ export function DeliveryOrderEditPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[200px]">Product</TableHead>
-                <TableHead className="min-w-[320px]">Description</TableHead>
-                <TableHead className="w-[180px]">Product Notes</TableHead>
-                <TableHead className="w-[180px]">Patient Name</TableHead>
-                <TableHead className="text-right w-[100px]">Quantity</TableHead>
-                <TableHead className="w-[100px]">Unit</TableHead>
-                <TableHead className="text-right w-[120px]">Unit Price</TableHead>
-                <TableHead className="w-[120px]">Lot Number</TableHead>
-                <TableHead className="w-[140px]">Expiry Date</TableHead>
+                <TableHead className="min-min-w-[18rem] whitespace-nowrap">Description</TableHead>
+                <TableHead className="min-w-[10rem] whitespace-nowrap">Product Notes</TableHead>
+                <TableHead className="min-w-[10rem] whitespace-nowrap">Patient Name</TableHead>
+                <TableHead className="text-right min-w-[6rem] whitespace-nowrap">Quantity</TableHead>
+                <TableHead className="min-w-[6rem] whitespace-nowrap">Unit</TableHead>
+                <TableHead className="text-right min-w-[7rem] whitespace-nowrap">Unit Price</TableHead>
+                <TableHead className="min-w-[7rem] whitespace-nowrap">Lot Number</TableHead>
+                <TableHead className="min-w-[8rem] whitespace-nowrap">Expiry Date</TableHead>
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>

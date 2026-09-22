@@ -529,7 +529,7 @@ export function DeliveryOrderCreatePage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Product</TableHead>
-                  <TableHead className="min-w-[320px]">Description</TableHead>
+                  <TableHead className="min-min-w-[18rem] whitespace-nowrap">Description</TableHead>
                   <TableHead>Product Notes</TableHead>
                   <TableHead className="text-right">Ordered</TableHead>
                   <TableHead className="text-right">Already Delivered</TableHead>
@@ -621,17 +621,17 @@ export function DeliveryOrderCreatePage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[160px]">Product</TableHead>
-                  <TableHead className="w-[90px]">SKU</TableHead>
-                  <TableHead className="min-w-[320px]">Description</TableHead>
-                  <TableHead className="w-[100px]">Model #</TableHead>
-                  <TableHead className="w-[180px]">Product Notes</TableHead>
-                  <TableHead className="w-[180px]">Patient Name</TableHead>
-                  <TableHead className="text-right w-[100px]">Quantity</TableHead>
+                  <TableHead className="min-w-[9rem] whitespace-nowrap">Product</TableHead>
+                  <TableHead className="min-w-[5.5rem] whitespace-nowrap">SKU</TableHead>
+                  <TableHead className="min-min-w-[18rem] whitespace-nowrap">Description</TableHead>
+                  <TableHead className="min-w-[6rem] whitespace-nowrap">Model #</TableHead>
+                  <TableHead className="min-w-[10rem] whitespace-nowrap">Product Notes</TableHead>
+                  <TableHead className="min-w-[10rem] whitespace-nowrap">Patient Name</TableHead>
+                  <TableHead className="text-right min-w-[6rem] whitespace-nowrap">Quantity</TableHead>
                   <TableHead className="w-[80px]">Unit</TableHead>
-                  <TableHead className="text-right w-[120px]">Unit Price</TableHead>
-                  <TableHead className="w-[100px]">Lot Number</TableHead>
-                  <TableHead className="w-[140px]">Expiry Date</TableHead>
+                  <TableHead className="text-right min-w-[7rem] whitespace-nowrap">Unit Price</TableHead>
+                  <TableHead className="min-w-[6rem] whitespace-nowrap">Lot Number</TableHead>
+                  <TableHead className="min-w-[8rem] whitespace-nowrap">Expiry Date</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
