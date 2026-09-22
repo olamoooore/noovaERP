@@ -273,10 +273,17 @@ class WebOrderPostingService
 
             // COGS / Inventory
             // Issue #130: bundle lines cost the SUM of their components.
+            // Issue #131: batch-tracked lines cost their FEFO layers (previewed
+            // here because GL posts before stock is deducted).
             $totalCost = 0.0;
+            $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
+            $cogsWarehouseId = $order->resolveInventoryWarehouseId();
+
             foreach ($order->items as $item) {
                 if ($item->product) {
-                    $totalCost += $this->bundleDecomposition->cost($item->product, (float) $item->quantity);
+                    $qty = (float) $item->quantity;
+                    $totalCost += $batchConsumption->costForLine($item->product, $qty, $cogsWarehouseId)
+                        ?? $this->bundleDecomposition->cost($item->product, $qty);
                 }
             }
 

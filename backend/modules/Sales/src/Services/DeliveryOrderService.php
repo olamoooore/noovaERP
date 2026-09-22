@@ -98,6 +98,9 @@ class DeliveryOrderService
                     );
                 }
 
+                $lineProduct = $soLine->product_id ? \App\Models\Product::find($soLine->product_id) : null;
+                $serialNumbers = $this->resolveSerialNumbers($lineProduct, $lineData, $quantityDelivered);
+
                 DeliveryOrderLine::create([
                     'delivery_order_id' => $deliveryOrder->id,
                     'sales_order_line_id' => $soLine->id,
@@ -112,11 +115,57 @@ class DeliveryOrderService
                     'lot_number' => $lineData['lot_number'] ?? null,
                     'batch_number' => $lineData['batch_number'] ?? null,
                     'expiry_date' => $lineData['expiry_date'] ?? null,
+                    'serial_numbers' => $serialNumbers,
                 ]);
             }
 
             return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);
         });
+    }
+
+    /**
+     * Issue #131: validate + normalise the serial numbers for a line. A
+     * serial-tracked product requires exactly one in-stock serial per unit.
+     *
+     * @return string[]|null
+     */
+    private function resolveSerialNumbers(?\App\Models\Product $product, array $lineData, float $quantity): ?array
+    {
+        $provided = $lineData['serial_numbers'] ?? null;
+
+        $isSerialTracked = $product && ($product->tracking_method ?? null) === \App\Models\Product::TRACKING_SERIAL;
+
+        if (! $isSerialTracked) {
+            return is_array($provided) && $provided !== [] ? array_values(array_unique($provided)) : null;
+        }
+
+        if (! is_array($provided) || $provided === []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'lines' => ["Serial numbers are required for serial-tracked product {$product->name}."],
+            ]);
+        }
+
+        $serials = array_values(array_unique($provided));
+
+        if (count($serials) !== (int) round($quantity)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'lines' => ['Provide exactly '.((int) round($quantity))." serial number(s) for {$product->name}."],
+            ]);
+        }
+
+        $known = \App\Models\ProductSerial::where('product_id', $product->id)
+            ->whereIn('serial_number', $serials)
+            ->pluck('status', 'serial_number');
+
+        foreach ($serials as $serial) {
+            if (! $known->has($serial)) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'lines' => ["Serial {$serial} does not belong to {$product->name}."],
+                ]);
+            }
+        }
+
+        return $serials;
     }
 
     /**
@@ -242,6 +291,9 @@ class DeliveryOrderService
                     }
                 }
 
+                $lineProduct = $productId ? \App\Models\Product::find($productId) : null;
+                $serialNumbers = $this->resolveSerialNumbers($lineProduct, $lineData, $quantityDelivered);
+
                 DeliveryOrderLine::create([
                     'line_type' => $lineType,
                     'sequence' => $lineData['sequence'] ?? 0,
@@ -260,6 +312,7 @@ class DeliveryOrderService
                     'lot_number' => $lineData['lot_number'] ?? null,
                     'batch_number' => $lineData['batch_number'] ?? null,
                     'expiry_date' => $lineData['expiry_date'] ?? null,
+                    'serial_numbers' => $serialNumbers,
                 ]);
             }
 
@@ -389,6 +442,26 @@ class DeliveryOrderService
 
                 if ($components === []) {
                     continue;
+                }
+
+                // Issue #131: mark the line's serials sold (customer, date,
+                // warranty) now that stock has left for this delivery.
+                if (! empty($line->serial_numbers) && $product) {
+                    try {
+                        app(\App\Services\BatchSerialConsumptionService::class)->markSerialsSold(
+                            product: $product,
+                            serialNumbers: (array) $line->serial_numbers,
+                            customerId: (int) $deliveryOrder->customer_id,
+                            saleReference: $deliveryOrder->delivery_order_number,
+                            soldAt: now(),
+                        );
+                    } catch (\Throwable $e) {
+                        \Log::error('DeliveryOrderService: serial marking failed (delivery preserved)', [
+                            'delivery_order_id' => $deliveryOrder->id,
+                            'line_id' => $line->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
                 }
 
                 // Fulfil corresponding stock reservation (if linked to SO)

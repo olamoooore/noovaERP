@@ -181,12 +181,24 @@ class InvoiceService
             // bundle product's own (usually unset) cost field.
             $totalCogs = 0;
             $bundleDecomposition = app(\App\Services\BundleDecompositionService::class);
+            $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
+
+            // Issue #131: batch-tracked lines cost their FEFO layers (previewed
+            // here because GL posts before stock is deducted).
+            try {
+                $cogsWarehouseId = $this->resolveInventoryWarehouseId($invoice);
+            } catch (\Throwable) {
+                $cogsWarehouseId = null;
+            }
+
             foreach ($invoice->lines as $line) {
                 if (($line->line_type ?? 'product') !== 'product') {
                     continue;
                 }
                 if ($line->product) {
-                    $lineCogs = $bundleDecomposition->cost($line->product, (float) $line->quantity);
+                    $qty = (float) $line->quantity;
+                    $lineCogs = $batchConsumption->costForLine($line->product, $qty, $cogsWarehouseId)
+                        ?? $bundleDecomposition->cost($line->product, $qty);
 
                     if ($lineCogs > 0) {
                         $totalCogs += $lineCogs;

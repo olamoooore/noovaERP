@@ -84,6 +84,9 @@ class PosPostingService
         // Issue #130: bundle lines cost the SUM of their components.
         $totalCost = 0.0;
         $bundleDecomposition = app(\App\Services\BundleDecompositionService::class);
+        $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
+        $cogsWarehouseId = $order->terminal?->warehouse_id ? (int) $order->terminal->warehouse_id : null;
+
         foreach ($order->items as $item) {
             if ($item->product_variant_id && $item->variant) {
                 $totalCost += (float) $item->variant->cost * (int) $item->quantity;
@@ -92,7 +95,10 @@ class PosPostingService
             }
 
             if ($item->product) {
-                $totalCost += $bundleDecomposition->cost($item->product, (float) $item->quantity);
+                $qty = (float) $item->quantity;
+                // Issue #131: prefer real FEFO batch-layer cost when available.
+                $totalCost += $batchConsumption->costForLine($item->product, $qty, $cogsWarehouseId)
+                    ?? $bundleDecomposition->cost($item->product, $qty);
             }
         }
 

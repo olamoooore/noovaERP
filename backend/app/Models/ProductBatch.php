@@ -15,27 +15,36 @@ class ProductBatch extends Model
 {
     use HasFactory;
 
+    /**
+     * Issue #131: realigned to the real product_batches schema (lot_number,
+     * manufacturing_date, received_date, quantity_reserved,
+     * supplier_batch_number). The previous list advertised columns that do not
+     * exist (product_variant_id, manufacture_date, reserved_quantity,
+     * supplier_batch_ref), so those writes were silently dropped.
+     */
     protected $fillable = [
         'product_id',
-        'product_variant_id',
         'warehouse_id',
         'batch_number',
-        'manufacture_date',
+        'lot_number',
+        'manufacturing_date',
         'expiry_date',
-        'quantity',
-        'reserved_quantity',
-        'cost',
+        'received_date',
+        'supplier_batch_number',
         'supplier_id',
-        'supplier_batch_ref',
+        'quantity',
+        'quantity_reserved',
+        'cost',
         'status',
         'notes',
     ];
 
     protected $casts = [
-        'manufacture_date' => 'date',
+        'manufacturing_date' => 'date',
         'expiry_date' => 'date',
+        'received_date' => 'date',
         'quantity' => 'integer',
-        'reserved_quantity' => 'integer',
+        'quantity_reserved' => 'integer',
         'cost' => 'decimal:2',
     ];
 
@@ -50,11 +59,6 @@ class ProductBatch extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
-    }
-
-    public function variant(): BelongsTo
-    {
-        return $this->belongsTo(ProductVariant::class, 'product_variant_id');
     }
 
     public function warehouse(): BelongsTo
@@ -77,7 +81,7 @@ class ProductBatch extends Model
      */
     public function getAvailableQuantityAttribute(): int
     {
-        return $this->quantity - $this->reserved_quantity;
+        return (int) $this->quantity - (int) $this->quantity_reserved;
     }
 
     /**
@@ -136,7 +140,7 @@ class ProductBatch extends Model
             return false;
         }
 
-        $this->reserved_quantity += $quantity;
+        $this->quantity_reserved = (int) $this->quantity_reserved + $quantity;
         $this->save();
 
         return true;
@@ -147,8 +151,8 @@ class ProductBatch extends Model
      */
     public function release(int $quantity): bool
     {
-        $toRelease = min($quantity, $this->reserved_quantity);
-        $this->reserved_quantity -= $toRelease;
+        $toRelease = min($quantity, (int) $this->quantity_reserved);
+        $this->quantity_reserved = (int) $this->quantity_reserved - $toRelease;
         $this->save();
 
         return true;

@@ -25,6 +25,8 @@ class DeliveryOrderLine extends Model
         'lot_number',
         'batch_number',
         'expiry_date',
+        // Issue #131: serials consumed by this delivery line.
+        'serial_numbers',
     ];
 
     protected $casts = [
@@ -33,6 +35,7 @@ class DeliveryOrderLine extends Model
         'quantity_delivered' => 'decimal:4',
         'unit_price' => 'decimal:2',
         'line_total' => 'decimal:2',
+        'serial_numbers' => 'array',
         'expiry_date' => 'date',
     ];
 
@@ -53,7 +56,10 @@ class DeliveryOrderLine extends Model
 
     public function getRemainingQuantityAttribute(): float
     {
-        if (in_array($this->line_type, ['note', 'section'], true)) return 0;
+        if (in_array($this->line_type, ['note', 'section'], true)) {
+            return 0;
+        }
+
         return (float) $this->quantity_ordered - (float) $this->quantity_delivered;
     }
 }
