@@ -697,8 +697,8 @@ class InvoiceService
             ],
             'email' => $invoice->contact_email ?? $invoice->customer?->email,
             'customer_id' => $invoice->customer_id,
-            'redirect_url' => url("/api/v1/payments/success"),
-            'cancel_url' => url("/api/v1/payments/cancel"),
+            'redirect_url' => url('/api/v1/payments/success'),
+            'cancel_url' => url('/api/v1/payments/cancel'),
         ]);
 
         $checkoutUrl = $result['checkout_url'] ?? $result['url'] ?? $result['client_secret'] ?? null;

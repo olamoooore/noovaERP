@@ -16,6 +16,7 @@ class PosPaymentCompletionService
         private readonly PosPostingService $posPostingService,
         private readonly InventoryService $inventoryService,
         private readonly \App\Services\BundleDecompositionService $bundleDecomposition,
+        private readonly \App\Services\BatchSerialConsumptionService $batchSerialConsumption,
     ) {}
 
     public function complete(
@@ -125,6 +126,10 @@ class PosPaymentCompletionService
                     referenceId: $posOrder->id,
                 );
             }
+
+            // Issue #252: transition captured serials to sold.
+            $this->markSerialsSoldForOrder($posOrder);
+
             $posOrder->update([
                 'status' => 'paid',
                 'paid_at' => now(),
@@ -231,8 +236,45 @@ class PosPaymentCompletionService
                 );
             }
 
+            // Issue #252: transition captured serials to sold (backfill path).
+            $this->markSerialsSoldForOrder($posOrder);
+
             return $posOrder->fresh();
         });
+    }
+
+    /**
+     * Issue #252: mark captured serials sold for a POS sale (previously only the
+     * Sales-Order→Delivery-Order channel called markSerialsSold).
+     */
+    private function markSerialsSoldForOrder(PosOrder $posOrder): void
+    {
+        if (! $posOrder->customer_id) {
+            return;
+        }
+
+        $posOrder->loadMissing('items.variant.product', 'items.product');
+
+        foreach ($posOrder->items as $item) {
+            $serials = $item->serial_numbers ?? [];
+
+            if (! is_array($serials) || $serials === []) {
+                continue;
+            }
+
+            $product = $item->variant ? $item->variant->product : $item->product;
+
+            if (! $product) {
+                continue;
+            }
+
+            $this->batchSerialConsumption->markSerialsSold(
+                $product,
+                $serials,
+                (int) $posOrder->customer_id,
+                $posOrder->order_number,
+            );
+        }
     }
 
     private function hasStockTrackedItems(PosOrder $posOrder): bool

@@ -5,7 +5,6 @@ namespace Modules\Ecommerce\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Warehouse;
-use App\Services\CustomerContactSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -63,6 +62,9 @@ class WebCheckoutController extends Controller
                 'items' => 'required|array|min:1',
                 'items.*.product_id' => 'required|integer|exists:products,id',
                 'items.*.quantity' => 'required|integer|min:1',
+                // Issue #252: optional serial capture for serialized products.
+                'items.*.serial_numbers' => 'nullable|array',
+                'items.*.serial_numbers.*' => 'string|max:191',
                 'shipping_address' => 'required|array',
                 'shipping_address.first_name' => 'required|string|max:100',
                 'shipping_address.last_name' => 'required|string|max:100',
@@ -263,6 +265,7 @@ class WebCheckoutController extends Controller
                 $items[] = [
                     'product' => $product,
                     'quantity' => $item['quantity'],
+                    'serial_numbers' => $item['serial_numbers'] ?? null,
                     'unit_price' => $unitPrice,
                     'tax_rate' => $taxRate,
                     'tax_amount' => $taxCalc['tax'],
@@ -425,6 +428,7 @@ class WebCheckoutController extends Controller
                     'tax_rate' => $item['tax_rate'],
                     'tax_amount' => $item['tax_amount'],
                     'line_total' => $item['line_total'],
+                    'serial_numbers' => $item['serial_numbers'] ?? null,
                 ]);
                 $orderItems[] = $orderItem;
             }

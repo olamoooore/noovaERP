@@ -16,6 +16,7 @@ class WebOrderItem extends Model
 
     protected $fillable = [
         'web_order_id',
+        'serial_numbers',
         'product_id',
         'variant_id',
         'product_name',
@@ -30,6 +31,7 @@ class WebOrderItem extends Model
     ];
 
     protected $casts = [
+        'serial_numbers' => 'array',
         'unit_price' => 'decimal:2',
         'tax_rate' => 'decimal:2',
         'tax_amount' => 'decimal:2',

@@ -428,6 +428,113 @@ class HR130BundleDecompositionTest extends TenantTestCase
         $this->assertSame(8, $this->stockOf($this->componentA));
     }
 
+    /**
+     * Issue #252: serials were only marked sold via the Sales-Order→Delivery-
+     * Order channel; POS and WebOrder sales left them 'available'.
+     */
+    public function test_serialized_products_are_marked_sold_on_pos_and_web_sales(): void
+    {
+        $serialProduct = Product::factory()->create([
+            'name' => 'Serial Widget',
+            'sku' => 'SN-'.Str::upper(Str::random(6)),
+            'track_inventory' => true,
+            'tracking_method' => Product::TRACKING_SERIAL,
+            'price' => 100,
+            'cost' => 50,
+        ]);
+        StockLevel::create([
+            'product_id' => $serialProduct->id,
+            'warehouse_id' => $this->warehouse->id,
+            'quantity' => 5,
+            'reserved_quantity' => 0,
+            'min_quantity' => 0,
+        ]);
+        \App\Models\ProductSerial::create([
+            'product_id' => $serialProduct->id,
+            'warehouse_id' => $this->warehouse->id,
+            'serial_number' => 'SN-POS-1',
+            'status' => \App\Models\ProductSerial::STATUS_AVAILABLE,
+        ]);
+        \App\Models\ProductSerial::create([
+            'product_id' => $serialProduct->id,
+            'warehouse_id' => $this->warehouse->id,
+            'serial_number' => 'SN-WEB-1',
+            'status' => \App\Models\ProductSerial::STATUS_AVAILABLE,
+        ]);
+
+        // ---- POS sale ----
+        $customer = Customer::factory()->create();
+        $terminalId = \DB::table('pos_terminals')->insertGetId([
+            'name' => 'Serial Terminal', 'code' => 'SN-T-'.Str::upper(Str::random(4)),
+            'warehouse_id' => $this->warehouse->id, 'is_active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $sessionId = \DB::table('pos_sessions')->insertGetId([
+            'terminal_id' => $terminalId, 'user_id' => $this->user->id,
+            'session_number' => 'SN-S-'.Str::upper(Str::random(4)), 'status' => 'open',
+            'opening_balance' => 0, 'opened_at' => now(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $journalEntryId = \DB::table('journal_entries')->insertGetId([
+            'entry_number' => 'JE-SN-'.Str::upper(Str::random(6)),
+            'entry_date' => now()->toDateString(), 'type' => 'general', 'status' => 'posted',
+            'created_by' => $this->user->id, 'is_reversal' => false,
+            'lifecycle_status' => 'posted', 'version_number' => 1,
+            'is_active_version' => true, 'is_period_close_entry' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $posOrder = \Modules\POS\Models\PosOrder::create([
+            'external_id' => (string) Str::uuid(),
+            'order_number' => 'POS-SN-'.Str::upper(Str::random(6)),
+            'status' => 'paid', 'session_id' => $sessionId, 'terminal_id' => $terminalId,
+            'customer_id' => $customer->id, 'created_by' => $this->user->id,
+            'subtotal' => 100, 'tax_amount' => 0, 'total' => 100,
+            'discount_value' => 0, 'discount_amount' => 0, 'is_return' => false,
+            'loyalty_points_earned' => 0, 'loyalty_points_redeemed' => 0,
+            'journal_entry_id' => $journalEntryId, 'currency' => 'USD',
+        ]);
+        \Modules\POS\Models\PosOrderItem::create([
+            'pos_order_id' => $posOrder->id, 'product_id' => $serialProduct->id,
+            'name' => 'Serial Widget', 'quantity' => 1, 'unit_price' => 100,
+            'tax_rate' => 0, 'tax_amount' => 0, 'line_total' => 100,
+            'serial_numbers' => ['SN-POS-1'],
+        ]);
+
+        app(\Modules\POS\Services\PosPaymentCompletionService::class)
+            ->backfill($posOrder->fresh(), 'cash', 'SN-REF-'.Str::upper(Str::random(6)));
+
+        $posSerial = \App\Models\ProductSerial::where('serial_number', 'SN-POS-1')->first();
+        $this->assertSame('sold', $posSerial->status, 'POS sale must mark the serial sold');
+        $this->assertSame($posOrder->order_number, $posSerial->sale_reference);
+        $this->assertSame($customer->id, (int) $posSerial->customer_id);
+
+        // ---- Web sale ----
+        $webOrder = WebOrder::create([
+            'order_number' => 'WEB-SN-'.Str::upper(Str::random(6)),
+            'customer_id' => $customer->id,
+            'email' => 'serial-'.uniqid().'@test.local',
+            'first_name' => 'Serial', 'last_name' => 'Buyer',
+            'status' => 'pending', 'payment_status' => 'pending',
+            'subtotal' => 100, 'shipping_cost' => 0, 'tax_amount' => 0,
+            'discount_amount' => 0, 'total' => 100, 'currency' => 'USD',
+            'fulfillment_warehouse_id' => $this->warehouse->id,
+        ]);
+        WebOrderItem::create([
+            'web_order_id' => $webOrder->id, 'product_id' => $serialProduct->id,
+            'product_name' => 'Serial Widget', 'product_sku' => $serialProduct->sku,
+            'unit_price' => 100, 'quantity' => 1, 'tax_rate' => 0,
+            'tax_amount' => 0, 'line_total' => 100,
+            'serial_numbers' => ['SN-WEB-1'],
+        ]);
+
+        app(WebOrderPostingService::class)->deductStock($webOrder->fresh('items.product'));
+
+        $webSerial = \App\Models\ProductSerial::where('serial_number', 'SN-WEB-1')->first();
+        $this->assertSame('sold', $webSerial->status, 'Web sale must mark the serial sold');
+        $this->assertSame($webOrder->order_number, $webSerial->sale_reference);
+    }
+
     public function test_bundle_discount_columns_match_the_real_schema(): void
     {
         foreach (['component_variant_id', 'discount_type', 'discount_value', 'quantity'] as $column) {
