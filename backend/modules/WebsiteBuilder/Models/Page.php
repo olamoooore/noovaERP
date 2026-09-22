@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class Page extends Model
@@ -68,17 +69,24 @@ class Page extends Model
 
     public function createVersion(array $content, int $userId): PageVersion
     {
-        // Mark all existing versions as not current
-        $this->versions()->update(['is_current' => false]);
+        // Atomic: a failed insert must not leave the page with every version
+        // marked stale and no current version — that made the editor load
+        // blank (content: null) while the published HTML still rendered.
+        // Confirmed on production 2026-09-22 after a failed save (PK collision
+        // from a stale sequence) stranded Acme Production's Home page.
+        return DB::transaction(function () use ($content, $userId) {
+            // Mark all existing versions as not current
+            $this->versions()->update(['is_current' => false]);
 
-        $latestVersion = $this->versions()->max('version') ?? 0;
+            $latestVersion = $this->versions()->max('version') ?? 0;
 
-        return $this->versions()->create([
-            'version' => $latestVersion + 1,
-            'content' => $content,
-            'is_current' => true,
-            'is_published' => false,
-            'created_by' => $userId,
-        ]);
+            return $this->versions()->create([
+                'version' => $latestVersion + 1,
+                'content' => $content,
+                'is_current' => true,
+                'is_published' => false,
+                'created_by' => $userId,
+            ]);
+        });
     }
 }
