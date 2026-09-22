@@ -95,8 +95,13 @@ interface Customer {
   webOrders?: WebOrder[]
 }
 
-interface CustomerAddress {
-  id: number
+/**
+ * Issue #239: the edit form must be able to clear credit_limit to null
+ * ("no limit configured", per #144) — Partial<Customer> alone types it number.
+ */
+type CustomerEditForm = Partial<Omit<Customer, 'credit_limit'>> & { credit_limit?: number | null }
+
+interface CustomerAddress {  id: number
   type: 'billing' | 'shipping' | 'other'
   label: string
   street: string
@@ -228,7 +233,7 @@ export function CustomerDetailsPage() {
   const [contactForm, setContactForm] = useState<Partial<CustomerContact>>({})
   const [loyaltyAdjustment, setLoyaltyAdjustment] = useState({ points: 0, notes: '' })
   const [customerNote, setCustomerNote] = useState('')
-  const [editForm, setEditForm] = useState<Partial<Customer>>({})
+  const [editForm, setEditForm] = useState<CustomerEditForm>({})
   const [emailForm, setEmailForm] = useState({ subject: '', body: '' })
   const [statementAsOf, setStatementAsOf] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [statementDialogOpen, setStatementDialogOpen] = useState(false)
@@ -285,7 +290,7 @@ export function CustomerDetailsPage() {
 
   // Update customer mutation
   const updateMutation = useMutation({
-    mutationFn: async (data: Partial<Customer>) => {
+    mutationFn: async (data: CustomerEditForm) => {
       const response = await api.put(`/customers/${id}`, data)
       return response.data
     },
@@ -2115,8 +2120,13 @@ export function CustomerDetailsPage() {
                 <Input
                   id="edit-credit-limit"
                   type="number"
-                  value={editForm.credit_limit || ''}
-                  onChange={(e) => setEditForm({ ...editForm, credit_limit: parseFloat(e.target.value) || 0 })}
+                  value={editForm.credit_limit ?? ''}
+                  onChange={(e) => setEditForm({
+                    ...editForm,
+                    // Issue #239: an emptied field means "no limit configured"
+                    // (null), never 0 — after #144, 0 blocks all credit sales.
+                    credit_limit: e.target.value === '' ? null : parseFloat(e.target.value),
+                  })}
                   placeholder="0.00"
                 />
               </div>

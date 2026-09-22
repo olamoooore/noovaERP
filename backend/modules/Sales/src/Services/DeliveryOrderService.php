@@ -52,7 +52,45 @@ class DeliveryOrderService
             }
         }
 
-        return DB::transaction(function () use ($order, $data, $warehouseId, $quotationId, $invoiceId) {
+        $maxRetries = 5;
+        $lockKey = self::deliveryOrderNumberLockKey();
+
+        for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
+            try {
+                return DB::transaction(function () use ($order, $data, $warehouseId, $quotationId, $invoiceId, $lockKey) {
+                    DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+
+                    return $this->createDeliveryOrderInsideTransaction($order, $data, $warehouseId, $quotationId, $invoiceId);
+                });
+            } catch (\Illuminate\Database\QueryException $e) {
+                if (str_contains($e->getMessage(), 'delivery_orders_delivery_order_number_unique')) {
+                    if ($attempt < $maxRetries - 1) {
+                        cache()->forget('document_numbering_delivery_order');
+                        Log::warning('DO number collision on insert, retrying', [
+                            'attempt' => $attempt + 1,
+                        ]);
+
+                        continue;
+                    }
+                }
+                throw $e;
+            }
+        }
+
+        return DB::transaction(function () use ($order, $data, $warehouseId, $quotationId, $invoiceId, $lockKey) {
+            DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+
+            return $this->createDeliveryOrderInsideTransaction($order, $data, $warehouseId, $quotationId, $invoiceId);
+        });
+    }
+
+    /**
+     * Issue #238: transactional body of createDeliveryOrder(), executed under
+     * the tenant-scoped advisory lock (same guarantee as
+     * createStandaloneDeliveryOrder — the missed "fourth instance").
+     */
+    private function createDeliveryOrderInsideTransaction(SalesOrder $order, array $data, int $warehouseId, ?int $quotationId, ?int $invoiceId): DeliveryOrder
+    {
             $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
 
             $deliveryOrder = DeliveryOrder::create([
@@ -120,7 +158,6 @@ class DeliveryOrderService
             }
 
             return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);
-        });
     }
 
     /**
