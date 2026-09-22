@@ -33,6 +33,7 @@ if not _os.environ.get("TESSDATA_PREFIX"):
                 _os.environ["TESSDATA_PREFIX"] = _candidate
 
 import io
+import json
 import os
 import re
 import secrets
@@ -56,7 +57,83 @@ OCR_PORT = int(os.environ.get("OCR_PORT", "5050"))
 _paddle_ocr = None
 _paddle_patched = False
 
+
+class _BodyTooLarge(Exception):
+    """Raised from the streaming receive() wrapper when the cap is exceeded."""
+
+
+class BodySizeLimitMiddleware:
+    """
+    Issue #224: enforce the upload cap at the ASGI layer.
+
+    Starlette constructs `UploadFile` (fully spooling the multipart body to
+    disk/memory) during request parsing, before the route handler — and its
+    handler-level `_read_upload_capped` check — ever runs. A handler-level cap
+    therefore cannot prevent the resource exhaustion it is meant to stop.
+
+    This middleware rejects an oversized body while it is still streaming in:
+    a declared Content-Length over the cap is rejected before any body byte is
+    read, and a missing/lying Content-Length is caught as the bytes arrive,
+    before multipart parsing can complete.
+    """
+
+    def __init__(self, app, max_bytes: int, paths: tuple[str, ...] = ("/api/bookkeeping/upload",)):
+        self.app = app
+        self.max_bytes = max_bytes
+        self.paths = paths
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http" or scope.get("path") not in self.paths:
+            await self.app(scope, receive, send)
+            return
+
+        for name, value in scope.get("headers", []):
+            if name == b"content-length" and value.isdigit() and int(value) > self.max_bytes:
+                await self._reject(send)
+                return
+
+        total = 0
+        started = False
+
+        async def limited_receive():
+            nonlocal total
+            message = await receive()
+            if message.get("type") == "http.request":
+                total += len(message.get("body", b""))
+                if total > self.max_bytes:
+                    raise _BodyTooLarge()
+            return message
+
+        async def tracked_send(message):
+            nonlocal started
+            if message.get("type") == "http.response.start":
+                started = True
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, tracked_send)
+        except _BodyTooLarge:
+            if started:
+                raise
+            await self._reject(send)
+
+    async def _reject(self, send):
+        body = json.dumps({
+            "detail": f"Upload exceeds the maximum size of {self.max_bytes} bytes.",
+        }).encode()
+        await send({
+            "type": "http.response.start",
+            "status": 413,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+        })
+        await send({"type": "http.response.body", "body": body})
+
+
 app = FastAPI(title="OCR Bookkeeping Service", version="1.0.0")
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=OCR_MAX_UPLOAD_BYTES)
 
 
 def require_service_key(x_ocr_service_key: str | None = Header(default=None)) -> None:
