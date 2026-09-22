@@ -198,21 +198,34 @@ class SalesOrderService
             throw new \Exception('Only draft orders can be confirmed.');
         }
 
-        // Issue #139: the credit verdict must gate confirmation. Previously the
-        // controller computed it and silently ignored the result, so an order
-        // over the limit still confirmed, reserved stock and unlocked invoicing.
-        if ($order->customer !== null) {
-            $creditCheck = $this->creditCheckService->checkCreditLimit(
-                $order->customer,
-                (float) $order->total
-            );
-
-            if (! $creditCheck->approved) {
-                throw new \Exception('Credit check failed: '.$creditCheck->reason);
-            }
-        }
-
+        // Issue #139: the credit verdict must gate confirmation.
+        // Issue #240: include the customer's other confirmed-but-uninvoiced
+        // orders (they are not in total_outstanding yet) and take a row lock on
+        // the customer so concurrent confirmations cannot both pass the check.
         return DB::transaction(function () use ($order) {
+            if ($order->customer_id !== null) {
+                $customer = \App\Models\Customer::whereKey($order->customer_id)->lockForUpdate()->first();
+
+                if ($customer !== null) {
+                    $committedOrdersTotal = (float) SalesOrder::query()
+                        ->where('customer_id', $customer->id)
+                        ->whereKeyNot($order->id)
+                        ->whereNotIn('status', ['draft', 'cancelled', 'completed'])
+                        ->whereDoesntHave('invoices')
+                        ->sum('total');
+
+                    $creditCheck = $this->creditCheckService->checkCreditLimit(
+                        $customer,
+                        (float) $order->total,
+                        $committedOrdersTotal
+                    );
+
+                    if (! $creditCheck->approved) {
+                        throw new \Exception('Credit check failed: '.$creditCheck->reason);
+                    }
+                }
+            }
+
             $order = $this->lifecycleService->confirm($order, 'Order confirmed');
 
             $this->freezePricing($order);
