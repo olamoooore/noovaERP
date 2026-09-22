@@ -78,7 +78,7 @@ class HR120ContactRoleRelationshipScopeTest extends TenantTestCase
             ->count());
     }
 
-    public function test_exact_duplicate_role_surfaces_a_domain_error(): void
+    public function test_exact_duplicate_role_is_idempotent(): void
     {
         // contact_roles.entity_id is a loose uuid (no FK to legal_entities).
         $entityId = (string) Str::uuid();
@@ -87,13 +87,13 @@ class HR120ContactRoleRelationshipScopeTest extends TenantTestCase
             'entity_id' => $entityId,
         ]);
 
-        try {
-            $this->service->addRole($this->personId, 'BILLING_CONTACT', $this->tenantId, [
-                'entity_id' => $entityId,
-            ]);
-            $this->fail('Expected CONTACT_ROLE_ALREADY_EXISTS for an exact duplicate');
-        } catch (\DomainException $e) {
-            $this->assertSame('CONTACT_ROLE_ALREADY_EXISTS', $e->getMessage());
-        }
+        $first = ContactRole::where('contact_id', $this->personId)->first();
+
+        $again = $this->service->addRole($this->personId, 'BILLING_CONTACT', $this->tenantId, [
+            'entity_id' => $entityId,
+        ]);
+
+        $this->assertSame($first->id, $again->id, 'Exact duplicate add-role must return the existing row (idempotent)');
+        $this->assertSame(1, ContactRole::where('contact_id', $this->personId)->count());
     }
 }

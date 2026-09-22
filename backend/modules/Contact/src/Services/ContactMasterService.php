@@ -237,7 +237,9 @@ class ContactMasterService
         }
 
         try {
-            $contactRole = ContactRole::create([
+            // Nested transaction => SAVEPOINT, so a unique violation can be
+            // caught without aborting the caller's transaction (Postgres).
+            $contactRole = DB::transaction(fn () => ContactRole::create([
                 'id' => Str::uuid(),
                 'tenant_id' => $tenantId,
                 'contact_id' => $contactId,
@@ -247,11 +249,22 @@ class ContactMasterService
                 'entity_id' => $meta['entity_id'] ?? null,
                 'is_primary' => $meta['is_primary'] ?? false,
                 'metadata' => $meta['metadata'] ?? null,
-            ]);
+            ]));
         } catch (\Illuminate\Database\QueryException $e) {
-            // Issue #120: translate a genuine duplicate into a handled domain
-            // error instead of leaking a 500 from the unique index.
+            // Issue #120: an exact duplicate is idempotent — return the existing
+            // row instead of leaking a 500 from the unique index.
             if (str_contains($e->getMessage(), 'contact_role_unique')) {
+                $existing = ContactRole::where('tenant_id', $tenantId)
+                    ->where('contact_id', $contactId)
+                    ->where('role', $role)
+                    ->where('entity_id', $meta['entity_id'] ?? null)
+                    ->where('relationship_id', $meta['relationship_id'] ?? null)
+                    ->first();
+
+                if ($existing) {
+                    return $existing;
+                }
+
                 throw new \DomainException('CONTACT_ROLE_ALREADY_EXISTS');
             }
 
