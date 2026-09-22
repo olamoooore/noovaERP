@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Models\CustomerCreditNote;
 use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\Product;
+use App\Services\AgedReceivablesService;
 use App\Services\EntityAccessService;
 use Modules\Ecommerce\Models\WebOrder;
 use Modules\POS\Models\PosOrder;
@@ -54,6 +57,11 @@ class DashboardController extends Controller
                 ? round((($totalRevenue - $previousRevenue) / $previousRevenue) * 100, 1)
                 : null,
             'outstanding_invoices' => $this->getOutstandingInvoices(),
+            // Issue #114: trend badge for the AR Outstanding KPI tile.
+            'outstanding_delta_pct' => $this->getOutstandingDeltaPct($startDate),
+            // Issue #111: real AR aging buckets (was always the frontend's
+            // hardcoded zero fallback because the backend omitted the key).
+            'ar_aging' => $this->getArAging(),
             'total_customers' => $this->applyEntityScope(Customer::where('is_active', true))->count(),
             // Products have no legal entity dimension (tenant-global catalogue) —
             // deliberately unscoped, unlike the financial figures above.
@@ -143,14 +151,89 @@ class DashboardController extends Controller
 
     private function getOutstandingInvoices()
     {
+        // Canonical outstanding AR universe (matches AgedReceivablesService):
+        // open statuses with a positive balance, excluding voided/reversed/
+        // superseded documents (issue #96) — status alone is not enough.
         $base = fn () => $this->applyInvoiceEntityScope(
-            Invoice::whereIn('status', ['sent', 'overdue'])
+            Invoice::whereIn('status', ['sent', 'posted', 'partial', 'overdue'])
+                ->where('balance', '>', 0)
+                ->notSuperseded()
         );
 
         return [
             'count' => $base()->count(),
             'amount' => (float) $base()->sum('balance'),
         ];
+    }
+
+    /**
+     * Issue #111: AR aging buckets for the dashboard card, derived from the
+     * canonical AgedReceivablesService (shared-service-first) and mapped to the
+     * five buckets the frontend renders.
+     */
+    private function getArAging(): array
+    {
+        $filters = ($this->entityScopeActive && ! empty($this->scopedEntityIds))
+            ? ['legal_entity_ids' => $this->scopedEntityIds]
+            : [];
+
+        $summary = app(AgedReceivablesService::class)->getAgedReceivables($filters)['summary'];
+
+        return [
+            ['bucket' => 'Current', 'amount' => round((float) $summary['current'], 2), 'color' => 'bg-emerald-500'],
+            ['bucket' => '1 - 30 days', 'amount' => round((float) $summary['days_1_30'], 2), 'color' => 'bg-sky-500'],
+            ['bucket' => '31 - 60 days', 'amount' => round((float) $summary['days_31_60'], 2), 'color' => 'bg-amber-500'],
+            ['bucket' => '61 - 90 days', 'amount' => round((float) $summary['days_61_90'], 2), 'color' => 'bg-orange-500'],
+            ['bucket' => '90+ days', 'amount' => round((float) $summary['days_90_plus'], 2), 'color' => 'bg-rose-500'],
+        ];
+    }
+
+    /**
+     * Issue #114: current outstanding AR vs. the outstanding AR as of the start
+     * of the selected range (mirrors revenue_delta_pct's prior-period framing).
+     */
+    private function getOutstandingDeltaPct(\Carbon\Carbon $rangeStart): ?float
+    {
+        $current = (float) $this->getOutstandingInvoices()['amount'];
+        $prior = $this->getOutstandingAmountAsOf($rangeStart->copy()->subSecond());
+
+        if ($prior <= 0) {
+            return null;
+        }
+
+        return round((($current - $prior) / $prior) * 100, 1);
+    }
+
+    /**
+     * Outstanding AR as of a point in time: posted invoices dated on/before the
+     * date, less applied payments and posted credit notes dated on/before it.
+     */
+    private function getOutstandingAmountAsOf(\Carbon\Carbon $asOf): float
+    {
+        $invoiceIds = $this->applyInvoiceEntityScope(
+            Invoice::whereIn('lifecycle_status', ['posted', 'credited'])
+                ->notSuperseded()
+        )
+            ->where('invoice_date', '<=', $asOf->toDateString())
+            ->pluck('id');
+
+        if ($invoiceIds->isEmpty()) {
+            return 0.0;
+        }
+
+        $invoiced = (float) Invoice::whereIn('id', $invoiceIds)->sum('total');
+
+        $paid = (float) Payment::whereIn('invoice_id', $invoiceIds)
+            ->where('payment_date', '<=', $asOf->toDateString())
+            ->where('payment_status', 'applied')
+            ->sum('amount');
+
+        $credited = (float) CustomerCreditNote::whereIn('invoice_id', $invoiceIds)
+            ->where('status', 'posted')
+            ->where('credit_note_date', '<=', $asOf->toDateString())
+            ->sum('total_amount');
+
+        return max(0.0, round($invoiced - $paid - $credited, 2));
     }
 
     /**
