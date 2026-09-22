@@ -123,6 +123,65 @@ class CommunicationController extends Controller
     /**
      * GET /api/communication/subscribers
      */
+    /**
+     * Issue #86: mark one message read for the current user.
+     */
+    public function markMessageRead(Request $request, int $messageId): JsonResponse
+    {
+        $message = \Modules\Communication\Models\CommunicationMessage::findOrFail($messageId);
+
+        $state = $this->engine->markAsRead(
+            (int) $message->id,
+            (int) $request->user()->id,
+            $request->header('X-Tenant-ID'),
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => ['message_id' => $message->id, 'read_at' => $state->read_at],
+        ]);
+    }
+
+    /**
+     * Issue #86: mark every message on a record read for the current user.
+     */
+    public function markAllRead(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'model' => 'required|string',
+            'record_id' => 'required|integer',
+        ]);
+
+        $count = $this->engine->markAllAsRead(
+            $validated['model'],
+            (int) $validated['record_id'],
+            (int) $request->user()->id,
+            $request->header('X-Tenant-ID'),
+        );
+
+        return response()->json(['success' => true, 'data' => ['marked_read' => $count]]);
+    }
+
+    /**
+     * Issue #86: unread counter, optionally scoped to a record.
+     */
+    public function unreadCount(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'model' => 'nullable|string',
+            'record_id' => 'nullable|integer',
+        ]);
+
+        $count = $this->engine->unreadCount(
+            (int) $request->user()->id,
+            $request->header('X-Tenant-ID'),
+            $validated['model'] ?? null,
+            isset($validated['record_id']) ? (int) $validated['record_id'] : null,
+        );
+
+        return response()->json(['success' => true, 'data' => ['unread_count' => $count]]);
+    }
+
     public function getSubscribers(Request $request): JsonResponse
     {
         $request->validate([

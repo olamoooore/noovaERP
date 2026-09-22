@@ -29,6 +29,11 @@ Route::middleware([
     // Messages / Thread (Chatter)
     Route::get('/messages', [CommunicationController::class, 'getMessages']);
     Route::post('/messages', [CommunicationController::class, 'postMessage']);
+    // Issue #86: per-user read state / unread counter.
+    Route::post('/messages/read-all', [CommunicationController::class, 'markAllRead']);
+    Route::post('/messages/{messageId}/read', [CommunicationController::class, 'markMessageRead'])
+        ->whereNumber('messageId');
+    Route::get('/unread-count', [CommunicationController::class, 'unreadCount']);
 
     // Subscribers (Followers)
     Route::get('/subscribers', [CommunicationController::class, 'getSubscribers']);
