@@ -9,6 +9,7 @@ use App\Models\BankAccount;
 use App\Models\BankReconciliation;
 use App\Models\BankStatementMatch;
 use App\Models\ChartOfAccount;
+use App\Models\FiscalPeriod;
 use App\Models\JournalEntryLine;
 use App\Models\Payment;
 use App\Models\ReconciliationItem;
@@ -218,6 +219,23 @@ class BankReconciliationService
                         $statementBalance,
                         $difference
                     )
+                );
+            }
+
+            // Issue #167: mirror the statement-reconciliation control — never
+            // complete a reconciliation whose statement date falls in a
+            // missing or non-open fiscal period.
+            $fiscalPeriod = FiscalPeriod::getPeriodForDate($statementDate);
+
+            if (! $fiscalPeriod) {
+                throw new \RuntimeException(
+                    "Cannot complete reconciliation: no fiscal period covers {$statementDate->toDateString()}."
+                );
+            }
+
+            if ($fiscalPeriod->status !== 'open') {
+                throw new \RuntimeException(
+                    "Cannot complete reconciliation: fiscal period '{$fiscalPeriod->name}' is not open."
                 );
             }
 
@@ -459,6 +477,28 @@ class BankReconciliationService
                     'Cannot reconcile: %d line(s) (IDs: %s) are already reconciled.',
                     $alreadyReconciled->count(),
                     $reconciledIds
+                )
+            );
+        }
+
+        // Issue #167: a line already accepted into the statement-reconciliation
+        // workflow must be finalised there. Reconciling it here would orphan
+        // those accepted matches forever (their only finalisation path is the
+        // statement reconciliation's complete()).
+        $pendingMatchLineIds = BankStatementMatch::query()
+            ->whereIn('journal_entry_line_id', $lines->pluck('id'))
+            ->where('status', 'accepted')
+            ->pluck('journal_entry_line_id')
+            ->unique()
+            ->values();
+
+        if ($pendingMatchLineIds->isNotEmpty()) {
+            throw new \InvalidArgumentException(
+                sprintf(
+                    'Cannot reconcile: %d line(s) (IDs: %s) have accepted matches in the statement-reconciliation workflow. '.
+                    'Complete or release those matches in Bank Statements reconciliation instead.',
+                    $pendingMatchLineIds->count(),
+                    $pendingMatchLineIds->implode(', ')
                 )
             );
         }
