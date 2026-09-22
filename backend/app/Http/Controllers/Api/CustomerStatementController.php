@@ -174,7 +174,7 @@ class CustomerStatementController extends Controller
         $comparisons = [];
         foreach ($dates as $dateStr) {
             // Canonical as-of snapshot — same math as statement()/generate().
-            $comparisons[] = $this->statementService->comparisonSnapshot($customer, Carbon::parse($dateStr));
+            $comparisons[] = $this->statementService->comparisonSnapshot($customer, Carbon::parse($dateStr), $context);
         }
 
         // Compute deltas between consecutive periods
@@ -250,7 +250,7 @@ class CustomerStatementController extends Controller
         $comparisons = [];
         foreach ($dates as $dateStr) {
             // Canonical as-of snapshot — same math as the JSON comparison endpoint.
-            $comparisons[] = $this->statementService->comparisonSnapshot($customer, Carbon::parse($dateStr));
+            $comparisons[] = $this->statementService->comparisonSnapshot($customer, Carbon::parse($dateStr), $context);
         }
 
         // Compute deltas

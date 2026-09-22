@@ -411,4 +411,25 @@ class CustomerStatementTest extends TenantTestCase
         $this->assertSame(0.0, round($payload['closing_balance'], 2));
         $this->assertContains('Credit Note', collect($payload['transactions'])->pluck('type')->all());
     }
+
+    /** #208 — the shared company/customer/bank context must be computed once per comparison request, not once per date. */
+    public function test_compare_computes_the_shared_context_once(): void
+    {
+        $this->invoice();
+
+        $queries = [];
+        DB::listen(function ($query) use (&$queries) {
+            $queries[] = $query->sql;
+        });
+
+        $this->actingAs($this->user)->getJson(
+            '/api/v1/accounting/customers/'.$this->customer->id.'/statement/compare?dates=2026-01-15,2026-01-31'
+        )->assertOk();
+
+        $contextQueries = collect($queries)
+            ->filter(fn ($sql) => str_contains($sql, 'bank_accounts') || str_contains($sql, 'from "settings"'))
+            ->count();
+
+        $this->assertSame(2, $contextQueries, 'context() must run exactly once (settings + bank_accounts) for all comparison dates');
+    }
 }

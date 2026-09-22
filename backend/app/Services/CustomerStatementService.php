@@ -57,25 +57,26 @@ class CustomerStatementService
         Carbon $end,
         bool $includePaid = false,
         ?string $periodType = 'custom',
+        ?array $context = null,
     ): array {
-        return $this->build($customer, $start, $end, $includePaid, $periodType);
+        return $this->build($customer, $start, $end, $includePaid, $periodType, $context);
     }
 
     /**
      * Canonical payload for an "as of" outstanding snapshot (the quick-view
      * statement). Never includes an opening balance row.
      */
-    public function buildAsOfPayload(Customer $customer, Carbon $asOf): array
+    public function buildAsOfPayload(Customer $customer, Carbon $asOf, ?array $context = null): array
     {
-        return $this->build($customer, null, $asOf, false, 'as_of');
+        return $this->build($customer, null, $asOf, false, 'as_of', $context);
     }
 
     /**
      * Per-date snapshot used by the year-over-year comparison endpoints.
      */
-    public function comparisonSnapshot(Customer $customer, Carbon $asOf): array
+    public function comparisonSnapshot(Customer $customer, Carbon $asOf, ?array $context = null): array
     {
-        $payload = $this->buildAsOfPayload($customer, $asOf);
+        $payload = $this->buildAsOfPayload($customer, $asOf, $context);
         $invoiceRows = collect($payload['transactions'])->where('type', 'Invoice');
 
         return [
@@ -199,8 +200,10 @@ class CustomerStatementService
         Carbon $end,
         bool $includePaid,
         ?string $periodType,
+        ?array $context = null,
     ): array {
-        $context = $this->context($customer);
+        // Issue #208: callers comparing several dates compute the context once.
+        $context ??= $this->context($customer);
 
         // Eager-load lines: the transaction description falls back to the first
         // line description, which previously triggered a query per invoice (#201).
