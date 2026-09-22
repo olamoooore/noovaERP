@@ -248,10 +248,20 @@ export function WebsiteEditor() {
     },
     onError: (error: any) => {
       setIsSaving(false)
-      toast({ 
-        title: 'Error', 
-        description: error?.response?.data?.message || 'Failed to save.', 
-        variant: 'destructive' 
+      // Diagnosable failure: the old generic 'Failed to save.' hid whether the
+      // request never left the browser (network/serialization), was rejected by
+      // the edge (413/504 HTML), or was refused by the API (4xx JSON).
+      const status = error?.response?.status
+      const url = error?.config?.url
+      const detail = error?.response?.data?.message
+        || (typeof error?.response?.data === 'string' ? `HTTP ${status} (non-JSON response)` : null)
+        || error?.message
+        || 'Unknown error'
+      console.error('[WebsiteEditor] save failed', { status, url, error })
+      toast({
+        title: 'Error',
+        description: status ? `Save failed (HTTP ${status}): ${detail}` : `Save failed: ${detail}`,
+        variant: 'destructive'
       })
     },
   })
