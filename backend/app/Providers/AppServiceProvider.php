@@ -43,6 +43,21 @@ class AppServiceProvider extends ServiceProvider
         // Use custom PersonalAccessToken model that always uses public schema
         Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
 
+        // Issue #212: enforce tenant suspension centrally at the tenancy
+        // initialization event, so public storefront middleware, IoT, webhooks,
+        // queued jobs and any future caller are all covered — not just the
+        // authenticated SetTenantFromUserPreference path.
+        Event::listen(
+            \Stancl\Tenancy\Events\TenancyInitialized::class,
+            function (\Stancl\Tenancy\Events\TenancyInitialized $event) {
+                $tenant = $event->tenancy->tenant ?? null;
+
+                if ($tenant) {
+                    \App\Tenancy\TenantSuspensionGuard::assertNotSuspended($tenant);
+                }
+            }
+        );
+
         // Log dangerous migrations (migrate:fresh, db:wipe) for audit trail
         Event::listen(\Illuminate\Console\Events\CommandFinished::class, PreventDangerousMigrations::class);
 

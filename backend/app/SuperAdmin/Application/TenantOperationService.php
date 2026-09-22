@@ -112,11 +112,11 @@ class TenantOperationService
      */
     private function writeSuspendedFlag(string $tenantId, bool $suspended): void
     {
-        $data = $this->readRawTenantData($tenantId);
-        $data['suspended'] = $suspended;
-        DB::table('public.tenants')->where('id', $tenantId)->update([
-            'data' => json_encode($data),
-        ]);
+        // Issue #213: atomic single-statement JSON merge — an unlocked
+        // read-modify-write raced other writers of the same data column
+        // (e.g. TenantGuardrailsCommand::setTestMarker), silently losing one
+        // of the two changes.
+        \App\Tenancy\TenantSuspensionGuard::mergeTenantData($tenantId, ['suspended' => $suspended]);
     }
 
     public function pingHealth(string $tenantId): TenantHealthSnapshot
