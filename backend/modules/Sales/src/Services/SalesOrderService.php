@@ -121,7 +121,15 @@ class SalesOrderService
                         }
                     }
 
-                    $lineData['unit'] = $uom->abbreviation ?: ($lineData['unit'] ?? 'pcs');
+                    // Issue #247: the persisted quantity is now BASE units — label
+                    // it with the product's base unit, not the entered UOM (1 Box
+                    // of 12 was displayed as "12 Box").
+                    $baseUnitLabel = \App\Models\ProductUom::where('product_id', $lineData['product_id'])
+                        ->where('is_base_unit', true)
+                        ->where('is_active', true)
+                        ->value('abbreviation');
+                    $lineData['unit'] = $baseUnitLabel
+                        ?: (\App\Models\Product::whereKey($lineData['product_id'])->value('unit') ?? 'pcs');
                 }
 
                 // Issue #132: when the caller does not supply a price, resolve it

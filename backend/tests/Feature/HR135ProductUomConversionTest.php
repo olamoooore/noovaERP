@@ -109,7 +109,9 @@ class HR135ProductUomConversionTest extends TenantTestCase
         $line = $order->lines()->first();
 
         $this->assertSame(12.0, (float) $line->quantity, '1 Box must become 12 base units');
-        $this->assertSame('Box', $line->unit);
+        // Issue #247: quantity is persisted in BASE units, so the label must
+        // be the base unit ('pcs'), not the entered UOM ('12 Box' was nonsense).
+        $this->assertSame('pcs', $line->unit);
         // Box price of a 10.00 product with factor 12 and multiplier 1 = 120.00;
         // stored as per-base price 10.00 so quantity × price = 120.00.
         $this->assertSame(10.0, (float) $line->unit_price);
