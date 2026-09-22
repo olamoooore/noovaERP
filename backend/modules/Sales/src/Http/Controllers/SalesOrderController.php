@@ -156,7 +156,7 @@ class SalesOrderController extends Controller
 
     public function update(Request $request, $id)
     {
-        $order = $this->findScopedOrder($request, $id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -181,9 +181,9 @@ class SalesOrderController extends Controller
         return response()->json($order->fresh(['customer', 'lines.product']));
     }
 
-    public function confirm(Request $request, $id)
+    public function confirm($id)
     {
-        $order = $this->findScopedOrder($request, $id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -204,9 +204,9 @@ class SalesOrderController extends Controller
         }
     }
 
-    public function allocate(Request $request, $id)
+    public function allocate($id)
     {
-        $order = $this->findScopedOrder($request, $id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -221,9 +221,9 @@ class SalesOrderController extends Controller
         }
     }
 
-    public function fulfil(Request $request, $id)
+    public function fulfil($id)
     {
-        $order = $this->findScopedOrder($request, $id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -238,9 +238,9 @@ class SalesOrderController extends Controller
         }
     }
 
-    public function createInvoice(Request $request, $id)
+    public function createInvoice($id)
     {
-        $order = $this->findScopedOrder($request, $id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -257,7 +257,7 @@ class SalesOrderController extends Controller
 
     public function cancel(Request $request, $id)
     {
-        $order = $this->findScopedOrder($request, $id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -280,9 +280,9 @@ class SalesOrderController extends Controller
      * Reset a cancelled sales order back to draft.
      * Clears cancellation data and resets line cancelled quantities.
      */
-    public function resetToDraft(Request $request, $id)
+    public function resetToDraft($id)
     {
-        $order = $this->findScopedOrder($request, $id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -306,9 +306,9 @@ class SalesOrderController extends Controller
         ]);
     }
 
-    public function history(Request $request, $id)
+    public function history($id)
     {
-        $order = $this->findScopedOrder($request, $id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -317,9 +317,9 @@ class SalesOrderController extends Controller
         return response()->json($order->statusHistory()->with('actor')->orderBy('transitioned_at', 'desc')->get());
     }
 
-    public function invoiceLinks(Request $request, $id)
+    public function invoiceLinks($id)
     {
-        $order = $this->findScopedOrder($request, $id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -328,9 +328,9 @@ class SalesOrderController extends Controller
         return response()->json($order->invoiceLinks()->with('invoice')->get());
     }
 
-    public function channelReferences(Request $request, $id)
+    public function channelReferences($id)
     {
-        $order = $this->findScopedOrder($request, $id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -339,9 +339,9 @@ class SalesOrderController extends Controller
         return response()->json($order->channelReferences);
     }
 
-    public function creditPreview(Request $request, $id)
+    public function creditPreview($id)
     {
-        $order = $this->findScopedOrder($request, $id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -352,9 +352,9 @@ class SalesOrderController extends Controller
         return response()->json($creditCheck);
     }
 
-    public function destroy(Request $request, $id)
+    public function destroy($id)
     {
-        $order = $this->findScopedOrder($request, $id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -371,7 +371,7 @@ class SalesOrderController extends Controller
 
     public function setBillByDelivered(Request $request, $id)
     {
-        $order = $this->findScopedOrder($request, $id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
