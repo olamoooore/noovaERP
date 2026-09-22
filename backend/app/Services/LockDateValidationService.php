@@ -120,7 +120,7 @@ class LockDateValidationService
     public function logOverride(
         int $userId,
         string $transactionType,
-        int $transactionId,
+        ?int $transactionId,
         $transactionDate,
         string $reason,
         ?int $approvedBy = null

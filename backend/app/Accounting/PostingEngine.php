@@ -550,6 +550,8 @@ class PostingEngine implements PostingEngineInterface
 
         $lockResult = $this->lockDateValidator->validateTransactionDate($lockType, $request->postingDate);
 
+        $actorId = null;
+
         if ($lockResult['is_locked']) {
             // Check for override with proper permission validation
             // Workstream 2 (2026-04-15): Enforce real permission checks for lock overrides
@@ -592,8 +594,48 @@ class PostingEngine implements PostingEngineInterface
             }
         }
 
-        // Fiscal-period validation
-        $this->fiscalValidator->validateOrFail($request->postingDate);
+        // Fiscal-period validation — evaluated against the same resolved actor
+        // (and, when a lock-date override was approved, its approver), so a
+        // properly vetted override carries across both gates (issue #166).
+        $actorId ??= TenantUserHelper::resolveTenantUserId($request->userId);
+        $fiscalUser = $this->resolveFiscalOverrideUser($actorId, $request->approvedBy);
+        $fiscalResult = $this->fiscalValidator->validateDate($request->postingDate, $fiscalUser);
+
+        if (! $fiscalResult['allowed'] && $fiscalUser && $actorId !== null && (int) $fiscalUser->id !== $actorId) {
+            // Fall back to the actor's own override authority.
+            $fiscalResult = $this->fiscalValidator->validateDate($request->postingDate, User::find($actorId));
+            $fiscalUser = User::find($actorId);
+        }
+
+        if (! $fiscalResult['allowed']) {
+            throw new \Exception($fiscalResult['reason'] ?? 'Fiscal period validation failed.');
+        }
+
+        if (($fiscalResult['override'] ?? false) && $fiscalUser && isset($fiscalResult['period'])) {
+            $this->fiscalValidator->logOverride(
+                $fiscalResult['period'],
+                $fiscalUser,
+                'posting with period override',
+            );
+        }
+    }
+
+    /**
+     * Issue #166: the fiscal-period gate must evaluate a real, resolved user.
+     * When a lock-date override was approved, prefer the approver (the override
+     * authority); otherwise the actor.
+     */
+    private function resolveFiscalOverrideUser(?int $actorId, ?int $approvedBy): ?User
+    {
+        if ($approvedBy !== null) {
+            $approver = User::find($approvedBy);
+
+            if ($approver) {
+                return $approver;
+            }
+        }
+
+        return $actorId !== null ? User::find($actorId) : null;
     }
 
     /**
@@ -707,9 +749,15 @@ class PostingEngine implements PostingEngineInterface
             return DraftJournalResult::failure($lockResult['message']);
         }
 
-        $fiscalResult = $this->fiscalValidator->validateDate($request->entryDate);
+        // Issue #166: evaluate the resolved actor, not ambient auth()->user().
+        $fiscalUser = $request->userId ? User::find($request->userId) : null;
+        $fiscalResult = $this->fiscalValidator->validateDate($request->entryDate, $fiscalUser);
         if (! $fiscalResult['allowed']) {
             return DraftJournalResult::failure($fiscalResult['reason']);
+        }
+
+        if (($fiscalResult['override'] ?? false) && $fiscalUser && isset($fiscalResult['period'])) {
+            $this->fiscalValidator->logOverride($fiscalResult['period'], $fiscalUser, 'draft creation with period override');
         }
 
         // ── 2. Validate balance ────────────────────────────────
