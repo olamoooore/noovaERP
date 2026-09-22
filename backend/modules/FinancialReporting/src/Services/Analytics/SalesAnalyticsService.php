@@ -125,6 +125,9 @@ class SalesAnalyticsService
                 ])
                 ->whereNotIn('so.status', ['draft', 'cancelled'])
                 ->where('so.accounting_status', '!=', 'reversed')
+                // Issue #236: exclude channel='pos' — POS revenue already comes
+                // from pos_orders; its synced sales_orders row would double-count.
+                ->where('so.channel', '!=', 'pos')
                 ->whereBetween(DB::raw('COALESCE(so.order_date, so.created_at)'), [$startDate, $endDate->endOfDay()]);
 
             $rows = DB::query()
@@ -218,6 +221,8 @@ class SalesAnalyticsService
                 ])
                 ->whereNotIn('status', ['draft', 'cancelled'])
                 ->where('accounting_status', '!=', 'reversed')
+                // Issue #236: pos-synced sales orders are counted via pos_orders.
+                ->where('channel', '!=', 'pos')
                 ->whereBetween(DB::raw('COALESCE(order_date, created_at)'), [$startDate, $endDate->endOfDay()])
                 ->groupBy('period');
 
@@ -419,6 +424,7 @@ class SalesAnalyticsService
             JOIN sales_orders so ON so.id = sol.sales_order_id
             WHERE so.status NOT IN ('draft', 'cancelled')
               AND so.accounting_status <> 'reversed'
+              AND so.channel <> 'pos'
               AND COALESCE(so.order_date, so.created_at) BETWEEN '{$start}' AND '{$end}'
         )";
 
