@@ -426,6 +426,10 @@ class PosSyncService
             'session_id' => $queueItem->session_id,
             'terminal_id' => $queueItem->terminal_id,
             'customer_id' => $payload['customer_id'] ?? null,
+            // Issue #235: stamp the entity so dashboard/POS counts can be scoped.
+            'legal_entity_id' => $payload['legal_entity_id']
+                ?? \App\Models\Customer::whereKey($payload['customer_id'] ?? null)->value('legal_entity_id')
+                ?? request()->attributes->get('legal_entity_id'),
             'subtotal' => $payload['subtotal'] ?? 0,
             'tax_amount' => $payload['tax_amount'] ?? 0,
             'total' => $payload['total'] ?? 0,

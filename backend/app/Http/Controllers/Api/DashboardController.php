@@ -154,9 +154,10 @@ class DashboardController extends Controller
     }
 
     /**
-     * Issue #112: orders created today across the sales channels. Sales orders
-     * are entity-scoped like the rest of the dashboard (#113); POS and web
-     * orders have no legal-entity column and are counted tenant-wide.
+     * Issue #112: orders created today across the sales channels.
+     * Issue #235: POS and web orders now carry legal_entity_id (migration
+     * 2026_09_22_000010) and are scoped like sales orders — previously the
+     * figure blended every entity's POS/web volume.
      */
     private function getOrdersToday(): int
     {
@@ -167,13 +168,15 @@ class DashboardController extends Controller
         )->count();
 
         return $salesOrders
-            + PosOrder::whereDate('created_at', $today)->count()
-            + WebOrder::whereDate('created_at', $today)->count();
+            + $this->applyEntityScope(PosOrder::whereDate('created_at', $today))->count()
+            + $this->applyEntityScope(WebOrder::whereDate('created_at', $today))->count();
     }
 
     private function getPosOrdersToday(): int
     {
-        return PosOrder::whereDate('created_at', now()->toDateString())->count();
+        return $this->applyEntityScope(
+            PosOrder::whereDate('created_at', now()->toDateString())
+        )->count();
     }
 
     private function getLowStockProducts()

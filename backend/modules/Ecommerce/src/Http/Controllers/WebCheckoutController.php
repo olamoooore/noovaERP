@@ -340,6 +340,9 @@ class WebCheckoutController extends Controller
             $order = WebOrder::create([
                 'order_number' => WebOrder::generateOrderNumber(),
                 'customer_id' => $customerId,
+                // Issue #235: stamp the entity so dashboard counts can be scoped.
+                'legal_entity_id' => \App\Models\Customer::whereKey($customerId)->value('legal_entity_id')
+                    ?? request()->attributes->get('legal_entity_id'),
                 'email' => $email,
                 'phone' => $phone,
                 'first_name' => $firstName,
