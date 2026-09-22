@@ -236,17 +236,27 @@ class ContactMasterService
             );
         }
 
-        $contactRole = ContactRole::create([
-            'id' => Str::uuid(),
-            'tenant_id' => $tenantId,
-            'contact_id' => $contactId,
-            'relationship_id' => $meta['relationship_id'] ?? null,
-            'role' => $role,
-            'role_label' => $meta['role_label'] ?? null,
-            'entity_id' => $meta['entity_id'] ?? null,
-            'is_primary' => $meta['is_primary'] ?? false,
-            'metadata' => $meta['metadata'] ?? null,
-        ]);
+        try {
+            $contactRole = ContactRole::create([
+                'id' => Str::uuid(),
+                'tenant_id' => $tenantId,
+                'contact_id' => $contactId,
+                'relationship_id' => $meta['relationship_id'] ?? null,
+                'role' => $role,
+                'role_label' => $meta['role_label'] ?? null,
+                'entity_id' => $meta['entity_id'] ?? null,
+                'is_primary' => $meta['is_primary'] ?? false,
+                'metadata' => $meta['metadata'] ?? null,
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Issue #120: translate a genuine duplicate into a handled domain
+            // error instead of leaking a 500 from the unique index.
+            if (str_contains($e->getMessage(), 'contact_role_unique')) {
+                throw new \DomainException('CONTACT_ROLE_ALREADY_EXISTS');
+            }
+
+            throw $e;
+        }
 
         ContactRoleChanged::dispatch($tenantId, $contactId, $role, 'added');
 
