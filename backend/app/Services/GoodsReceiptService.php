@@ -156,7 +156,10 @@ class GoodsReceiptService
         $total = 0.0;
 
         foreach ($grn->lines as $line) {
-            $acceptedQty = (int) $line->quantity_accepted;
+            // Issue #210: quantity_accepted is decimal(15,4); casting to int
+            // truncated fractional receipts and under-posted Inventory/GRNI
+            // while adjustStock() moved the full quantity.
+            $acceptedQty = (float) $line->quantity_accepted;
 
             if ($acceptedQty <= 0) {
                 continue;
