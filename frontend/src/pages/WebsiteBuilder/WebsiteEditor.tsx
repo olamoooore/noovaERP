@@ -13,6 +13,7 @@ import { getShopPageDefaultContent } from '@/components/website-builder/shopPres
 import {
   compressGrapesJsComponents,
   compressInlineImagesInHtml,
+  compressInlineImagesInCss,
 } from '@/lib/imageCompression'
 import '@/components/website-builder/grapes-custom.css'
 import {
@@ -518,6 +519,7 @@ export function WebsiteEditor() {
     setIsCompressingImages(true)
     let compressedComponents: any = editorInstance.getComponents()
     let html: string = editorInstance.getHtml()
+    let css: string = editorInstance.getCss() || ''
     let bytesBefore = 0
     let bytesAfter = 0
     let compressedCount = 0
@@ -534,6 +536,14 @@ export function WebsiteEditor() {
       compressedCount += htmlResult.compressedCount
       bytesBefore += htmlResult.bytesBefore
       bytesAfter += htmlResult.bytesAfter
+
+      // Images referenced from CSS (background-image etc.) are part of the
+      // rendered page too — compress them or the save stays multi-megabyte.
+      const cssResult = await compressInlineImagesInCss(css)
+      css = cssResult.css
+      compressedCount += cssResult.compressedCount
+      bytesBefore += cssResult.bytesBefore
+      bytesAfter += cssResult.bytesAfter
     } catch (err) {
       console.warn('[WebsiteEditor] image compression failed; saving raw', err)
     } finally {
@@ -549,7 +559,7 @@ export function WebsiteEditor() {
 
     await handleSave({
       html,
-      css: editorInstance.getCss() || '',
+      css,
       components: compressedComponents,
       styles: editorInstance.getStyle(),
     })
@@ -584,9 +594,12 @@ export function WebsiteEditor() {
     if (website?.status === 'published' && website?.slug) {
       // Published site — use the persistent server-rendered URL
       const pageSlug = pageData?.slug
+      // Cache-buster: the public renderer sends Cache-Control max-age=300, so
+      // an un-suffixed preview URL can show the pre-save version for 5 minutes.
+      const cacheBuster = `?v=${Date.now()}`
       const url = pageSlug && !pageData?.is_home
-        ? `${window.location.origin}${basePath}/w/${website.slug}/${pageSlug}`
-        : `${window.location.origin}${basePath}/w/${website.slug}`
+        ? `${window.location.origin}${basePath}/w/${website.slug}/${pageSlug}${cacheBuster}`
+        : `${window.location.origin}${basePath}/w/${website.slug}${cacheBuster}`
       window.open(url, '_blank')
     } else {
       // Draft / never-published — render client-side and open directly
