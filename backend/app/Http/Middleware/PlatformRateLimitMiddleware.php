@@ -11,11 +11,6 @@ use Symfony\Component\HttpFoundation\Response;
 class PlatformRateLimitMiddleware
 {
     /**
-     * Maximum requests per minute per IP address.
-     */
-    private const RATE_LIMIT_PER_MINUTE = 120;
-
-    /**
      * Window for rate limiting in seconds (1 minute).
      */
     private const WINDOW_SECONDS = 60;
@@ -54,21 +49,40 @@ class PlatformRateLimitMiddleware
         // Cache::increment() silently drops the expiration and would otherwise
         // leave the counter stuck above the limit FOREVER (permanent 429).
         //
-        // This was the root cause of the "sidebar shows only 3 items and the
-        // page keeps refetching" report: a transient burst tripped the limit,
-        // the file-cache TTL was lost, and /api/v1/features returned 429
-        // indefinitely, which the frontend treated as "no features enabled".
-        $key = 'rate_limit:platform:'.$request->ip();
+        // 2026-09-21 follow-up: the bucket used to be keyed by IP only, so
+        // every user behind one office NAT shared 120 req/min and normal SPA
+        // traffic (dashboard + features + menu + POS polling) tripped 429s for
+        // everyone. Authenticated requests are now keyed by user id; only
+        // guests share an IP bucket. This middleware runs in the `api` group,
+        // BEFORE the route's `auth:sanctum`, so the Sanctum guard is resolved
+        // on demand here (later middleware reuses the cached user).
+        $user = null;
+        try {
+            $user = auth('sanctum')->user();
+        } catch (\Throwable $e) {
+            $user = null;
+        }
 
-        if (RateLimiter::tooManyAttempts($key, self::RATE_LIMIT_PER_MINUTE)) {
+        if ($user !== null) {
+            $limit = max(1, (int) config('platform.rate_limit.authenticated', 300));
+            $key = 'rate_limit:platform:user:'.$user->getAuthIdentifier();
+            $scope = 'user';
+        } else {
+            $limit = max(1, (int) config('platform.rate_limit.guest', 120));
+            $key = 'rate_limit:platform:ip:'.$request->ip();
+            $scope = 'ip';
+        }
+
+        if (RateLimiter::tooManyAttempts($key, $limit)) {
             $seconds = RateLimiter::availableIn($key);
 
             Log::warning('Platform API rate limit exceeded', [
+                'scope' => $scope,
                 'ip' => $request->ip(),
                 'path' => $request->getPathInfo(),
                 'method' => $request->method(),
                 'retry_after' => $seconds,
-                'user_id' => auth()->id(),
+                'user_id' => $user?->getAuthIdentifier(),
             ]);
 
             return response()->json([
@@ -77,7 +91,7 @@ class PlatformRateLimitMiddleware
                 'retry_after' => $seconds,
             ], 429)->withHeaders([
                 'Retry-After' => $seconds,
-                'X-RateLimit-Limit' => self::RATE_LIMIT_PER_MINUTE,
+                'X-RateLimit-Limit' => $limit,
                 'X-RateLimit-Remaining' => 0,
             ]);
         }
@@ -85,8 +99,8 @@ class PlatformRateLimitMiddleware
         RateLimiter::hit($key, self::WINDOW_SECONDS);
 
         return $next($request)->withHeaders([
-            'X-RateLimit-Limit' => self::RATE_LIMIT_PER_MINUTE,
-            'X-RateLimit-Remaining' => max(0, self::RATE_LIMIT_PER_MINUTE - RateLimiter::attempts($key)),
+            'X-RateLimit-Limit' => $limit,
+            'X-RateLimit-Remaining' => max(0, $limit - RateLimiter::attempts($key)),
         ]);
     }
 }

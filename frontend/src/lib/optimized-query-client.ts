@@ -33,8 +33,11 @@ export const createOptimizedQueryClient = (): QueryClient => {
         // Prevent rapid successive requests
         retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30000),
         
-        // Enable background refetching for better UX
-        refetchOnMount: 'always',
+        // Refetch on mount only when data is stale (honours staleTime above).
+        // `'always'` forced a network call on every component mount —
+        // features/dashboard/menu widgets mounting together multiplied
+        // requests and contributed to the 2026-09-21 429 storm.
+        refetchOnMount: true,
         
         // Optimize network waterfall
         networkMode: 'online',
