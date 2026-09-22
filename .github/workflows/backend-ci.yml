@@ -42,6 +42,7 @@ env:
   MAIL_MAILER: array
   REDIS_CLIENT: phpredis
   CENTRAL_DOMAINS: localhost
+  OCR_SERVICE_KEY: test-ocr-service-key
 
 jobs:
   gates:

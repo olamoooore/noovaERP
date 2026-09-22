@@ -30,6 +30,7 @@
         <env name="CACHE_STORE" value="array"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="OCR_SERVICE_KEY" value="test-ocr-service-key"/>
         <ini name="memory_limit" value="1024M"/>
     </php>
 </phpunit>
