@@ -475,11 +475,40 @@ class CashFlowService extends BaseReportService
 
     /**
      * Get asset sales
+     *
+     * Issue #95: real cash proceeds from fixed-asset disposals.
+     * DepreciationService::disposeAsset() posts through PostingEngine with
+     * documentType 'asset_disposal' (DR cash / CR asset + gain-loss), and
+     * PostingEngine records source_document_type on journal_entry_links.
+     * Count only the cash-side debits so the investing section reflects the
+     * actual proceeds, not the asset cost or the gain.
      */
     protected function getAssetSales(ReportFilter $filter): float
     {
-        // Look for gains/losses on asset sales or cash from asset disposals
-        return 0; // Simplified - would need specific tracking
+        $query = DB::table('journal_entry_lines as jel')
+            ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
+            ->join('chart_of_accounts as coa', 'coa.id', '=', 'jel.account_id')
+            ->where('je.status', 'posted')
+            ->where('je.is_active_version', true)
+            ->whereBetween('je.entry_date', [$filter->startDate, $filter->endDate])
+            ->whereExists(function ($sub) {
+                $sub->select(DB::raw(1))
+                    ->from('journal_entry_links as link')
+                    ->whereColumn('link.journal_entry_id', 'je.id')
+                    ->where('link.source_document_type', 'asset_disposal')
+                    ->where('link.relation_type', 'post');
+            });
+
+        $this->mappingReader->applyFilter($query, 'CF_CASH');
+
+        if ($filter->legalEntityId) {
+            $query->where('je.legal_entity_id', $filter->legalEntityId);
+        }
+        if ($filter->entityBookId) {
+            $query->where('je.entity_book_id', $filter->entityBookId);
+        }
+
+        return (float) $query->sum('jel.debit');
     }
 
     /**
