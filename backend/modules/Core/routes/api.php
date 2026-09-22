@@ -356,10 +356,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(EnsureAccountingReverseAccess::class);
 
         // Reports
-        Route::get('/trial-balance', [AccountingController::class, 'trialBalance']);
-        Route::get('/ledger/{account}', [AccountingController::class, 'ledger']);
-        Route::get('/balance-sheet', [AccountingController::class, 'balanceSheet']);
-        Route::get('/profit-and-loss', [AccountingController::class, 'profitAndLoss']);
+        Route::get('/trial-balance', [AccountingController::class, 'trialBalance'])
+            ->middleware(RequirePermission::using('reports.view'));
+        Route::get('/ledger/{account}', [AccountingController::class, 'ledger'])
+            ->middleware(RequirePermission::using('reports.view'));
+        Route::get('/balance-sheet', [AccountingController::class, 'balanceSheet'])
+            ->middleware(RequirePermission::using('reports.view'));
+        Route::get('/profit-and-loss', [AccountingController::class, 'profitAndLoss'])
+            ->middleware(RequirePermission::using('reports.view'));
 
         // Period-End Processes
         Route::post('/fx-revaluation', [AccountingController::class, 'fxRevaluation']);
@@ -678,12 +682,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validateCreditNote']);
 
         // Customers List
-        Route::get('/customers', [CustomersController::class, 'index']);
+        Route::get('/customers', [CustomersController::class, 'index'])
+            ->middleware(RequirePermission::using('customers.view'));
         Route::post('/customers/import', [CustomersController::class, 'import'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('customers.write'));
         Route::post('/customers/import/{batch}/commit', [CustomersController::class, 'commitImport'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('customers.write'));
-        Route::get('/customers/{id}', [CustomersController::class, 'show']);
+        Route::get('/customers/{id}', [CustomersController::class, 'show'])
+            ->middleware(RequirePermission::using('customers.view'));
 
         // Vendor Credit Notes (must be before /vendors/{id} to avoid route conflict)
         Route::get('/vendors/credit-notes', [VendorCreditNotesController::class, 'index']);
