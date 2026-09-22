@@ -162,7 +162,7 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
-          php -d memory_limit=256M artisan test --testsuite=Feature
+          php -d memory_limit=256M artisan test --parallel --processes=4 --testsuite=Feature
 
   ocr:
     name: OCR test suite
@@ -195,7 +195,7 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
-          php -d memory_limit=256M artisan test --testsuite=OCR
+          php -d memory_limit=256M artisan test --parallel --processes=4 --testsuite=OCR
 
   financial-reporting:
     name: FinancialReporting test suite
@@ -228,4 +228,4 @@ jobs:
         working-directory: backend
         run: |
           set -euo pipefail
-          php -d memory_limit=256M artisan test --testsuite=FinancialReporting
+          php -d memory_limit=256M artisan test --parallel --processes=4 --testsuite=FinancialReporting

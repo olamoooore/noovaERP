@@ -28,7 +28,7 @@ class ExportApiTest extends TenantTestCase
             \App\Http\Middleware\EnsureEntityAccess::class,
         ]);
 
-        $this->user = User::factory()->create();
+        $this->user = $this->setUpTenantAdminUser('Export API Tenant');
         Storage::fake('local');
     }
 

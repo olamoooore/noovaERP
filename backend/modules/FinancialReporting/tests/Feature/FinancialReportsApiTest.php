@@ -30,7 +30,9 @@ class FinancialReportsApiTest extends TenantTestCase
             \App\Http\Middleware\EnsureEntityAccess::class,
         ]);
 
-        $this->user = User::factory()->create();
+        // Issue #103: reports routes require reports.view — a tenant Admin
+        // (super role) with the central user_company_access row authorises.
+        $this->user = $this->setUpTenantAdminUser('Financial Reports Tenant');
         $this->setupTestData();
     }
 

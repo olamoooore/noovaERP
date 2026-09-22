@@ -28,7 +28,7 @@ class CacheManagementTest extends TenantTestCase
             \App\Http\Middleware\EnsureEntityAccess::class,
         ]);
 
-        $this->user = User::factory()->create();
+        $this->user = $this->setUpTenantAdminUser('Report Cache Management Tenant');
     }
 
     /** @test */
