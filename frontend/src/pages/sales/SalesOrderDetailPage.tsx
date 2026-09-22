@@ -1,8 +1,19 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { useToast } from '@/hooks/use-toast'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -60,10 +71,17 @@ interface SalesOrderLine {
   line_total: number
 }
 
+type OrderAction = 'confirm' | 'allocate' | 'fulfil' | 'invoice' | 'reset-to-draft' | null
+
 export function SalesOrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [chatterOpen, setChatterOpen] = useState(false)
+  const [action, setAction] = useState<OrderAction>(null)
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
   const navigate = useNavigate()
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
 
   const { data: order, isLoading } = useQuery({
     queryKey: ['sales-order', id],
@@ -72,6 +90,54 @@ export function SalesOrderDetailPage() {
       return response.data as SalesOrder
     },
     enabled: !!id,
+  })
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['sales-order', id] })
+    queryClient.invalidateQueries({ queryKey: ['sales-orders'] })
+  }
+
+  const actionMutation = useMutation({
+    mutationFn: async (target: Exclude<OrderAction, null>) => {
+      const response = await api.post(`/sales/orders/${id}/${target}`)
+      return response.data
+    },
+    onSuccess: (data, target) => {
+      refresh()
+      setAction(null)
+      if (target === 'invoice' && data?.invoice?.id) {
+        toast({ title: 'Invoice created', description: data.invoice.invoice_number })
+        navigate(`/invoices/${data.invoice.id}`)
+        return
+      }
+      toast({ title: 'Success', description: data?.message || 'Order updated' })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to update order',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/sales/orders/${id}/cancel`, { reason: cancelReason })
+    },
+    onSuccess: () => {
+      refresh()
+      setCancelOpen(false)
+      setCancelReason('')
+      toast({ title: 'Success', description: 'Order cancelled' })
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to cancel order',
+        variant: 'destructive',
+      })
+    },
   })
 
   const getStatusBadge = (status: string) => {
@@ -136,6 +202,41 @@ export function SalesOrderDetailPage() {
             <Icon icon="solar:chat-round-dots-bold-duotone" className="mr-2 h-4 w-4" />
             Chatter
           </Button>
+          {order.status === 'draft' && (
+            <Button onClick={() => actionMutation.mutate('confirm')} disabled={actionMutation.isPending}>
+              <Icon icon="solar:check-circle-bold-duotone" className="mr-2 h-4 w-4" />
+              Confirm
+            </Button>
+          )}
+          {order.status === 'confirmed' && (
+            <Button onClick={() => actionMutation.mutate('allocate')} disabled={actionMutation.isPending}>
+              <Icon icon="solar:box-bold-duotone" className="mr-2 h-4 w-4" />
+              Allocate
+            </Button>
+          )}
+          {order.status === 'allocated' && (
+            <Button onClick={() => actionMutation.mutate('fulfil')} disabled={actionMutation.isPending}>
+              <Icon icon="solar:delivery-bold-duotone" className="mr-2 h-4 w-4" />
+              Fulfil
+            </Button>
+          )}
+          {['confirmed', 'allocated', 'fulfilled', 'invoiced'].includes(order.status) && (
+            <Button variant="outline" onClick={() => actionMutation.mutate('invoice')} disabled={actionMutation.isPending}>
+              <Icon icon="solar:file-text-bold-duotone" className="mr-2 h-4 w-4" />
+              Create Invoice
+            </Button>
+          )}
+          {order.status === 'cancelled' && (
+            <Button variant="outline" onClick={() => actionMutation.mutate('reset-to-draft')} disabled={actionMutation.isPending}>
+              <Icon icon="solar:refresh-bold-duotone" className="mr-2 h-4 w-4" />
+              Reset to Draft
+            </Button>
+          )}
+          {['draft', 'confirmed', 'allocated', 'fulfilled'].includes(order.status) && (
+            <Button variant="destructive" onClick={() => setCancelOpen(true)}>
+              Cancel
+            </Button>
+          )}
           <ChatterDialog
             open={chatterOpen}
             onOpenChange={setChatterOpen}
@@ -329,6 +430,37 @@ export function SalesOrderDetailPage() {
           )}
         </div>
       )}
+      <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Sales Order</DialogTitle>
+            <DialogDescription>
+              This releases any stock reservations. Provide a reason for the audit trail.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="cancel-reason">Reason</Label>
+            <Input
+              id="cancel-reason"
+              value={cancelReason}
+              onChange={(event) => setCancelReason(event.target.value)}
+              placeholder="Why is this order being cancelled?"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelOpen(false)}>
+              Keep Order
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={cancelMutation.isPending || cancelReason.trim().length < 3}
+              onClick={() => cancelMutation.mutate()}
+            >
+              {cancelMutation.isPending ? 'Cancelling...' : 'Cancel Order'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
