@@ -62,7 +62,7 @@ class InventoryService
     public function adjustStock(
         int $productId,
         int $warehouseId,
-        int $quantity,
+        float $quantity,
         string $type,
         ?string $reference = null,
         ?string $referenceType = null,
@@ -122,7 +122,7 @@ class InventoryService
                 // so the first sale doesn't immediately fail with "Insufficient stock".
                 $hasAnyLevel = StockLevel::where('product_id', $productId)->exists();
                 $initialQty = (! $hasAnyLevel && $product->stock_quantity > 0)
-                    ? (int) $product->stock_quantity
+                    ? (float) $product->stock_quantity
                     : 0;
 
                 if ($initialQty > 0) {
@@ -207,7 +207,7 @@ class InventoryService
             // actually have batch rows; never blocks the movement on failure.
             try {
                 $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
-                $movementQty = (int) $movement->quantity;
+                $movementQty = (float) $movement->quantity;
 
                 if ($type === 'sale') {
                     $batchConsumption->consumeFefo(
@@ -246,7 +246,7 @@ class InventoryService
         int $productId,
         int $fromWarehouseId,
         int $toWarehouseId,
-        int $quantity,
+        float $quantity,
         ?string $reference = null,
         ?string $notes = null
     ): array {

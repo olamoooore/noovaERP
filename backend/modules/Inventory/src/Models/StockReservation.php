@@ -43,7 +43,8 @@ class StockReservation extends Model
     ];
 
     protected $casts = [
-        'quantity' => 'integer',
+        // Issue #250: keep fractional base quantities (see StockLevel).
+        'quantity' => 'decimal:4',
         'quantity_fulfilled' => 'integer',
         'expires_at' => 'datetime',
         'released_at' => 'datetime',

@@ -79,6 +79,24 @@ class ProductImportNegativeValuesTest extends TenantTestCase
         $this->assertDatabaseMissing('products', ['sku' => 'NEG-003']);
     }
 
+    /**
+     * Issue #248: vendor_price is parsed by the same parseNumericValue() and is
+     * min:0 on the direct API, but was missing from the #136 guard list.
+     */
+    public function test_negative_vendor_price_is_rejected(): void
+    {
+        $csv = implode("\n", [
+            'name,sku,cost,price,vendor_price,stock_quantity,track_inventory,is_active',
+            'Negative Vendor Price Product,NEG-004,10,20,-50,5,false,true',
+        ]);
+
+        $response = $this->import($csv);
+
+        $response->assertOk();
+        $response->assertJsonPath('created', 0);
+        $this->assertDatabaseMissing('products', ['sku' => 'NEG-004']);
+    }
+
     /** Positive control: currency symbols/thousands separators still parse. */
     public function test_positive_values_with_currency_symbols_still_import(): void
     {

@@ -615,7 +615,7 @@ class Product extends Model
      *
      * @internal This method is now private to prevent new usage. Existing callers must migrate.
      */
-    private function adjustStock(int $quantity, string $type, ?string $reference = null, ?int $warehouseId = null): void
+    private function adjustStock(float $quantity, string $type, ?string $reference = null, ?int $warehouseId = null): void
     {
         // Resolve warehouse: use provided ID, else fall back to the default warehouse.
         // Without a warehouse all stock changes are untrackable at the location level.

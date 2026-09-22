@@ -920,7 +920,9 @@ class ProductController extends Controller
             // values are also rejected explicitly (issue #136): these columns
             // are non-negative by definition and a negative was previously
             // accepted as valid then silently sign-stripped to positive.
-            $numericColumns = ['cost', 'price', 'stock_quantity', 'shelf_life_days'];
+            // Issue #248: vendor_price belongs to the same min:0 set as the
+            // direct API validation and was missed by the #136 guard.
+            $numericColumns = ['cost', 'price', 'vendor_price', 'stock_quantity', 'shelf_life_days'];
             $invalidColumns = [];
             $negativeColumns = [];
             foreach ($numericColumns as $column) {

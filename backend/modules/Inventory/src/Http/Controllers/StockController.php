@@ -67,7 +67,9 @@ class StockController extends Controller
         $validated = $request->validate([
             'product_id' => 'required|integer|exists:products,id',
             'warehouse_id' => 'required|integer|exists:warehouses,id',
-            'quantity' => 'required|integer|min:1',
+            // Issue #246/#250: fractional UOM-converted quantities are valid.
+            'quantity' => 'required|numeric|gt:0',
+            'uom_id' => 'nullable|integer|exists:product_uoms,id',
             'adjustment_reason_id' => 'required|integer',
             'reference' => 'nullable|string|max:100',
             'notes' => 'nullable|string|max:500',
@@ -83,12 +85,13 @@ class StockController extends Controller
             $movement = $this->stockAdjustmentService->stockIn(
                 (int) $validated['product_id'],
                 (int) $validated['warehouse_id'],
-                (int) $validated['quantity'],
+                (float) $validated['quantity'],
                 (int) $validated['adjustment_reason_id'],
                 $validated['reference'] ?? null,
                 $validated['notes'] ?? null,
                 $validated['batch_number'] ?? null,
-                isset($validated['expiry_date']) ? new \DateTime($validated['expiry_date']) : null
+                isset($validated['expiry_date']) ? new \DateTime($validated['expiry_date']) : null,
+                isset($validated['uom_id']) ? (int) $validated['uom_id'] : null
             );
 
             return response()->json($movement->load('product'));
@@ -106,7 +109,9 @@ class StockController extends Controller
         $validated = $request->validate([
             'product_id' => 'required|integer|exists:products,id',
             'warehouse_id' => 'required|integer|exists:warehouses,id',
-            'quantity' => 'required|integer|min:1',
+            // Issue #246/#250: fractional UOM-converted quantities are valid.
+            'quantity' => 'required|numeric|gt:0',
+            'uom_id' => 'nullable|integer|exists:product_uoms,id',
             'adjustment_reason_id' => 'required|integer',
             'reference' => 'nullable|string|max:100',
             'notes' => 'nullable|string|max:500',
@@ -119,10 +124,11 @@ class StockController extends Controller
             $movement = $this->stockAdjustmentService->stockOut(
                 (int) $validated['product_id'],
                 (int) $validated['warehouse_id'],
-                (int) $validated['quantity'],
+                (float) $validated['quantity'],
                 (int) $validated['adjustment_reason_id'],
                 $validated['reference'] ?? null,
-                $validated['notes'] ?? null
+                $validated['notes'] ?? null,
+                isset($validated['uom_id']) ? (int) $validated['uom_id'] : null
             );
 
             return response()->json($movement->load('product'));
@@ -140,7 +146,9 @@ class StockController extends Controller
         $validated = $request->validate([
             'product_id' => 'required|integer|exists:products,id',
             'warehouse_id' => 'required|integer|exists:warehouses,id',
-            'new_quantity' => 'required|integer|min:0',
+            // Issue #246/#250: fractional UOM-converted quantities are valid.
+            'new_quantity' => 'required|numeric|min:0',
+            'uom_id' => 'nullable|integer|exists:product_uoms,id',
             'adjustment_reason_id' => 'required|integer',
             'notes' => 'nullable|string|max:500',
         ]);
@@ -152,9 +160,10 @@ class StockController extends Controller
             $movement = $this->stockAdjustmentService->adjust(
                 (int) $validated['product_id'],
                 (int) $validated['warehouse_id'],
-                (int) $validated['new_quantity'],
+                (float) $validated['new_quantity'],
                 (int) $validated['adjustment_reason_id'],
-                $validated['notes'] ?? null
+                $validated['notes'] ?? null,
+                isset($validated['uom_id']) ? (int) $validated['uom_id'] : null
             );
 
             return response()->json($movement->load('product'));

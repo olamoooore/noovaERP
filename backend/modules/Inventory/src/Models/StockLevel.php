@@ -20,10 +20,12 @@ class StockLevel extends Model
     ];
 
     protected $casts = [
-        'quantity' => 'integer',
-        'reserved_quantity' => 'integer',
-        'min_quantity' => 'integer',
-        'max_quantity' => 'integer',
+        // Issue #250: fractional UOM-converted quantities must survive the
+        // model cast (integer casts truncate on assignment).
+        'quantity' => 'decimal:4',
+        'reserved_quantity' => 'decimal:4',
+        'min_quantity' => 'decimal:4',
+        'max_quantity' => 'decimal:4',
     ];
 
     public function product(): BelongsTo
