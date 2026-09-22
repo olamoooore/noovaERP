@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\EncryptedOrLegacyString;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -38,7 +39,9 @@ class MedicalCase extends Model
         'case_date' => 'date',
         'procedure_date' => 'date',
         // Issue #159: PHI must actually be encrypted, not just named so.
-        'patient_name_encrypted' => 'encrypted',
+        // Issue #223: degrade gracefully on legacy plaintext rows instead of
+        // letting a DecryptException 500 every read of the model.
+        'patient_name_encrypted' => EncryptedOrLegacyString::class,
     ];
 
     protected static function boot(): void
