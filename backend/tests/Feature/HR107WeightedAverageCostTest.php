@@ -99,6 +99,70 @@ class HR107WeightedAverageCostTest extends TenantTestCase
         ]);
     }
 
+    /**
+     * Issue #249 — investigated: the hostile-review scenario (a free line
+     * followed by a paid line for the same product in one GRN) is UNREACHABLE
+     * because stock_movements_ref_product_type_unique (2026_04_27) rejects a
+     * second movement for the same (reference_type, reference_id, product_id,
+     * type). This test documents that guard. The caller-side quantity folding
+     * was still hardened to advance the basis for zero-cost lines (defensive;
+     * required if that constraint is ever relaxed to be line-scoped).
+     */
+    public function test_multi_line_same_product_grn_is_blocked_by_the_movement_unique_constraint(): void
+    {
+        $po = PurchaseOrder::create([
+            'po_number' => 'PO-COST-'.Str::upper(Str::random(6)),
+            'supplier_id' => $this->supplier->id,
+            'warehouse_id' => $this->warehouse->id,
+            'status' => 'ordered',
+            'order_date' => now()->toDateString(),
+            'subtotal' => 160,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'shipping_cost' => 0,
+            'total' => 160,
+            'currency' => 'USD',
+            'created_by' => $this->user->id,
+        ]);
+
+        $mkItem = fn (int $qty, float $cost) => PurchaseOrderItem::create([
+            'purchase_order_id' => $po->id,
+            'product_id' => $this->product->id,
+            'description' => 'Line',
+            'quantity_ordered' => $qty,
+            'quantity_received' => 0,
+            'unit_cost' => $cost,
+            'tax_rate' => 0,
+            'tax_amount' => 0,
+            'discount_percent' => 0,
+            'line_total' => $qty * $cost,
+        ]);
+        $freeItem = $mkItem(5, 0);
+        $paidItem = $mkItem(10, 16);
+
+        $service = app(GoodsReceiptService::class);
+        $grn = $service->create([
+            'purchase_order_id' => $po->id,
+            'warehouse_id' => $this->warehouse->id,
+            'received_date' => now()->toDateString(),
+            'lines' => [
+                ['purchase_order_item_id' => $freeItem->id, 'quantity_received' => 5, 'quantity_accepted' => 5, 'quantity_rejected' => 0],
+                ['purchase_order_item_id' => $paidItem->id, 'quantity_received' => 10, 'quantity_accepted' => 10, 'quantity_rejected' => 0],
+            ],
+        ]);
+
+        try {
+            $service->confirm($grn);
+            $this->fail('Expected the per-reference movement uniqueness guard to reject the second line');
+        } catch (\Illuminate\Database\QueryException $e) {
+            $this->assertStringContainsString('stock_movements_ref_product_type_unique', $e->getMessage());
+        }
+
+        // The transaction rolled back: no partial stock/cost mutation.
+        $this->assertSame(0.0, (float) $this->product->fresh()->stock_quantity);
+        $this->assertSame(10.00, $this->cost());
+    }
+
     private function receive(int $qty, float $unitCost): void
     {
         $po = PurchaseOrder::create([

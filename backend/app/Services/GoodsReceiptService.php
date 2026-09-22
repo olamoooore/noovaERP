@@ -98,8 +98,13 @@ class GoodsReceiptService
                 }
 
                 if (! array_key_exists($line->product_id, $qtyBeforeByProduct)) {
-                    $qtyBeforeByProduct[$line->product_id] = (float) \App\Models\Product::whereKey($line->product_id)
-                        ->value('stock_quantity');
+                    // Issue #251: read the pre-receipt basis under a row lock so
+                    // concurrent GRNs for the same product cannot both compute
+                    // their weighted average from a stale quantity (lost update
+                    // on Product.cost).
+                    $qtyBeforeByProduct[$line->product_id] = (float) (\App\Models\Product::whereKey($line->product_id)
+                        ->lockForUpdate()
+                        ->value('stock_quantity') ?? 0);
                 }
 
                 $this->inventoryService->adjustStock(
@@ -121,8 +126,12 @@ class GoodsReceiptService
 
                 if ($product && $unitCost > 0 && $acceptedQty > 0) {
                     $this->costingService->recordReceipt($product, $acceptedQty, $unitCost, $qtyBefore);
-                    $qtyBeforeByProduct[$line->product_id] = $qtyBefore + $acceptedQty;
                 }
+
+                // Issue #249: every line that adjusted stock advances the basis —
+                // a free (zero-cost) line still adds quantity, so omitting it
+                // skewed the next paid line's weighted average upward.
+                $qtyBeforeByProduct[$line->product_id] = $qtyBefore + $acceptedQty;
             }
 
             $this->updatePurchaseOrderReceivedQty($grn);
