@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import api from '@/lib/api'
 
 export type PricingMode = 'exclusive' | 'inclusive'
+export type CurrencyDisplayFormat = 'symbol' | 'narrow_symbol' | 'code'
 
 export interface SettingsTaxConfig {
   enabled: boolean
@@ -25,18 +26,20 @@ export interface SettingsMailConfig {
 
 interface SettingsState {
   currencyCode: string
+  currencyDisplayFormat: CurrencyDisplayFormat
   tax: SettingsTaxConfig
   mail: SettingsMailConfig
   isLoaded: boolean
 
   loadSettings: () => Promise<void>
-  updateSettings: (next: Partial<{ currencyCode: string; tax: Partial<SettingsTaxConfig>; mail: Partial<SettingsMailConfig> }>) => Promise<void>
+  updateSettings: (next: Partial<{ currencyCode: string; currencyDisplayFormat: CurrencyDisplayFormat; tax: Partial<SettingsTaxConfig>; mail: Partial<SettingsMailConfig> }>) => Promise<void>
 }
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
       currencyCode: 'USD',
+      currencyDisplayFormat: 'symbol',
       tax: {
         enabled: true,
         pricing_mode: 'exclusive',
@@ -60,11 +63,13 @@ export const useSettingsStore = create<SettingsState>()(
         try {
           const res = await api.get('/settings')
           const currencyCode = res.data?.currency?.code || 'USD'
+          const currencyDisplayFormat = res.data?.currency?.display_format || 'symbol'
           const tax = res.data?.tax || {}
           const mail = res.data?.mail || {}
 
           set({
             currencyCode,
+            currencyDisplayFormat,
             tax: {
               enabled: tax.enabled ?? true,
               pricing_mode: tax.pricing_mode ?? 'exclusive',
@@ -93,6 +98,7 @@ export const useSettingsStore = create<SettingsState>()(
       updateSettings: async (next) => {
         const current = get()
         const currencyCode = next.currencyCode ?? current.currencyCode
+        const currencyDisplayFormat = next.currencyDisplayFormat ?? current.currencyDisplayFormat
         const tax = { ...current.tax, ...(next.tax || {}) }
         const mail = { ...current.mail, ...(next.mail || {}) }
 
@@ -101,13 +107,14 @@ export const useSettingsStore = create<SettingsState>()(
         // If it's masked "********", backend also ignores it. So safe to send.
 
         const res = await api.put('/settings', {
-          currency: { code: currencyCode },
+          currency: { code: currencyCode, display_format: currencyDisplayFormat },
           tax,
           mail,
         })
 
         set({
           currencyCode: res.data?.currency?.code || currencyCode,
+          currencyDisplayFormat: res.data?.currency?.display_format || currencyDisplayFormat,
           tax: {
             enabled: res.data?.tax?.enabled ?? tax.enabled,
             pricing_mode: res.data?.tax?.pricing_mode ?? tax.pricing_mode,

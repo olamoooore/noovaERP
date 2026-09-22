@@ -5,6 +5,9 @@ import path from 'path'
 
 const backendTarget = process.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000'
 const iotBackendTarget = process.env.VITE_IOT_BACKEND_URL || backendTarget
+// Bump when a previously interrupted dependency optimization leaves browsers
+// holding valid-looking `?v=` URLs that reference obsolete generated chunks.
+const optimizerCacheVersion = '2026-09-22-1'
 
 export default defineConfig({
   plugins: [
@@ -96,6 +99,19 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+    },
+  },
+  optimizeDeps: {
+    // Commit discovered dependency bundles immediately. If the initial SPA
+    // crawl fails on a stale browser import, keeping the bundle in deps_temp
+    // causes every subsequent request to look for chunks that were never
+    // promoted into the active deps directory.
+    holdUntilCrawlEnd: false,
+    // Including an explicit version in the optimizer configuration changes
+    // Vite's browser hash. This prevents a long-lived cached dependency module
+    // from referring to chunk names produced by an abandoned `deps_temp` run.
+    esbuildOptions: {
+      banner: { js: `/* noovaerp-optimizer-cache:${optimizerCacheVersion} */` },
     },
   },
   server: {

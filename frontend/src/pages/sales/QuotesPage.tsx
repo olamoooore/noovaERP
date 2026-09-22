@@ -18,7 +18,7 @@ import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
-import { formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import { SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
@@ -181,9 +181,6 @@ export function QuotesPage() {
     if (selectedIds.length === 0) return
     setShowBulkDeleteDialog(true)
   }
-
-  const formatCurrency = (amount: number | string) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount || 0))
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {

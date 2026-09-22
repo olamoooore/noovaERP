@@ -48,7 +48,7 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
-import { useSettingsStore } from '@/store/settingsStore'
+import { useSettingsStore, type CurrencyDisplayFormat } from '@/store/settingsStore'
 
 type TaxType = 'gst' | 'vat' | 'sales' | 'service' | 'withholding' | 'other'
 
@@ -72,6 +72,20 @@ const currencyOptions = [
   { code: 'BHD', label: 'BHD — Bahraini Dinar' },
   { code: 'OMR', label: 'OMR — Omani Rial' },
 ]
+
+function currencyDisplayPreview(code: string, format: CurrencyDisplayFormat): string {
+  if (code === 'SGD') {
+    if (format === 'narrow_symbol') return '$1,234.56'
+    if (format === 'code') return 'SGD 1,234.56'
+    return 'S$1,234.56'
+  }
+
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: code,
+    currencyDisplay: format === 'narrow_symbol' ? 'narrowSymbol' : format,
+  }).format(1234.56)
+}
 
 const taxTypeOptions: Array<{ value: TaxType; label: string }> = [
   { value: 'gst', label: 'GST' },
@@ -118,16 +132,19 @@ export function SettingsPage() {
   }
 
   const currencyCode = useSettingsStore((s) => s.currencyCode)
+  const currencyDisplayFormat = useSettingsStore((s) => s.currencyDisplayFormat)
   const taxConfig = useSettingsStore((s) => s.tax)
   const updateSettings = useSettingsStore((s) => s.updateSettings)
 
   const [selectedCurrency, setSelectedCurrency] = useState(currencyCode)
+  const [selectedCurrencyDisplay, setSelectedCurrencyDisplay] = useState<CurrencyDisplayFormat>(currencyDisplayFormat)
   const [taxEnabled, setTaxEnabled] = useState<boolean>(taxConfig.enabled)
   const [defaultTaxId, setDefaultTaxId] = useState<string>(taxConfig.default_tax_id ? String(taxConfig.default_tax_id) : 'none')
 
   useEffect(() => {
     setSelectedCurrency(currencyCode)
-  }, [currencyCode])
+    setSelectedCurrencyDisplay(currencyDisplayFormat)
+  }, [currencyCode, currencyDisplayFormat])
 
   useEffect(() => {
     setTaxEnabled(taxConfig.enabled)
@@ -151,9 +168,12 @@ export function SettingsPage() {
 
   const saveGeneral = useMutation({
     mutationFn: async () => {
-      await updateSettings({ currencyCode: selectedCurrency })
+      await updateSettings({
+        currencyCode: selectedCurrency,
+        currencyDisplayFormat: selectedCurrencyDisplay,
+      })
     },
-    onSuccess: () => toast({ title: 'Saved', description: 'Currency updated' }),
+    onSuccess: () => toast({ title: 'Saved', description: 'Company currency preferences updated' }),
     onError: () => toast({ title: 'Failed', variant: 'destructive', description: 'Could not update currency' }),
   })
 
@@ -305,7 +325,7 @@ export function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <div className="text-sm text-muted-foreground">Default currency used across POS and reports.</div>
+                  <div className="text-sm text-muted-foreground">Default currency used across the company.</div>
                   <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
                     <SelectTrigger className="w-full max-w-md">
                       <SelectValue />
@@ -320,9 +340,35 @@ export function SettingsPage() {
                   </Select>
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="currency-display-format">Company-wide display format</Label>
+                  <Select
+                    value={selectedCurrencyDisplay}
+                    onValueChange={(value) => setSelectedCurrencyDisplay(value as CurrencyDisplayFormat)}
+                  >
+                    <SelectTrigger id="currency-display-format" className="w-full max-w-md">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="narrow_symbol">
+                        {currencyDisplayPreview(selectedCurrency, 'narrow_symbol')}
+                      </SelectItem>
+                      <SelectItem value="symbol">
+                        {currencyDisplayPreview(selectedCurrency, 'symbol')}
+                      </SelectItem>
+                      <SelectItem value="code">
+                        {currencyDisplayPreview(selectedCurrency, 'code')}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground">
+                    This format applies to every user in this company.
+                  </p>
+                </div>
+
                 <div>
                   <Button onClick={() => saveGeneral.mutate()} disabled={saveGeneral.isPending}>
-                    Save Currency
+                    Save Currency Preferences
                   </Button>
                 </div>
               </CardContent>

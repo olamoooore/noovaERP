@@ -298,7 +298,7 @@ export const CreateInvoicePage: React.FC = () => {
   const [visibleLineColumns, setVisibleLineColumns] = useState<Record<string, boolean>>(() => {
     const defaults = { sku: true, description: true, model_number: true, product_notes: false, lot_number: true, expiry_date: true, tax_rate: true };
     try {
-      return { ...defaults, ...JSON.parse(localStorage.getItem('invoice-line-columns-v2') || '{}') };
+      return { ...defaults, ...JSON.parse(localStorage.getItem('invoice-line-columns-v4') || '{}') };
     } catch {
       return defaults;
     }
@@ -307,7 +307,7 @@ export const CreateInvoicePage: React.FC = () => {
   const toggleLineColumn = (column: string) => {
     setVisibleLineColumns((current) => {
       const next = { ...current, [column]: !current[column] };
-      localStorage.setItem('invoice-line-columns-v2', JSON.stringify(next));
+      localStorage.setItem('invoice-line-columns-v4', JSON.stringify(next));
       return next;
     });
   };
@@ -1347,13 +1347,13 @@ export const CreateInvoicePage: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full min-w-[1800px] table-fixed text-sm">
                   <thead>
                     <tr className="border-b">
                       <th className="text-left py-2 px-2 w-12">#</th>
-                      <th className="text-left py-2 px-2 min-w-[200px]">Product</th>
-                      {visibleLineColumns.sku && <th className="text-left py-2 px-2 w-24">SKU</th>}
-                      {visibleLineColumns.description && <th className="text-left py-2 px-2 min-w-[150px]">Description</th>}
+                      <th className="text-left py-2 px-2 w-[260px]">Product</th>
+                      {visibleLineColumns.sku && <th className="text-left py-2 px-2 w-[140px]">SKU</th>}
+                      {visibleLineColumns.description && <th className="text-left py-2 px-2 w-[320px]">Description</th>}
                       {visibleLineColumns.model_number && <th className="text-left py-2 px-2 w-28">Model #</th>}
                       {visibleLineColumns.product_notes && <th className="text-left py-2 px-2 w-36">Product Notes</th>}
                       {visibleLineColumns.lot_number && <th className="text-left py-2 px-2 w-32">Lot Number</th>}
@@ -1370,7 +1370,7 @@ export const CreateInvoicePage: React.FC = () => {
                       <tr key={index} className="border-b" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
                         {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={12} total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
                         <td className="py-2 px-2 text-sm font-medium text-slate-500">{lines.slice(0, index + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}</td>
-                        <td className="py-2 px-2 min-w-[200px]">
+                        <td className="py-2 px-2 w-[260px]">
                           <ProductSearchCombobox
                             value={line.product_id}
                             onValueChange={(productId, product) => {
@@ -1386,7 +1386,7 @@ export const CreateInvoicePage: React.FC = () => {
                             }}
                           />
                         </td>
-                        {visibleLineColumns.sku && <td className="py-2 px-2">
+                        {visibleLineColumns.sku && <td className="py-2 px-2 w-[140px]">
                           <input
                             type="text"
                             value={line.sku}
