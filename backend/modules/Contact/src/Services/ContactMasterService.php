@@ -12,7 +12,10 @@ use Modules\Contact\src\Events\ContactImportCompleted;
 use Modules\Contact\src\Events\ContactMerged;
 use Modules\Contact\src\Events\ContactRoleChanged;
 use Modules\Contact\src\Events\ContactUpdated;
+use Modules\Contact\src\Models\AccountingCustomerProfile;
+use Modules\Contact\src\Models\AccountingVendorProfile;
 use Modules\Contact\src\Models\ContactAddress;
+use Modules\Contact\src\Models\ContactBankAccount;
 use Modules\Contact\src\Models\ContactGroup;
 use Modules\Contact\src\Models\ContactGroupMember;
 use Modules\Contact\src\Models\ContactIdentifier;
@@ -22,9 +25,16 @@ use Modules\Contact\src\Models\ContactMergeHistory;
 use Modules\Contact\src\Models\ContactMethod;
 use Modules\Contact\src\Models\ContactRelatedRecord;
 use Modules\Contact\src\Models\ContactRelationship;
+use Modules\Contact\src\Models\ContactRegistration;
 use Modules\Contact\src\Models\ContactRole;
+use Modules\Contact\src\Models\ContactTaxProfile;
 use Modules\Contact\src\Models\ContactSearchIndex;
 use Modules\Contact\src\Models\CoreContact;
+use Modules\Contact\src\Models\CrmContactProfile;
+use Modules\Contact\src\Models\HrStaffProfile;
+use Modules\Contact\src\Models\PosLoyaltyProfile;
+use Modules\Contact\src\Models\ProjectContactProfile;
+use Modules\Contact\src\Models\PropertyContactProfile;
 use Modules\Contact\src\Support\ContactTaxonomyRegistry;
 
 /**
@@ -674,6 +684,45 @@ class ContactMasterService
             ContactRelatedRecord::where('tenant_id', $tenantId)->where('contact_id', $merged->id)
                 ->update(['contact_id' => $primary->id]);
 
+            // Issue #221: move the remaining owned HasMany relations too —
+            // group memberships, registrations, tax profiles and bank accounts
+            // were previously left pointing at the deactivated contact.
+            $movedGroups = ['roles', 'identifiers', 'addresses', 'methods', 'relationships', 'related_records'];
+
+            foreach ([
+                'groups' => ContactGroupMember::class,
+                'registrations' => ContactRegistration::class,
+                'tax_profiles' => ContactTaxProfile::class,
+                'bank_accounts' => ContactBankAccount::class,
+            ] as $label => $modelClass) {
+                $modelClass::where('tenant_id', $tenantId)->where('contact_id', $merged->id)
+                    ->update(['contact_id' => $primary->id]);
+                $movedGroups[] = $label;
+            }
+
+            // Module profiles are HasOne: only move a profile when the primary
+            // does not already have one of that type, otherwise the two rows
+            // would collide / the primary's own profile would be ambiguous.
+            foreach ([
+                'accounting_customer_profile' => AccountingCustomerProfile::class,
+                'accounting_vendor_profile' => AccountingVendorProfile::class,
+                'crm_profile' => CrmContactProfile::class,
+                'hr_profile' => HrStaffProfile::class,
+                'pos_loyalty_profile' => PosLoyaltyProfile::class,
+                'property_profile' => PropertyContactProfile::class,
+                'project_profile' => ProjectContactProfile::class,
+            ] as $label => $modelClass) {
+                $primaryHasProfile = $modelClass::where('tenant_id', $tenantId)
+                    ->where('contact_id', $primary->id)
+                    ->exists();
+
+                if (! $primaryHasProfile) {
+                    $modelClass::where('tenant_id', $tenantId)->where('contact_id', $merged->id)
+                        ->update(['contact_id' => $primary->id]);
+                    $movedGroups[] = $label;
+                }
+            }
+
             // Mark merged contact
             $merged->update(['is_duplicate' => true, 'merged_into_id' => $primaryId, 'is_active' => false]);
 
@@ -683,7 +732,7 @@ class ContactMasterService
                 'tenant_id' => $tenantId,
                 'primary_contact_id' => $primaryId,
                 'merged_contact_id' => $mergedId,
-                'merge_details' => ['roles', 'identifiers', 'addresses', 'methods', 'relationships', 'related_records'],
+                'merge_details' => $movedGroups,
                 'merged_by' => $userId,
                 'merged_at' => now(),
             ]);
