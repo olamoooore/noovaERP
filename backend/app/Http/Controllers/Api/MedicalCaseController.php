@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\MedicalCase;
 use App\Models\MedicalCaseItem;
+use App\Models\BonusSchemeUsage;
 use App\Models\Customer;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
@@ -373,7 +374,7 @@ class MedicalCaseController extends Controller
 
     public function cancel($id): JsonResponse
     {
-        $case = MedicalCase::find($id);
+        $case = MedicalCase::with('items')->find($id);
 
         if (!$case) {
             return response()->json(['message' => 'Medical case not found'], 404);
@@ -384,11 +385,47 @@ class MedicalCaseController extends Controller
         }
 
         try {
-            $case->update(['status' => 'cancelled']);
+            // Issue #189: cancelling a delivered/invoiced case must reverse the
+            // case's own fulfilment figures, otherwise downstream reports keep
+            // counting delivered/invoiced quantities for a case the business
+            // considers reversed.
+            DB::transaction(function () use ($case) {
+                if (in_array($case->status, ['delivered', 'invoiced'], true)) {
+                    $itemIds = $case->items->pluck('id')->all();
+
+                    foreach ($case->items as $item) {
+                        $item->update([
+                            'delivered_qty' => 0,
+                            'invoiced_qty' => 0,
+                        ]);
+                    }
+
+                    // Reverse any bonus accrual rows tied to this case's items.
+                    if ($itemIds !== []) {
+                        BonusSchemeUsage::whereIn('medical_case_item_id', $itemIds)
+                            ->where('status', '!=', 'reversed')
+                            ->get()
+                            ->each(fn (BonusSchemeUsage $usage) => $usage->reverse());
+                    }
+                }
+
+                $case->update(['status' => 'cancelled']);
+            });
+
+            // The linked invoice is deliberately left untouched: spec §9 rule 9
+            // forbids editing confirmed invoices directly and rule 5 allows one
+            // invoice to cover several cases — corrections go through credit
+            // note / return / cancellation. Surface it so the operator can act.
+            $warnings = [];
+
+            if ($case->invoice_id) {
+                $warnings[] = 'The linked invoice was not modified. Confirmed invoices must be corrected through a credit note, return or cancellation.';
+            }
 
             return response()->json([
                 'message' => 'Medical case cancelled successfully',
-                'data' => $case->fresh(),
+                'data' => $case->fresh()->load('items'),
+                'warnings' => $warnings,
             ]);
         } catch (\Throwable $e) {
             return response()->json([
