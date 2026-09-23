@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\RequirePermission;
 use Illuminate\Support\Facades\Route;
+use Modules\AccountingCountry\Http\Controllers\EInvoicingCapabilityController;
 use Modules\AccountingCountry\Http\Controllers\StatutoryReturnController;
 
 /*
@@ -14,3 +15,7 @@ Route::prefix('accounting/statutory-returns')
         Route::get('/', [StatutoryReturnController::class, 'index']);
         Route::get('/{country}/{period}', [StatutoryReturnController::class, 'show']);
     });
+
+// Issue #99: honest e-invoicing capability reporting.
+Route::get('/accounting/e-invoicing/capabilities', [EInvoicingCapabilityController::class, 'index'])
+    ->middleware(RequirePermission::using('reports.view'));

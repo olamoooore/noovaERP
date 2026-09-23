@@ -22,10 +22,35 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
     public function __construct()
     {
         $this->client = new Client;
-        $this->testMode = config('compliance.singapore.peppol_test_mode', true);
-        $this->endpoint = $this->testMode
-            ? config('compliance.singapore.peppol_test_endpoint', 'https://test.peppol.example.com')
-            : config('compliance.singapore.peppol_endpoint', 'https://peppol.example.com');
+        $this->testMode = (bool) config('compliance.singapore.peppol_test_mode', true);
+        // Issue #99: there is deliberately NO example.com fallback. A real
+        // access-point endpoint must be configured; an unconfigured deployment
+        // fails closed and is reported as unconfigured rather than pretending
+        // to submit.
+        $this->endpoint = trim((string) ($this->testMode
+            ? config('compliance.singapore.peppol_test_endpoint', '')
+            : config('compliance.singapore.peppol_endpoint', '')));
+    }
+
+    /**
+     * Issue #99: whether a real Peppol access point is configured.
+     */
+    public function isConfigured(): bool
+    {
+        return $this->endpoint !== ''
+            && filter_var($this->endpoint, FILTER_VALIDATE_URL) !== false
+            && ! str_contains(parse_url($this->endpoint, PHP_URL_HOST) ?: '', 'example.com');
+    }
+
+    /**
+     * Issue #99: XMLDSig signing requires an XML security library. Until one is
+     * installed and wired, signed submission is unavailable and the provider
+     * refuses to submit unsigned documents.
+     */
+    public function signingAvailable(): bool
+    {
+        return class_exists(\RobRichards\XMLSecLibs\XMLSecurityDSig::class)
+            || class_exists(\RobRichards\XMLSecLibs\XMLSecurityKey::class);
     }
 
     /**
@@ -33,6 +58,32 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
      */
     public function submit(array $payload, array $credentials): array
     {
+        if (! $this->isConfigured()) {
+            return [
+                'success' => false,
+                'message' => 'Singapore Peppol/InvoiceNow is not configured: set '
+                    .'compliance.singapore.peppol_endpoint (and credentials) to a real '
+                    .'access-point URL. No submission was attempted.',
+            ];
+        }
+
+        // Issue #99: Peppol requires signed documents — never submit unsigned.
+        if (empty($credentials['signing_key'])) {
+            return [
+                'success' => false,
+                'message' => 'A signing key is required for Peppol submissions; refusing to submit an unsigned invoice.',
+            ];
+        }
+
+        if (! $this->signingAvailable()) {
+            return [
+                'success' => false,
+                'message' => 'XML digital signing is unavailable: install an XMLDSig library '
+                    .'(e.g. robrichards/xmlseclibs) before submitting to Peppol. '
+                    .'Refusing to submit an unsigned document.',
+            ];
+        }
+
         try {
             // Convert payload to UBL XML
             $xml = $this->convertToUBL($payload);
@@ -42,10 +93,7 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
                 return ['success' => false, 'message' => 'Invalid UBL XML generated'];
             }
 
-            // Sign XML (if required by PEPPOL network)
-            if (isset($credentials['signing_key'])) {
-                $xml = $this->signXML($xml, $credentials['signing_key']);
-            }
+            $xml = $this->signXML($xml, $credentials['signing_key']);
 
             // Submit to PEPPOL access point
             $response = $this->client->post("{$this->endpoint}/api/v1/invoices", [
@@ -88,6 +136,10 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
      */
     public function getStatus(string $providerReference, array $credentials): array
     {
+        if (! $this->isConfigured()) {
+            return ['success' => false, 'message' => 'Singapore Peppol/InvoiceNow is not configured.'];
+        }
+
         try {
             $response = $this->client->get("{$this->endpoint}/api/v1/invoices/{$providerReference}", [
                 'headers' => $this->buildHeaders($credentials),
@@ -112,6 +164,10 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
      */
     public function cancel(string $providerReference, array $credentials): array
     {
+        if (! $this->isConfigured()) {
+            return ['success' => false, 'message' => 'Singapore Peppol/InvoiceNow is not configured.'];
+        }
+
         try {
             $response = $this->client->delete("{$this->endpoint}/api/v1/invoices/{$providerReference}", [
                 'headers' => $this->buildHeaders($credentials),
@@ -130,16 +186,103 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
      */
     private function convertToUBL(array $payload): string
     {
-        // Basic UBL 3.0 construction - in production, use an XML builder library
-        $xml = '<?xml version="1.0" encoding="UTF-8"?>';
-        $xml .= '<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2">';
-        $xml .= '<cbc:CustomizationID>urn:cen.eu:en16931:2017</cbc:CustomizationID>';
-        $xml .= '<cbc:ID>'.$payload['custom_id'].'</cbc:ID>';
-        $xml .= '<cbc:IssueDate>'.$payload['issue_date'].'</cbc:IssueDate>';
-        $xml .= '<!-- Additional elements would be added here -->';
-        $xml .= '</Invoice>';
+        // Issue #99: build a real UBL 2.1 Invoice document (Peppol BIS 3
+        // profile) with the parties, monetary totals and lines, using
+        // DOMDocument so values are escaped correctly.
+        $document = new \DOMDocument('1.0', 'UTF-8');
+        $document->formatOutput = true;
 
-        return $xml;
+        $invoice = $document->createElementNS(
+            'urn:oasis:names:specification:ubl:schema:xsd:Invoice-2',
+            'Invoice'
+        );
+        $invoice->setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:cac', 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2');
+        $invoice->setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns:cbc', 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2');
+        $document->appendChild($invoice);
+
+        $append = function (string $name, ?string $value) use ($document, $invoice) {
+            $element = $document->createElement('cbc:'.$name);
+            $element->appendChild($document->createTextNode((string) $value));
+            $invoice->appendChild($element);
+        };
+
+        $append('CustomizationID', $payload['customization_id'] ?? 'urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0');
+        $append('ProfileID', 'urn:fdc:peppol.eu:2017:poacc:billing:01:1.0');
+        $append('ID', $payload['custom_id'] ?? $payload['invoice_number'] ?? '');
+        $append('IssueDate', $payload['issue_date'] ?? now()->toDateString());
+        $append('DueDate', $payload['due_date'] ?? null);
+        $append('InvoiceTypeCode', $payload['type_code'] ?? '380');
+        $append('DocumentCurrencyCode', $payload['currency'] ?? 'SGD');
+
+        foreach ([
+            'AccountingSupplierParty' => $payload['supplier'] ?? [],
+            'AccountingCustomerParty' => $payload['customer'] ?? [],
+        ] as $wrapperName => $party) {
+            $wrapper = $document->createElement('cac:'.$wrapperName);
+            $partyElement = $document->createElement('cac:Party');
+
+            if (! empty($party['name'])) {
+                $partyName = $document->createElement('cac:PartyName');
+                $name = $document->createElement('cbc:Name');
+                $name->appendChild($document->createTextNode((string) $party['name']));
+                $partyName->appendChild($name);
+                $partyElement->appendChild($partyName);
+            }
+
+            if (! empty($party['registration'])) {
+                $legal = $document->createElement('cac:PartyLegalEntity');
+                $registration = $document->createElement('cbc:CompanyID');
+                $registration->appendChild($document->createTextNode((string) $party['registration']));
+                $legal->appendChild($registration);
+                $partyElement->appendChild($legal);
+            }
+
+            $wrapper->appendChild($partyElement);
+            $invoice->appendChild($wrapper);
+        }
+
+        $taxTotal = $document->createElement('cac:TaxTotal');
+        $taxAmount = $document->createElement('cbc:TaxAmount', number_format((float) ($payload['tax_amount'] ?? 0), 2, '.', ''));
+        $taxAmount->setAttribute('currencyID', $payload['currency'] ?? 'SGD');
+        $taxTotal->appendChild($taxAmount);
+        $invoice->appendChild($taxTotal);
+
+        $monetaryTotal = $document->createElement('cac:LegalMonetaryTotal');
+        foreach ([
+            'LineExtensionAmount' => $payload['subtotal'] ?? 0,
+            'TaxExclusiveAmount' => $payload['subtotal'] ?? 0,
+            'TaxInclusiveAmount' => $payload['total'] ?? 0,
+            'PayableAmount' => $payload['total'] ?? 0,
+        ] as $name => $value) {
+            $amount = $document->createElement('cbc:'.$name, number_format((float) $value, 2, '.', ''));
+            $amount->setAttribute('currencyID', $payload['currency'] ?? 'SGD');
+            $monetaryTotal->appendChild($amount);
+        }
+        $invoice->appendChild($monetaryTotal);
+
+        foreach ($payload['lines'] ?? [] as $index => $line) {
+            $invoiceLine = $document->createElement('cac:InvoiceLine');
+            $invoiceLine->appendChild($document->createElement('cbc:ID', (string) ($line['id'] ?? $index + 1)));
+            $invoiceLine->appendChild($document->createElement('cbc:InvoicedQuantity', (string) ($line['quantity'] ?? 1)));
+
+            $lineAmount = $document->createElement('cbc:LineExtensionAmount', number_format((float) ($line['line_total'] ?? 0), 2, '.', ''));
+            $lineAmount->setAttribute('currencyID', $payload['currency'] ?? 'SGD');
+            $invoiceLine->appendChild($lineAmount);
+
+            $item = $document->createElement('cac:Item');
+            $itemName = $document->createElement('cbc:Name');
+            $itemName->appendChild($document->createTextNode((string) ($line['description'] ?? 'Item')));
+            $item->appendChild($itemName);
+            $invoiceLine->appendChild($item);
+
+            $price = $document->createElement('cac:Price');
+            $price->appendChild($document->createElement('cbc:PriceAmount', number_format((float) ($line['unit_price'] ?? 0), 2, '.', '')));
+            $invoiceLine->appendChild($price);
+
+            $invoice->appendChild($invoiceLine);
+        }
+
+        return $document->saveXML();
     }
 
     /**
@@ -147,18 +290,59 @@ class PeppolSubmissionProvider implements SubmissionProviderContract
      */
     private function validateXML(string $xml): bool
     {
-        // In production, use XML Schema validation
-        return ! empty($xml) && strpos($xml, '<?xml') === 0;
+        if (empty($xml) || ! str_starts_with($xml, '<?xml')) {
+            return false;
+        }
+
+        $previous = libxml_use_internal_errors(true);
+
+        try {
+            $loaded = simplexml_load_string($xml);
+
+            return $loaded !== false;
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
     }
 
     /**
-     * Sign XML with private key (simplified)
+     * Sign XML with the configured private key.
+     *
+     * Issue #99: this previously returned the document unsigned. Submissions
+     * now require a real XMLDSig implementation (signingAvailable()), and this
+     * method performs the actual enveloped signature once a library is
+     * installed.
      */
     private function signXML(string $xml, string $signingKey): string
     {
-        // In production, use a proper XML signing library like xmlseclibs
-        // This is a placeholder implementation
-        return $xml;
+        if (! $this->signingAvailable()) {
+            throw new \RuntimeException(
+                'XML digital signing is unavailable: install an XMLDSig library (robrichards/xmlseclibs).'
+            );
+        }
+
+        $document = new \DOMDocument;
+        $document->loadXML($xml);
+
+        $signature = new \RobRichards\XMLSecLibs\XMLSecurityDSig;
+        $signature->setCanonicalMethod(\RobRichards\XMLSecLibs\XMLSecurityDSig::EXC_C14N);
+        $signature->addReference(
+            $document,
+            \RobRichards\XMLSecLibs\XMLSecurityDSig::SHA256,
+            ['http://www.w3.org/2000/09/xmldsig#enveloped-signature']
+        );
+
+        $key = new \RobRichards\XMLSecLibs\XMLSecurityKey(
+            \RobRichards\XMLSecLibs\XMLSecurityKey::RSA_SHA256,
+            ['type' => 'private']
+        );
+        $key->loadKey($signingKey);
+
+        $signature->sign($key);
+        $signature->appendSignature($document->documentElement);
+
+        return $document->saveXML();
     }
 
     /**
