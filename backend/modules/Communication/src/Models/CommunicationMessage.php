@@ -92,6 +92,14 @@ class CommunicationMessage extends Model
 
     // ── Relationships ──────────────────────────────────────
 
+    /**
+     * Issue #88: files attached to this message.
+     */
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(CommunicationAttachment::class, 'message_id');
+    }
+
     public function outboxItems(): HasMany
     {
         return $this->hasMany(CommunicationOutbox::class, 'message_id');

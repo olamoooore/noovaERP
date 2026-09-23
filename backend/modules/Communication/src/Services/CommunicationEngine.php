@@ -3,6 +3,7 @@
 namespace Modules\Communication\Services;
 
 use Illuminate\Support\Facades\DB;
+use Modules\Communication\Models\CommunicationAttachment;
 use Modules\Communication\Models\CommunicationReadState;
 use Modules\Communication\Support\EventSubtypeRegistry;
 use Illuminate\Support\Facades\Log;
@@ -385,6 +386,39 @@ class CommunicationEngine
      *   - users with one of $staffRoles (Owner/Admin/Staff/Manager).
      */
 
+
+    // ─── Issue #88: attachments ────────────────────────────────────────
+
+    public function attachToMessage(
+        int $messageId,
+        \Illuminate\Http\UploadedFile $file,
+        ?int $uploadedById = null,
+        ?string $tenantId = null,
+        bool $isInline = false,
+        string $disk = 'local',
+    ): CommunicationAttachment {
+        $path = $file->store("communication/attachments/{$messageId}", $disk);
+
+        return CommunicationAttachment::create([
+            'tenant_id' => $tenantId,
+            'message_id' => $messageId,
+            'filename' => $file->getClientOriginalName(),
+            'mime_type' => $file->getClientMimeType() ?: 'application/octet-stream',
+            'size' => $file->getSize(),
+            'storage_disk' => $disk,
+            'storage_path' => $path,
+            'checksum' => hash_file('sha256', $file->getRealPath()) ?: null,
+            'is_inline' => $isInline,
+            'uploaded_by_id' => $uploadedById,
+        ]);
+    }
+
+    public function deleteAttachment(CommunicationAttachment $attachment): void
+    {
+        \Illuminate\Support\Facades\Storage::disk($attachment->storage_disk)->delete($attachment->storage_path);
+        $attachment->delete();
+    }
+
     // ─── Issue #86: per-user read state ────────────────────────────────
 
     public function markAsRead(int $messageId, int $userId, ?string $tenantId = null): CommunicationReadState
@@ -454,7 +488,7 @@ class CommunicationEngine
         $query = CommunicationMessage::forRecord($model, $recordId)
             ->when($tenantId, fn ($q) => $q->forTenant($tenantId))
             ->when($messageType, fn ($q) => $q->ofType($messageType))
-            ->with('author');
+            ->with(['author', 'attachments']);
 
         // Internal-note visibility gate (Issue #77). If we don't know the user,
         // fail closed: do not return internal notes.
