@@ -116,6 +116,80 @@ class Issue67DropCentralSettlementGuardTest extends TenantTestCase
         }
     }
 
+    /**
+     * Issue #67 (HR67-01/02): the guard must resolve schema names through the
+     * canonical tenancy resolver (Tenant::getSchemaName()), not assume
+     * `schema == tenant id`. A tenant provisioned with a custom schema_name is
+     * checked against THAT schema.
+     */
+    public function test_guard_resolves_custom_schema_names_not_tenant_ids(): void
+    {
+        $tables = ['payment_executions', 'settlements', 'allocations', 'unapplied_cash'];
+
+        $customTenantId = '33333333-3333-3333-3333-333333333333';
+        $customSchema = 'issue67_custom_schema';
+
+        // Provision a tenant whose schema name differs from its id.
+        // withoutEvents: saving a tenant normally fires TenantCreated and the
+        // provisioning pipeline (migrate the new schema) — not wanted here.
+        \App\Models\Tenant::withoutEvents(function () use ($customTenantId, $customSchema) {
+            $tenant = new \App\Models\Tenant;
+            $tenant->id = $customTenantId;
+            $tenant->name = 'Issue67 Custom Schema Tenant';
+            $tenant->email = 'custom@issue67.test';
+            $tenant->schema_name = $customSchema;
+            $tenant->save();
+        });
+
+        DB::statement('CREATE SCHEMA IF NOT EXISTS "'.$customSchema.'"');
+        DB::statement('CREATE SCHEMA IF NOT EXISTS "'.$customTenantId.'"');
+
+        foreach ($tables as $t) {
+            DB::statement(sprintf('CREATE TABLE IF NOT EXISTS public.%s (id bigserial primary key, tenant_id varchar(255) not null)', $t));
+
+            // Every EXPECTED schema (resolved) has the tables...
+            foreach (['test-tenant', '11111111-1111-1111-1111-111111111111', $customSchema] as $schema) {
+                DB::statement(sprintf('CREATE TABLE IF NOT EXISTS "%s".%s (id bigserial primary key, tenant_id varchar(255) not null)', $schema, $t));
+            }
+
+            // ...while the ID-named schema for the custom tenant deliberately
+            // does NOT (it is not the resolved schema and must not be required).
+            DB::statement(sprintf('DROP TABLE IF EXISTS "%s".%s', $customTenantId, $t));
+        }
+
+        $migration = include base_path('database/migrations/2026_09_04_000003_drop_central_settlement_batch_tables.php');
+
+        // Complete from the resolver's perspective -> drops cleanly.
+        $migration->up();
+
+        foreach ($tables as $t) {
+            $exists = (bool) DB::selectOne(
+                "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?",
+                [$t]
+            );
+            $this->assertFalse($exists, "central public.{$t} must be dropped when every RESOLVED schema has its copy");
+        }
+
+        // Now the inverse: the resolved schema is missing its copy while the
+        // id-named schema has it — the guard must still refuse and name the
+        // resolved schema, proving it did not fall back to the tenant id.
+        foreach ($tables as $t) {
+            DB::statement(sprintf('CREATE TABLE IF NOT EXISTS public.%s (id bigserial primary key, tenant_id varchar(255) not null)', $t));
+            DB::statement(sprintf('DROP TABLE IF EXISTS "%s".%s', $customSchema, $t));
+            DB::statement(sprintf('CREATE TABLE IF NOT EXISTS "%s".%s (id bigserial primary key, tenant_id varchar(255) not null)', $customTenantId, $t));
+        }
+
+        $threw = false;
+        try {
+            $migration->up();
+        } catch (\RuntimeException $e) {
+            $threw = true;
+            $this->assertStringContainsString($customSchema, $e->getMessage(), 'The guard must name the RESOLVED schema.');
+            $this->assertStringNotContainsString($customTenantId, $e->getMessage(), 'The guard must not fall back to the tenant id.');
+        }
+        $this->assertTrue($threw, 'A missing copy in the resolved schema must fail closed.');
+    }
+
     public function test_guard_drops_central_table_on_complete_rollout(): void
     {
         $tables = ['payment_executions', 'settlements', 'allocations', 'unapplied_cash'];
