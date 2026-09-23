@@ -16,6 +16,7 @@ use App\Services\InvoiceDeliveryService;
 use App\Services\InvoiceEvidenceService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
+use App\Services\SalesApprovalGate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -34,6 +35,7 @@ class InvoiceController extends Controller
         private InvoiceApprovalService $approvalService,
         private InvoiceDeliveryService $deliveryService,
         private InvoiceEvidenceService $evidenceService,
+        private SalesApprovalGate $approvalGate,
     ) {}
 
     public function index(Request $request)
@@ -559,6 +561,16 @@ class InvoiceController extends Controller
 
             $invoice->refresh();
             $invoice->calculateTotals();
+
+            // Issue #180: auto-promote `requires_approval` when the tenant's
+            // threshold is set and the invoice total meets or exceeds it.
+            // The existing `submitApproval` flow then handles the workflow.
+            if ($this->approvalGate->requiresApproval(Invoice::class, (float) $invoice->total)) {
+                if (! $invoice->requires_approval) {
+                    $invoice->requires_approval = true;
+                    $invoice->save();
+                }
+            }
         });
 
         return response()->json($invoice->fresh(['customer', 'lines', 'doctor', 'requestor', 'buyer', 'billingContact', 'shippingContact']));

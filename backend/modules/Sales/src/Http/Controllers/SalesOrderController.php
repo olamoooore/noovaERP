@@ -3,8 +3,10 @@
 namespace Modules\Sales\Http\Controllers;
 
 use App\Services\CustomerCreditNoteService;
+use App\Services\SalesApprovalGate;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Auth;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\CreditCheckService;
 use Modules\Sales\Services\OrderLifecycleService;
@@ -17,6 +19,7 @@ class SalesOrderController extends Controller
         private OrderLifecycleService $lifecycleService,
         private CreditCheckService $creditCheckService,
         private CustomerCreditNoteService $creditNoteService,
+        private SalesApprovalGate $approvalGate,
     ) {}
 
     public function index(Request $request)
@@ -189,6 +192,26 @@ class SalesOrderController extends Controller
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
+        }
+
+        // Issue #180: config-driven approval gate. If the tenant's threshold is
+        // set and the order's total meets or exceeds it, create an ApprovalRequest
+        // and return 202 instead of advancing the order to 'confirmed'.
+        if ($this->approvalGate->requiresApproval(SalesOrder::class, (float) $order->total)) {
+            $request = $this->approvalGate->createRequest(
+                $order,
+                Auth::user(),
+                SalesApprovalGate::REQUEST_TYPE_SALES_ORDER,
+                "Sales order total {$order->total} meets the tenant approval threshold."
+            );
+
+            return response()->json([
+                'message' => 'Approval required',
+                'requires_approval' => true,
+                'approval_request' => $request,
+                'threshold' => $this->approvalGate->threshold(),
+                'order' => $order->fresh(),
+            ], 202);
         }
 
         $creditCheck = $this->creditCheckService->checkCreditLimit($order->customer, (float) $order->total);
