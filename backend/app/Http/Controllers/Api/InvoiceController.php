@@ -48,11 +48,47 @@ class InvoiceController extends Controller
             return response()->json(['data' => $ids, 'total' => $ids->count()]);
         }
 
-        $query->with(['customer', 'lines']);
+        $query->with(['customer', 'lines', 'approvalRequest']);
 
         $invoices = $query->paginate($request->per_page ?? 20);
 
+        $this->annotateApprovalView($invoices, $request->user());
+
         return response()->json($invoices);
+    }
+
+    /**
+     * Tag each pending invoice with whose attention it needs:
+     *   approval_view = 'to_approve'  → the current user is a configured reviewer
+     *   approval_view = 'submitted'   → the current user is the submitter (or a
+     *                                   bystander) waiting on someone else.
+     *
+     * Lets the list render "Requires Approval" for approvers and a plain
+     * "Pending" for the creator, rather than one ambiguous label for both.
+     */
+    private function annotateApprovalView($invoices, ?User $user): void
+    {
+        if (! $user) {
+            return;
+        }
+
+        $currentUserId = (int) $user->id;
+        $reviewerIds = $this->approvalService->resolveReviewers(null)->pluck('id');
+
+        foreach ($invoices as $invoice) {
+            if ($invoice->approval_status !== Invoice::APPROVAL_PENDING) {
+                continue;
+            }
+
+            $requestedBy = $invoice->approvalRequest?->requested_by;
+            $isSubmitter = $requestedBy !== null && (int) $requestedBy === $currentUserId;
+            $isReviewer = $reviewerIds->contains($currentUserId);
+
+            $invoice->setAttribute(
+                'approval_view',
+                $isReviewer && ! $isSubmitter ? 'to_approve' : 'submitted'
+            );
+        }
     }
 
     public function export(Request $request)
@@ -474,7 +510,7 @@ class InvoiceController extends Controller
         return $invoice;
     }
 
-    public function show($id)
+    public function show(Request $request, $id)
     {
         $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders'])->find($id);
 
@@ -504,6 +540,17 @@ class InvoiceController extends Controller
             'reviewed_by' => $latestApproval->reviewedBy?->name,
             'reviewed_at' => $latestApproval->reviewed_at?->toIso8601String(),
         ] : null;
+
+        // Whether the current user is an approver for this pending invoice —
+        // the detail page uses this to render Approve / Decline controls.
+        $user = $request->user();
+        $invoice->can_approve = false;
+        if ($user && $invoice->approval_status === Invoice::APPROVAL_PENDING && $latestApproval) {
+            $reviewerIds = $this->approvalService->resolveReviewers(null)->pluck('id');
+            $isSubmitter = (int) $latestApproval->requested_by === (int) $user->id;
+
+            $invoice->can_approve = $reviewerIds->contains((int) $user->id) && ! $isSubmitter;
+        }
 
         return response()->json($invoice);
     }
@@ -657,6 +704,17 @@ class InvoiceController extends Controller
                 'message' => 'Invoice already posted',
                 'invoice' => $invoice->fresh(['journalEntry', 'lines']),
             ]);
+        }
+
+        // Approval guard: an invoice still awaiting approval must not be
+        // posted — surface that state instead of a generic post failure.
+        $approvalGuard = $this->approvalService->checkGuard($invoice);
+        if ($approvalGuard['blocked']) {
+            return response()->json([
+                'message' => 'This invoice is awaiting approval and cannot be posted yet.',
+                'code' => $approvalGuard['code'],
+                'approval_status' => $approvalGuard['approval_status'] ?? null,
+            ], 422);
         }
 
         // Lock-date check: block posting into a closed period
@@ -954,6 +1012,7 @@ class InvoiceController extends Controller
                 try {
                     $delivery = $this->deliveryService->deliver($invoice, 'email', $request->user(), [
                         'document_type' => $documentType,
+                        'portal_url' => $linkData['url'],
                     ]);
                 } catch (\Throwable $e) {
                     \Log::warning('Failed to send invoice email after acceptance link creation', [

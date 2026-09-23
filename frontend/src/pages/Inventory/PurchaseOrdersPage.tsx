@@ -142,30 +142,32 @@ export function PurchaseOrdersPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" asChild>
-                          <Link to={`/inventory/purchase-orders/${order.id}`}>
-                            <Icon icon="solar:eye-bold" className="h-4 w-4" />
+                      <div className="flex justify-end gap-1.5">
+                        <Button variant="outline" size="icon" className="h-7 w-7" asChild>
+                          <Link to={`/inventory/purchase-orders/${order.id}`} title="View">
+                            <Icon icon="solar:eye-bold-duotone" className="h-3.5 w-3.5" />
                           </Link>
                         </Button>
                         {order.status === 'draft' && (
-                          <Button variant="ghost" size="icon" asChild>
-                            <Link to={`/inventory/purchase-orders/${order.id}/edit`}>
-                              <Icon icon="solar:pen-bold" className="h-4 w-4" />
+                          <Button variant="outline" size="icon" className="h-7 w-7" asChild>
+                            <Link to={`/inventory/purchase-orders/${order.id}/edit`} title="Edit">
+                              <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
                             </Link>
                           </Button>
                         )}
                         {!['received', 'cancelled'].includes(order.status) && (
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="icon"
+                            className="h-7 w-7 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                             onClick={() => {
                               if (confirm('Cancel this purchase order?')) {
                                 cancelMutation.mutate(order.id)
                               }
                             }}
+                            title="Cancel"
                           >
-                            <Icon icon="solar:close-circle-bold" className="h-4 w-4 text-red-500" />
+                            <Icon icon="solar:close-circle-bold-duotone" className="h-3.5 w-3.5" />
                           </Button>
                         )}
                       </div>

@@ -229,11 +229,13 @@ class InvoiceApprovalService
 
         DB::transaction(function () use ($invoice) {
             // A rejection returns the invoice to its draft state so the
-            // submitter can amend and resubmit. The decision itself is kept on
-            // the ApprovalRequest row (status=rejected + review_notes) and in
+            // submitter can amend and resubmit. We keep a distinct `rejected`
+            // approval_status (rather than resetting to `not_required`) so the
+            // list and detail views can show "Approval Rejected" unambiguously.
+            // The decision itself is also kept on the ApprovalRequest row and in
             // the activity log, so nothing is lost from the audit trail.
             $invoice->update([
-                'approval_status' => Invoice::APPROVAL_NOT_REQUIRED,
+                'approval_status' => Invoice::APPROVAL_REJECTED,
                 'approval_request_id' => null,
             ]);
         });

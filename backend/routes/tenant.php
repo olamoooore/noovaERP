@@ -64,6 +64,7 @@ Route::middleware([
     // Invoice public acceptance links (signed, expiring — no auth required)
     Route::get('/invoice-accept/{token}', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'show']);
     Route::post('/invoice-accept/{token}/accept', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'accept']);
+    Route::post('/invoice-accept/{token}/evidence', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'uploadEvidence']);
 
     // Issue #149: online quotation acceptance / eSignature portal.
     Route::get('/quotation-accept/{token}', [\App\Http\Controllers\Api\SalesOrderAcceptanceController::class, 'show']);

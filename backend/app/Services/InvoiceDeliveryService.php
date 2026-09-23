@@ -21,11 +21,14 @@ class InvoiceDeliveryService
 
     public function deliver(Invoice $invoice, string $channel, User $user, array $options = []): InvoiceDelivery
     {
-        $isDraftPendingApproval = $invoice->status === 'draft'
-            && $invoice->approval_status === Invoice::APPROVAL_PENDING;
+        // An invoice is deliverable once it is posted, or while still in draft
+        // after approval (the "send to customer for acceptance" step). A draft
+        // that is pending approval, rejected, or plain must not be emailed yet.
+        $isDeliverable = $invoice->status !== 'draft'
+            || $invoice->approval_status === Invoice::APPROVAL_APPROVED;
 
-        if ($invoice->status === 'draft' && ! $isDraftPendingApproval) {
-            throw new \InvalidArgumentException('Cannot deliver a draft invoice. Invoice must be in draft with approval or posted.');
+        if (! $isDeliverable) {
+            throw new \InvalidArgumentException('Invoice is not ready to be delivered. It must be approved or already posted.');
         }
 
         if (! in_array($channel, InvoiceDelivery::CHANNELS, true)) {
@@ -39,7 +42,16 @@ class InvoiceDeliveryService
             throw new \InvalidArgumentException('No recipient email available for invoice delivery.');
         }
 
-        $delivery = DB::transaction(function () use ($invoice, $channel, $user, $documentType, $recipient) {
+        $delivery = DB::transaction(function () use ($invoice, $channel, $user, $documentType, $recipient, $options) {
+            $metadata = [
+                'attempt' => 1,
+                'invoice_number' => $invoice->invoice_number,
+            ];
+
+            if (! empty($options['portal_url'])) {
+                $metadata['portal_url'] = $options['portal_url'];
+            }
+
             $delivery = InvoiceDelivery::create([
                 'invoice_id' => $invoice->id,
                 'channel' => $channel,
@@ -47,10 +59,7 @@ class InvoiceDeliveryService
                 'recipient' => $recipient,
                 'status' => InvoiceDelivery::STATUS_QUEUED,
                 'sent_by' => $user->id,
-                'metadata' => [
-                    'attempt' => 1,
-                    'invoice_number' => $invoice->invoice_number,
-                ],
+                'metadata' => $metadata,
             ]);
 
             return $delivery;
@@ -95,7 +104,13 @@ class InvoiceDeliveryService
             body: "Invoice {$invoice->invoice_number} was delivered to {$recipient} via {$channel}.",
             authorId: $user->id,
             authorType: 'user',
-            tenantId: $invoice->tenant_id ?? (function () { try { return tenant()?->id; } catch (\Throwable) { return null; } })(),
+            tenantId: $invoice->tenant_id ?? (function () {
+                try {
+                    return tenant()?->id;
+                } catch (\Throwable) {
+                    return null;
+                }
+            })(),
             context: [
                 'invoice_number' => $invoice->invoice_number,
                 'channel' => $channel,
@@ -149,7 +164,11 @@ class InvoiceDeliveryService
 
             Mail::to($delivery->recipient)->send(new CustomerEmail(
                 emailSubject: $this->getEmailSubject($invoice, $delivery->document_type),
-                emailBody: $this->getEmailBody($invoice, $delivery->document_type),
+                emailBody: $this->getEmailBody(
+                    $invoice,
+                    $delivery->document_type,
+                    $delivery->metadata['portal_url'] ?? null,
+                ),
                 emailAttachments: [
                     [
                         'name' => "Invoice-{$invoice->invoice_number}.pdf",
@@ -237,9 +256,13 @@ class InvoiceDeliveryService
 
     private function generatePdfData(Invoice $invoice, string $documentType): string
     {
-        $pdfService = app(\Modules\TemplateBuilder\Services\DocumentRenderService::class);
+        // Render the invoice through the TemplateBuilder PDF service and return
+        // the raw binary so it can be attached to the delivery email.
+        $pdfService = app(\Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract::class);
 
-        return $pdfService->render($invoice, $documentType);
+        $result = $pdfService->render('invoice', (string) $invoice->id, ['format' => 'pdf']);
+
+        return $result['bytes'];
     }
 
     private function getEmailSubject(Invoice $invoice, string $documentType): string
@@ -252,18 +275,26 @@ class InvoiceDeliveryService
         return "{$prefix} {$invoice->invoice_number} from {$company}";
     }
 
-    private function getEmailBody(Invoice $invoice, string $documentType): string
+    private function getEmailBody(Invoice $invoice, string $documentType, ?string $portalUrl = null): string
     {
         $type = $documentType === InvoiceDelivery::DOCUMENT_ACCEPTANCE_COPY
             ? 'acceptance copy'
             : 'final invoice';
         $dueDate = $invoice->due_date ? $invoice->due_date->format('d M Y') : 'N/A';
 
-        return "Dear {$invoice->customer?->name},\n\n".
+        $body = "Dear {$invoice->customer?->name},\n\n".
             "Please find attached the {$type} for invoice {$invoice->invoice_number}.\n\n".
             "Amount: {$invoice->currency_code} ".number_format($invoice->total, 2)."\n".
-            "Due Date: {$dueDate}\n\n".
-            'Thank you for your business.';
+            "Due Date: {$dueDate}\n\n";
+
+        if ($portalUrl) {
+            $body .= "To review, accept, or upload evidence for this invoice, open this link:\n".
+                "{$portalUrl}\n\n";
+        }
+
+        $body .= 'Thank you for your business.';
+
+        return $body;
     }
 
     private function getWhatsAppMessage(Invoice $invoice, string $documentType): string
@@ -280,6 +311,8 @@ class InvoiceDeliveryService
 
     private function getPortalUrl(Invoice $invoice): string
     {
-        return url("/invoice-accept/{$invoice->id}");
+        $frontendUrl = rtrim((string) (env('FRONTEND_URL') ?: config('app.url', '')), '/');
+
+        return "{$frontendUrl}/invoice-accept/{$invoice->id}";
     }
 }

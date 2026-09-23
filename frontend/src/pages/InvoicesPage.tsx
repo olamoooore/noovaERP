@@ -396,48 +396,55 @@ export function InvoicesPage() {
                       <TableCell className="text-right">{formatCurrency(invoice.total)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(invoice.balance)}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className={getStatusBadge(invoice.status)}>
-                          {invoice.status}
-                        </Badge>
+                        {invoice.status === 'draft' && invoice.approval_status === 'pending' ? (
+                          invoice.approval_view === 'to_approve' ? (
+                            <Badge variant="secondary" className="whitespace-nowrap bg-amber-100 text-amber-800 animate-pulse">
+                              Requires Approval
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="whitespace-nowrap bg-amber-100 text-amber-800">
+                              Pending
+                            </Badge>
+                          )
+                        ) : invoice.status === 'draft' && invoice.approval_status === 'approved' ? (
+                          <Badge variant="secondary" className="whitespace-nowrap bg-emerald-100 text-emerald-800">
+                            Approved
+                          </Badge>
+                        ) : invoice.status === 'draft' && invoice.approval_status === 'rejected' ? (
+                          <Badge variant="secondary" className="whitespace-nowrap bg-red-100 text-red-800">
+                            Approval Rejected
+                          </Badge>
+                        ) : invoice.status === 'draft' && invoice.requires_approval ? (
+                          <Badge variant="secondary" className="whitespace-nowrap bg-amber-100 text-amber-800">
+                            Requires Approval
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className={getStatusBadge(invoice.status)}>
+                            {invoice.status}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        <div className="flex gap-1">
-                          <Button size="sm" variant="outline" onClick={() => navigate(`/invoices/${invoice.id}`)} title="View">
-                            <Icon icon="solar:eye-bold" className="h-3 w-3" />
+                        <div className="flex justify-end gap-1.5">
+                          <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => navigate(`/invoices/${invoice.id}`)} title="View">
+                            <Icon icon="solar:eye-bold-duotone" className="h-3.5 w-3.5" />
                           </Button>
                           {invoice.status === 'draft' && (
                             <>
-                              <Button size="sm" variant="outline" onClick={() => navigate(`/invoices/${invoice.id}/edit`)} title="Edit">
-                                <Icon icon="solar:pen-bold" className="h-3 w-3" />
+                              <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => navigate(`/invoices/${invoice.id}/edit`)} title="Edit">
+                                <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
                               </Button>
-                              <Button size="sm" variant="outline" onClick={() => sendInvoiceMutation.mutate(invoice.id)} title="Post">
-                                <Icon icon="solar:check-circle-bold" className="h-3 w-3" />
+                              <Button
+                                size="sm"
+                                className="h-7 w-7 bg-emerald-600 p-0 text-white hover:bg-emerald-700"
+                                onClick={() => sendInvoiceMutation.mutate(invoice.id)}
+                                disabled={sendInvoiceMutation.isPending}
+                                title="Post"
+                              >
+                                <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4" />
                               </Button>
                             </>
                           )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={async () => {
-                              try {
-                                const res = await api.get(`/invoices/${invoice.id}/pdf`, { responseType: 'blob' })
-                                const blob = new Blob([res.data], { type: 'application/pdf' })
-                                const url = window.URL.createObjectURL(blob)
-                                const link = document.createElement('a')
-                                link.href = url
-                                link.download = `${invoice.invoice_number}.pdf`
-                                document.body.appendChild(link)
-                                link.click()
-                                document.body.removeChild(link)
-                                window.URL.revokeObjectURL(url)
-                              } catch {
-                                toast({ variant: 'destructive', title: 'Failed to download PDF' })
-                              }
-                            }}
-                            title="Download PDF"
-                          >
-                            <Icon icon="solar:download-bold" className="h-3 w-3" />
-                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>

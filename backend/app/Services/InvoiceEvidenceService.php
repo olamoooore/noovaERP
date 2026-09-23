@@ -6,6 +6,8 @@ use App\Contracts\EsignProviderInterface;
 use App\Models\Invoice;
 use App\Models\InvoiceActivityLog;
 use App\Models\InvoiceEvidence;
+use App\Platform\Notifications\NotificationService;
+use App\Services\Chatter\ChatterService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -24,6 +26,8 @@ class InvoiceEvidenceService
 
     public function __construct(
         private InvoiceActivityService $activityLog,
+        private ChatterService $chatterService,
+        private NotificationService $notificationService,
     ) {}
 
     public function upload(
@@ -100,6 +104,7 @@ class InvoiceEvidenceService
 
     public function recordPortalAcceptance(
         Invoice $invoice,
+        InvoiceEvidence $linkEvidence,
         string $signerName,
         string $signerEmail,
         string $signerIp,
@@ -112,11 +117,12 @@ class InvoiceEvidenceService
             $signaturePath = $this->storeSignatureImage($invoice, $signatureDataUrl);
         }
 
-        $evidence = DB::transaction(function () use ($invoice, $signerName, $signerEmail, $signerIp, $signerUserAgent, $signaturePath) {
-            $evidence = InvoiceEvidence::create([
-                'invoice_id' => $invoice->id,
-                'type' => InvoiceEvidence::TYPE_CUSTOMER_ACCEPTANCE,
-                'source' => InvoiceEvidence::SOURCE_PORTAL_ACCEPTANCE,
+        // Update the SAME evidence row that backs the acceptance link (it holds
+        // the token in external_id). Creating a second row left the link row
+        // unsigned, so re-opening the link reported "not accepted" and dropped
+        // the signer data on reload.
+        DB::transaction(function () use ($invoice, $linkEvidence, $signerName, $signerEmail, $signerIp, $signerUserAgent, $signaturePath) {
+            $linkEvidence->update([
                 'signer_name' => $signerName,
                 'signer_email' => $signerEmail,
                 'signer_ip' => $signerIp,
@@ -128,9 +134,9 @@ class InvoiceEvidenceService
             ]);
 
             $this->syncEvidenceStatus($invoice);
-
-            return $evidence;
         });
+
+        $evidence = $linkEvidence->fresh();
 
         $this->activityLog->log(
             $invoice,
@@ -147,7 +153,131 @@ class InvoiceEvidenceService
             null,
         );
 
+        $this->notifyCustomerAction($invoice, 'invoice.customer_accepted', [
+            'type' => 'Invoice Acceptance',
+            'invoice_number' => $invoice->invoice_number,
+            'signer_name' => $signerName,
+            'signer_email' => $signerEmail,
+            'invoice_id' => $invoice->id,
+        ]);
+
         return $evidence;
+    }
+
+    /**
+     * Record a customer-supplied payment proof (bank-transfer receipt, etc.)
+     * through the public acceptance portal and surface it in chatter + to the
+     * invoice creator.
+     */
+    public function recordCustomerPaymentProof(
+        Invoice $invoice,
+        UploadedFile $file,
+        ?string $notes = null,
+        ?string $customerName = null,
+        ?string $customerEmail = null,
+    ): InvoiceEvidence {
+        if ($file->getSize() > self::MAX_FILE_SIZE) {
+            throw new \InvalidArgumentException('File size exceeds maximum allowed size of 10 MB.');
+        }
+
+        $mimeType = $file->getMimeType();
+        if (! in_array($mimeType, self::ALLOWED_MIME_TYPES, true)) {
+            throw new \InvalidArgumentException(
+                "File type {$mimeType} is not allowed. Allowed types: ".implode(', ', self::ALLOWED_MIME_TYPES)
+            );
+        }
+
+        $checksum = hash_file('sha256', $file->getRealPath());
+        $path = $this->storeFile($invoice, $file);
+
+        $evidence = DB::transaction(function () use ($invoice, $file, $notes, $customerName, $customerEmail, $path, $checksum, $mimeType) {
+            return InvoiceEvidence::create([
+                'invoice_id' => $invoice->id,
+                'type' => InvoiceEvidence::TYPE_PAYMENT_PROOF,
+                'source' => InvoiceEvidence::SOURCE_UPLOAD,
+                'file_path' => $path,
+                'file_name' => $file->getClientOriginalName(),
+                'mime_type' => $mimeType,
+                'size_bytes' => $file->getSize(),
+                'checksum_sha256' => $checksum,
+                'notes' => $notes,
+                'signer_name' => $customerName,
+                'signer_email' => $customerEmail,
+                'uploaded_by' => null,
+            ]);
+        });
+
+        // Surface the file as a chatter attachment so the invoice's creator can
+        // see the customer's proof directly in the chatter panel.
+        try {
+            $this->chatterService->registerAttachment(
+                Invoice::class,
+                $invoice->id,
+                $file->getClientOriginalName(),
+                $mimeType,
+                (int) $file->getSize(),
+                'public',
+                $path,
+                null,
+            );
+        } catch (\Throwable $e) {
+            Log::warning('InvoiceEvidenceService: failed to mirror payment proof to chatter', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $this->activityLog->log(
+            $invoice,
+            InvoiceActivityLog::EVENT_EVIDENCE_ADDED,
+            [
+                'evidence_id' => $evidence->id,
+                'type' => InvoiceEvidence::TYPE_PAYMENT_PROOF,
+                'file_name' => $file->getClientOriginalName(),
+                'notes' => $notes,
+            ],
+            $invoice->getOriginal('evidence_status') ?? Invoice::EVIDENCE_NOT_REQUIRED,
+            $invoice->fresh()->evidence_status,
+            InvoiceActivityLog::ACTOR_CUSTOMER,
+            null,
+        );
+
+        $this->notifyCustomerAction($invoice, 'invoice.payment_proof_uploaded', [
+            'type' => 'Payment Proof',
+            'invoice_number' => $invoice->invoice_number,
+            'file_name' => $file->getClientOriginalName(),
+            'invoice_id' => $invoice->id,
+        ]);
+
+        Log::info('Invoice payment proof uploaded by customer', [
+            'evidence_id' => $evidence->id,
+            'invoice_id' => $invoice->id,
+            'file_name' => $file->getClientOriginalName(),
+        ]);
+
+        return $evidence;
+    }
+
+    /**
+     * Notify the invoice's creator of a customer action (acceptance, evidence).
+     * Fails soft — notification issues must never break the customer flow.
+     */
+    private function notifyCustomerAction(Invoice $invoice, string $event, array $data): void
+    {
+        try {
+            $creator = $invoice->createdBy;
+            if (! $creator) {
+                return;
+            }
+
+            $this->notificationService->dispatch($event, $creator, $data);
+        } catch (\Throwable $e) {
+            Log::warning('InvoiceEvidenceService: failed to notify creator of customer action', [
+                'invoice_id' => $invoice->id,
+                'event' => $event,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function recordEsignCompletion(
@@ -285,7 +415,8 @@ class InvoiceEvidenceService
             'expires_at' => $expiresAt,
         ]);
 
-        $signedUrl = url("/api/v1/invoice-accept/{$token}");
+        $frontendUrl = rtrim((string) (env('FRONTEND_URL') ?: config('app.url', '')), '/');
+        $signedUrl = "{$frontendUrl}/invoice-accept/{$token}";
 
         return [
             'token' => $token,
@@ -311,6 +442,31 @@ class InvoiceEvidenceService
         return InvoiceEvidence::where('external_id', $token)
             ->where('source', InvoiceEvidence::SOURCE_PORTAL_ACCEPTANCE)
             ->first();
+    }
+
+    /**
+     * Locate which tenant owns a given acceptance token.
+     *
+     * Customer-facing acceptance links carry no tenant in the host, so the
+     * public route must resolve the tenant from the token itself. The token is
+     * a globally-unique UUID, so scanning tenant schemas is safe and cheap
+     * (acceptance links are low-volume).
+     */
+    public function resolveTenantForAcceptanceToken(string $token): ?\App\Models\Tenant
+    {
+        foreach (\App\Models\Tenant::all() as $tenant) {
+            $found = $tenant->run(function () use ($token) {
+                return InvoiceEvidence::where('external_id', $token)
+                    ->where('source', InvoiceEvidence::SOURCE_PORTAL_ACCEPTANCE)
+                    ->exists();
+            });
+
+            if ($found) {
+                return $tenant;
+            }
+        }
+
+        return null;
     }
 
     public function sendForEsign(Invoice $invoice, array $signers = []): array

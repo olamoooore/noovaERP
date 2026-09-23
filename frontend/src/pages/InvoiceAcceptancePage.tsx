@@ -80,6 +80,8 @@ export default function InvoiceAcceptancePage() {
   const [agreed, setAgreed] = useState(false)
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
+  const [paymentFile, setPaymentFile] = useState<File | null>(null)
+  const [paymentNotes, setPaymentNotes] = useState('')
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['invoice-acceptance', token],
@@ -124,6 +126,42 @@ export default function InvoiceAcceptancePage() {
       return
     }
     acceptMutation.mutate()
+  }
+
+  const uploadEvidenceMutation = useMutation({
+    mutationFn: async () => {
+      if (!paymentFile) throw new Error('No file selected')
+      const form = new FormData()
+      form.append('file', paymentFile)
+      if (paymentNotes) form.append('notes', paymentNotes)
+      form.append('customer_name', signerName || '')
+      form.append('customer_email', signerEmail || '')
+      const res = await api.post(`/invoice-accept/${token}/evidence`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return res.data
+    },
+    onSuccess: () => {
+      setPaymentFile(null)
+      setPaymentNotes('')
+      toast({ title: 'Payment proof uploaded', description: 'Your receipt has been sent to the vendor.' })
+    },
+    onError: (err: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Could not upload payment proof',
+        description: err.response?.data?.error || err.response?.data?.message || 'Please try again.',
+      })
+    },
+  })
+
+  const handleUploadEvidence = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!paymentFile) {
+      toast({ variant: 'destructive', title: 'Please choose a file to upload' })
+      return
+    }
+    uploadEvidenceMutation.mutate()
   }
 
   useEffect(() => {
@@ -440,6 +478,52 @@ export default function InvoiceAcceptancePage() {
                 {data.signer.name && `Signed by ${data.signer.name} `}
                 {data.signer.signed_at && `on ${formatDate(data.signer.signed_at)}`}
               </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Payment proof upload — after bank transfer, attach the receipt */}
+        {!isFullyPaid && inv.balance > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Payment proof</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Paid by bank transfer? Upload your receipt so the vendor can confirm payment.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleUploadEvidence} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="payment-file">Bank transfer receipt (PDF or image)</Label>
+                  <Input
+                    id="payment-file"
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+                    onChange={(e) => setPaymentFile(e.target.files?.[0] ?? null)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="payment-notes">Reference / note (optional)</Label>
+                  <Input
+                    id="payment-notes"
+                    placeholder="e.g. Transfer ref 12345678"
+                    value={paymentNotes}
+                    onChange={(e) => setPaymentNotes(e.target.value)}
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={uploadEvidenceMutation.isPending || !paymentFile}
+                  className="w-full md:w-auto"
+                >
+                  {uploadEvidenceMutation.isPending ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  ) : (
+                    <Icon icon="solar:upload-bold-duotone" className="mr-2 h-4 w-4" />
+                  )}
+                  Upload payment proof
+                </Button>
+              </form>
             </CardContent>
           </Card>
         )}

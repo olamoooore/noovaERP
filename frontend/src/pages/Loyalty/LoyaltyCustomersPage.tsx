@@ -154,7 +154,7 @@ export function LoyaltyCustomersPage() {
                       {customer.is_enrolled ? (
                         <Button variant="ghost" size="sm" asChild>
                           <Link to={`/loyalty/customers/${customer.customer_id}`}>
-                            <Icon icon="solar:eye-bold" className="h-4 w-4" />
+                            <Icon icon="solar:eye-bold-duotone" className="h-4 w-4" />
                           </Link>
                         </Button>
                       ) : (

@@ -453,7 +453,7 @@ export function POSOrdersPage() {
                           onClick={() => handleViewOrder(order)}
                           disabled={loadingOrderDetail}
                         >
-                          <Icon icon="solar:eye-bold" className="h-4 w-4" />
+                          <Icon icon="solar:eye-bold-duotone" className="h-4 w-4" />
                         </Button>
                       </TableCell>
                     </TableRow>

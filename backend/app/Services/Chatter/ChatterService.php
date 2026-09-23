@@ -225,6 +225,45 @@ class ChatterService
     }
 
     /**
+     * Register an already-stored file as a chatter attachment.
+     *
+     * Used by flows that store the file themselves first (e.g. a customer's
+     * payment-proof upload through the public acceptance portal, where there is
+     * no authenticated user). `$uploadedById` may be null for customer actors.
+     */
+    public function registerAttachment(
+        string $subjectType,
+        int|string $subjectId,
+        string $filename,
+        string $mimeType,
+        int $size,
+        string $storageDisk,
+        string $storagePath,
+        ?int $uploadedById = null,
+    ): ChatterAttachment {
+        $attachment = ChatterAttachment::create([
+            'tenant_id' => $this->currentTenantId(),
+            'subject_type' => $subjectType,
+            'subject_id' => (string) (int) $subjectId,
+            'uploaded_by_id' => $uploadedById,
+            'filename' => $filename,
+            'mime_type' => $mimeType,
+            'size' => $size,
+            'storage_disk' => $storageDisk,
+            'storage_path' => $storagePath,
+            'checksum' => null,
+        ]);
+
+        $this->logEvent($subjectType, (int) $subjectId, 'attachment_uploaded', "Uploaded {$filename}", [
+            'attachment_id' => $attachment->id,
+            'filename' => $filename,
+            'size' => $size,
+        ]);
+
+        return $attachment->fresh(['uploadedBy']);
+    }
+
+    /**
      * Issue #78: stream an attachment through the authenticated API instead of
      * exposing the underlying storage path/URL structure.
      */

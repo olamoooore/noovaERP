@@ -88,10 +88,30 @@ class InitializeTenantForPublicAccess
             return $next($request);
         }
 
-        // 1. For /w/{slug} routes, resolve tenant by finding which tenant owns the website.
+        $path = $request->path();
+
+        // 1. Token-based public routes (invoice acceptance) resolve the tenant
+        //    from the token itself — before domain resolution — because the
+        //    token uniquely identifies the owning tenant while the link may be
+        //    opened on any domain (e.g. the shared production domain or a
+        //    different tenant's *.localhost host).
+        if (preg_match('#^api/v1/invoice-accept/#', $path)) {
+            $token = $request->route('token');
+            if ($token) {
+                $tenant = app(\App\Services\InvoiceEvidenceService::class)
+                    ->resolveTenantForAcceptanceToken((string) $token);
+
+                if ($tenant) {
+                    $this->tenancy->initialize($tenant);
+
+                    return $next($request);
+                }
+            }
+        }
+
+        // 2. For /w/{slug} routes, resolve tenant by finding which tenant owns the website.
         //    This takes priority over domain resolution because the website's tenant
         //    may differ from the domain's tenant (e.g. shared domain in multi-tenant setup).
-        $path = $request->path();
         if (preg_match('#^w/([^/]+)#', $path, $m)) {
             $websiteSlug = $m[1];
             $tenant = $this->resolveTenantFromWebsiteSlug($websiteSlug, $request);
@@ -102,7 +122,7 @@ class InitializeTenantForPublicAccess
             }
         }
 
-        // 2. Try domain-based resolution from Host header
+        // 3. Try domain-based resolution from Host header
         $tenant = $this->resolveTenantFromHost($request->getHost());
         if ($tenant) {
             $this->tenancy->initialize($tenant);
@@ -110,7 +130,7 @@ class InitializeTenantForPublicAccess
             return $next($request);
         }
 
-        // 3. No tenant resolved — fail closed
+        // 4. No tenant resolved — fail closed
         Log::warning('InitializeTenantForPublicAccess: No tenant could be resolved, rejecting request', [
             'host' => $request->getHost(),
             'path' => $path,

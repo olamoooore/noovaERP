@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
+use App\Models\InvoiceEvidence;
 use App\Services\InvoiceEvidenceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -97,14 +98,29 @@ class InvoiceAcceptanceController extends Controller
             [
                 'key' => 'sent',
                 'label' => 'Sent to customer',
-                'completed' => in_array($invoice->status, ['sent', 'partial', 'paid', 'overdue'], true),
-                'date' => optional($invoice->updated_at)->toIso8601String(),
+                // The acceptance link itself is the delivery — reaching this
+                // endpoint with a valid token means the invoice was sent.
+                'completed' => true,
+                'date' => optional($evidence->created_at)->toIso8601String(),
             ],
             [
                 'key' => 'accepted',
                 'label' => 'Customer acceptance',
                 'completed' => $evidence->signed_at !== null,
                 'date' => optional($evidence->signed_at)->toIso8601String(),
+            ],
+            [
+                'key' => 'evidence',
+                'label' => 'Payment evidence',
+                'completed' => $invoice->evidence()
+                    ->where('type', InvoiceEvidence::TYPE_PAYMENT_PROOF)
+                    ->whereNull('deleted_at')
+                    ->exists(),
+                'date' => optional($invoice->evidence()
+                    ->where('type', InvoiceEvidence::TYPE_PAYMENT_PROOF)
+                    ->whereNull('deleted_at')
+                    ->latest()
+                    ->first()?->created_at)->toIso8601String(),
             ],
             [
                 'key' => 'paid',
@@ -155,6 +171,7 @@ class InvoiceAcceptanceController extends Controller
         try {
             $this->evidenceService->recordPortalAcceptance(
                 $invoice,
+                $evidence,
                 $validated['signer_name'],
                 $validated['signer_email'],
                 $request->ip() ?? 'unknown',
@@ -176,6 +193,65 @@ class InvoiceAcceptanceController extends Controller
             return response()->json([
                 'error' => 'Failed to record acceptance. Please try again.',
                 'code' => 'ACCEPTANCE_FAILED',
+            ], 500);
+        }
+    }
+
+    /**
+     * Customer uploads payment proof (bank-transfer receipt, etc.) through the
+     * public acceptance portal.
+     */
+    public function uploadEvidence(Request $request, string $token)
+    {
+        $validated = $request->validate([
+            'file' => 'required|file|max:10240',
+            'notes' => 'nullable|string|max:1000',
+            'customer_name' => 'nullable|string|max:255',
+            'customer_email' => 'nullable|email|max:255',
+        ]);
+
+        $evidence = $this->evidenceService->findAnyByAcceptanceToken($token);
+
+        if (! $evidence) {
+            return response()->json([
+                'error' => 'Invalid or expired acceptance link.',
+                'code' => 'INVALID_TOKEN',
+            ], 404);
+        }
+
+        $invoice = Invoice::find($evidence->invoice_id);
+
+        if (! $invoice) {
+            return response()->json([
+                'error' => 'Invoice not found.',
+                'code' => 'INVOICE_NOT_FOUND',
+            ], 404);
+        }
+
+        try {
+            $proof = $this->evidenceService->recordCustomerPaymentProof(
+                $invoice,
+                $validated['file'],
+                $validated['notes'] ?? null,
+                $validated['customer_name'] ?? $evidence->signer_name,
+                $validated['customer_email'] ?? $evidence->signer_email,
+            );
+
+            return response()->json([
+                'message' => 'Payment proof uploaded successfully.',
+                'evidence_id' => $proof->id,
+                'file_name' => $proof->file_name,
+                'uploaded_at' => optional($proof->created_at)->toIso8601String(),
+            ], 201);
+        } catch (\Exception $e) {
+            Log::error('Payment proof upload failed', [
+                'token' => $token,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to upload payment proof. Please try again.',
+                'code' => 'UPLOAD_FAILED',
             ], 500);
         }
     }

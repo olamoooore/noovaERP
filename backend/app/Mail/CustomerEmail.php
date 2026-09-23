@@ -41,11 +41,10 @@ class CustomerEmail extends Mailable
     public function attachments(): array
     {
         return array_map(
-            fn (array $a) => new \Illuminate\Mail\Mailables\Attachment(
-                data: $a['data'],
-                name: $a['name'],
-                mime: $a['mime'] ?? 'application/octet-stream',
-            ),
+            fn (array $a) => \Illuminate\Mail\Mailables\Attachment::fromData(
+                fn () => $a['data'],
+                $a['name'],
+            )->withMime($a['mime'] ?? 'application/octet-stream'),
             $this->emailAttachments,
         );
     }

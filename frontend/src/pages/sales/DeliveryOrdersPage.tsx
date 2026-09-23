@@ -318,13 +318,19 @@ export function DeliveryOrdersPage() {
                         </Badge>
                       </TableCell>
                       <TableCell onClick={(event) => event.stopPropagation()}>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => navigate(`/delivery-orders/${do_.id}`)}>
-                            View
+                        <div className="flex justify-end gap-1.5">
+                          <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => navigate(`/delivery-orders/${do_.id}`)} title="View">
+                            <Icon icon="solar:eye-bold-duotone" className="h-3.5 w-3.5" />
                           </Button>
                           {do_.status === 'draft' && (
-                            <Button variant="ghost" size="sm" onClick={() => confirmMutation.mutate(do_.id)}>
-                              Confirm
+                            <Button
+                              size="sm"
+                              className="h-7 w-7 bg-emerald-600 p-0 text-white hover:bg-emerald-700"
+                              onClick={() => confirmMutation.mutate(do_.id)}
+                              disabled={confirmMutation.isPending}
+                              title="Confirm"
+                            >
+                              <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4" />
                             </Button>
                           )}
                         </div>

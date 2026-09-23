@@ -818,28 +818,30 @@ export function CustomersPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1">
+                        <div className="flex justify-end gap-1.5">
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="icon"
+                            className="h-7 w-7"
                             onClick={(e) => {
                               e.stopPropagation()
                               openCustomerDetail(customer)
                             }}
                             title="Quick View"
                           >
-                            <Icon icon="solar:eye-bold" className="h-4 w-4" />
+                            <Icon icon="solar:eye-bold-duotone" className="h-3.5 w-3.5" />
                           </Button>
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="icon"
+                            className="h-7 w-7"
                             onClick={(e) => {
                               e.stopPropagation()
                               navigate(`/customers/${customer.id}`)
                             }}
                             title="Full Details"
                           >
-                            <Icon icon="solar:arrow-right-bold" className="h-4 w-4" />
+                            <Icon icon="solar:arrow-right-bold-duotone" className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </TableCell>

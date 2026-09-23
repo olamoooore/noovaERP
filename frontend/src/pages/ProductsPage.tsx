@@ -16,7 +16,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
-import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { SalesLineColumnMenu, SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu'
 import { RetractingActions } from '@/components/layout/RetractingActions'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
@@ -72,6 +72,7 @@ export function ProductsPage() {
   const [sortBy, setSortBy] = useState<SortBy>('created_at')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [page, setPage] = useState(1)
+  const [hiddenProductColumns, setHiddenProductColumns] = useState<number[]>([])
 
   const clearFilters = () => {
     setSearch('')
@@ -365,12 +366,25 @@ export function ProductsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>All Products {totalProducts > 0 && <span className="text-muted-foreground font-normal text-base">({totalProducts})</span>}</CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            <span>All Products {totalProducts > 0 && <span className="text-muted-foreground font-normal text-base">({totalProducts})</span>}</span>
+            <SalesLineColumnMenu
+              columns={listingColumns(['Select', 'Product', 'Type', 'Category', 'SKU', 'Created Date', 'Cost', 'Price', 'Stock', 'Status', 'Actions'])}
+              hidden={hiddenProductColumns}
+              setHidden={setHiddenProductColumns}
+            />
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {viewMode === 'list' ? (
-                <SalesLineColumnVisibility tableClass="products-listing-columns" columns={listingColumns(['Select', 'Product', 'Type', 'Category', 'SKU', 'Created Date', 'Cost', 'Price', 'Stock', 'Status', 'Actions'])}>
-                <Table>
+                <SalesLineColumnVisibility
+                  tableClass="products-listing-columns"
+                  columns={listingColumns(['Select', 'Product', 'Type', 'Category', 'SKU', 'Created Date', 'Cost', 'Price', 'Stock', 'Status', 'Actions'])}
+                  hiddenColumns={hiddenProductColumns}
+                  onHiddenColumnsChange={setHiddenProductColumns}
+                  showMenu={false}
+                >
+                <Table className="table-fixed">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-10">
@@ -380,16 +394,16 @@ export function ProductsPage() {
                       aria-label="Select products on this page"
                     />
                   </TableHead>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Created Date</TableHead>
-                  <TableHead>Cost</TableHead>
-                  <TableHead>Price</TableHead>
-                  <TableHead>Stock</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="w-[240px]">Product</TableHead>
+                  <TableHead className="w-[90px]">Type</TableHead>
+                  <TableHead className="w-[110px]">Category</TableHead>
+                  <TableHead className="w-[100px]">SKU</TableHead>
+                  <TableHead className="w-[110px]">Created Date</TableHead>
+                  <TableHead className="w-[80px] text-right">Cost</TableHead>
+                  <TableHead className="w-[80px] text-right">Price</TableHead>
+                  <TableHead className="w-[70px] text-right">Stock</TableHead>
+                  <TableHead className="w-[90px]">Status</TableHead>
+                  <TableHead className="w-[80px] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -419,9 +433,9 @@ export function ProductsPage() {
                         </div>
                         <div className="min-w-0">
                           <div className="font-medium truncate">{product.name}</div>
-                          <div className="flex flex-wrap gap-1 mt-0.5">
+                          <div className="flex gap-1 mt-0.5 overflow-hidden">
                             {product.secondary_name && (
-                              <span className="text-xs text-muted-foreground truncate mr-1">
+                              <span className="text-xs text-muted-foreground truncate">
                                 {product.secondary_name}
                               </span>
                             )}
@@ -445,12 +459,12 @@ export function ProductsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="capitalize">{product.type || '-'}</TableCell>
-                    <TableCell>{categoryLabelForProduct(product)}</TableCell>
-                    <TableCell>{product.sku}</TableCell>
-                    <TableCell>{formatDate(product.created_at)}</TableCell>
-                    <TableCell>{formatCurrency(product.cost)}</TableCell>
-                    <TableCell>{formatCurrency(product.price)}</TableCell>
-                    <TableCell>{product.stock_quantity ?? '-'}</TableCell>
+                    <TableCell className="truncate" title={categoryLabelForProduct(product)}>{categoryLabelForProduct(product)}</TableCell>
+                    <TableCell className="truncate font-mono text-xs" title={product.sku}>{product.sku}</TableCell>
+                    <TableCell className="whitespace-nowrap">{formatDate(product.created_at)}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap">{formatCurrency(product.cost)}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap">{formatCurrency(product.price)}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap">{product.stock_quantity ?? '-'}</TableCell>
                     <TableCell>
                       <span
                         className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
@@ -463,21 +477,22 @@ export function ProductsPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
-                      <div className="inline-flex items-center gap-1">
-                        <Button asChild variant="ghost" size="icon" title="Edit">
+                      <div className="inline-flex items-center gap-1.5">
+                        <Button asChild variant="outline" size="icon" className="h-7 w-7" title="Edit">
                           <Link to={`/products/${product.id}/edit`}>
-                            <Icon icon="solar:pen-bold" className="h-4 w-4" />
+                            <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
                           </Link>
                         </Button>
                         <Button
                           type="button"
-                          variant="ghost"
+                          variant="outline"
                           size="icon"
+                          className="h-7 w-7 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                           title="Delete"
                           onClick={() => handleDelete(product)}
                           disabled={deleteMutation.isPending}
                         >
-                          <Icon icon="solar:trash-bin-trash-bold" className="h-4 w-4 text-red-500" />
+                          <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </TableCell>

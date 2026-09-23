@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
 import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
+import { Textarea } from '@/components/ui/textarea'
 
 interface Invoice {
   id: number
@@ -82,6 +83,7 @@ interface Invoice {
   requires_approval?: boolean
   approval_status?: 'not_required' | 'pending' | 'approved' | 'rejected' | 'expired' | 'withdrawn'
   approval_request_id?: number
+  can_approve?: boolean
   latest_rejection?: {
     id: number
     request_number: string
@@ -183,10 +185,16 @@ export function InvoiceDetailPage() {
       toast({ title: 'Invoice posted successfully' })
     },
     onError: (error: any) => {
+      const message = error.response?.data?.message || 'An error occurred'
+      const awaitingApproval =
+        error.response?.data?.code === 'APPROVAL_REQUIRED' ||
+        /awaiting approval|requires approval/i.test(message)
       toast({
-        variant: 'destructive',
-        title: 'Failed to post invoice',
-        description: error.response?.data?.message || 'An error occurred',
+        variant: awaitingApproval ? 'default' : 'destructive',
+        title: awaitingApproval ? 'Invoice awaiting approval' : 'Failed to post invoice',
+        description: awaitingApproval
+          ? 'This invoice needs to be approved before it can be posted.'
+          : message,
       })
     },
   })
@@ -263,6 +271,63 @@ export function InvoiceDetailPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [sendDialogUrl, setSendDialogUrl] = useState<string | null>(null)
+  const [approvalComment, setApprovalComment] = useState('')
+
+  const approveMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/approvals/${invoice?.approval_request_id}/approve`, {
+        notes: approvalComment,
+      })
+      return response.data
+    },
+    onSuccess: () => {
+      setApprovalComment('')
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      toast({ title: 'Invoice approved', description: 'It can now be posted.' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Could not approve',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  const declineMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/approvals/${invoice?.approval_request_id}/reject`, {
+        reason: approvalComment,
+      })
+      return response.data
+    },
+    onSuccess: () => {
+      setApprovalComment('')
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      toast({ title: 'Invoice declined', description: 'The submitter has been notified.' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Could not decline',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  const handleDecline = () => {
+    if ((approvalComment.trim().length || 0) < 10) {
+      toast({
+        variant: 'destructive',
+        title: 'A reason is required',
+        description: 'Please add a comment (at least 10 characters) explaining the decline.',
+      })
+      return
+    }
+    declineMutation.mutate()
+  }
 
   const getStatusBadge = (status: string, approvalStatus?: string) => {
     const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
@@ -360,17 +425,8 @@ export function InvoiceDetailPage() {
             }
           }}
           actions={<>
-            {invoice.status === 'draft' && (
-              <HeaderActionButton
-                icon="solar:check-circle-bold-duotone"
-                loading={postMutation.isPending}
-                onClick={() => postMutation.mutate()}
-                disabled={postMutation.isPending}
-              >
-                Post Invoice
-              </HeaderActionButton>
-            )}
-            {['posted', 'sent', 'partial', 'overdue', 'paid'].includes(invoice.status) && (
+            {((invoice.status === 'draft' && invoice.approval_status === 'approved') ||
+              ['posted', 'sent', 'partial', 'overdue', 'paid'].includes(invoice.status)) && (
               <HeaderActionButton
                 variant="outline"
                 icon="solar:letter-bold-duotone"
@@ -382,6 +438,16 @@ export function InvoiceDetailPage() {
                 disabled={sendInvoiceMutation.isPending}
               >
                 Send Invoice
+              </HeaderActionButton>
+            )}
+            {invoice.status === 'draft' && (
+              <HeaderActionButton
+                icon="solar:check-circle-bold-duotone"
+                loading={postMutation.isPending}
+                onClick={() => postMutation.mutate()}
+                disabled={postMutation.isPending}
+              >
+                Post Invoice
               </HeaderActionButton>
             )}
             <HeaderActionButton
@@ -438,6 +504,60 @@ export function InvoiceDetailPage() {
           </>}
         />
       </div>
+
+      {/* Approval actions — shown to the reviewer while the invoice awaits their decision */}
+      {invoice.can_approve && (
+        <div className="print:hidden space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/40">
+          <div className="flex items-center gap-2">
+            <Icon icon="solar:clipboard-check-bold-duotone" className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <span className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+              This invoice is awaiting your approval
+            </span>
+          </div>
+          <Textarea
+            value={approvalComment}
+            onChange={(e) => setApprovalComment(e.target.value)}
+            placeholder="Add a comment (required when declining)…"
+            className="min-h-[80px] bg-white dark:bg-background"
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => approveMutation.mutate()}
+              disabled={approveMutation.isPending || declineMutation.isPending}
+              className="h-8 rounded-full bg-emerald-600 px-4 text-xs text-white hover:bg-emerald-700"
+            >
+              <Icon icon="solar:check-circle-bold-duotone" className="mr-1.5 h-4 w-4" />
+              {approveMutation.isPending ? 'Approving…' : 'Approve'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleDecline}
+              disabled={approveMutation.isPending || declineMutation.isPending}
+              className="h-8 rounded-full border-red-300 px-4 text-xs text-red-700 hover:bg-red-50 hover:text-red-800 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
+            >
+              <Icon icon="solar:close-circle-bold-duotone" className="mr-1.5 h-4 w-4" />
+              {declineMutation.isPending ? 'Declining…' : 'Decline'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Approved — the invoice is ready to be sent to the customer or posted */}
+      {invoice.status === 'draft' && invoice.approval_status === 'approved' && (
+        <div className="print:hidden flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/40">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/50">
+            <Icon icon="solar:check-circle-bold-duotone" className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div className="min-w-0 flex-1 space-y-1">
+            <span className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+              Invoice approved — ready to send or post
+            </span>
+            <p className="text-sm text-emerald-800 dark:text-emerald-300">
+              Send it to the customer for acceptance and evidence, or post it directly.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Rejection notice — the invoice is back to draft after a manager rejection */}
       {invoice.status === 'draft' && invoice.latest_rejection && (

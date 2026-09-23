@@ -180,6 +180,17 @@ class ApprovalService
      */
     public function userCanApprove(User $user, string $requestType, float $amount): bool
     {
+        // Invoice approval is reviewer-driven (Sales Settings → Approval
+        // Workflow), not entitlement-driven. A configured reviewer may always
+        // decide — that list is the operator's intent and must not be
+        // second-guessed by the entitlement/role heuristic below. This must run
+        // BEFORE the entitlement map lookup, which has no invoice_approval key.
+        if ($requestType === \App\Services\InvoiceApprovalService::REQUEST_TYPE) {
+            return app(\App\Services\InvoiceApprovalService::class)
+                ->resolveReviewers(null)
+                ->contains('id', $user->id);
+        }
+
         // Get required entitlement
         $requiredEntitlement = self::ENTITLEMENT_MAP[$requestType] ?? null;
 
@@ -187,14 +198,6 @@ class ApprovalService
             Log::warning('Unknown request type for approval', ['request_type' => $requestType]);
 
             return false;
-        }
-
-        // A reviewer explicitly assigned to this request type in tenant
-        // settings may always decide — that list is the operator's intent and
-        // must not be second-guessed by the role heuristic below.
-        if ($requestType === \App\Services\InvoiceApprovalService::REQUEST_TYPE
-            && app(\App\Services\InvoiceApprovalService::class)->resolveReviewers()->contains('id', $user->id)) {
-            return true;
         }
 
         // Check if user has manager role (basic approval)

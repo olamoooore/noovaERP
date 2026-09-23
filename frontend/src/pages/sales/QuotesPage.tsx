@@ -387,32 +387,33 @@ export function QuotesPage() {
                           </Badge>
                         </TableCell>
                         <TableCell onClick={(event) => event.stopPropagation()}>
-                          <div className="flex justify-end gap-2">
-                            <Button size="sm" variant="outline" onClick={() => navigate(`/quotations/${quote.id}`)} title="View">
-                              <Icon icon="solar:eye-bold" className="h-3 w-3" />
+                          <div className="flex justify-end gap-1.5">
+                            <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => navigate(`/quotations/${quote.id}`)} title="View">
+                              <Icon icon="solar:eye-bold-duotone" className="h-3.5 w-3.5" />
                             </Button>
                             {(quote.status === 'draft' || quote.status === 'sent') && (
                               <>
-                                <Button size="sm" variant="outline" onClick={() => navigate(`/quotations/${quote.id}/edit`)} title="Edit">
-                                  <Icon icon="solar:pen-bold" className="h-3 w-3" />
+                                <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => navigate(`/quotations/${quote.id}/edit`)} title="Edit">
+                                  <Icon icon="solar:pen-bold-duotone" className="h-3.5 w-3.5" />
                                 </Button>
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="text-destructive"
+                                  className="h-7 w-7 border-destructive/40 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                   onClick={() => handleDelete(quote.id, quote.quotation_number)}
                                   title="Delete"
                                   disabled={deleteMutation.isPending}
                                 >
-                                  <Icon icon="solar:trash-bin-trash-bold" className="h-3 w-3" />
+                                  <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-3.5 w-3.5" />
                                 </Button>
                                 <Button
                                   size="sm"
+                                  className="h-7 w-7 bg-emerald-600 p-0 text-white hover:bg-emerald-700"
                                   onClick={() => confirmMutation.mutate(quote.id)}
                                   disabled={confirmMutation.isPending}
+                                  title="Confirm"
                                 >
-                                  <Icon icon="solar:check-circle-bold" className="mr-1 h-3 w-3" />
-                                  Confirm
+                                  <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4" />
                                 </Button>
                               </>
                             )}
