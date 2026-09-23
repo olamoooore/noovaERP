@@ -128,7 +128,7 @@ export function DeliveryOrderEditPage() {
           description: l.description || '',
           product_notes: l.product_notes || '',
           patient_name: l.patient_name || '',
-          quantity: parseFloat(l.quantity_delivered) || 1,
+          quantity: l.quantity_delivered != null ? parseFloat(l.quantity_delivered) : '',
           unit: l.unit || 'pcs',
           unit_price: l.unit_price ? parseFloat(l.unit_price) : null,
           lot_number: l.lot_number || '',
@@ -395,7 +395,14 @@ export function DeliveryOrderEditPage() {
                     <Input value={line.patient_name} onChange={(e) => updateLine(idx, 'patient_name', e.target.value)} placeholder="Patient name" />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Input type="number" min="0.01" step="0.01" value={line.quantity || ''} onChange={(e) => updateLine(idx, 'quantity', parseFloat(e.target.value) || 0)} className="w-24 text-right" />
+                    <Input type="number" min="0.01" step="0.01" value={line.quantity ?? ''} onChange={(e) => {
+                      // HR71-08: keep literal intent — empty while typing,
+                      // no silent coercion to 0.
+                      const raw = e.target.value;
+                      if (raw === '') { updateLine(idx, 'quantity', ''); return; }
+                      const parsed = parseFloat(raw);
+                      if (!Number.isNaN(parsed) && parsed >= 0) updateLine(idx, 'quantity', parsed);
+                    }} className="w-24 text-right" />
                   </TableCell>
                   <TableCell>
                     <Input value={line.unit} onChange={(e) => updateLine(idx, 'unit', e.target.value)} className="w-20" />

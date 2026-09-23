@@ -569,7 +569,15 @@ export const QuotationCreatePage: React.FC = () => {
                           type="number"
                           min="0"
                           value={line.quantity}
-                          onChange={(event) => updateLine(index, 'quantity', Math.max(0, parseInt(event.target.value, 10) || 0))}
+                          onChange={(event) => {
+                            const raw = event.target.value;
+                            // HR71-08: keep literal intent — empty is allowed
+                            // while typing (caught on submit), no silent
+                            // substitution of 1 or 0.
+                            if (raw === '') { updateLine(index, 'quantity', ''); return; }
+                            const parsed = parseFloat(raw);
+                            if (!Number.isNaN(parsed) && parsed >= 0) updateLine(index, 'quantity', parsed);
+                          }}
                           className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
                         />
                       </td>

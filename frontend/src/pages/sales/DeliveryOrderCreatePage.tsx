@@ -697,8 +697,15 @@ export function DeliveryOrderCreatePage() {
                         type="number"
                         min="0.01"
                         step="0.01"
-                        value={line.quantity || ''}
-                        onChange={(e) => updateStandaloneLine(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                        value={line.quantity ?? ''}
+                        onChange={(e) => {
+                          // HR71-08: keep literal intent — empty while typing,
+                          // no silent coercion to 0.
+                          const raw = e.target.value;
+                          if (raw === '') { updateStandaloneLine(idx, 'quantity', ''); return; }
+                          const parsed = parseFloat(raw);
+                          if (!Number.isNaN(parsed) && parsed >= 0) updateStandaloneLine(idx, 'quantity', parsed);
+                        }}
                         className="w-24 text-right"
                       />
                     </TableCell>
