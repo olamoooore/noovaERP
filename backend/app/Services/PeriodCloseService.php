@@ -330,6 +330,15 @@ class PeriodCloseService
                 'period_id' => $period->id,
                 'error' => $e->getMessage(),
             ]);
+
+            // Hostile re-review (#59 HR59-01): a close whose required closing
+            // entry could not be posted must fail closed — never close the
+            // period with P&L still on the books.
+            throw new \DomainException(
+                'PERIOD_CLOSE_CLOSING_ENTRY_FAILED: '.$e->getMessage(),
+                0,
+                $e,
+            );
         }
 
         return $entries;
@@ -413,7 +422,9 @@ class PeriodCloseService
     {
         $userId = auth()->id();
         if (! $userId) {
-            return null;
+            // Hostile re-review (#59): cannot attribute the closing entry —
+            // fail closed rather than closing without it.
+            throw new \DomainException('PERIOD_CLOSE_ACTOR_REQUIRED');
         }
 
         $closingDate = $period->period_end->toDateString();
@@ -494,7 +505,9 @@ class PeriodCloseService
                 'total_credit' => $totalCredit,
             ]);
 
-            return null;
+            throw new \DomainException(
+                "PERIOD_CLOSE_CLOSING_ENTRY_UNBALANCED: debit {$totalDebit} != credit {$totalCredit}"
+            );
         }
 
         return DB::transaction(function () use ($closingDate, $entryNumber, $lines, $period, $userId) {
@@ -531,7 +544,11 @@ class PeriodCloseService
                     'journal_entry_id' => $result->journalEntryId,
                 ]);
 
-                return null;
+                // Hostile re-review (#59): a rejected closing entry aborts the
+                // close (transaction rollback keeps the period open).
+                throw new \DomainException(
+                    'PERIOD_CLOSE_CLOSING_ENTRY_REJECTED: '.($result->error ?? 'unknown')
+                );
             }
 
             $entry = $result->journalEntry;
