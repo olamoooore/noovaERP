@@ -34,6 +34,10 @@ class PaymentAllocationService
         }
 
         return DB::transaction(function () use ($payment, $applications) {
+            // Hostile re-review C-3 (#155): lock the payment row so concurrent
+            // allocation requests cannot both pass the availability check and
+            // over-allocate the same cash.
+            $payment = Payment::whereKey($payment->id)->lockForUpdate()->firstOrFail();
             $payment->loadMissing('applications');
 
             $available = $this->unappliedAmount($payment);
@@ -88,6 +92,7 @@ class PaymentAllocationService
 
                 if (PaymentApplication::where('payment_id', $payment->id)
                     ->where('invoice_id', $invoice->id)
+                    ->whereNull('reversed_at')
                     ->exists()) {
                     throw new \InvalidArgumentException(
                         "Invoice {$invoice->invoice_number} has already been allocated from this payment."
@@ -112,8 +117,30 @@ class PaymentAllocationService
      */
     public function unappliedAmount(Payment $payment): float
     {
-        $applied = (float) $payment->applications()->sum('applied_amount');
+        $applied = (float) $payment->applications()->whereNull('reversed_at')->sum('applied_amount');
 
         return round((float) $payment->amount - $applied, 2);
+    }
+
+    /**
+     * Hostile re-review C-3 (#155): undo every live allocation of a payment —
+     * restore each invoice's balance through the canonical settlement path and
+     * mark the application reversed (audit preserved). Called by the payment
+     * correction flows so reversing/refunding a split payment cannot leave the
+     * other invoices marked paid.
+     */
+    public function reverseAllocations(Payment $payment): void
+    {
+        $payment->loadMissing('applications.invoice');
+
+        foreach ($payment->applications->whereNull('reversed_at') as $application) {
+            $invoice = $application->invoice;
+
+            if ($invoice) {
+                $this->invoiceService->restoreRefundToInvoice($invoice, (float) $application->applied_amount);
+            }
+
+            $application->update(['reversed_at' => now()]);
+        }
     }
 }

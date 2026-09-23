@@ -405,6 +405,15 @@ class FixedAssetsController extends Controller
             'reason' => 'nullable|string|max:500',
         ]);
 
+        // Hostile re-review C-2 (#94): disposed assets cannot be impaired,
+        // and the asset must be row-locked while its carrying amount is read
+        // and written so concurrent impairments cannot double-count.
+        if ($asset->status === 'disposed') {
+            return response()->json([
+                'message' => 'A disposed asset cannot be impaired.',
+            ], 422);
+        }
+
         $carrying = (float) $asset->book_value;
         $recoverable = round((float) $validated['recoverable_amount'], 2);
         $loss = round($carrying - $recoverable, 2);
@@ -422,6 +431,10 @@ class FixedAssetsController extends Controller
         }
 
         return DB::transaction(function () use ($asset, $validated, $carrying, $recoverable, $loss) {
+            // Re-read under a row lock so a concurrent impairment cannot use
+            // the same carrying amount (lost update on book_value).
+            $asset = \App\Models\FixedAsset::whereKey($asset->id)->lockForUpdate()->firstOrFail();
+
             // Hostile re-review (#94): the posting idempotency guard keys on
             // (documentType, documentId). Using the asset id made every repeat
             // impairment resolve to the FIRST journal entry, so the GL only

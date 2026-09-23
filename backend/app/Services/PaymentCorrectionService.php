@@ -87,12 +87,22 @@ class PaymentCorrectionService
             ]);
 
             // ── Subledger update through canonical service ──────────────────
-            if ($originalInvoice) {
-                $this->lifecycleService->applyPaymentReversal($originalInvoice, $payment->amount);
-            }
+            // Hostile re-review C-3 (#155): when the payment was allocated
+            // across invoices, undo each allocation (allocations are the
+            // authoritative application ledger); otherwise use the legacy
+            // single-invoice path.
+            $hasAllocations = $payment->applications()->whereNull('reversed_at')->exists();
 
-            if ($originalBill) {
-                $this->lifecycleService->applyBillPaymentReversal($originalBill, $payment->amount);
+            if ($hasAllocations) {
+                app(PaymentAllocationService::class)->reverseAllocations($payment);
+            } else {
+                if ($originalInvoice) {
+                    $this->lifecycleService->applyPaymentReversal($originalInvoice, $payment->amount);
+                }
+
+                if ($originalBill) {
+                    $this->lifecycleService->applyBillPaymentReversal($originalBill, $payment->amount);
+                }
             }
 
             // #45: only link a refund correction when there is a parent document.
@@ -167,12 +177,20 @@ class PaymentCorrectionService
             ]);
 
             // ── Subledger update through canonical service ──────────────────
-            if ($originalInvoice) {
-                $this->lifecycleService->applyPaymentRefund($originalInvoice, $payment->amount);
-            }
+            // Hostile re-review C-3 (#155): split payments refund through their
+            // allocation ledger.
+            $hasAllocations = $payment->applications()->whereNull('reversed_at')->exists();
 
-            if ($originalBill) {
-                $this->lifecycleService->applyBillPaymentRefund($originalBill, $payment->amount);
+            if ($hasAllocations) {
+                app(PaymentAllocationService::class)->reverseAllocations($payment);
+            } else {
+                if ($originalInvoice) {
+                    $this->lifecycleService->applyPaymentRefund($originalInvoice, $payment->amount);
+                }
+
+                if ($originalBill) {
+                    $this->lifecycleService->applyBillPaymentRefund($originalBill, $payment->amount);
+                }
             }
 
             // #45: only link a refund correction when there is a parent document.
@@ -228,12 +246,22 @@ class PaymentCorrectionService
             ]);
 
             // ── Subledger update through canonical service ──────────────────
-            if ($originalInvoice) {
-                $this->lifecycleService->applyPaymentReversal($originalInvoice, $payment->amount);
-            }
+            // Hostile re-review C-3 (#155): when the payment was allocated
+            // across invoices, undo each allocation (allocations are the
+            // authoritative application ledger); otherwise use the legacy
+            // single-invoice path.
+            $hasAllocations = $payment->applications()->whereNull('reversed_at')->exists();
 
-            if ($originalBill) {
-                $this->lifecycleService->applyBillPaymentReversal($originalBill, $payment->amount);
+            if ($hasAllocations) {
+                app(PaymentAllocationService::class)->reverseAllocations($payment);
+            } else {
+                if ($originalInvoice) {
+                    $this->lifecycleService->applyPaymentReversal($originalInvoice, $payment->amount);
+                }
+
+                if ($originalBill) {
+                    $this->lifecycleService->applyBillPaymentReversal($originalBill, $payment->amount);
+                }
             }
 
             return new PaymentCorrectionResult(
