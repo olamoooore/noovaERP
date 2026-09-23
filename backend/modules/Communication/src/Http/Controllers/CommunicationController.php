@@ -135,7 +135,13 @@ class CommunicationController extends Controller
             'is_inline' => 'nullable|boolean',
         ]);
 
-        $message = \Modules\Communication\Models\CommunicationMessage::findOrFail($messageId);
+        // Hostile re-review (C-1): message lookups must be tenant-scoped —
+        // an unscoped findOrFail lets any tenant address another's message.
+        $message = \Modules\Communication\Models\CommunicationMessage::query()
+            ->where(function ($query) {
+                $query->where('tenant_id', tenant()->id)->orWhereNull('tenant_id');
+            })
+            ->findOrFail($messageId);
 
         // Issue #88/#77: stamp the attachment with the ACTIVE tenant context
         // (the header is only a fallback) so upload and download agree on the
@@ -197,7 +203,13 @@ class CommunicationController extends Controller
      */
     public function markMessageRead(Request $request, int $messageId): JsonResponse
     {
-        $message = \Modules\Communication\Models\CommunicationMessage::findOrFail($messageId);
+        // Hostile re-review (C-1): message lookups must be tenant-scoped —
+        // an unscoped findOrFail lets any tenant address another's message.
+        $message = \Modules\Communication\Models\CommunicationMessage::query()
+            ->where(function ($query) {
+                $query->where('tenant_id', tenant()->id)->orWhereNull('tenant_id');
+            })
+            ->findOrFail($messageId);
 
         $state = $this->engine->markAsRead(
             (int) $message->id,
@@ -418,7 +430,12 @@ class CommunicationController extends Controller
      */
     public function getOutboxStatus(int $messageId): JsonResponse
     {
-        $message = CommunicationMessage::with('outboxItems')->findOrFail($messageId);
+        // Hostile re-review (#76 B2): unscoped outbox lookup.
+        $message = CommunicationMessage::with('outboxItems')
+            ->where(function ($query) {
+                $query->where('tenant_id', tenant()->id)->orWhereNull('tenant_id');
+            })
+            ->findOrFail($messageId);
 
         return response()->json([
             'success' => true,
