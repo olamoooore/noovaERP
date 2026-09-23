@@ -1,6 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
 import { Icon } from '@iconify/react'
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { NOOVAERP_LOGO_URL } from '@/lib/assets'
 import { useQuery } from '@tanstack/react-query'
@@ -20,20 +19,9 @@ interface NavItem {
 
 const baseNavItems: NavItem[] = [
   {
-    title: 'Master Dashboard',
+    title: 'Dashboard',
     href: '/',
     icon: 'solar:home-2-bold-duotone',
-  },
-  {
-    title: 'Approvals',
-    href: '/approvals',
-    icon: 'solar:checklist-bold-duotone',
-    requiredPermission: 'invoices.approve',
-  },
-  {
-    title: 'Notifications',
-    href: '/notifications',
-    icon: 'solar:bell-bing-bold-duotone',
   },
   {
     title: 'Contacts',
@@ -281,11 +269,6 @@ const baseNavItems: NavItem[] = [
         title: 'Settings',
         href: '/sales/settings',
         icon: 'solar:settings-bold-duotone',
-      },
-      {
-        title: 'Template Builder',
-        href: '/template-builder',
-        icon: 'solar:document-text-bold-duotone',
       },
     ],
   },
@@ -789,12 +772,6 @@ const baseNavItems: NavItem[] = [
           },
         ],
       },
-      {
-        title: 'Settings',
-        href: '/settings',
-        icon: 'solar:settings-bold-duotone',
-        requiredPermission: 'settings.view',
-      },
     ]
 
 export function Sidebar() {
@@ -903,7 +880,7 @@ export function Sidebar() {
   }
 
   // RBAC: derive required permission from featureKey or explicit override
-  const { hasPermission, user, role } = useAuthStore()
+  const { hasPermission } = useAuthStore()
 
   const derivePermission = (item: NavItem): string | undefined => {
     if (item.requiredPermission) return item.requiredPermission
@@ -1131,11 +1108,10 @@ export function Sidebar() {
           aria-label={isMinimized ? 'Expand sidebar' : 'Minimize sidebar'}
           title={isMinimized ? 'Expand sidebar' : 'Minimize sidebar'}
         >
-          {isMinimized ? (
-            <PanelLeftOpen className="h-[18px] w-[18px]" />
-          ) : (
-            <PanelLeftClose className="h-[18px] w-[18px]" />
-          )}
+          <Icon
+            icon={isMinimized ? 'solar:double-alt-arrow-right-bold-duotone' : 'solar:double-alt-arrow-left-bold-duotone'}
+            className="h-[18px] w-[18px]"
+          />
         </button>
       </div>
 
@@ -1144,19 +1120,36 @@ export function Sidebar() {
         {navItems.map((item) => renderNavItem(item, 0))}
       </nav>
 
-      {/* User info */}
-      <div className={cn('border-t', isMinimized ? 'p-2' : 'p-4')}>
-        <div className={cn('flex items-center gap-3 text-sm', isMinimized && 'justify-center')}>
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <Icon icon="solar:user-bold" className="h-5 w-5" />
+      {/* General settings */}
+      <div className={cn('border-t', isMinimized ? 'p-2' : 'p-3')}>
+        <Link
+          to="/settings"
+          title="General Settings"
+          className={cn(
+            'group flex items-center gap-3 rounded-lg py-2 transition-colors',
+            isMinimized ? 'justify-center px-0' : 'px-2',
+            'hover:bg-accent hover:text-accent-foreground',
+            location.pathname.startsWith('/settings') && 'bg-primary/10 text-primary',
+          )}
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+            <Icon icon="solar:settings-bold-duotone" className="h-5 w-5 text-primary transition-colors group-hover:text-primary-foreground" />
           </div>
           {!isMinimized && (
-            <div className="flex-1 min-w-0">
-              <p className="font-medium truncate">{user?.name || 'User'}</p>
-              <p className="text-xs text-muted-foreground capitalize">{role || 'Member'}</p>
-            </div>
+            <>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium leading-tight">General Settings</p>
+                <p className="truncate text-xs leading-tight text-muted-foreground group-hover:text-accent-foreground">
+                  NoovaERP Management
+                </p>
+              </div>
+              <Icon
+                icon="solar:alt-arrow-right-bold-duotone"
+                className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+              />
+            </>
           )}
-        </div>
+        </Link>
       </div>
     </div>
   )

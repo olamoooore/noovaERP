@@ -104,6 +104,12 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     Route::put('/settings', [SettingsController::class, 'update']);
     Route::post('/settings/test-smtp', [SettingsController::class, 'testSmtp']);
 
+    // Sales Settings (tenant-root, no accounting prefix) — used by the Sales Settings UI
+    Route::get('/settings/document-formats', [CompanySettingsController::class, 'documentFormats']);
+    Route::put('/settings/document-formats', [CompanySettingsController::class, 'updateDocumentFormats']);
+    Route::get('/settings/sales', [CompanySettingsController::class, 'getSalesSettings']);
+    Route::put('/settings/sales', [CompanySettingsController::class, 'updateSalesSettings']);
+
     // Taxes
     Route::get('/taxes', [TaxController::class, 'index']);
     Route::post('/taxes', [TaxController::class, 'store']);
@@ -706,8 +712,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::put('/settings/currencies', [CompanySettingsController::class, 'updateCurrencies']);
         Route::get('/settings/accounts', [CompanySettingsController::class, 'accounts']);
         Route::put('/settings/accounts', [CompanySettingsController::class, 'updateAccounts']);
-        Route::get('/settings/document-formats', [CompanySettingsController::class, 'documentFormats']);
-        Route::put('/settings/document-formats', [CompanySettingsController::class, 'updateDocumentFormats']);
+        // (document-formats + sales settings moved out of the accounting prefix
+        //  group below so they're reachable as /api/v1/settings/... directly)
 
         // Accounting Policies
         Route::get('/policies', [\App\Http\Controllers\Api\AccountingPoliciesController::class, 'index']);

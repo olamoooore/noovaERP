@@ -104,9 +104,15 @@ class InvoiceEvidenceService
         string $signerEmail,
         string $signerIp,
         string $signerUserAgent,
+        ?string $signatureDataUrl = null,
     ): InvoiceEvidence {
 
-        $evidence = DB::transaction(function () use ($invoice, $signerName, $signerEmail, $signerIp, $signerUserAgent) {
+        $signaturePath = null;
+        if ($signatureDataUrl && str_starts_with($signatureDataUrl, 'data:image/')) {
+            $signaturePath = $this->storeSignatureImage($invoice, $signatureDataUrl);
+        }
+
+        $evidence = DB::transaction(function () use ($invoice, $signerName, $signerEmail, $signerIp, $signerUserAgent, $signaturePath) {
             $evidence = InvoiceEvidence::create([
                 'invoice_id' => $invoice->id,
                 'type' => InvoiceEvidence::TYPE_CUSTOMER_ACCEPTANCE,
@@ -115,6 +121,9 @@ class InvoiceEvidenceService
                 'signer_email' => $signerEmail,
                 'signer_ip' => $signerIp,
                 'signer_user_agent' => $signerUserAgent,
+                'file_path' => $signaturePath,
+                'file_name' => $signaturePath ? basename($signaturePath) : null,
+                'mime_type' => $signaturePath ? 'image/png' : null,
                 'signed_at' => now(),
             ]);
 
@@ -273,6 +282,7 @@ class InvoiceEvidenceService
             'source' => InvoiceEvidence::SOURCE_PORTAL_ACCEPTANCE,
             'external_id' => $token,
             'signed_at' => null,
+            'expires_at' => $expiresAt,
         ]);
 
         $signedUrl = url("/api/v1/invoice-accept/{$token}");
@@ -290,6 +300,16 @@ class InvoiceEvidenceService
         return InvoiceEvidence::where('external_id', $token)
             ->where('source', InvoiceEvidence::SOURCE_PORTAL_ACCEPTANCE)
             ->whereNull('signed_at')
+            ->where(function ($q) {
+                $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            })
+            ->first();
+    }
+
+    public function findAnyByAcceptanceToken(string $token): ?InvoiceEvidence
+    {
+        return InvoiceEvidence::where('external_id', $token)
+            ->where('source', InvoiceEvidence::SOURCE_PORTAL_ACCEPTANCE)
             ->first();
     }
 
@@ -333,5 +353,21 @@ class InvoiceEvidenceService
             'status' => $envelope['status'],
             'evidence_id' => $evidence->id,
         ];
+    }
+
+    private function storeSignatureImage(Invoice $invoice, string $dataUrl): string
+    {
+        $payload = substr($dataUrl, strpos($dataUrl, ',') + 1);
+        $binary = base64_decode($payload, true);
+        if ($binary === false) {
+            throw new \InvalidArgumentException('Invalid signature data.');
+        }
+
+        $filename = sprintf('invoice-%d-signature-%s.png', $invoice->id, \Illuminate\Support\Str::random(8));
+        $disk = \Illuminate\Support\Facades\Storage::disk(config('filesystems.default') === 'local' ? 'local' : 'public');
+        $path = 'invoice-evidence/'.$invoice->id.'/'.$filename;
+        $disk->put($path, $binary);
+
+        return $path;
     }
 }

@@ -18,7 +18,6 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MasterReportsTab } from '@/components/dashboard/MasterReportsTab'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { useAuthStore } from '@/store/authStore'
 import api from '@/lib/api'
 
 type Range = '7d' | '30d' | '90d'
@@ -148,7 +147,6 @@ function Delta({ value }: { value?: number }) {
 }
 
 export function DashboardPage() {
-  const user = useAuthStore((s) => s.user)
   const [range, setRange] = useState<Range>('30d')
   const [activeTab, setActiveTab] = useState('view')
 
@@ -182,76 +180,62 @@ export function DashboardPage() {
     [totalCustomers, totalProducts, outstandingCount, lowStock],
   )
 
-  const greeting = useMemo(() => {
-    const h = new Date().getHours()
-    if (h < 12) return 'Good morning'
-    if (h < 18) return 'Good afternoon'
-    return 'Good evening'
-  }, [])
-
-  const today = new Date().toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  })
-
-  const firstName = (user?.name ?? '').split(' ')[0] || 'there'
-
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-950">Master Dashboard</h1>
-        <p className="mt-1 text-sm text-slate-500">Overall system performance, key metrics and decision-ready reporting.</p>
-      </div>
+    <div className="space-y-4">
+      {/* Single toolbar row: title · tabs · period · primary action */}
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-bold text-slate-950">Dashboard</h1>
+          <p className="text-sm text-slate-500">Overall system performance, key metrics and decision-ready reporting.</p>
+        </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full max-w-sm grid-cols-2">
-          <TabsTrigger value="view"><Icon icon="solar:eye-bold-duotone" className="mr-2 h-4 w-4" />View</TabsTrigger>
-          <TabsTrigger value="reports"><Icon icon="solar:document-text-bold-duotone" className="mr-2 h-4 w-4" />Reports</TabsTrigger>
-        </TabsList>
-      </Tabs>
+        <div className="flex flex-wrap items-center gap-2">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="grid grid-cols-2">
+              <TabsTrigger value="view">
+                <Icon icon="solar:eye-bold-duotone" className="mr-2 h-4 w-4" />
+                View
+              </TabsTrigger>
+              <TabsTrigger value="reports">
+                <Icon icon="solar:document-text-bold-duotone" className="mr-2 h-4 w-4" />
+                Reports
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {activeTab === 'view' && (
+            <>
+              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+                {(Object.keys(RANGE_LABEL) as Range[]).map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setRange(r)}
+                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                      range === r
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {RANGE_LABEL[r]}
+                  </button>
+                ))}
+              </div>
+
+              <Button asChild className="h-9 rounded-lg bg-slate-900 px-3 text-xs font-semibold hover:bg-slate-800">
+                <Link to="/invoices/create">
+                  <Icon icon="solar:add-circle-bold" className="mr-1.5 h-4 w-4" />
+                  New invoice
+                </Link>
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
 
       {activeTab === 'reports' ? (
         <MasterReportsTab stats={stats} range={range} onRangeChange={setRange} />
       ) : (
         <>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-medium text-slate-500">{today}</p>
-          <h1 className="mt-1 text-[28px] font-semibold tracking-tight text-slate-950 sm:text-[32px]">
-            {greeting}, {firstName}.
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Here's the operating pulse across finance, retail, stock and service operations.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
-            {(Object.keys(RANGE_LABEL) as Range[]).map((r) => (
-              <button
-                key={r}
-                onClick={() => setRange(r)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                  range === r
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {RANGE_LABEL[r]}
-              </button>
-            ))}
-          </div>
-          <Button asChild className="h-9 rounded-lg bg-slate-900 px-3 text-xs font-semibold hover:bg-slate-800">
-            <Link to="/invoices/create">
-              <Icon icon="solar:add-circle-bold" className="mr-1.5 h-4 w-4" />
-              New invoice
-            </Link>
-          </Button>
-        </div>
-      </div>
-
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiTile
           label="Revenue"

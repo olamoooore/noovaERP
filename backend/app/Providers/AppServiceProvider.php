@@ -91,34 +91,12 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('manage-collections', fn (\App\Models\User $user) => in_array($user->role, ['platform_super_admin', 'billing_ops'], true)
         );
 
-        // Load Mail Configuration from Database
+        // Load Mail Configuration from Database (central settings)
         try {
             if (\Illuminate\Support\Facades\Schema::hasTable('settings')) {
-                $mail = \App\Models\Setting::getValue('mail_config');
-
-                if ($mail && is_array($mail)) {
-                    $config = [
-                        'transport' => $mail['driver'] ?? 'smtp',
-                        'host' => $mail['host'] ?? config('mail.mailers.smtp.host'),
-                        'port' => $mail['port'] ?? config('mail.mailers.smtp.port'),
-                        'encryption' => $mail['encryption'] ?? config('mail.mailers.smtp.encryption'),
-                        'username' => $mail['username'] ?? config('mail.mailers.smtp.username'),
-                        'password' => $mail['password'] ?? config('mail.mailers.smtp.password'),
-                        'timeout' => null,
-                        'local_domain' => env('MAIL_EHLO_DOMAIN'),
-                    ];
-
-                    // Update SMTP config
-                    config(['mail.mailers.smtp' => $config]);
-
-                    // Update From Address
-                    if (! empty($mail['from_address'])) {
-                        config(['mail.from.address' => $mail['from_address']]);
-                    }
-                    if (! empty($mail['from_name'])) {
-                        config(['mail.from.name' => $mail['from_name']]);
-                    }
-                }
+                app(\App\Services\MailConfigLoader::class)->apply(
+                    \App\Models\Setting::getValue('mail_config')
+                );
             }
         } catch (\Exception $e) {
             // Fails silently if DB/Schema checks fail during early boot

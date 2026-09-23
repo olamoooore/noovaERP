@@ -18,10 +18,15 @@ class InvoiceEvidence extends Model
     use SoftDeletes;
 
     public const TYPE_CUSTOMER_ESIGN = 'customer_esign';
+
     public const TYPE_CUSTOMER_ACCEPTANCE = 'customer_acceptance';
+
     public const TYPE_PURCHASE_ORDER = 'purchase_order';
+
     public const TYPE_DELIVERY_ORDER = 'delivery_order';
+
     public const TYPE_PAYMENT_PROOF = 'payment_proof';
+
     public const TYPE_OTHER = 'other';
 
     public const TYPES = [
@@ -47,7 +52,9 @@ class InvoiceEvidence extends Model
     ];
 
     public const SOURCE_UPLOAD = 'upload';
+
     public const SOURCE_PORTAL_ACCEPTANCE = 'portal_acceptance';
+
     public const SOURCE_ESIGN_PROVIDER = 'esign_provider';
 
     public const SOURCES = [
@@ -70,6 +77,7 @@ class InvoiceEvidence extends Model
         'signer_ip',
         'signer_user_agent',
         'signed_at',
+        'expires_at',
         'provider',
         'external_id',
         'notes',
@@ -78,6 +86,7 @@ class InvoiceEvidence extends Model
 
     protected $casts = [
         'signed_at' => 'datetime',
+        'expires_at' => 'datetime',
         'size_bytes' => 'integer',
     ];
 

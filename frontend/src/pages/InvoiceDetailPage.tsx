@@ -369,7 +369,7 @@ export function InvoiceDetailPage() {
                 {submitForApprovalMutation.isPending ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
                 ) : (
-                  <Icon icon="solar:send-bold-duotone" className="mr-2 h-4 w-4" />
+                  <Icon icon="solar:plain-2-bold-duotone" className="mr-2 h-4 w-4" />
                 )}
                 Send for Approval
               </Button>
@@ -442,7 +442,7 @@ export function InvoiceDetailPage() {
             onClick={() => navigate(`/delivery-orders/${d.id}`)}
             className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
           >
-            <Icon icon="solar:package-bold" className="h-5 w-5 text-orange-600" />
+            <Icon icon="solar:box-bold-duotone" className="h-5 w-5 text-orange-600" />
             <div className="text-left">
               <div className="font-bold text-foreground">{d.delivery_order_number}</div>
               <div className="text-xs text-muted-foreground">Delivery Order</div>

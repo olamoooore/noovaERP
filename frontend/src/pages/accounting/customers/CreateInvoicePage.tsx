@@ -4,7 +4,6 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { todayDateOnly, addCalendarDays, diffCalendarDays, isValidProductQuantity } from '@/lib/dateOnly';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import {
   Dialog,
@@ -326,6 +325,17 @@ export const CreateInvoicePage: React.FC = () => {
     enabled: isEditMode,
   });
 
+  // Tenant-level sales settings (only consulted when not editing)
+  const { data: salesSettings } = useQuery({
+    queryKey: ['sales-settings'],
+    queryFn: async () => {
+      const res = await api.get('/settings/sales');
+      return res.data?.data ?? null;
+    },
+    enabled: !isEditMode,
+    staleTime: 60_000,
+  });
+
   const { data: customers } = useQuery<CustomerRecord[]>({
     queryKey: ['customers-list'],
     queryFn: async () => {
@@ -504,6 +514,22 @@ export const CreateInvoicePage: React.FC = () => {
     setRequestorContactId(requestorMatch?.id != null ? String(requestorMatch.id) : '');
   }, [existingInvoice, isEditMode, selectedCustomerDetail]);
 
+  // Apply tenant-level sales defaults when creating a NEW invoice (skip for edit)
+  const [defaultsApplied, setDefaultsApplied] = useState(false);
+  useEffect(() => {
+    if (isEditMode || defaultsApplied || !salesSettings) return;
+    const inv = salesSettings.invoice;
+    if (inv?.default_requires_approval) {
+      setRequiresApproval(true);
+    }
+    if (inv?.default_terms && !terms) {
+      setTerms(inv.default_terms);
+    }
+    if (inv?.default_notes && !notes) {
+      setNotes(inv.default_notes);
+    }
+    setDefaultsApplied(true);
+  }, [salesSettings, isEditMode, defaultsApplied]);
   const saveMutation = useMutation({
     mutationFn: async (data: unknown) => {
       const response = isEditMode
@@ -934,17 +960,17 @@ export const CreateInvoicePage: React.FC = () => {
                     }}
                   />
                   {!isQuoteMode && (
-                    <div className="flex items-center gap-1.5 mt-1.5">
-                      <Checkbox
-                        id="requires-approval"
-                        checked={requiresApproval}
-                        onCheckedChange={(checked) => setRequiresApproval(checked === true)}
-                        className="h-3.5 w-3.5"
-                      />
-                      <Label htmlFor="requires-approval" className="text-xs cursor-pointer text-muted-foreground hover:text-foreground">
-                        Requires Approval
-                      </Label>
-                    </div>
+                    requiresApproval ? (
+                      <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-orange-200 bg-orange-50 px-2 py-1 text-xs text-orange-700 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-300">
+                        <Icon icon="solar:checklist-bold-duotone" className="h-3.5 w-3.5" />
+                        <span>
+                          Will require approval before posting
+                          {salesSettings?.invoice?.default_requires_approval && !isEditMode && (
+                            <span className="text-orange-600/70"> · set in Sales Settings</span>
+                          )}
+                        </span>
+                      </div>
+                    ) : null
                   )}
                 </div>
                 <div>

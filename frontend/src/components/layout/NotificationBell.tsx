@@ -117,12 +117,19 @@ export function NotificationBell() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
-          <Icon icon="solar:bell-bold" className="h-5 w-5" />
-          {unread > 0 && (
-            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative h-10 w-10 rounded-full border border-border/70 bg-background shadow-sm transition-all hover:border-primary/40 hover:bg-accent hover:shadow-md"
+          aria-label="Notifications"
+        >
+          <Icon icon="solar:bell-bing-bold-duotone" className="h-5 w-5" />
+          {unread > 0 ? (
+            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white shadow-sm ring-2 ring-background">
               {unread > 99 ? '99+' : unread}
             </span>
+          ) : (
+            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500 shadow-sm ring-2 ring-background" />
           )}
         </Button>
       </PopoverTrigger>
