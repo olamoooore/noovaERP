@@ -141,12 +141,10 @@ class DomainEventDispatcher
         }
 
         try {
-            $eventClass = $deadLetter->event_class;
-            $event = new $eventClass(
-                $deadLetter->tenant_id,
-                $deadLetter->user_id,
-                $deadLetter->correlation_id
-            );
+            // Issue #62 (HR62-02): reconstruct through the explicit contract —
+            // bridge events (e.g. AccountingOutboxPublished) take their domain
+            // object, not the generic (tenant, user, correlation) constructor.
+            $event = $this->reconstructEvent($deadLetter);
 
             // Re-dispatch
             $this->dispatch($event);
@@ -162,6 +160,47 @@ class DomainEventDispatcher
 
             return false;
         }
+    }
+
+    /**
+     * Explicit bridge event contract map (issue #62 HR62-02). Bridge events
+     * wrap a domain object and cannot be reconstructed by the generic
+     * (tenant, user, correlation) constructor.
+     */
+    private const BRIDGE_EVENT_CLASSES = [
+        'accounting.outbox.published' => \App\Accounting\Events\AccountingOutboxPublished::class,
+    ];
+
+    /**
+     * Reconstruct a dead-lettered event under its explicit contract.
+     */
+    private function reconstructEvent(EventDeadLetter $deadLetter): DomainEventContract
+    {
+        $class = $deadLetter->event_class
+            ?: (self::BRIDGE_EVENT_CLASSES[$deadLetter->event_name] ?? null);
+
+        if ($class === \App\Accounting\Events\AccountingOutboxPublished::class) {
+            $outboxId = $deadLetter->payload['outbox_event_id'] ?? null;
+            $row = $outboxId !== null ? \App\Models\AccountingOutboxEvent::find($outboxId) : null;
+
+            if (! $row) {
+                throw new \RuntimeException(
+                    "Accounting outbox row {$outboxId} no longer exists; the bridge event cannot be reconstructed."
+                );
+            }
+
+            return new \App\Accounting\Events\AccountingOutboxPublished($row);
+        }
+
+        if (! is_string($class) || $class === '' || ! class_exists($class)) {
+            throw new \RuntimeException("No reconstructable event class for dead letter {$deadLetter->id} ({$deadLetter->event_name}).");
+        }
+
+        return new $class(
+            $deadLetter->tenant_id,
+            $deadLetter->user_id,
+            $deadLetter->correlation_id
+        );
     }
 
     /**
@@ -280,6 +319,12 @@ class DomainEventDispatcher
 
     private function resolveEventClass(EventRecord $record): ?string
     {
+        // Issue #62 (HR62-02): explicit bridge contract first — dotted module
+        // names ('accounting.outbox.published') do not map to a class.
+        if (isset(self::BRIDGE_EVENT_CLASSES[$record->event_name])) {
+            return self::BRIDGE_EVENT_CLASSES[$record->event_name];
+        }
+
         // Map event_name to class: 'contact.created' → ContactCreated::class
         $parts = explode('.', $record->event_name);
         if (count($parts) !== 2) {
