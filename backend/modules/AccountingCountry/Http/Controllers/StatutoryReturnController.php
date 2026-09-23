@@ -5,8 +5,10 @@ namespace Modules\AccountingCountry\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use App\Models\StatutoryReturnFiling;
 use Modules\AccountingCountry\Malaysia\Services\Sst02ReturnService;
 use Modules\AccountingCountry\Singapore\Services\GstF5ReturnService;
+use Modules\AccountingCountry\Singapore\Services\GstF7ReturnService;
 
 /**
  * Issue #93: statutory tax-return endpoints (SG GST F5, MY SST-02) — the
@@ -31,13 +33,10 @@ class StatutoryReturnController extends Controller
             'data' => [
                 ['country' => 'SG', 'form' => 'GST F5', 'authority' => 'IRAS', 'period_format' => 'YYYY-MM or YYYY-Qn'],
                 ['country' => 'MY', 'form' => 'SST-02', 'authority' => 'RMCD', 'period_format' => 'YYYY-MM or YYYY-Qn'],
+                // Issue #265: F7 discloses errors against a filed F5.
+                ['country' => 'SG', 'form' => 'GST F7', 'authority' => 'IRAS', 'period_format' => 'YYYY-MM or YYYY-Qn'],
             ],
-            'planned' => [
-                // Issue #93 (hostile re-review): F7 is a separate capability
-                // (Disclosure of Errors) and is tracked as its own issue rather
-                // than being silently unimplemented.
-                ['country' => 'SG', 'form' => 'GST F7', 'authority' => 'IRAS', 'status' => 'planned'],
-            ],
+            'planned' => [],
         ]);
     }
 
@@ -91,6 +90,59 @@ class StatutoryReturnController extends Controller
         ];
 
         return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Issue #265: snapshot the current GST F5 as FILED — the F7 baseline.
+     */
+    public function file(Request $request, string $period): JsonResponse
+    {
+        if (! preg_match('/^\d{4}-(\d{2}|Q[1-4])$/', $period)) {
+            return response()->json(['message' => 'The reporting period must be YYYY-MM or YYYY-Qn.'], 422);
+        }
+
+        $validated = $request->validate(['entity_id' => 'nullable|integer|exists:legal_entities,id']);
+        $legalEntityId = isset($validated['entity_id']) ? (int) $validated['entity_id'] : null;
+
+        $return = app(GstF5ReturnService::class)->generate($period, $legalEntityId);
+
+        $filing = StatutoryReturnFiling::updateOrCreate(
+            [
+                'country' => 'SG',
+                'form' => 'GST F5',
+                'period' => $period,
+                'entity_key' => StatutoryReturnFiling::entityKey($legalEntityId),
+            ],
+            [
+                'tenant_id' => tenant()->id ?? null,
+                'boxes' => $return['boxes'],
+                'filed_by' => $request->user()?->id,
+                'filed_at' => now(),
+            ]
+        );
+
+        return response()->json(['message' => 'GST F5 filed', 'data' => $filing], 201);
+    }
+
+    /**
+     * Issue #265: IRAS GST F7 — disclose errors in a previously filed F5.
+     */
+    public function f7(Request $request, string $period): JsonResponse
+    {
+        if (! preg_match('/^\d{4}-(\d{2}|Q[1-4])$/', $period)) {
+            return response()->json(['message' => 'The reporting period must be YYYY-MM or YYYY-Qn.'], 422);
+        }
+
+        $validated = $request->validate(['entity_id' => 'nullable|integer|exists:legal_entities,id']);
+        $legalEntityId = isset($validated['entity_id']) ? (int) $validated['entity_id'] : null;
+
+        try {
+            return response()->json([
+                'data' => app(GstF7ReturnService::class)->disclose($period, $legalEntityId),
+            ]);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
     }
 
 }

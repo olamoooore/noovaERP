@@ -14,6 +14,10 @@ Route::prefix('accounting/statutory-returns')
     ->group(function () {
         Route::get('/', [StatutoryReturnController::class, 'index']);
         Route::get('/{country}/{period}', [StatutoryReturnController::class, 'show']);
+        // Issue #265: file a return (F7 baseline) and disclose F7 errors.
+        Route::post('/SG/{period}/file', [StatutoryReturnController::class, 'file'])
+            ->middleware(RequirePermission::using('reports.manage'));
+        Route::get('/SG/{period}/f7', [StatutoryReturnController::class, 'f7']);
     });
 
 // Issue #99: honest e-invoicing capability reporting.

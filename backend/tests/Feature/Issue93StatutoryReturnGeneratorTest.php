@@ -132,6 +132,44 @@ class Issue93StatutoryReturnGeneratorTest extends TenantTestCase
         $this->assertSame(['5'], $rates);
     }
 
+    public function test_f7_discloses_errors_against_a_filed_f5(): void
+    {
+        // File the F5 with one standard-rated invoice (output tax 900).
+        $this->taxRow(['source_document_type' => 'invoice', 'taxable_amount' => 10000, 'tax_amount' => 900, 'tax_rate' => 9]);
+
+        $this->actingAs($this->user)
+            ->postJson('/api/v1/accounting/statutory-returns/SG/2026-09/file')
+            ->assertStatus(201);
+
+        // A missed invoice is discovered afterwards (under-declared output tax).
+        $this->taxRow(['source_document_type' => 'invoice', 'taxable_amount' => 5000, 'tax_amount' => 450, 'tax_rate' => 9]);
+
+        $f7 = $this->actingAs($this->user)->getJson('/api/v1/accounting/statutory-returns/SG/2026-09/f7');
+
+        $f7->assertOk();
+        $this->assertSame('GST F7', $f7->json('data.form'));
+        $this->assertSame(450.0, (float) $f7->json('data.error_amounts.box_6_output_tax_due'));
+        $this->assertSame('under_declared', $f7->json('data.classification.output_tax'));
+        $this->assertSame(450.0, (float) $f7->json('data.net_gst_error'));
+    }
+
+    public function test_f7_requires_a_filed_f5(): void
+    {
+        $this->actingAs($this->user)
+            ->getJson('/api/v1/accounting/statutory-returns/SG/2026-09/f7')
+            ->assertStatus(422);
+    }
+
+    public function test_the_capability_index_lists_f7_as_available(): void
+    {
+        $response = $this->actingAs($this->user)->getJson('/api/v1/accounting/statutory-returns');
+
+        $response->assertOk();
+        $forms = collect($response->json('data'))->where('country', 'SG')->pluck('form')->all();
+        $this->assertContains('GST F7', $forms);
+        $this->assertSame([], $response->json('planned'));
+    }
+
     public function test_unsupported_country_and_bad_period_are_rejected(): void
     {
         $this->actingAs($this->user)
@@ -148,6 +186,6 @@ class Issue93StatutoryReturnGeneratorTest extends TenantTestCase
         $response = $this->actingAs($this->user)->getJson('/api/v1/accounting/statutory-returns');
 
         $response->assertOk();
-        $this->assertCount(2, $response->json('data'));
+        $this->assertCount(3, $response->json('data')); // F5, SST-02, F7
     }
 }
