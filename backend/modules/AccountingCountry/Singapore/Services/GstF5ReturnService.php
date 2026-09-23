@@ -17,9 +17,13 @@ class GstF5ReturnService
         private readonly TaxReturnAggregator $aggregator,
     ) {}
 
-    public function generate(string $period): array
+    /**
+     * @param  string  $period  YYYY-MM or YYYY-Qn (F5 is normally quarterly).
+     * @param  int|null  $legalEntityId  Scope the return to one legal entity.
+     */
+    public function generate(string $period, ?int $legalEntityId = null): array
     {
-        $taxes = $this->aggregator->aggregate($period);
+        $taxes = $this->aggregator->aggregate($period, $legalEntityId);
 
         $sumBy = function (array $rows, string $field, ?string $category = null): float {
             return round(array_sum(array_map(

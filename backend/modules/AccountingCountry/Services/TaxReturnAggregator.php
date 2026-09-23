@@ -27,10 +27,24 @@ class TaxReturnAggregator
     private const NEGATIVE_DOCUMENTS = ['credit_note', 'vendor_credit_note'];
 
     /**
+     * @param  string|array<int, string>  $period  One reporting period (YYYY-MM)
+     *                                             or several (quarterly returns).
+     * @param  int|null  $legalEntityId  Issue #93: scope the return to one
+     *                                   legal entity so a multi-entity tenant
+     *                                   does not file one combined return.
      * @return array{output: array<int, array<string, mixed>>, input: array<int, array<string, mixed>>}
      */
-    public function aggregate(string $period): array
+    public function aggregate(string|array $period, ?int $legalEntityId = null): array
     {
+        $periods = is_array($period) ? array_values($period) : [$period];
+
+        // Expand quarter periods (YYYY-Qn) into their months so a quarterly
+        // return aggregates exactly those three reporting periods.
+        $periods = array_merge(...array_map(
+            fn (string $p) => self::periodMonths($p) ?? [$p],
+            $periods
+        ));
+
         // Hostile re-review (#93): a reversed journal entry must leave the
         // return. The reversal engine posts a separate reversal entry with
         // reversed_entry_id = original and marks it is_active_version=false,
@@ -50,7 +64,11 @@ class TaxReturnAggregator
                     ->whereColumn('rev.reversed_entry_id', 'ttd.journal_entry_id')
                     ->where('rev.status', 'posted');
             })
-            ->where('ttd.reporting_period', $period)
+            ->whereIn('ttd.reporting_period', $periods)
+            ->when(
+                $legalEntityId !== null,
+                fn ($query) => $query->where('je.legal_entity_id', $legalEntityId)
+            )
             ->orderBy('ttd.id')
             ->get(['ttd.*']);
 
@@ -79,6 +97,30 @@ class TaxReturnAggregator
         }
 
         return $result;
+    }
+
+    /**
+     * Resolve a period string into the YYYY-MM months it covers.
+     *
+     * @return array<int, string>|null  null when the period is malformed.
+     */
+    public static function periodMonths(string $period): ?array
+    {
+        if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period) === 1) {
+            return [$period];
+        }
+
+        if (preg_match('/^(\d{4})-Q([1-4])$/', $period, $m) === 1) {
+            $year = (int) $m[1];
+            $startMonth = ((int) $m[2] - 1) * 3 + 1;
+
+            return array_map(
+                fn (int $offset) => sprintf('%04d-%02d', $year, $startMonth + $offset),
+                [0, 1, 2]
+            );
+        }
+
+        return null;
     }
 
     private function direction(string $documentType): ?string
