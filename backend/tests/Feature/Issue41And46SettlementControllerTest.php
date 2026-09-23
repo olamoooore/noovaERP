@@ -147,6 +147,58 @@ class Issue41And46SettlementControllerTest extends TenantTestCase
         $this->assertSame(2, Allocation::where('settlement_id', $settlement->id)->count());
     }
 
+    /**
+     * Issue #46 (hostile re-review HR46-01): the boundary must use exact
+     * decimal arithmetic. As floats, 0.10 + 0.20 == 0.30000000000000004,
+     * which exceeds an unapplied balance of 0.30 and rejected a valid
+     * request. bcmath at the column scale (2dp) makes the boundary exact.
+     */
+    public function test_allocation_boundary_is_exact_decimal_arithmetic(): void
+    {
+        $settlement = $this->createSettlement(unapplied: 0.30);
+
+        $response = $this->callAs(
+            $this->admin(),
+            'POST',
+            '/api/v1/accounting/settlements/allocate',
+            [
+                'settlement_id' => $settlement->id,
+                'allocations' => [
+                    ['source_record_type' => 'invoice', 'source_record_id' => 1, 'amount' => 0.10],
+                    ['source_record_type' => 'invoice', 'source_record_id' => 2, 'amount' => 0.20],
+                ],
+            ]
+        );
+
+        $response->assertCreated();
+        $settlement->refresh();
+        $this->assertSame('0.00', (string) $settlement->unapplied_amount,
+            '0.10 + 0.20 must exhaust 0.30 exactly, leaving no float residue.');
+        $this->assertSame('0.30', (string) $settlement->allocated_amount);
+        $this->assertSame('FULLY_ALLOCATED', $settlement->settlement_state);
+    }
+
+    public function test_one_cent_over_the_boundary_is_still_rejected(): void
+    {
+        $settlement = $this->createSettlement(unapplied: 0.30);
+
+        $response = $this->callAs(
+            $this->admin(),
+            'POST',
+            '/api/v1/accounting/settlements/allocate',
+            [
+                'settlement_id' => $settlement->id,
+                'allocations' => [
+                    ['source_record_type' => 'invoice', 'source_record_id' => 1, 'amount' => 0.10],
+                    ['source_record_type' => 'invoice', 'source_record_id' => 2, 'amount' => 0.21],
+                ],
+            ]
+        );
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error', 'ALLOCATION_EXCEEDS_UNAPPLIED');
+    }
+
     public function test_allocations_carry_real_tenant_provenance(): void
     {
         $settlement = $this->createSettlement(unapplied: 100.00);

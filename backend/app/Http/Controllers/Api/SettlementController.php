@@ -106,16 +106,21 @@ class SettlementController extends Controller
                     ->lockForUpdate()
                     ->firstOrFail();
 
-                $totalAllocated = array_sum(array_column($validated['allocations'], 'amount'));
+                // ── #46 (HR46-01): exact-decimal boundary arithmetic.
+                // Floats made 0.10 + 0.20 != 0.30 at the boundary; bcmath at
+                // the column scale (2dp) is exact and matches PostingEngine.
+                $totalAllocated = '0.00';
+                foreach ($validated['allocations'] as $allocData) {
+                    $totalAllocated = bcadd($totalAllocated, (string) $allocData['amount'], 2);
+                }
 
-                // ── #46: Reject over-allocation exactly (no tolerance) ──
-                if ($totalAllocated > (float) $settlement->unapplied_amount) {
+                if (bccomp($totalAllocated, (string) $settlement->unapplied_amount, 2) === 1) {
                     return response()->json([
                         'success' => false,
                         'error' => 'ALLOCATION_EXCEEDS_UNAPPLIED',
                         'message' => "Requested allocation ({$totalAllocated}) exceeds available unapplied cash ({$settlement->unapplied_amount}).",
                         'unapplied_amount' => (float) $settlement->unapplied_amount,
-                        'requested_amount' => $totalAllocated,
+                        'requested_amount' => (float) $totalAllocated,
                     ], 422);
                 }
 
@@ -141,10 +146,10 @@ class SettlementController extends Controller
                     ));
                 }
 
-                $newAllocated = (float) $settlement->allocated_amount + $totalAllocated;
-                $remaining = (float) $settlement->unapplied_amount - $totalAllocated;
+                $newAllocated = bcadd((string) $settlement->allocated_amount, $totalAllocated, 2);
+                $remaining = bcsub((string) $settlement->unapplied_amount, $totalAllocated, 2);
 
-                $newState = $remaining <= 0
+                $newState = bccomp($remaining, '0.00', 2) <= 0
                     ? SettlementState::FULLY_ALLOCATED
                     : SettlementState::PARTIALLY_ALLOCATED;
 
@@ -157,7 +162,7 @@ class SettlementController extends Controller
                 return response()->json([
                     'success' => true,
                     'settlement' => $settlement,
-                    'total_allocated' => $totalAllocated,
+                    'total_allocated' => (float) $totalAllocated,
                     'remaining_unapplied' => $remaining,
                     'allocations' => $createdAllocations,
                 ], 201);
@@ -230,14 +235,19 @@ class SettlementController extends Controller
                     ]);
                 }
 
+                // #46 (HR46-01): exact-decimal arithmetic on the reversal too.
                 $reversedAmount = (float) $settlement->allocated_amount;
 
                 // ── Settlement invariants: allocated = 0; unapplied returns
                 //    the prior total - allocated, preserving total + reconciliation.
-                $settlementTotal = (float) $settlement->allocated_amount + (float) $settlement->unapplied_amount;
+                $settlementTotal = bcadd(
+                    (string) $settlement->allocated_amount,
+                    (string) $settlement->unapplied_amount,
+                    2
+                );
                 $settlement->update([
                     'settlement_state' => SettlementState::REVERSED->value,
-                    'allocated_amount' => 0,
+                    'allocated_amount' => '0.00',
                     'unapplied_amount' => $settlementTotal,
                     'reversed_at' => $reversedAt,
                     'reversal_reason' => $reason,
