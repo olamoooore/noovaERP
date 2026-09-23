@@ -32,8 +32,15 @@ class SalesPipelineAnalyticsController extends Controller
             ? Carbon::parse($validated['to_date'])
             : now()->endOfMonth();
 
+        // Issue #150 (hostile re-review): entity-scoped users must only see
+        // their entities' pipeline (same convention as SalesOrderController).
+        $user = $request->user();
+        $accessibleEntityIds = $user
+            ? app(\App\Services\EntityAccessService::class)->accessibleEntityIds((int) $user->id)
+            : [];
+
         return response()->json([
-            'data' => $this->analytics->pipeline($from, $to),
+            'data' => $this->analytics->pipeline($from, $to, $accessibleEntityIds),
         ]);
     }
 }
