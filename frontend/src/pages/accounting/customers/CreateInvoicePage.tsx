@@ -22,6 +22,7 @@ import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
 import { getProductLineDescription, ProductSearchCombobox } from '@/components/inventory/ProductSearchCombobox';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
+import { LineItemsTable } from '@/components/sales/LineItemsTable'
 
 interface InvoiceLine {
   line_type?: 'product' | 'note' | 'section';
@@ -1367,25 +1368,26 @@ export const CreateInvoicePage: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1800px] table-fixed text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-2 min-w-[3rem] whitespace-nowrap">#</th>
-                      <th className="text-left py-2 px-2 min-w-[15rem] whitespace-nowrap">Product</th>
-                      {visibleLineColumns.sku && <th className="text-left py-2 px-2 min-w-[8rem] whitespace-nowrap">SKU</th>}
-                      {visibleLineColumns.description && <th className="text-left py-2 px-2 min-w-[18rem] whitespace-nowrap">Description</th>}
-                      {visibleLineColumns.model_number && <th className="text-left py-2 px-2 min-w-[6.5rem] whitespace-nowrap">Model #</th>}
-                      {visibleLineColumns.product_notes && <th className="text-left py-2 px-2 min-w-[10rem] whitespace-nowrap">Product Notes</th>}
-                      {visibleLineColumns.lot_number && <th className="text-left py-2 px-2 min-w-[8rem] whitespace-nowrap">Lot Number</th>}
-                      {visibleLineColumns.expiry_date && <th className="text-left py-2 px-2 min-w-[10rem] whitespace-nowrap">Expiry Date</th>}
-                      <th className="text-right py-2 px-2 min-w-[5.5rem] whitespace-nowrap">Qty</th>
-                      <th className="text-right py-2 px-2 min-w-[7rem] whitespace-nowrap">Unit Price</th>
-                      {visibleLineColumns.tax_rate && <th className="text-right py-2 px-2 min-w-[5.5rem] whitespace-nowrap">Tax %</th>}
-                      <th className="text-right py-2 px-2 min-w-[6.5rem] whitespace-nowrap">Line Total</th>
-                      <th className="py-2 px-2 min-w-[8rem] whitespace-nowrap">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <LineItemsTable
+                  variant="raw"
+                  tableClassName="w-full min-w-[1800px] table-fixed text-sm"
+                  headRowClassName="border-b"
+                  columns={[
+                    { key: 'index', label: '#', minWidth: 'min-w-[3rem]' },
+                    { key: 'product', label: 'Product', minWidth: 'min-w-[15rem]' },
+                    { key: 'sku', label: 'SKU', minWidth: 'min-w-[8rem]', hidden: !visibleLineColumns.sku },
+                    { key: 'description', label: 'Description', minWidth: 'min-w-[18rem]', hidden: !visibleLineColumns.description },
+                    { key: 'model_number', label: 'Model #', minWidth: 'min-w-[6.5rem]', hidden: !visibleLineColumns.model_number },
+                    { key: 'product_notes', label: 'Product Notes', minWidth: 'min-w-[10rem]', hidden: !visibleLineColumns.product_notes },
+                    { key: 'lot_number', label: 'Lot Number', minWidth: 'min-w-[8rem]', hidden: !visibleLineColumns.lot_number },
+                    { key: 'expiry_date', label: 'Expiry Date', minWidth: 'min-w-[10rem]', hidden: !visibleLineColumns.expiry_date },
+                    { key: 'qty', label: 'Qty', align: 'right', minWidth: 'min-w-[5.5rem]' },
+                    { key: 'unit_price', label: 'Unit Price', align: 'right', minWidth: 'min-w-[7rem]' },
+                    { key: 'tax_rate', label: 'Tax %', align: 'right', minWidth: 'min-w-[5.5rem]', hidden: !visibleLineColumns.tax_rate },
+                    { key: 'line_total', label: 'Line Total', align: 'right', minWidth: 'min-w-[6.5rem]' },
+                    { key: 'actions', label: 'Actions', minWidth: 'min-w-[8rem]' },
+                  ]}
+                >
                     {lines.map((line, index) => (
                       <tr key={index} className="border-b" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
                         {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={12} total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
@@ -1514,8 +1516,7 @@ export const CreateInvoicePage: React.FC = () => {
                         </>}
                       </tr>
                     ))}
-                  </tbody>
-                </table>
+                </LineItemsTable>
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">

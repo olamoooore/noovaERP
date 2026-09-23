@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableCell, TableRow } from '@/components/ui/table'
+import { LineItemsTable } from '@/components/sales/LineItemsTable'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
@@ -525,22 +526,21 @@ export function DeliveryOrderCreatePage() {
             <DeliveryOrderColumnVisibility tableClass="do-create-linked-columns" columns={[
               'Product', 'Description', 'Product Notes', 'Ordered', 'Already Delivered', 'Remaining', 'Deliver Now', 'Patient Name', 'Lot Number', 'Expiry Date',
             ].map((label, index) => ({ label, index: index + 1 }))}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="whitespace-nowrap">Product</TableHead>
-                  <TableHead className="min-w-[18rem] whitespace-nowrap">Description</TableHead>
-                  <TableHead className="whitespace-nowrap">Product Notes</TableHead>
-                  <TableHead className="text-right whitespace-nowrap">Ordered</TableHead>
-                  <TableHead className="text-right whitespace-nowrap">Already Delivered</TableHead>
-                  <TableHead className="text-right whitespace-nowrap">Remaining</TableHead>
-                  <TableHead className="text-right whitespace-nowrap">Deliver Now</TableHead>
-                  <TableHead className="whitespace-nowrap">Patient Name</TableHead>
-                  <TableHead className="whitespace-nowrap">Lot Number</TableHead>
-                  <TableHead className="whitespace-nowrap">Expiry Date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <LineItemsTable
+              variant="shadcn"
+              columns={[
+                { key: 'product', label: 'Product', minWidth: 'min-w-[9rem]' },
+                { key: 'description', label: 'Description', minWidth: 'min-w-[18rem]' },
+                { key: 'product_notes', label: 'Product Notes', minWidth: 'min-w-[10rem]' },
+                { key: 'ordered', label: 'Ordered', align: 'right', minWidth: 'min-w-[6rem]' },
+                { key: 'already_delivered', label: 'Already Delivered', align: 'right', minWidth: 'min-w-[8rem]' },
+                { key: 'remaining', label: 'Remaining', align: 'right', minWidth: 'min-w-[6rem]' },
+                { key: 'deliver_now', label: 'Deliver Now', align: 'right', minWidth: 'min-w-[7rem]' },
+                { key: 'patient_name', label: 'Patient Name', minWidth: 'min-w-[10rem]' },
+                { key: 'lot_number', label: 'Lot Number', minWidth: 'min-w-[7rem]' },
+                { key: 'expiry_date', label: 'Expiry Date', minWidth: 'min-w-[8rem]' },
+              ]}
+            >
                 {soData.lines?.map((line: any) => {
                   const remaining = line.quantity_ordered - line.quantity_delivered
                   const currentQty = lineQuantities[line.sales_order_line_id] || 0
@@ -601,8 +601,7 @@ export function DeliveryOrderCreatePage() {
                     </TableRow>
                   )
                 })}
-              </TableBody>
-            </Table>
+            </LineItemsTable>
             </DeliveryOrderColumnVisibility>
           </CardContent>
         </Card>
@@ -618,24 +617,23 @@ export function DeliveryOrderCreatePage() {
             <DeliveryOrderColumnVisibility tableClass="do-create-standalone-columns" columns={[
               'Product', 'SKU', 'Description', 'Model #', 'Product Notes', 'Patient Name', 'Quantity', 'Unit', 'Unit Price', 'Lot Number', 'Expiry Date', 'Actions',
             ].map((label, index) => ({ label, index: index + 1 }))}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="min-w-[9rem] whitespace-nowrap">Product</TableHead>
-                  <TableHead className="min-w-[5.5rem] whitespace-nowrap">SKU</TableHead>
-                  <TableHead className="min-w-[18rem] whitespace-nowrap">Description</TableHead>
-                  <TableHead className="min-w-[6rem] whitespace-nowrap">Model #</TableHead>
-                  <TableHead className="min-w-[10rem] whitespace-nowrap">Product Notes</TableHead>
-                  <TableHead className="min-w-[10rem] whitespace-nowrap">Patient Name</TableHead>
-                  <TableHead className="text-right min-w-[6rem] whitespace-nowrap">Quantity</TableHead>
-                  <TableHead className="w-[80px]">Unit</TableHead>
-                  <TableHead className="text-right min-w-[7rem] whitespace-nowrap">Unit Price</TableHead>
-                  <TableHead className="min-w-[6rem] whitespace-nowrap">Lot Number</TableHead>
-                  <TableHead className="min-w-[8rem] whitespace-nowrap">Expiry Date</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <LineItemsTable
+              variant="shadcn"
+              columns={[
+                { key: 'product', label: 'Product', minWidth: 'min-w-[9rem]' },
+                { key: 'sku', label: 'SKU', minWidth: 'min-w-[5.5rem]' },
+                { key: 'description', label: 'Description', minWidth: 'min-w-[18rem]' },
+                { key: 'model_number', label: 'Model #', minWidth: 'min-w-[6rem]' },
+                { key: 'product_notes', label: 'Product Notes', minWidth: 'min-w-[10rem]' },
+                { key: 'patient_name', label: 'Patient Name', minWidth: 'min-w-[10rem]' },
+                { key: 'quantity', label: 'Quantity', align: 'right', minWidth: 'min-w-[6rem]' },
+                { key: 'unit', label: 'Unit', minWidth: 'min-w-[5rem]' },
+                { key: 'unit_price', label: 'Unit Price', align: 'right', minWidth: 'min-w-[7rem]' },
+                { key: 'lot_number', label: 'Lot Number', minWidth: 'min-w-[6rem]' },
+                { key: 'expiry_date', label: 'Expiry Date', minWidth: 'min-w-[8rem]' },
+                { key: 'actions', minWidth: 'min-w-[3rem]' },
+              ]}
+            >
                 {standaloneLines.map((line, idx) => (
                   <TableRow key={idx} draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(idx)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== idx) setStandaloneLines(reorderDocumentLines(standaloneLines, draggedLineIndex, idx)); setDraggedLineIndex(null); }}>
                     {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={12} total={line.line_type === 'section' ? getDocumentSectionTotal(standaloneLines, idx, (item) => item.quantity * Number(item.unit_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : undefined} onChange={(text) => updateStandaloneLine(idx, 'description', text)} onDelete={() => removeStandaloneLine(idx)} onDragStart={() => setDraggedLineIndex(idx)} onDrop={() => { if (draggedLineIndex !== null) setStandaloneLines(reorderDocumentLines(standaloneLines, draggedLineIndex, idx)); setDraggedLineIndex(null); }} /> : <>
@@ -743,8 +741,7 @@ export function DeliveryOrderCreatePage() {
                     </>}
                   </TableRow>
                 ))}
-              </TableBody>
-            </Table>
+            </LineItemsTable>
             </DeliveryOrderColumnVisibility>
             <div className="mt-3 flex flex-wrap gap-2">
               <ProductCatalogDialog products={productsData || []} onAdd={addCatalogProducts} />

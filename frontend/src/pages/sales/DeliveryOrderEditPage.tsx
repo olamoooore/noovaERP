@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableCell, TableRow } from '@/components/ui/table'
+import { LineItemsTable } from '@/components/sales/LineItemsTable'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
@@ -355,22 +356,21 @@ export function DeliveryOrderEditPage() {
           <DeliveryOrderColumnVisibility tableClass="do-edit-columns" columns={[
             'Product', 'Description', 'Product Notes', 'Patient Name', 'Quantity', 'Unit', 'Unit Price', 'Lot Number', 'Expiry Date', 'Actions',
           ].map((label, index) => ({ label, index: index + 1 }))}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[200px]">Product</TableHead>
-                <TableHead className="min-w-[18rem] whitespace-nowrap">Description</TableHead>
-                <TableHead className="min-w-[10rem] whitespace-nowrap">Product Notes</TableHead>
-                <TableHead className="min-w-[10rem] whitespace-nowrap">Patient Name</TableHead>
-                <TableHead className="text-right min-w-[6rem] whitespace-nowrap">Quantity</TableHead>
-                <TableHead className="min-w-[6rem] whitespace-nowrap">Unit</TableHead>
-                <TableHead className="text-right min-w-[7rem] whitespace-nowrap">Unit Price</TableHead>
-                <TableHead className="min-w-[7rem] whitespace-nowrap">Lot Number</TableHead>
-                <TableHead className="min-w-[8rem] whitespace-nowrap">Expiry Date</TableHead>
-                <TableHead className="w-[50px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <LineItemsTable
+            variant="shadcn"
+            columns={[
+              { key: 'product', label: 'Product', minWidth: 'min-w-[12.5rem]' },
+              { key: 'description', label: 'Description', minWidth: 'min-w-[18rem]' },
+              { key: 'product_notes', label: 'Product Notes', minWidth: 'min-w-[10rem]' },
+              { key: 'patient_name', label: 'Patient Name', minWidth: 'min-w-[10rem]' },
+              { key: 'quantity', label: 'Quantity', align: 'right', minWidth: 'min-w-[6rem]' },
+              { key: 'unit', label: 'Unit', minWidth: 'min-w-[6rem]' },
+              { key: 'unit_price', label: 'Unit Price', align: 'right', minWidth: 'min-w-[7rem]' },
+              { key: 'lot_number', label: 'Lot Number', minWidth: 'min-w-[7rem]' },
+              { key: 'expiry_date', label: 'Expiry Date', minWidth: 'min-w-[8rem]' },
+              { key: 'actions', minWidth: 'min-w-[3rem]' },
+            ]}
+          >
               {lines.map((line, idx) => (
                 <TableRow key={idx} draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(idx)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== idx) setLines(reorderDocumentLines(lines, draggedLineIndex, idx)); setDraggedLineIndex(null); }}>
                   {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={10} total={line.line_type === 'section' ? getDocumentSectionTotal(lines, idx, (item) => item.quantity * Number(item.unit_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : undefined} onChange={(text) => updateLine(idx, 'description', text)} onDelete={() => removeLine(idx)} onDragStart={() => setDraggedLineIndex(idx)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, idx)); setDraggedLineIndex(null); }} /> : <>
@@ -419,8 +419,7 @@ export function DeliveryOrderEditPage() {
                   </>}
                 </TableRow>
               ))}
-            </TableBody>
-          </Table>
+          </LineItemsTable>
           </DeliveryOrderColumnVisibility>
           <div className="mt-3 flex flex-wrap gap-2">
             <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} />
