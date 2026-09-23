@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\JournalEntry;
 use App\Models\Tenant;
 use App\Models\User;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 use Tests\TenantTestCase;
@@ -45,8 +47,19 @@ class Issue93StatutoryReturnGeneratorTest extends TenantTestCase
 
     private function taxRow(array $overrides = []): void
     {
+        // Hostile re-review (#93): tax details must belong to a real posted
+        // journal entry — a fake journal_entry_id never exercises the live
+        // post/reverse pipeline.
+        $entry = JournalEntry::create([
+            'entry_number' => 'JE-93-'.Str::upper(Str::random(6)),
+            'entry_date' => now()->toDateString(),
+            'status' => 'posted',
+            'is_active_version' => true,
+            'created_by' => $this->user->id,
+        ]);
+
         DB::table('tax_transaction_details')->insert(array_merge([
-            'journal_entry_id' => 1,
+            'journal_entry_id' => $entry->id,
             'source_document_type' => 'invoice',
             'source_document_id' => 1,
             'tax_code' => 'SR',

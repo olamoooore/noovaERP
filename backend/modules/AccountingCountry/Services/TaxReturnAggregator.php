@@ -31,10 +31,28 @@ class TaxReturnAggregator
      */
     public function aggregate(string $period): array
     {
-        $rows = DB::table('tax_transaction_details')
-            ->where('reporting_period', $period)
-            ->orderBy('id')
-            ->get();
+        // Hostile re-review (#93): a reversed journal entry must leave the
+        // return. The reversal engine posts a separate reversal entry with
+        // reversed_entry_id = original and marks it is_active_version=false,
+        // while the original keeps its tax rows — so tax rows are only counted
+        // when their journal entry is live: posted, not voided/superseded, and
+        // not the target of a posted reversal.
+        $rows = DB::table('tax_transaction_details as ttd')
+            ->join('journal_entries as je', 'je.id', '=', 'ttd.journal_entry_id')
+            ->where('je.status', 'posted')
+            ->where(function ($query) {
+                $query->whereNull('je.lifecycle_status')
+                    ->orWhereNotIn('je.lifecycle_status', ['reversed', 'voided', 'superseded']);
+            })
+            ->whereNotExists(function ($query) {
+                $query->select(DB::raw(1))
+                    ->from('journal_entries as rev')
+                    ->whereColumn('rev.reversed_entry_id', 'ttd.journal_entry_id')
+                    ->where('rev.status', 'posted');
+            })
+            ->where('ttd.reporting_period', $period)
+            ->orderBy('ttd.id')
+            ->get(['ttd.*']);
 
         $result = ['output' => [], 'input' => []];
 
