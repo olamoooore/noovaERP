@@ -38,6 +38,63 @@ class ContactTaxonomyRegistry
         'OTHER' => 'Other',
     ];
 
+    /** Issue #123: generic business vocabulary for non-healthcare tenants. */
+    public const GENERIC_FUNCTIONAL_CATEGORIES = [
+        'FINANCE' => 'Finance',
+        'PROCUREMENT' => 'Procurement',
+        'OPERATIONS' => 'Operations',
+        'ADMINISTRATION' => 'Administration',
+        'OTHER' => 'Other',
+    ];
+
+    public const GENERIC_PERSISTENT_ROLES = [
+        'BILLING_CONTACT' => 'Billing Contact',
+        'DELIVERY_CONTACT' => 'Delivery Contact',
+        'PROCUREMENT_CONTACT' => 'Procurement Contact',
+        'ADMIN_CONTACT' => 'Administrative Contact',
+        'OTHER' => 'Other',
+    ];
+
+    public const GENERIC_CLASSIFICATIONS = [
+        'OTHER' => 'Other',
+    ];
+
+    /**
+     * Issue #123: only the tenants listed in config('contact.healthcare_tenant_ids')
+     * receive the healthcare vocabulary; everyone else gets the generic set.
+     */
+    public static function usesHealthcareVocabulary(?string $tenantId): bool
+    {
+        if ($tenantId === null) {
+            return false;
+        }
+
+        return in_array($tenantId, (array) config('contact.healthcare_tenant_ids', []), true);
+    }
+
+    /**
+     * The vocabulary seeded for a tenant + type.
+     *
+     * @return array<string, string>
+     */
+    public static function vocabularyFor(string $type, ?string $tenantId): array
+    {
+        $healthcare = self::usesHealthcareVocabulary($tenantId);
+
+        return match ($type) {
+            self::TYPE_FUNCTIONAL_CATEGORY => $healthcare
+                ? self::FUNCTIONAL_CATEGORIES
+                : self::GENERIC_FUNCTIONAL_CATEGORIES,
+            self::TYPE_PERSISTENT_ROLE => $healthcare
+                ? self::PERSISTENT_ROLES
+                : self::GENERIC_PERSISTENT_ROLES,
+            self::TYPE_CLASSIFICATION => $healthcare
+                ? self::CLASSIFICATIONS
+                : self::GENERIC_CLASSIFICATIONS,
+            default => [],
+        };
+    }
+
     /** ADR-003A §4.3 — Contact Classification (profession/person class only). */
     public const CLASSIFICATIONS = [
         'DOCTOR' => 'Doctor',

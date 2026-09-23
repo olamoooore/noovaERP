@@ -38,6 +38,8 @@ class AcmeContactNegativeTest extends TenantTestCase
         parent::setUp();
 
         $this->tenantUuid = \Illuminate\Support\Str::uuid()->toString();
+        // Issue #123: this suite simulates a Acme (healthcare) tenant.
+        config(['contact.healthcare_tenant_ids' => [$this->tenantUuid]]);
         $this->bindTenantContext($this->tenantUuid);
         try {
             Role::firstOrCreate(['name' => 'admin']);
