@@ -47,6 +47,8 @@ Route::middleware([
 
             // Lifecycle history (immutable audit)
             Route::get('/sales/orders/{id}/history', [SalesOrderController::class, 'history']);
+            // Issue #150: sales-pipeline analytics (pre-invoice).
+            Route::get('/sales/analytics/pipeline', [\Modules\Sales\Http\Controllers\SalesPipelineAnalyticsController::class, 'index']);
 
             // Credit preview
             Route::get('/sales/orders/{id}/credit-preview', [SalesOrderController::class, 'creditPreview']);
