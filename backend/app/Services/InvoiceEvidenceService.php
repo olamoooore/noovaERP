@@ -6,6 +6,7 @@ use App\Contracts\EsignProviderInterface;
 use App\Models\Invoice;
 use App\Models\InvoiceActivityLog;
 use App\Models\InvoiceEvidence;
+use App\Models\User;
 use App\Platform\Notifications\NotificationService;
 use App\Services\Chatter\ChatterService;
 use Illuminate\Http\UploadedFile;
@@ -342,6 +343,49 @@ class InvoiceEvidenceService
         ]);
     }
 
+    /**
+     * Vendor-side confirmation of a customer's uploaded evidence. Once
+     * confirmed, the evidence satisfies the "Evidence confirmed" trail step.
+     */
+    public function confirmEvidence(InvoiceEvidence $evidence, User $user): InvoiceEvidence
+    {
+        if ($evidence->isConfirmed()) {
+            return $evidence;
+        }
+
+        $evidence->update([
+            'confirmed_at' => now(),
+            'confirmed_by' => $user->id,
+        ]);
+
+        $invoice = $evidence->invoice ?? Invoice::find($evidence->invoice_id);
+
+        if ($invoice) {
+            $this->activityLog->log(
+                $invoice,
+                InvoiceActivityLog::EVENT_EVIDENCE_CONFIRMED,
+                [
+                    'evidence_id' => $evidence->id,
+                    'type' => $evidence->type,
+                    'file_name' => $evidence->file_name,
+                    'confirmed_by' => $user->id,
+                ],
+                $invoice->getOriginal('evidence_status') ?? $invoice->evidence_status,
+                $invoice->fresh()->evidence_status,
+                InvoiceActivityLog::ACTOR_USER,
+                $user->id,
+            );
+        }
+
+        Log::info('Invoice evidence confirmed', [
+            'evidence_id' => $evidence->id,
+            'invoice_id' => $evidence->invoice_id,
+            'confirmed_by' => $user->id,
+        ]);
+
+        return $evidence->fresh();
+    }
+
     public function syncEvidenceStatus(Invoice $invoice): void
     {
         $requiresEvidence = $invoice->requires_approval;
@@ -430,11 +474,36 @@ class InvoiceEvidenceService
     {
         return InvoiceEvidence::where('external_id', $token)
             ->where('source', InvoiceEvidence::SOURCE_PORTAL_ACCEPTANCE)
+            ->whereNull('revoked_at')
             ->whereNull('signed_at')
             ->where(function ($q) {
                 $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
             })
             ->first();
+    }
+
+    /**
+     * Revoke every outstanding acceptance link for an invoice.
+     *
+     * Called when the invoice is withdrawn (reset to draft) or cancelled: the
+     * customer must not be able to accept an invoice that is being reissued,
+     * and any prior acceptance no longer counts for the new version.
+     */
+    public function revokeAcceptanceLinks(Invoice $invoice): int
+    {
+        $revoked = InvoiceEvidence::where('invoice_id', $invoice->id)
+            ->where('source', InvoiceEvidence::SOURCE_PORTAL_ACCEPTANCE)
+            ->whereNull('revoked_at')
+            ->update(['revoked_at' => now()]);
+
+        if ($revoked > 0) {
+            Log::info('InvoiceEvidenceService: revoked acceptance links', [
+                'invoice_id' => $invoice->id,
+                'count' => $revoked,
+            ]);
+        }
+
+        return $revoked;
     }
 
     public function findAnyByAcceptanceToken(string $token): ?InvoiceEvidence

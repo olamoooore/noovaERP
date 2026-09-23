@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
@@ -50,6 +50,9 @@ interface AcceptanceResponse {
   }
   already_accepted: boolean
   expired: boolean
+  revoked?: boolean
+  revoked_at?: string | null
+  withdrawn?: boolean
   expires_at: string | null
   status_trail: Array<{
     key: string
@@ -80,7 +83,8 @@ export default function InvoiceAcceptancePage() {
   const [agreed, setAgreed] = useState(false)
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
-  const [paymentFile, setPaymentFile] = useState<File | null>(null)
+  const [paymentFiles, setPaymentFiles] = useState<File[]>([])
+  const paymentFileInputRef = useRef<HTMLInputElement | null>(null)
   const [paymentNotes, setPaymentNotes] = useState('')
 
   const { data, isLoading, error } = useQuery({
@@ -130,9 +134,9 @@ export default function InvoiceAcceptancePage() {
 
   const uploadEvidenceMutation = useMutation({
     mutationFn: async () => {
-      if (!paymentFile) throw new Error('No file selected')
+      if (paymentFiles.length === 0) throw new Error('No file selected')
       const form = new FormData()
-      form.append('file', paymentFile)
+      paymentFiles.forEach((f) => form.append('files[]', f))
       if (paymentNotes) form.append('notes', paymentNotes)
       form.append('customer_name', signerName || '')
       form.append('customer_email', signerEmail || '')
@@ -141,10 +145,16 @@ export default function InvoiceAcceptancePage() {
       })
       return res.data
     },
-    onSuccess: () => {
-      setPaymentFile(null)
+    onSuccess: (data: any) => {
+      setPaymentFiles([])
       setPaymentNotes('')
-      toast({ title: 'Payment proof uploaded', description: 'Your receipt has been sent to the vendor.' })
+      toast({
+        title: 'Payment proof uploaded',
+        description:
+          (data?.count ?? 1) > 1
+            ? `${data.count} receipts have been sent to the vendor.`
+            : 'Your receipt has been sent to the vendor.',
+      })
     },
     onError: (err: any) => {
       toast({
@@ -157,8 +167,8 @@ export default function InvoiceAcceptancePage() {
 
   const handleUploadEvidence = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!paymentFile) {
-      toast({ variant: 'destructive', title: 'Please choose a file to upload' })
+    if (paymentFiles.length === 0) {
+      toast({ variant: 'destructive', title: 'Please choose at least one file to upload' })
       return
     }
     uploadEvidenceMutation.mutate()
@@ -212,14 +222,38 @@ export default function InvoiceAcceptancePage() {
               <div className="text-sm font-medium">Invoice acceptance portal</div>
             </div>
           </div>
-          <Badge variant={data.already_accepted ? 'default' : 'outline'} className="capitalize">
-            {data.already_accepted ? 'Accepted' : 'Awaiting your acceptance'}
+          <Badge
+            variant={data.revoked ? 'destructive' : data.already_accepted ? 'default' : 'outline'}
+            className="capitalize"
+          >
+            {data.revoked
+              ? 'Withdrawn'
+              : data.already_accepted
+                ? 'Accepted'
+                : 'Awaiting your acceptance'}
           </Badge>
         </div>
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
-        {data.expired && !data.already_accepted && (
+        {data.revoked && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/40">
+            <div className="flex items-start gap-3">
+              <Icon icon="solar:danger-triangle-bold" className="h-5 w-5 text-amber-600 mt-0.5" />
+              <div>
+                <div className="font-medium text-amber-900 dark:text-amber-200">
+                  This invoice has been withdrawn
+                </div>
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  The vendor has withdrawn this invoice and it is being reissued. This link is no longer
+                  valid — please disregard any earlier copy and wait for the updated invoice.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!data.revoked && data.expired && !data.already_accepted && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/40">
             <div className="flex items-start gap-3">
               <Icon icon="solar:danger-triangle-bold" className="h-5 w-5 text-red-600 mt-0.5" />
@@ -374,7 +408,7 @@ export default function InvoiceAcceptancePage() {
         </Card>
 
         {/* Pay section if balance > 0 */}
-        {!isFullyPaid && inv.balance > 0 && (
+        {!data.revoked && !isFullyPaid && inv.balance > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Payment</CardTitle>
@@ -402,8 +436,92 @@ export default function InvoiceAcceptancePage() {
           </Card>
         )}
 
+        {/* Payment proof upload — before the acceptance submit, so the customer
+            can attach their bank-transfer receipt */}
+        {!data.revoked && !isFullyPaid && inv.balance > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Payment proof</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Paid by bank transfer? Upload your receipt so the vendor can confirm payment.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleUploadEvidence} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Bank transfer receipts</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {paymentFiles.map((file, idx) => (
+                      <FileThumbnail
+                        key={`${file.name}-${file.lastModified}-${idx}`}
+                        file={file}
+                        onRemove={() => setPaymentFiles((prev) => prev.filter((_, i) => i !== idx))}
+                      />
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={() => paymentFileInputRef.current?.click()}
+                      title="Add receipt"
+                      className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                    >
+                      <Icon icon="solar:add-circle-bold-duotone" className="h-6 w-6" />
+                      <span className="text-[10px] font-medium">Add</span>
+                    </button>
+                  </div>
+                  <input
+                    ref={paymentFileInputRef}
+                    type="file"
+                    multiple
+                    accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+                    className="hidden"
+                    onChange={(e) => {
+                      const picked = Array.from(e.target.files ?? [])
+                      if (picked.length) {
+                        setPaymentFiles((prev) => [...prev, ...picked])
+                      }
+                      e.target.value = ''
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    PDF or image, up to 10 MB each.
+                    {paymentFiles.length > 0
+                      ? ` ${paymentFiles.length} file${paymentFiles.length === 1 ? '' : 's'} ready to upload.`
+                      : ''}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="payment-notes">Reference / note (optional)</Label>
+                  <Input
+                    id="payment-notes"
+                    placeholder="e.g. Transfer ref 12345678"
+                    value={paymentNotes}
+                    onChange={(e) => setPaymentNotes(e.target.value)}
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={uploadEvidenceMutation.isPending || paymentFiles.length === 0}
+                  className="w-full md:w-auto"
+                >
+                  {uploadEvidenceMutation.isPending ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  ) : (
+                    <Icon icon="solar:upload-bold-duotone" className="mr-2 h-4 w-4" />
+                  )}
+                  {uploadEvidenceMutation.isPending
+                    ? 'Uploading…'
+                    : paymentFiles.length > 1
+                      ? `Upload ${paymentFiles.length} receipts`
+                      : 'Upload payment proof'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Acceptance section */}
-        {!data.already_accepted && !data.expired && (
+        {!data.revoked && !data.already_accepted && !data.expired && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Acceptance & signature</CardTitle>
@@ -469,7 +587,7 @@ export default function InvoiceAcceptancePage() {
           </Card>
         )}
 
-        {data.already_accepted && (
+        {!data.revoked && data.already_accepted && (
           <Card className="border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/40">
             <CardContent className="py-8 text-center">
               <Icon icon="solar:check-circle-bold-duotone" className="h-12 w-12 text-green-600 mx-auto mb-3" />
@@ -478,52 +596,6 @@ export default function InvoiceAcceptancePage() {
                 {data.signer.name && `Signed by ${data.signer.name} `}
                 {data.signer.signed_at && `on ${formatDate(data.signer.signed_at)}`}
               </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Payment proof upload — after bank transfer, attach the receipt */}
-        {!isFullyPaid && inv.balance > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Payment proof</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Paid by bank transfer? Upload your receipt so the vendor can confirm payment.
-              </p>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleUploadEvidence} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="payment-file">Bank transfer receipt (PDF or image)</Label>
-                  <Input
-                    id="payment-file"
-                    type="file"
-                    accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-                    onChange={(e) => setPaymentFile(e.target.files?.[0] ?? null)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="payment-notes">Reference / note (optional)</Label>
-                  <Input
-                    id="payment-notes"
-                    placeholder="e.g. Transfer ref 12345678"
-                    value={paymentNotes}
-                    onChange={(e) => setPaymentNotes(e.target.value)}
-                  />
-                </div>
-                <Button
-                  type="submit"
-                  disabled={uploadEvidenceMutation.isPending || !paymentFile}
-                  className="w-full md:w-auto"
-                >
-                  {uploadEvidenceMutation.isPending ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                  ) : (
-                    <Icon icon="solar:upload-bold-duotone" className="mr-2 h-4 w-4" />
-                  )}
-                  Upload payment proof
-                </Button>
-              </form>
             </CardContent>
           </Card>
         )}
@@ -614,6 +686,38 @@ function SignaturePad({
           Clear
         </Button>
       </div>
+    </div>
+  )
+}
+
+function FileThumbnail({ file, onRemove }: { file: File; onRemove: () => void }) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!file.type.startsWith('image/')) return
+    const url = URL.createObjectURL(file)
+    setPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
+
+  return (
+    <div className="group relative h-20 w-20 overflow-hidden rounded-md border bg-muted">
+      {previewUrl ? (
+        <img src={previewUrl} alt={file.name} className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-1 text-muted-foreground">
+          <Icon icon="solar:file-text-bold-duotone" className="h-6 w-6" />
+          <span className="w-full truncate text-center text-[9px]">{file.name}</span>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        title={`Remove ${file.name}`}
+        className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
+      >
+        <Icon icon="solar:close-circle-bold" className="h-3.5 w-3.5" />
+      </button>
     </div>
   )
 }

@@ -6,6 +6,7 @@ use App\Exports\InvoicesExport;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\InvoiceEvidence;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\Warehouse;
@@ -512,11 +513,16 @@ class InvoiceController extends Controller
 
     public function show(Request $request, $id)
     {
-        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders'])->find($id);
+        $invoice = Invoice::with(['customer', 'lines.product', 'journalEntry', 'payments', 'billingContact', 'shippingContact', 'doctor', 'requestor', 'buyer', 'salesOrder', 'quotation', 'deliveryOrders', 'evidence.confirmedBy'])->find($id);
 
         if (! $invoice) {
             return response()->json(['message' => 'Invoice not found'], 404);
         }
+
+        // Confirmation state drives the "Evidence confirmed" UI/step.
+        $invoice->evidence_confirmed = $invoice->evidence
+            ->whereNull('deleted_at')
+            ->contains(fn ($e) => $e->confirmed_at !== null);
 
         // Issue #153: surface the linked DO's signed proof-of-delivery so
         // client AP teams can verify receipt + signature alongside the invoice.
@@ -895,6 +901,47 @@ class InvoiceController extends Controller
             return response()->json([
                 'message' => $e->getMessage(),
             ], 422);
+        }
+    }
+
+    /**
+     * Vendor confirmation of a customer's uploaded evidence.
+     */
+    public function confirmEvidence(Request $request, $invoiceId, $evidenceId)
+    {
+        $invoice = Invoice::find($invoiceId);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        $evidence = InvoiceEvidence::where('invoice_id', $invoice->id)->find($evidenceId);
+
+        if (! $evidence) {
+            return response()->json(['message' => 'Evidence not found'], 404);
+        }
+
+        try {
+            $confirmed = $this->evidenceService->confirmEvidence($evidence, $request->user());
+
+            return response()->json([
+                'message' => 'Evidence confirmed',
+                'data' => [
+                    'id' => $confirmed->id,
+                    'file_name' => $confirmed->file_name,
+                    'type' => $confirmed->type,
+                    'confirmed_at' => optional($confirmed->confirmed_at)->toIso8601String(),
+                    'confirmed_by' => $confirmed->confirmedBy?->name,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Evidence confirmation failed', [
+                'invoice_id' => $invoiceId,
+                'evidence_id' => $evidenceId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['message' => 'Failed to confirm evidence'], 500);
         }
     }
 
@@ -1305,6 +1352,21 @@ class InvoiceController extends Controller
 
         $invoice->update(['status' => 'cancelled']);
 
+        // A cancelled invoice must no longer be acceptable via its portal links.
+        $this->evidenceService->revokeAcceptanceLinks($invoice);
+
+        $this->activityService->log(
+            $invoice,
+            \App\Models\InvoiceActivityLog::EVENT_CANCELLED,
+            ['cancelled_by' => auth()->id()],
+            null,
+            'cancelled',
+            \App\Models\InvoiceActivityLog::ACTOR_USER,
+            auth()->id(),
+        );
+
+        $this->notifyCustomerOfStatusChange($invoice, 'cancelled');
+
         return response()->json([
             'message' => 'Invoice cancelled',
             'data' => $invoice->fresh(['customer', 'lines']),
@@ -1362,7 +1424,23 @@ class InvoiceController extends Controller
                     'sent_at' => null,
                     'delivery_status' => Invoice::DELIVERY_NOT_SENT,
                 ]);
+
+                // The withdrawn invoice must not remain acceptable through its
+                // previously issued portal links.
+                $this->evidenceService->revokeAcceptanceLinks($invoice);
             });
+
+            $this->activityService->log(
+                $invoice,
+                \App\Models\InvoiceActivityLog::EVENT_RESET_TO_DRAFT,
+                ['reset_by' => auth()->id()],
+                null,
+                'draft',
+                \App\Models\InvoiceActivityLog::ACTOR_USER,
+                auth()->id(),
+            );
+
+            $this->notifyCustomerOfStatusChange($invoice, 'withdrawn');
 
             return response()->json([
                 'message' => 'Invoice reset to draft',
@@ -1379,6 +1457,53 @@ class InvoiceController extends Controller
                 'message' => 'Failed to reset invoice to draft',
                 'error' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Email the customer that an invoice was cancelled or withdrawn (reset to
+     * draft). Fails soft — a mail problem must never block the document action.
+     */
+    private function notifyCustomerOfStatusChange(Invoice $invoice, string $change): void
+    {
+        try {
+            $customer = $invoice->customer;
+            $email = $customer?->email;
+
+            if (! $email) {
+                return;
+            }
+
+            $customerName = $customer->name ?: 'Sir/Madam';
+            $subject = "Invoice {$invoice->invoice_number} has been {$change}";
+
+            $body = $change === 'cancelled'
+                ? "Dear {$customerName},\n\n".
+                    "Please be advised that invoice {$invoice->invoice_number} has been cancelled and is no longer payable.\n".
+                    'If you have already received a copy, please disregard it and do not make payment against it.'."\n\n".
+                    'If you believe this was sent in error, or you have any questions, please contact us.'."\n\n".
+                    'Thank you.'
+                : "Dear {$customerName},\n\n".
+                    "Please be advised that invoice {$invoice->invoice_number} has been withdrawn and is being reissued.\n".
+                    'If you have already received a copy, please disregard it until you receive the updated invoice.'."\n\n".
+                    'If you believe this was sent in error, or you have any questions, please contact us.'."\n\n".
+                    'Thank you.';
+
+            \Illuminate\Support\Facades\Mail::raw($body, function ($message) use ($email, $subject) {
+                $message->to($email)->subject($subject);
+            });
+
+            Log::info('Customer notified of invoice status change', [
+                'invoice_id' => $invoice->id,
+                'change' => $change,
+                'recipient' => $email,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to notify customer of invoice status change', [
+                'invoice_id' => $invoice->id,
+                'change' => $change,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

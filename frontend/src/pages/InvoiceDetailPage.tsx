@@ -91,6 +91,22 @@ interface Invoice {
     reviewed_by: string | null
     reviewed_at: string | null
   } | null
+  evidence?: Array<{
+    id: number
+    type: string
+    file_name: string | null
+    file_path: string | null
+    mime_type: string | null
+    size_bytes: number | null
+    notes: string | null
+    signer_name: string | null
+    signer_email: string | null
+    signed_at: string | null
+    confirmed_at: string | null
+    confirmed_by?: { id: number; name: string } | null
+    created_at: string
+  }>
+  evidence_confirmed?: boolean
 }
 
 interface InvoiceLine {
@@ -328,6 +344,24 @@ export function InvoiceDetailPage() {
     }
     declineMutation.mutate()
   }
+
+  const confirmEvidenceMutation = useMutation({
+    mutationFn: async (evidenceId: number) => {
+      const response = await api.post(`/invoices/${id}/evidence/${evidenceId}/confirm`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+      toast({ title: 'Evidence confirmed', description: 'The customer’s evidence has been verified.' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Could not confirm evidence',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
 
   const getStatusBadge = (status: string, approvalStatus?: string) => {
     const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
@@ -817,7 +851,8 @@ export function InvoiceDetailPage() {
                     <DialogTitle>Reset this invoice to draft?</DialogTitle>
                     <DialogDescription>
                       Invoice <span className="font-medium text-foreground">{invoice.invoice_number}</span> will
-                      become editable again and must be re-posted.
+                      return to draft, become editable again, and must be posted once more.
+                      The customer will be notified that this invoice has been withdrawn.
                     </DialogDescription>
                   </div>
                 </div>
@@ -825,27 +860,27 @@ export function InvoiceDetailPage() {
 
               <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
                 <div className="font-medium text-amber-900 dark:text-amber-200">
-                  This will:
+                  What happens when you reset:
                 </div>
                 <ul className="space-y-1 text-amber-800 dark:text-amber-300">
                   <li className="flex items-start gap-2">
                     <Icon icon="solar:check-circle-bold" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    Reverse its general-ledger entry (compensating journal)
+                    A reversing journal entry offsets the original general-ledger posting.
                   </li>
                   <li className="flex items-start gap-2">
                     <Icon icon="solar:check-circle-bold" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    Restore any stock moved by the linked delivery
+                    Stock moved by the linked delivery is restored.
                   </li>
                   <li className="flex items-start gap-2">
                     <Icon icon="solar:close-circle-bold" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    Be blocked if payments or posted credit notes exist
+                    The reset is blocked if the invoice already has payments or posted credit notes.
                   </li>
                 </ul>
               </div>
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setResetDialogOpen(false)}>
-                  Keep posted
+                  Cancel
                 </Button>
                 <Button
                   className="bg-amber-600 hover:bg-amber-700"
@@ -856,7 +891,7 @@ export function InvoiceDetailPage() {
                   disabled={resetToDraftMutation.isPending}
                 >
                   <Icon icon="solar:undo-left-round-bold-duotone" className="mr-2 h-4 w-4" />
-                  Reset to Draft
+                  Reset to draft
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -1160,6 +1195,76 @@ export function InvoiceDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Evidence — customer uploads (signature, payment proof) the vendor verifies */}
+      {invoice.evidence && invoice.evidence.filter((e) => e.file_name || e.signed_at).length > 0 && (
+        <Card className="print:hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Icon icon="solar:folder-check-bold-duotone" className="h-5 w-5 text-primary" />
+              Evidence
+              {invoice.evidence_confirmed ? (
+                <Badge variant="secondary" className="bg-emerald-100 text-emerald-800">
+                  Confirmed
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="bg-amber-100 text-amber-800">
+                  Awaiting confirmation
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {invoice.evidence
+              .filter((e) => e.file_name || e.signed_at)
+              .map((e) => (
+                <div
+                  key={e.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Icon
+                      icon={
+                        e.type === 'payment_proof'
+                          ? 'solar:wallet-money-bold-duotone'
+                          : 'solar:document-text-bold-duotone'
+                      }
+                      className="h-5 w-5 shrink-0 text-primary"
+                    />
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">
+                        {e.file_name || (e.type === 'customer_acceptance' ? 'Customer acceptance' : e.type.replace(/_/g, ' '))}
+                      </div>
+                      <div className="text-xs capitalize text-muted-foreground">
+                        {e.type.replace(/_/g, ' ')}
+                        {e.signer_name ? ` · ${e.signer_name}` : ''}
+                        {e.created_at ? ` · ${formatDate(e.created_at)}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {e.confirmed_at ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                        <Icon icon="solar:check-circle-bold-duotone" className="h-4 w-4" />
+                        Confirmed{e.confirmed_by?.name ? ` by ${e.confirmed_by.name}` : ''}
+                      </span>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="h-7 rounded-full bg-emerald-600 px-3 text-xs text-white hover:bg-emerald-700"
+                        onClick={() => confirmEvidenceMutation.mutate(e.id)}
+                        disabled={confirmEvidenceMutation.isPending}
+                      >
+                        <Icon icon="solar:check-circle-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+                        Confirm
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Footer */}
       <div className="text-center text-sm text-muted-foreground print:hidden">

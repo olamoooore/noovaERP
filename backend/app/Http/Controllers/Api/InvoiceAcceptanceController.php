@@ -26,6 +26,8 @@ class InvoiceAcceptanceController extends Controller
             ], 404);
         }
 
+        $revoked = $evidence->revoked_at !== null;
+
         $isExpired = $evidence->expires_at && $evidence->expires_at->isPast() && ! $evidence->signed_at;
 
         $invoice = Invoice::with(['customer', 'lines.product'])->find($evidence->invoice_id);
@@ -79,8 +81,11 @@ class InvoiceAcceptanceController extends Controller
                 'signed_at' => $evidence->signed_at?->toIso8601String(),
                 'signer_ip' => $evidence->signer_ip,
             ],
-            'already_accepted' => $evidence->signed_at !== null,
+            'already_accepted' => $evidence->signed_at !== null && ! $revoked,
             'expired' => $isExpired,
+            'revoked' => $revoked,
+            'revoked_at' => $evidence->revoked_at?->toIso8601String(),
+            'withdrawn' => $revoked && $invoice->status === 'draft',
             'expires_at' => $evidence->expires_at?->toIso8601String(),
             'status_trail' => $statusTrail,
         ]);
@@ -123,10 +128,17 @@ class InvoiceAcceptanceController extends Controller
                     ->first()?->created_at)->toIso8601String(),
             ],
             [
-                'key' => 'paid',
-                'label' => 'Payment received',
-                'completed' => (float) $invoice->paid_amount >= (float) $invoice->total && (float) $invoice->total > 0,
-                'date' => null,
+                'key' => 'confirmed',
+                'label' => 'Evidence confirmed',
+                'completed' => $invoice->evidence()
+                    ->whereNotNull('confirmed_at')
+                    ->whereNull('deleted_at')
+                    ->exists(),
+                'date' => optional($invoice->evidence()
+                    ->whereNotNull('confirmed_at')
+                    ->whereNull('deleted_at')
+                    ->latest('confirmed_at')
+                    ->first()?->confirmed_at)->toIso8601String(),
             ],
         ];
 
@@ -203,12 +215,28 @@ class InvoiceAcceptanceController extends Controller
      */
     public function uploadEvidence(Request $request, string $token)
     {
-        $validated = $request->validate([
-            'file' => 'required|file|max:10240',
+        $request->validate([
+            'files' => 'nullable|array|max:10',
+            'files.*' => 'file|max:10240',
+            'file' => 'nullable|file|max:10240',
             'notes' => 'nullable|string|max:1000',
             'customer_name' => 'nullable|string|max:255',
             'customer_email' => 'nullable|email|max:255',
         ]);
+
+        // Accept either the new multi-file `files[]` field or the legacy single
+        // `file` field (kept for backwards compatibility).
+        $files = array_values(array_filter((array) $request->file('files', [])));
+        if ($request->hasFile('file')) {
+            $files[] = $request->file('file');
+        }
+
+        if ($files === []) {
+            return response()->json([
+                'error' => 'Please choose at least one file to upload.',
+                'code' => 'NO_FILES',
+            ], 422);
+        }
 
         $evidence = $this->evidenceService->findAnyByAcceptanceToken($token);
 
@@ -229,19 +257,32 @@ class InvoiceAcceptanceController extends Controller
         }
 
         try {
-            $proof = $this->evidenceService->recordCustomerPaymentProof(
-                $invoice,
-                $validated['file'],
-                $validated['notes'] ?? null,
-                $validated['customer_name'] ?? $evidence->signer_name,
-                $validated['customer_email'] ?? $evidence->signer_email,
-            );
+            $proofs = [];
+
+            foreach ($files as $file) {
+                $proofs[] = $this->evidenceService->recordCustomerPaymentProof(
+                    $invoice,
+                    $file,
+                    $request->input('notes'),
+                    $request->input('customer_name') ?? $evidence->signer_name,
+                    $request->input('customer_email') ?? $evidence->signer_email,
+                );
+            }
+
+            $count = count($proofs);
 
             return response()->json([
-                'message' => 'Payment proof uploaded successfully.',
-                'evidence_id' => $proof->id,
-                'file_name' => $proof->file_name,
-                'uploaded_at' => optional($proof->created_at)->toIso8601String(),
+                'message' => $count === 1
+                    ? 'Payment proof uploaded successfully.'
+                    : "{$count} payment proofs uploaded successfully.",
+                // Back-compat single-file fields (the first uploaded file).
+                'evidence_id' => $proofs[0]->id,
+                'file_name' => $proofs[0]->file_name,
+                'uploaded_at' => optional($proofs[0]->created_at)->toIso8601String(),
+                // New multi-file fields.
+                'evidence_ids' => array_map(fn ($p) => $p->id, $proofs),
+                'file_names' => array_map(fn ($p) => $p->file_name, $proofs),
+                'count' => $count,
             ], 201);
         } catch (\Exception $e) {
             Log::error('Payment proof upload failed', [

@@ -326,6 +326,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/invoices/{invoice}/evidence', [InvoiceController::class, 'uploadEvidence'])
             ->middleware(RequirePermission::using('invoices.evidence.manage'));
 
+        // Vendor confirmation of customer-uploaded evidence
+        Route::post('/invoices/{invoice}/evidence/{evidence}/confirm', [InvoiceController::class, 'confirmEvidence'])
+            ->middleware(RequirePermission::using('invoices.evidence.manage'));
+
         // Acceptance link (public portal link for customer acceptance)
         Route::post('/invoices/{invoice}/acceptance-link', [InvoiceController::class, 'createAcceptanceLink'])
             ->middleware(RequirePermission::using('invoices.evidence.manage'));

@@ -35,6 +35,7 @@ class InvoiceActivityLog extends Model
     public const EVENT_DELIVERY_FAILED = 'delivery_failed';
 
     public const EVENT_EVIDENCE_ADDED = 'evidence_added';
+    public const EVENT_EVIDENCE_CONFIRMED = 'evidence_confirmed';
 
     public const EVENT_ACCEPTANCE_LINK_CREATED = 'acceptance_link_created';
 

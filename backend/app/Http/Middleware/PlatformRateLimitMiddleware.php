@@ -98,9 +98,13 @@ class PlatformRateLimitMiddleware
 
         RateLimiter::hit($key, self::WINDOW_SECONDS);
 
-        return $next($request)->withHeaders([
-            'X-RateLimit-Limit' => $limit,
-            'X-RateLimit-Remaining' => max(0, $limit - RateLimiter::attempts($key)),
-        ]);
+        $response = $next($request);
+
+        // Use the header bag directly: $next() may return a StreamedResponse
+        // (e.g. chatter attachment downloads) which has no withHeaders() method.
+        $response->headers->set('X-RateLimit-Limit', (string) $limit);
+        $response->headers->set('X-RateLimit-Remaining', (string) max(0, $limit - RateLimiter::attempts($key)));
+
+        return $response;
     }
 }

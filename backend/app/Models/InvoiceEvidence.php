@@ -82,11 +82,16 @@ class InvoiceEvidence extends Model
         'external_id',
         'notes',
         'uploaded_by',
+        'confirmed_at',
+        'confirmed_by',
+        'revoked_at',
     ];
 
     protected $casts = [
         'signed_at' => 'datetime',
         'expires_at' => 'datetime',
+        'confirmed_at' => 'datetime',
+        'revoked_at' => 'datetime',
         'size_bytes' => 'integer',
     ];
 
@@ -98,6 +103,21 @@ class InvoiceEvidence extends Model
     public function uploadedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'uploaded_by');
+    }
+
+    public function confirmedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'confirmed_by');
+    }
+
+    public function isConfirmed(): bool
+    {
+        return $this->confirmed_at !== null;
+    }
+
+    public function isRevoked(): bool
+    {
+        return $this->revoked_at !== null;
     }
 
     public function scopeQualifying($query)
