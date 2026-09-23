@@ -65,6 +65,11 @@ Route::middleware([
     Route::get('/invoice-accept/{token}', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'show']);
     Route::post('/invoice-accept/{token}/accept', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'accept']);
 
+    // Issue #149: online quotation acceptance / eSignature portal.
+    Route::get('/quotation-accept/{token}', [\App\Http\Controllers\Api\SalesOrderAcceptanceController::class, 'show']);
+    Route::post('/quotation-accept/{token}/accept', [\App\Http\Controllers\Api\SalesOrderAcceptanceController::class, 'accept'])
+        ->middleware('throttle:5,1');
+
     // Web shop auth (public - no login required)
     // Pillar 2 Part 2 §2.3: dedicated brute-force throttle (5/min per IP).
     Route::post('/web-shop/auth/register', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'register'])->middleware('throttle:5,1');

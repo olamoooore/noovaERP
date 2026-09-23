@@ -99,9 +99,9 @@ class OrderLifecycleService
         });
     }
 
-    public function confirm(SalesOrder $order, ?string $reason = null): SalesOrder
+    public function confirm(SalesOrder $order, ?string $reason = null, ?string $source = 'admin'): SalesOrder
     {
-        return $this->transition($order, 'confirmed', $reason, 'admin');
+        return $this->transition($order, 'confirmed', $reason, $source);
     }
 
     public function allocate(SalesOrder $order, ?string $reason = null): SalesOrder
