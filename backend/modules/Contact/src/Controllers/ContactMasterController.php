@@ -25,6 +25,7 @@ class ContactMasterController extends Controller
 
     public function __construct(
         private readonly ContactMasterService $service,
+        private readonly \App\Services\EntityAccessService $entityAccessService,
     ) {}
 
     // ─── Contact CRUD ─────────────────────────────────────────────
@@ -32,9 +33,17 @@ class ContactMasterController extends Controller
     public function index(Request $request): JsonResponse
     {
         $tenantId = tenant()->id;
+
+        // Issue #232: contacts must be filtered by the requester's accessible
+        // legal entities, not only by a client-supplied entity_id.
+        $user = auth()->user();
+        $accessibleEntityIds = $user
+            ? $this->entityAccessService->accessibleEntityIds((int) $user->id)
+            : [];
+
         $contacts = $this->service->list($tenantId, $request->only([
-            'entity_id', 'contact_type', 'is_active', 'role', 'search', 'per_page',
-        ]));
+            'entity_id', 'legal_entity_id', 'contact_type', 'is_active', 'role', 'search', 'per_page',
+        ]), $accessibleEntityIds);
 
         return $this->success($contacts, 'Contacts retrieved.');
     }
@@ -54,6 +63,7 @@ class ContactMasterController extends Controller
             'website' => 'nullable|url|max:255',
             'notes' => 'nullable|string',
             'entity_id' => 'nullable|uuid',
+            'legal_entity_id' => 'nullable|integer',
             'legacy_id' => 'nullable|string|max:255',
             // ADR-003A compatibility inputs (non-authoritative, §7.2)
             'contact_category' => 'nullable|string|max:100',
@@ -110,6 +120,7 @@ class ContactMasterController extends Controller
             'website' => 'nullable|url|max:255',
             'notes' => 'nullable|string',
             'entity_id' => 'nullable|uuid',
+            'legal_entity_id' => 'nullable|integer',
             'is_active' => 'sometimes|boolean',
             // ADR-003A compatibility inputs (non-authoritative, §7.2)
             'contact_category' => 'nullable|string|max:100',
@@ -185,6 +196,7 @@ class ContactMasterController extends Controller
             'role' => 'required|string|max:50',
             'role_label' => 'nullable|string|max:255',
             'entity_id' => 'nullable|uuid',
+            'legal_entity_id' => 'nullable|integer',
             'is_primary' => 'sometimes|boolean',
         ]);
 
@@ -533,15 +545,46 @@ class ContactMasterController extends Controller
             return $this->notFound('Contact not found.');
         }
 
+        // Hostile re-review (#116): HR compensation is sensitive — only users
+        // holding contacts.profiles.hr may see salary/bank details.
+        $hrProfile = $contact->hrProfile;
+        $canViewHrCompensation = $this->canViewHrCompensation($request);
+
+        if ($hrProfile && ! $canViewHrCompensation) {
+            $hrProfile = clone $hrProfile;
+            $hrProfile->salary = null;
+            $hrProfile->bank_details = null;
+        }
+
         return $this->success([
             'accounting_customer' => $contact->accountingCustomerProfile,
             'accounting_vendor' => $contact->accountingVendorProfile,
             'crm' => $contact->crmProfile,
-            'hr' => $contact->hrProfile,
+            'hr' => $hrProfile,
             'pos_loyalty' => $contact->posLoyaltyProfile,
             'property' => $contact->propertyProfile,
             'project' => $contact->projectProfile,
         ], 'Contact profiles.');
+    }
+
+    /**
+     * Hostile re-review (#116): does the caller hold the sensitive HR-profile
+     * permission (resolved through the canonical tenant role service)?
+     */
+    private function canViewHrCompensation(Request $request): bool
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return false;
+        }
+
+        if (($user->is_super_admin ?? false) || $user->role === 'platform_super_admin') {
+            return true;
+        }
+
+        return app(\App\Services\TenantRoleService::class)
+            ->hasPermission((int) $user->id, (string) tenant()->id, 'contacts.profiles.hr');
     }
 
     public function upsertAccountingCustomer(Request $request, string $contactId): JsonResponse

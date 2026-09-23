@@ -80,7 +80,9 @@ class AutoMatchController extends Controller
         try {
             $validated = $request->validate([
                 'bank_account_id' => 'required|integer|exists:bank_accounts,id',
-                'reconciliation_id' => 'required|integer|exists:bank_reconciliations,id',
+                // Issue #168: optional — a draft reconciliation is started
+                // automatically when the caller has none yet.
+                'reconciliation_id' => 'nullable|integer|exists:bank_reconciliations,id',
                 'matches' => 'required|array|min:1',
                 'matches.*.bank_transaction_id' => 'required|string',
                 'matches.*.gl_transaction_id' => 'required|integer|exists:journal_entry_lines,id',
@@ -90,7 +92,7 @@ class AutoMatchController extends Controller
 
             $results = $this->autoMatchingService->acceptMatches(
                 $validated['bank_account_id'],
-                $validated['reconciliation_id'],
+                $validated['reconciliation_id'] ?? null,
                 $validated['matches']
             );
 
@@ -124,7 +126,7 @@ class AutoMatchController extends Controller
         try {
             $validated = $request->validate([
                 'bank_account_id' => 'required|integer|exists:bank_accounts,id',
-                'reconciliation_id' => 'required|integer|exists:bank_reconciliations,id',
+                'reconciliation_id' => 'nullable|integer|exists:bank_reconciliations,id',
                 'bank_transactions' => 'required|array',
                 'min_confidence' => 'nullable|numeric|min:0|max:100|default:90',
             ]);
@@ -167,7 +169,7 @@ class AutoMatchController extends Controller
             // Accept the high-confidence matches
             $results = $this->autoMatchingService->acceptMatches(
                 $validated['bank_account_id'],
-                $validated['reconciliation_id'],
+                $validated['reconciliation_id'] ?? null,
                 $highConfidenceMatches
             );
 
@@ -204,19 +206,18 @@ class AutoMatchController extends Controller
     public function getStatistics(int $bankAccountId): JsonResponse
     {
         try {
-            // Get unreconciled transactions
-            $unreconciled = $this->bankReconciliationService->getUnreconciledTransactions(
-                $bankAccountId,
-                null,
-                null,
-                null
-            );
+            // Get unreconciled transactions.
+            // Issue #101: getUnreconciledTransactions() takes (bankAccountId,
+            // filters) and returns ['data' => ...] — the previous 4-argument
+            // call and 'transactions' key both drifted out of sync and made
+            // this endpoint throw on every request.
+            $unreconciled = $this->bankReconciliationService->getUnreconciledTransactions($bankAccountId);
 
             // Convert to format for auto-matching
-            $bankTransactions = collect($unreconciled['transactions'] ?? [])
+            $bankTransactions = collect($unreconciled['data'] ?? [])
                 ->map(fn ($t) => [
                     'id' => (string) $t['id'],
-                    'date' => $t['transaction_date'],
+                    'date' => $t['date'],
                     'amount' => (float) ($t['debit'] - $t['credit']),
                     'reference' => $t['reference'] ?? '',
                     'description' => $t['description'] ?? '',

@@ -83,18 +83,20 @@ return new class extends Migration
         if (! Schema::hasTable('opening_balance_batches')) {
             return;
         }
-        DB::statement('DROP INDEX IF EXISTS opening_balance_batches_posting_document_id_uk');
-        DB::statement('DROP INDEX IF EXISTS ob_baseline_scope_unique_uk');
+        // Schema-qualified: unqualified DROP INDEX/SEQUENCE can leak to public via search_path.
+        $schema = DB::selectOne('SELECT current_schema() AS s')->s;
+        DB::statement("DROP INDEX IF EXISTS \"{$schema}\".opening_balance_batches_posting_document_id_uk");
+        DB::statement("DROP INDEX IF EXISTS \"{$schema}\".ob_baseline_scope_unique_uk");
         DB::statement('ALTER TABLE opening_balance_batches DROP COLUMN IF EXISTS supersedes_batch_id');
         DB::statement('ALTER TABLE opening_balance_batches DROP COLUMN IF EXISTS scope_key');
         DB::statement('ALTER TABLE opening_balance_batches DROP COLUMN IF EXISTS posting_document_id');
-        DB::statement('DROP SEQUENCE IF EXISTS opening_balance_posting_document_id_seq');
+        DB::statement("DROP SEQUENCE IF EXISTS \"{$schema}\".opening_balance_posting_document_id_seq");
     }
 
     private function indexExists(string $index): bool
     {
         return (bool) DB::scalar(
-            'SELECT 1 FROM pg_indexes WHERE indexname = ? LIMIT 1',
+            'SELECT 1 FROM pg_indexes WHERE schemaname = current_schema() AND indexname = ? LIMIT 1',
             [$index]
         );
     }

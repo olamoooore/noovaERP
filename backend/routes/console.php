@@ -48,6 +48,26 @@ Schedule::command('pos:recover-stuck --fix-syncing')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Issue #151 - Recurring/subscription sales order generation.
+Schedule::command('sales:generate-recurring-orders')
+    ->dailyAt('04:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Issue #109 - Inventory subledger vs GL control-account reconciliation.
+Schedule::command('inventory:reconcile-gl')
+    ->dailyAt('05:45')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Issue #102 - Exchange-rate sync. The FX revaluation side of the same issue
+// is wired into PeriodCloseService::runAutomaticAdjustments(), so closing a
+// period with open FX balances posts the unrealised gain/loss automatically.
+Schedule::command('exchange-rates:sync')
+    ->dailyAt('05:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Accounting Outbox (issue #62) - Publish written-but-unpublished ledger
 // events onto the Domain Event Bus every minute. withoutOverlapping +
 // SKIP LOCKED inside the command make this safe to double-run.

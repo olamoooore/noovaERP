@@ -51,20 +51,7 @@ class FinancialReportController extends Controller
                 ], 422);
             }
 
-            // TEMPORARILY DISABLE CACHING - Generate fresh data every time
-            \Log::info('P&L Report Request', [
-                'filters' => $validated,
-                'user' => $request->user()?->id,
-            ]);
-
             $reportData = $this->profitLossService->generate($filter);
-
-            \Log::info('P&L Report Data', [
-                'data_keys' => array_keys($reportData->data),
-                'revenue_total' => $reportData->data['revenue']['total'] ?? 'missing',
-                'cogs_total' => $reportData->data['cost_of_goods_sold']['total'] ?? 'missing',
-                'opex_total' => $reportData->data['operating_expenses']['total'] ?? 'missing',
-            ]);
 
             // Pass through the service's native structure which already matches frontend expectations
             $response = [
@@ -77,13 +64,6 @@ class FinancialReportController extends Controller
                 'operating_profit' => $reportData->data['operating_profit'] ?? ['amount' => 0],
                 'net_profit' => $reportData->data['net_profit'] ?? ['amount' => 0],
             ];
-
-            \Log::info('P&L Response', [
-                'revenue_total' => $response['revenue']['total'],
-                'cogs_total' => $response['cost_of_goods_sold']['total'],
-                'opex_total' => $response['operating_expenses']['total'],
-                'net_profit' => $response['net_profit']['amount'],
-            ]);
 
             // Add comparison if available
             if ($reportData->comparison) {
@@ -135,7 +115,6 @@ class FinancialReportController extends Controller
         try {
             $filter = ReportFilter::fromRequest($validated);
 
-            // TEMPORARILY DISABLE CACHING - Generate fresh data every time
             $reportData = $this->balanceSheetService->generate($filter);
 
             $currentAssets = $reportData->data['assets']['current_assets']['accounts'] ?? [];
@@ -352,11 +331,6 @@ class FinancialReportController extends Controller
      */
     public function trialBalance(Request $request): JsonResponse
     {
-        \Log::info('TrialBalance controller called', [
-            'params' => $request->all(),
-            'user' => $request->user()?->id,
-        ]);
-
         $validated = $request->validate([
             'as_of_date' => 'required|date',
             'compare_date' => 'nullable|date',
@@ -369,15 +343,8 @@ class FinancialReportController extends Controller
             $validated['compare_start_date'] = $validated['compare_date'];
         }
 
-        \Log::info('TrialBalance validation passed', ['validated' => $validated]);
-
         try {
             $filter = ReportFilter::fromRequest($validated);
-
-            \Log::info('ReportFilter created', [
-                'asOfDate' => $filter->asOfDate?->format('Y-m-d'),
-                'endDate' => $filter->endDate?->format('Y-m-d'),
-            ]);
 
             // Store account_type in the filter's interval field (reusing existing field)
             $filter->accountType = $validated['account_type'] ?? null;
@@ -396,10 +363,7 @@ class FinancialReportController extends Controller
                 ]);
             }
 
-            // Get standard trial balance WITHOUT caching (temporary for testing)
-            \Log::info('About to call TrialBalanceService::generate');
             $reportData = $this->trialBalanceService->generate($filter);
-            \Log::info('TrialBalanceService::generate completed');
 
             // Flatten the response to match frontend expectations
             $response = [

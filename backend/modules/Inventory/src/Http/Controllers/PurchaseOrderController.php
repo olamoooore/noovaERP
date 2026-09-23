@@ -4,9 +4,11 @@ namespace Modules\Inventory\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Services\GoodsReceiptService;
+use App\Models\ProductSupplier;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Modules\Inventory\Models\PurchaseOrder;
 use Modules\Inventory\Models\PurchaseOrderItem;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
@@ -77,6 +79,10 @@ class PurchaseOrderController extends Controller
             'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'items.*.discount_percent' => 'nullable|numeric|min:0|max:100',
         ]);
+
+        // Issue #134: enforce the per-supplier MOQ / order-multiple data that
+        // ProductSupplier captures but nothing ever consumed.
+        $this->assertSupplierOrderQuantities($validated['supplier_id'], $validated['items']);
 
         $purchaseOrder = DB::transaction(function () use ($validated) {
             $po = PurchaseOrder::create([
@@ -158,6 +164,14 @@ class PurchaseOrderController extends Controller
             'items.*.discount_percent' => 'nullable|numeric|min:0|max:100',
         ]);
 
+        // Issue #134: same supplier-quantity enforcement as store().
+        if (isset($validated['items'])) {
+            $this->assertSupplierOrderQuantities(
+                (int) ($validated['supplier_id'] ?? $purchaseOrder->supplier_id),
+                $validated['items'],
+            );
+        }
+
         DB::transaction(function () use ($purchaseOrder, $validated) {
             $purchaseOrder->update(collect($validated)->except('items')->toArray());
 
@@ -190,6 +204,43 @@ class PurchaseOrderController extends Controller
         });
 
         return response()->json($purchaseOrder->fresh(['supplier', 'warehouse', 'items.product']));
+    }
+
+    /**
+     * Issue #134: reject purchase-order lines whose quantity violates the
+     * supplier's ProductSupplier MOQ / order-multiple constraints, reporting
+     * the suggested (rounded) quantity.
+     */
+    private function assertSupplierOrderQuantities(int $supplierId, array $items): void
+    {
+        foreach ($items as $index => $itemData) {
+            $productId = $itemData['product_id'] ?? null;
+            $quantity = (int) ($itemData['quantity_ordered'] ?? 0);
+
+            if (! $productId || $quantity <= 0) {
+                continue;
+            }
+
+            $link = ProductSupplier::query()
+                ->where('product_id', $productId)
+                ->where('supplier_id', $supplierId)
+                ->where('is_active', true)
+                ->first();
+
+            if (! $link || $link->validateOrderQuantity($quantity)) {
+                continue;
+            }
+
+            throw ValidationException::withMessages([
+                "items.{$index}.quantity_ordered" => sprintf(
+                    'Quantity %d violates the supplier constraint for this product (minimum %d, order multiple %d). Suggested quantity: %d.',
+                    $quantity,
+                    (int) $link->moq,
+                    max(1, (int) $link->order_multiple),
+                    $link->getSuggestedOrderQuantity($quantity),
+                ),
+            ]);
+        }
     }
 
     public function destroy(int $purchase_order_id)
@@ -260,6 +311,7 @@ class PurchaseOrderController extends Controller
             'items' => 'required|array|min:1',
             'items.*.id' => 'required|exists:purchase_order_items,id',
             'items.*.quantity_received' => 'required|integer|min:0',
+            'items.*.uom_id' => 'nullable|integer|exists:product_uoms,id',
             'invoice_number' => 'nullable|string|max:100',
             'notes' => 'nullable|string',
         ]);
@@ -272,6 +324,15 @@ class PurchaseOrderController extends Controller
                 $item = PurchaseOrderItem::find($itemData['id']);
                 if ($item && $item->purchase_order_id === $purchaseOrder->id) {
                     $requestedQty = (int) $itemData['quantity_received'];
+
+                    // Issue #135: convert a non-base UOM quantity to base units
+                    // before it touches PO received-quantity arithmetic or stock.
+                    if (! empty($itemData['uom_id']) && $item->product_id) {
+                        $uom = app(\App\Services\ProductUomConverter::class)
+                            ->resolve((int) $item->product_id, (int) $itemData['uom_id']);
+                        $requestedQty = (int) round($uom->convertToBase($requestedQty));
+                    }
+
                     $remainingQty = max(0, (int) $item->quantity_ordered - (int) $item->quantity_received);
                     $acceptedQty = min($requestedQty, $remainingQty);
                     $newReceived = $item->quantity_received + $acceptedQty;

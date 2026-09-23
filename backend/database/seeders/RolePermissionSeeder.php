@@ -33,6 +33,17 @@ class RolePermissionSeeder extends Seeder
         'inventory.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'inventory.settings' => [UserRole::OWNER, UserRole::ADMIN],
 
+        // Medical cases — transactional medical-vertical documents (issues
+        // #161/#186). Reads follow inventory.view; writes follow inventory.write.
+        'medical_cases.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::SALES, UserRole::VIEWER],
+        'medical_cases.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
+
+        // Bonus schemes — pricing/reward configuration (issues #161/#186).
+        // Writes are deliberately Manager+; Sales can read schemes but not
+        // create/activate/deactivate them or suspend/reactivate assignments.
+        'bonus_schemes.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::SALES, UserRole::VIEWER],
+        'bonus_schemes.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
+
         // Product catalogue — destructive bulk purge (issue #127 BLOCKER).
         // Strictest possible grant: Owner/Admin only. This guards
         // DELETE /products/delete-all, which hard-deletes the entire catalogue.
@@ -54,6 +65,18 @@ class RolePermissionSeeder extends Seeder
         'sales.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::VIEWER],
         'sales.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'sales.settings' => [UserRole::OWNER, UserRole::ADMIN],
+
+        // Invoices — standardized flow (MRD invoice-standardized-flow-mrd.md §7.1).
+        // invoices.post is intentionally absent: posting reuses accounting.post
+        // (EnsureAccountingPostAccess) rather than forking a parallel permission.
+        'invoices.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::CASHIER, UserRole::VIEWER],
+        'invoices.write' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT],
+        'invoices.submit' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT],
+        // SoD is enforced at action time (requester ≠ approver), not by role design.
+        'invoices.approve' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+        'invoices.send' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT],
+        'invoices.evidence.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT],
+        'invoices.request_payment' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT],
 
         // Fulfillment / shipping (issue #143 BLOCKER). FulfillmentModuleContract
         // declared fulfillment.* permissions but nothing seeded them, so the
@@ -88,6 +111,9 @@ class RolePermissionSeeder extends Seeder
         'contacts.methods.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'contacts.relationships.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'contacts.profiles.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::SALES],
+        // Hostile re-review (#116): HR profile data (salary, bank details) is
+        // sensitive — Sales/Viewer must neither write nor read it.
+        'contacts.profiles.hr' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
         'contacts.delete' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
         'contacts.merge' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
         'contacts.visibility.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
@@ -137,6 +163,17 @@ class RolePermissionSeeder extends Seeder
 
         // Reports
         'reports.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::VIEWER],
+        // Issue #103: reporting configuration/mutations (schedules, exports
+        // cleanup, cache, templates) — the read permission alone must not allow
+        // these. Accountant keeps manage capability so existing reporting
+        // workflows do not regress.
+        'reports.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT],
+
+        // Issue #164: legal entity / group / branch / entity-book structure and
+        // per-entity module activation. Tenant-structural authority — Owner and
+        // Admin only; the routine 'accountant' role must NOT reshape the org
+        // chart or switch modules on/off per entity.
+        'entities.manage' => [UserRole::OWNER, UserRole::ADMIN],
 
         // Settings
         'settings.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::VIEWER],

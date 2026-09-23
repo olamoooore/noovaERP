@@ -21,12 +21,24 @@ class SalesOrderService
         private InvoiceService $invoiceService,
         private \Modules\Inventory\Services\InventoryService $inventoryService,
         private \Modules\Inventory\Services\StockReservationService $reservationService,
+        private CreditCheckService $creditCheckService,
+        private \App\Services\ProductUomConverter $uomConverter,
     ) {}
+
+    /**
+     * Issue #137: advisory lock key for SO-number generation. Tenant-scoped so
+     * one tenant's order creation never blocks another tenant's on the shared
+     * Postgres database (pg_advisory locks ignore search_path).
+     */
+    public static function salesOrderNumberLockKey(?string $tenantId = null): int
+    {
+        return crc32('sales_order_create:'.($tenantId ?? tenant('id') ?? ''));
+    }
 
     public function createOrder(array $data): SalesOrder
     {
         $maxRetries = 5;
-        $lockKey = crc32('sales_order_create');
+        $lockKey = self::salesOrderNumberLockKey();
 
         for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
             try {
@@ -45,6 +57,7 @@ class SalesOrderService
                         Log::warning('SalesOrder SO number collision on insert, retrying', [
                             'attempt' => $attempt + 1,
                         ]);
+
                         continue;
                     }
                 }
@@ -55,6 +68,7 @@ class SalesOrderService
         // Final attempt — should not reach here
         return DB::transaction(function () use ($data, $lockKey) {
             DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+
             return $this->createOrderInsideTransaction($data);
         });
     }
@@ -72,10 +86,71 @@ class SalesOrderService
             $data['accounting_status'] = $data['accounting_status'] ?? 'not_posted';
             $data['order_date'] = $data['order_date'] ?? now()->toDateString();
 
+            // Issue #140: stamp the legal entity from the customer (explicit
+            // caller-supplied value wins) so orders are entity-scopable.
+            if (empty($data['legal_entity_id']) && ! empty($data['customer_id'])) {
+                $data['legal_entity_id'] = \App\Models\Customer::whereKey($data['customer_id'])
+                    ->value('legal_entity_id');
+            }
+
             $order = SalesOrder::create($data);
 
             foreach ($lines as $lineData) {
+                // Issue #135: a line entered in a non-base UOM must be converted
+                // to base units before it can reach stock/COGS. The base-unit
+                // price is derived from the UOM rate; an explicit unit_price is
+                // treated as the per-base-unit price.
+                if (! empty($lineData['uom_id']) && ! empty($lineData['product_id'])) {
+                    $uom = $this->uomConverter->resolve((int) $lineData['product_id'], (int) $lineData['uom_id']);
+                    $lineData['quantity'] = $this->uomConverter->toBase($uom, (float) ($lineData['quantity'] ?? 0));
+
+                    if (! isset($lineData['unit_price']) || (float) $lineData['unit_price'] <= 0) {
+                        $product = \App\Models\Product::find($lineData['product_id']);
+                        if ($product) {
+                            // Compose with #132 tier pricing: resolve the
+                            // per-base tier price first, then apply the UOM
+                            // multiplier.
+                            $tierBasePrice = $product->getPriceForQuantity(
+                                (int) ceil((float) $lineData['quantity']),
+                                ! empty($data['customer_id']) ? (int) $data['customer_id'] : null,
+                                null,
+                                ! empty($lineData['variant_id']) ? (int) $lineData['variant_id'] : null,
+                            );
+
+                            $lineData['unit_price'] = $this->uomConverter->baseUnitPrice($product, $uom, $tierBasePrice);
+                        }
+                    }
+
+                    // Issue #247: the persisted quantity is now BASE units — label
+                    // it with the product's base unit, not the entered UOM (1 Box
+                    // of 12 was displayed as "12 Box").
+                    $baseUnitLabel = \App\Models\ProductUom::where('product_id', $lineData['product_id'])
+                        ->where('is_base_unit', true)
+                        ->where('is_active', true)
+                        ->value('abbreviation');
+                    $lineData['unit'] = $baseUnitLabel
+                        ?: (\App\Models\Product::whereKey($lineData['product_id'])->value('unit') ?? 'pcs');
+                }
+
+                // Issue #132: when the caller does not supply a price, resolve it
+                // through the product's tier logic (volume/customer/variant/date)
+                // instead of leaving the line at zero or the flat catalog price.
+                if (! isset($lineData['unit_price']) || (float) $lineData['unit_price'] <= 0) {
+                    if (! empty($lineData['product_id'])) {
+                        $product = $product ?? \App\Models\Product::find($lineData['product_id']);
+                        if ($product) {
+                            $lineData['unit_price'] = $product->getPriceForQuantity(
+                                (int) ceil((float) ($lineData['quantity'] ?? 0)),
+                                ! empty($data['customer_id']) ? (int) $data['customer_id'] : null,
+                                null,
+                                ! empty($lineData['variant_id']) ? (int) $lineData['variant_id'] : null,
+                            );
+                        }
+                    }
+                }
+
                 $line = $order->lines()->create([
+                    'legal_entity_id' => $order->legal_entity_id,
                     'line_type' => $lineData['line_type'] ?? 'product',
                     'sequence' => $lineData['sequence'] ?? 0,
                     'product_id' => $lineData['product_id'] ?? null,
@@ -131,7 +206,34 @@ class SalesOrderService
             throw new \Exception('Only draft orders can be confirmed.');
         }
 
+        // Issue #139: the credit verdict must gate confirmation.
+        // Issue #240: include the customer's other confirmed-but-uninvoiced
+        // orders (they are not in total_outstanding yet) and take a row lock on
+        // the customer so concurrent confirmations cannot both pass the check.
         return DB::transaction(function () use ($order) {
+            if ($order->customer_id !== null) {
+                $customer = \App\Models\Customer::whereKey($order->customer_id)->lockForUpdate()->first();
+
+                if ($customer !== null) {
+                    $committedOrdersTotal = (float) SalesOrder::query()
+                        ->where('customer_id', $customer->id)
+                        ->whereKeyNot($order->id)
+                        ->whereNotIn('status', ['draft', 'cancelled', 'completed'])
+                        ->whereDoesntHave('invoices')
+                        ->sum('total');
+
+                    $creditCheck = $this->creditCheckService->checkCreditLimit(
+                        $customer,
+                        (float) $order->total,
+                        $committedOrdersTotal
+                    );
+
+                    if (! $creditCheck->approved) {
+                        throw new \Exception('Credit check failed: '.$creditCheck->reason);
+                    }
+                }
+            }
+
             $order = $this->lifecycleService->confirm($order, 'Order confirmed');
 
             $this->freezePricing($order);
@@ -254,6 +356,7 @@ class SalesOrderService
                         'tax_rate' => 0,
                         'discount_amount' => 0,
                     ];
+
                     continue;
                 }
                 $policy = $line->invoicing_policy ?? 'ordered_qty';
@@ -279,6 +382,8 @@ class SalesOrderService
                 $lines[] = [
                     'line_type' => 'product',
                     'sequence' => $line->sequence ?? 0,
+                    // Issue #138: stable order-line reference for bookkeeping.
+                    'sales_order_line_id' => $line->id,
                     'product_id' => $line->product_id,
                     'model_number' => $line->model_number,
                     'product_notes' => $line->product_notes,
@@ -340,7 +445,9 @@ class SalesOrderService
     public function cancelOrder(SalesOrder $order, string $reason): SalesOrder
     {
         if ($order->isInvoiced()) {
-            throw new \Exception('Invoiced orders cannot be cancelled. Use credit notes instead.');
+            // Issue #154: point at the real, reachable path
+            // (POST /sales/orders/{id}/credit-note).
+            throw new \Exception('Invoiced orders cannot be cancelled. Issue a credit note from the order instead.');
         }
 
         return DB::transaction(function () use ($order, $reason) {
@@ -570,7 +677,11 @@ class SalesOrderService
         $billByDelivered = (bool) $order->bill_by_delivered_qty;
 
         foreach ($order->lines as $orderLine) {
-            $matchedInvoiceLine = $invoiceLines->first(function ($invoiceLine) use ($orderLine) {
+            // Issue #138: prefer the stable persisted link; only fall back to
+            // the legacy product+description heuristic for pre-link rows.
+            $matchedInvoiceLine = $invoiceLines->firstWhere('sales_order_line_id', $orderLine->id);
+
+            $matchedInvoiceLine = $matchedInvoiceLine ?? $invoiceLines->first(function ($invoiceLine) use ($orderLine) {
                 if ($orderLine->source_line_type === 'PosOrderItem' || $orderLine->source_line_type === 'WebOrderItem') {
                     return (int) $invoiceLine->product_id === (int) $orderLine->product_id
                         && str_starts_with($invoiceLine->description, $orderLine->description);

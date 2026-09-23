@@ -260,19 +260,13 @@ class TenantGuardrailsCommand extends Command
             return self::FAILURE;
         }
 
-        $data = json_decode((string) ($tenant->data ?? ''), true);
-        $data = is_array($data) ? $data : [];
-
+        // Issue #213: atomic single-statement JSON merge so a concurrent
+        // suspend()/reinstate() writing a different key cannot be clobbered.
         if ($isTest) {
-            $data['is_test'] = true;
+            \App\Tenancy\TenantSuspensionGuard::mergeTenantData($tenantId, ['is_test' => true]);
         } else {
-            unset($data['is_test']);
+            \App\Tenancy\TenantSuspensionGuard::mergeTenantData($tenantId, [], ['is_test']);
         }
-
-        DB::table('public.tenants')->where('id', $tenantId)->update([
-            'data' => json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-            'updated_at' => now(),
-        ]);
 
         $this->info(sprintf(
             'tenant %s (%s) %s as test tenant',

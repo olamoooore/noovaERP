@@ -2,8 +2,11 @@
 
 namespace Modules\Sales\Http\Controllers;
 
+use App\Services\CustomerCreditNoteService;
+use App\Services\SalesApprovalGate;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Auth;
 use Modules\Sales\Models\SalesOrder;
 use Modules\Sales\Services\CreditCheckService;
 use Modules\Sales\Services\OrderLifecycleService;
@@ -15,6 +18,8 @@ class SalesOrderController extends Controller
         private SalesOrderService $orderService,
         private OrderLifecycleService $lifecycleService,
         private CreditCheckService $creditCheckService,
+        private CustomerCreditNoteService $creditNoteService,
+        private SalesApprovalGate $approvalGate,
     ) {}
 
     public function index(Request $request)
@@ -22,6 +27,8 @@ class SalesOrderController extends Controller
         $query = SalesOrder::with(['customer', 'lines.product', 'channelReferences'])
             ->withCount(['invoiceLinks', 'deliveryOrders'])
             ->orderBy('created_at', 'desc');
+
+        $this->applyEntityScope($request, $query);
 
         if ($request->has('status')) {
             $query->whereIn('status', explode(',', $request->status));
@@ -80,6 +87,7 @@ class SalesOrderController extends Controller
             'lines.*.description' => 'required|string',
             'lines.*.quantity' => 'nullable|numeric|min:0',
             'lines.*.unit_price' => 'nullable|numeric|min:0',
+            'lines.*.uom_id' => 'nullable|integer|exists:product_uoms,id',
             'lines.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'lines.*.discount_type' => 'nullable|in:percentage,fixed',
             'lines.*.discount_value' => 'nullable|numeric|min:0',
@@ -102,10 +110,14 @@ class SalesOrderController extends Controller
         }
     }
 
-    public function show($id)
+    public function show(Request $request, $id)
     {
-        $order = SalesOrder::with(['customer', 'lines.product', 'statusHistory.actor', 'channelReferences', 'quotation', 'invoices', 'deliveryOrders.lines'])
-            ->find($id);
+        $query = SalesOrder::with(['customer', 'lines.product', 'statusHistory.actor', 'channelReferences', 'quotation', 'invoices', 'deliveryOrders.lines']);
+
+        // Issue #140: a user must not read another legal entity's order.
+        $this->applyEntityScope($request, $query);
+
+        $order = $query->find($id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -114,9 +126,42 @@ class SalesOrderController extends Controller
         return response()->json($order);
     }
 
+    /**
+     * Issue #140: scope a SalesOrder query to the user's accessible legal
+     * entities. Users with no entity grants keep the historical unscoped view
+     * (same fail-open default as EnsureEntityAccess / #113).
+     */
+    private function applyEntityScope(Request $request, $query): void
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return;
+        }
+
+        $entityIds = app(\App\Services\EntityAccessService::class)->accessibleEntityIds((int) $user->id);
+
+        if ($entityIds !== []) {
+            $query->accessibleBy($entityIds);
+        }
+    }
+
+    /**
+     * Issue #237: resolve an order inside the requester's entity scope.
+     * Out-of-scope or missing ids return null -> the caller keeps its existing
+     * 404 path (same behaviour as show()).
+     */
+    private function findScopedOrder(Request $request, $id): ?SalesOrder
+    {
+        $query = SalesOrder::query();
+        $this->applyEntityScope($request, $query);
+
+        return $query->find($id);
+    }
+
     public function update(Request $request, $id)
     {
-        $order = SalesOrder::find($id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -143,10 +188,30 @@ class SalesOrderController extends Controller
 
     public function confirm($id)
     {
-        $order = SalesOrder::find($id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
+        }
+
+        // Issue #180: config-driven approval gate. If the tenant's threshold is
+        // set and the order's total meets or exceeds it, create an ApprovalRequest
+        // and return 202 instead of advancing the order to 'confirmed'.
+        if ($this->approvalGate->requiresApproval(SalesOrder::class, (float) $order->total)) {
+            $request = $this->approvalGate->createRequest(
+                $order,
+                Auth::user(),
+                SalesApprovalGate::REQUEST_TYPE_SALES_ORDER,
+                "Sales order total {$order->total} meets the tenant approval threshold."
+            );
+
+            return response()->json([
+                'message' => 'Approval required',
+                'requires_approval' => true,
+                'approval_request' => $request,
+                'threshold' => $this->approvalGate->threshold(),
+                'order' => $order->fresh(),
+            ], 202);
         }
 
         $creditCheck = $this->creditCheckService->checkCreditLimit($order->customer, (float) $order->total);
@@ -166,7 +231,7 @@ class SalesOrderController extends Controller
 
     public function allocate($id)
     {
-        $order = SalesOrder::find($id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -183,7 +248,7 @@ class SalesOrderController extends Controller
 
     public function fulfil($id)
     {
-        $order = SalesOrder::find($id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -200,7 +265,7 @@ class SalesOrderController extends Controller
 
     public function createInvoice($id)
     {
-        $order = SalesOrder::find($id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -217,7 +282,7 @@ class SalesOrderController extends Controller
 
     public function cancel(Request $request, $id)
     {
-        $order = SalesOrder::find($id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -242,7 +307,7 @@ class SalesOrderController extends Controller
      */
     public function resetToDraft($id)
     {
-        $order = SalesOrder::find($id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -268,7 +333,7 @@ class SalesOrderController extends Controller
 
     public function history($id)
     {
-        $order = SalesOrder::find($id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -279,7 +344,7 @@ class SalesOrderController extends Controller
 
     public function invoiceLinks($id)
     {
-        $order = SalesOrder::find($id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -290,7 +355,7 @@ class SalesOrderController extends Controller
 
     public function channelReferences($id)
     {
-        $order = SalesOrder::find($id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -301,7 +366,7 @@ class SalesOrderController extends Controller
 
     public function creditPreview($id)
     {
-        $order = SalesOrder::find($id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -312,9 +377,71 @@ class SalesOrderController extends Controller
         return response()->json($creditCheck);
     }
 
+    /**
+     * Issue #154: issue a draft credit note for an invoiced order, carrying the
+     * lineage back to the sales order. Pre-populates the lines from the order so
+     * the user has an editable draft instead of a dead-end error message.
+     */
+    public function creditNote(Request $request, $id)
+    {
+        $order = $this->findScopedOrder($request, $id);
+
+        if (! $order) {
+            return response()->json(['message' => 'Sales order not found'], 404);
+        }
+
+        if (! $order->isInvoiced()) {
+            return response()->json(['message' => 'Only invoiced orders can be credited'], 422);
+        }
+
+        $invoice = $order->invoices()->latest('invoices.id')->first();
+
+        if (! $invoice) {
+            return response()->json(['message' => 'The order has no linked invoice to credit'], 422);
+        }
+
+        $lines = $order->lines
+            ->filter(fn ($line) => ! in_array($line->line_type ?? 'product', ['note', 'section'], true))
+            ->map(fn ($line) => [
+                'description' => $line->description,
+                'product_id' => $line->product_id,
+                'quantity' => (float) $line->quantity,
+                'unit_price' => (float) $line->unit_price,
+                'tax_rate' => (float) ($line->tax_rate ?? 0),
+            ])
+            ->values()
+            ->all();
+
+        if (empty($lines)) {
+            return response()->json(['message' => 'The order has no creditable lines'], 422);
+        }
+
+        try {
+            $creditNote = $this->creditNoteService->createCreditNote([
+                'customer_id' => $order->customer_id,
+                'invoice_id' => $invoice->id,
+                'sales_order_id' => $order->id,
+                'credit_note_date' => now()->toDateString(),
+                'currency_code' => $invoice->currency_code,
+                'reason' => $request->input('reason', "Credit note for sales order {$order->sales_order_number}"),
+                'lines' => $lines,
+            ]);
+
+            return response()->json([
+                'message' => 'Credit note draft created',
+                'credit_note' => $creditNote,
+            ], 201);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to create credit note',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function destroy($id)
     {
-        $order = SalesOrder::find($id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);
@@ -331,7 +458,7 @@ class SalesOrderController extends Controller
 
     public function setBillByDelivered(Request $request, $id)
     {
-        $order = SalesOrder::find($id);
+        $order = $this->findScopedOrder(request(), $id);
 
         if (! $order) {
             return response()->json(['message' => 'Sales order not found'], 404);

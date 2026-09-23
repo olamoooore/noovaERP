@@ -88,7 +88,9 @@ class DepreciationService
                                 break;
                             }
 
-                            $amount = min($this->calculateDepreciationAmount($asset, $period), $remaining);
+                            // Issue #162: thread the running accumulated
+                            // depreciation into the period calculation.
+                            $amount = min($this->calculateDepreciationAmount($asset, $period, $projectedAccumulated), $remaining);
                             if ($amount <= 0) {
                                 break;
                             }
@@ -192,6 +194,13 @@ class DepreciationService
             if ($existing) {
                 $results['skipped_existing']++;
 
+                // Issue #162: advance the running totals past periods that were
+                // already generated, otherwise resuming a partially-generated
+                // declining-balance schedule would compute later periods from
+                // too low an accumulated depreciation (i.e. too high a charge).
+                $cumulative = round($cumulative + (float) $existing->depreciation_amount, 2);
+                $bookValue = round((float) $asset->purchase_cost - $cumulative, 2);
+
                 continue;
             }
 
@@ -205,7 +214,7 @@ class DepreciationService
             }
 
             try {
-                $amount = $this->calculateDepreciationAmount($asset, $periodDate);
+                $amount = $this->calculateDepreciationAmount($asset, $periodDate, $cumulative);
 
                 // Do not depreciate past the depreciable base on the final entry
                 if ($amount > $remaining) {
@@ -284,10 +293,18 @@ class DepreciationService
             }
         }
 
-        // Persist final running totals on the asset
+        // Issue #216: persist POSTED-only accumulated depreciation.
+        // calculateDepreciationForPeriod() treats asset.accumulated_depreciation
+        // as the posted baseline and adds SUM(is_posted = false) drafts on top,
+        // so persisting the all-rows running total here made the two entry
+        // points double-count unposted periods.
+        $postedAccumulated = (float) DepreciationSchedule::where('asset_id', $asset->id)
+            ->where('is_posted', true)
+            ->sum('depreciation_amount');
+
         $asset->update([
-            'accumulated_depreciation' => $cumulative,
-            'book_value' => max($bookValue, (float) $asset->salvage_value),
+            'accumulated_depreciation' => $postedAccumulated,
+            'book_value' => max(round((float) $asset->purchase_cost - $postedAccumulated, 2), (float) $asset->salvage_value),
             'last_depreciation_date' => optional($this->advancePeriod($startDate, $frequency, $results['generated'] - 1))->format('Y-m-d'),
         ]);
 
@@ -418,16 +435,23 @@ class DepreciationService
     }
 
     /**
-     * Calculate depreciation amount based on method
+     * Calculate depreciation amount based on method.
+     *
+     * Issue #162: declining-balance depends on the book value at the START of
+     * the period, so the caller must thread its running accumulated
+     * depreciation through — reading the static $asset attribute would compute
+     * every period off the same starting book value.
+     *
+     * @param  float  $runningAccumulatedDepreciation  Accumulated depreciation at the start of this period (incl. any rows already generated).
      */
-    protected function calculateDepreciationAmount(FixedAsset $asset, Carbon $periodDate): float
+    protected function calculateDepreciationAmount(FixedAsset $asset, Carbon $periodDate, float $runningAccumulatedDepreciation): float
     {
         switch ($asset->depreciation_method) {
             case 'straight_line':
                 return $this->calculateStraightLine($asset);
 
             case 'declining_balance':
-                return $this->calculateDecliningBalance($asset);
+                return $this->calculateDecliningBalance($asset, $runningAccumulatedDepreciation);
 
             case 'units_of_production':
                 return $this->calculateUnitsOfProduction($asset);
@@ -452,10 +476,13 @@ class DepreciationService
     /**
      * Declining balance depreciation (200% declining balance)
      * Book Value * (2 / Useful Life) / 12 months
+     *
+     * Issue #162: book value must be computed from the running accumulated
+     * depreciation for this period, not the stale $asset attribute.
      */
-    protected function calculateDecliningBalance(FixedAsset $asset): float
+    protected function calculateDecliningBalance(FixedAsset $asset, float $runningAccumulatedDepreciation): float
     {
-        $bookValue = $asset->calculateBookValue();
+        $bookValue = (float) $asset->purchase_cost - $runningAccumulatedDepreciation;
         $rate = 2.0 / $asset->useful_life_years;
         $monthlyDepreciation = $bookValue * $rate / 12;
 

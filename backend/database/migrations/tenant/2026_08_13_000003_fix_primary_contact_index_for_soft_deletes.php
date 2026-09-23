@@ -17,28 +17,32 @@ return new class extends Migration
 {
     public function up(): void
     {
-        DB::statement('DROP INDEX IF EXISTS customer_contacts_one_primary');
+        // Schema-qualified: the tenant-migration search_path falls back to
+        // public, so unqualified DROP INDEX can leak into central tables.
+        $schema = DB::selectOne('SELECT current_schema() AS s')->s;
+        DB::statement("DROP INDEX IF EXISTS \"{$schema}\".customer_contacts_one_primary");
 
         // One active CRM primary per customer account (CT-VEN-007/028).
         // customer_contacts does NOT use SoftDeletes, so all rows in this
         // table are logically active. Soft-deleted customers are checked
         // at the application level (setPrimaryContact verifies customer
         // exists and is not deleted before proceeding).
-        DB::statement('
+        DB::statement("
             CREATE UNIQUE INDEX customer_contacts_one_primary
-            ON customer_contacts (customer_id)
+            ON \"{$schema}\".customer_contacts (customer_id)
             WHERE is_primary = true
-        ');
+        ");
     }
 
     public function down(): void
     {
-        DB::statement('DROP INDEX IF EXISTS customer_contacts_one_primary');
+        $schema = DB::selectOne('SELECT current_schema() AS s')->s;
+        DB::statement("DROP INDEX IF EXISTS \"{$schema}\".customer_contacts_one_primary");
 
-        DB::statement('
+        DB::statement("
             CREATE UNIQUE INDEX customer_contacts_one_primary
-            ON customer_contacts (customer_id)
+            ON \"{$schema}\".customer_contacts (customer_id)
             WHERE is_primary = true
-        ');
+        ");
     }
 };

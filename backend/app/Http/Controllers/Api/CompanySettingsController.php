@@ -559,4 +559,91 @@ class CompanySettingsController extends Controller
             'date_format' => \App\Models\Setting::getValue('template_date_format', 'Y-m-d'),
         ]);
     }
+
+    public function getSalesSettings(): JsonResponse
+    {
+        return response()->json([
+            'data' => [
+                'invoice' => [
+                    'allow_custom_number' => (bool) \App\Models\Setting::getValue('sales.invoice.allow_custom_number', true),
+                    'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.invoice.default_requires_approval', false),
+                    'approval_expiry_days' => (int) \App\Models\Setting::getValue('sales.invoice.approval_expiry_days', 7),
+                    'auto_send_to_customer_on_post' => (bool) \App\Models\Setting::getValue('sales.invoice.auto_send_to_customer_on_post', true),
+                    'allow_partial_payments' => (bool) \App\Models\Setting::getValue('sales.invoice.allow_partial_payments', true),
+                    'default_payment_terms_days' => (int) \App\Models\Setting::getValue('sales.invoice.default_payment_terms_days', 30),
+                    'default_notes' => \App\Models\Setting::getValue('sales.invoice.default_notes', ''),
+                    'default_terms' => \App\Models\Setting::getValue('sales.invoice.default_terms', 'Payment due within 30 days.'),
+                ],
+                'portal' => [
+                    'acceptance_enabled' => (bool) \App\Models\Setting::getValue('sales.portal.acceptance_enabled', true),
+                    'require_signature' => (bool) \App\Models\Setting::getValue('sales.portal.require_signature', true),
+                    'acceptance_link_expiry_days' => (int) \App\Models\Setting::getValue('sales.portal.acceptance_link_expiry_days', 30),
+                    'payment_link_expiry_days' => (int) \App\Models\Setting::getValue('sales.portal.payment_link_expiry_days', 14),
+                ],
+                'tax' => [
+                    'default_tax_rate' => (float) \App\Models\Setting::getValue('sales.tax.default_tax_rate', 0),
+                    'prices_include_tax' => (bool) \App\Models\Setting::getValue('sales.tax.prices_include_tax', false),
+                    'default_tax_treatment' => \App\Models\Setting::getValue('sales.tax.default_tax_treatment', 'standard'),
+                ],
+                'delivery' => [
+                    'attach_pdf' => (bool) \App\Models\Setting::getValue('sales.delivery.attach_pdf', true),
+                    'cc_internal_email' => \App\Models\Setting::getValue('sales.delivery.cc_internal_email', ''),
+                    'document_type_on_send' => \App\Models\Setting::getValue('sales.delivery.document_type_on_send', 'final_invoice'),
+                ],
+            ],
+        ]);
+    }
+
+    public function updateSalesSettings(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'invoice.allow_custom_number' => 'nullable|boolean',
+            'invoice.default_requires_approval' => 'nullable|boolean',
+            'invoice.approval_expiry_days' => 'nullable|integer|min:1|max:90',
+            'invoice.auto_send_to_customer_on_post' => 'nullable|boolean',
+            'invoice.allow_partial_payments' => 'nullable|boolean',
+            'invoice.default_payment_terms_days' => 'nullable|integer|min:0|max:365',
+            'invoice.default_notes' => 'nullable|string|max:1000',
+            'invoice.default_terms' => 'nullable|string|max:1000',
+            'portal.acceptance_enabled' => 'nullable|boolean',
+            'portal.require_signature' => 'nullable|boolean',
+            'portal.acceptance_link_expiry_days' => 'nullable|integer|min:1|max:365',
+            'portal.payment_link_expiry_days' => 'nullable|integer|min:1|max:365',
+            'tax.default_tax_rate' => 'nullable|numeric|min:0|max:100',
+            'tax.prices_include_tax' => 'nullable|boolean',
+            'tax.default_tax_treatment' => 'nullable|string|in:standard,zero_rated,exempt,out_of_scope',
+            'delivery.attach_pdf' => 'nullable|boolean',
+            'delivery.cc_internal_email' => 'nullable|email|max:255',
+            'delivery.document_type_on_send' => 'nullable|string|in:final_invoice,acceptance_copy',
+        ]);
+
+        $map = [
+            'invoice.allow_custom_number' => 'sales.invoice.allow_custom_number',
+            'invoice.default_requires_approval' => 'sales.invoice.default_requires_approval',
+            'invoice.approval_expiry_days' => 'sales.invoice.approval_expiry_days',
+            'invoice.auto_send_to_customer_on_post' => 'sales.invoice.auto_send_to_customer_on_post',
+            'invoice.allow_partial_payments' => 'sales.invoice.allow_partial_payments',
+            'invoice.default_payment_terms_days' => 'sales.invoice.default_payment_terms_days',
+            'invoice.default_notes' => 'sales.invoice.default_notes',
+            'invoice.default_terms' => 'sales.invoice.default_terms',
+            'portal.acceptance_enabled' => 'sales.portal.acceptance_enabled',
+            'portal.require_signature' => 'sales.portal.require_signature',
+            'portal.acceptance_link_expiry_days' => 'sales.portal.acceptance_link_expiry_days',
+            'portal.payment_link_expiry_days' => 'sales.portal.payment_link_expiry_days',
+            'tax.default_tax_rate' => 'sales.tax.default_tax_rate',
+            'tax.prices_include_tax' => 'sales.tax.prices_include_tax',
+            'tax.default_tax_treatment' => 'sales.tax.default_tax_treatment',
+            'delivery.attach_pdf' => 'sales.delivery.attach_pdf',
+            'delivery.cc_internal_email' => 'sales.delivery.cc_internal_email',
+            'delivery.document_type_on_send' => 'sales.delivery.document_type_on_send',
+        ];
+
+        foreach ($validated as $key => $value) {
+            if (isset($map[$key])) {
+                \App\Models\Setting::setValue($map[$key], $value);
+            }
+        }
+
+        return $this->getSalesSettings();
+    }
 }

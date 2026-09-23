@@ -3,12 +3,17 @@
 namespace Modules\FinancialReporting\Tests\Feature;
 
 use App\Models\User;
+use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\TenantTestCase;
 
 class AnalyticsApiTest extends TenantTestCase
 {
     protected User $user;
+
+    protected string $tenantId;
 
     protected function setUp(): void
     {
@@ -27,7 +32,31 @@ class AnalyticsApiTest extends TenantTestCase
             \App\Http\Middleware\EnsureEntityAccess::class,
         ]);
 
-        $this->user = User::factory()->create();
+        // Issue #103: the analytics routes now require reports.view. Set up a
+        // tenant-scoped Admin (super role) so the endpoint authorises; the
+        // withoutMiddleware() calls above do not bypass RequirePermission.
+        $this->tenantId = (string) Str::uuid();
+        $this->bindTenantContext($this->tenantId);
+        $this->seed(RolePermissionSeeder::class);
+
+        DB::table('public.tenants')->updateOrInsert(
+            ['id' => $this->tenantId],
+            ['name' => 'Analytics Tenant', 'email' => 'analytics-'.Str::random(6).'@example.com', 'created_at' => now(), 'updated_at' => now()]
+        );
+
+        $user = User::factory()->create();
+        DB::table('public.users')->updateOrInsert(
+            ['email' => $user->email],
+            ['name' => $user->name, 'password' => $user->password, 'created_at' => now(), 'updated_at' => now()]
+        );
+        $centralId = DB::table('public.users')->where('email', $user->email)->value('id');
+        DB::table('user_company_access')->updateOrInsert(
+            ['user_id' => $centralId, 'tenant_id' => $this->tenantId],
+            ['role' => 'admin', 'is_default' => true, 'created_at' => now(), 'updated_at' => now()]
+        );
+        $user->assignRole('Admin');
+
+        $this->user = $user;
     }
 
     /** @test */

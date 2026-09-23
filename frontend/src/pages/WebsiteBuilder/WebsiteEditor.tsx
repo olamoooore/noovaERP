@@ -13,6 +13,7 @@ import { getShopPageDefaultContent } from '@/components/website-builder/shopPres
 import {
   compressGrapesJsComponents,
   compressInlineImagesInHtml,
+  compressInlineImagesInCss,
 } from '@/lib/imageCompression'
 import '@/components/website-builder/grapes-custom.css'
 import {
@@ -248,10 +249,20 @@ export function WebsiteEditor() {
     },
     onError: (error: any) => {
       setIsSaving(false)
-      toast({ 
-        title: 'Error', 
-        description: error?.response?.data?.message || 'Failed to save.', 
-        variant: 'destructive' 
+      // Diagnosable failure: the old generic 'Failed to save.' hid whether the
+      // request never left the browser (network/serialization), was rejected by
+      // the edge (413/504 HTML), or was refused by the API (4xx JSON).
+      const status = error?.response?.status
+      const url = error?.config?.url
+      const detail = error?.response?.data?.message
+        || (typeof error?.response?.data === 'string' ? `HTTP ${status} (non-JSON response)` : null)
+        || error?.message
+        || 'Unknown error'
+      console.error('[WebsiteEditor] save failed', { status, url, error })
+      toast({
+        title: 'Error',
+        description: status ? `Save failed (HTTP ${status}): ${detail}` : `Save failed: ${detail}`,
+        variant: 'destructive'
       })
     },
   })
@@ -483,11 +494,20 @@ export function WebsiteEditor() {
 
   // Handle save
   const handleSave = useCallback((data: { html: string; css: string; components: any; styles: any; header_js?: string; body_js?: string }) => {
-    saveMutation.mutate({
+    // GrapesJS hands back Collections (getComponents/getStyle). Only plain JSON
+    // can be serialised for the API — a Collection carries circular
+    // model/parent references and JSON.stringify throws before the request is
+    // even sent (the transient 'Failed to save.' with no network entry).
+    const toPlainJson = (value: any) =>
+      value && typeof value.toJSON === 'function' ? value.toJSON() : value
+
+    saveMutation.mutateAsync({
       ...data,
+      components: toPlainJson(data.components),
+      styles: toPlainJson(data.styles),
       header_js: data.header_js ?? headerJs,
       body_js: data.body_js ?? bodyJs,
-    })
+    }).catch(() => undefined) // onError already surfaces the failure; keep callers await-safe
   }, [saveMutation, headerJs, bodyJs])
 
   // Manual save trigger — compresses inline images before sending so the
@@ -499,6 +519,7 @@ export function WebsiteEditor() {
     setIsCompressingImages(true)
     let compressedComponents: any = editorInstance.getComponents()
     let html: string = editorInstance.getHtml()
+    let css: string = editorInstance.getCss() || ''
     let bytesBefore = 0
     let bytesAfter = 0
     let compressedCount = 0
@@ -515,6 +536,14 @@ export function WebsiteEditor() {
       compressedCount += htmlResult.compressedCount
       bytesBefore += htmlResult.bytesBefore
       bytesAfter += htmlResult.bytesAfter
+
+      // Images referenced from CSS (background-image etc.) are part of the
+      // rendered page too — compress them or the save stays multi-megabyte.
+      const cssResult = await compressInlineImagesInCss(css)
+      css = cssResult.css
+      compressedCount += cssResult.compressedCount
+      bytesBefore += cssResult.bytesBefore
+      bytesAfter += cssResult.bytesAfter
     } catch (err) {
       console.warn('[WebsiteEditor] image compression failed; saving raw', err)
     } finally {
@@ -528,9 +557,9 @@ export function WebsiteEditor() {
       })
     }
 
-    handleSave({
+    await handleSave({
       html,
-      css: editorInstance.getCss() || '',
+      css,
       components: compressedComponents,
       styles: editorInstance.getStyle(),
     })
@@ -552,11 +581,12 @@ export function WebsiteEditor() {
   // Preview in new tab — opens the server-rendered /w/ URL so it persists
   // on refresh and is shareable.  Falls back to client-side render for
   // unpublished content that has never been pushed to the server.
-  const handlePreview = () => {
+  const handlePreview = async () => {
     if (!editorInstance) return
 
-    // First, save current content so the backend has the latest version
-    triggerSave()
+    // Save current content BEFORE opening the preview so the server-rendered
+    // page cannot race the in-flight save and show the previous version.
+    await triggerSave()
 
     // Normalize: strip trailing slash to avoid //w/ double-slash
     const basePath = (import.meta.env.VITE_BASE_PATH || '').replace(/\/+$/, '')
@@ -564,9 +594,12 @@ export function WebsiteEditor() {
     if (website?.status === 'published' && website?.slug) {
       // Published site — use the persistent server-rendered URL
       const pageSlug = pageData?.slug
+      // Cache-buster: the public renderer sends Cache-Control max-age=300, so
+      // an un-suffixed preview URL can show the pre-save version for 5 minutes.
+      const cacheBuster = `?v=${Date.now()}`
       const url = pageSlug && !pageData?.is_home
-        ? `${window.location.origin}${basePath}/w/${website.slug}/${pageSlug}`
-        : `${window.location.origin}${basePath}/w/${website.slug}`
+        ? `${window.location.origin}${basePath}/w/${website.slug}/${pageSlug}${cacheBuster}`
+        : `${window.location.origin}${basePath}/w/${website.slug}${cacheBuster}`
       window.open(url, '_blank')
     } else {
       // Draft / never-published — render client-side and open directly

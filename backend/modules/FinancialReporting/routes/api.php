@@ -17,11 +17,16 @@ use Modules\FinancialReporting\Controllers\ReportTemplateController;
 
 Route::middleware([
     'auth:sanctum',
+    // Issue #220 audit: this standalone group also lacked impersonation support.
+    \App\Http\Middleware\ImpersonationMiddleware::class,
     \App\Http\Middleware\SetTenantFromUserPreference::class,
     \App\Http\Middleware\EnsureTenantSearchPath::class,
     \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,
     \App\Http\Middleware\ResolveEntityContext::class,
     \App\Http\Middleware\EnsureEntityAccess::class,
+    // Issue #103: every reporting route requires at least reports.view;
+    // configuration/mutations additionally require reports.manage below.
+    \App\Http\Middleware\RequirePermission::using('reports.view'),
 ])->group(function () {
 
     // Financial Reports
@@ -66,46 +71,58 @@ Route::middleware([
 
     // Report Export
     Route::prefix('reports/export')->name('reports.export.')->group(function () {
-        Route::post('/pdf', [ReportExportController::class, 'exportPdf'])->name('pdf');
-        Route::post('/excel', [ReportExportController::class, 'exportExcel'])->name('excel');
-        Route::post('/csv', [ReportExportController::class, 'exportCsv'])->name('csv');
-        Route::post('/csv/stream', [ReportExportController::class, 'streamCsv'])->name('csv.stream');
         Route::get('/download/{file}', [ReportExportController::class, 'download'])->name('download');
-        Route::post('/cleanup', [ReportExportController::class, 'cleanup'])->name('cleanup');
+
+        Route::middleware(\App\Http\Middleware\RequirePermission::using('reports.manage'))->group(function () {
+            Route::post('/pdf', [ReportExportController::class, 'exportPdf'])->name('pdf');
+            Route::post('/excel', [ReportExportController::class, 'exportExcel'])->name('excel');
+            Route::post('/csv', [ReportExportController::class, 'exportCsv'])->name('csv');
+            Route::post('/csv/stream', [ReportExportController::class, 'streamCsv'])->name('csv.stream');
+            Route::post('/cleanup', [ReportExportController::class, 'cleanup'])->name('cleanup');
+        });
     });
 
     // Report Schedules
     Route::prefix('reports/schedules')->name('reports.schedules.')->group(function () {
         Route::get('/', [ReportScheduleController::class, 'index'])->name('index');
-        Route::post('/', [ReportScheduleController::class, 'store'])->name('store');
         Route::get('/{id}', [ReportScheduleController::class, 'show'])->name('show');
-        Route::put('/{id}', [ReportScheduleController::class, 'update'])->name('update');
-        Route::delete('/{id}', [ReportScheduleController::class, 'destroy'])->name('destroy');
-        Route::post('/{id}/run', [ReportScheduleController::class, 'runNow'])->name('run');
-        Route::post('/{id}/toggle', [ReportScheduleController::class, 'toggleActive'])->name('toggle');
+
+        Route::middleware(\App\Http\Middleware\RequirePermission::using('reports.manage'))->group(function () {
+            Route::post('/', [ReportScheduleController::class, 'store'])->name('store');
+            Route::put('/{id}', [ReportScheduleController::class, 'update'])->name('update');
+            Route::delete('/{id}', [ReportScheduleController::class, 'destroy'])->name('destroy');
+            Route::post('/{id}/run', [ReportScheduleController::class, 'runNow'])->name('run');
+            Route::post('/{id}/toggle', [ReportScheduleController::class, 'toggleActive'])->name('toggle');
+        });
     });
 
     // Cache Management
     Route::prefix('reports/cache')->name('reports.cache.')->group(function () {
         Route::get('/stats', [CacheController::class, 'stats'])->name('stats');
-        Route::post('/clear-all', [CacheController::class, 'clearAll'])->name('clear-all');
-        Route::post('/clear-expired', [CacheController::class, 'clearExpired'])->name('clear-expired');
-        Route::post('/clear-by-type', [CacheController::class, 'clearByType'])->name('clear-by-type');
-        Route::post('/warm', [CacheController::class, 'warmCache'])->name('warm');
         Route::get('/{cacheKey}', [CacheController::class, 'show'])->name('show');
-        Route::delete('/{cacheKey}', [CacheController::class, 'destroy'])->name('destroy');
+
+        Route::middleware(\App\Http\Middleware\RequirePermission::using('reports.manage'))->group(function () {
+            Route::post('/clear-all', [CacheController::class, 'clearAll'])->name('clear-all');
+            Route::post('/clear-expired', [CacheController::class, 'clearExpired'])->name('clear-expired');
+            Route::post('/clear-by-type', [CacheController::class, 'clearByType'])->name('clear-by-type');
+            Route::post('/warm', [CacheController::class, 'warmCache'])->name('warm');
+            Route::delete('/{cacheKey}', [CacheController::class, 'destroy'])->name('destroy');
+        });
     });
 
     // Report Templates
     Route::prefix('reports/templates')->name('reports.templates.')->group(function () {
         Route::get('/', [ReportTemplateController::class, 'index'])->name('index');
-        Route::post('/', [ReportTemplateController::class, 'store'])->name('store');
         Route::get('/{id}', [ReportTemplateController::class, 'show'])->name('show');
-        Route::put('/{id}', [ReportTemplateController::class, 'update'])->name('update');
-        Route::delete('/{id}', [ReportTemplateController::class, 'destroy'])->name('destroy');
-        Route::post('/{id}/duplicate', [ReportTemplateController::class, 'duplicate'])->name('duplicate');
-        Route::post('/{id}/share', [ReportTemplateController::class, 'share'])->name('share');
-        Route::post('/{id}/unshare', [ReportTemplateController::class, 'unshare'])->name('unshare');
-        Route::post('/{id}/apply', [ReportTemplateController::class, 'apply'])->name('apply');
+
+        Route::middleware(\App\Http\Middleware\RequirePermission::using('reports.manage'))->group(function () {
+            Route::post('/', [ReportTemplateController::class, 'store'])->name('store');
+            Route::put('/{id}', [ReportTemplateController::class, 'update'])->name('update');
+            Route::delete('/{id}', [ReportTemplateController::class, 'destroy'])->name('destroy');
+            Route::post('/{id}/duplicate', [ReportTemplateController::class, 'duplicate'])->name('duplicate');
+            Route::post('/{id}/share', [ReportTemplateController::class, 'share'])->name('share');
+            Route::post('/{id}/unshare', [ReportTemplateController::class, 'unshare'])->name('unshare');
+            Route::post('/{id}/apply', [ReportTemplateController::class, 'apply'])->name('apply');
+        });
     });
 });

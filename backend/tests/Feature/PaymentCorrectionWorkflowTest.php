@@ -262,7 +262,7 @@ class PaymentCorrectionWorkflowTest extends TenantTestCase
             'payment_date' => now()->toDateString(),
             'amount' => 100,
             'method' => 'cash',
-            'payment_status' => 'draft',
+            'payment_status' => 'recorded',
             'received_by' => $this->accountant->id,
         ]);
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Modules\OCRBookkeeping\Helpers\TenantUserHelper;
 
 class EntityManagementController extends Controller
@@ -176,6 +177,34 @@ class EntityManagementController extends Controller
         $hasBooks = DB::table('entity_books')->where('legal_entity_id', $id)->exists();
         if ($hasBranches || $hasBooks) {
             return response()->json(['message' => 'Cannot delete entity that has branches or books. Remove them first.'], 422);
+        }
+
+        // Issue #165: never orphan financial history. The general ledger is the
+        // highest-value case — `journal_entries.legal_entity_id` historically
+        // had no FK, so a delete silently left dangling GL rows. The FK added in
+        // 2026_09_21_100008 is the DB backstop; this is the explicit response.
+        $journalEntries = DB::table('journal_entries')->where('legal_entity_id', $id)->count();
+        if ($journalEntries > 0) {
+            return response()->json([
+                'message' => "Cannot delete this legal entity: {$journalEntries} journal entr(ies) reference it. Post a reversal or reassign the entity first.",
+            ], 422);
+        }
+
+        // Other entity-scoped financial tables (columns added over time).
+        foreach ([
+            'fixed_assets' => 'fixed asset(s)',
+            'sales_orders' => 'sales order(s)',
+        ] as $table => $label) {
+            if (! Schema::hasColumn($table, 'legal_entity_id')) {
+                continue;
+            }
+
+            $count = DB::table($table)->where('legal_entity_id', $id)->count();
+            if ($count > 0) {
+                return response()->json([
+                    'message' => "Cannot delete this legal entity: {$count} {$label} reference it. Reassign them first.",
+                ], 422);
+            }
         }
 
         DB::table('legal_entities')->where('id', $id)->delete();

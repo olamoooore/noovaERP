@@ -21,30 +21,8 @@ class TrialBalanceService extends BaseReportService
         $asOfDate = $filter->asOfDate ?? $filter->endDate ?? now();
         $accountType = $filter->accountType ?? null;
 
-        // Debug logging
-        \Log::info('TrialBalanceService::generate called', [
-            'asOfDate' => $asOfDate->format('Y-m-d'),
-            'accountType' => $accountType,
-            'filter' => [
-                'asOfDate' => $filter->asOfDate?->format('Y-m-d'),
-                'endDate' => $filter->endDate?->format('Y-m-d'),
-                'startDate' => $filter->startDate?->format('Y-m-d'),
-            ],
-        ]);
-
-        // Check search_path
-        $searchPath = \DB::select('SHOW search_path');
-        \Log::info('Current search_path in TrialBalanceService', [
-            'search_path' => $searchPath[0]->search_path ?? 'unknown',
-        ]);
-
         // Get all account balances
         $accounts = $this->getTrialBalanceAccounts($asOfDate, $accountType, $filter);
-
-        \Log::info('TrialBalanceService accounts retrieved', [
-            'count' => $accounts->count(),
-            'accounts' => $accounts->toArray(),
-        ]);
 
         // Calculate totals
         $totalDebits = $accounts->sum('debit_balance');

@@ -9,10 +9,21 @@ use Tests\TenantTestCase;
  *
  * Required closure evidence:
  * - POS/Web checkout flows use atomic model: GL + stock are wrapped together.
- * - InventoryPostingEngine uses deferred model: stock mutation first, accounting outbox later.
+ * - The dead InventoryPostingEngine "deferred" boundary was removed (issue
+ *   #108): its accounting dispatch pointed at a job that never existed, so it
+ *   documented a model the system does not implement.
  */
 class AFM001AccountingFailureModelTest extends TenantTestCase
 {
+    /**
+     * Read a source file with all whitespace runs collapsed to single spaces so
+     * assertions survive Pint re-formatting (e.g. `!$x` -> `! $x`).
+     */
+    private function normalizedSource(string $relativePath): string
+    {
+        return (string) preg_replace('/\s+/', ' ', (string) file_get_contents(base_path($relativePath)));
+    }
+
     public function test_pos_completion_flow_is_atomic_gl_then_stock_in_single_transaction(): void
     {
         $source = file_get_contents(
@@ -37,11 +48,9 @@ class AFM001AccountingFailureModelTest extends TenantTestCase
 
     public function test_pos_posting_service_fails_closed_when_gl_posting_fails(): void
     {
-        $source = file_get_contents(
-            base_path('modules/POS/src/Services/PosPostingService.php')
-        );
+        $source = $this->normalizedSource('modules/POS/src/Services/PosPostingService.php');
 
-        $this->assertStringContainsString('if (!$result->success)', $source,
+        $this->assertStringContainsString('if (! $result->success)', $source,
             'POS posting service must check posting result success flag.');
         $this->assertStringContainsString('throw new \\RuntimeException("POS posting failed:', $source,
             'POS posting service must throw when GL posting fails (no silent continuation).');
@@ -71,11 +80,9 @@ class AFM001AccountingFailureModelTest extends TenantTestCase
 
     public function test_web_order_posting_throws_when_gl_fails_before_stock_mutation(): void
     {
-        $source = file_get_contents(
-            base_path('modules/Ecommerce/src/Services/WebOrderPostingService.php')
-        );
+        $source = $this->normalizedSource('modules/Ecommerce/src/Services/WebOrderPostingService.php');
 
-        $this->assertStringContainsString('if (!$result->success)', $source,
+        $this->assertStringContainsString('if (! $result->success)', $source,
             'Web posting service must inspect posting result success flag.');
         $this->assertStringContainsString('throw new \\RuntimeException(', $source,
             'Web posting service must throw on GL posting failure.');
@@ -105,15 +112,11 @@ class AFM001AccountingFailureModelTest extends TenantTestCase
             'GL reversal must happen before stock restoration within the same transaction.');
     }
 
-    public function test_inventory_posting_engine_uses_deferred_accounting_model(): void
+    public function test_dead_inventory_posting_engine_boundary_is_removed(): void
     {
-        $source = file_get_contents(base_path('app/Accounting/InventoryPostingEngine.php'));
-
-        $this->assertStringContainsString('outbox', $source,
-            'InventoryPostingEngine must document deferred/outbox accounting dispatch model.');
-        $this->assertStringContainsString('does NOT call PostingEngine::post()', $source,
-            'InventoryPostingEngine must explicitly state it does not post GL inline.');
-        $this->assertStringNotContainsString('postingEngine->post(', $source,
-            'InventoryPostingEngine must not invoke PostingEngine::post() directly.');
+        $this->assertFalse(
+            class_exists(\App\Accounting\InventoryPostingEngine::class),
+            'The dead InventoryPostingEngine boundary must stay removed (issue #108).'
+        );
     }
 }

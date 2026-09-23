@@ -62,7 +62,7 @@ class InventoryService
     public function adjustStock(
         int $productId,
         int $warehouseId,
-        int $quantity,
+        float $quantity,
         string $type,
         ?string $reference = null,
         ?string $referenceType = null,
@@ -122,7 +122,7 @@ class InventoryService
                 // so the first sale doesn't immediately fail with "Insufficient stock".
                 $hasAnyLevel = StockLevel::where('product_id', $productId)->exists();
                 $initialQty = (! $hasAnyLevel && $product->stock_quantity > 0)
-                    ? (int) $product->stock_quantity
+                    ? (float) $product->stock_quantity
                     : 0;
 
                 if ($initialQty > 0) {
@@ -200,7 +200,42 @@ class InventoryService
             }
 
             // Create stock movement record
-            return StockMovement::create($movementPayload);
+            $movement = StockMovement::create($movementPayload);
+
+            // Issue #131: sales consume batch layers (FEFO) and returns restore
+            // them from the consumption ledger. Activates only for products that
+            // actually have batch rows; never blocks the movement on failure.
+            try {
+                $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
+                $movementQty = (float) $movement->quantity;
+
+                if ($type === 'sale') {
+                    $batchConsumption->consumeFefo(
+                        product: $product,
+                        warehouseId: $warehouseId,
+                        quantity: $movementQty,
+                        stockMovementId: $movement->id,
+                        referenceType: $referenceType,
+                        referenceId: $referenceId,
+                        idempotencyKey: $idempotencyKey ?? "movement-{$movement->id}",
+                    );
+                } elseif ($type === 'return') {
+                    $batchConsumption->restoreFromLedger(
+                        product: $product,
+                        warehouseId: $warehouseId,
+                        quantity: $movementQty,
+                        idempotencyKey: $idempotencyKey ?? "movement-{$movement->id}",
+                    );
+                }
+            } catch (\Throwable $e) {
+                Log::error('InventoryService: batch layer bookkeeping failed (stock movement preserved)', [
+                    'product_id' => $productId,
+                    'movement_id' => $movement->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            return $movement;
         });
     }
 
@@ -211,7 +246,7 @@ class InventoryService
         int $productId,
         int $fromWarehouseId,
         int $toWarehouseId,
-        int $quantity,
+        float $quantity,
         ?string $reference = null,
         ?string $notes = null
     ): array {

@@ -60,7 +60,7 @@ class RequirePermission
             return $next($request);
         }
 
-        $tenantId = $this->resolveTenantId($request);
+        $tenantId = self::resolveTenantId($request);
 
         if (! $tenantId) {
             return response()->json([
@@ -83,7 +83,11 @@ class RequirePermission
         ], 403);
     }
 
-    private function resolveTenantId(Request $request): ?string
+    /**
+     * Issue #227: shared (public) so controller defence-in-depth re-checks use
+     * the EXACT same resolution as this middleware instead of a drifting copy.
+     */
+    public static function resolveTenantId(Request $request): ?string
     {
         if (function_exists('tenant') && tenant()) {
             $id = tenant('id');

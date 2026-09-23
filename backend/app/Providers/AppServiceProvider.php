@@ -3,13 +3,15 @@
 namespace App\Providers;
 
 use App\Accounting\Contracts\PostingEngineInterface;
+use App\Accounting\Events\ApprovalDecisionEvent;
 use App\Accounting\PostingEngine;
 use App\Accounting\Services\ActionEligibilityEvaluator;
-use App\Accounting\Services\StateTransitionService;
-use App\Accounting\Services\ReversalCorrectionEngine;
 use App\Accounting\Services\PostingPolicyMapper;
+use App\Accounting\Services\ReversalCorrectionEngine;
 use App\Accounting\Services\RevisionPolicyResolver;
+use App\Accounting\Services\StateTransitionService;
 use App\Accounting\Services\StructuredObservabilityService;
+use App\Listeners\InvoiceApprovalDecisionListener;
 use App\Listeners\PreventDangerousMigrations;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -24,6 +26,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(PostingEngineInterface::class, PostingEngine::class);
+        $this->app->bind(\App\Contracts\EsignProviderInterface::class, \App\Services\NullEsignProvider::class);
         $this->app->register(CompliancePluginServiceProvider::class);
 
         // ADR-005 Accounting Domain Services
@@ -43,17 +46,36 @@ class AppServiceProvider extends ServiceProvider
         // Use custom PersonalAccessToken model that always uses public schema
         Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
 
+        // Issue #212: enforce tenant suspension centrally at the tenancy
+        // initialization event, so public storefront middleware, IoT, webhooks,
+        // queued jobs and any future caller are all covered — not just the
+        // authenticated SetTenantFromUserPreference path.
+        Event::listen(
+            \Stancl\Tenancy\Events\TenancyInitialized::class,
+            function (\Stancl\Tenancy\Events\TenancyInitialized $event) {
+                $tenant = $event->tenancy->tenant ?? null;
+
+                if ($tenant) {
+                    \App\Tenancy\TenantSuspensionGuard::assertNotSuspended($tenant);
+                }
+            }
+        );
+
         // Log dangerous migrations (migrate:fresh, db:wipe) for audit trail
         Event::listen(\Illuminate\Console\Events\CommandFinished::class, PreventDangerousMigrations::class);
+
+        // Wire invoice approval callbacks to the generic approval decision event
+        Event::listen(ApprovalDecisionEvent::class, InvoiceApprovalDecisionListener::class);
 
         // Factory resolver for module models
         \Illuminate\Database\Eloquent\Factories\Factory::guessFactoryNamesUsing(function (string $modelName) {
             // Modules\POS\Models\PosTerminal -> Database\Factories\Modules\POS\Models\PosTerminalFactory
             if (str_starts_with($modelName, 'Modules\\')) {
-                return 'Database\\Factories\\Modules\\' . substr($modelName, strlen('Modules\\')) . 'Factory';
+                return 'Database\\Factories\\Modules\\'.substr($modelName, strlen('Modules\\')).'Factory';
             }
+
             // App\Models\User -> Database\Factories\UserFactory (default Laravel convention)
-            return 'Database\\Factories\\' . class_basename($modelName) . 'Factory';
+            return 'Database\\Factories\\'.class_basename($modelName).'Factory';
         });
 
         // --- Superadmin RBAC gates ---
@@ -69,34 +91,12 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('manage-collections', fn (\App\Models\User $user) => in_array($user->role, ['platform_super_admin', 'billing_ops'], true)
         );
 
-        // Load Mail Configuration from Database
+        // Load Mail Configuration from Database (central settings)
         try {
             if (\Illuminate\Support\Facades\Schema::hasTable('settings')) {
-                $mail = \App\Models\Setting::getValue('mail_config');
-
-                if ($mail && is_array($mail)) {
-                    $config = [
-                        'transport' => $mail['driver'] ?? 'smtp',
-                        'host' => $mail['host'] ?? config('mail.mailers.smtp.host'),
-                        'port' => $mail['port'] ?? config('mail.mailers.smtp.port'),
-                        'encryption' => $mail['encryption'] ?? config('mail.mailers.smtp.encryption'),
-                        'username' => $mail['username'] ?? config('mail.mailers.smtp.username'),
-                        'password' => $mail['password'] ?? config('mail.mailers.smtp.password'),
-                        'timeout' => null,
-                        'local_domain' => env('MAIL_EHLO_DOMAIN'),
-                    ];
-
-                    // Update SMTP config
-                    config(['mail.mailers.smtp' => $config]);
-
-                    // Update From Address
-                    if (! empty($mail['from_address'])) {
-                        config(['mail.from.address' => $mail['from_address']]);
-                    }
-                    if (! empty($mail['from_name'])) {
-                        config(['mail.from.name' => $mail['from_name']]);
-                    }
-                }
+                app(\App\Services\MailConfigLoader::class)->apply(
+                    \App\Models\Setting::getValue('mail_config')
+                );
             }
         } catch (\Exception $e) {
             // Fails silently if DB/Schema checks fail during early boot

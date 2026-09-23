@@ -19,6 +19,46 @@ class FulfillmentController extends Controller
         protected TrackingService $trackingService,
     ) {}
 
+    /**
+     * Issue #147: create a Fulfillment shipment for a Sales delivery order and
+     * link the two records (carrier/tracking written back to the order).
+     */
+    public function createShipmentForDeliveryOrder(Request $request, int $deliveryOrderId): JsonResponse
+    {
+        $deliveryOrder = \Modules\Sales\Models\DeliveryOrder::find($deliveryOrderId);
+
+        if (! $deliveryOrder) {
+            return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'provider_id' => 'nullable|string|exists:fulfillment_providers,id',
+        ]);
+
+        $provider = ! empty($validated['provider_id'])
+            ? \Modules\Fulfillment\Models\FulfillmentProvider::findOrFail($validated['provider_id'])
+            : null;
+
+        try {
+            $shipment = app(\Modules\Fulfillment\Services\DeliveryOrderShipmentService::class)
+                ->createForDeliveryOrder($deliveryOrder, $provider);
+
+            // Idempotent: a retried request reuses the existing shipment.
+            $created = $shipment->wasRecentlyCreated;
+
+            return response()->json([
+                'message' => $created ? 'Shipment created for delivery order' : 'Shipment already exists for delivery order',
+                'data' => $shipment->load('lines', 'provider'),
+                'delivery_order' => $deliveryOrder->fresh(),
+            ], $created ? 201 : 200);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to create shipment',
+                'error' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
     public function calculateRates(Request $request): JsonResponse
     {
         $validated = $request->validate([

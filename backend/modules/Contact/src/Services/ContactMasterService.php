@@ -12,7 +12,10 @@ use Modules\Contact\src\Events\ContactImportCompleted;
 use Modules\Contact\src\Events\ContactMerged;
 use Modules\Contact\src\Events\ContactRoleChanged;
 use Modules\Contact\src\Events\ContactUpdated;
+use Modules\Contact\src\Models\AccountingCustomerProfile;
+use Modules\Contact\src\Models\AccountingVendorProfile;
 use Modules\Contact\src\Models\ContactAddress;
+use Modules\Contact\src\Models\ContactBankAccount;
 use Modules\Contact\src\Models\ContactGroup;
 use Modules\Contact\src\Models\ContactGroupMember;
 use Modules\Contact\src\Models\ContactIdentifier;
@@ -22,9 +25,16 @@ use Modules\Contact\src\Models\ContactMergeHistory;
 use Modules\Contact\src\Models\ContactMethod;
 use Modules\Contact\src\Models\ContactRelatedRecord;
 use Modules\Contact\src\Models\ContactRelationship;
+use Modules\Contact\src\Models\ContactRegistration;
 use Modules\Contact\src\Models\ContactRole;
+use Modules\Contact\src\Models\ContactTaxProfile;
 use Modules\Contact\src\Models\ContactSearchIndex;
 use Modules\Contact\src\Models\CoreContact;
+use Modules\Contact\src\Models\CrmContactProfile;
+use Modules\Contact\src\Models\HrStaffProfile;
+use Modules\Contact\src\Models\PosLoyaltyProfile;
+use Modules\Contact\src\Models\ProjectContactProfile;
+use Modules\Contact\src\Models\PropertyContactProfile;
 use Modules\Contact\src\Support\ContactTaxonomyRegistry;
 
 /**
@@ -62,6 +72,7 @@ class ContactMasterService
                 'id' => Str::uuid(),
                 'tenant_id' => $tenantId,
                 'entity_id' => $data['entity_id'] ?? null,
+                'legal_entity_id' => $data['legal_entity_id'] ?? null,
                 'contact_type' => self::normalizeEntityType($data['contact_type'] ?? $data['entity_type'] ?? 'individual'),
                 'first_name' => $data['first_name'] ?? null,
                 'last_name' => $data['last_name'] ?? null,
@@ -103,6 +114,7 @@ class ContactMasterService
 
         $contact->update(array_filter([
             'entity_id' => $data['entity_id'] ?? null,
+            'legal_entity_id' => $data['legal_entity_id'] ?? null,
             'contact_type' => isset($data['contact_type']) || isset($data['entity_type'])
                 ? self::normalizeEntityType($data['contact_type'] ?? $data['entity_type'])
                 : null,
@@ -164,9 +176,20 @@ class ContactMasterService
         return CoreContact::where('tenant_id', $tenantId)->where('id', $id)->first();
     }
 
-    public function list(string $tenantId, array $filters = [])
+    public function list(string $tenantId, array $filters = [], array $accessibleEntityIds = [])
     {
         $query = CoreContact::where('tenant_id', $tenantId)->with('addresses');
+
+        // Issue #232: entity scoping. Applied only when the user has entity
+        // grants (platform convention shared with JournalEntry/FixedAsset
+        // #97/#163: no grants keeps the legacy fail-open visibility).
+        if (! empty($accessibleEntityIds)) {
+            $query->accessibleBy($accessibleEntityIds);
+        }
+
+        if (! empty($filters['legal_entity_id'])) {
+            $query->where('legal_entity_id', $filters['legal_entity_id']);
+        }
 
         if (! empty($filters['entity_id'])) {
             $query->where('entity_id', $filters['entity_id']);
@@ -213,17 +236,40 @@ class ContactMasterService
             );
         }
 
-        $contactRole = ContactRole::create([
-            'id' => Str::uuid(),
-            'tenant_id' => $tenantId,
-            'contact_id' => $contactId,
-            'relationship_id' => $meta['relationship_id'] ?? null,
-            'role' => $role,
-            'role_label' => $meta['role_label'] ?? null,
-            'entity_id' => $meta['entity_id'] ?? null,
-            'is_primary' => $meta['is_primary'] ?? false,
-            'metadata' => $meta['metadata'] ?? null,
-        ]);
+        try {
+            // Nested transaction => SAVEPOINT, so a unique violation can be
+            // caught without aborting the caller's transaction (Postgres).
+            $contactRole = DB::transaction(fn () => ContactRole::create([
+                'id' => Str::uuid(),
+                'tenant_id' => $tenantId,
+                'contact_id' => $contactId,
+                'relationship_id' => $meta['relationship_id'] ?? null,
+                'role' => $role,
+                'role_label' => $meta['role_label'] ?? null,
+                'entity_id' => $meta['entity_id'] ?? null,
+                'is_primary' => $meta['is_primary'] ?? false,
+                'metadata' => $meta['metadata'] ?? null,
+            ]));
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Issue #120: an exact duplicate is idempotent — return the existing
+            // row instead of leaking a 500 from the unique index.
+            if (str_contains($e->getMessage(), 'contact_role_unique')) {
+                $existing = ContactRole::where('tenant_id', $tenantId)
+                    ->where('contact_id', $contactId)
+                    ->where('role', $role)
+                    ->where('entity_id', $meta['entity_id'] ?? null)
+                    ->where('relationship_id', $meta['relationship_id'] ?? null)
+                    ->first();
+
+                if ($existing) {
+                    return $existing;
+                }
+
+                throw new \DomainException('CONTACT_ROLE_ALREADY_EXISTS');
+            }
+
+            throw $e;
+        }
 
         ContactRoleChanged::dispatch($tenantId, $contactId, $role, 'added');
 
@@ -285,7 +331,20 @@ class ContactMasterService
             return null;
         }
 
-        return ContactAddress::create([
+        // Issue #121: only one primary / default-billing / default-shipping
+        // address per contact — unset the flag on any existing row first.
+        return DB::transaction(function () use ($contactId, $data, $tenantId) {
+            if (! empty($data['is_primary'])) {
+                ContactAddress::where('contact_id', $contactId)->update(['is_primary' => false]);
+            }
+            if (! empty($data['is_default_billing'])) {
+                ContactAddress::where('contact_id', $contactId)->update(['is_default_billing' => false]);
+            }
+            if (! empty($data['is_default_shipping'])) {
+                ContactAddress::where('contact_id', $contactId)->update(['is_default_shipping' => false]);
+            }
+
+            return ContactAddress::create([
             'id' => Str::uuid(),
             'tenant_id' => $tenantId,
             'contact_id' => $contactId,
@@ -304,7 +363,8 @@ class ContactMasterService
             'is_default_billing' => $data['is_default_billing'] ?? false,
             'is_default_shipping' => $data['is_default_shipping'] ?? false,
             'metadata' => $data['metadata'] ?? null,
-        ]);
+            ]);
+        });
     }
 
     // ─── Methods ──────────────────────────────────────────────────
@@ -316,18 +376,25 @@ class ContactMasterService
             return null;
         }
 
-        return ContactMethod::create([
-            'id' => Str::uuid(),
-            'tenant_id' => $tenantId,
-            'contact_id' => $contactId,
-            'method_type' => $data['method_type'],
-            'method_value' => $data['method_value'],
-            'method_label' => $data['method_label'] ?? null,
-            'is_primary' => $data['is_primary'] ?? false,
-            'is_verified' => $data['is_verified'] ?? false,
-            'is_for_notifications' => $data['is_for_notifications'] ?? false,
-            'metadata' => $data['metadata'] ?? null,
-        ]);
+        return DB::transaction(function () use ($contactId, $data, $tenantId) {
+            // Issue #121: only one primary method per contact.
+            if (! empty($data['is_primary'])) {
+                ContactMethod::where('contact_id', $contactId)->update(['is_primary' => false]);
+            }
+
+            return ContactMethod::create([
+                'id' => Str::uuid(),
+                'tenant_id' => $tenantId,
+                'contact_id' => $contactId,
+                'method_type' => $data['method_type'],
+                'method_value' => $data['method_value'],
+                'method_label' => $data['method_label'] ?? null,
+                'is_primary' => $data['is_primary'] ?? false,
+                'is_verified' => $data['is_verified'] ?? false,
+                'is_for_notifications' => $data['is_for_notifications'] ?? false,
+                'metadata' => $data['metadata'] ?? null,
+            ]);
+        });
     }
 
     // ─── Relationships ────────────────────────────────────────────
@@ -674,6 +741,45 @@ class ContactMasterService
             ContactRelatedRecord::where('tenant_id', $tenantId)->where('contact_id', $merged->id)
                 ->update(['contact_id' => $primary->id]);
 
+            // Issue #221: move the remaining owned HasMany relations too —
+            // group memberships, registrations, tax profiles and bank accounts
+            // were previously left pointing at the deactivated contact.
+            $movedGroups = ['roles', 'identifiers', 'addresses', 'methods', 'relationships', 'related_records'];
+
+            foreach ([
+                'groups' => ContactGroupMember::class,
+                'registrations' => ContactRegistration::class,
+                'tax_profiles' => ContactTaxProfile::class,
+                'bank_accounts' => ContactBankAccount::class,
+            ] as $label => $modelClass) {
+                $modelClass::where('tenant_id', $tenantId)->where('contact_id', $merged->id)
+                    ->update(['contact_id' => $primary->id]);
+                $movedGroups[] = $label;
+            }
+
+            // Module profiles are HasOne: only move a profile when the primary
+            // does not already have one of that type, otherwise the two rows
+            // would collide / the primary's own profile would be ambiguous.
+            foreach ([
+                'accounting_customer_profile' => AccountingCustomerProfile::class,
+                'accounting_vendor_profile' => AccountingVendorProfile::class,
+                'crm_profile' => CrmContactProfile::class,
+                'hr_profile' => HrStaffProfile::class,
+                'pos_loyalty_profile' => PosLoyaltyProfile::class,
+                'property_profile' => PropertyContactProfile::class,
+                'project_profile' => ProjectContactProfile::class,
+            ] as $label => $modelClass) {
+                $primaryHasProfile = $modelClass::where('tenant_id', $tenantId)
+                    ->where('contact_id', $primary->id)
+                    ->exists();
+
+                if (! $primaryHasProfile) {
+                    $modelClass::where('tenant_id', $tenantId)->where('contact_id', $merged->id)
+                        ->update(['contact_id' => $primary->id]);
+                    $movedGroups[] = $label;
+                }
+            }
+
             // Mark merged contact
             $merged->update(['is_duplicate' => true, 'merged_into_id' => $primaryId, 'is_active' => false]);
 
@@ -683,7 +789,7 @@ class ContactMasterService
                 'tenant_id' => $tenantId,
                 'primary_contact_id' => $primaryId,
                 'merged_contact_id' => $mergedId,
-                'merge_details' => ['roles', 'identifiers', 'addresses', 'methods', 'relationships', 'related_records'],
+                'merge_details' => $movedGroups,
                 'merged_by' => $userId,
                 'merged_at' => now(),
             ]);
@@ -745,8 +851,15 @@ class ContactMasterService
     public function rebuildSearchIndex(CoreContact $contact): void
     {
         $roles = $contact->roles->pluck('role')->implode(', ');
-        $identifiers = $contact->identifiers->pluck('identifier_value')->implode(', ');
-        $address = $contact->addresses->first();
+        // Hostile re-review (#118): identifier values are encrypted at rest
+        // (tax IDs, registration numbers) — copying them into the search index
+        // would store the plaintext in a second table. Index the identifier
+        // TYPES only; values stay in the encrypted source column.
+        $identifiers = $contact->identifiers->pluck('identifier_type')->implode(', ');
+        // Issue #121: the search index must use the PRIMARY address, not the
+        // first row in insertion order.
+        $address = $contact->addresses->firstWhere('is_primary', true)
+            ?? $contact->addresses->first();
         $addressText = $address ? $address->full_address : null;
 
         $data = [
@@ -763,7 +876,7 @@ class ContactMasterService
             'identifiers_text' => $identifiers,
             'address_text' => $addressText,
             'primary_role' => $contact->roles->where('is_primary', true)->first()?->role,
-            'primary_identifier' => $contact->identifiers->where('is_primary', true)->first()?->identifier_value,
+            'primary_identifier' => $contact->identifiers->where('is_primary', true)->first()?->identifier_type,
             'is_active' => $contact->is_active,
         ];
 

@@ -36,6 +36,55 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Page headings: every <h1> renders 2px smaller than its utility-set size so
+   page titles stay compact inside the ERP shell. Selectors include the
+   element + class pair (specificity 0,1,1) so they outrank the single-class
+   font-size utilities. Responsive variants below carry the same specificity
+   and appear later in source order, so they still win inside their
+   breakpoint exactly like the utilities they mirror.
+   --------------------------------------------------------------------------- */
+h1.text-lg { font-size: 0.9375rem; line-height: 1.375rem; } /* 17 → 15px */
+h1.text-xl { font-size: 1.0625rem; line-height: 1.625rem; } /* 19 → 17px */
+h1.text-2xl { font-size: 1.3125rem; line-height: 1.875rem; } /* 23 → 21px */
+h1.text-3xl { font-size: 1.6875rem; line-height: 2.125rem; } /* 29 → 27px */
+h1.text-4xl { font-size: 2.0625rem; line-height: 2.375rem; } /* 35 → 33px */
+h1.text-5xl { font-size: 2.8125rem; line-height: 1; } /* 47 → 45px */
+h1.text-6xl { font-size: 3.5625rem; line-height: 1; } /* 59 → 57px */
+h1.text-7xl { font-size: 4.3125rem; line-height: 1; } /* 71 → 69px */
+h1.text-8xl { font-size: 5.8125rem; line-height: 1; } /* 95 → 93px */
+h1.text-9xl { font-size: 7.8125rem; line-height: 1; } /* 127 → 125px */
+
+@media (min-width: 640px) {
+  h1.sm\:text-2xl { font-size: 1.3125rem; line-height: 1.875rem; }
+  h1.sm\:text-3xl { font-size: 1.6875rem; line-height: 2.125rem; }
+  h1.sm\:text-4xl { font-size: 2.0625rem; line-height: 2.375rem; }
+  h1.sm\:text-5xl { font-size: 2.8125rem; line-height: 1; }
+  h1.sm\:text-6xl { font-size: 3.5625rem; line-height: 1; }
+}
+
+@media (min-width: 768px) {
+  h1.md\:text-2xl { font-size: 1.3125rem; line-height: 1.875rem; }
+  h1.md\:text-3xl { font-size: 1.6875rem; line-height: 2.125rem; }
+  h1.md\:text-4xl { font-size: 2.0625rem; line-height: 2.375rem; }
+  h1.md\:text-5xl { font-size: 2.8125rem; line-height: 1; }
+  h1.md\:text-6xl { font-size: 3.5625rem; line-height: 1; }
+}
+
+@media (min-width: 1024px) {
+  h1.lg\:text-2xl { font-size: 1.3125rem; line-height: 1.875rem; }
+  h1.lg\:text-3xl { font-size: 1.6875rem; line-height: 2.125rem; }
+  h1.lg\:text-4xl { font-size: 2.0625rem; line-height: 2.375rem; }
+  h1.lg\:text-5xl { font-size: 2.8125rem; line-height: 1; }
+  h1.lg\:text-6xl { font-size: 3.5625rem; line-height: 1; }
+}
+
+@media (min-width: 1280px) {
+  h1.xl\:text-4xl { font-size: 2.0625rem; line-height: 2.375rem; }
+  h1.xl\:text-5xl { font-size: 2.8125rem; line-height: 1; }
+  h1.xl\:text-6xl { font-size: 3.5625rem; line-height: 1; }
+}
+
 /* Hide Stripe Developer Tools overlay injected in Stripe test mode */
 [aria-label="Open Stripe Developer Tools"],
 [class*="__Easel"],

@@ -6,6 +6,7 @@ use App\Exports\FixedAssetsExport;
 use App\Http\Controllers\Controller;
 use App\Models\FixedAsset;
 use App\Services\DepreciationService;
+use App\Services\EntityAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -19,9 +20,40 @@ class FixedAssetsController extends Controller
 {
     protected $depreciationService;
 
-    public function __construct(DepreciationService $depreciationService)
-    {
+    protected EntityAccessService $entityAccessService;
+
+    public function __construct(
+        DepreciationService $depreciationService,
+        EntityAccessService $entityAccessService,
+    ) {
         $this->depreciationService = $depreciationService;
+        $this->entityAccessService = $entityAccessService;
+    }
+
+    /**
+     * Issue #163: scope an asset query to the requesting user's accessible legal
+     * entities. Users with no entity grants keep the historical unscoped view
+     * (same fail-open default as EnsureEntityAccess).
+     */
+    private function applyEntityScope(Request $request, $query)
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return $query;
+        }
+
+        $entityIds = $this->entityAccessService->accessibleEntityIds((int) $user->id);
+
+        return $entityIds !== [] ? $query->accessibleBy($entityIds) : $query;
+    }
+
+    /**
+     * Issue #163: find an asset that is inside the user's entity scope, or 404.
+     */
+    private function findScopedAsset(Request $request, int $id): FixedAsset
+    {
+        return $this->applyEntityScope($request, FixedAsset::query())->findOrFail($id);
     }
 
     /**
@@ -36,6 +68,8 @@ class FixedAssetsController extends Controller
             'vendor',
             'department',
         ]);
+
+        $this->applyEntityScope($request, $query);
 
         // Filter by status
         if ($request->has('status')) {
@@ -78,13 +112,20 @@ class FixedAssetsController extends Controller
             'columns' => ['required', 'array', 'min:1', 'max:'.count(FixedAssetsExport::COLUMNS)],
             'columns.*' => ['required', 'string', 'distinct', 'in:'.implode(',', array_keys(FixedAssetsExport::COLUMNS))],
         ]);
-        $query = FixedAsset::query();
-        if ($request->filled('status')) $query->where('status', $request->status);
-        if ($request->filled('category')) $query->where('category', $request->category);
+        // Issue #233: export() was the one action #163 left unscoped — the CSV
+        // leaked every entity's asset register to an entity-scoped user.
+        $query = $this->applyEntityScope($request, FixedAsset::query());
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+        if ($request->filled('category')) {
+            $query->where('category', $request->category);
+        }
         if ($request->filled('search')) {
             $search = (string) $request->search;
             $query->where(fn ($q) => $q->where('asset_number', 'LIKE', "%{$search}%")->orWhere('name', 'LIKE', "%{$search}%")->orWhere('description', 'LIKE', "%{$search}%"));
         }
+
         return Excel::download(new FixedAssetsExport($query->orderBy('asset_number'), $validated['columns']), 'fixed_assets_'.now()->format('Y-m-d').'.xlsx');
     }
 
@@ -106,6 +147,7 @@ class FixedAssetsController extends Controller
         $headers = fgetcsv($handle);
         if (! $headers) {
             fclose($handle);
+
             return response()->json(['message' => 'CSV file is empty.'], 422);
         }
         $headers = array_map(fn ($header) => strtolower(trim((string) $header)), $headers);
@@ -113,6 +155,7 @@ class FixedAssetsController extends Controller
         $missing = array_values(array_diff($required, $headers));
         if ($missing) {
             fclose($handle);
+
             return response()->json(['message' => 'Missing required CSV columns: '.implode(', ', $missing)], 422);
         }
 
@@ -175,6 +218,11 @@ class FixedAssetsController extends Controller
                 $data['is_active'] = true;
                 $data['accumulated_depreciation'] = 0;
                 $data['book_value'] = $data['purchase_cost'];
+                // Issue #234: stamp the resolved entity/book context (same as
+                // store()) so imported rows are visible to entity-scoped users —
+                // a NULL legal_entity_id is invisible to whereIn().
+                $data['legal_entity_id'] = $request->attributes->get('legal_entity_id');
+                $data['entity_book_id'] = $request->attributes->get('entity_book_id');
                 FixedAsset::create($data);
                 $created++;
             } catch (\Throwable $e) {
@@ -193,18 +241,21 @@ class FixedAssetsController extends Controller
     /**
      * Get asset details with depreciation schedule
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
-        $asset = FixedAsset::with([
-            'assetAccount',
-            'depreciationAccount',
-            'accumulatedDepreciationAccount',
-            'vendor',
-            'department',
-            'depreciationSchedules' => function ($query) {
-                $query->orderBy('period_date', 'desc');
-            },
-        ])->findOrFail($id);
+        $asset = $this->applyEntityScope(
+            $request,
+            FixedAsset::with([
+                'assetAccount',
+                'depreciationAccount',
+                'accumulatedDepreciationAccount',
+                'vendor',
+                'department',
+                'depreciationSchedules' => function ($query) {
+                    $query->orderBy('period_date', 'desc');
+                },
+            ])
+        )->findOrFail($id);
 
         return response()->json($asset);
     }
@@ -245,6 +296,9 @@ class FixedAssetsController extends Controller
             $data['is_active'] = true;
             $data['accumulated_depreciation'] = 0;
             $data['book_value'] = $data['purchase_cost'];
+            // Issue #163: stamp the resolved entity/book context (JournalEntry pattern).
+            $data['legal_entity_id'] = $request->attributes->get('legal_entity_id');
+            $data['entity_book_id'] = $request->attributes->get('entity_book_id');
 
             $asset = FixedAsset::create($data);
 
@@ -272,7 +326,7 @@ class FixedAssetsController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $asset = FixedAsset::findOrFail($id);
+        $asset = $this->findScopedAsset($request, (int) $id);
 
         // Prevent editing disposed assets
         if ($asset->status === 'disposed') {
@@ -315,9 +369,9 @@ class FixedAssetsController extends Controller
     /**
      * Deactivate asset (soft delete)
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
-        $asset = FixedAsset::findOrFail($id);
+        $asset = $this->findScopedAsset($request, (int) $id);
 
         // Check if asset has depreciation entries
         if ($asset->depreciationSchedules()->where('is_posted', true)->exists()) {
@@ -336,6 +390,102 @@ class FixedAssetsController extends Controller
     /**
      * Dispose asset
      */
+    /**
+     * Issue #94: impair a fixed asset — reduce its carrying amount to the
+     * recoverable amount and post the loss (Dr depreciation expense /
+     * Cr accumulated depreciation) through PostingEngine.
+     */
+    public function impair(Request $request, int $id)
+    {
+        $asset = $this->findScopedAsset($request, $id);
+
+        $validated = $request->validate([
+            'impairment_date' => 'required|date',
+            'recoverable_amount' => 'required|numeric|min:0',
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $carrying = (float) $asset->book_value;
+        $recoverable = round((float) $validated['recoverable_amount'], 2);
+        $loss = round($carrying - $recoverable, 2);
+
+        if ($loss <= 0) {
+            return response()->json([
+                'message' => 'No impairment required: the recoverable amount is not below the carrying amount.',
+            ], 422);
+        }
+
+        if (! $asset->depreciation_account_id || ! $asset->accumulated_depreciation_account_id) {
+            return response()->json([
+                'message' => 'Asset is missing its depreciation/accumulated accounts — cannot post the impairment.',
+            ], 422);
+        }
+
+        return DB::transaction(function () use ($asset, $validated, $carrying, $recoverable, $loss) {
+            // Hostile re-review (#94): the posting idempotency guard keys on
+            // (documentType, documentId). Using the asset id made every repeat
+            // impairment resolve to the FIRST journal entry, so the GL only
+            // ever carried one loss while the subledger accumulated each one.
+            // Create the record first and key the posting on it — one JE per
+            // impairment event.
+            $record = \App\Models\ImpairmentRecord::create([
+                'tenant_id' => tenant()->id,
+                'fixed_asset_id' => $asset->id,
+                'impairment_date' => $validated['impairment_date'],
+                'carrying_amount_before' => $carrying,
+                'recoverable_amount' => $recoverable,
+                'impairment_loss' => $loss,
+                'reason' => $validated['reason'] ?? null,
+                'journal_entry_id' => null,
+                'created_by' => \Modules\OCRBookkeeping\Helpers\TenantUserHelper::resolveTenantUserId(),
+            ]);
+
+            $result = app(\App\Accounting\PostingEngine::class)->post(new \App\Accounting\DTOs\PostingRequest(
+                documentType: 'asset_impairment',
+                documentId: (int) $record->id,
+                postingDate: $validated['impairment_date'],
+                description: "Impairment - {$asset->name}",
+                lines: [
+                    new \App\Accounting\DTOs\PostingRequestLine(
+                        accountMappingKey: 'depreciation_expense',
+                        accountId: (int) $asset->depreciation_account_id,
+                        debit: $loss,
+                        credit: 0.0,
+                        description: "Impairment loss - {$asset->name}",
+                    ),
+                    new \App\Accounting\DTOs\PostingRequestLine(
+                        accountMappingKey: 'accumulated_depreciation',
+                        accountId: (int) $asset->accumulated_depreciation_account_id,
+                        debit: 0.0,
+                        credit: $loss,
+                        description: "Accumulated impairment - {$asset->name}",
+                    ),
+                ],
+                reference: $asset->asset_number,
+                userId: \Modules\OCRBookkeeping\Helpers\TenantUserHelper::requireTenantUserId(),
+            ));
+
+            if (! $result->success) {
+                throw new \RuntimeException('Impairment posting failed: '.($result->error ?? 'unknown error'));
+            }
+
+            $record->update([
+                'journal_entry_id' => $result->journalEntryId ?? ($result->journalEntry?->id ?? null),
+            ]);
+
+            $asset->update([
+                'book_value' => $recoverable,
+                'accumulated_depreciation' => (float) $asset->accumulated_depreciation + $loss,
+            ]);
+
+            return response()->json([
+                'message' => 'Asset impaired',
+                'impairment' => $record,
+                'asset' => $asset->fresh(),
+            ], 201);
+        });
+    }
+
     public function dispose(Request $request, $id)
     {
         $validator = Validator::make($request->all(), [
@@ -349,7 +499,7 @@ class FixedAssetsController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        $asset = FixedAsset::findOrFail($id);
+        $asset = $this->findScopedAsset($request, (int) $id);
 
         if ($asset->status === 'disposed') {
             return response()->json(['error' => 'Asset already disposed'], 422);
@@ -385,13 +535,16 @@ class FixedAssetsController extends Controller
     /**
      * Get depreciation schedule for an asset
      */
-    public function getDepreciationSchedule($id)
+    public function getDepreciationSchedule(Request $request, $id)
     {
-        $asset = FixedAsset::with([
-            'depreciationSchedules' => function ($query) {
-                $query->orderBy('period_date', 'asc');
-            },
-        ])->findOrFail($id);
+        $asset = $this->applyEntityScope(
+            $request,
+            FixedAsset::with([
+                'depreciationSchedules' => function ($query) {
+                    $query->orderBy('period_date', 'asc');
+                },
+            ])
+        )->findOrFail($id);
 
         $schedule = $asset->depreciationSchedules->map(function ($entry) {
             return array_merge($entry->toArray(), [
@@ -418,8 +571,13 @@ class FixedAssetsController extends Controller
      * (is_posted=false) and the error is reported in the response so the
      * user can call postPendingSchedules once the fiscal period is opened.
      */
-    public function generateSchedule($id)
+    public function generateSchedule(Request $request, $id)
     {
+        // Issue #163: cross-entity generation must 404, not proceed. Resolve
+        // the asset OUTSIDE the try so ModelNotFoundException becomes a 404
+        // rather than being swallowed into a 500.
+        $this->findScopedAsset($request, (int) $id);
+
         try {
             $result = $this->depreciationService->generateScheduleForAsset((int) $id);
 
@@ -448,8 +606,13 @@ class FixedAssetsController extends Controller
      * (e.g. created by generateScheduleForAsset before the fiscal period
      * was opened). Call this after creating the missing fiscal periods.
      */
-    public function postPendingSchedules($id)
+    public function postPendingSchedules(Request $request, $id)
     {
+        // Issue #163: cross-entity posting must 404, not proceed. Resolve
+        // the asset OUTSIDE the try so ModelNotFoundException becomes a 404
+        // rather than being swallowed into a 500.
+        $this->findScopedAsset($request, (int) $id);
+
         try {
             $result = $this->depreciationService->postPendingScheduleEntries((int) $id);
 
@@ -487,10 +650,34 @@ class FixedAssetsController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
+        // Issue #163: a scoped user runs depreciation only for assets inside
+        // their entity access; requesting an out-of-scope asset is rejected.
+        $user = $request->user();
+        $accessibleEntityIds = $user
+            ? $this->entityAccessService->accessibleEntityIds((int) $user->id)
+            : [];
+        $assetIds = $request->asset_ids;
+
+        if ($accessibleEntityIds !== []) {
+            if (empty($assetIds)) {
+                // No explicit selection: restrict "all active assets" to scope.
+                $assetIds = $this->applyEntityScope($request, FixedAsset::query())->pluck('id')->all();
+            } else {
+                $allowedIds = $this->applyEntityScope($request, FixedAsset::whereIn('id', $assetIds))->pluck('id')->all();
+
+                if (count($allowedIds) !== count(array_unique($assetIds))) {
+                    return response()->json([
+                        'error' => 'One or more assets are outside your entity access.',
+                    ], 403);
+                }
+
+                $assetIds = $allowedIds;
+            }
+        }
+
         DB::beginTransaction();
         try {
             $periodDate = $request->period_date;
-            $assetIds = $request->asset_ids;
 
             $results = $this->depreciationService->calculateDepreciationForPeriod(
                 $periodDate,

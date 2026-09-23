@@ -25,11 +25,13 @@ class CommunicationController extends Controller
             return null;
         }
 
-        // Try Spatie roles first.
+        // Try Spatie roles first. NOTE: getRoleNames() returns a Collection —
+        // `! empty($collection)` is always false for objects, so an empty role
+        // list previously indexed [0] and crashed with 'Undefined array key 0'.
         if (method_exists($user, 'getRoleNames')) {
             $names = $user->getRoleNames();
-            if (! empty($names)) {
-                return strtolower((string) $names[0]);
+            if ($names->isNotEmpty()) {
+                return strtolower((string) $names->first());
             }
         }
 
@@ -123,6 +125,132 @@ class CommunicationController extends Controller
     /**
      * GET /api/communication/subscribers
      */
+    /**
+     * Issue #88: attach a file to a message.
+     */
+    public function attachFile(Request $request, int $messageId): JsonResponse
+    {
+        $request->validate([
+            'file' => 'required|file|max:25600|mimes:pdf,doc,docx,xls,xlsx,png,jpg,jpeg,gif,txt,csv,zip',
+            'is_inline' => 'nullable|boolean',
+        ]);
+
+        $message = \Modules\Communication\Models\CommunicationMessage::findOrFail($messageId);
+
+        // Issue #88/#77: stamp the attachment with the ACTIVE tenant context
+        // (the header is only a fallback) so upload and download agree on the
+        // owning tenant.
+        $tenantId = tenant()->id ?? $request->header('X-Tenant-ID');
+
+        $attachment = $this->engine->attachToMessage(
+            (int) $message->id,
+            $request->file('file'),
+            $request->user()?->id,
+            $tenantId,
+            (bool) $request->boolean('is_inline'),
+        );
+
+        return response()->json(['success' => true, 'data' => $attachment], 201);
+    }
+
+    /**
+     * Issue #88: download an attachment (authenticated; no public paths).
+     */
+    public function downloadAttachment(Request $request, int $attachmentId): \Symfony\Component\HttpFoundation\StreamedResponse|JsonResponse
+    {
+        // Hostile re-review (#88/#77): the lookup was unscoped — any tenant's
+        // user could download any attachment by id. Scope to the active tenant
+        // and enforce the internal-note visibility rule for the parent message.
+        $attachment = \Modules\Communication\Models\CommunicationAttachment::query()
+            ->where(function ($query) {
+                $query->where('tenant_id', tenant()->id)->orWhereNull('tenant_id');
+            })
+            ->findOrFail($attachmentId);
+
+        $message = $attachment->message;
+
+        if ($message && $message->message_type === CommunicationMessage::TYPE_INTERNAL_NOTE) {
+            $user = $request->user();
+            $role = $this->resolveUserRole($user);
+            $isStaff = $role !== null && in_array($role, CommunicationEngine::STAFF_ROLES, true);
+            $isAuthor = $user && (int) $message->author_id === (int) $user->id;
+
+            if (! $isStaff && ! $isAuthor) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You are not authorised to download this attachment.',
+                ], 403);
+            }
+        }
+
+        $disk = \Illuminate\Support\Facades\Storage::disk($attachment->storage_disk);
+
+        if (! $disk->exists($attachment->storage_path)) {
+            return response()->json(['success' => false, 'message' => 'Attachment file is missing from storage.'], 404);
+        }
+
+        return $disk->download($attachment->storage_path, $attachment->filename);
+    }
+
+    /**
+     * Issue #86: mark one message read for the current user.
+     */
+    public function markMessageRead(Request $request, int $messageId): JsonResponse
+    {
+        $message = \Modules\Communication\Models\CommunicationMessage::findOrFail($messageId);
+
+        $state = $this->engine->markAsRead(
+            (int) $message->id,
+            (int) $request->user()->id,
+            $request->header('X-Tenant-ID'),
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => ['message_id' => $message->id, 'read_at' => $state->read_at],
+        ]);
+    }
+
+    /**
+     * Issue #86: mark every message on a record read for the current user.
+     */
+    public function markAllRead(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'model' => 'required|string',
+            'record_id' => 'required|integer',
+        ]);
+
+        $count = $this->engine->markAllAsRead(
+            $validated['model'],
+            (int) $validated['record_id'],
+            (int) $request->user()->id,
+            $request->header('X-Tenant-ID'),
+        );
+
+        return response()->json(['success' => true, 'data' => ['marked_read' => $count]]);
+    }
+
+    /**
+     * Issue #86: unread counter, optionally scoped to a record.
+     */
+    public function unreadCount(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'model' => 'nullable|string',
+            'record_id' => 'nullable|integer',
+        ]);
+
+        $count = $this->engine->unreadCount(
+            (int) $request->user()->id,
+            $request->header('X-Tenant-ID'),
+            $validated['model'] ?? null,
+            isset($validated['record_id']) ? (int) $validated['record_id'] : null,
+        );
+
+        return response()->json(['success' => true, 'data' => ['unread_count' => $count]]);
+    }
+
     public function getSubscribers(Request $request): JsonResponse
     {
         $request->validate([

@@ -282,14 +282,26 @@ class JournalEntry extends Model
      * Hardening (2026-04-15): Added pg_advisory_xact_lock to serialize
      * concurrent entry number generation within the current transaction.
      */
+    /**
+     * Issue #142: advisory lock key for entry-number generation. The tenant id
+     * is part of the hashed namespace so two tenants on the same Postgres
+     * database never contend for each other's number-generation lock
+     * (pg_advisory locks are database-scoped, not search_path-scoped).
+     */
+    public static function numberGenerationLockKey(?string $tenantId = null): int
+    {
+        return crc32('journal_entry_number_gen:'.($tenantId ?? tenant('id') ?? ''));
+    }
+
     public static function generateEntryNumber(): string
     {
         $prefix = 'JE-'.date('Y').'-';
 
-        // Advisory lock key derived from a fixed namespace. The lock is released
-        // automatically when the enclosing transaction commits/rolls back.
-        // If there is no outer transaction, use a non-transactional advisory lock.
-        $lockKey = crc32('journal_entry_number_gen');
+        // Advisory lock key derived from a fixed namespace + tenant id. The lock
+        // is released automatically when the enclosing transaction commits/rolls
+        // back. If there is no outer transaction, use a non-transactional
+        // advisory lock.
+        $lockKey = self::numberGenerationLockKey();
         \Illuminate\Support\Facades\DB::statement('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
 
         $latest = static::where('entry_number', 'like', $prefix.'%')

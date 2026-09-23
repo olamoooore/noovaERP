@@ -11,6 +11,7 @@ import { getProductLineDescription, ProductSearchCombobox } from '@/components/i
 import { SalesLineColumnMenu, SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility';
 import { ProductCatalogDialog } from '@/components/sales/ProductCatalogDialog';
 import { DocumentTextLineRow, getDocumentSectionTotal, reorderDocumentLines } from '@/components/sales/DocumentTextLineRow';
+import { LineItemsTable } from '@/components/sales/LineItemsTable';
 import { QuotationCaseInformation, emptyQuotationCaseInformation } from '@/components/sales/QuotationCaseInformation';
 import { InternalReferenceTags } from '@/components/sales/InternalReferenceTags';
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox';
@@ -482,23 +483,24 @@ export const QuotationCreatePage: React.FC = () => {
           <CardContent>
             <div className="overflow-x-auto">
               <SalesLineColumnVisibility tableClass="quotation-create-columns" columns={QUOTATION_CREATE_COLUMNS} hiddenColumns={hiddenLineColumns} onHiddenColumnsChange={setHiddenLineColumns} showMenu={false}>
-              <table className="w-full min-w-[1500px] table-fixed text-sm">
-                <thead>
-    <tr className="border-b">
-      <th className="text-left py-2 px-2 w-12">#</th>
-      <th className="text-left py-2 px-2 w-[260px]">Product</th>
-      <th className="text-left py-2 px-2 w-24">SKU</th>
-      <th className="text-left py-2 px-2 w-[320px]">Description</th>
-      <th className="text-left py-2 px-2 w-28">Model #</th>
-      <th className="text-left py-2 px-2 w-36">Product Notes</th>
-      <th className="text-right py-2 px-2 w-20">Qty</th>
-      <th className="text-right py-2 px-2 w-28">Unit Price</th>
-      <th className="text-right py-2 px-2 w-20">Tax %</th>
-      <th className="text-right py-2 px-2 w-28">Line Total</th>
-      <th className="py-2 px-2 w-32">Actions</th>
-    </tr>
-                </thead>
-                <tbody>
+              <LineItemsTable
+                variant="raw"
+                tableClassName="w-full min-w-[1500px] table-fixed text-sm"
+                headRowClassName="border-b"
+                columns={[
+                  { key: 'index', label: '#', minWidth: 'min-w-[3rem]' },
+                  { key: 'product', label: 'Product', minWidth: 'min-w-[15rem]' },
+                  { key: 'sku', label: 'SKU', minWidth: 'min-w-[5.5rem]' },
+                  { key: 'description', label: 'Description', minWidth: 'min-w-[18rem]' },
+                  { key: 'model_number', label: 'Model #', minWidth: 'min-w-[6.5rem]' },
+                  { key: 'product_notes', label: 'Product Notes', minWidth: 'min-w-[10rem]' },
+                  { key: 'qty', label: 'Qty', align: 'right', minWidth: 'min-w-[4.5rem]' },
+                  { key: 'unit_price', label: 'Unit Price', align: 'right', minWidth: 'min-w-[6.5rem]' },
+                  { key: 'tax_rate', label: 'Tax %', align: 'right', minWidth: 'min-w-[4.5rem]' },
+                  { key: 'line_total', label: 'Line Total', align: 'right', minWidth: 'min-w-[6.5rem]' },
+                  { key: 'actions', label: 'Actions', minWidth: 'min-w-[8rem]' },
+                ]}
+              >
                   {lines.map((line, index) => (
                     <tr key={index} className="border-b" draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(index)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== index) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }}>
                       {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={11} total={line.line_type === 'section' ? formatCurrency(getDocumentSectionTotal(lines, index, getLineTotal)) : undefined} onChange={(text) => updateLine(index, 'description', text)} onDelete={() => removeLine(index)} onDragStart={() => setDraggedLineIndex(index)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, index)); setDraggedLineIndex(null); }} /> : <>
@@ -567,7 +569,15 @@ export const QuotationCreatePage: React.FC = () => {
                           type="number"
                           min="0"
                           value={line.quantity}
-                          onChange={(event) => updateLine(index, 'quantity', Math.max(0, parseInt(event.target.value, 10) || 0))}
+                          onChange={(event) => {
+                            const raw = event.target.value;
+                            // HR71-08: keep literal intent — empty is allowed
+                            // while typing (caught on submit), no silent
+                            // substitution of 1 or 0.
+                            if (raw === '') { updateLine(index, 'quantity', ''); return; }
+                            const parsed = parseFloat(raw);
+                            if (!Number.isNaN(parsed) && parsed >= 0) updateLine(index, 'quantity', parsed);
+                          }}
                           className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-sm text-right"
                         />
                       </td>
@@ -618,8 +628,7 @@ export const QuotationCreatePage: React.FC = () => {
                       </>}
                     </tr>
                   ))}
-                </tbody>
-              </table>
+              </LineItemsTable>
               </SalesLineColumnVisibility>
             </div>
 

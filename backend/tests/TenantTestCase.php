@@ -243,8 +243,7 @@ abstract class TenantTestCase extends TestCase
     }
 
     protected function bindTenantContext(string $tenantId = 'test-tenant', array $attributes = []): Tenant
-    {
-        $tenant = new Tenant(array_merge([
+    {        $tenant = new Tenant(array_merge([
             'id' => $tenantId,
             'name' => 'Test Tenant',
         ], $attributes));
@@ -258,6 +257,58 @@ abstract class TenantTestCase extends TestCase
         $tenancy->initialized = true;
 
         return $tenant;
+    }
+
+    /**
+     * Create a tenant-scoped Admin API user: public.tenants row, central user,
+     * user_company_access (role=admin) and the tenant Spatie Admin role with
+     * the seeded permission matrix. Returns the user.
+     *
+     * Required for endpoints guarded by RequirePermission (e.g. every
+     * FinancialReporting route since issue #103) — without the central
+     * user_company_access role, TenantRoleService resolves no Spatie role and
+     * the middleware answers 403.
+     */
+    protected function setUpTenantAdminUser(string $tenantName = 'Test Tenant'): \App\Models\User
+    {
+        $tenantId = (string) \Illuminate\Support\Str::uuid();
+
+        DB::table('public.tenants')->updateOrInsert(
+            ['id' => $tenantId],
+            [
+                'name' => $tenantName,
+                'email' => 'tenant-'.substr(md5($tenantId), 0, 8).'@example.com',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]
+        );
+
+        $user = \App\Models\User::factory()->create();
+
+        DB::table('public.users')->updateOrInsert(
+            ['email' => $user->email],
+            [
+                'name' => $user->name,
+                'password' => $user->password,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]
+        );
+        $centralId = DB::table('public.users')->where('email', $user->email)->value('id');
+
+        DB::table('user_company_access')->updateOrInsert(
+            ['user_id' => $centralId, 'tenant_id' => $tenantId],
+            [
+                'role' => 'admin',
+                'is_default' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]
+        );
+
+        $this->bindTenantContextWithPermissions($tenantId, $user);
+
+        return $user;
     }
 
     /**

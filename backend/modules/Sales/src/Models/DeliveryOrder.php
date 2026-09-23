@@ -17,6 +17,26 @@ class DeliveryOrder extends Model
         'customer_id',
         'warehouse_id',
         'status',
+        // Issue #177: dual confirmation path audit trail.
+        'confirmation_method',
+        'confirmed_via_channel',
+        'signed_document_path',
+        'signed_document_uploaded_at',
+        // Issue #153: signer metadata travels with the resulting Invoice for
+        // client AP/payment processing.
+        'signed_by_name',
+        'signed_by_email',
+        'signed_at',
+        // Issue #178: rejection/replacement revision chain.
+        'correction_group_id',
+        'version_number',
+        'is_active_version',
+        'original_document_id',
+        'replacement_document_id',
+        'superseded_at',
+        'correction_type',
+        'correction_reason_code',
+        'correction_reason_text',
         'delivery_date',
         'expected_date',
         'payment_terms',
@@ -44,6 +64,10 @@ class DeliveryOrder extends Model
     ];
 
     protected $casts = [
+        'signed_document_uploaded_at' => 'datetime',
+        'signed_at' => 'datetime',
+        'is_active_version' => 'boolean',
+        'superseded_at' => 'datetime',
         'delivery_date' => 'date',
         'expected_date' => 'date',
         'completed_at' => 'datetime',

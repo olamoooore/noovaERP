@@ -36,6 +36,15 @@ class AgedReceivablesService
             $invoicesQuery->where('customer_id', (int) $filters['customer_id']);
         }
 
+        // Issue #111: dashboard/entity-scoped callers may restrict the aging to
+        // a set of legal entities (resolved through the customer, matching
+        // DashboardController::applyInvoiceEntityScope).
+        if (! empty($filters['legal_entity_ids'])) {
+            $invoicesQuery->whereHas('customer', function ($query) use ($filters) {
+                $query->withTrashed()->whereIn('legal_entity_id', $filters['legal_entity_ids']);
+            });
+        }
+
         // Apply search filter
         if (! empty($filters['search'])) {
             $search = $filters['search'];

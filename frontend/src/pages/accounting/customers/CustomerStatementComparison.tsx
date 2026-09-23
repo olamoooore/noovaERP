@@ -54,6 +54,7 @@ interface ComparisonResponse {
   };
   comparisons: ComparisonSnapshot[];
   deltas: Delta[];
+  currency?: string;
   generated_at: string;
 }
 
@@ -278,7 +279,7 @@ export const CustomerStatementComparison: React.FC = () => {
                 </TableHeader>
                 <TableBody>
                   <TableRow>
-                    <TableCell className="font-medium">Total Outstanding (MYR)</TableCell>
+                    <TableCell className="font-medium">Total Outstanding ({comparison.currency ?? 'MYR'})</TableCell>
                     {comparison.comparisons.map((comp, i) => (
                       <TableCell key={comp.as_of_date} className="text-right">
                         <div className="font-medium">{formatCurrency(comp.total_outstanding)}</div>
@@ -307,7 +308,7 @@ export const CustomerStatementComparison: React.FC = () => {
                     ))}
                   </TableRow>
                   <TableRow className="bg-muted/50">
-                    <TableCell className="font-bold">Total Invoice Value (MYR)</TableCell>
+                    <TableCell className="font-bold">Total Invoice Value ({comparison.currency ?? 'MYR'})</TableCell>
                     {comparison.comparisons.map((comp) => (
                       <TableCell key={comp.as_of_date} className="text-right font-bold">
                         {formatCurrency(comp.total_invoice_value)}

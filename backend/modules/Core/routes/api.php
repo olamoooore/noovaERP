@@ -106,6 +106,12 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     Route::put('/settings', [SettingsController::class, 'update']);
     Route::post('/settings/test-smtp', [SettingsController::class, 'testSmtp']);
 
+    // Sales Settings (tenant-root, no accounting prefix) — used by the Sales Settings UI
+    Route::get('/settings/document-formats', [CompanySettingsController::class, 'documentFormats']);
+    Route::put('/settings/document-formats', [CompanySettingsController::class, 'updateDocumentFormats']);
+    Route::get('/settings/sales', [CompanySettingsController::class, 'getSalesSettings']);
+    Route::put('/settings/sales', [CompanySettingsController::class, 'updateSalesSettings']);
+
     // Taxes
     Route::get('/taxes', [TaxController::class, 'index']);
     Route::post('/taxes', [TaxController::class, 'store']);
@@ -122,8 +128,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     Route::post('/modules/{key}/activate', [App\Http\Controllers\Api\PlatformModuleController::class, 'activate'])->where('key', '[a-z][a-z0-9._-]+');
     Route::post('/modules/{key}/deactivate', [App\Http\Controllers\Api\PlatformModuleController::class, 'deactivate'])->where('key', '[a-z][a-z0-9._-]+');
 
-    // Dashboard
-    Route::get('/dashboard', [DashboardController::class, 'index']);
+    // Dashboard (issue #113: resolve entity context so the controller can scope
+    // its financial aggregates to the user's accessible legal entities).
+    Route::get('/dashboard', [DashboardController::class, 'index'])
+        ->middleware([ResolveEntityContext::class, EnsureEntityAccess::class]);
 
     // Vendor Credit Notes
 
@@ -158,9 +166,18 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
     // Warehouses
     Route::apiResource('warehouses', WarehouseController::class);
 
-    // Product categories — issue #128: read requires products.view.
+    // Product categories — issue #128: read requires products.view, writes use
+    // the same granular products.* convention as the product verbs above.
+    // (Issue #133: store/update/destroy existed on the controller but had no
+    // routes, so the Category Manager UI 404'd on create/edit/delete.)
     Route::get('/product-categories', [ProductCategoryController::class, 'index'])
         ->middleware(\App\Http\Middleware\RequirePermission::using('products.view'));
+    Route::post('/product-categories', [ProductCategoryController::class, 'store'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.create'));
+    Route::match(['put', 'patch'], '/product-categories/{id}', [ProductCategoryController::class, 'update'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.edit'));
+    Route::delete('/product-categories/{id}', [ProductCategoryController::class, 'destroy'])
+        ->middleware(\App\Http\Middleware\RequirePermission::using('products.delete'));
 
     // Vendor AP Transactions
     Route::get('/vendors/transactions', [APTransactionsController::class, 'index']);
@@ -268,14 +285,83 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
 
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class, EnsureAccountingWriteAccess::class])->group(function () {
         // Invoices
-        Route::post('/invoices/import', [InvoiceController::class, 'import']);
-        Route::get('/invoices/export', [InvoiceController::class, 'export']);
-        Route::post('/invoices/bulk-delete', [InvoiceController::class, 'bulkDestroy']);
-        Route::post('/invoices/bulk-post', [InvoiceController::class, 'bulkPost']);
-        Route::apiResource('invoices', InvoiceController::class);
-        Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'send']);
-        Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel']);
-        Route::post('/invoices/{invoice}/reset-to-draft', [InvoiceController::class, 'resetToDraft']);
+        Route::post('/invoices/import', [InvoiceController::class, 'import'])
+            ->middleware(RequirePermission::using('invoices.write'));
+        Route::get('/invoices/export', [InvoiceController::class, 'export'])
+            ->middleware(RequirePermission::using('invoices.view'));
+        Route::post('/invoices/bulk-delete', [InvoiceController::class, 'bulkDestroy'])
+            ->middleware(RequirePermission::using('invoices.write'));
+        Route::post('/invoices/bulk-post', [InvoiceController::class, 'bulkPost'])
+            ->middleware(RequirePermission::using('accounting.post'));
+
+        // Invoice CRUD — explicit so per-method middleware is precise
+        Route::get('/invoices', [InvoiceController::class, 'index'])
+            ->middleware(RequirePermission::using('invoices.view'));
+        Route::post('/invoices', [InvoiceController::class, 'store'])
+            ->middleware(RequirePermission::using('invoices.write'));
+        Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])
+            ->middleware(RequirePermission::using('invoices.view'));
+        Route::put('/invoices/{invoice}', [InvoiceController::class, 'update'])
+            ->middleware(RequirePermission::using('invoices.write'));
+        Route::delete('/invoices/{invoice}', [InvoiceController::class, 'destroy'])
+            ->middleware(RequirePermission::using('invoices.write'));
+
+        // Approval flow
+        Route::post('/invoices/{invoice}/submit-approval', [InvoiceController::class, 'submitApproval'])
+            ->middleware(RequirePermission::using('invoices.submit'));
+        Route::post('/invoices/{invoice}/withdraw-approval', [InvoiceController::class, 'withdrawApproval'])
+            ->middleware(RequirePermission::using('invoices.write'));
+
+        // Delivery (Phase B — delivery without GL posting)
+        Route::post('/invoices/{invoice}/deliver', [InvoiceController::class, 'deliver'])
+            ->middleware(RequirePermission::using('invoices.send'));
+
+        // Legacy /send still available for backward compat (combined send+post)
+        Route::post('/invoices/{invoice}/send', [InvoiceController::class, 'send'])
+            ->middleware(RequirePermission::using('invoices.send'));
+
+        // GL Posting (Phase B — GL posting without delivery, separate endpoint)
+        Route::post('/invoices/{invoice}/post', [InvoiceController::class, 'post'])
+            ->middleware(RequirePermission::using('accounting.post'));
+
+        // Evidence
+        Route::post('/invoices/{invoice}/evidence', [InvoiceController::class, 'uploadEvidence'])
+            ->middleware(RequirePermission::using('invoices.evidence.manage'));
+
+        // Acceptance link (public portal link for customer acceptance)
+        Route::post('/invoices/{invoice}/acceptance-link', [InvoiceController::class, 'createAcceptanceLink'])
+            ->middleware(RequirePermission::using('invoices.evidence.manage'));
+
+        // E-sign envelope (Phase E — external provider abstraction)
+        Route::post('/invoices/{invoice}/send-for-esign', [InvoiceController::class, 'sendForEsign'])
+            ->middleware(RequirePermission::using('invoices.evidence.manage'));
+
+        // Payment link
+        Route::post('/invoices/{invoice}/payment-link', [InvoiceController::class, 'createPaymentLink'])
+            ->middleware(RequirePermission::using('invoices.request_payment'));
+
+        // Timeline
+        Route::get('/invoices/{invoice}/timeline', [InvoiceController::class, 'getTimeline'])
+            ->middleware(RequirePermission::using('invoices.view'));
+
+        Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])
+            ->middleware(RequirePermission::using('invoices.write'));
+        Route::post('/invoices/{invoice}/reset-to-draft', [InvoiceController::class, 'resetToDraft'])
+            ->middleware(RequirePermission::using('invoices.write'));
+
+        // Issue #92: Budget Management (real budgets; the dashboard no longer
+        // fabricates budget as 110% of actual).
+        Route::middleware(RequirePermission::using('accounting.view'))->group(function () {
+            Route::get('/accounting/budgets', [\App\Http\Controllers\Api\BudgetController::class, 'index']);
+            Route::get('/accounting/budgets/{budget}', [\App\Http\Controllers\Api\BudgetController::class, 'show']);
+            Route::get('/accounting/budgets/{budget}/variance', [\App\Http\Controllers\Api\BudgetController::class, 'variance']);
+        });
+        Route::middleware(RequirePermission::using('accounting.write'))->group(function () {
+            Route::post('/accounting/budgets', [\App\Http\Controllers\Api\BudgetController::class, 'store']);
+            Route::put('/accounting/budgets/{budget}', [\App\Http\Controllers\Api\BudgetController::class, 'update']);
+            Route::delete('/accounting/budgets/{budget}', [\App\Http\Controllers\Api\BudgetController::class, 'destroy']);
+            Route::post('/accounting/budgets/{budget}/approve', [\App\Http\Controllers\Api\BudgetController::class, 'approve']);
+        });
 
         // Quotations
         Route::post('/quotations/import', [QuotationController::class, 'import']);
@@ -284,6 +370,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::apiResource('quotations', QuotationController::class);
         Route::post('/quotations/{id}/confirm', [QuotationController::class, 'confirm']);
         Route::post('/quotations/{id}/cancel', [QuotationController::class, 'cancel']);
+        // Issue #178/#179: rejection with auto-versioned replacement draft.
+        Route::post('/quotations/{id}/reject', [QuotationController::class, 'reject']);
         Route::post('/quotations/{id}/reset-to-draft', [QuotationController::class, 'resetToDraft']);
         Route::post('/quotations/{id}/create-invoice', [QuotationController::class, 'createInvoice']);
 
@@ -300,6 +388,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::delete('/payments/{payment}', [PaymentController::class, 'destroy']);
         Route::post('/payments/{payment}/cancel', [PaymentController::class, 'cancel']);
         Route::post('/payments/{payment}/post', [PaymentController::class, 'post']);
+        // Issue #155: split payments / unapplied credit.
+        Route::get('/payments/{payment}/allocations', [PaymentController::class, 'allocations']);
+        Route::post('/payments/{payment}/allocations', [PaymentController::class, 'allocate']);
     });
 
     // Accounting
@@ -347,10 +438,14 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             ->middleware(EnsureAccountingReverseAccess::class);
 
         // Reports
-        Route::get('/trial-balance', [AccountingController::class, 'trialBalance']);
-        Route::get('/ledger/{account}', [AccountingController::class, 'ledger']);
-        Route::get('/balance-sheet', [AccountingController::class, 'balanceSheet']);
-        Route::get('/profit-and-loss', [AccountingController::class, 'profitAndLoss']);
+        Route::get('/trial-balance', [AccountingController::class, 'trialBalance'])
+            ->middleware(RequirePermission::using('reports.view'));
+        Route::get('/ledger/{account}', [AccountingController::class, 'ledger'])
+            ->middleware(RequirePermission::using('reports.view'));
+        Route::get('/balance-sheet', [AccountingController::class, 'balanceSheet'])
+            ->middleware(RequirePermission::using('reports.view'));
+        Route::get('/profit-and-loss', [AccountingController::class, 'profitAndLoss'])
+            ->middleware(RequirePermission::using('reports.view'));
 
         // Period-End Processes
         Route::post('/fx-revaluation', [AccountingController::class, 'fxRevaluation']);
@@ -471,6 +566,9 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::delete('/assets/{id}', [FixedAssetsController::class, 'destroy']);
         Route::get('/assets/{id}/depreciation', [FixedAssetsController::class, 'getDepreciationSchedule']);
         Route::post('/assets/{id}/dispose', [FixedAssetsController::class, 'dispose']);
+        Route::post('/assets/{id}/impair', [FixedAssetsController::class, 'impair'])
+            ->middleware(RequirePermission::using('accounting.write'));
+
         Route::post('/assets/{id}/generate-schedule', [FixedAssetsController::class, 'generateSchedule']);
         Route::post('/assets/{id}/post-pending-schedules', [FixedAssetsController::class, 'postPendingSchedules']);
         Route::post('/assets/calculate-depreciation', [FixedAssetsController::class, 'calculateDepreciation']);
@@ -528,33 +626,48 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
 
         // Entity Management (Phase 4 — Multi-Entity)
         Route::get('/groups', [EntityManagementController::class, 'indexGroups']);
-        Route::post('/groups', [EntityManagementController::class, 'storeGroup']);
+        Route::post('/groups', [EntityManagementController::class, 'storeGroup'])
+            ->middleware(RequirePermission::using('entities.manage'));
         Route::get('/groups/{id}', [EntityManagementController::class, 'showGroup']);
-        Route::put('/groups/{id}', [EntityManagementController::class, 'updateGroup']);
-        Route::delete('/groups/{id}', [EntityManagementController::class, 'destroyGroup']);
+        Route::put('/groups/{id}', [EntityManagementController::class, 'updateGroup'])
+            ->middleware(RequirePermission::using('entities.manage'));
+        Route::delete('/groups/{id}', [EntityManagementController::class, 'destroyGroup'])
+            ->middleware(RequirePermission::using('entities.manage'));
 
         Route::get('/legal-entities', [EntityManagementController::class, 'indexEntities']);
-        Route::post('/legal-entities', [EntityManagementController::class, 'storeEntity']);
+        Route::post('/legal-entities', [EntityManagementController::class, 'storeEntity'])
+            ->middleware(RequirePermission::using('entities.manage'));
         Route::get('/legal-entities/{id}', [EntityManagementController::class, 'showEntity']);
-        Route::put('/legal-entities/{id}', [EntityManagementController::class, 'updateEntity']);
-        Route::delete('/legal-entities/{id}', [EntityManagementController::class, 'destroyEntity']);
+        Route::put('/legal-entities/{id}', [EntityManagementController::class, 'updateEntity'])
+            ->middleware(RequirePermission::using('entities.manage'));
+        Route::delete('/legal-entities/{id}', [EntityManagementController::class, 'destroyEntity'])
+            ->middleware(RequirePermission::using('entities.manage'));
 
         Route::get('/branches', [EntityManagementController::class, 'indexBranches']);
-        Route::post('/branches', [EntityManagementController::class, 'storeBranch']);
+        Route::post('/branches', [EntityManagementController::class, 'storeBranch'])
+            ->middleware(RequirePermission::using('entities.manage'));
         Route::get('/branches/{id}', [EntityManagementController::class, 'showBranch']);
-        Route::put('/branches/{id}', [EntityManagementController::class, 'updateBranch']);
-        Route::delete('/branches/{id}', [EntityManagementController::class, 'destroyBranch']);
+        Route::put('/branches/{id}', [EntityManagementController::class, 'updateBranch'])
+            ->middleware(RequirePermission::using('entities.manage'));
+        Route::delete('/branches/{id}', [EntityManagementController::class, 'destroyBranch'])
+            ->middleware(RequirePermission::using('entities.manage'));
 
         Route::get('/entity-books', [EntityManagementController::class, 'indexBooks']);
-        Route::post('/entity-books', [EntityManagementController::class, 'storeBook']);
+        Route::post('/entity-books', [EntityManagementController::class, 'storeBook'])
+            ->middleware(RequirePermission::using('entities.manage'));
         Route::get('/entity-books/{id}', [EntityManagementController::class, 'showBook']);
-        Route::put('/entity-books/{id}', [EntityManagementController::class, 'updateBook']);
-        Route::delete('/entity-books/{id}', [EntityManagementController::class, 'destroyBook']);
+        Route::put('/entity-books/{id}', [EntityManagementController::class, 'updateBook'])
+            ->middleware(RequirePermission::using('entities.manage'));
+        Route::delete('/entity-books/{id}', [EntityManagementController::class, 'destroyBook'])
+            ->middleware(RequirePermission::using('entities.manage'));
 
         Route::get('/legal-entities/{entityId}/modules', [EntityManagementController::class, 'indexModules']);
-        Route::post('/legal-entities/{entityId}/modules/activate', [EntityManagementController::class, 'activateModule']);
-        Route::post('/legal-entities/{entityId}/modules/deactivate', [EntityManagementController::class, 'deactivateModule']);
-        Route::post('/legal-entities/{entityId}/modules/industry-pack', [EntityManagementController::class, 'applyIndustryPack']);
+        Route::post('/legal-entities/{entityId}/modules/activate', [EntityManagementController::class, 'activateModule'])
+            ->middleware(RequirePermission::using('entities.manage'));
+        Route::post('/legal-entities/{entityId}/modules/deactivate', [EntityManagementController::class, 'deactivateModule'])
+            ->middleware(RequirePermission::using('entities.manage'));
+        Route::post('/legal-entities/{entityId}/modules/industry-pack', [EntityManagementController::class, 'applyIndustryPack'])
+            ->middleware(RequirePermission::using('entities.manage'));
 
         // Currencies — read endpoints are open to any tenant-authenticated user;
         // mutations require settings.write so only Owner/Admin can toggle
@@ -601,8 +714,8 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::put('/settings/currencies', [CompanySettingsController::class, 'updateCurrencies']);
         Route::get('/settings/accounts', [CompanySettingsController::class, 'accounts']);
         Route::put('/settings/accounts', [CompanySettingsController::class, 'updateAccounts']);
-        Route::get('/settings/document-formats', [CompanySettingsController::class, 'documentFormats']);
-        Route::put('/settings/document-formats', [CompanySettingsController::class, 'updateDocumentFormats']);
+        // (document-formats + sales settings moved out of the accounting prefix
+        //  group below so they're reachable as /api/v1/settings/... directly)
 
         // Accounting Policies
         Route::get('/policies', [\App\Http\Controllers\Api\AccountingPoliciesController::class, 'index']);
@@ -648,16 +761,21 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::put('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'update']);
         Route::delete('/customers/credit-notes/{creditNote}', [CustomerCreditNotesController::class, 'destroy']);
         Route::post('/customers/credit-notes/{creditNote}/post', [CustomerCreditNotesController::class, 'post']);
+        Route::post('/customers/credit-notes/{creditNote}/void', [CustomerCreditNotesController::class, 'void'])
+            ->middleware(\App\Http\Middleware\RequirePermission::using('customers.write'));
         Route::get('/customers/invoices/{invoiceId}/credit-notes', [CustomerCreditNotesController::class, 'getByInvoice']);
-        Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validate']);
+        Route::post('/customers/credit-notes/validate', [CustomerCreditNotesController::class, 'validateCreditNote']);
 
         // Customers List
-        Route::get('/customers', [CustomersController::class, 'index']);
+        Route::get('/customers', [CustomersController::class, 'index'])
+            ->middleware(RequirePermission::using('customers.view'));
         Route::post('/customers/import', [CustomersController::class, 'import'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('customers.write'));
         Route::post('/customers/import/{batch}/commit', [CustomersController::class, 'commitImport'])
             ->middleware(\App\Http\Middleware\RequirePermission::using('customers.write'));
-        Route::get('/customers/{id}', [CustomersController::class, 'show'])->whereNumber('id');
+        Route::get('/customers/{id}', [CustomersController::class, 'show'])
+            ->whereNumber('id')
+            ->middleware(RequirePermission::using('customers.view'));
 
         // Vendor Credit Notes (must be before /vendors/{id} to avoid route conflict)
         Route::get('/vendors/credit-notes', [VendorCreditNotesController::class, 'index']);
@@ -701,40 +819,68 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
         Route::post('/customers/{customer}/statement', [CustomerStatementController::class, 'generate']);
         Route::get('/customers/statements/history', [CustomerStatementController::class, 'history']);
         Route::get('/customers/statements/{statement}', [CustomerStatementController::class, 'show']);
+
+        // Statement of Account reads (issue #195): entity-scoped exactly like
+        // generate/history/show above — previously they sat outside this group
+        // and leaked every legal entity's customer financials.
+        Route::get('/customers/{customer}/statement/compare', [CustomerStatementController::class, 'compare'])
+            ->middleware(RequirePermission::using('customers.view'));
+        Route::get('/customers/{customer}/statement/compare/pdf', [CustomerStatementController::class, 'comparePdf'])
+            ->middleware(RequirePermission::using('customers.view'));
+        Route::get('/customers/{customer}/statement', [CustomerStatementController::class, 'statement'])
+            ->middleware(RequirePermission::using('customers.view'));
     });
 
-    // Statement of Account (no entity/accounting middleware needed)
-    // Issue #125 (HIGH): these expose customer financial data — gate with
-    // customers.view even though they skip the entity/accounting middleware.
-    Route::get('/customers/{customer}/statement/compare', [CustomerStatementController::class, 'compare'])
-        ->middleware(RequirePermission::using('customers.view'));
-    Route::get('/customers/{customer}/statement/compare/pdf', [CustomerStatementController::class, 'comparePdf'])
-        ->middleware(RequirePermission::using('customers.view'));
-    Route::get('/customers/{customer}/statement', [CustomerStatementController::class, 'statement'])
-        ->middleware(RequirePermission::using('customers.view'));
-
-    // Medical Cases
+    // Medical Cases (issues #161/#186: previously no permission middleware at all)
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
-        Route::apiResource('medical-cases', MedicalCaseController::class);
-        Route::post('/medical-cases/{id}/allocate', [MedicalCaseController::class, 'allocate']);
-        Route::post('/medical-cases/{id}/deliver', [MedicalCaseController::class, 'deliver']);
-        Route::post('/medical-cases/{id}/invoice', [MedicalCaseController::class, 'invoice']);
-        Route::post('/medical-cases/{id}/complete', [MedicalCaseController::class, 'complete']);
-        Route::post('/medical-cases/{id}/cancel', [MedicalCaseController::class, 'cancel']);
+        Route::apiResource('medical-cases', MedicalCaseController::class)
+            ->only(['index', 'show'])
+            ->middleware(RequirePermission::using('medical_cases.view'));
+        Route::apiResource('medical-cases', MedicalCaseController::class)
+            ->only(['store', 'update', 'destroy'])
+            ->middleware(RequirePermission::using('medical_cases.write'));
+
+        // Issue #185: report route must precede the resource {medical_case} binding.
+        Route::get('/medical-cases/reports/performance', [MedicalCaseController::class, 'performanceReport'])
+            ->middleware(RequirePermission::using('medical_cases.view'));
+
+        Route::middleware(RequirePermission::using('medical_cases.write'))->group(function () {
+            Route::post('/medical-cases/{id}/allocate', [MedicalCaseController::class, 'allocate']);
+            Route::post('/medical-cases/{id}/deliver', [MedicalCaseController::class, 'deliver']);
+            Route::post('/medical-cases/{id}/invoice', [MedicalCaseController::class, 'invoice']);
+            Route::post('/medical-cases/{id}/complete', [MedicalCaseController::class, 'complete']);
+            Route::post('/medical-cases/{id}/cancel', [MedicalCaseController::class, 'cancel']);
+        });
     });
 
-    // Bonus Schemes
+    // Bonus Schemes (issues #161/#186)
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
-        Route::apiResource('bonus-schemes', BonusSchemeController::class);
-        Route::post('/bonus-schemes/{id}/activate', [BonusSchemeController::class, 'activate']);
-        Route::post('/bonus-schemes/{id}/deactivate', [BonusSchemeController::class, 'deactivate']);
+        Route::apiResource('bonus-schemes', BonusSchemeController::class)
+            ->only(['index', 'show'])
+            ->middleware(RequirePermission::using('bonus_schemes.view'));
+        Route::apiResource('bonus-schemes', BonusSchemeController::class)
+            ->only(['store', 'update', 'destroy'])
+            ->middleware(RequirePermission::using('bonus_schemes.write'));
+
+        Route::middleware(RequirePermission::using('bonus_schemes.write'))->group(function () {
+            Route::post('/bonus-schemes/{id}/activate', [BonusSchemeController::class, 'activate']);
+            Route::post('/bonus-schemes/{id}/deactivate', [BonusSchemeController::class, 'deactivate']);
+        });
     });
 
-    // Customer Bonus Scheme Assignments
+    // Customer Bonus Scheme Assignments (issues #161/#186 — same bonus_schemes domain)
     Route::middleware([ResolveEntityContext::class, EnsureEntityAccess::class])->group(function () {
-        Route::apiResource('customer-bonus-schemes', CustomerBonusSchemeController::class);
-        Route::post('/customer-bonus-schemes/{id}/suspend', [CustomerBonusSchemeController::class, 'suspend']);
-        Route::post('/customer-bonus-schemes/{id}/reactivate', [CustomerBonusSchemeController::class, 'reactivate']);
+        Route::apiResource('customer-bonus-schemes', CustomerBonusSchemeController::class)
+            ->only(['index', 'show'])
+            ->middleware(RequirePermission::using('bonus_schemes.view'));
+        Route::apiResource('customer-bonus-schemes', CustomerBonusSchemeController::class)
+            ->only(['store', 'update', 'destroy'])
+            ->middleware(RequirePermission::using('bonus_schemes.write'));
+
+        Route::middleware(RequirePermission::using('bonus_schemes.write'))->group(function () {
+            Route::post('/customer-bonus-schemes/{id}/suspend', [CustomerBonusSchemeController::class, 'suspend']);
+            Route::post('/customer-bonus-schemes/{id}/reactivate', [CustomerBonusSchemeController::class, 'reactivate']);
+        });
     });
 
     // Per-customer aging (customer detail page — no entity/accounting middleware needed)

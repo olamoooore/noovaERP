@@ -15,6 +15,8 @@ class PosPaymentCompletionService
     public function __construct(
         private readonly PosPostingService $posPostingService,
         private readonly InventoryService $inventoryService,
+        private readonly \App\Services\BundleDecompositionService $bundleDecomposition,
+        private readonly \App\Services\BatchSerialConsumptionService $batchSerialConsumption,
     ) {}
 
     public function complete(
@@ -77,22 +79,38 @@ class PosPaymentCompletionService
                 $paymentMethod
             );
 
+            // Issue #242: aggregate component demand across the whole order before
+            // deducting — stock_movements_ref_product_type_unique allows a single
+            // movement per (reference, product, type), and the old per-line math
+            // against an order-wide 'already deducted' sum under-deducted shared
+            // components (two lines consuming the same product).
+            $componentDemand = [];
             foreach ($posOrder->items as $item) {
-                $productId = $item->variant ? $item->variant->product_id : $item->product_id;
-                $trackInventory = $item->variant
-                    ? (bool) $item->variant->track_inventory
-                    : (bool) ($item->product?->track_inventory ?? false);
+                $product = $item->variant ? $item->variant->product : $item->product;
 
-                if (! $productId || ! $trackInventory) {
+                if (! $product) {
                     continue;
                 }
 
-                $alreadyDeducted = (int) StockMovement::where('reference_type', 'PosOrder')
+                foreach ($this->bundleDecomposition->stockConsumingComponents($product, (float) $item->quantity) as $component) {
+                    $productId = $component['product']->id;
+                    $qty = (float) $component['quantity'];
+
+                    if ($qty <= 0) {
+                        continue;
+                    }
+
+                    $componentDemand[$productId] = ($componentDemand[$productId] ?? 0.0) + $qty;
+                }
+            }
+
+            foreach ($componentDemand as $productId => $neededQty) {
+                $alreadyDeducted = (float) StockMovement::where('reference_type', 'PosOrder')
                     ->where('reference_id', $posOrder->id)
                     ->where('type', 'sale')
                     ->where('product_id', $productId)
                     ->sum('quantity');
-                $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
+                $remainingToDeduct = $neededQty - $alreadyDeducted;
 
                 if ($remainingToDeduct <= 0) {
                     continue;
@@ -108,6 +126,10 @@ class PosPaymentCompletionService
                     referenceId: $posOrder->id,
                 );
             }
+
+            // Issue #252: transition captured serials to sold.
+            $this->markSerialsSoldForOrder($posOrder);
+
             $posOrder->update([
                 'status' => 'paid',
                 'paid_at' => now(),
@@ -166,23 +188,38 @@ class PosPaymentCompletionService
             }
 
             // Stock deduction — idempotent via already-deducted check
+            // Issue #242: aggregate component demand across the whole order before
+            // deducting — stock_movements_ref_product_type_unique allows a single
+            // movement per (reference, product, type), and the old per-line math
+            // against an order-wide 'already deducted' sum under-deducted shared
+            // components (two lines consuming the same product).
+            $componentDemand = [];
             foreach ($posOrder->items as $item) {
-                $productId = $item->variant ? $item->variant->product_id : $item->product_id;
-                $trackInventory = $item->variant
-                    ? (bool) $item->variant->track_inventory
-                    : (bool) ($item->product?->track_inventory ?? false);
+                $product = $item->variant ? $item->variant->product : $item->product;
 
-                if (! $productId || ! $trackInventory) {
+                if (! $product) {
                     continue;
                 }
 
-                $alreadyDeducted = (int) StockMovement::where('reference_type', 'PosOrder')
+                foreach ($this->bundleDecomposition->stockConsumingComponents($product, (float) $item->quantity) as $component) {
+                    $productId = $component['product']->id;
+                    $qty = (float) $component['quantity'];
+
+                    if ($qty <= 0) {
+                        continue;
+                    }
+
+                    $componentDemand[$productId] = ($componentDemand[$productId] ?? 0.0) + $qty;
+                }
+            }
+
+            foreach ($componentDemand as $productId => $neededQty) {
+                $alreadyDeducted = (float) StockMovement::where('reference_type', 'PosOrder')
                     ->where('reference_id', $posOrder->id)
                     ->where('type', 'sale')
                     ->where('product_id', $productId)
                     ->sum('quantity');
-
-                $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
+                $remainingToDeduct = $neededQty - $alreadyDeducted;
 
                 if ($remainingToDeduct <= 0) {
                     continue;
@@ -199,8 +236,45 @@ class PosPaymentCompletionService
                 );
             }
 
+            // Issue #252: transition captured serials to sold (backfill path).
+            $this->markSerialsSoldForOrder($posOrder);
+
             return $posOrder->fresh();
         });
+    }
+
+    /**
+     * Issue #252: mark captured serials sold for a POS sale (previously only the
+     * Sales-Order→Delivery-Order channel called markSerialsSold).
+     */
+    private function markSerialsSoldForOrder(PosOrder $posOrder): void
+    {
+        if (! $posOrder->customer_id) {
+            return;
+        }
+
+        $posOrder->loadMissing('items.variant.product', 'items.product');
+
+        foreach ($posOrder->items as $item) {
+            $serials = $item->serial_numbers ?? [];
+
+            if (! is_array($serials) || $serials === []) {
+                continue;
+            }
+
+            $product = $item->variant ? $item->variant->product : $item->product;
+
+            if (! $product) {
+                continue;
+            }
+
+            $this->batchSerialConsumption->markSerialsSold(
+                $product,
+                $serials,
+                (int) $posOrder->customer_id,
+                $posOrder->order_number,
+            );
+        }
     }
 
     private function hasStockTrackedItems(PosOrder $posOrder): bool

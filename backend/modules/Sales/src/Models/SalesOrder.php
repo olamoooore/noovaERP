@@ -16,6 +16,9 @@ class SalesOrder extends Model
     protected $fillable = [
         'sales_order_number',
         'customer_id',
+        // Issue #140: legal entity the order belongs to (backfilled and set at
+        // creation from the customer's entity).
+        'legal_entity_id',
         'channel',
         'status',
         'accounting_status',
@@ -42,6 +45,14 @@ class SalesOrder extends Model
         'attention_to',
         'contact_email',
         'contact_phone',
+        // Issue #149: online quotation acceptance / eSignature portal.
+        'acceptance_token',
+        'acceptance_expires_at',
+        'accepted_at',
+        'signer_name',
+        'signer_email',
+        'signature_data',
+        'acceptance_source',
         'customer_name_snapshot',
         'billing_address_snapshot',
         'shipping_address_snapshot',
@@ -57,6 +68,8 @@ class SalesOrder extends Model
         'order_date' => 'date',
         'required_date' => 'date',
         'cancelled_at' => 'datetime',
+        'acceptance_expires_at' => 'datetime',
+        'accepted_at' => 'datetime',
         'warehouse_id' => 'integer',
         'bill_by_delivered_qty' => 'boolean',
         'customer_name_snapshot' => 'array',
@@ -86,6 +99,23 @@ class SalesOrder extends Model
     public function lines(): HasMany
     {
         return $this->hasMany(SalesOrderLine::class);
+    }
+
+    /**
+     * Issue #140: scope to an explicit set of legal entities. Fail-closed when
+     * the set is empty (no accessible entities means no rows visible).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @param  int[]  $accessibleEntityIds
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeAccessibleBy($query, array $accessibleEntityIds)
+    {
+        if (empty($accessibleEntityIds)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereIn('legal_entity_id', $accessibleEntityIds);
     }
 
     public function warehouse(): BelongsTo

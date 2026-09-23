@@ -16,6 +16,11 @@ class RateRequest
         public readonly string $weightUnit = 'kg',
         public readonly string $dimensionUnit = 'cm',
         public readonly ?string $serviceType = null,
+        // Issue #148: order-value context for ShippingRule conditions.
+        public readonly float $orderTotal = 0.0,
+        // Issue #148: RateShopperService read this as an undeclared property
+        // (undefined-property warning, always null) — declared now.
+        public readonly ?string $tenantId = null,
     ) {}
 
     public function toArray(): array

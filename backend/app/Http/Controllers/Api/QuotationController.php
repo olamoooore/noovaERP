@@ -12,6 +12,7 @@ use App\Models\Warehouse;
 use App\Services\CaseImportService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
+use App\Services\SalesApprovalGate;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -28,6 +29,7 @@ class QuotationController extends Controller
         private SalesOrderService $salesOrderService,
         private InvoiceService $invoiceService,
         private LockDateValidationService $lockDateValidator,
+        private SalesApprovalGate $approvalGate,
         private CaseImportService $caseImportService,
     ) {}
 
@@ -398,6 +400,27 @@ class QuotationController extends Controller
 
         if ($quotation->status !== 'draft' && $quotation->status !== 'sent') {
             return response()->json(['message' => 'Only draft or sent quotations can be confirmed'], 403);
+        }
+
+        // Issue #180: config-driven approval gate. Quotation total must meet
+        // or exceed the tenant's threshold to proceed; otherwise an
+        // ApprovalRequest is created and the quotation stays in its current
+        // status. The SalesOrder is NOT created until approval lands.
+        if ($this->approvalGate->requiresApproval(Quotation::class, (float) $quotation->total)) {
+            $approval = $this->approvalGate->createRequest(
+                $quotation,
+                Auth::user(),
+                SalesApprovalGate::REQUEST_TYPE_QUOTATION,
+                "Quotation total {$quotation->total} meets the tenant approval threshold."
+            );
+
+            return response()->json([
+                'message' => 'Approval required',
+                'requires_approval' => true,
+                'approval_request' => $approval,
+                'threshold' => $this->approvalGate->threshold(),
+                'quotation' => $quotation->fresh(['customer', 'lines.product']),
+            ], 202);
         }
 
         try {
@@ -991,6 +1014,50 @@ class QuotationController extends Controller
      * Reset a cancelled quotation back to draft.
      * Allows re-editing and re-confirming.
      */
+    /**
+     * Issue #178/#179: reject a quotation — voids the original and creates an
+     * auto-versioned replacement draft (same correction group, version+1).
+     */
+    public function reject(Request $request, $id)
+    {
+        $quotation = Quotation::find($id);
+
+        if (! $quotation) {
+            return response()->json(['message' => 'Quotation not found'], 404);
+        }
+
+        if ($quotation->status === 'cancelled') {
+            return response()->json(['message' => 'Quotation is already cancelled/rejected'], 422);
+        }
+
+        $validated = $request->validate([
+            'reason_code' => 'nullable|string|max:50',
+            'reason_text' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $replacement = app(\App\Services\ReplacementDraftService::class)->createQuotationReplacementDraft(
+                $quotation,
+                \App\Services\CorrectionRequest::fromRequest([
+                    'reason_code' => $validated['reason_code'] ?? 'rejection',
+                    'reason_text' => $validated['reason_text'] ?? 'Quotation rejected',
+                    'user_id' => \Illuminate\Support\Facades\Auth::id(),
+                ])
+            );
+
+            return response()->json([
+                'message' => 'Quotation rejected; replacement draft created',
+                'quotation' => $replacement->load('lines.product'),
+                'superseded_quotation_id' => $quotation->id,
+            ], 201);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to reject quotation',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function resetToDraft($id)
     {
         $quotation = Quotation::find($id);

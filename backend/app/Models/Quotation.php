@@ -57,6 +57,7 @@ class Quotation extends Model
         'date_of_case',
         'case_location',
         'patient_name',
+        'patient_name_encrypted',
         'cost_center_id',
         'delivery_date',
         'pr_no',
@@ -67,9 +68,20 @@ class Quotation extends Model
         'shipping_address_snapshot',
         'sales_order_id',
         'created_by',
+        // Issue #178: rejection/replacement revision chain.
+        'correction_group_id',
+        'version_number',
+        'is_active_version',
+        'original_document_id',
+        'replacement_document_id',
+        'superseded_at',
+        'correction_type',
+        'correction_reason_code',
+        'correction_reason_text',
     ];
 
     protected $casts = [
+        'patient_name_encrypted' => \App\Casts\EncryptedOrLegacyString::class,
         'quotation_date' => 'date',
         'valid_until' => 'date',
         'subtotal' => 'decimal:2',
@@ -79,6 +91,8 @@ class Quotation extends Model
         'total' => 'decimal:2',
         'date_of_case' => 'date',
         'delivery_date' => 'date',
+        'is_active_version' => 'boolean',
+        'superseded_at' => 'datetime',
     ];
 
     public function customer(): BelongsTo
@@ -225,4 +239,23 @@ class Quotation extends Model
     {
         return $this->status === 'sent';
     }
+
+    // Issue #222: patient name is PHI — encrypted at rest, exposed as the
+    // virtual patient_name attribute so existing callers keep working.
+    protected $appends = ['patient_name'];
+
+    protected $hidden = ['patient_name_encrypted'];
+
+    public function getPatientNameAttribute(): ?string
+    {
+        return $this->patient_name_encrypted;
+    }
+
+    public function setPatientNameAttribute(mixed $value): void
+    {
+        $this->attributes['patient_name_encrypted'] = ($value === null || $value === '')
+            ? null
+            : \Illuminate\Support\Facades\Crypt::encryptString((string) $value);
+    }
+
 }

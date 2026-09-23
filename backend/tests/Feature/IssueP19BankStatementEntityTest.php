@@ -166,12 +166,13 @@ class IssueP19BankStatementEntityTest extends TenantTestCase
         $this->assertSame('exact', $suggestions[0]['matches'][0]['match_type'] ?? null);
         $this->assertSame($glLine->id, $suggestions[0]['matches'][0]['gl_transaction_id'] ?? null);
 
-        $this->assertDatabaseHas('match_candidates', [
-            'bank_statement_line_id' => $statementLine->id,
-            'journal_entry_line_id' => $glLine->id,
-            'match_type' => 'exact',
-            'accepted' => false,
-        ]);
+        // Issue #168: suggestions are persisted against the live statement
+        // models (BankStatementTransaction/BankStatementMatch), not the
+        // disconnected BankStatementLine/MatchCandidate pair. A legacy line id
+        // must therefore no-op instead of writing orphan candidates.
+        // Persistence against the real models is covered by
+        // HR168AutoMatchAcceptTest::test_suggestions_are_persisted_as_bank_statement_matches.
+        $this->assertDatabaseCount('match_candidates', 0);
     }
 
     public function test_bank_reconciliation_controller_uses_bank_accounts_id(): void

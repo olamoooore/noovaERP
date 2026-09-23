@@ -16,6 +16,24 @@ export default {
       },
     },
     extend: {
+      // Densified type scale — every step is 1px smaller than Tailwind's
+      // default so the ERP fits more data per screen without feeling cramped.
+      // (e.g. text-sm 14px → 13px, text-xs 12px → 11px, text-base 16px → 15px)
+      fontSize: {
+        xs: ['0.6875rem', { lineHeight: '0.875rem' }],
+        sm: ['0.8125rem', { lineHeight: '1.125rem' }],
+        base: ['0.9375rem', { lineHeight: '1.375rem' }],
+        lg: ['1.0625rem', { lineHeight: '1.625rem' }],
+        xl: ['1.1875rem', { lineHeight: '1.625rem' }],
+        '2xl': ['1.4375rem', { lineHeight: '1.875rem' }],
+        '3xl': ['1.8125rem', { lineHeight: '2.125rem' }],
+        '4xl': ['2.1875rem', { lineHeight: '2.375rem' }],
+        '5xl': ['2.9375rem', { lineHeight: '1' }],
+        '6xl': ['3.6875rem', { lineHeight: '1' }],
+        '7xl': ['4.4375rem', { lineHeight: '1' }],
+        '8xl': ['5.9375rem', { lineHeight: '1' }],
+        '9xl': ['7.9375rem', { lineHeight: '1' }],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

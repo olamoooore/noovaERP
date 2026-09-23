@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
+use App\Services\DocumentCurrencyResolver;
 use Illuminate\Support\Facades\DB;
 
 class SampleTransactionsSeeder extends Seeder
@@ -101,6 +102,10 @@ class SampleTransactionsSeeder extends Seeder
                 $invoiceId = DB::table('invoices')->insertGetId([
                     'invoice_number' => 'INV-2026-'.str_pad($index + 1, 4, '0', STR_PAD_LEFT),
                     'customer_id' => $customer->id,
+                    // Issue #215: raw inserts bypass the Invoice creating hook,
+                    // so stamp the resolved currency explicitly rather than
+                    // leaving NULL for the views to COALESCE at query time.
+                    'currency_code' => DocumentCurrencyResolver::resolve(),
                     'invoice_date' => $invoiceDate,
                     'due_date' => $dueDate,
                     'status' => rand(0, 1) ? 'paid' : 'sent',
@@ -159,9 +164,12 @@ class SampleTransactionsSeeder extends Seeder
                 $billId = DB::table('bills')->insertGetId([
                     'bill_number' => 'BILL-2026-'.str_pad($index + 1, 4, '0', STR_PAD_LEFT),
                     'vendor_id' => $vendor->id,
+                    // Issue #215: raw insert — stamp the currency explicitly.
+                    'currency_code' => DocumentCurrencyResolver::resolve(),
                     'bill_date' => $billDate,
                     'due_date' => $dueDate,
-                    'status' => rand(0, 1) ? 'paid' : 'pending',
+                    // 'pending' is not a valid bills status (draft/posted/paid/overdue/cancelled).
+                    'status' => rand(0, 1) ? 'paid' : 'posted',
                     'subtotal' => 0,
                     'tax_amount' => 0,
                     'total' => 0,

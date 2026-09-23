@@ -41,7 +41,7 @@ return new class extends Migration
         }
 
         $indexExists = collect(DB::select(
-            "SELECT indexname FROM pg_indexes WHERE tablename = 'customers' AND indexname = 'customers_entity_code_unique'"
+            "SELECT indexname FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'customers' AND indexname = 'customers_entity_code_unique'"
         ))->isNotEmpty();
         if (! $indexExists) {
             DB::statement('CREATE UNIQUE INDEX customers_entity_code_unique ON customers (COALESCE(legal_entity_id, 0), code) WHERE code IS NOT NULL AND deleted_at IS NULL');
@@ -75,7 +75,7 @@ return new class extends Migration
         ');
 
         $primaryIndexExists = collect(DB::select(
-            "SELECT indexname FROM pg_indexes WHERE tablename = 'customer_contacts' AND indexname = 'customer_contacts_one_primary'"
+            "SELECT indexname FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'customer_contacts' AND indexname = 'customer_contacts_one_primary'"
         ))->isNotEmpty();
         if (! $primaryIndexExists) {
             DB::statement('CREATE UNIQUE INDEX customer_contacts_one_primary ON customer_contacts (customer_id) WHERE is_primary = true');
@@ -84,8 +84,10 @@ return new class extends Migration
 
     public function down(): void
     {
-        DB::statement('DROP INDEX IF EXISTS customer_contacts_one_primary');
-        DB::statement('DROP INDEX IF EXISTS customers_entity_code_unique');
+        // Schema-qualified: unqualified DROP INDEX can leak to public via search_path.
+        $schema = DB::selectOne('SELECT current_schema() AS s')->s;
+        DB::statement("DROP INDEX IF EXISTS \"{$schema}\".customer_contacts_one_primary");
+        DB::statement("DROP INDEX IF EXISTS \"{$schema}\".customers_entity_code_unique");
 
         Schema::table('customer_contacts', function (Blueprint $table) {
             $table->dropColumn(['core_contact_uuid', 'department_name']);

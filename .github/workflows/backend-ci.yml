@@ -1,5 +1,11 @@
 name: Backend CI
 
+# Four parallel jobs (gates, feature, ocr, financial-reporting) instead of one
+# serial job: the old layout ran every suite back-to-back and the Feature suite
+# hit its 10-minute step timeout, failing the whole run after ~11 minutes with
+# no test failures reported. Gates now report in ~3 minutes; suites run
+# concurrently; each job gets a realistic timeout.
+
 on:
   pull_request:
     branches:
@@ -7,18 +13,42 @@ on:
     paths:
       - 'backend/**'
       - '.github/workflows/backend-ci.yml'
+      - '.github/actions/backend-setup/**'
   push:
     branches:
       - main
     paths:
       - 'backend/**'
       - '.github/workflows/backend-ci.yml'
+      - '.github/actions/backend-setup/**'
   workflow_dispatch:
 
+# Shared job environment (applies to every job).
+env:
+  APP_ENV: testing
+  APP_DEBUG: true
+  APP_URL: http://localhost:8000
+  APP_DOMAIN: localhost
+  DB_CONNECTION: pgsql
+  DB_HOST: 127.0.0.1
+  DB_PORT: 5432
+  DB_DATABASE: noovaerp_ci
+  DB_USERNAME: postgres
+  DB_PASSWORD: postgres
+  CACHE_DRIVER: array
+  CACHE_STORE: array
+  QUEUE_CONNECTION: sync
+  SESSION_DRIVER: array
+  MAIL_MAILER: array
+  REDIS_CLIENT: phpredis
+  CENTRAL_DOMAINS: localhost
+  OCR_SERVICE_KEY: test-ocr-service-key
+
 jobs:
-  backend-tests:
-    name: Laravel Backend Tests
+  gates:
+    name: Gates & PRD proof tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -35,47 +65,12 @@ jobs:
           --health-timeout=5s
           --health-retries=10
 
-    env:
-      APP_ENV: testing
-      APP_DEBUG: true
-      APP_URL: http://localhost:8000
-      APP_DOMAIN: localhost
-      DB_CONNECTION: pgsql
-      DB_HOST: 127.0.0.1
-      DB_PORT: 5432
-      DB_DATABASE: noovaerp_ci
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
-      CACHE_DRIVER: array
-      CACHE_STORE: array
-      QUEUE_CONNECTION: sync
-      SESSION_DRIVER: array
-      MAIL_MAILER: array
-      REDIS_CLIENT: phpredis
-      CENTRAL_DOMAINS: localhost
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-          extensions: mbstring, dom, fileinfo, pdo_pgsql, pgsql, sqlite3
-          coverage: none
-
-      - name: Cache Composer dependencies
-        uses: actions/cache@v4
-        with:
-          path: backend/vendor
-          key: ${{ runner.os }}-php-8.2-${{ hashFiles('backend/composer.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-php-8.2-
-
-      - name: Install backend dependencies
-        working-directory: backend
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+      - name: Backend setup
+        uses: ./.github/actions/backend-setup
 
       - name: Preflight checks
         working-directory: backend
@@ -118,19 +113,6 @@ jobs:
           fi
           echo "No direct Customer::create() bypasses found"
 
-      - name: Prepare Laravel environment
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          cp .env.example .env
-          php artisan key:generate
-
-      - name: Run central migrations
-        working-directory: backend
-        run: |
-          set -euo pipefail
-          php artisan migrate --force
-
       - name: Run tenancy configuration regression test
         working-directory: backend
         run: |
@@ -150,21 +132,101 @@ jobs:
           set -euo pipefail
           php -d memory_limit=256M artisan test --filter "RM001SchedulerMonitoringTest|RM002SalesFulfilmentWarehouseResolutionTest|RM002PosWarehouseCommitmentTest|RM002SubscriptionTierWarehouseModelTest|RM003LoyaltyRewardStockBoundaryTest|LEG001LegacyReservationClosureTest|AR001MutationOwnershipTest|AR002MovementIdempotencyTest|AR003RowLockingConcurrencyTest|AR004PostingEngineBoundaryTest|ENT001PostingNoopSafetyTest|AFM001AccountingFailureModelTest"
 
+  feature:
+    name: Feature test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: noovaerp_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d noovaerp_ci"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Backend setup
+        uses: ./.github/actions/backend-setup
+
       - name: Run Feature test suite
         working-directory: backend
-        timeout-minutes: 10
         run: |
           set -euo pipefail
-          php -d memory_limit=256M artisan test --testsuite=Feature
+          php -d memory_limit=256M artisan test --parallel --processes=4 --testsuite=Feature
+
+  ocr:
+    name: OCR test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: noovaerp_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d noovaerp_ci"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Backend setup
+        uses: ./.github/actions/backend-setup
 
       - name: Run OCR test suite
         working-directory: backend
         run: |
           set -euo pipefail
-          php -d memory_limit=256M artisan test --testsuite=OCR
+          php -d memory_limit=256M artisan test --parallel --processes=4 --testsuite=OCR
+
+  financial-reporting:
+    name: FinancialReporting test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: noovaerp_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d noovaerp_ci"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Backend setup
+        uses: ./.github/actions/backend-setup
 
       - name: Run FinancialReporting test suite
         working-directory: backend
         run: |
           set -euo pipefail
-          php -d memory_limit=256M artisan test --testsuite=FinancialReporting
+          php -d memory_limit=256M artisan test --parallel --processes=4 --testsuite=FinancialReporting

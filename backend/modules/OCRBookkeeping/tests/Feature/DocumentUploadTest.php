@@ -182,7 +182,7 @@ class DocumentUploadTest extends TenantTestCase
     {
         $this->fakeSuccessfulOcrResponse();
 
-        $response = $this->uploadDocument(UploadedFile::fake()->image('receipt.jpg'));
+        $response = $this->uploadDocument(UploadedFile::fake()->createWithContent('receipt.jpg', 'fake-jpeg-bytes'));
 
         $response->assertCreated()
             ->assertJsonPath('message', 'Document uploaded successfully');
@@ -260,8 +260,8 @@ class DocumentUploadTest extends TenantTestCase
     public function test_valid_file_types_are_accepted()
     {
         $files = [
-            UploadedFile::fake()->image('receipt.jpg'),
-            UploadedFile::fake()->image('receipt.png'),
+            UploadedFile::fake()->createWithContent('receipt.jpg', 'fake-jpeg-bytes'),
+            UploadedFile::fake()->createWithContent('receipt.png', 'fake-png-bytes'),
             $this->fakePdf('invoice.pdf'),
         ];
 
@@ -300,7 +300,7 @@ class DocumentUploadTest extends TenantTestCase
         $this->fakeSuccessfulOcrResponse();
 
         $response = $this->batchUploadDocuments([
-            UploadedFile::fake()->image('first.jpg'),
+            UploadedFile::fake()->createWithContent('first.jpg', 'fake-jpeg-bytes'),
             $this->fakePdf('second.pdf'),
         ]);
 
@@ -319,7 +319,7 @@ class DocumentUploadTest extends TenantTestCase
     public function test_batch_upload_handles_mixed_files()
     {
         $response = $this->batchUploadDocuments([
-            UploadedFile::fake()->image('valid.jpg'),
+            UploadedFile::fake()->createWithContent('valid.jpg', 'fake-jpeg-bytes'),
             UploadedFile::fake()->create('invalid.exe', 100, 'application/octet-stream'),
         ]);
 
@@ -339,7 +339,7 @@ class DocumentUploadTest extends TenantTestCase
 
         $response = $this->withHeaders(['Accept' => 'application/json'])
             ->post('/api/v1/ocr/documents/upload', [
-                'file' => UploadedFile::fake()->image('receipt.jpg'),
+                'file' => UploadedFile::fake()->createWithContent('receipt.jpg', 'fake-jpeg-bytes'),
             ]);
 
         $response->assertStatus(401);
@@ -354,7 +354,7 @@ class DocumentUploadTest extends TenantTestCase
 
         $this->fakeSuccessfulOcrResponse();
 
-        $response = $this->uploadDocument(UploadedFile::fake()->image('no-entitlement.jpg'));
+        $response = $this->uploadDocument(UploadedFile::fake()->createWithContent('no-entitlement.jpg', 'fake-jpeg-bytes'));
 
         $response->assertStatus(403);
 

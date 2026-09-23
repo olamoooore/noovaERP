@@ -14,12 +14,15 @@ export interface SettingsTaxConfig {
 }
 
 export interface SettingsMailConfig {
-  driver: 'smtp' | 'log' | 'array' | 'sendmail' // usually 'smtp' by default
+  /** 'smtp' and 'resend' are the supported production transports. */
+  driver: 'smtp' | 'resend' | 'log' | 'array' | 'sendmail'
   host: string
   port: number
   encryption: 'tls' | 'ssl' | ''
   username: string
   password?: string
+  /** Resend API key — required when driver === 'resend'. */
+  api_key?: string
   from_address: string
   from_name: string
 }

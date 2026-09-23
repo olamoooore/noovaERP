@@ -41,7 +41,7 @@ class CacheBehaviorTest extends TenantTestCase
             \App\Http\Middleware\EnsureEntityAccess::class,
         ]);
 
-        $this->user = User::factory()->create();
+        $this->user = $this->setUpTenantAdminUser('Report Cache Tenant');
         $this->cacheService = app(ReportCacheService::class);
         Cache::flush();
         $this->setupTestData();

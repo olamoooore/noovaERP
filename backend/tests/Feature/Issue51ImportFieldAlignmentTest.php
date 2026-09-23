@@ -119,7 +119,7 @@ class Issue51ImportFieldAlignmentTest extends TenantTestCase
 
     /**
      * AC2 (payment): legacy `payment_method` maps to the canonical `method`,
-     * and status is persisted as payment_status (draft). Pre-#51 both keys were
+     * and status is persisted as payment_status ('recorded', canonical). Pre-#51 both keys were
      * non-fillable-mismatched and silently dropped.
      */
     public function test_payment_import_maps_method_and_status(): void
@@ -150,7 +150,7 @@ class Issue51ImportFieldAlignmentTest extends TenantTestCase
         $this->assertNotNull($payment);
         $this->assertSame('cash', $payment->method,
             "Payment.method must be set from legacy payment_method (was dropped pre-#51)");
-        $this->assertSame('draft', $payment->payment_status);
+        $this->assertSame('recorded', $payment->payment_status);
         $this->assertEqualsWithDelta(750.00, (float) $payment->amount, 0.01);
     }
 

@@ -342,7 +342,7 @@ class DeliveryOrderController extends Controller
         ]);
     }
 
-    public function confirm($id)
+    public function confirm(Request $request, $id)
     {
         $deliveryOrder = DeliveryOrder::find($id);
 
@@ -350,8 +350,16 @@ class DeliveryOrderController extends Controller
             return response()->json(['message' => 'Delivery order not found'], 404);
         }
 
+        $validated = $request->validate([
+            'method' => 'nullable|in:physical,digital',
+            'channel' => 'nullable|string|max:50',
+        ]);
+
         try {
-            $deliveryOrder = $this->deliveryService->confirmDeliveryOrder($deliveryOrder);
+            $deliveryOrder = $this->deliveryService->confirmDeliveryOrder($deliveryOrder, [
+                'method' => $validated['method'] ?? 'digital',
+                'channel' => $validated['channel'] ?? null,
+            ]);
 
             return response()->json([
                 'message' => 'Delivery order confirmed',
@@ -360,6 +368,70 @@ class DeliveryOrderController extends Controller
         } catch (\Exception $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
+    }
+
+    /**
+     * Issue #177 / #153: upload the signed copy for the physical confirmation
+     * path. Accepts explicit signer metadata (name + email + signed_at) so
+     * the proof travels with the resulting Invoice for client AP/payment
+     * processing.
+     */
+    public function uploadSignedDocument(Request $request, $id)
+    {
+        $deliveryOrder = DeliveryOrder::find($id);
+
+        if (! $deliveryOrder) {
+            return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        if (! $deliveryOrder->isDraft()) {
+            return response()->json(['message' => 'The signed document must be uploaded before the order is confirmed.'], 422);
+        }
+
+        $validated = $request->validate([
+            'file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'signed_by_name' => 'required|string|max:255',
+            'signed_by_email' => 'nullable|email|max:255',
+            'signed_at' => 'nullable|date',
+        ]);
+
+        $path = $validated['file']->store('delivery-orders/signed', 'local');
+
+        $deliveryOrder->update([
+            'confirmation_method' => $deliveryOrder->confirmation_method ?? 'physical',
+            'signed_document_path' => $path,
+            'signed_document_uploaded_at' => now(),
+            'signed_by_name' => $validated['signed_by_name'],
+            'signed_by_email' => $validated['signed_by_email'] ?? null,
+            'signed_at' => $validated['signed_at'] ?? now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Signed delivery order uploaded',
+            'signed_document_path' => $path,
+            'signed_by_name' => $deliveryOrder->fresh()->signed_by_name,
+            'signed_by_email' => $deliveryOrder->fresh()->signed_by_email,
+            'signed_at' => optional($deliveryOrder->fresh()->signed_at)->toIso8601String(),
+        ]);
+    }
+
+    /**
+     * Issue #153: download the signed POD file (referenced by Invoice.proofOfDelivery()).
+     */
+    public function downloadSignedDocument($id)
+    {
+        $deliveryOrder = DeliveryOrder::find($id);
+
+        if (! $deliveryOrder || ! $deliveryOrder->signed_document_path) {
+            return response()->json(['message' => 'Signed document not found.'], 404);
+        }
+
+        $disk = \Illuminate\Support\Facades\Storage::disk('local');
+        if (! $disk->exists($deliveryOrder->signed_document_path)) {
+            return response()->json(['message' => 'Signed document file missing on disk.'], 404);
+        }
+
+        return $disk->download($deliveryOrder->signed_document_path);
     }
 
     /**
@@ -439,6 +511,50 @@ class DeliveryOrderController extends Controller
     /**
      * Reset a cancelled delivery order back to draft.
      */
+    /**
+     * Issue #178/#179: reject a delivery order — voids the original and creates
+     * an auto-versioned replacement draft.
+     */
+    public function reject(Request $request, $id)
+    {
+        $deliveryOrder = DeliveryOrder::find($id);
+
+        if (! $deliveryOrder) {
+            return response()->json(['message' => 'Delivery order not found'], 404);
+        }
+
+        if (in_array($deliveryOrder->status, ['cancelled', 'done'], true)) {
+            return response()->json(['message' => 'This delivery order cannot be rejected in its current status'], 422);
+        }
+
+        $validated = $request->validate([
+            'reason_code' => 'nullable|string|max:50',
+            'reason_text' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $replacement = app(\App\Services\ReplacementDraftService::class)->createDeliveryOrderReplacementDraft(
+                $deliveryOrder,
+                \App\Services\CorrectionRequest::fromRequest([
+                    'reason_code' => $validated['reason_code'] ?? 'rejection',
+                    'reason_text' => $validated['reason_text'] ?? 'Delivery order rejected',
+                    'user_id' => \Illuminate\Support\Facades\Auth::id(),
+                ])
+            );
+
+            return response()->json([
+                'message' => 'Delivery order rejected; replacement draft created',
+                'data' => $replacement->load('lines.product'),
+                'superseded_delivery_order_id' => $deliveryOrder->id,
+            ], 201);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to reject delivery order',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function resetToDraft($id)
     {
         $deliveryOrder = DeliveryOrder::find($id);

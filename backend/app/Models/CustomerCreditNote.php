@@ -16,6 +16,8 @@ class CustomerCreditNote extends Model
         'credit_note_number',
         'customer_id',
         'invoice_id',
+        // Issue #154: lineage back to the originating sales order.
+        'sales_order_id',
         'credit_note_date',
         'due_date',
         'status',
@@ -29,6 +31,10 @@ class CustomerCreditNote extends Model
         'created_by',
         'posted_by',
         'posted_at',
+        // Issue #228: void transition metadata.
+        'voided_at',
+        'voided_by',
+        'reversal_journal_entry_id',
     ];
 
     protected $casts = [
@@ -62,6 +68,11 @@ class CustomerCreditNote extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function salesOrder(): BelongsTo
+    {
+        return $this->belongsTo(\Modules\Sales\Models\SalesOrder::class, 'sales_order_id');
     }
 
     public function invoice(): BelongsTo

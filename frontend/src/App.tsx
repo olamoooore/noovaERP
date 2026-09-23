@@ -28,6 +28,10 @@ const InvoicesPage = lazy(() => import('@/pages/InvoicesPage').then(m => ({ defa
 const InvoiceDetailPage = lazy(() => import('@/pages/InvoiceDetailPage').then(m => ({ default: m.InvoiceDetailPage })))
 const InvoicePaymentPage = lazy(() => import('@/pages/InvoicePaymentPage').then(m => ({ default: m.InvoicePaymentPage })))
 const InvoiceImportPage = lazy(() => import('@/pages/InvoiceImportPage').then(m => ({ default: m.InvoiceImportPage })))
+const NotificationsPage = lazy(() => import('@/pages/NotificationsPage').then(m => ({ default: m.default })))
+const ApprovalsInboxPage = lazy(() => import('@/pages/ApprovalsInboxPage').then(m => ({ default: m.default })))
+const InvoiceAcceptancePage = lazy(() => import('@/pages/InvoiceAcceptancePage').then(m => ({ default: m.default })))
+const QuotationAcceptancePage = lazy(() => import('@/pages/QuotationAcceptancePage').then(m => ({ default: m.default })))
 const PaymentsPage = lazy(() => import('@/pages/PaymentsPage').then(m => ({ default: m.PaymentsPage })))
 const AccountingPage = lazy(() => import('@/pages/AccountingPage').then(m => ({ default: m.AccountingPage })))
 const ModulesPage = lazy(() => import('@/pages/Modules/ModulesPage').then(m => ({ default: m.ModulesPage })))
@@ -304,6 +308,8 @@ function App() {
             <Route path="/" element={<HomeGate />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
+            <Route path="/invoice-accept/:token" element={<InvoiceAcceptancePage />} />
+            <Route path="/quotation-accept/:token" element={<QuotationAcceptancePage />} />
             
             <Route element={<ProtectedRoute />}>
               {/* Receipt Builder - fullscreen without sidebar */}
@@ -388,6 +394,8 @@ function App() {
                 <Route path="/invoices/:id/edit" element={<CreateInvoicePage />} />
                 <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
                 <Route path="/invoices/:id/payment" element={<InvoicePaymentPage />} />
+                <Route path="/notifications" element={<NotificationsPage />} />
+                <Route path="/approvals" element={<ApprovalsInboxPage />} />
                 <Route path="/accounting" element={<Navigate to="/accounting/dashboard" replace />} />
                 
                 {/* New Accounting Module Routes */}

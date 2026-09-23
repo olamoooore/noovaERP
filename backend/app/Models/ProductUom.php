@@ -14,35 +14,45 @@ class ProductUom extends Model
 {
     use HasFactory;
 
+    /**
+     * Issue #135: these names must match the real product_uoms schema
+     * (migration 2026_01_06_000008-era create): abbreviation, is_base_unit,
+     * is_purchase_unit, is_sales_unit. The previous list advertised
+     * short_name / is_purchase_uom / is_sales_uom, which do not exist, so those
+     * values were silently dropped on mass assignment.
+     */
     protected $fillable = [
         'product_id',
         'name',
-        'short_name',
+        'abbreviation',
         'conversion_factor',
+        'is_base_unit',
+        'is_purchase_unit',
+        'is_sales_unit',
         'price_multiplier',
         'barcode',
-        'weight',
-        'length',
-        'width',
-        'height',
-        'is_purchase_uom',
-        'is_sales_uom',
-        'is_active',
         'sort_order',
+        'is_active',
     ];
 
     protected $casts = [
         'conversion_factor' => 'decimal:6',
         'price_multiplier' => 'decimal:4',
-        'weight' => 'decimal:3',
-        'length' => 'decimal:2',
-        'width' => 'decimal:2',
-        'height' => 'decimal:2',
-        'is_purchase_uom' => 'boolean',
-        'is_sales_uom' => 'boolean',
+        'is_base_unit' => 'boolean',
+        'is_purchase_unit' => 'boolean',
+        'is_sales_unit' => 'boolean',
         'is_active' => 'boolean',
         'sort_order' => 'integer',
     ];
+
+    /**
+     * Backwards-compatible virtual attribute: existing API consumers/frontend
+     * read `short_name`; the real column is `abbreviation`.
+     */
+    public function getShortNameAttribute(): ?string
+    {
+        return $this->attributes['abbreviation'] ?? null;
+    }
 
     public function product(): BelongsTo
     {

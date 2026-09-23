@@ -72,9 +72,9 @@ class PublicWebsiteRenderController extends Controller
         $bodyJs = $content['body_js'] ?? '';
 
         // Fix broken /sites/ URLs in saved content → rewrite to /w/
-        $html = str_replace('/sites/' . $website->slug, '/w/' . $website->slug, $html);
+        $html = str_replace('/sites/'.$website->slug, '/w/'.$website->slug, $html);
         // Also fix absolute domain URLs like https://domain.com/sites/slug
-        $html = preg_replace('#https?://[^/]+/sites/' . preg_quote($website->slug, '#') . '#', '/w/' . $website->slug, $html);
+        $html = preg_replace('#https?://[^/]+/sites/'.preg_quote($website->slug, '#').'#', '/w/'.$website->slug, $html);
         // Fix relative logo path — rewrite noovaerplogo.png to /storage/noovaerplogo.png
         $html = str_replace('noovaerplogo.png', '/storage/noovaerplogo.png', $html);
 
@@ -105,7 +105,10 @@ class PublicWebsiteRenderController extends Controller
 
         return response($fullHtml, 200)
             ->header('Content-Type', 'text/html; charset=UTF-8')
-            ->header('Cache-Control', 'public, max-age=300');
+            // Revalidate instead of a 5-minute cache: editors save and preview
+            // repeatedly, and max-age=300 served them pre-save content (browser
+            // and Cloudflare) until the window expired.
+            ->header('Cache-Control', 'no-cache, must-revalidate');
     }
 
     /**

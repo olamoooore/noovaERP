@@ -1,0 +1,4 @@
+# Development/test dependencies for the OCR service (issue #174 tests).
+# Install with: .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+pytest>=8.0
+httpx>=0.27

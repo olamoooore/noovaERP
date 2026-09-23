@@ -7,10 +7,16 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Product;
+use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\CaseImportService;
+use App\Services\InvoiceActivityService;
+use App\Services\InvoiceApprovalService;
+use App\Services\InvoiceDeliveryService;
+use App\Services\InvoiceEvidenceService;
 use App\Services\InvoiceService;
 use App\Services\LockDateValidationService;
+use App\Services\SalesApprovalGate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -25,6 +31,11 @@ class InvoiceController extends Controller
         private SalesOrderService $salesOrderService,
         private LockDateValidationService $lockDateValidator,
         private CaseImportService $caseImportService,
+        private InvoiceActivityService $activityService,
+        private InvoiceApprovalService $approvalService,
+        private InvoiceDeliveryService $deliveryService,
+        private InvoiceEvidenceService $evidenceService,
+        private SalesApprovalGate $approvalGate,
     ) {}
 
     public function index(Request $request)
@@ -179,7 +190,9 @@ class InvoiceController extends Controller
 
         // Reject document discount exceeding the line subtotal
         $subtotal = array_reduce($validated['lines'], function ($sum, $line) {
-            if (in_array($line['line_type'] ?? 'product', ['note', 'section'], true)) return $sum;
+            if (in_array($line['line_type'] ?? 'product', ['note', 'section'], true)) {
+                return $sum;
+            }
             $qty = (int) ($line['quantity'] ?? 0);
             $price = (float) ($line['unit_price'] ?? 0);
             $lineDiscount = (float) ($line['discount_amount'] ?? 0);
@@ -437,6 +450,10 @@ class InvoiceController extends Controller
             return response()->json(['message' => 'Invoice not found'], 404);
         }
 
+        // Issue #153: surface the linked DO's signed proof-of-delivery so
+        // client AP teams can verify receipt + signature alongside the invoice.
+        $invoice->proof_of_delivery = $invoice->proofOfDelivery();
+
         return response()->json($invoice);
     }
 
@@ -489,6 +506,7 @@ class InvoiceController extends Controller
             'shipping_contact_id' => 'nullable|exists:core_contacts,id',
             'billing_contact_name' => 'nullable|string|max:255',
             'shipping_contact_name' => 'nullable|string|max:255',
+            'requires_approval' => 'nullable|boolean',
             'lines' => 'sometimes|array|min:1',
             'lines.*.line_type' => 'nullable|in:product,note,section',
             'lines.*.product_id' => 'nullable|exists:products,id',
@@ -516,14 +534,17 @@ class InvoiceController extends Controller
         }
 
         // Reject document discount exceeding the line subtotal
-            $subtotal = isset($validated['lines'])
-            ? array_reduce($validated['lines'], function ($sum, $line) {
-                if (in_array($line['line_type'] ?? 'product', ['note', 'section'], true)) return $sum;
-                return $sum + ($line['quantity'] * $line['unit_price']) - ($line['discount_amount'] ?? 0);
-            }, 0)
-            : $invoice->lines->reduce(function ($sum, $line) {
-                return $sum + ($line->quantity * $line->unit_price) - ($line->discount_amount ?? 0);
-            }, 0);
+        $subtotal = isset($validated['lines'])
+        ? array_reduce($validated['lines'], function ($sum, $line) {
+            if (in_array($line['line_type'] ?? 'product', ['note', 'section'], true)) {
+                return $sum;
+            }
+
+            return $sum + ($line['quantity'] * $line['unit_price']) - ($line['discount_amount'] ?? 0);
+        }, 0)
+        : $invoice->lines->reduce(function ($sum, $line) {
+            return $sum + ($line->quantity * $line->unit_price) - ($line->discount_amount ?? 0);
+        }, 0);
         $docDiscount = (float) ($validated['discount_amount'] ?? $invoice->discount_amount ?? 0);
         if ($docDiscount > 0 && $subtotal > 0 && $docDiscount > $subtotal) {
             return response()->json([
@@ -562,6 +583,16 @@ class InvoiceController extends Controller
 
             $invoice->refresh();
             $invoice->calculateTotals();
+
+            // Issue #180: auto-promote `requires_approval` when the tenant's
+            // threshold is set and the invoice total meets or exceeds it.
+            // The existing `submitApproval` flow then handles the workflow.
+            if ($this->approvalGate->requiresApproval(Invoice::class, (float) $invoice->total)) {
+                if (! $invoice->requires_approval) {
+                    $invoice->requires_approval = true;
+                    $invoice->save();
+                }
+            }
         });
 
         return response()->json($invoice->fresh(['customer', 'lines', 'doctor', 'requestor', 'buyer', 'billingContact', 'shippingContact']));
@@ -632,6 +663,483 @@ class InvoiceController extends Controller
         }
     }
 
+    public function submitApproval(Request $request, $id)
+    {
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::with('customer')->find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $this->approvalService->submit($invoice, $request->user(), $validated['reason'] ?? null);
+
+            return response()->json([
+                'message' => 'Invoice submitted for approval',
+                'data' => $invoice->fresh(['approvalRequest', 'customer']),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function withdrawApproval(Request $request, $id)
+    {
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $this->approvalService->withdraw($invoice, $request->user(), $validated['reason'] ?? null);
+
+            return response()->json([
+                'message' => 'Invoice approval withdrawn',
+                'data' => $invoice->fresh(['approvalRequest', 'customer']),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function deliver(Request $request, $id)
+    {
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'channel' => 'required|string|in:email,whatsapp,portal',
+            'document_type' => 'nullable|string|in:acceptance_copy,final_invoice,payment_request,reminder',
+            'recipient' => 'nullable|email',
+            'resend' => 'nullable|boolean',
+        ]);
+
+        $channel = $validated['channel'];
+        $documentType = $validated['document_type'] ?? ($invoice->status === 'posted'
+            ? 'final_invoice'
+            : 'acceptance_copy');
+
+        try {
+            if (! empty($validated['resend'])) {
+                $delivery = $this->deliveryService->resend($invoice, $request->user(), $channel, [
+                    'document_type' => $documentType,
+                    'recipient' => $validated['recipient'] ?? null,
+                ]);
+            } else {
+                $delivery = $this->deliveryService->deliver($invoice, $channel, $request->user(), [
+                    'document_type' => $documentType,
+                    'recipient' => $validated['recipient'] ?? null,
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Invoice delivered',
+                'data' => $delivery,
+                'delivery_status' => $invoice->fresh()->delivery_status,
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function uploadEvidence(Request $request, $id)
+    {
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'type' => 'required|string|in:customer_esign,customer_acceptance,purchase_order,delivery_order,payment_proof,other',
+            'file' => 'required|file|mimes:pdf,png,jpg,jpeg|max:10240',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $evidence = $this->evidenceService->upload(
+                $invoice,
+                $request->user(),
+                $validated['type'],
+                $validated['file'],
+                $validated['notes'] ?? null,
+            );
+
+            return response()->json([
+                'message' => 'Evidence uploaded',
+                'data' => $evidence,
+                'evidence_status' => $invoice->fresh()->evidence_status,
+            ], 201);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function createPaymentLink(Request $request, $id)
+    {
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        if ($invoice->status === 'draft') {
+            return response()->json([
+                'message' => 'Cannot create payment link for a draft invoice. Post the invoice first.',
+                'code' => 'INVOICE_NOT_POSTED',
+            ], 422);
+        }
+
+        if (bccomp($invoice->balance, '0.00', 2) <= 0) {
+            return response()->json([
+                'message' => 'Invoice balance is zero or paid. No payment link needed.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'amount' => 'nullable|numeric|min:0.01|max:'.$invoice->balance,
+            'expires_in_days' => 'nullable|integer|min:1|max:90',
+        ]);
+
+        $amount = $validated['amount'] ?? $invoice->balance;
+        $expiresDays = $validated['expires_in_days'] ?? 14;
+
+        try {
+            $paymentLink = $this->invoiceService->createPaymentLink($invoice, $amount, now()->addDays($expiresDays));
+
+            $this->activityService->log(
+                $invoice,
+                \App\Models\InvoiceActivityLog::EVENT_PAYMENT_LINK_ISSUED,
+                [
+                    'payment_link_url' => $paymentLink['url'] ?? $invoice->payment_link_url,
+                    'amount' => $amount,
+                    'expires_at' => $invoice->payment_link_expires_at?->toIso8601String(),
+                ],
+                null,
+                null,
+                \App\Models\InvoiceActivityLog::ACTOR_USER,
+                $request->user()->id,
+            );
+
+            // Auto-deliver payment link via email (non-blocking)
+            try {
+                if ($invoice->contact_email || $invoice->customer?->email) {
+                    $this->deliveryService->deliver($invoice, 'email', $request->user(), [
+                        'document_type' => \App\Models\InvoiceDelivery::DOCUMENT_PAYMENT_REQUEST,
+                        'recipient' => $invoice->contact_email ?? $invoice->customer?->email,
+                    ]);
+                }
+            } catch (\Exception $e) {
+                \Log::warning('Payment link auto-delivery failed', [
+                    'invoice_id' => $invoice->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Payment link created',
+                'data' => $paymentLink,
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to create payment link',
+                'error' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function createAcceptanceLink(Request $request, $id)
+    {
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::with('customer')->find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'expires_in_days' => 'nullable|integer|min:1|max:90',
+            'send_email' => 'nullable|boolean',
+            'document_type' => 'nullable|string|in:final_invoice,acceptance_copy',
+        ]);
+
+        $expiresDays = $validated['expires_in_days'] ?? 30;
+        $sendEmail = $validated['send_email'] ?? true;
+        $documentType = $validated['document_type'] ?? 'final_invoice';
+
+        try {
+            $linkData = $this->evidenceService->createPortalAcceptanceLink($invoice, $expiresDays);
+
+            $this->activityService->log(
+                $invoice,
+                \App\Models\InvoiceActivityLog::EVENT_ACCEPTANCE_LINK_CREATED,
+                [
+                    'acceptance_url' => $linkData['url'],
+                    'expires_at' => $linkData['expires_at'],
+                    'evidence_id' => $linkData['evidence_id'],
+                    'send_email' => $sendEmail,
+                ],
+                $invoice->getOriginal('evidence_status') ?? $invoice->evidence_status,
+                $invoice->fresh()->evidence_status,
+                \App\Models\InvoiceActivityLog::ACTOR_USER,
+                $request->user()->id,
+            );
+
+            $delivery = null;
+            if ($sendEmail) {
+                try {
+                    $delivery = $this->deliveryService->deliver($invoice, 'email', $request->user(), [
+                        'document_type' => $documentType,
+                    ]);
+                } catch (\Throwable $e) {
+                    \Log::warning('Failed to send invoice email after acceptance link creation', [
+                        'invoice_id' => $invoice->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            return response()->json([
+                'message' => $sendEmail ? 'Acceptance link created and emailed' : 'Acceptance link created',
+                'data' => [
+                    ...$linkData,
+                    'delivery' => $delivery ? ['id' => $delivery->id, 'status' => $delivery->status, 'recipient' => $delivery->recipient] : null,
+                ],
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to create acceptance link',
+                'error' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function sendForEsign(Request $request, $id)
+    {
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'signers' => 'nullable|array',
+            'signers.*.name' => 'required_with:signers|string|max:255',
+            'signers.*.email' => 'required_with:signers|email|max:255',
+        ]);
+
+        $signers = $validated['signers'] ?? [];
+
+        try {
+            $result = $this->evidenceService->sendForEsign($invoice, $signers);
+
+            return response()->json([
+                'message' => 'Invoice sent for e-signature',
+                'data' => $result,
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to send for e-signature',
+                'error' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function getTimeline($id)
+    {
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        $timeline = $invoice->activityLog()
+            ->orderBy('created_at', 'asc')
+            ->get()
+            ->map(fn ($log) => [
+                'id' => $log->id,
+                'event' => $log->event,
+                'actor_type' => $log->actor_type,
+                'actor_id' => $log->actor_id,
+                'from_state' => $log->from_state,
+                'to_state' => $log->to_state,
+                'metadata' => $log->metadata,
+                'created_at' => $log->created_at?->toIso8601String(),
+            ]);
+
+        $approvals = $invoice->approvalRequest ? [
+            [
+                'id' => $invoice->approvalRequest->id,
+                'request_number' => $invoice->approvalRequest->request_number,
+                'status' => $invoice->approvalRequest->status,
+                'amount' => $invoice->approvalRequest->amount,
+                'requested_by' => $invoice->approvalRequest->requested_by,
+                'requested_at' => $invoice->approvalRequest->requested_at?->toIso8601String(),
+                'reviewed_by' => $invoice->approvalRequest->reviewed_by,
+                'reviewed_at' => $invoice->approvalRequest->reviewed_at?->toIso8601String(),
+                'review_notes' => $invoice->approvalRequest->review_notes,
+                'expires_at' => $invoice->approvalRequest->expires_at?->toIso8601String(),
+            ],
+        ] : [];
+
+        $deliveries = $invoice->deliveries()
+            ->orderBy('created_at', 'asc')
+            ->get()
+            ->map(fn ($d) => [
+                'id' => $d->id,
+                'channel' => $d->channel,
+                'document_type' => $d->document_type,
+                'recipient' => $d->recipient,
+                'status' => $d->status,
+                'error' => $d->error,
+                'attempted_at' => $d->attempted_at?->toIso8601String(),
+            ]);
+
+        $evidence = $invoice->evidence()
+            ->orderBy('created_at', 'asc')
+            ->get()
+            ->map(fn ($e) => [
+                'id' => $e->id,
+                'type' => $e->type,
+                'source' => $e->source,
+                'file_name' => $e->file_name,
+                'signed_at' => $e->signed_at?->toIso8601String(),
+                'signer_email' => $e->signer_email,
+                'uploaded_by' => $e->uploaded_by,
+                'created_at' => $e->created_at?->toIso8601String(),
+            ]);
+
+        return response()->json([
+            'activity' => $timeline,
+            'approvals' => $approvals,
+            'deliveries' => $deliveries,
+            'evidence' => $evidence,
+        ]);
+    }
+
+    public function post(Request $request, $id)
+    {
+        $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
+
+        if (! $invoice) {
+            return response()->json(['message' => 'Invoice not found'], 404);
+        }
+
+        if ($invoice->status === 'posted') {
+            return response()->json([
+                'message' => 'Invoice already posted',
+                'data' => $invoice->fresh(['journalEntry', 'lines']),
+            ]);
+        }
+
+        $approvalGuard = $this->approvalService->checkGuard($invoice);
+        if ($approvalGuard['blocked']) {
+            return response()->json([
+                'message' => $approvalGuard['message'],
+                'code' => $approvalGuard['code'],
+                'approval_status' => $approvalGuard['approval_status'] ?? null,
+            ], 422);
+        }
+
+        $evidenceGuard = $this->evidenceService->checkGuard($invoice);
+        if ($evidenceGuard['blocked']) {
+            return response()->json([
+                'message' => $evidenceGuard['message'],
+                'code' => $evidenceGuard['code'],
+                'evidence_status' => $evidenceGuard['evidence_status'] ?? null,
+                'required_types' => $evidenceGuard['required_types'] ?? null,
+            ], 422);
+        }
+
+        $lockResult = $this->lockDateValidator->validateTransactionDate('sales', $invoice->invoice_date);
+        if ($lockResult['is_locked']) {
+            return response()->json([
+                'message' => $lockResult['message'],
+                'code' => 'PERIOD_LOCKED',
+                'lock_date' => $lockResult['lock_date'],
+                'transaction_date' => $invoice->invoice_date->format('Y-m-d'),
+            ], 422);
+        }
+
+        try {
+            $posted = $this->invoiceService->postInvoice($invoice);
+
+            $this->activityService->log(
+                $invoice,
+                \App\Models\InvoiceActivityLog::EVENT_POSTED,
+                [
+                    'posted_by' => $request->user()->id,
+                    'journal_entry_id' => $invoice->journal_entry_id,
+                ],
+                null,
+                'posted',
+                \App\Models\InvoiceActivityLog::ACTOR_USER,
+                $request->user()->id,
+            );
+
+            try {
+                $acceptance = $this->evidenceService->createPortalAcceptanceLink($invoice);
+
+                $this->deliveryService->deliver($invoice, 'email', $request->user(), [
+                    'document_type' => 'final_invoice',
+                ]);
+
+                $posted->acceptance_url = $acceptance['url'] ?? null;
+                $posted->acceptance_expires_at = $acceptance['expires_at'] ?? null;
+            } catch (\Throwable $e) {
+                \Log::warning('Failed to auto-deliver posted invoice', [
+                    'invoice_id' => $invoice->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Invoice posted successfully',
+                'data' => $posted,
+            ]);
+        } catch (\RuntimeException $e) {
+            if (str_contains($e->getMessage(), 'Cannot resolve GL account')) {
+                return response()->json([
+                    'message' => 'Default accounts not configured. Please go to Company Settings > Default Accounts and map the required GL accounts before posting invoices.',
+                ], 422);
+            }
+
+            return response()->json([
+                'message' => 'Failed to post invoice',
+                'error' => $e->getMessage(),
+            ], 422);
+        } catch (\Exception $e) {
+            \Log::error('Invoice post failed unexpectedly', [
+                'invoice_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to post invoice',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function destroy($id)
     {
         $invoice = is_object($id) && $id instanceof Invoice ? $id : Invoice::find($id);
@@ -673,6 +1181,15 @@ class InvoiceController extends Controller
             ], 422);
         }
 
+        // Issue #169: a posted credit note has its own journal entry; cancelling
+        // the invoice without voiding the credit note would leave that GL entry
+        // backing a cancelled document.
+        if ($invoice->creditNotes()->where('status', 'posted')->exists()) {
+            return response()->json([
+                'message' => 'Cannot cancel an invoice with posted credit notes. Void the credit notes first.',
+            ], 422);
+        }
+
         $invoice->update(['status' => 'cancelled']);
 
         return response()->json([
@@ -701,6 +1218,14 @@ class InvoiceController extends Controller
         if ($invoice->payments()->active()->exists()) {
             return response()->json([
                 'message' => 'Cannot reset an invoice that has payments. Void or refund the payments first.',
+            ], 422);
+        }
+
+        // Issue #169: resetting reverses only the invoice's own journal entry —
+        // a posted credit note's separate GL entry must not be orphaned.
+        if ($invoice->creditNotes()->where('status', 'posted')->exists()) {
+            return response()->json([
+                'message' => 'Cannot reset an invoice that has posted credit notes. Void the credit notes first.',
             ], 422);
         }
 
@@ -1098,7 +1623,13 @@ class InvoiceController extends Controller
                                 $line['description'] = $product->name;
                             }
                             if (! $hasExplicitUnitPrice) {
-                                $line['unit_price'] = (float) $product->price;
+                                // Issue #132: honour the product's price tiers
+                                // (volume/customer/variant/date) when the import
+                                // row does not specify a unit price.
+                                $line['unit_price'] = $product->getPriceForQuantity(
+                                    (int) ceil((float) ($line['quantity'] ?? 1)),
+                                    $customer?->id,
+                                );
                             }
                         }
                     }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\EncryptedOrLegacyString;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,7 +19,6 @@ class MedicalCase extends Model
         'case_tag',
         'customer_id',
         'invoice_id',
-        'bonus_scheme_id',
         'delivery_address_id',
         'doctor_contact_id',
         'requestor_contact_id',
@@ -37,6 +37,10 @@ class MedicalCase extends Model
     protected $casts = [
         'case_date' => 'date',
         'procedure_date' => 'date',
+        // Issue #159: PHI must actually be encrypted, not just named so.
+        // Issue #223: degrade gracefully on legacy plaintext rows instead of
+        // letting a DecryptException 500 every read of the model.
+        'patient_name_encrypted' => EncryptedOrLegacyString::class,
     ];
 
     protected static function boot(): void
@@ -60,7 +64,8 @@ class MedicalCase extends Model
             }
             Log::warning('Medical case number collision, retrying', ['attempt' => $attempt]);
         }
-        return 'CASE-' . date('Y') . '-' . date('is');
+
+        return 'CASE-'.date('Y').'-'.date('is');
     }
 
     private static function generateCaseNumberRaw(): string
@@ -73,13 +78,13 @@ class MedicalCase extends Model
         }
 
         $latest = static::withTrashed()
-            ->where('case_no', 'like', 'CASE-' . date('Y') . '-%')
+            ->where('case_no', 'like', 'CASE-'.date('Y').'-%')
             ->orderBy('id', 'desc')
             ->first();
 
         $number = $latest ? (int) substr($latest->case_no, -4) + 1 : 1;
 
-        return 'CASE-' . date('Y') . '-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+        return 'CASE-'.date('Y').'-'.str_pad($number, 4, '0', STR_PAD_LEFT);
     }
 
     // Status helpers
@@ -124,11 +129,6 @@ class MedicalCase extends Model
         return $this->belongsTo(Invoice::class);
     }
 
-    public function bonusScheme(): BelongsTo
-    {
-        return $this->belongsTo(BonusScheme::class);
-    }
-
     public function deliveryAddress(): BelongsTo
     {
         return $this->belongsTo(CustomerAddress::class, 'delivery_address_id');
@@ -160,6 +160,11 @@ class MedicalCase extends Model
     }
 
     // Scopes
+    /**
+     * Issue #159: virtual `patient_name` attribute. The underlying
+     * patient_name_encrypted column carries Laravel's `encrypted` cast, so this
+     * returns the decrypted value; raw DB reads see ciphertext only.
+     */
     public function getPatientNameAttribute(): ?string
     {
         return $this->patient_name_encrypted;

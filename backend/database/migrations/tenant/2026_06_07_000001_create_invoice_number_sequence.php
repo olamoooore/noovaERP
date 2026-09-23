@@ -23,6 +23,8 @@ return new class extends Migration
 
     public function down(): void
     {
-        DB::statement('DROP SEQUENCE IF EXISTS invoice_number_seq');
+        // Schema-qualified: unqualified DROP SEQUENCE can leak to public via search_path.
+        $schema = DB::selectOne('SELECT current_schema() AS s')->s;
+        DB::statement("DROP SEQUENCE IF EXISTS \"{$schema}\".invoice_number_seq");
     }
 };

@@ -32,7 +32,7 @@ class ExportFunctionalityTest extends TenantTestCase
             \App\Http\Middleware\EnsureEntityAccess::class,
         ]);
 
-        $this->user = User::factory()->create();
+        $this->user = $this->setUpTenantAdminUser('Export Functionality Tenant');
 
         $this->sampleReportData = [
             'title' => 'Test Financial Report',

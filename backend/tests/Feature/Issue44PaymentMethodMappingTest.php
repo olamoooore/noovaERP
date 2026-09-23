@@ -121,7 +121,7 @@ class Issue44PaymentMethodMappingTest extends TenantTestCase
             'currency' => 'USD',
             'method' => $method,
             'payment_date' => now()->toDateString(),
-            'payment_status' => 'draft',
+            'payment_status' => 'recorded',
             'received_by' => $this->user->id,
         ]);
     }
@@ -152,7 +152,7 @@ class Issue44PaymentMethodMappingTest extends TenantTestCase
         $service = app(PaymentPostingService::class);
         $posted = $service->post($payment);
 
-        $this->assertSame('posted', $posted->payment_status);
+        $this->assertSame('applied', $posted->payment_status);
         $this->assertNotNull($posted->journal_entry_id);
 
         $drAccountId = $this->drAccountId($posted->fresh());
@@ -174,7 +174,7 @@ class Issue44PaymentMethodMappingTest extends TenantTestCase
         $service = app(PaymentPostingService::class);
         $posted = $service->post($payment);
 
-        $this->assertSame('posted', $posted->payment_status);
+        $this->assertSame('applied', $posted->payment_status);
 
         $drAccountId = $this->drAccountId($posted->fresh());
         $this->assertSame(
@@ -208,9 +208,9 @@ class Issue44PaymentMethodMappingTest extends TenantTestCase
 
         $this->assertTrue($threw, 'Unsupported payment method must throw, not silently default to cash');
 
-        // Payment status must remain 'draft' — no silent partial post
+        // Payment status must remain 'recorded' (canonical pre-posting) — no silent partial post
         $payment->refresh();
-        $this->assertSame('draft', $payment->payment_status);
+        $this->assertSame('recorded', $payment->payment_status);
         $this->assertNull($payment->journal_entry_id);
     }
 
@@ -240,8 +240,8 @@ class Issue44PaymentMethodMappingTest extends TenantTestCase
         $cashPosted = $service->post($cashPayment);
         $bankPosted = $service->post($bankPayment);
 
-        $this->assertSame('posted', $cashPosted->payment_status);
-        $this->assertSame('posted', $bankPosted->payment_status);
+        $this->assertSame('applied', $cashPosted->payment_status);
+        $this->assertSame('applied', $bankPosted->payment_status);
 
         $cashDr = $this->drAccountId($cashPosted->fresh());
         $bankDr = $this->drAccountId($bankPosted->fresh());
@@ -266,7 +266,7 @@ class Issue44PaymentMethodMappingTest extends TenantTestCase
         $service = app(PaymentPostingService::class);
         $posted = $service->post($payment);
 
-        $this->assertSame('posted', $posted->payment_status);
+        $this->assertSame('applied', $posted->payment_status);
 
         $drAccountId = $this->drAccountId($posted->fresh());
         $this->assertSame(

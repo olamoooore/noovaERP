@@ -69,6 +69,18 @@ class JournalEntriesController extends Controller
     {
         $query = JournalEntry::with(['lines.account', 'journal', 'createdBy', 'postedBy']);
 
+        // Issue #163 (adjacent fix): filter by the user's accessible legal
+        // entities. Fail-open when the user has no entity grants, matching
+        // EnsureEntityAccess and the dashboard/sales-order scoping.
+        $user = $request->user();
+        $accessibleEntityIds = $user
+            ? $this->entityAccessService->accessibleEntityIds((int) $user->id)
+            : [];
+
+        if ($accessibleEntityIds !== []) {
+            $query->accessibleBy($accessibleEntityIds);
+        }
+
         // Filter by status
         if ($request->has('status')) {
             $query->where('status', $request->status);
@@ -159,11 +171,12 @@ class JournalEntriesController extends Controller
     public function show($id, Request $request)
     {
         $user = $request->user();
+        // Issue #163 (adjacent fix): getAccessibleEntities returns legal_entities
+        // rows whose key is `id`; the previous array_column('legal_entity_id')
+        // always produced an empty set, so this endpoint 404'd for EVERY user
+        // (including in-scope ones). Use the shared id helper.
         $accessibleEntityIds = $user
-            ? array_column(
-                $this->entityAccessService->getAccessibleEntities((int) $user->id),
-                'legal_entity_id'
-            )
+            ? $this->entityAccessService->accessibleEntityIds((int) $user->id)
             : [];
 
         $entry = JournalEntry::with([

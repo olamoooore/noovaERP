@@ -507,10 +507,16 @@ export function GrapesEditor({ initialContent, onSave, onLoad }: GrapesEditorPro
 
     // Load initial content if provided
     if (initialContent) {
-      if (initialContent.components) {
+      const hasComponents = Array.isArray(initialContent.components)
+        ? initialContent.components.length > 0
+        : !!initialContent.components
+      if (hasComponents) {
         editor.setComponents(initialContent.components)
         editor.setStyle(initialContent.styles || [])
       } else if (initialContent.html) {
+        // Empty components array is still truthy — without this fallback the
+        // canvas rendered blank for pages whose component tree was lost while
+        // the html survived.
         editor.setComponents(initialContent.html)
         editor.setStyle(initialContent.css || '')
       }

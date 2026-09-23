@@ -5,7 +5,6 @@ namespace Modules\Ecommerce\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Warehouse;
-use App\Services\CustomerContactSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -63,6 +62,9 @@ class WebCheckoutController extends Controller
                 'items' => 'required|array|min:1',
                 'items.*.product_id' => 'required|integer|exists:products,id',
                 'items.*.quantity' => 'required|integer|min:1',
+                // Issue #252: optional serial capture for serialized products.
+                'items.*.serial_numbers' => 'nullable|array',
+                'items.*.serial_numbers.*' => 'string|max:191',
                 'shipping_address' => 'required|array',
                 'shipping_address.first_name' => 'required|string|max:100',
                 'shipping_address.last_name' => 'required|string|max:100',
@@ -249,7 +251,10 @@ class WebCheckoutController extends Controller
                 $taxInfo = $taxResolutionService->resolveTaxForProduct($product);
                 $taxRate = $taxInfo['rate'];
 
-                $lineSubtotal = $product->price * $item['quantity'];
+                // Issue #244: price the line through the tier resolver (#132)
+                // like POS/SalesOrderService, not the flat catalog price.
+                $unitPrice = $product->getPriceForQuantity((int) $item['quantity'], $customerId ?? null);
+                $lineSubtotal = $unitPrice * $item['quantity'];
 
                 // Calculate tax using canonical service
                 $taxCalc = $taxResolutionService->calculateTax($lineSubtotal, $taxRate, $taxInfo['is_inclusive']);
@@ -260,7 +265,8 @@ class WebCheckoutController extends Controller
                 $items[] = [
                     'product' => $product,
                     'quantity' => $item['quantity'],
-                    'unit_price' => $product->price,
+                    'serial_numbers' => $item['serial_numbers'] ?? null,
+                    'unit_price' => $unitPrice,
                     'tax_rate' => $taxRate,
                     'tax_amount' => $taxCalc['tax'],
                     'line_total' => $taxCalc['gross'],
@@ -340,6 +346,9 @@ class WebCheckoutController extends Controller
             $order = WebOrder::create([
                 'order_number' => WebOrder::generateOrderNumber(),
                 'customer_id' => $customerId,
+                // Issue #235: stamp the entity so dashboard counts can be scoped.
+                'legal_entity_id' => \App\Models\Customer::whereKey($customerId)->value('legal_entity_id')
+                    ?? request()->attributes->get('legal_entity_id'),
                 'email' => $email,
                 'phone' => $phone,
                 'first_name' => $firstName,
@@ -419,6 +428,7 @@ class WebCheckoutController extends Controller
                     'tax_rate' => $item['tax_rate'],
                     'tax_amount' => $item['tax_amount'],
                     'line_total' => $item['line_total'],
+                    'serial_numbers' => $item['serial_numbers'] ?? null,
                 ]);
                 $orderItems[] = $orderItem;
             }

@@ -55,6 +55,7 @@ class GoodsReceiptsController extends Controller
             'lines' => 'required|array|min:1',
             'lines.*.purchase_order_item_id' => 'required|exists:purchase_order_items,id',
             'lines.*.quantity_received' => 'required|integer|min:1',
+            'lines.*.uom_id' => 'nullable|integer|exists:product_uoms,id',
             'lines.*.quantity_accepted' => 'sometimes|integer|min:0',
             'lines.*.quantity_rejected' => 'sometimes|integer|min:0',
             'lines.*.notes' => 'sometimes|string',

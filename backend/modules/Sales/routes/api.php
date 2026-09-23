@@ -36,6 +36,17 @@ Route::middleware([
 
             // Linked documents (mutating)
             Route::post('/sales/orders/{id}/invoice', [SalesOrderController::class, 'createInvoice']);
+            // Issue #154: the credit-note path the cancel error points at.
+            Route::post('/sales/orders/{id}/credit-note', [SalesOrderController::class, 'creditNote']);
+            // Issue #152: blanket order writes/releases require sales.write.
+            Route::post('/sales/blanket-orders', [\Modules\Sales\Http\Controllers\SalesBlanketOrderController::class, 'store']);
+            Route::post('/sales/blanket-orders/{blanketOrder}/release', [\Modules\Sales\Http\Controllers\SalesBlanketOrderController::class, 'release']);
+
+            // Issue #151: recurring sales lifecycle (writes).
+            Route::post('/sales/orders/{salesOrder}/recurrence', [\Modules\Sales\Http\Controllers\SalesOrderRecurrenceController::class, 'store']);
+            Route::post('/sales/recurrences/{recurrence}/pause', [\Modules\Sales\Http\Controllers\SalesOrderRecurrenceController::class, 'pause']);
+            Route::post('/sales/recurrences/{recurrence}/resume', [\Modules\Sales\Http\Controllers\SalesOrderRecurrenceController::class, 'resume']);
+            Route::post('/sales/recurrences/{recurrence}/cancel', [\Modules\Sales\Http\Controllers\SalesOrderRecurrenceController::class, 'cancel']);
             Route::post('/sales/orders/{id}/bill-by-delivered', [SalesOrderController::class, 'setBillByDelivered']);
         });
 
@@ -45,22 +56,54 @@ Route::middleware([
 
             // Lifecycle history (immutable audit)
             Route::get('/sales/orders/{id}/history', [SalesOrderController::class, 'history']);
+            // Issue #150: sales-pipeline analytics (pre-invoice).
+            Route::get('/sales/analytics/pipeline', [\Modules\Sales\Http\Controllers\SalesPipelineAnalyticsController::class, 'index']);
+
+            // Issue #152: blanket orders / call-off agreements (reads).
+            Route::get('/sales/blanket-orders', [\Modules\Sales\Http\Controllers\SalesBlanketOrderController::class, 'index']);
+            Route::get('/sales/blanket-orders/{blanketOrder}', [\Modules\Sales\Http\Controllers\SalesBlanketOrderController::class, 'show']);
+
+            // Issue #151: recurring sales (reads).
+            Route::get('/sales/recurrences', [\Modules\Sales\Http\Controllers\SalesOrderRecurrenceController::class, 'index']);
 
             // Credit preview
             Route::get('/sales/orders/{id}/credit-preview', [SalesOrderController::class, 'creditPreview']);
         });
 
-        // Delivery Orders
-        Route::get('/sales/delivery-orders/export', [DeliveryOrderController::class, 'export']);
-        Route::apiResource('sales/delivery-orders', DeliveryOrderController::class);
-        Route::post('/sales/delivery-orders/{id}/confirm', [DeliveryOrderController::class, 'confirm']);
-        Route::post('/sales/delivery-orders/{id}/complete', [DeliveryOrderController::class, 'complete']);
-        Route::post('/sales/delivery-orders/{id}/reverse', [DeliveryOrderController::class, 'reverse']);
-        Route::post('/sales/delivery-orders/{id}/cancel', [DeliveryOrderController::class, 'cancel']);
-        Route::post('/sales/delivery-orders/{id}/reset-to-draft', [DeliveryOrderController::class, 'resetToDraft']);
-        Route::post('/sales/delivery-orders/bulk-delete', [DeliveryOrderController::class, 'bulkDestroy']);
-        Route::post('/sales/delivery-orders/import', [DeliveryOrderController::class, 'import']);
-        Route::get('/sales/delivery-orders/template', [DeliveryOrderController::class, 'template']);
-        Route::get('/sales/orders/{id}/deliveries', [DeliveryOrderController::class, 'forSalesOrder']);
+        // Delivery Orders — same read/write permission split as Sales Orders above
+        // (issues #175 / #145: these routes previously had no RequirePermission at
+        // all, so any user with the tenant 'sales' entitlement could complete,
+        // reverse or bulk-delete delivery orders regardless of role).
+        Route::middleware(\App\Http\Middleware\RequirePermission::class.':sales.view')->group(function () {
+            Route::get('/sales/delivery-orders/export', [DeliveryOrderController::class, 'export']);
+            Route::get('/sales/delivery-orders/template', [DeliveryOrderController::class, 'template']);
+            Route::get('/sales/orders/{id}/deliveries', [DeliveryOrderController::class, 'forSalesOrder']);
+        });
+
+        Route::apiResource('sales/delivery-orders', DeliveryOrderController::class)
+            ->only(['index', 'show'])
+            ->middleware(\App\Http\Middleware\RequirePermission::class.':sales.view');
+        Route::apiResource('sales/delivery-orders', DeliveryOrderController::class)
+            ->only(['store', 'update', 'destroy'])
+            ->middleware(\App\Http\Middleware\RequirePermission::class.':sales.write');
+
+        // Lifecycle transitions + bulk operations
+        Route::middleware(\App\Http\Middleware\RequirePermission::class.':sales.write')->group(function () {
+            Route::post('/sales/delivery-orders/{id}/confirm', [DeliveryOrderController::class, 'confirm']);
+            // Issue #177: signed copy upload for the physical confirmation path.
+            Route::post('/sales/delivery-orders/{id}/signed-document', [DeliveryOrderController::class, 'uploadSignedDocument']);
+            // Issue #153: download the signed POD, gated the same way as the
+            // delivery-orders detail endpoint.
+            Route::get('/sales/delivery-orders/{id}/signed-document', [DeliveryOrderController::class, 'downloadSignedDocument'])
+                ->name('sales.delivery-orders.signed-document.download');
+            Route::post('/sales/delivery-orders/{id}/complete', [DeliveryOrderController::class, 'complete']);
+            Route::post('/sales/delivery-orders/{id}/reverse', [DeliveryOrderController::class, 'reverse']);
+            Route::post('/sales/delivery-orders/{id}/cancel', [DeliveryOrderController::class, 'cancel']);
+            // Issue #178/#179: rejection with auto-versioned replacement draft.
+            Route::post('/sales/delivery-orders/{id}/reject', [DeliveryOrderController::class, 'reject']);
+            Route::post('/sales/delivery-orders/{id}/reset-to-draft', [DeliveryOrderController::class, 'resetToDraft']);
+            Route::post('/sales/delivery-orders/bulk-delete', [DeliveryOrderController::class, 'bulkDestroy']);
+            Route::post('/sales/delivery-orders/import', [DeliveryOrderController::class, 'import']);
+        });
     });
 });

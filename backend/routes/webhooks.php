@@ -1,8 +1,10 @@
 <?php
 
+use App\Http\Middleware\InboundEmailAuth;
 use App\Http\Middleware\ResolveTenantFromWebhook;
 use App\Http\Middleware\SecureWebhookAccess;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\EsignWebhookController;
 use Modules\PaymentGateway\Controllers\PaymentWebhookController;
 
 /*
@@ -43,5 +45,25 @@ Route::prefix('api/v1')->group(function () {
         ->middleware([
             SecureWebhookAccess::class.':paypal',
             ResolveTenantFromWebhook::class.':paypal',
+        ]);
+
+    // E-sign provider webhooks — signature verified by the provider implementation
+    Route::post('/webhooks/esign/{provider}', [EsignWebhookController::class, 'handle'])
+        ->name('webhooks.esign')
+        ->middleware([
+            SecureWebhookAccess::class.':esign',
+        ]);
+
+    // Issue #85: incoming email bridge (IMAP integration).
+    // The endpoint accepts a parsed RFC-822 payload from any external
+    // source (a custom IMAP poller, SendGrid Inbound Parse, Microsoft
+    // Graph subscription, or the included `inbound-email:poll` artisan
+    // command). Authenticated via a shared secret in the
+    // `X-Inbound-Email-Token` header so an unauthenticated public network
+    // cannot flood the chatter with spam.
+    Route::post('/webhooks/inbound-email', [App\Http\Controllers\Api\InboundEmailController::class, 'ingest'])
+        ->name('webhooks.inbound_email')
+        ->middleware([
+            InboundEmailAuth::class,
         ]);
 });

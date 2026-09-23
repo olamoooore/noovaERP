@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\MedicalCase;
 use App\Models\MedicalCaseItem;
+use App\Models\BonusSchemeUsage;
 use App\Models\Customer;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class MedicalCaseController extends Controller
 {
@@ -48,14 +50,18 @@ class MedicalCaseController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        // Issue #187: the contact/address ids must belong to the case's own
+        // customer, otherwise a direct API call can attribute a doctor to the
+        // wrong hospital.
+        $customerId = $request->input('customer_id');
+
         $validated = $request->validate([
             'customer_id' => 'required|exists:customers,id',
             'invoice_id' => 'nullable|exists:invoices,id',
-            'bonus_scheme_id' => 'nullable|exists:bonus_schemes,id',
-            'delivery_address_id' => 'nullable|exists:customer_addresses,id',
-            'doctor_contact_id' => 'nullable|exists:customer_contacts,id',
-            'requestor_contact_id' => 'nullable|exists:customer_contacts,id',
-            'buyer_contact_id' => 'nullable|exists:customer_contacts,id',
+            'delivery_address_id' => ['nullable', Rule::exists('customer_addresses', 'id')->where('customer_id', $customerId)],
+            'doctor_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
+            'requestor_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
+            'buyer_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
             'patient_reference' => 'nullable|string|max:255',
             'patient_name_encrypted' => 'nullable|string',
             'case_date' => 'nullable|date',
@@ -77,7 +83,6 @@ class MedicalCaseController extends Controller
                 $case = MedicalCase::create([
                     'customer_id' => $validated['customer_id'],
                     'invoice_id' => $validated['invoice_id'] ?? null,
-                    'bonus_scheme_id' => $validated['bonus_scheme_id'] ?? null,
                     'delivery_address_id' => $validated['delivery_address_id'] ?? null,
                     'doctor_contact_id' => $validated['doctor_contact_id'] ?? null,
                     'requestor_contact_id' => $validated['requestor_contact_id'] ?? null,
@@ -135,7 +140,6 @@ class MedicalCaseController extends Controller
             'requestorContact',
             'buyerContact',
             'deliveryAddress',
-            'bonusScheme',
             'createdBy',
         ])->find($id);
 
@@ -158,14 +162,16 @@ class MedicalCaseController extends Controller
             return response()->json(['message' => 'Only draft cases can be edited'], 403);
         }
 
+        // Issue #187: validate against the case's (possibly new) customer.
+        $customerId = $request->input('customer_id', $case->customer_id);
+
         $validated = $request->validate([
             'customer_id' => 'sometimes|required|exists:customers,id',
             'invoice_id' => 'nullable|exists:invoices,id',
-            'bonus_scheme_id' => 'nullable|exists:bonus_schemes,id',
-            'delivery_address_id' => 'nullable|exists:customer_addresses,id',
-            'doctor_contact_id' => 'nullable|exists:customer_contacts,id',
-            'requestor_contact_id' => 'nullable|exists:customer_contacts,id',
-            'buyer_contact_id' => 'nullable|exists:customer_contacts,id',
+            'delivery_address_id' => ['nullable', Rule::exists('customer_addresses', 'id')->where('customer_id', $customerId)],
+            'doctor_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
+            'requestor_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
+            'buyer_contact_id' => ['nullable', Rule::exists('customer_contacts', 'id')->where('customer_id', $customerId)],
             'patient_reference' => 'nullable|string|max:255',
             'patient_name_encrypted' => 'nullable|string',
             'case_date' => 'nullable|date',
@@ -286,10 +292,22 @@ class MedicalCaseController extends Controller
                         throw new \RuntimeException("Delivered quantity cannot exceed allocated quantity for item {$item->id}");
                     }
 
+                    $previouslyDelivered = (float) $item->delivered_qty;
+
                     $item->update([
                         'delivered_qty' => $itemData['delivered_qty'],
                         'delivery_order_item_id' => $itemData['delivery_order_item_id'] ?? $item->delivery_order_item_id,
                     ]);
+
+                    // Issue #184: accrue bonus usage for the newly delivered
+                    // quantity, fanned out over every active scheme assignment
+                    // the customer holds (same transaction as the delivery).
+                    $newlyDelivered = (float) $itemData['delivered_qty'] - $previouslyDelivered;
+
+                    if ($newlyDelivered > 0) {
+                        app(\App\Services\MedicalCaseBonusAccrualService::class)
+                            ->accrueForItem($item->fresh(), $newlyDelivered);
+                    }
                 }
 
                 $case->update(['status' => 'delivered']);
@@ -362,9 +380,29 @@ class MedicalCaseController extends Controller
         }
     }
 
+    /**
+     * Issue #185: hospital/doctor performance report.
+     */
+    public function performanceReport(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'from_date' => 'required|date',
+            'to_date' => 'required|date|after_or_equal:from_date',
+            'date_field' => 'nullable|in:case_date,procedure_date',
+        ]);
+
+        $report = app(\App\Services\MedicalCaseReportingService::class)->performance(
+            \Carbon\Carbon::parse($validated['from_date']),
+            \Carbon\Carbon::parse($validated['to_date']),
+            $validated['date_field'] ?? 'case_date',
+        );
+
+        return response()->json(['data' => $report]);
+    }
+
     public function cancel($id): JsonResponse
     {
-        $case = MedicalCase::find($id);
+        $case = MedicalCase::with('items')->find($id);
 
         if (!$case) {
             return response()->json(['message' => 'Medical case not found'], 404);
@@ -375,11 +413,47 @@ class MedicalCaseController extends Controller
         }
 
         try {
-            $case->update(['status' => 'cancelled']);
+            // Issue #189: cancelling a delivered/invoiced case must reverse the
+            // case's own fulfilment figures, otherwise downstream reports keep
+            // counting delivered/invoiced quantities for a case the business
+            // considers reversed.
+            DB::transaction(function () use ($case) {
+                if (in_array($case->status, ['delivered', 'invoiced'], true)) {
+                    $itemIds = $case->items->pluck('id')->all();
+
+                    foreach ($case->items as $item) {
+                        $item->update([
+                            'delivered_qty' => 0,
+                            'invoiced_qty' => 0,
+                        ]);
+                    }
+
+                    // Reverse any bonus accrual rows tied to this case's items.
+                    if ($itemIds !== []) {
+                        BonusSchemeUsage::whereIn('medical_case_item_id', $itemIds)
+                            ->where('status', '!=', 'reversed')
+                            ->get()
+                            ->each(fn (BonusSchemeUsage $usage) => $usage->reverse());
+                    }
+                }
+
+                $case->update(['status' => 'cancelled']);
+            });
+
+            // The linked invoice is deliberately left untouched: spec §9 rule 9
+            // forbids editing confirmed invoices directly and rule 5 allows one
+            // invoice to cover several cases — corrections go through credit
+            // note / return / cancellation. Surface it so the operator can act.
+            $warnings = [];
+
+            if ($case->invoice_id) {
+                $warnings[] = 'The linked invoice was not modified. Confirmed invoices must be corrected through a credit note, return or cancellation.';
+            }
 
             return response()->json([
                 'message' => 'Medical case cancelled successfully',
-                'data' => $case->fresh(),
+                'data' => $case->fresh()->load('items'),
+                'warnings' => $warnings,
             ]);
         } catch (\Throwable $e) {
             return response()->json([

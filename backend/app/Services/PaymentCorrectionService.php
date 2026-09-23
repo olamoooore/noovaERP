@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\ReversalRequest;
 use App\Models\Bill;
 use App\Models\Invoice;
@@ -53,7 +54,7 @@ class PaymentCorrectionService
                     reasonCode: $request->reasonCode,
                     actorUserId: (int) ($request->userId ?? Auth::id()),
                 );
-                $result = app(\App\Accounting\PostingEngine::class)->reverse($reversalRequest);
+                $result = app(PostingEngineInterface::class)->reverse($reversalRequest);
                 if (! $result->success) {
                     throw new \RuntimeException('GL reversal failed: '.($result->error ?? 'Unknown error'));
                 }
@@ -132,7 +133,7 @@ class PaymentCorrectionService
                     reasonCode: $request->reasonCode,
                     actorUserId: (int) ($request->userId ?? Auth::id()),
                 );
-                $result = app(\App\Accounting\PostingEngine::class)->reverse($reversalRequest);
+                $result = app(PostingEngineInterface::class)->reverse($reversalRequest);
                 if (! $result->success) {
                     throw new \RuntimeException('GL reversal failed: '.($result->error ?? 'Unknown error'));
                 }
@@ -210,7 +211,7 @@ class PaymentCorrectionService
                     reasonCode: $request->reasonCode,
                     actorUserId: (int) ($request->userId ?? Auth::id()),
                 );
-                $result = app(\App\Accounting\PostingEngine::class)->reverse($reversalRequest);
+                $result = app(PostingEngineInterface::class)->reverse($reversalRequest);
                 if (! $result->success) {
                     throw new \RuntimeException('GL reversal failed: '.($result->error ?? 'Unknown error'));
                 }
@@ -255,13 +256,17 @@ class PaymentCorrectionService
      */
     private function assertCorrectable(Payment $payment, string $targetStatus): void
     {
-        if ($payment->payment_status === 'draft') {
+        // Canonical statuses (#73) have no `draft` label: a payment is posted —
+        // and therefore correctable — iff it carries a journal entry. Comparing
+        // against the removed `draft` label let unposted payments be "corrected"
+        // with no GL effect.
+        if ($payment->journal_entry_id === null) {
             throw new \RuntimeException(
-                "Payment {$payment->payment_number} is a draft. Delete it instead of correcting it."
+                "Payment {$payment->payment_number} has not been posted. Delete it instead of correcting it."
             );
         }
 
-        if (in_array($payment->payment_status, ['reversed', 'refunded', 'cancelled'], true)) {
+        if (in_array($payment->payment_status, ['reversed', 'refunded'], true)) {
             throw new \RuntimeException(
                 "Payment {$payment->payment_number} has already been {$payment->payment_status} and cannot be corrected again."
             );

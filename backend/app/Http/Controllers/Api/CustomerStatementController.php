@@ -8,23 +8,26 @@ use App\Models\Customer;
 use App\Models\CustomerStatement;
 use App\Models\Invoice;
 use App\Models\Setting;
+use App\Services\CustomerStatementService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Modules\TemplateBuilder\Contracts\PdfGenerationServiceContract;
 
 class CustomerStatementController extends Controller
 {
+    public function __construct(
+        private readonly CustomerStatementService $statementService,
+    ) {}
+
     /**
      * Generate a Statement of Account PDF for a customer.
      * Uses the template builder system (not a custom Blade template).
      *
      * GET /customers/{id}/statement?as_of=YYYY-MM-DD
-     * Filters: status=posted, balance > 0, issue_date <= as_of
      * Returns PDF with filename SOA_{CustomerCode}_{YYYYMMDD}.pdf
      */
     public function statement(Request $request, $customerId)
@@ -159,7 +162,13 @@ class CustomerStatementController extends Controller
 
         $customer = Customer::findOrFail($customerId);
 
-        $payload = $this->buildStatementPayload($customer, $validated);
+        $payload = $this->statementService->buildRangePayload(
+            $customer,
+            Carbon::parse($validated['start_date']),
+            Carbon::parse($validated['end_date']),
+            (bool) ($validated['include_paid'] ?? false),
+            $validated['period_type'] ?? 'custom',
+        );
 
         $statement = CustomerStatement::create([
             'customer_id' => $customer->id,
@@ -241,71 +250,12 @@ class CustomerStatementController extends Controller
         }
 
         $customer = Customer::with(['customerContacts', 'addresses'])->findOrFail($customerId);
-
-        // Get company settings for the response
-        $companySetting = \App\Models\Setting::first();
-        $company = [
-            'name' => $companySetting->company_name ?? '',
-            'address' => $companySetting->company_address ?? '',
-            'email' => $companySetting->company_email ?? '',
-            'phone' => $companySetting->company_phone ?? '',
-        ];
+        $context = $this->statementService->context($customer);
 
         $comparisons = [];
         foreach ($dates as $dateStr) {
-            $asOf = Carbon::parse($dateStr);
-
-            // Get outstanding invoices as of this date
-            $invoices = Invoice::where('customer_id', $customer->id)
-                ->where('status', 'posted')
-                ->where('balance', '>', 0)
-                ->notSuperseded() // Issue #96: exclude voided/reversed/superseded
-                ->where('invoice_date', '<=', $asOf)
-                ->orderBy('invoice_date', 'asc')
-                ->get();
-
-            $totalOutstanding = round($invoices->sum('balance'), 2);
-            $totalInvoiceValue = round($invoices->sum('total'), 2);
-            $invoiceCount = $invoices->count();
-
-            // Compute aging buckets at this point in time
-            $aging = $this->computeAgingAtDate($invoices, $asOf);
-
-            // Build transaction lines for this snapshot
-            $transactions = [];
-            $runningBalance = 0;
-            foreach ($invoices as $invoice) {
-                $invAmount = round((float) $invoice->total, 2);
-                $runningBalance += $invAmount;
-
-                $reference = collect([
-                    $invoice->po_number,
-                    $invoice->customer_reference,
-                ])->filter()->implode(', ');
-
-                $transactions[] = [
-                    'date' => $invoice->invoice_date->format('Y-m-d'),
-                    'type' => 'Invoice',
-                    'document_number' => $invoice->invoice_number,
-                    'description' => $reference ?: ($invoice->lines->pluck('description')->filter()->first() ?? ''),
-                    'reference' => $reference,
-                    'due_date' => $invoice->due_date ? $invoice->due_date->format('Y-m-d') : '',
-                    'inv_amount' => $invAmount,
-                    'balance' => round((float) $invoice->balance, 2),
-                    'total' => $runningBalance,
-                    'debit' => $invAmount,
-                    'credit' => 0.00,
-                ];
-            }
-
-            $comparisons[] = [
-                'as_of_date' => $asOf->format('Y-m-d'),
-                'total_outstanding' => $totalOutstanding,
-                'total_invoice_value' => $totalInvoiceValue,
-                'invoice_count' => $invoiceCount,
-                'aging' => $aging,
-                'transactions' => $transactions,
-            ];
+            // Canonical as-of snapshot — same math as statement()/generate().
+            $comparisons[] = $this->statementService->comparisonSnapshot($customer, Carbon::parse($dateStr), $context);
         }
 
         // Compute deltas between consecutive periods
@@ -345,7 +295,8 @@ class CustomerStatementController extends Controller
                 'billing_address' => $customer->billing_address,
                 'payment_terms' => $customer->payment_terms,
             ],
-            'company' => $company,
+            'company' => $context['company'],
+            'currency' => $context['currency'],
             'comparisons' => $comparisons,
             'deltas' => $deltas,
             'generated_at' => now()->toISOString(),
@@ -375,53 +326,12 @@ class CustomerStatementController extends Controller
         }
 
         $customer = Customer::with(['customerContacts', 'addresses'])->findOrFail($customerId);
-
-        // Get company settings
-        $companySetting = \App\Models\Setting::first();
-        $company = [
-            'name' => $companySetting->company_name ?? '',
-            'address' => $companySetting->company_address ?? '',
-            'email' => $companySetting->company_email ?? '',
-            'phone' => $companySetting->company_phone ?? '',
-        ];
-
-        // Build billing address
-        $billingAddress = $customer->addresses()
-            ->where('type', 'billing')
-            ->where('is_default', true)
-            ->first();
-
-        $customerAddress = $billingAddress
-            ? collect([$billingAddress->street, $billingAddress->street2, $billingAddress->city, $billingAddress->state, $billingAddress->zip, $billingAddress->country])->filter()->implode(', ')
-            : $customer->billing_address;
-
-        $attentionTo = $customer->customerContacts()
-            ->where('is_primary', true)
-            ->first()?->name ?? $customer->name;
+        $context = $this->statementService->context($customer);
 
         $comparisons = [];
         foreach ($dates as $dateStr) {
-            $asOf = Carbon::parse($dateStr);
-
-            $invoices = Invoice::where('customer_id', $customer->id)
-                ->where('status', 'posted')
-                ->where('balance', '>', 0)
-                ->notSuperseded() // Issue #96: exclude voided/reversed/superseded
-                ->where('invoice_date', '<=', $asOf)
-                ->orderBy('invoice_date', 'asc')
-                ->get();
-
-            $totalOutstanding = round($invoices->sum('balance'), 2);
-            $invoiceCount = $invoices->count();
-
-            $aging = $this->computeAgingAtDate($invoices, $asOf);
-
-            $comparisons[] = [
-                'as_of_date' => $asOf->format('Y-m-d'),
-                'total_outstanding' => $totalOutstanding,
-                'invoice_count' => $invoiceCount,
-                'aging' => $aging,
-            ];
+            // Canonical as-of snapshot — same math as the JSON comparison endpoint.
+            $comparisons[] = $this->statementService->comparisonSnapshot($customer, Carbon::parse($dateStr), $context);
         }
 
         // Compute deltas
@@ -450,17 +360,11 @@ class CustomerStatementController extends Controller
         }
 
         $payload = [
-            'company' => $company,
-            'customer' => [
-                'code' => $customer->code,
-                'name' => $customer->name,
-                'attention_to' => $attentionTo,
-                'address' => $customerAddress,
-                'payment_terms' => $customer->payment_terms ? $customer->payment_terms.' Days' : '',
-            ],
+            'company' => $context['company'],
+            'customer' => $context['customer'],
             'comparisons' => $comparisons,
             'deltas' => $deltas,
-            'currency' => $this->resolveCurrency(),
+            'currency' => $context['currency'],
             'generated_at' => now()->format('Y-m-d'),
         ];
 
@@ -477,7 +381,10 @@ class CustomerStatementController extends Controller
     }
 
     /**
-     * Compute aging buckets for a collection of invoices as of a given date.
+     * Render and persist the statement PDF. The Blade template consumes the
+     * canonical payload produced by CustomerStatementService (issue #191: the
+     * previous template expected keys the payload never contained, so every
+     * generate() call fatally errored).
      */
     private function computeAgingAtDate($invoices, Carbon $asOf): array
     {
@@ -627,47 +534,5 @@ class CustomerStatementController extends Controller
         }
 
         return $response;
-    }
-
-    /**
-     * Get company settings for the statement header
-     */
-    private function resolveCompanySettings(): array
-    {
-        $setting = \App\Models\Setting::first();
-
-        return [
-            'name' => $setting->company_name ?? '',
-            'address' => $setting->company_address ?? '',
-            'email' => $setting->company_email ?? '',
-            'phone' => $setting->company_phone ?? '',
-            'logo' => $setting->company_logo ?? '',
-            'registration_number' => $setting->registration_number ?? '',
-        ];
-    }
-
-    /**
-     * Get bank settings for the statement footer
-     */
-    private function resolveBankSettings(): array
-    {
-        $bank = DB::table('bank_accounts')->first();
-
-        return [
-            'name' => $bank->bank_name ?? '',
-            'account_name' => $bank->account_name ?? '',
-            'account_number' => $bank->account_number ?? '',
-            'swift_code' => $bank->swift_code ?? '',
-        ];
-    }
-
-    /**
-     * Resolve currency from settings
-     */
-    private function resolveCurrency(): string
-    {
-        $setting = \App\Models\Setting::first();
-
-        return $setting->currency ?? 'MYR';
     }
 }

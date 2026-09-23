@@ -41,6 +41,7 @@ class Customer extends Model
 
         // Financial
         'credit_limit',
+        'customer_group',
         'payment_terms',
         'total_outstanding',
         'price_list_id',
@@ -385,10 +386,9 @@ class Customer extends Model
         parent::boot();
 
         static::saving(function ($customer) {
-            if ($customer->credit_limit === null) {
-                $customer->credit_limit = 0;
-            }
-
+            // Issue #144: credit_limit is intentionally nullable. NULL means
+            // "no credit control configured" and must survive the save — do NOT
+            // coerce it to 0, which now means "zero credit / prepayment only".
             if ($customer->payment_terms === null) {
                 $customer->payment_terms = 30;
             }

@@ -27,9 +27,11 @@ class StockMovement extends Model
     ];
 
     protected $casts = [
-        'quantity' => 'integer',
-        'old_quantity' => 'integer',
-        'balance_after' => 'integer',
+        'quantity' => 'decimal:4',
+        // Issue #250: fractional UOM-converted quantities (integer casts
+        // truncate on assignment and silently drop the GL delta).
+        'old_quantity' => 'decimal:4',
+        'balance_after' => 'decimal:4',
         'expiry_date' => 'date',
     ];
 

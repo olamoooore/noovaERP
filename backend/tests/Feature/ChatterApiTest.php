@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\Customer;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -12,21 +13,25 @@ use Tests\TenantTestCase;
 /**
  * Chatter HTTP API integration test — exercises the live router/middleware
  * path for /api/v1/chatter/{subjectType}/{subjectId}.
+ *
+ * Subject is a Customer: since issue #75 only whitelisted models
+ * (config/chatter.php allowed_models) may be chatter subjects, and #74
+ * requires the mapped subject permission — a tenant Admin (super role)
+ * authorises both.
  */
 class ChatterApiTest extends TenantTestCase
 {
     private User $actor;
 
-    private User $subject;
+    private Customer $subject;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->bindTenantContext('chatter-api-tenant');
         Storage::fake('local');
 
-        $this->actor = User::factory()->create(['name' => 'Api Actor']);
-        $this->subject = User::factory()->create(['name' => 'Api Subject']);
+        $this->actor = $this->setUpTenantAdminUser('Chatter API Tenant');
+        $this->subject = Customer::factory()->create(['name' => 'Api Subject']);
     }
 
     public function test_show_returns_200_and_bundle_payload(): void
@@ -34,7 +39,7 @@ class ChatterApiTest extends TenantTestCase
         $this->actingAs($this->actor);
 
         $response = $this->getJson(
-            '/api/v1/chatter/'.urlencode(User::class)."/{$this->subject->id}"
+            '/api/v1/chatter/'.urlencode(Customer::class)."/{$this->subject->id}"
         );
 
         $response->assertOk();
@@ -53,7 +58,7 @@ class ChatterApiTest extends TenantTestCase
         $this->actingAs($this->actor);
 
         $response = $this->postJson(
-            '/api/v1/chatter/'.urlencode(User::class)."/{$this->subject->id}/messages",
+            '/api/v1/chatter/'.urlencode(Customer::class)."/{$this->subject->id}/messages",
             ['body' => 'Posted via API test.']
         );
 
@@ -67,7 +72,7 @@ class ChatterApiTest extends TenantTestCase
         $this->actingAs($this->actor);
 
         $response = $this->postJson(
-            '/api/v1/chatter/'.urlencode(User::class)."/{$this->subject->id}/activities",
+            '/api/v1/chatter/'.urlencode(Customer::class)."/{$this->subject->id}/activities",
             [
                 'activity_type' => 'invalid_type',
                 'summary' => 'Should fail',
@@ -83,7 +88,7 @@ class ChatterApiTest extends TenantTestCase
         $this->actingAs($this->actor);
 
         $response = $this->postJson(
-            '/api/v1/chatter/'.urlencode(User::class)."/{$this->subject->id}/activities",
+            '/api/v1/chatter/'.urlencode(Customer::class)."/{$this->subject->id}/activities",
             [
                 'activity_type' => 'call',
                 'summary' => 'Schedule onboarding call',
@@ -103,12 +108,12 @@ class ChatterApiTest extends TenantTestCase
         $this->actingAs($this->actor);
 
         $create = $this->postJson(
-            '/api/v1/chatter/'.urlencode(User::class)."/{$this->subject->id}/activities",
+            '/api/v1/chatter/'.urlencode(Customer::class)."/{$this->subject->id}/activities",
             ['activity_type' => 'todo', 'summary' => 'Follow up']
         )->json('data');
 
         $done = $this->postJson(
-            '/api/v1/chatter/'.urlencode(User::class)."/{$this->subject->id}/activities/{$create['id']}/done"
+            '/api/v1/chatter/'.urlencode(Customer::class)."/{$this->subject->id}/activities/{$create['id']}/done"
         );
 
         $done->assertOk();
@@ -120,7 +125,7 @@ class ChatterApiTest extends TenantTestCase
         $this->actingAs($this->actor);
 
         $response = $this->postJson(
-            '/api/v1/chatter/'.urlencode(User::class)."/{$this->subject->id}/attachments",
+            '/api/v1/chatter/'.urlencode(Customer::class)."/{$this->subject->id}/attachments",
             ['file' => UploadedFile::fake()->create('doc.pdf', 64)]
         );
 

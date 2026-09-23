@@ -25,6 +25,9 @@ class FinancialCloseServiceProvider extends ServiceProvider
             ->middleware([
                 'api',
                 'auth:sanctum',
+                // Issue #220: without this, X-Impersonation-Token is silently
+                // ignored on this module's standalone route group (the #173 gap).
+                \App\Http\Middleware\ImpersonationMiddleware::class,
                 \App\Http\Middleware\SetTenantFromUserPreference::class,
                 \App\Http\Middleware\EnsureTenantSearchPath::class,
                 \App\Http\Middleware\SyncTenantUserFromCentralAuth::class,

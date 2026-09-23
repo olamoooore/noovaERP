@@ -615,7 +615,7 @@ class Product extends Model
      *
      * @internal This method is now private to prevent new usage. Existing callers must migrate.
      */
-    private function adjustStock(int $quantity, string $type, ?string $reference = null, ?int $warehouseId = null): void
+    private function adjustStock(float $quantity, string $type, ?string $reference = null, ?int $warehouseId = null): void
     {
         // Resolve warehouse: use provided ID, else fall back to the default warehouse.
         // Without a warehouse all stock changes are untrackable at the location level.
@@ -657,43 +657,89 @@ class Product extends Model
 
     // ==================== PRICING METHODS ====================
 
-    public function getPriceForQuantity(int $quantity, ?int $customerId = null): float
-    {
-        // Check for customer-specific pricing first
-        if ($customerId) {
-            $customerTier = $this->priceTiers()
-                ->where('customer_id', $customerId)
-                ->where('is_active', true)
-                ->where('min_quantity', '<=', $quantity)
-                ->where(function ($q) use ($quantity) {
-                    $q->whereNull('max_quantity')
-                        ->orWhere('max_quantity', '>=', $quantity);
-                })
-                ->orderBy('min_quantity', 'desc')
-                ->first();
+    /**
+     * Issue #132: resolve the effective unit price for a quantity, honouring
+     * volume tiers, customer-specific tiers, variant-specific tiers and each
+     * tier's validity window (via ProductPriceTier::isValidFor()).
+     *
+     * The previous implementation ignored valid_from/valid_until and
+     * product_variant_id entirely, so expired tiers kept applying and
+     * variant-specific tiers never did.
+     */
+    public function getPriceForQuantity(
+        int $quantity,
+        ?int $customerId = null,
+        ?\Carbon\CarbonInterface $date = null,
+        ?int $variantId = null,
+        ?string $customerGroup = null,
+    ): float {
+        $date = $date ?? now();
 
-            if ($customerTier) {
-                return $customerTier->calculatePrice($this->price);
-            }
+        // Issue #245: resolve the customer's group when the caller did not pass
+        // one, so group-scoped tiers are matched (and cannot leak to others).
+        if ($customerGroup === null && $customerId !== null) {
+            $customerGroup = \App\Models\Customer::whereKey($customerId)->value('customer_group');
         }
 
-        // Check for volume pricing
-        $tier = $this->priceTiers()
-            ->whereNull('customer_id')
+        $variant = $variantId !== null
+            ? $this->variants()->whereKey($variantId)->first()
+            : null;
+
+        $basePrice = (float) ($variant?->price ?? $this->price);
+
+        $tiers = $this->priceTiers()
             ->where('is_active', true)
-            ->where('min_quantity', '<=', $quantity)
-            ->where(function ($q) use ($quantity) {
-                $q->whereNull('max_quantity')
-                    ->orWhere('max_quantity', '>=', $quantity);
-            })
-            ->orderBy('min_quantity', 'desc')
-            ->first();
+            ->get()
+            ->filter(function (ProductPriceTier $tier) use ($customerId, $customerGroup, $quantity, $date) {
+                if (! $tier->isValidFor($quantity, $date)) {
+                    return false;
+                }
 
-        if ($tier) {
-            return $tier->calculatePrice($this->price);
+                // Customer-specific tier: only for that customer.
+                if ($tier->customer_id !== null) {
+                    return $customerId !== null && (int) $tier->customer_id === $customerId;
+                }
+
+                // Ungrouped tier: usable by anyone.
+                if ($tier->customer_group === null || $tier->customer_group === '') {
+                    return true;
+                }
+
+                // Issue #245: group-scoped tier only for members of that group.
+                return $customerGroup !== null && $tier->customer_group === $customerGroup;
+            });
+
+        if ($tiers->isEmpty()) {
+            return $basePrice;
         }
 
-        return (float) $this->price;
+        $rank = function (ProductPriceTier $tier) use ($customerId): int {
+            if ($customerId !== null && $tier->customer_id !== null && (int) $tier->customer_id === $customerId) {
+                return 2; // customer-specific
+            }
+            if ($tier->customer_group !== null && $tier->customer_group !== '') {
+                return 1; // group-scoped
+            }
+
+            return 0; // generic
+        };
+
+        $best = $tiers->sort(function (ProductPriceTier $a, ProductPriceTier $b) use ($rank, $basePrice) {
+            // Specificity first: customer-specific > group > generic.
+            $rankComparison = $rank($b) <=> $rank($a);
+            if ($rankComparison !== 0) {
+                return $rankComparison;
+            }
+
+            // Then the cheapest resulting price, then the deepest quantity break.
+            $priceComparison = $a->calculatePrice($basePrice) <=> $b->calculatePrice($basePrice);
+
+            return $priceComparison !== 0
+                ? $priceComparison
+                : ($b->min_quantity <=> $a->min_quantity);
+        })->first();
+
+        return round($best->calculatePrice($basePrice), 2);
     }
 
     // ==================== BUNDLE METHODS ====================

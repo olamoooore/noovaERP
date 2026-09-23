@@ -5,115 +5,62 @@ namespace Tests\Feature;
 use Tests\TenantTestCase;
 
 /**
- * AR-004: Posting Engine Boundary Separation
+ * AR-004: Posting engine boundary separation.
  *
- * InventoryPostingEngine (stock mutations) and AccountingPostingEngine / PostingEngine
- * (GL journal entries) must have clearly separated responsibilities.
+ * Issue #108 removed App\Accounting\InventoryPostingEngine — a declared
+ * "engine-level stock-mutation boundary" that had zero production callers and
+ * deferred accounting to an InventoryAccountingJob that never existed. The
+ * real invariants it claimed to enforce are asserted here directly against the
+ * live classes:
  *
- * Evidence required (from closure checklist):
- *   - InventoryPostingEngine class exists and delegates to InventoryService
- *   - AccountingPostingEngine (PostingEngine) does NOT directly mutate stock
- *   - InventoryPostingEngine does NOT directly create JournalEntry records
- *   - Boundary is documented and enforced by tests
+ *   - stock mutation authority: InventoryService::adjustStock() (plus the
+ *     module services that delegate to it)
+ *   - accounting authority: PostingEngine / domain posts — which must never
+ *     mutate stock
+ *   - the dead boundary class must stay removed (it must not accrete a fourth
+ *     COGS-posting path)
  */
 class AR004PostingEngineBoundaryTest extends TenantTestCase
 {
-    // ── InventoryPostingEngine existence and structure ────────────────────────
+    // ── The dead boundary class stays removed ────────────────────────────────
 
-    public function test_inventory_posting_engine_class_exists(): void
+    public function test_dead_inventory_posting_engine_is_removed(): void
     {
-        $this->assertTrue(
+        $this->assertFalse(
             class_exists(\App\Accounting\InventoryPostingEngine::class),
-            'InventoryPostingEngine must exist as the declared stock mutation engine boundary.'
+            'InventoryPostingEngine must stay removed (dead code, issue #108)'
         );
     }
 
-    public function test_inventory_posting_engine_file_is_in_accounting_namespace(): void
+    public function test_no_production_code_references_the_removed_class(): void
     {
-        $source = file_get_contents(base_path('app/Accounting/InventoryPostingEngine.php'));
+        $offenders = [];
 
-        $this->assertStringContainsString('namespace App\Accounting', $source,
-            'InventoryPostingEngine must be in the App\Accounting namespace alongside PostingEngine.');
+        foreach ([base_path('app'), base_path('modules')] as $dir) {
+            $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS));
+
+            foreach ($files as $file) {
+                if (! $file instanceof \SplFileInfo || $file->getExtension() !== 'php') {
+                    continue;
+                }
+
+                if (str_contains(file_get_contents($file->getPathname()), 'InventoryPostingEngine')) {
+                    $offenders[] = $file->getPathname();
+                }
+            }
+        }
+
+        $this->assertSame([], $offenders, 'No production code may reference the removed dead class: '.implode(', ', $offenders));
     }
 
-    public function test_inventory_posting_engine_declares_post_method(): void
-    {
-        $source = file_get_contents(base_path('app/Accounting/InventoryPostingEngine.php'));
-
-        $this->assertStringContainsString('public function post(', $source,
-            'InventoryPostingEngine must expose a post() method as its primary API.');
-    }
-
-    public function test_inventory_posting_engine_returns_stock_movement(): void
-    {
-        $source = file_get_contents(base_path('app/Accounting/InventoryPostingEngine.php'));
-
-        $this->assertStringContainsString('StockMovement', $source,
-            'InventoryPostingEngine::post() must return a StockMovement record.');
-    }
-
-    // ── InventoryPostingEngine delegates correctly ────────────────────────────
-
-    public function test_inventory_posting_engine_delegates_to_inventory_service(): void
-    {
-        $source = file_get_contents(base_path('app/Accounting/InventoryPostingEngine.php'));
-
-        $this->assertStringContainsString('InventoryService', $source,
-            'InventoryPostingEngine must inject and use InventoryService.');
-        $this->assertStringContainsString('adjustStock(', $source,
-            'InventoryPostingEngine must call adjustStock() — not mutate stock directly.');
-    }
-
-    public function test_inventory_posting_engine_passes_idempotency_key_to_inventory_service(): void
-    {
-        $source = file_get_contents(base_path('app/Accounting/InventoryPostingEngine.php'));
-
-        $this->assertStringContainsString('idempotencyKey', $source,
-            'InventoryPostingEngine must forward the idempotency key to InventoryService (AR-002 compliance).');
-    }
-
-    // ── InventoryPostingEngine boundary: does NOT cross into accounting ───────
-
-    public function test_inventory_posting_engine_does_not_create_journal_entries_directly(): void
-    {
-        $source = file_get_contents(base_path('app/Accounting/InventoryPostingEngine.php'));
-
-        $this->assertStringNotContainsString('JournalEntry::create', $source,
-            'InventoryPostingEngine must not directly create JournalEntry records — that is PostingEngine\'s domain.');
-        $this->assertStringNotContainsString('JournalEntry::make', $source,
-            'InventoryPostingEngine must not directly instantiate JournalEntry models.');
-    }
-
-    public function test_inventory_posting_engine_does_not_call_posting_engine_post(): void
-    {
-        $source = file_get_contents(base_path('app/Accounting/InventoryPostingEngine.php'));
-
-        // Source may mention PostingEngine in comments; guard against actual usage only.
-        $this->assertStringNotContainsString('use App\Accounting\PostingEngine', $source,
-            'InventoryPostingEngine must not import PostingEngine.');
-        $this->assertStringNotContainsString('new PostingEngine(', $source,
-            'InventoryPostingEngine must not instantiate PostingEngine.');
-        $this->assertStringNotContainsString('$postingEngine->post(', $source,
-            'InventoryPostingEngine must not call PostingEngine::post() inline (AR-004 boundary).');
-    }
-
-    public function test_inventory_posting_engine_documents_deferred_accounting_pattern(): void
-    {
-        $source = file_get_contents(base_path('app/Accounting/InventoryPostingEngine.php'));
-
-        // The class must explain WHY it doesn't call PostingEngine inline
-        $this->assertStringContainsString('outbox', $source,
-            'InventoryPostingEngine must document the deferred/outbox accounting pattern.');
-    }
-
-    // ── AccountingPostingEngine boundary: does NOT cross into stock ──────────
+    // ── Accounting engine does NOT cross into stock ──────────────────────────
 
     public function test_accounting_posting_engine_does_not_mutate_stock_levels(): void
     {
         $source = file_get_contents(base_path('app/Accounting/PostingEngine.php'));
 
         $this->assertStringNotContainsString('StockLevel::', $source,
-            'PostingEngine (AccountingPostingEngine) must not reference StockLevel — that is InventoryPostingEngine\'s domain.');
+            'PostingEngine must not reference StockLevel — stock is InventoryService\'s domain.');
     }
 
     public function test_accounting_posting_engine_does_not_create_stock_movements(): void
@@ -129,10 +76,8 @@ class AR004PostingEngineBoundaryTest extends TenantTestCase
         $source = file_get_contents(base_path('app/Accounting/PostingEngine.php'));
 
         $this->assertStringNotContainsString('adjustStock', $source,
-            'PostingEngine must not call adjustStock() — stock mutation is InventoryPostingEngine\'s domain.');
+            'PostingEngine must not call adjustStock() — stock mutation is InventoryService\'s domain.');
     }
-
-    // ── Structural: distinct class responsibilities documented ────────────────
 
     public function test_posting_engine_is_responsible_for_journal_entries(): void
     {
@@ -144,25 +89,56 @@ class AR004PostingEngineBoundaryTest extends TenantTestCase
             'PostingEngine must use JournalEntryLink for idempotent posting.');
     }
 
-    public function test_inventory_posting_engine_is_responsible_for_stock_movements(): void
-    {
-        $source = file_get_contents(base_path('app/Accounting/InventoryPostingEngine.php'));
+    // ── Stock mutation authority is InventoryService ─────────────────────────
 
-        $this->assertStringContainsString('StockMovement', $source,
-            'InventoryPostingEngine must work with StockMovement (its primary domain).');
+    public function test_inventory_service_owns_the_stock_mutation_path(): void
+    {
+        $source = file_get_contents(base_path('modules/Inventory/src/Services/InventoryService.php'));
+
+        $this->assertStringContainsString('function adjustStock', $source,
+            'InventoryService::adjustStock must remain the canonical stock mutation method.');
     }
 
-    // ── Reflexive: both engines exist as siblings ─────────────────────────────
-
-    public function test_both_engines_coexist_in_accounting_namespace(): void
+    public function test_live_stock_mutation_callers_delegate_to_inventory_service(): void
     {
-        $this->assertTrue(
-            class_exists(\App\Accounting\PostingEngine::class),
-            'PostingEngine (AccountingPostingEngine) must exist.'
-        );
-        $this->assertTrue(
-            class_exists(\App\Accounting\InventoryPostingEngine::class),
-            'InventoryPostingEngine must exist as its sibling.'
-        );
+        $callers = [
+            'modules/POS/src/Services/PosPaymentCompletionService.php',
+            'modules/Ecommerce/src/Services/WebOrderPostingService.php',
+            'modules/Sales/src/Services/DeliveryOrderService.php',
+            'modules/Inventory/src/Services/StockAdjustmentService.php',
+        ];
+
+        foreach ($callers as $relative) {
+            $source = file_get_contents(base_path($relative));
+
+            $this->assertStringContainsString('adjustStock', $source,
+                "{$relative} must mutate stock through adjustStock().");
+        }
+
+        // StockController delegates to the module service (#106), which in turn
+        // calls adjustStock — the invariant holds one layer down.
+        $controller = file_get_contents(base_path('modules/Inventory/src/Http/Controllers/StockController.php'));
+        $this->assertStringContainsString('StockAdjustmentService', $controller,
+            'StockController must mutate stock through StockAdjustmentService.');
+        $this->assertStringNotContainsString('StockLevel::create', $controller,
+            'StockController must not mutate stock tables directly.');
+    }
+
+    public function test_cogs_posting_paths_route_through_posting_engine(): void
+    {
+        // The real accounting integration is a direct PostingEngine call — the
+        // removed boundary class claimed to own this but never called it.
+        foreach ([
+            'modules/POS/src/Services/PosPostingService.php',
+            'modules/Ecommerce/src/Services/WebOrderPostingService.php',
+            'app/Services/InvoiceService.php',
+        ] as $relative) {
+            $source = file_get_contents(base_path($relative));
+
+            $this->assertTrue(
+                str_contains($source, 'PostingEngine') || str_contains($source, 'postingEngine'),
+                "{$relative} must post through PostingEngine (not a bespoke path)."
+            );
+        }
     }
 }

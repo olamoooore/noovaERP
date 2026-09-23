@@ -553,6 +553,67 @@ class PaymentController extends Controller
      * Unapplies the payment from the linked invoice, restoring the invoice balance.
      * Routes through PaymentCorrectionService for proper GL reversal (ADR-005 §15.3).
      */
+    /**
+     * Issue #155: list a payment's applications + unapplied amount.
+     */
+    public function allocations($paymentId)
+    {
+        $payment = Payment::with('applications.invoice')->find($paymentId);
+
+        if (! $payment) {
+            return response()->json(['message' => 'Payment not found'], 404);
+        }
+
+        $applied = round((float) $payment->applications->sum('applied_amount'), 2);
+
+        return response()->json([
+            'data' => $payment->applications,
+            'amount' => round((float) $payment->amount, 2),
+            'applied_amount' => $applied,
+            'unapplied_amount' => app(\App\Services\PaymentAllocationService::class)->unappliedAmount($payment),
+        ]);
+    }
+
+    /**
+     * Issue #155: split a payment across invoices (or hold it on account).
+     */
+    public function allocate(Request $request, $paymentId)
+    {
+        $payment = Payment::find($paymentId);
+
+        if (! $payment) {
+            return response()->json(['message' => 'Payment not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'applications' => 'required|array|min:1',
+            'applications.*.invoice_id' => 'required|integer|exists:invoices,id',
+            'applications.*.amount' => 'required|numeric|min:0.01',
+        ]);
+
+        try {
+            $payment = app(\App\Services\PaymentAllocationService::class)
+                ->allocate($payment, $validated['applications']);
+
+            return response()->json([
+                'message' => 'Payment allocated successfully',
+                'data' => $payment->applications,
+                'applied_amount' => round((float) $payment->applications->sum('applied_amount'), 2),
+                'unapplied_amount' => app(\App\Services\PaymentAllocationService::class)->unappliedAmount($payment),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'error' => 'INVALID_ALLOCATION',
+            ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to allocate payment',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function cancel($paymentId)
     {
         $payment = Payment::findOrFail($paymentId);

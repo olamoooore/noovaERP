@@ -226,8 +226,10 @@ return new class extends Migration
             $table->dropConstrainedForeignId('bank_statement_match_id');
             $table->dropConstrainedForeignId('bank_statement_transaction_id');
         });
-        DB::statement('DROP INDEX IF EXISTS bank_statement_transactions_active_key_unique');
-        DB::statement('DROP INDEX IF EXISTS bank_statement_imports_active_file_unique');
+        // Schema-qualified: unqualified DROP INDEX can leak to public via search_path.
+        $schema = DB::selectOne('SELECT current_schema() AS s')->s;
+        DB::statement("DROP INDEX IF EXISTS \"{$schema}\".bank_statement_transactions_active_key_unique");
+        DB::statement("DROP INDEX IF EXISTS \"{$schema}\".bank_statement_imports_active_file_unique");
         Schema::dropIfExists('bank_reconciliation_reversals');
         Schema::dropIfExists('bank_reconciliation_scopes');
         Schema::dropIfExists('bank_statement_matches');

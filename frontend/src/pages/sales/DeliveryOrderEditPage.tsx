@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableCell, TableRow } from '@/components/ui/table'
+import { LineItemsTable } from '@/components/sales/LineItemsTable'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
@@ -132,7 +133,7 @@ export function DeliveryOrderEditPage() {
           description: l.description || '',
           product_notes: l.product_notes || '',
           patient_name: l.patient_name || '',
-          quantity: parseFloat(l.quantity_delivered) || 1,
+          quantity: l.quantity_delivered != null ? parseFloat(l.quantity_delivered) : '',
           unit: l.unit || 'pcs',
           unit_price: l.unit_price ? parseFloat(l.unit_price) : null,
           lot_number: l.lot_number || '',
@@ -367,22 +368,21 @@ export function DeliveryOrderEditPage() {
           <DeliveryOrderColumnVisibility tableClass="do-edit-columns" columns={[
             'Product', 'Description', 'Product Notes', 'Patient Name', 'Quantity', 'Unit', 'Unit Price', 'Lot Number', 'Expiry Date', 'Actions',
           ].map((label, index) => ({ label, index: index + 1 }))}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[200px]">Product</TableHead>
-                <TableHead className="min-w-[320px]">Description</TableHead>
-                <TableHead className="w-[180px]">Product Notes</TableHead>
-                <TableHead className="w-[180px]">Patient Name</TableHead>
-                <TableHead className="text-right w-[100px]">Quantity</TableHead>
-                <TableHead className="w-[100px]">Unit</TableHead>
-                <TableHead className="text-right w-[120px]">Unit Price</TableHead>
-                <TableHead className="w-[120px]">Lot Number</TableHead>
-                <TableHead className="w-[140px]">Expiry Date</TableHead>
-                <TableHead className="w-[50px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <LineItemsTable
+            variant="shadcn"
+            columns={[
+              { key: 'product', label: 'Product', minWidth: 'min-w-[12.5rem]' },
+              { key: 'description', label: 'Description', minWidth: 'min-w-[18rem]' },
+              { key: 'product_notes', label: 'Product Notes', minWidth: 'min-w-[10rem]' },
+              { key: 'patient_name', label: 'Patient Name', minWidth: 'min-w-[10rem]' },
+              { key: 'quantity', label: 'Quantity', align: 'right', minWidth: 'min-w-[6rem]' },
+              { key: 'unit', label: 'Unit', minWidth: 'min-w-[6rem]' },
+              { key: 'unit_price', label: 'Unit Price', align: 'right', minWidth: 'min-w-[7rem]' },
+              { key: 'lot_number', label: 'Lot Number', minWidth: 'min-w-[7rem]' },
+              { key: 'expiry_date', label: 'Expiry Date', minWidth: 'min-w-[8rem]' },
+              { key: 'actions', minWidth: 'min-w-[3rem]' },
+            ]}
+          >
               {lines.map((line, idx) => (
                 <TableRow key={idx} draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(idx)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== idx) setLines(reorderDocumentLines(lines, draggedLineIndex, idx)); setDraggedLineIndex(null); }}>
                   {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={10} total={line.line_type === 'section' ? getDocumentSectionTotal(lines, idx, (item) => item.quantity * Number(item.unit_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : undefined} onChange={(text) => updateLine(idx, 'description', text)} onDelete={() => removeLine(idx)} onDragStart={() => setDraggedLineIndex(idx)} onDrop={() => { if (draggedLineIndex !== null) setLines(reorderDocumentLines(lines, draggedLineIndex, idx)); setDraggedLineIndex(null); }} /> : <>
@@ -410,7 +410,14 @@ export function DeliveryOrderEditPage() {
                     <Input value={line.patient_name} onChange={(e) => updateLine(idx, 'patient_name', e.target.value)} placeholder="Patient name" />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Input type="number" min="0.01" step="0.01" value={line.quantity || ''} onChange={(e) => updateLine(idx, 'quantity', parseFloat(e.target.value) || 0)} className="w-24 text-right" />
+                    <Input type="number" min="0.01" step="0.01" value={line.quantity ?? ''} onChange={(e) => {
+                      // HR71-08: keep literal intent — empty while typing,
+                      // no silent coercion to 0.
+                      const raw = e.target.value;
+                      if (raw === '') { updateLine(idx, 'quantity', ''); return; }
+                      const parsed = parseFloat(raw);
+                      if (!Number.isNaN(parsed) && parsed >= 0) updateLine(idx, 'quantity', parsed);
+                    }} className="w-24 text-right" />
                   </TableCell>
                   <TableCell>
                     <Input value={line.unit} onChange={(e) => updateLine(idx, 'unit', e.target.value)} className="w-20" />
@@ -435,8 +442,7 @@ export function DeliveryOrderEditPage() {
                   </>}
                 </TableRow>
               ))}
-            </TableBody>
-          </Table>
+          </LineItemsTable>
           </DeliveryOrderColumnVisibility>
           <div className="mt-3 flex flex-wrap gap-2">
             <ProductCatalogDialog products={products || []} onAdd={addCatalogProducts} />

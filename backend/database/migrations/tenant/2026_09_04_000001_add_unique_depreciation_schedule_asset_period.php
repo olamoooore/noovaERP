@@ -35,6 +35,8 @@ return new class extends Migration
 
     public function down(): void
     {
-        DB::statement('DROP INDEX IF EXISTS depreciation_schedules_asset_period_unique');
+        // Schema-qualified: unqualified DROP INDEX can leak to public via search_path.
+        $schema = DB::selectOne('SELECT current_schema() AS s')->s;
+        DB::statement("DROP INDEX IF EXISTS \"{$schema}\".depreciation_schedules_asset_period_unique");
     }
 };

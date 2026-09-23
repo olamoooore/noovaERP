@@ -18,6 +18,8 @@ class GoodsReceiptService
 {
     public function __construct(
         private readonly InventoryService $inventoryService,
+        private readonly \App\Services\ProductUomConverter $uomConverter,
+        private readonly \App\Services\ProductCostingService $costingService,
         private readonly PostingEngine $postingEngine,
     ) {}
 
@@ -48,6 +50,15 @@ class GoodsReceiptService
                 $acceptedQty = $lineData['quantity_accepted'] ?? $receivedQty;
                 $rejectedQty = $lineData['quantity_rejected'] ?? 0;
 
+                // Issue #135: a quantity entered in a non-base UOM must be
+                // converted before it reaches stock (1 Box = 12 Pieces).
+                if (! empty($lineData['uom_id']) && $poLine->product_id) {
+                    $uom = $this->uomConverter->resolve((int) $poLine->product_id, (int) $lineData['uom_id']);
+                    $receivedQty = $this->uomConverter->toBase($uom, (float) $receivedQty);
+                    $acceptedQty = $this->uomConverter->toBase($uom, (float) $acceptedQty);
+                    $rejectedQty = $this->uomConverter->toBase($uom, (float) $rejectedQty);
+                }
+
                 GoodsReceiptLine::create([
                     'goods_receipt_id' => $grn->id,
                     'purchase_order_item_id' => $poLine->id,
@@ -74,19 +85,69 @@ class GoodsReceiptService
 
             $grn->confirm();
 
+            $grn->loadMissing('lines.purchaseOrderItem', 'purchaseOrder');
+
+            // Issue #107: capture each product's on-hand quantity BEFORE the
+            // receipt so the weighted-average cost uses the correct basis. Lines
+            // for the same product within one receipt are folded sequentially.
+            $qtyBeforeByProduct = [];
+
             foreach ($grn->lines as $line) {
-                if ($line->quantity_accepted > 0) {
-                    $this->inventoryService->adjustStock(
-                        productId: $line->product_id,
-                        warehouseId: $grn->warehouse_id,
-                        quantity: $line->quantity_accepted,
-                        type: 'purchase',
-                        reference: $grn->grn_number,
-                        referenceType: 'GoodsReceipt',
-                        referenceId: $grn->id,
-                        notes: "GRN {$grn->grn_number} — PO {$grn->purchaseOrder->po_number}",
-                    );
+                if (! $line->product_id || $line->quantity_accepted <= 0) {
+                    continue;
                 }
+
+                if (! array_key_exists($line->product_id, $qtyBeforeByProduct)) {
+                    // Issue #251: read the pre-receipt basis under a row lock so
+                    // concurrent GRNs for the same product cannot both compute
+                    // their weighted average from a stale quantity (lost update
+                    // on Product.cost).
+                    $qtyBeforeByProduct[$line->product_id] = (float) (\App\Models\Product::whereKey($line->product_id)
+                        ->lockForUpdate()
+                        ->value('stock_quantity') ?? 0);
+                }
+
+                $this->inventoryService->adjustStock(
+                    productId: $line->product_id,
+                    warehouseId: $grn->warehouse_id,
+                    quantity: $line->quantity_accepted,
+                    type: 'purchase',
+                    reference: $grn->grn_number,
+                    referenceType: 'GoodsReceipt',
+                    referenceId: $grn->id,
+                    notes: "GRN {$grn->grn_number} — PO {$grn->purchaseOrder->po_number}",
+                );
+
+                // Issue #107: weighted-average cost update, in the same transaction.
+                $product = \App\Models\Product::find($line->product_id);
+                $unitCost = (float) ($line->purchaseOrderItem?->unit_cost ?? 0);
+                $acceptedQty = (float) $line->quantity_accepted;
+                $qtyBefore = $qtyBeforeByProduct[$line->product_id] ?? 0.0;
+
+                if ($product && $unitCost > 0 && $acceptedQty > 0) {
+                    $this->costingService->recordReceipt($product, $acceptedQty, $unitCost, $qtyBefore);
+                }
+
+                // Issue #134: propagate the real purchase price into the
+                // supplier-product procurement record (same transaction), so
+                // last_cost reflects what was actually paid, not the value
+                // typed when the link was created.
+                $supplierId = $grn->purchaseOrder?->supplier_id;
+
+                if ($supplierId && $unitCost > 0) {
+                    \App\Models\ProductSupplier::query()
+                        ->where('product_id', $line->product_id)
+                        ->where('supplier_id', $supplierId)
+                        ->update([
+                            'last_cost' => $unitCost,
+                            'last_purchase_date' => now()->toDateString(),
+                        ]);
+                }
+
+                // Issue #249: every line that adjusted stock advances the basis —
+                // a free (zero-cost) line still adds quantity, so omitting it
+                // skewed the next paid line's weighted average upward.
+                $qtyBeforeByProduct[$line->product_id] = $qtyBefore + $acceptedQty;
             }
 
             $this->updatePurchaseOrderReceivedQty($grn);
@@ -120,7 +181,10 @@ class GoodsReceiptService
         $total = 0.0;
 
         foreach ($grn->lines as $line) {
-            $acceptedQty = (int) $line->quantity_accepted;
+            // Issue #210: quantity_accepted is decimal(15,4); casting to int
+            // truncated fractional receipts and under-posted Inventory/GRNI
+            // while adjustStock() moved the full quantity.
+            $acceptedQty = (float) $line->quantity_accepted;
 
             if ($acceptedQty <= 0) {
                 continue;

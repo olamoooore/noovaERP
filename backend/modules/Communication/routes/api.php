@@ -29,6 +29,16 @@ Route::middleware([
     // Messages / Thread (Chatter)
     Route::get('/messages', [CommunicationController::class, 'getMessages']);
     Route::post('/messages', [CommunicationController::class, 'postMessage']);
+    // Issue #86: per-user read state / unread counter.
+    Route::post('/messages/read-all', [CommunicationController::class, 'markAllRead']);
+    Route::post('/messages/{messageId}/read', [CommunicationController::class, 'markMessageRead'])
+        ->whereNumber('messageId');
+    Route::get('/unread-count', [CommunicationController::class, 'unreadCount']);
+    // Issue #88: message attachments (authenticated download, no public paths).
+    Route::post('/messages/{messageId}/attachments', [CommunicationController::class, 'attachFile'])
+        ->whereNumber('messageId');
+    Route::get('/attachments/{attachmentId}/download', [CommunicationController::class, 'downloadAttachment'])
+        ->whereNumber('attachmentId');
 
     // Subscribers (Followers)
     Route::get('/subscribers', [CommunicationController::class, 'getSubscribers']);

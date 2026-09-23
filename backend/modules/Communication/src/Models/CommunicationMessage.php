@@ -25,13 +25,6 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property array|null $metadata
  * @property int|null $author_id
  * @property string $author_type
- * @property string|null $email_from
- * @property string|null $email_to
- * @property string|null $email_cc
- * @property string|null $email_bcc
- * @property string|null $email_message_id
- * @property string|null $email_in_reply_to
- * @property int|null $parent_id
  * @property int|null $template_id
  * @property string $status
  * @property \Carbon\Carbon|null $scheduled_at
@@ -83,13 +76,8 @@ class CommunicationMessage extends Model
         'metadata',
         'author_id',
         'author_type',
-        'email_from',
-        'email_to',
-        'email_cc',
-        'email_bcc',
-        'email_message_id',
-        'email_in_reply_to',
-        'parent_id',
+        // Issue #80: the dead email threading fields were removed — no
+        // incoming-email integration exists (see the module README).
         'template_id',
         'status',
         'scheduled_at',
@@ -104,19 +92,17 @@ class CommunicationMessage extends Model
 
     // ── Relationships ──────────────────────────────────────
 
+    /**
+     * Issue #88: files attached to this message.
+     */
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(CommunicationAttachment::class, 'message_id');
+    }
+
     public function outboxItems(): HasMany
     {
         return $this->hasMany(CommunicationOutbox::class, 'message_id');
-    }
-
-    public function parent(): BelongsTo
-    {
-        return $this->belongsTo(self::class, 'parent_id');
-    }
-
-    public function replies(): HasMany
-    {
-        return $this->hasMany(self::class, 'parent_id');
     }
 
     public function template(): BelongsTo

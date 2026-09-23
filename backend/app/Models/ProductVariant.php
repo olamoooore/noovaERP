@@ -55,7 +55,7 @@ class ProductVariant extends Model
      *             InventoryService so that stock_levels stays authoritative.
      *             No warehouse context is available here — default warehouse is used.
      */
-    public function adjustStock(int $quantity, string $type, ?string $reference = null): void
+    public function adjustStock(float $quantity, string $type, ?string $reference = null): void
     {
         $defaultWarehouse = Warehouse::getDefault();
 

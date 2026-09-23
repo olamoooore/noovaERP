@@ -7,6 +7,7 @@ import { LineChart } from '@/components/charts/LineChart';
 import { BarChart } from '@/components/charts/BarChart';
 import { PieChart } from '@/components/charts/PieChart';
 import reportApi from '@/lib/reportApi';
+import api from '@/lib/api';
 import type { FinancialDashboardData } from '@/types/reports';
 
 /**
@@ -67,6 +68,33 @@ export const FinancialDashboard: React.FC = () => {
       const totalExpenses = getExpenseTotal(profitLoss);
       const netProfit = getProfitAmount(profitLoss.net_profit);
 
+      // Issue #92: real budget data — the previous implementation fabricated
+      // "budget" as actual x 1.1. Read the approved budget's variance for the
+      // period's fiscal year and map budget lines by account name; when no
+      // approved budget exists the chart shows its empty state instead of
+      // synthetic numbers.
+      const budgetByAccount: Record<string, number> = {};
+      try {
+        const fiscalYear = new Date(currentFilters.end_date).getFullYear();
+        const budgetsResponse = await api.get('/accounting/budgets', {
+          params: { fiscal_year: fiscalYear, status: 'approved', per_page: 1 },
+        });
+        const approvedBudget = budgetsResponse.data?.data?.[0];
+        if (approvedBudget) {
+          const varianceResponse = await api.get(`/accounting/budgets/${approvedBudget.id}/variance`);
+          (varianceResponse.data?.data?.lines ?? []).forEach((line: any) => {
+            if (line.account_name) {
+              budgetByAccount[line.account_name] =
+                (budgetByAccount[line.account_name] ?? 0) + Number(line.budget_amount ?? 0);
+            }
+          });
+        }
+      } catch {
+        // Budget data unavailable — surface no synthetic fallback.
+      }
+
+      const hasApprovedBudget = Object.keys(budgetByAccount).length > 0;
+
       // Transform data into dashboard format
       const revenueVsExpenses = salesTrends.trends.map((trend) => {
         // Calculate expenses proportionally based on total
@@ -108,11 +136,13 @@ export const FinancialDashboard: React.FC = () => {
           amount: cat.total_amount,
         })),
         revenue_vs_expenses: revenueVsExpenses,
-        budget_vs_actual: expensesByCategory.categories.slice(0, 8).map((cat) => ({
-          category: cat.account_name,
-          budget: cat.total_amount * 1.1, // Mock budget as 110% of actual
-          actual: cat.total_amount,
-        })),
+        budget_vs_actual: hasApprovedBudget
+          ? expensesByCategory.categories.slice(0, 8).map((cat) => ({
+              category: cat.account_name,
+              budget: budgetByAccount[cat.account_name] ?? 0,
+              actual: cat.total_amount,
+            }))
+          : [],
       };
     },
   });

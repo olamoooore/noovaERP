@@ -42,6 +42,18 @@ Route::prefix('fulfillment')->group(function () {
         ->middleware(RequirePermission::using('fulfillment.view'));
     Route::get('/providers/available-carriers', [ProviderController::class, 'getAvailableCarriers'])
         ->middleware(RequirePermission::using('fulfillment.view'));
+
+    // Issue #148: ShippingRule CRUD (rule-based carrier selection).
+    Route::get('/shipping-rules', [\Modules\Fulfillment\Http\Controllers\ShippingRuleController::class, 'index'])
+        ->middleware(RequirePermission::using('fulfillment.view'));
+    Route::post('/shipping-rules', [\Modules\Fulfillment\Http\Controllers\ShippingRuleController::class, 'store'])
+        ->middleware(RequirePermission::using('fulfillment.settings'));
+    Route::put('/shipping-rules/{id}', [\Modules\Fulfillment\Http\Controllers\ShippingRuleController::class, 'update'])
+        ->middleware(RequirePermission::using('fulfillment.settings'));
+    Route::delete('/shipping-rules/{id}', [\Modules\Fulfillment\Http\Controllers\ShippingRuleController::class, 'destroy'])
+        ->middleware(RequirePermission::using('fulfillment.settings'));
+    Route::post('/shipping-rules/reorder', [\Modules\Fulfillment\Http\Controllers\ShippingRuleController::class, 'reorder'])
+        ->middleware(RequirePermission::using('fulfillment.settings'));
     Route::get('/providers/{id}', [ProviderController::class, 'show'])
         ->middleware(RequirePermission::using('fulfillment.view'));
 
@@ -55,6 +67,9 @@ Route::prefix('fulfillment')->group(function () {
     Route::get('/shipments/{id}/tracking', [FulfillmentController::class, 'getTracking'])
         ->middleware(RequirePermission::using('fulfillment.view'));
     Route::post('/shipments', [FulfillmentController::class, 'createShipment'])
+        ->middleware(RequirePermission::using('fulfillment.write'));
+    // Issue #147: Sales delivery order -> Fulfillment shipment integration.
+    Route::post('/delivery-orders/{deliveryOrderId}/shipment', [FulfillmentController::class, 'createShipmentForDeliveryOrder'])
         ->middleware(RequirePermission::using('fulfillment.write'));
     Route::post('/shipments/{id}/cancel', [FulfillmentController::class, 'cancelShipment'])
         ->middleware(RequirePermission::using('fulfillment.write'));

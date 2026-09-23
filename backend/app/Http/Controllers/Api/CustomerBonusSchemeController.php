@@ -60,10 +60,36 @@ class CustomerBonusSchemeController extends Controller
             ->where('bonus_scheme_id', $validated['bonus_scheme_id'])
             ->first();
 
-        if ($existing) {
+        if ($existing && $existing->status === 'active') {
             return response()->json([
                 'message' => 'This customer is already assigned to this bonus scheme',
             ], 422);
+        }
+
+        // Issue #190: a suspended/expired assignment could never be re-enrolled
+        // — store() blocked on any prior row and the unique(customer_id,
+        // bonus_scheme_id) constraint rejects a second one. Reactivate the
+        // existing row in place with the new enrolment terms, which preserves
+        // the assignment history and keeps the constraint intact.
+        if ($existing) {
+            try {
+                $existing->update([
+                    'start_date' => $validated['start_date'],
+                    'end_date' => $validated['end_date'] ?? null,
+                    'status' => $validated['status'] ?? 'active',
+                    'remarks' => $validated['remarks'] ?? $existing->remarks,
+                ]);
+
+                return response()->json([
+                    'message' => 'Customer bonus scheme assignment reactivated successfully',
+                    'data' => $existing->fresh(['customer', 'bonusScheme']),
+                ]);
+            } catch (\Throwable $e) {
+                return response()->json([
+                    'message' => 'Failed to reactivate assignment',
+                    'error' => $e->getMessage(),
+                ], 500);
+            }
         }
 
         try {

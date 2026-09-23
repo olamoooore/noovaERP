@@ -28,7 +28,9 @@ class DeliveryOrderTest extends TenantTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->bindTenantContext('test-tenant');
+        // Issue #176: DO completion posts COGS through the authority gate,
+        // which needs a real tenant uuid and the actor's sales permission.
+        $this->bindTenantContextWithPermissions((string) \Illuminate\Support\Str::uuid());
 
         $this->assertTenantSchemaReady([
             'customers', 'products', 'sales_orders', 'sales_order_lines',
@@ -40,6 +42,23 @@ class DeliveryOrderTest extends TenantTestCase
             'email' => 'test-delivery-'.uniqid().'@test.local',
             'password' => bcrypt('password'),
         ]);
+        $this->user->assignRole('Admin');
+        $this->actingAs($this->user);
+
+        // Issue #176: the COGS posting gate requires an open fiscal period.
+        \App\Models\FiscalPeriod::firstOrCreate(
+            ['code' => now()->format('Y-m')],
+            [
+                'name' => now()->format('F Y'),
+                'period_start' => now()->startOfMonth()->toDateString(),
+                'period_end' => now()->endOfMonth()->toDateString(),
+                'period_type' => 'monthly',
+                'fiscal_year' => (int) now()->format('Y'),
+                'is_locked' => false,
+                'status' => 'open',
+                'created_by' => $this->user->id,
+            ]
+        );
 
         $this->customer = Customer::factory()->create([
             'name' => 'Test Customer',

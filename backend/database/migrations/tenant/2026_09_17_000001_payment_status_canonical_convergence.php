@@ -58,30 +58,34 @@ return new class extends Migration
 
         // 2. Record the legacy mapping BEFORE changing data, so the audit
         //    log captures every row that was touched.
+        //    All comparisons cast to ::text: some tenant schemas still hold
+        //    payment_status as the legacy `enum_payment_status` type whose
+        //    labels already are canonical — comparing an enum column against
+        //    'draft' raises SQLSTATE 22P02 there (confirmed 2026-09-21).
         DB::statement("
             INSERT INTO payment_status_convergence_log (payment_id, old_value, new_value, converged_at)
-            SELECT id, payment_status, CASE payment_status
+            SELECT id, payment_status::text, CASE payment_status::text
                 WHEN 'draft' THEN 'recorded'
                 WHEN 'posted' THEN 'applied'
                 WHEN 'cancelled' THEN 'reversed'
                 ELSE 'recorded'
             END, NOW()
             FROM payments
-            WHERE payment_status IN ('draft', 'posted', 'cancelled')
-               OR payment_status NOT IN ('recorded', 'applied', 'unapplied', 'reversed', 'refunded')
+            WHERE payment_status::text IN ('draft', 'posted', 'cancelled')
+               OR payment_status::text NOT IN ('recorded', 'applied', 'unapplied', 'reversed', 'refunded')
         ");
 
         // 3. Apply the legacy → canonical mapping.
-        DB::statement("UPDATE payments SET payment_status = 'recorded' WHERE payment_status = 'draft'");
-        DB::statement("UPDATE payments SET payment_status = 'applied' WHERE payment_status = 'posted'");
-        DB::statement("UPDATE payments SET payment_status = 'reversed' WHERE payment_status = 'cancelled'");
+        DB::statement("UPDATE payments SET payment_status = 'recorded' WHERE payment_status::text = 'draft'");
+        DB::statement("UPDATE payments SET payment_status = 'applied' WHERE payment_status::text = 'posted'");
+        DB::statement("UPDATE payments SET payment_status = 'reversed' WHERE payment_status::text = 'cancelled'");
 
         // 4. Coerce any remaining out-of-canonical values to the documented default.
         DB::statement("
             UPDATE payments
             SET payment_status = 'recorded'
             WHERE payment_status IS NOT NULL
-              AND payment_status NOT IN ('recorded', 'applied', 'unapplied', 'reversed', 'refunded')
+              AND payment_status::text NOT IN ('recorded', 'applied', 'unapplied', 'reversed', 'refunded')
         ");
 
         // 5. Drop the existing default so PostgreSQL can auto-cast during TYPE change.
@@ -94,11 +98,25 @@ return new class extends Migration
 
         // 7. Drop the older `draft|posted|cancelled` ENUM_PAYMENT_STATUS type if it
         //    exists from the prior convergence, and create the canonical enum.
-        DB::statement('DROP TYPE IF EXISTS ENUM_PAYMENT_STATUS_LEGACY');
+        //    Type names are schema-scoped: the existence check MUST filter by
+        //    current_schema(), otherwise the first tenant to run this migration
+        //    makes every later tenant skip CREATE TYPE and then fail on the
+        //    ALTER below (confirmed 2026-09-21 — ASCT held the only type while
+        //    10 other tenants errored with 'type does not exist').
+        $schema = DB::selectOne('SELECT current_schema() AS s')->s;
+        $quotedSchema = '"'.str_replace('"', '""', $schema).'"';
+
+        DB::statement("DROP TYPE IF EXISTS {$quotedSchema}.enum_payment_status_legacy");
         DB::statement("
             DO \$\$
             BEGIN
-                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_payment_status_canonical') THEN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_type t
+                    JOIN pg_namespace n ON n.oid = t.typnamespace
+                    WHERE t.typname = 'enum_payment_status_canonical'
+                      AND n.nspname = current_schema()
+                ) THEN
                     CREATE TYPE enum_payment_status_canonical AS ENUM
                         ('recorded', 'applied', 'unapplied', 'reversed', 'refunded');
                 END IF;

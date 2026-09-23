@@ -45,15 +45,21 @@ class StockAdjustmentService
     public function stockIn(
         int $productId,
         int $warehouseId,
-        int $quantity,
+        float $quantity,
         int $adjustmentReasonId,
         ?string $reference = null,
         ?string $notes = null,
         ?string $batchNumber = null,
         ?\DateTime $expiryDate = null,
+        ?int $uomId = null,
         ?string $lotNumber = null,
         array $serialNumbers = [],
     ): StockMovement {
+        if ($uomId !== null) {
+            $converter = app(\App\Services\ProductUomConverter::class);
+            $quantity = $converter->toBase($converter->resolve($productId, $uomId), $quantity);
+        }
+
         return DB::transaction(function () use ($productId, $warehouseId, $quantity, $adjustmentReasonId, $reference, $notes, $batchNumber, $expiryDate, $lotNumber, $serialNumbers) {
             $product = Product::findOrFail($productId);
 
@@ -97,22 +103,22 @@ class StockAdjustmentService
                         'product_id' => $productId,
                         'warehouse_id' => $warehouseId,
                         'serial_number' => trim($serialNumber),
-                        'status' => ProductSerial::STATUS_IN_STOCK,
+                        'status' => ProductSerial::STATUS_AVAILABLE,
                     ]);
                 }
             }
 
             return $this->record(
-            productId: $productId,
-            warehouseId: $warehouseId,
-            quantity: $quantity,
-            type: 'in',
-            referenceType: 'manual_stock_in',
-            adjustmentReasonId: $adjustmentReasonId,
-            reference: $reference,
-            notes: $notes,
-            batchNumber: $batchNumber,
-            expiryDate: $expiryDate,
+                productId: $productId,
+                warehouseId: $warehouseId,
+                quantity: $quantity,
+                type: 'in',
+                referenceType: 'manual_stock_in',
+                adjustmentReasonId: $adjustmentReasonId,
+                reference: $reference,
+                notes: $notes,
+                batchNumber: $batchNumber,
+                expiryDate: $expiryDate,
             );
         });
     }
@@ -123,10 +129,11 @@ class StockAdjustmentService
     public function stockOut(
         int $productId,
         int $warehouseId,
-        int $quantity,
+        float $quantity,
         int $adjustmentReasonId,
         ?string $reference = null,
         ?string $notes = null,
+        ?int $uomId = null,
     ): StockMovement {
         return $this->record(
             productId: $productId,
@@ -137,6 +144,7 @@ class StockAdjustmentService
             adjustmentReasonId: $adjustmentReasonId,
             reference: $reference,
             notes: $notes,
+            uomId: $uomId,
         );
     }
 
@@ -146,9 +154,10 @@ class StockAdjustmentService
     public function adjust(
         int $productId,
         int $warehouseId,
-        int $newQuantity,
+        float $newQuantity,
         int $adjustmentReasonId,
         ?string $notes = null,
+        ?int $uomId = null,
     ): StockMovement {
         return $this->record(
             productId: $productId,
@@ -158,13 +167,14 @@ class StockAdjustmentService
             referenceType: 'manual_adjustment',
             adjustmentReasonId: $adjustmentReasonId,
             notes: $notes,
+            uomId: $uomId,
         );
     }
 
     private function record(
         int $productId,
         int $warehouseId,
-        int $quantity,
+        float $quantity,
         string $type,
         string $referenceType,
         int $adjustmentReasonId,
@@ -172,7 +182,16 @@ class StockAdjustmentService
         ?string $notes = null,
         ?string $batchNumber = null,
         ?\DateTime $expiryDate = null,
+        ?int $uomId = null,
     ): StockMovement {
+        // Issue #246: the adjustment endpoints never accepted a uom_id, so a
+        // "2 Boxes" entry was recorded as 2 base units. Convert through the
+        // single UOM authority before touching stock (#135).
+        if ($uomId !== null) {
+            $converter = app(\App\Services\ProductUomConverter::class);
+            $quantity = $converter->toBase($converter->resolve($productId, $uomId), $quantity);
+        }
+
         return DB::transaction(function () use (
             $productId, $warehouseId, $quantity, $type, $referenceType,
             $adjustmentReasonId, $reference, $notes, $batchNumber, $expiryDate
@@ -199,7 +218,8 @@ class StockAdjustmentService
 
     private function postValuationChange(StockMovement $movement): void
     {
-        $delta = (int) $movement->balance_after - (int) $movement->old_quantity;
+        // Issue #250: fractional UOM-converted quantities must not truncate here.
+        $delta = (float) $movement->balance_after - (float) $movement->old_quantity;
 
         if ($delta === 0) {
             return;
@@ -230,7 +250,7 @@ class StockAdjustmentService
                 : StockAdjustmentReason::DEFAULT_DECREASE_MAPPING_KEY);
 
         $description = sprintf(
-            'Stock %s — movement #%d, product #%d, %+d units @ %.2f',
+            'Stock %s — movement #%d, product #%d, %+g units @ %.2f',
             $isIncrease ? 'gain' : 'write-off',
             $movement->id,
             $movement->product_id,

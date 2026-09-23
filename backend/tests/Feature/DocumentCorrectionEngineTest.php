@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\ChartOfAccount;
 use App\Models\FiscalPeriod;
 use App\Models\Invoice;
+use App\Models\JournalEntryLine;
 use App\Models\JournalEntry;
 use App\Models\Payment;
 use App\Models\User;
@@ -211,6 +213,18 @@ class DocumentCorrectionEngineTest extends TenantTestCase
             'settlement_status' => 'paid',
         ]);
 
+        // #73 convergence: only posted payments (with a real journal entry) are
+        // correctable — an unposted payment must be deleted instead.
+        $account = ChartOfAccount::factory()->create(['type' => 'asset', 'is_active' => true]);
+        $journalEntry = JournalEntry::create([
+            'entry_number' => 'JE-REFUND-'.uniqid(),
+            'entry_date' => now()->toDateString(),
+            'status' => 'posted',
+            'created_by' => $this->user->id,
+        ]);
+        JournalEntryLine::create(['journal_entry_id' => $journalEntry->id, 'account_id' => $account->id, 'debit' => 500, 'credit' => 0]);
+        JournalEntryLine::create(['journal_entry_id' => $journalEntry->id, 'account_id' => $account->id, 'debit' => 0, 'credit' => 500]);
+
         $payment = Payment::create([
             'invoice_id' => $invoice->id,
             'amount' => 500,
@@ -219,6 +233,7 @@ class DocumentCorrectionEngineTest extends TenantTestCase
             'payment_date' => now()->toDateString(),
             'method' => 'cash',
             'received_by' => $this->user->id,
+            'journal_entry_id' => $journalEntry->id,
         ]);
 
         $correctionRequest = new CorrectionRequest(

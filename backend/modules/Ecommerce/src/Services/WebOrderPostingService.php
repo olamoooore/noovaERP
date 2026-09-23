@@ -23,6 +23,8 @@ class WebOrderPostingService
         private readonly PostingEngineInterface $postingEngine,
         private readonly InventoryService $inventoryService,
         private readonly StockReservationService $stockReservationService,
+        private readonly \App\Services\BundleDecompositionService $bundleDecomposition,
+        private readonly \App\Services\BatchSerialConsumptionService $batchSerialConsumption,
     ) {}
 
     /**
@@ -35,49 +37,71 @@ class WebOrderPostingService
             ? $this->requireInventoryWarehouseId($order, 'deductStock')
             : null;
 
+        // Issue #243: aggregate component demand across the whole order before
+        // deducting/restoring — stock_movements_ref_product_type_unique allows a
+        // single movement per (reference, product, type), and the old per-line
+        // math against an order-wide sum could skip a shared component.
+        $componentDemand = [];
         foreach ($order->items as $item) {
-            $productId = $item->product_id;
-            $trackInventory = $item->product?->track_inventory ?? false;
+            $product = $item->product;
 
-            if ($productId && $trackInventory) {
-                $alreadyDeducted = (int) StockMovement::where('reference_type', 'WebOrder')
-                    ->where('reference_id', $order->id)
-                    ->where('type', 'sale')
-                    ->where('product_id', $productId)
-                    ->sum('quantity');
-                $remainingToDeduct = (int) $item->quantity - $alreadyDeducted;
+            if (! $product) {
+                continue;
+            }
 
-                if ($remainingToDeduct <= 0) {
-                    Log::info('WebOrderPostingService::deductStock skip already deducted line', [
-                        'order_id' => $order->id,
-                        'product_id' => $productId,
-                        'ordered_qty' => (int) $item->quantity,
-                        'already_deducted' => $alreadyDeducted,
-                    ]);
+            foreach ($this->bundleDecomposition->stockConsumingComponents($product, (float) $item->quantity) as $component) {
+                $productId = $component['product']->id;
+                $qty = (float) $component['quantity'];
 
+                if ($qty <= 0) {
                     continue;
                 }
 
-                try {
-                    $this->inventoryService->adjustStock(
-                        productId: $productId,
-                        warehouseId: $warehouseId,
-                        quantity: $remainingToDeduct,
-                        type: 'sale',
-                        reference: $order->order_number,
-                        referenceType: 'WebOrder',
-                        referenceId: $order->id,
-                    );
-                } catch (\Exception $e) {
-                    Log::error('WebOrderPostingService::deductStock item failed', [
-                        'order_id' => $order->id,
-                        'product_id' => $productId,
-                        'error' => $e->getMessage(),
-                    ]);
-                    throw $e;
-                }
+                $componentDemand[$productId] = ($componentDemand[$productId] ?? 0.0) + $qty;
             }
         }
+
+        foreach ($componentDemand as $productId => $neededQty) {
+            $alreadyDeducted = (float) StockMovement::where('reference_type', 'WebOrder')
+                ->where('reference_id', $order->id)
+                ->where('type', 'sale')
+                ->where('product_id', $productId)
+                ->sum('quantity');
+            $remainingToDeduct = $neededQty - $alreadyDeducted;
+
+            if ($remainingToDeduct <= 0) {
+                Log::info('WebOrderPostingService::deductStock skip already deducted', [
+                    'order_id' => $order->id,
+                    'product_id' => $productId,
+                    'needed_qty' => $neededQty,
+                    'already_deducted' => $alreadyDeducted,
+                ]);
+
+                continue;
+            }
+
+            try {
+                $this->inventoryService->adjustStock(
+                    productId: $productId,
+                    warehouseId: $warehouseId,
+                    quantity: $remainingToDeduct,
+                    type: 'sale',
+                    reference: $order->order_number,
+                    referenceType: 'WebOrder',
+                    referenceId: $order->id,
+                );
+            } catch (\Exception $e) {
+                Log::error('WebOrderPostingService::deductStock item failed', [
+                    'order_id' => $order->id,
+                    'product_id' => $productId,
+                    'error' => $e->getMessage(),
+                ]);
+                throw $e;
+            }
+        }
+
+        // Issue #252: serials captured on the order items transition to sold.
+        $this->markSerialsSoldForOrder($order);
 
         Log::info('Stock deducted for web order', [
             'order_id' => $order->id,
@@ -98,52 +122,71 @@ class WebOrderPostingService
             ? $this->requireInventoryWarehouseId($order, 'restoreStock')
             : null;
 
+        // Issue #243: aggregate component demand across the whole order before
+        // deducting/restoring — stock_movements_ref_product_type_unique allows a
+        // single movement per (reference, product, type), and the old per-line
+        // math against an order-wide sum could skip a shared component.
+        $componentDemand = [];
         foreach ($order->items as $item) {
-            $productId = $item->product_id;
-            $trackInventory = $item->product?->track_inventory ?? false;
+            $product = $item->product;
 
-            if ($productId && $trackInventory) {
-                $alreadyDeducted = (int) StockMovement::where('reference_type', 'WebOrder')
-                    ->where('reference_id', $order->id)
-                    ->where('type', 'sale')
-                    ->where('product_id', $productId)
-                    ->sum('quantity');
-                $alreadyRestored = (int) StockMovement::where('reference_type', 'WebOrder')
-                    ->where('reference_id', $order->id)
-                    ->where('type', 'return')
-                    ->where('product_id', $productId)
-                    ->sum('quantity');
-                $remainingToRestore = $alreadyDeducted - $alreadyRestored;
+            if (! $product) {
+                continue;
+            }
 
-                if ($remainingToRestore <= 0) {
-                    Log::info('WebOrderPostingService::restoreStock skip already restored line', [
-                        'order_id' => $order->id,
-                        'product_id' => $productId,
-                        'already_deducted' => $alreadyDeducted,
-                        'already_restored' => $alreadyRestored,
-                    ]);
+            foreach ($this->bundleDecomposition->stockConsumingComponents($product, (float) $item->quantity) as $component) {
+                $productId = $component['product']->id;
+                $qty = (float) $component['quantity'];
 
+                if ($qty <= 0) {
                     continue;
                 }
 
-                try {
-                    $this->inventoryService->adjustStock(
-                        productId: $productId,
-                        warehouseId: $warehouseId,
-                        quantity: $remainingToRestore,
-                        type: 'return',
-                        reference: 'Return: '.$order->order_number,
-                        referenceType: 'WebOrder',
-                        referenceId: $order->id,
-                    );
-                } catch (\Exception $e) {
-                    Log::error('WebOrderPostingService::restoreStock item failed', [
-                        'order_id' => $order->id,
-                        'product_id' => $productId,
-                        'error' => $e->getMessage(),
-                    ]);
-                    throw $e;
-                }
+                $componentDemand[$productId] = ($componentDemand[$productId] ?? 0.0) + $qty;
+            }
+        }
+
+        foreach ($componentDemand as $productId => $neededQty) {
+            $alreadyDeducted = (float) StockMovement::where('reference_type', 'WebOrder')
+                ->where('reference_id', $order->id)
+                ->where('type', 'sale')
+                ->where('product_id', $productId)
+                ->sum('quantity');
+            $alreadyRestored = (float) StockMovement::where('reference_type', 'WebOrder')
+                ->where('reference_id', $order->id)
+                ->where('type', 'return')
+                ->where('product_id', $productId)
+                ->sum('quantity');
+            $remainingToRestore = min($neededQty, $alreadyDeducted - $alreadyRestored);
+
+            if ($remainingToRestore <= 0) {
+                Log::info('WebOrderPostingService::restoreStock skip already restored', [
+                    'order_id' => $order->id,
+                    'product_id' => $productId,
+                    'already_deducted' => $alreadyDeducted,
+                    'already_restored' => $alreadyRestored,
+                ]);
+
+                continue;
+            }
+
+            try {
+                $this->inventoryService->adjustStock(
+                    productId: $productId,
+                    warehouseId: $warehouseId,
+                    quantity: $remainingToRestore,
+                    type: 'return',
+                    reference: 'Return: '.$order->order_number,
+                    referenceType: 'WebOrder',
+                    referenceId: $order->id,
+                );
+            } catch (\Exception $e) {
+                Log::error('WebOrderPostingService::restoreStock item failed', [
+                    'order_id' => $order->id,
+                    'product_id' => $productId,
+                    'error' => $e->getMessage(),
+                ]);
+                throw $e;
             }
         }
 
@@ -248,13 +291,19 @@ class WebOrderPostingService
             }
 
             // COGS / Inventory
+            // Issue #130: bundle lines cost the SUM of their components.
+            // Issue #131: batch-tracked lines cost their FEFO layers (previewed
+            // here because GL posts before stock is deducted).
             $totalCost = 0.0;
+            $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
+            $cogsWarehouseId = $order->resolveInventoryWarehouseId();
+
             foreach ($order->items as $item) {
-                $cost = 0.0;
                 if ($item->product) {
-                    $cost = (float) $item->product->cost;
+                    $qty = (float) $item->quantity;
+                    $totalCost += $batchConsumption->costForLine($item->product, $qty, $cogsWarehouseId)
+                        ?? $this->bundleDecomposition->cost($item->product, $qty);
                 }
-                $totalCost += $cost * (int) $item->quantity;
             }
 
             // Entitlement safety / no-silent-no-op guard:
@@ -297,7 +346,7 @@ class WebOrderPostingService
                 entityBookId: request()->attributes->get('entity_book_id'),
             ));
 
-            if (!$result->success) {
+            if (! $result->success) {
                 throw new \RuntimeException(
                     "GL posting failed for web order {$order->order_number}: {$result->error}"
                 );
@@ -351,7 +400,7 @@ class WebOrderPostingService
                 approvalUserId: null,
             ));
 
-            if (!$result->success) {
+            if (! $result->success) {
                 throw new \RuntimeException(
                     "GL reversal failed for web order {$order->order_number}: {$result->error}"
                 );
@@ -418,9 +467,45 @@ class WebOrderPostingService
         }
     }
 
+    /**
+     * Issue #252: mark captured serials sold for a web order (previously only
+     * the Sales-Order→Delivery-Order channel called markSerialsSold).
+     */
+    private function markSerialsSoldForOrder(WebOrder $order): void
+    {
+        if (! $order->customer_id) {
+            return;
+        }
+
+        $order->loadMissing('items.product');
+
+        foreach ($order->items as $item) {
+            $serials = $item->serial_numbers ?? [];
+
+            if (! is_array($serials) || $serials === [] || ! $item->product) {
+                continue;
+            }
+
+            $this->batchSerialConsumption->markSerialsSold(
+                $item->product,
+                $serials,
+                (int) $order->customer_id,
+                $order->order_number,
+            );
+        }
+    }
+
     private function orderHasTrackedInventoryItems(WebOrder $order): bool
     {
-        return $order->items->contains(fn ($item) => (bool) ($item->product?->track_inventory ?? false));
+        // Issue #130: a virtual bundle has no stock of its own but its tracked
+        // components do — the order still needs a warehouse context.
+        return $order->items->contains(function ($item) {
+            if (! $item->product) {
+                return false;
+            }
+
+            return $this->bundleDecomposition->stockConsumingComponents($item->product, (float) $item->quantity) !== [];
+        });
     }
 
     private function requireInventoryWarehouseId(WebOrder $order, string $operation): int

@@ -178,6 +178,7 @@ class Invoice extends Model
         'date_of_case',
         'case_location',
         'patient_name',
+        'patient_name_encrypted',
         'cost_center_id',
         'delivery_date',
         'customer_reference',
@@ -250,6 +251,7 @@ class Invoice extends Model
     ];
 
     protected $casts = [
+        'patient_name_encrypted' => \App\Casts\EncryptedOrLegacyString::class,
         'invoice_date' => 'date',
         'due_date' => 'date',
         'date_of_case' => 'date',
@@ -302,6 +304,15 @@ class Invoice extends Model
         return $this->hasMany(Payment::class);
     }
 
+    /**
+     * Credit notes issued against this invoice (issue #169). Each posted credit
+     * note carries its own journal entry, independent of this invoice's JE.
+     */
+    public function creditNotes(): HasMany
+    {
+        return $this->hasMany(CustomerCreditNote::class, 'invoice_id');
+    }
+
     public function approvalRequest(): BelongsTo
     {
         return $this->belongsTo(ApprovalRequest::class, 'approval_request_id');
@@ -350,6 +361,40 @@ class Invoice extends Model
     public function deliveryOrders(): HasMany
     {
         return $this->hasMany(\Modules\Sales\Models\DeliveryOrder::class, 'invoice_id');
+    }
+
+    /**
+     * Issue #153: surface the linked delivery order's signed proof on the
+     * Invoice API response so client AP/payment processing can verify the
+     * goods were actually received and signed for. Returns the first DO with
+     * a signed document (a DO can have multiple proofs; the most recent wins).
+     */
+    public function proofOfDelivery(): ?array
+    {
+        $do = $this->deliveryOrders()
+            ->whereNotNull('signed_document_path')
+            ->orderByDesc('signed_at')
+            ->orderByDesc('signed_document_uploaded_at')
+            ->first();
+
+        if (! $do) {
+            return null;
+        }
+
+        return [
+            'delivery_order_id' => $do->id,
+            'delivery_order_number' => $do->delivery_order_number,
+            'confirmation_method' => $do->confirmation_method,
+            'confirmed_via_channel' => $do->confirmed_via_channel,
+            'signed_by_name' => $do->signed_by_name,
+            'signed_by_email' => $do->signed_by_email,
+            'signed_at' => optional($do->signed_at)->toIso8601String(),
+            'signed_document_uploaded_at' => optional($do->signed_document_uploaded_at)->toIso8601String(),
+            'signed_document_path' => $do->signed_document_path,
+            'signed_document_url' => route('sales.delivery-orders.signed-document.download', [
+                'id' => $do->id,
+            ], false),
+        ];
     }
 
     public function medicalCases(): HasMany
@@ -462,4 +507,23 @@ class Invoice extends Model
     {
         return $query->whereNotIn('lifecycle_status', ['voided', 'reversed']);
     }
+
+    // Issue #222: patient name is PHI — encrypted at rest, exposed as the
+    // virtual patient_name attribute so existing callers keep working.
+    protected $appends = ['patient_name'];
+
+    protected $hidden = ['patient_name_encrypted'];
+
+    public function getPatientNameAttribute(): ?string
+    {
+        return $this->patient_name_encrypted;
+    }
+
+    public function setPatientNameAttribute(mixed $value): void
+    {
+        $this->attributes['patient_name_encrypted'] = ($value === null || $value === '')
+            ? null
+            : \Illuminate\Support\Facades\Crypt::encryptString((string) $value);
+    }
+
 }

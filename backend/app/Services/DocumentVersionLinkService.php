@@ -6,6 +6,8 @@ use App\Models\Bill;
 use App\Models\DocumentCorrectionLink;
 use App\Models\Invoice;
 use App\Models\JournalEntry;
+use App\Models\Quotation;
+use Modules\Sales\Models\DeliveryOrder;
 
 class DocumentVersionLinkService
 {
@@ -193,6 +195,8 @@ class DocumentVersionLinkService
             $document instanceof Invoice => 'invoice',
             $document instanceof Bill => 'bill',
             $document instanceof JournalEntry => 'journal_entry',
+            $document instanceof Quotation => 'quotation',
+            $document instanceof DeliveryOrder => 'delivery_order',
             default => throw new \InvalidArgumentException('Unknown document type'),
         };
     }

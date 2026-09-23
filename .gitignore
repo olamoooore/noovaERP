@@ -79,3 +79,13 @@ ace-openclaw-implementation-pack/
 # Runtime tenant report exports — never commit
 backend/storage/app/reports/*
 !backend/storage/app/reports/.gitkeep
+
+# Python bytecode (ocr-service)
+__pycache__/
+*.pyc
+!ocr-service/requirements*.txt
+
+# Laravel runtime caches that are not source
+backend/storage/framework/cache/laravel-excel/
+backend/storage/framework/cache/data/*
+!backend/storage/framework/cache/data/.gitignore

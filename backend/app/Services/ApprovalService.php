@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Accounting\Events\ApprovalDecisionEvent;
 use App\Models\ApprovalRequest;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -129,6 +130,8 @@ class ApprovalService
                 'approved_by' => $userId,
             ]);
 
+            ApprovalDecisionEvent::dispatch($request, ApprovalDecisionEvent::ACTION_APPROVED, $user);
+
             return $request;
         });
     }
@@ -165,6 +168,8 @@ class ApprovalService
                 'rejected_by' => $userId,
                 'reason' => $reason,
             ]);
+
+            ApprovalDecisionEvent::dispatch($request, ApprovalDecisionEvent::ACTION_REJECTED, $user, $reason);
 
             return $request;
         });
@@ -236,17 +241,23 @@ class ApprovalService
      */
     public function expireOldRequests(): int
     {
-        $expired = ApprovalRequest::where('status', 'pending')
+        $expiredRequests = ApprovalRequest::where('status', 'pending')
             ->where('expires_at', '<', now())
-            ->update([
+            ->get();
+
+        foreach ($expiredRequests as $request) {
+            $request->update([
                 'status' => 'expired',
                 'reviewed_at' => now(),
             ]);
 
-        if ($expired > 0) {
-            Log::info('Expired old approval requests', ['count' => $expired]);
+            ApprovalDecisionEvent::dispatch($request, ApprovalDecisionEvent::ACTION_EXPIRED);
         }
 
-        return $expired;
+        if ($expiredRequests->isNotEmpty()) {
+            Log::info('Expired old approval requests', ['count' => $expiredRequests->count()]);
+        }
+
+        return $expiredRequests->count();
     }
 }

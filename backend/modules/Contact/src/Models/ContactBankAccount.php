@@ -29,6 +29,12 @@ class ContactBankAccount extends Model
         'is_primary' => 'boolean',
         'is_active' => 'boolean',
         'metadata' => 'array',
+        // Issue #117: full bank details are sensitive; encrypt at rest like
+        // ContactTaxProfile.tax_id already does in this module.
+        'account_number' => 'encrypted',
+        'routing_number' => 'encrypted',
+        'swift_code' => 'encrypted',
+        'iban' => 'encrypted',
     ];
 
     public function contact()

@@ -2,13 +2,13 @@
 
 namespace Modules\Fulfillment\Models;
 
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ShippingRule extends Model
 {
-    use HasUuids;
+    // Issue #148: the shipping_rules table uses a bigint id (its own migration),
+    // but the model generated uuid keys — so createRule() could never insert.
 
     protected $table = 'shipping_rules';
 

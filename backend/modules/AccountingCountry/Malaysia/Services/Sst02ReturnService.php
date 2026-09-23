@@ -1,0 +1,80 @@
+<?php
+
+namespace Modules\AccountingCountry\Malaysia\Services;
+
+use Modules\AccountingCountry\Services\TaxReturnAggregator;
+
+/**
+ * Issue #93: Malaysia SST-02 return generator.
+ *
+ * Aggregates the tax audit data written by PostingEngine into the RMCD SST-02
+ * structure: sales tax and service tax payable (taxable value + tax by rate),
+ * and the total tax payable.
+ */
+class Sst02ReturnService
+{
+    public function __construct(
+        private readonly TaxReturnAggregator $aggregator,
+    ) {}
+
+    public function generate(string $period): array
+    {
+        $taxes = $this->aggregator->aggregate($period);
+
+        // MY SST is a single-stage tax: output-side rows only (no input credit).
+        $salesTaxRows = [];
+        $serviceTaxRows = [];
+
+        foreach ($taxes['output'] as $row) {
+            $regime = strtolower((string) ($row['tax_regime'] ?? '').' '.(string) ($row['tax_code'] ?? ''));
+
+            if (str_contains($regime, 'service')) {
+                $serviceTaxRows[] = $row;
+            } else {
+                $salesTaxRows[] = $row;
+            }
+        }
+
+        $byRate = function (array $rows): array {
+            $buckets = [];
+            foreach ($rows as $row) {
+                $rate = $row['tax_rate'] !== null ? rtrim(rtrim(number_format((float) $row['tax_rate'], 2, '.', ''), '0'), '.') : 'other';
+                $buckets[$rate] ??= ['rate' => $rate, 'taxable_value' => 0.0, 'tax_amount' => 0.0];
+                $buckets[$rate]['taxable_value'] += (float) $row['taxable_amount'];
+                $buckets[$rate]['tax_amount'] += (float) $row['tax_amount'];
+            }
+
+            return array_values(array_map(function (array $bucket) {
+                $bucket['taxable_value'] = round($bucket['taxable_value'], 2);
+                $bucket['tax_amount'] = round($bucket['tax_amount'], 2);
+
+                return $bucket;
+            }, $buckets));
+        };
+
+        $salesTaxByRate = $byRate($salesTaxRows);
+        $serviceTaxByRate = $byRate($serviceTaxRows);
+
+        $salesTaxDue = round(array_sum(array_column($salesTaxByRate, 'tax_amount')), 2);
+        $serviceTaxDue = round(array_sum(array_column($serviceTaxByRate, 'tax_amount')), 2);
+
+        return [
+            'form' => 'SST-02',
+            'jurisdiction' => 'MY',
+            'authority' => 'RMCD',
+            'period' => $period,
+            'currency' => 'MYR',
+            'sales_tax' => [
+                'taxable_value' => round(array_sum(array_column($salesTaxByRate, 'taxable_value')), 2),
+                'by_rate' => $salesTaxByRate,
+                'tax_due' => $salesTaxDue,
+            ],
+            'service_tax' => [
+                'taxable_value' => round(array_sum(array_column($serviceTaxByRate, 'taxable_value')), 2),
+                'by_rate' => $serviceTaxByRate,
+                'tax_due' => $serviceTaxDue,
+            ],
+            'total_tax_payable' => round($salesTaxDue + $serviceTaxDue, 2),
+        ];
+    }
+}

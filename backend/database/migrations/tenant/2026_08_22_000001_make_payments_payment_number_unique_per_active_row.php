@@ -57,7 +57,9 @@ return new class extends Migration
         $driver = DB::getDriverName();
 
         if ($driver === 'pgsql') {
-            DB::statement('DROP INDEX IF EXISTS payments_payment_number_live_unique');
+            // Schema-qualified: unqualified DROP INDEX can leak to public via search_path.
+            $schema = DB::selectOne('SELECT current_schema() AS s')->s;
+            DB::statement("DROP INDEX IF EXISTS \"{$schema}\".payments_payment_number_live_unique");
         } else {
             try {
                 Schema::table('payments', function ($table) {

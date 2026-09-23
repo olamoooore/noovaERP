@@ -11,10 +11,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class PosOrderItem extends Model
 {
     use HasFactory;
+
     protected $table = 'pos_order_items';
 
     protected $fillable = [
         'pos_order_id',
+        'serial_numbers',
         'product_id',
         'product_variant_id',
         'name',
@@ -27,6 +29,7 @@ class PosOrderItem extends Model
     ];
 
     protected $casts = [
+        'serial_numbers' => 'array',
         'unit_price' => 'decimal:2',
         'tax_rate' => 'decimal:2',
         'tax_amount' => 'decimal:2',

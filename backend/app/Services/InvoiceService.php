@@ -32,6 +32,7 @@ class InvoiceService
         private PostingEngineInterface $postingEngine,
         private TaxDeterminationService $taxDeterminationService,
         private InventoryService $inventoryService,
+        private \App\Services\BundleDecompositionService $bundleDecomposition,
     ) {}
 
     /**
@@ -75,6 +76,8 @@ class InvoiceService
             foreach ($lines as $lineData) {
                 $invoice->lines()->create([
                     'line_type' => $lineData['line_type'] ?? 'product',
+                    // Issue #138: stable link to the originating order line.
+                    'sales_order_line_id' => $lineData['sales_order_line_id'] ?? null,
                     'sequence' => $lineData['sequence'] ?? 0,
                     'product_id' => $lineData['product_id'] ?? null,
                     'model_number' => $lineData['model_number'] ?? null,
@@ -180,14 +183,31 @@ class InvoiceService
             }
 
             // ── COGS lines for inventory items ───────────────
+            // Issue #176: when a completed delivery order already posted COGS
+            // for this invoice's goods, the invoice must NOT post it again (the
+            // DO is the inventory-issue event; the invoice only recognises
+            // revenue/AR).
             $totalCogs = 0;
+            if (! $this->deliveryAlreadyPostedCogs($invoice)) {
+            $bundleDecomposition = app(\App\Services\BundleDecompositionService::class);
+            $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
+
+            // Issue #131: batch-tracked lines cost their FEFO layers (previewed
+            // here because GL posts before stock is deducted).
+            try {
+                $cogsWarehouseId = $this->resolveInventoryWarehouseId($invoice);
+            } catch (\Throwable) {
+                $cogsWarehouseId = null;
+            }
+
             foreach ($invoice->lines as $line) {
                 if (($line->line_type ?? 'product') !== 'product') {
                     continue;
                 }
-                if ($line->product && $line->product->track_inventory) {
-                    $unitCost = (float) ($line->product->cost ?? 0);
-                    $lineCogs = $unitCost * $line->quantity;
+                if ($line->product) {
+                    $qty = (float) $line->quantity;
+                    $lineCogs = $batchConsumption->costForLine($line->product, $qty, $cogsWarehouseId)
+                        ?? $bundleDecomposition->cost($line->product, $qty);
 
                     if ($lineCogs > 0) {
                         $totalCogs += $lineCogs;
@@ -209,6 +229,8 @@ class InvoiceService
                     amount: $totalCogs,
                     description: "Inventory - Invoice {$invoice->invoice_number}",
                 );
+            }
+
             }
 
             // ── Post via PostingEngine (domain contract) ─────
@@ -251,8 +273,29 @@ class InvoiceService
 
             // Reduce inventory for product lines via canonical InventoryService path.
             // Source-linked invoices must carry explicit warehouse context; do not inject defaults.
-            $requiresInventoryMovement = $invoice->lines->contains(fn ($line) => $line->product && $line->product->track_inventory)
-                && ! $this->shouldSkipInventoryAdjustment($invoice);
+            //
+            // Issue #241: bundle lines must decompose into their components —
+            // invoice-only sales previously skipped stock entirely for bundles
+            // (the bundle row usually has track_inventory=false) while the GL
+            // still posted component COGS. Demand is aggregated per component
+            // product because stock_movements_ref_product_type_unique allows a
+            // single movement per (reference, product, type).
+            $componentDemand = [];
+            foreach ($invoice->lines as $line) {
+                if (! $line->product) {
+                    continue;
+                }
+                foreach ($this->bundleDecomposition->stockConsumingComponents($line->product, (float) $line->quantity) as $component) {
+                    $productId = $component['product']->id;
+                    $qty = (float) $component['quantity'];
+                    if ($qty <= 0) {
+                        continue;
+                    }
+                    $componentDemand[$productId] = ($componentDemand[$productId] ?? 0.0) + $qty;
+                }
+            }
+
+            $requiresInventoryMovement = $componentDemand !== [] && ! $this->shouldSkipInventoryAdjustment($invoice);
             $warehouseId = $requiresInventoryMovement ? $this->resolveInventoryWarehouseId($invoice) : null;
             if ($requiresInventoryMovement && $warehouseId === null) {
                 throw new \RuntimeException(
@@ -261,18 +304,26 @@ class InvoiceService
             }
 
             if ($warehouseId !== null) {
-                foreach ($invoice->lines as $line) {
-                    if ($line->product && $line->product->track_inventory) {
-                        $this->inventoryService->adjustStock(
-                            productId: $line->product_id,
-                            warehouseId: $warehouseId,
-                            quantity: $line->quantity,
-                            type: 'sale',
-                            reference: $invoice->invoice_number,
-                            referenceType: 'Invoice',
-                            referenceId: $invoice->id,
-                        );
+                foreach ($componentDemand as $productId => $neededQty) {
+                    $alreadyDeducted = (float) \App\Models\StockMovement::where('reference_type', 'Invoice')
+                        ->where('reference_id', $invoice->id)
+                        ->where('type', 'sale')
+                        ->where('product_id', $productId)
+                        ->sum('quantity');
+                    $remainingToDeduct = $neededQty - $alreadyDeducted;
+                    if ($remainingToDeduct <= 0) {
+                        continue;
                     }
+
+                    $this->inventoryService->adjustStock(
+                        productId: $productId,
+                        warehouseId: $warehouseId,
+                        quantity: $remainingToDeduct,
+                        type: 'sale',
+                        reference: $invoice->invoice_number,
+                        referenceType: 'Invoice',
+                        referenceId: $invoice->id,
+                    );
                 }
             }
 
@@ -398,7 +449,15 @@ class InvoiceService
 
         $salesOrder = $invoice->salesOrder()->first();
 
-        return $this->resolveSalesOrderWarehouseId($salesOrder);
+        if ($salesOrder) {
+            return $this->resolveSalesOrderWarehouseId($salesOrder);
+        }
+
+        // Issue #241: a direct invoice-only sale has no linked order to resolve
+        // warehouse context from; fall back to the tenant default warehouse so
+        // bundle components can actually move (previously the whole stock loop
+        // was skipped for bundles and GL/inventory silently diverged).
+        return \App\Models\Warehouse::getDefault()?->id;
     }
 
     private function resolveSalesOrderWarehouseId(?SalesOrder $salesOrder): ?int
@@ -455,6 +514,13 @@ class InvoiceService
 
     private function shouldSkipInventoryAdjustment(Invoice $invoice): bool
     {
+        // Issue #176: a completed DO linked to this invoice already moved stock.
+        if (\Modules\Sales\Models\DeliveryOrder::where('invoice_id', $invoice->id)
+            ->where('status', 'done')
+            ->exists()) {
+            return true;
+        }
+
         $salesOrder = $invoice->salesOrder;
 
         if (! $salesOrder) {
@@ -475,6 +541,26 @@ class InvoiceService
         }
 
         return false;
+    }
+
+    /**
+     * Issue #176: a completed delivery order linked to this invoice already
+     * issued the goods (stock + COGS); the invoice must not repeat either.
+     */
+    private function deliveryAlreadyPostedCogs(Invoice $invoice): bool
+    {
+        $doIds = \Modules\Sales\Models\DeliveryOrder::where('invoice_id', $invoice->id)
+            ->where('status', 'done')
+            ->pluck('id');
+
+        if ($doIds->isEmpty()) {
+            return false;
+        }
+
+        return \App\Models\JournalEntryLink::where('source_document_type', 'delivery_order')
+            ->whereIn('source_document_id', $doIds)
+            ->where('relation_type', 'post')
+            ->exists();
     }
 
     /**
@@ -514,6 +600,40 @@ class InvoiceService
         // produced negative balances (e.g. −500 instead of +500).
         Invoice::where('id', $invoice->id)
             ->decrement('paid_amount', $refundAmount);
+
+        $invoice->refresh();
+
+        $newBalance = max(0, (float) $invoice->total - (float) $invoice->paid_amount);
+
+        $status = match (true) {
+            (float) $invoice->paid_amount <= 0 => 'sent',
+            $newBalance > 0 => 'partial',
+            default => 'paid',
+        };
+
+        Invoice::where('id', $invoice->id)->update([
+            'balance' => $newBalance,
+            'status' => $status,
+        ]);
+
+        $invoice->refresh();
+
+        if ($invoice->customer) {
+            $invoice->customer->updateOutstanding();
+        }
+
+        return $invoice;
+    }
+
+    /**
+     * Issue #228: inverse of applyRefundToInvoice — used when a posted credit
+     * note is voided. Re-adds the credited amount to paid_amount and rebuilds
+     * balance/status from the canonical total/paid pair.
+     */
+    public function restoreRefundToInvoice(Invoice $invoice, float $refundAmount): Invoice
+    {
+        Invoice::where('id', $invoice->id)
+            ->increment('paid_amount', $refundAmount);
 
         $invoice->refresh();
 
@@ -583,8 +703,85 @@ class InvoiceService
             'settlement_method' => $payment?->payment_method ?? 'unknown',
         ]);
 
+        // Issue #155: record the explicit payment→invoice application so the
+        // allocation ledger is authoritative for split/unapplied payments.
+        if ($payment) {
+            \App\Models\PaymentApplication::firstOrCreate(
+                [
+                    'payment_id' => $payment->id,
+                    'invoice_id' => $invoice->id,
+                ],
+                [
+                    'tenant_id' => $invoice->tenant_id
+                        ?? (function_exists('tenant') && tenant() ? tenant()->id : null),
+                    'applied_amount' => $paymentAmount,
+                    'currency_code' => $invoice->currency_code ?? null,
+                    'created_by' => TenantUserHelper::resolveTenantUserId(),
+                ]
+            );
+        }
+
         if ($invoice->customer) {
             $invoice->customer->updateOutstanding();
         }
+    }
+
+    /**
+     * Issue #155: apply an allocated portion of a payment to an invoice through
+     * the canonical settlement path (used by PaymentAllocationService for split
+     * payments / statement-level allocations).
+     */
+    public function applyAllocatedPayment(Invoice $invoice, float $amount, ?Payment $payment = null): void
+    {
+        DB::transaction(function () use ($invoice, $amount, $payment) {
+            $this->syncInvoicePaymentState($invoice, $amount, $payment);
+        });
+    }
+
+    public function createPaymentLink(Invoice $invoice, float $amount, \DateTimeInterface $expiresAt): array
+    {
+        $existingLink = $invoice->payment_link_url;
+        $existingExpiry = $invoice->payment_link_expires_at;
+
+        if ($existingLink && $existingExpiry && $existingExpiry->isFuture()) {
+            return [
+                'url' => $existingLink,
+                'expires_at' => $existingExpiry->toIso8601String(),
+                'amount' => $invoice->balance,
+                'idempotent' => true,
+            ];
+        }
+
+        $gateway = app(\Modules\PaymentGateway\Services\PaymentService::class);
+        $result = $gateway->createIntent([
+            'amount' => $amount,
+            'currency' => $invoice->currency_code,
+            'description' => "Invoice {$invoice->invoice_number}",
+            'metadata' => [
+                'type' => 'invoice',
+                'invoice_id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+            ],
+            'email' => $invoice->contact_email ?? $invoice->customer?->email,
+            'customer_id' => $invoice->customer_id,
+            'redirect_url' => url('/api/v1/payments/success'),
+            'cancel_url' => url('/api/v1/payments/cancel'),
+        ]);
+
+        $checkoutUrl = $result['checkout_url'] ?? $result['url'] ?? $result['client_secret'] ?? null;
+
+        $invoice->updateQuietly([
+            'payment_link_url' => $checkoutUrl,
+            'payment_link_expires_at' => $expiresAt,
+        ]);
+
+        return [
+            'url' => $checkoutUrl,
+            'expires_at' => $expiresAt->format('c'),
+            'amount' => $amount,
+            'currency' => $invoice->currency_code,
+            'transaction_id' => $result['transaction_id'] ?? null,
+            'idempotent' => false,
+        ];
     }
 }

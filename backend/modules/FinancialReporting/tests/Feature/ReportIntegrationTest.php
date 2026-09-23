@@ -35,7 +35,7 @@ class ReportIntegrationTest extends TenantTestCase
             \App\Http\Middleware\EnsureEntityAccess::class,
         ]);
 
-        $this->user = User::factory()->create();
+        $this->user = $this->setUpTenantAdminUser('Report Integration Tenant');
         $this->setupCompleteTestData();
     }
 

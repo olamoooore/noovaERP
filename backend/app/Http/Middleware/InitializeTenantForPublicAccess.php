@@ -94,7 +94,7 @@ class InitializeTenantForPublicAccess
         $path = $request->path();
         if (preg_match('#^w/([^/]+)#', $path, $m)) {
             $websiteSlug = $m[1];
-            $tenant = $this->resolveTenantFromWebsiteSlug($websiteSlug);
+            $tenant = $this->resolveTenantFromWebsiteSlug($websiteSlug, $request);
             if ($tenant) {
                 $this->tenancy->initialize($tenant);
 
@@ -231,21 +231,17 @@ class InitializeTenantForPublicAccess
      * Resolve tenant by finding which tenant owns a website with the given slug.
      * Iterates through all tenants and checks their website table.
      */
-    private function resolveTenantFromWebsiteSlug(string $websiteSlug): ?\App\Models\Tenant
+    private function resolveTenantFromWebsiteSlug(string $websiteSlug, Request $request): ?\App\Models\Tenant
     {
+        $candidates = [];
+
         try {
-            $tenants = \App\Models\Tenant::all();
-            foreach ($tenants as $tenant) {
+            foreach (\App\Models\Tenant::all() as $tenant) {
                 try {
                     $this->tenancy->initialize($tenant);
                     $website = \Modules\WebsiteBuilder\Models\Website::where('slug', $websiteSlug)->first();
                     if ($website) {
-                        Log::info('InitializeTenantForPublicAccess: Tenant from website slug', [
-                            'website_slug' => $websiteSlug,
-                            'tenant_id' => $tenant->id,
-                        ]);
-
-                        return $tenant;
+                        $candidates[] = ['tenant' => $tenant, 'updated_at' => $website->updated_at];
                     }
                 } catch (\Exception $e) {
                     // This tenant doesn't have the website builder tables — skip
@@ -257,8 +253,52 @@ class InitializeTenantForPublicAccess
                 'website_slug' => $websiteSlug,
                 'error' => $e->getMessage(),
             ]);
+
+            return null;
         }
 
-        return null;
+        if (count($candidates) === 0) {
+            return null;
+        }
+
+        if (count($candidates) === 1) {
+            Log::info('InitializeTenantForPublicAccess: Tenant from website slug', [
+                'website_slug' => $websiteSlug,
+                'tenant_id' => $candidates[0]['tenant']->id,
+            ]);
+
+            return $candidates[0]['tenant'];
+        }
+
+        // Ambiguous slug (two tenants own a website with the same slug — seen on
+        // production 2026-09-22: 'acme-web' existed in both the legacy Acme
+        // tenant and Acme Production, and creation-order iteration always
+        // returned the stale one). Prefer the tenant that owns the request host,
+        // otherwise the most recently updated website — deterministic, never
+        // creation order.
+        $hostTenant = $this->resolveTenantFromHost($request->getHost());
+        if ($hostTenant) {
+            foreach ($candidates as $candidate) {
+                if ($candidate['tenant']->id === $hostTenant->id) {
+                    Log::info('InitializeTenantForPublicAccess: ambiguous website slug resolved by host', [
+                        'website_slug' => $websiteSlug,
+                        'host' => $request->getHost(),
+                        'tenant_id' => $hostTenant->id,
+                    ]);
+
+                    return $hostTenant;
+                }
+            }
+        }
+
+        usort($candidates, fn ($a, $b) => $b['updated_at'] <=> $a['updated_at']);
+
+        Log::warning('InitializeTenantForPublicAccess: ambiguous website slug; using most recently updated website', [
+            'website_slug' => $websiteSlug,
+            'candidates' => array_map(fn ($c) => $c['tenant']->id, $candidates),
+            'chosen' => $candidates[0]['tenant']->id,
+        ]);
+
+        return $candidates[0]['tenant'];
     }
 }

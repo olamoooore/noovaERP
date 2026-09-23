@@ -270,7 +270,8 @@ class HR141OrderLifecycleTransitionParityTest extends TenantTestCase
         $this->assertSame('invoiced', $order->fresh()->status);
 
         $this->expectException(\Exception::class);
-        $this->expectExceptionMessage('Invoiced orders cannot be cancelled. Use credit notes instead.');
+        // Issue #154: the message now points at the reachable credit-note action.
+        $this->expectExceptionMessage('Invoiced orders cannot be cancelled. Issue a credit note from the order instead.');
 
         $svc->cancelOrder($order->fresh(), 'too late');
     }

@@ -105,7 +105,20 @@ export async function compressGrapesJsComponents(
   let bytesBefore = 0
   let bytesAfter = 0
 
+  // GrapesJS returns a Components Collection, not an array. Walk the plain
+  // JSON definition instead: spreading a Collection copies circular internals
+  // (model/parent back-references) and makes the save payload unserialisable.
+  const source = components && typeof components.toJSON === 'function'
+    ? components.toJSON()
+    : components
+
   const walk = async (node: any): Promise<any> => {
+    // The root is an array of component definitions; nested component lists are
+    // arrays too. Without this branch the walk returned [] for any array input,
+    // which saved an EMPTY components tree and blanked the editor canvas.
+    if (Array.isArray(node)) {
+      return Promise.all(node.map(walk))
+    }
     if (!node || typeof node !== 'object') return node
 
     // Clone shallowly to avoid mutating the original tree.
@@ -152,7 +165,7 @@ export async function compressGrapesJsComponents(
     return next
   }
 
-  const newTree = await walk(components)
+  const newTree = await walk(source)
   return { components: newTree, compressedCount, bytesBefore, bytesAfter }
 }
 
@@ -200,8 +213,52 @@ export async function compressInlineImagesInHtml(
   return { html: resultHtml, compressedCount, bytesBefore, bytesAfter }
 }
 
-function isCompressible(file: File): boolean {
-  return /^image\/(png|jpe?g|webp|gif|bmp)$/i.test(file.type)
+/**
+ * Compress every base64 image embedded in a CSS string (url(...) references,
+ * e.g. background-image). The page renderer inlines the page CSS verbatim, so
+ * images that live in CSS were the remaining source of multi-megabyte saves.
+ */
+export async function compressInlineImagesInCss(
+  css: string,
+  options: ImageCompressionOptions = {},
+): Promise<{ css: string; compressedCount: number; bytesBefore: number; bytesAfter: number }> {
+  if (!css || typeof css !== 'string') {
+    return { css, compressedCount: 0, bytesBefore: 0, bytesAfter: 0 }
+  }
+
+  const dataUrlRegex = /url\((['"]?)(data:image\/[^;)]+;base64,[^)'"]+)\1\)/g
+  const matches = Array.from(css.matchAll(dataUrlRegex))
+  if (matches.length === 0) {
+    return { css, compressedCount: 0, bytesBefore: 0, bytesAfter: 0 }
+  }
+
+  let compressedCount = 0
+  let bytesBefore = 0
+  let bytesAfter = 0
+  let resultCss = css
+
+  for (const match of matches) {
+    const dataUrl = match[2]
+    bytesBefore += dataUrl.length
+    const compressed = await compressBase64DataUrl(dataUrl, 'inline-css-image', options)
+    if (!compressed) {
+      bytesAfter += dataUrl.length
+      continue
+    }
+    const newDataUrl = await fileToDataUrl(compressed)
+    if (newDataUrl.length < dataUrl.length) {
+      bytesAfter += newDataUrl.length
+      resultCss = resultCss.replace(dataUrl, newDataUrl)
+      compressedCount++
+    } else {
+      bytesAfter += dataUrl.length
+    }
+  }
+
+  return { css: resultCss, compressedCount, bytesBefore, bytesAfter }
+}
+
+function isCompressible(file: File): boolean {  return /^image\/(png|jpe?g|webp|gif|bmp)$/i.test(file.type)
 }
 
 function shouldRecompressByType(type: string): boolean {

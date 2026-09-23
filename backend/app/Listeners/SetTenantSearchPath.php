@@ -92,65 +92,27 @@ class SetTenantSearchPath
 
     /**
      * Load mail configuration from tenant settings after tenancy is initialized.
-     * This is critical for queued jobs that send emails.
+     * This is critical for queued jobs that send emails. Delegates to the
+     * shared MailConfigLoader so smtp/resend handling stays in one place.
      */
     protected function loadTenantMailConfig(): void
     {
         try {
             $mail = Setting::getValue('mail_config');
 
-            if ($mail && is_array($mail)) {
-                $config = [
-                    'transport' => $mail['driver'] ?? 'smtp',
-                    'host' => $mail['host'] ?? config('mail.mailers.smtp.host'),
-                    'port' => $mail['port'] ?? config('mail.mailers.smtp.port'),
-                    'encryption' => $mail['encryption'] ?? config('mail.mailers.smtp.encryption'),
-                    'username' => $mail['username'] ?? config('mail.mailers.smtp.username'),
-                    'password' => $mail['password'] ?? config('mail.mailers.smtp.password'),
-                    'timeout' => null,
-                    'local_domain' => env('MAIL_EHLO_DOMAIN'),
-                    'stream' => [
-                        'ssl' => [
-                            'allow_self_signed' => true,
-                            'verify_peer' => false,
-                            'verify_peer_name' => false,
-                        ],
-                    ],
-                ];
-
-                // Update SMTP config
-                config(['mail.mailers.smtp' => $config]);
-
-                // Update From Address
-                if (! empty($mail['from_address'])) {
-                    config(['mail.from.address' => $mail['from_address']]);
-                }
-                if (! empty($mail['from_name'])) {
-                    config(['mail.from.name' => $mail['from_name']]);
-                }
-
-                // Purge and set SSL stream options on the new transport
-                app('mail.manager')->purge('smtp');
-                $transport = app('mail.manager')->mailer('smtp')->getSymfonyTransport();
-                if ($transport instanceof \Symfony\Component\Mailer\Transport\Smtp\EsmtpTransport) {
-                    $stream = $transport->getStream();
-                    if ($stream instanceof \Symfony\Component\Mailer\Transport\Smtp\Stream\SocketStream) {
-                        $stream->setStreamOptions([
-                            'ssl' => [
-                                'verify_peer' => false,
-                                'verify_peer_name' => false,
-                                'allow_self_signed' => true,
-                            ],
-                        ]);
-                    }
-                }
-
-                Log::info('SetTenantSearchPath: Loaded tenant mail config', [
-                    'host' => $config['host'] ?? 'not set',
-                    'port' => $config['port'] ?? 'not set',
-                    'from_address' => $mail['from_address'] ?? 'not set',
-                ]);
+            if (! $mail || ! is_array($mail)) {
+                return;
             }
+
+            $loader = app(\App\Services\MailConfigLoader::class);
+            $loader->apply($mail, purgeMailer: true);
+
+            Log::info('SetTenantSearchPath: Loaded tenant mail config', [
+                'driver' => $mail['driver'] ?? 'smtp',
+                'host' => $mail['host'] ?? 'not set',
+                'port' => $mail['port'] ?? 'not set',
+                'from_address' => $mail['from_address'] ?? 'not set',
+            ]);
         } catch (\Exception $e) {
             Log::warning('SetTenantSearchPath: Failed to load tenant mail config', [
                 'error' => $e->getMessage(),

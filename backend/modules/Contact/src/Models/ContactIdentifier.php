@@ -25,6 +25,9 @@ class ContactIdentifier extends Model
     protected $casts = [
         'is_primary' => 'boolean',
         'metadata' => 'array',
+        // Issue #118: tax IDs / registration numbers are sensitive; encrypt at
+        // rest like ContactTaxProfile.tax_id already does in this module.
+        'identifier_value' => 'encrypted',
     ];
 
     public function contact()

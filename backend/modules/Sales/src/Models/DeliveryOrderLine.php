@@ -19,6 +19,7 @@ class DeliveryOrderLine extends Model
         'description',
         'product_notes',
         'patient_name',
+        'patient_name_encrypted',
         'quantity_ordered',
         'quantity_delivered',
         'unit_price',
@@ -28,14 +29,18 @@ class DeliveryOrderLine extends Model
         'batch_number',
         'serial_number',
         'expiry_date',
+        // Issue #131: serials consumed by this delivery line.
+        'serial_numbers',
     ];
 
     protected $casts = [
+        'patient_name_encrypted' => \App\Casts\EncryptedOrLegacyString::class,
         'sequence' => 'integer',
         'quantity_ordered' => 'decimal:4',
         'quantity_delivered' => 'decimal:4',
         'unit_price' => 'decimal:2',
         'line_total' => 'decimal:2',
+        'serial_numbers' => 'array',
         'expiry_date' => 'date',
     ];
 
@@ -66,7 +71,29 @@ class DeliveryOrderLine extends Model
 
     public function getRemainingQuantityAttribute(): float
     {
-        if (in_array($this->line_type, ['note', 'section'], true)) return 0;
+        if (in_array($this->line_type, ['note', 'section'], true)) {
+            return 0;
+        }
+
         return (float) $this->quantity_ordered - (float) $this->quantity_delivered;
     }
+
+    // Issue #222: patient name is PHI — encrypted at rest, exposed as the
+    // virtual patient_name attribute so existing callers keep working.
+    protected $appends = ['patient_name'];
+
+    protected $hidden = ['patient_name_encrypted'];
+
+    public function getPatientNameAttribute(): ?string
+    {
+        return $this->patient_name_encrypted;
+    }
+
+    public function setPatientNameAttribute(mixed $value): void
+    {
+        $this->attributes['patient_name_encrypted'] = ($value === null || $value === '')
+            ? null
+            : \Illuminate\Support\Facades\Crypt::encryptString((string) $value);
+    }
+
 }

@@ -76,6 +76,9 @@ interface Invoice {
   sales_order?: { id: number; sales_order_number: string }
   quotation?: { id: number; quotation_number: string }
   delivery_orders?: { id: number; delivery_order_number: string; status: string }[]
+  requires_approval?: boolean
+  approval_status?: 'not_required' | 'pending' | 'approved' | 'rejected' | 'expired' | 'withdrawn'
+  approval_request_id?: number
 }
 
 interface InvoiceLine {
@@ -177,7 +180,72 @@ export function InvoiceDetailPage() {
     },
   })
 
-  const getStatusBadge = (status: string) => {
+  const submitForApprovalMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/invoices/${id}/submit-approval`)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+      toast({ title: 'Invoice submitted for approval' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to submit for approval',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  const toggleRequiresApprovalMutation = useMutation({
+    mutationFn: async (value: boolean) => {
+      const response = await api.put(`/invoices/${id}`, { requires_approval: value })
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+      toast({ title: 'Invoice updated' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to update invoice',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  const sendInvoiceMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/invoices/${id}/acceptance-link`, {
+        send_email: true,
+        document_type: 'final_invoice',
+      })
+      return response.data
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+      const url = data?.data?.url
+      setSendDialogUrl(url ?? null)
+      toast({
+        title: 'Invoice sent to customer',
+        description: url ? 'Acceptance link generated and emailed.' : 'Email sent with invoice PDF.',
+      })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to send invoice',
+        description: error.response?.data?.message || 'An error occurred',
+      })
+    },
+  })
+
+  const [sendDialogOpen, setSendDialogOpen] = useState(false)
+  const [sendDialogUrl, setSendDialogUrl] = useState<string | null>(null)
+
+  const getStatusBadge = (status: string, approvalStatus?: string) => {
     const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
       draft: { variant: 'secondary', label: 'Draft' },
       sent: { variant: 'default', label: 'Sent' },
@@ -186,6 +254,18 @@ export function InvoiceDetailPage() {
       overdue: { variant: 'destructive', label: 'Overdue' },
       cancelled: { variant: 'destructive', label: 'Cancelled' },
     }
+
+    // Show approval badge overlay if approval is pending
+    if (approvalStatus === 'pending') {
+      return <Badge variant="outline" className="border-orange-500 text-orange-600">Pending Approval</Badge>
+    }
+    if (approvalStatus === 'approved') {
+      return <Badge variant="default" className="bg-green-600">Approved</Badge>
+    }
+    if (approvalStatus === 'rejected') {
+      return <Badge variant="destructive">Rejected</Badge>
+    }
+
     const config = variants[status] || { variant: 'secondary', label: status }
     return <Badge variant={config.variant}>{config.label}</Badge>
   }
@@ -247,55 +327,98 @@ export function InvoiceDetailPage() {
   return (
     <div className="container mx-auto py-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between print:hidden">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={() => {
-             if (location.state?.from) {
-               navigate(location.state.from);
-             } else if (window.history.length > 1) {
-               navigate(-1);
-             } else {
-               navigate('/invoices');
-             }
-          }}>
-            <Icon icon="material-symbols:arrow-back" className="mr-2 h-4 w-4" />
-            Back
-          </Button>
+      <div className="print:hidden">
+        <Button variant="ghost" size="sm" onClick={() => {
+           if (location.state?.from) {
+             navigate(location.state.from);
+           } else if (window.history.length > 1) {
+             navigate(-1);
+           } else {
+             navigate('/invoices');
+           }
+        }} className="mb-3">
+          <Icon icon="solar:arrow-left-bold-duotone" className="mr-2 h-4 w-4" />
+          Back
+        </Button>
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Invoice {invoice.invoice_number}</h1>
             <p className="text-muted-foreground text-sm">
               Created on {formatDate(invoice.created_at)}
             </p>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {invoice.status === 'draft' && (
-            <Button
-              onClick={() => postMutation.mutate()}
-              disabled={postMutation.isPending}
-            >
-              {postMutation.isPending ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-              ) : (
-                <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
-              )}
-              Post Invoice
+          <div className="flex items-center gap-3">
+            {invoice.status === 'draft' && !invoice.requires_approval && (
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!invoice.requires_approval}
+                  onChange={(e) => toggleRequiresApprovalMutation.mutate(e.target.checked)}
+                  disabled={toggleRequiresApprovalMutation.isPending || invoice.approval_status === 'pending'}
+                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                />
+                <span className="text-muted-foreground">Requires Approval</span>
+              </label>
+            )}
+            {invoice.status === 'draft' && invoice.requires_approval && invoice.approval_status !== 'pending' && (
+              <Button
+                variant="outline"
+                onClick={() => submitForApprovalMutation.mutate()}
+                disabled={submitForApprovalMutation.isPending}
+              >
+                {submitForApprovalMutation.isPending ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                ) : (
+                  <Icon icon="solar:plain-2-bold-duotone" className="mr-2 h-4 w-4" />
+                )}
+                Send for Approval
+              </Button>
+            )}
+            {invoice.status === 'draft' && (
+              <Button
+                onClick={() => postMutation.mutate()}
+                disabled={postMutation.isPending}
+              >
+                {postMutation.isPending ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                ) : (
+                  <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
+                )}
+                Post Invoice
+              </Button>
+            )}
+            {['posted', 'sent', 'partial', 'overdue', 'paid'].includes(invoice.status) && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSendDialogUrl(null)
+                  setSendDialogOpen(true)
+                }}
+                disabled={sendInvoiceMutation.isPending}
+              >
+                {sendInvoiceMutation.isPending ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                ) : (
+                  <Icon icon="solar:letter-bold-duotone" className="mr-2 h-4 w-4" />
+                )}
+                Send Invoice
+              </Button>
+            )}
+            <Button variant="outline" onClick={handlePrint}>
+              <Icon icon="material-symbols:print" className="mr-2 h-4 w-4" />
+              Print
             </Button>
-          )}
-          <Button variant="outline" onClick={handlePrint}>
-            <Icon icon="material-symbols:print" className="mr-2 h-4 w-4" />
-            Print
-          </Button>
-          <Button variant="outline" onClick={() => setTemplateDialogOpen(true)}>
-            <Icon icon="material-symbols:download" className="mr-2 h-4 w-4" />
-            Download PDF
-          </Button>
-          {['posted', 'sent', 'partial', 'overdue'].includes(invoice.status) && invoice.balance > 0 && (
-            <Button onClick={() => navigate(`/invoices/${id}/payment`)}>
-              <Icon icon="material-symbols:payment" className="mr-2 h-4 w-4" />
-              Record Payment
+            <Button variant="outline" onClick={() => setTemplateDialogOpen(true)}>
+              <Icon icon="material-symbols:download" className="mr-2 h-4 w-4" />
+              Download PDF
             </Button>
-          )}
+            {['posted', 'sent', 'partial', 'overdue'].includes(invoice.status) && invoice.balance > 0 && (
+              <Button onClick={() => navigate(`/invoices/${id}/payment`)}>
+                <Icon icon="material-symbols:payment" className="mr-2 h-4 w-4" />
+                Record Payment
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -319,7 +442,7 @@ export function InvoiceDetailPage() {
             onClick={() => navigate(`/delivery-orders/${d.id}`)}
             className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
           >
-            <Icon icon="solar:package-bold" className="h-5 w-5 text-orange-600" />
+            <Icon icon="solar:box-bold-duotone" className="h-5 w-5 text-orange-600" />
             <div className="text-left">
               <div className="font-bold text-foreground">{d.delivery_order_number}</div>
               <div className="text-xs text-muted-foreground">Delivery Order</div>
@@ -338,7 +461,7 @@ export function InvoiceDetailPage() {
               <p className="text-muted-foreground">#{invoice.invoice_number}</p>
             </div>
             <div className="text-right">
-              {getStatusBadge(invoice.status)}
+              {getStatusBadge(invoice.status, invoice.approval_status)}
               <div className="mt-4 space-y-1 text-sm">
                 <div className="flex justify-between gap-8">
                   <span className="text-muted-foreground">Invoice Date:</span>
@@ -483,6 +606,59 @@ export function InvoiceDetailPage() {
             <DialogContent><DialogHeader><DialogTitle>Download Invoice PDF</DialogTitle><DialogDescription>Select the template to use.</DialogDescription></DialogHeader>
               <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={templatesLoading}><SelectTrigger><SelectValue placeholder={templatesLoading ? 'Loading templates...' : 'Select a template'} /></SelectTrigger><SelectContent>{pdfTemplates.map((t: any) => <SelectItem key={t.id} value={String(t.id)}>{t.name}{t.is_system_default ? ' (Default)' : ''}</SelectItem>)}</SelectContent></Select>
               <DialogFooter><Button variant="outline" onClick={() => setTemplateDialogOpen(false)}>Cancel</Button><Button onClick={handleDownload} disabled={!selectedTemplateId || isDownloadingPdf || templatesLoading}>{isDownloadingPdf ? 'Downloading...' : 'Download'}</Button></DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Send invoice to customer</DialogTitle>
+                <DialogDescription>
+                  We will email the customer the invoice PDF along with a secure acceptance link — no login required — so they can review, sign, pay, and track status.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-2">
+                <div className="flex items-start gap-3 rounded-md border bg-muted/30 p-3">
+                  <Icon icon="solar:user-circle-bold-duotone" className="mt-0.5 h-5 w-5 text-primary" />
+                  <div className="text-sm">
+                    <div className="font-medium">{invoice.customer?.name}</div>
+                    <div className="text-muted-foreground">{invoice.customer?.email || 'No email on file'}</div>
+                  </div>
+                </div>
+                <ul className="text-xs text-muted-foreground space-y-1">
+                  <li>• Invoice PDF will be attached to the email</li>
+                  <li>• Customer gets a unique signed acceptance link (no login)</li>
+                  <li>• Customer can sign digitally and view payment options</li>
+                  <li>• You will see delivery + acceptance status on the timeline</li>
+                </ul>
+                {sendDialogUrl && (
+                  <div className="rounded-md border border-green-200 bg-green-50 p-3 dark:border-green-900 dark:bg-green-950/40">
+                    <div className="text-xs font-medium text-green-700 dark:text-green-400">Acceptance link</div>
+                    <a
+                      href={sendDialogUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="break-all text-xs text-green-700 underline dark:text-green-300"
+                    >
+                      {sendDialogUrl}
+                    </a>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setSendDialogOpen(false)}>Cancel</Button>
+                <Button
+                  onClick={() => sendInvoiceMutation.mutate()}
+                  disabled={sendInvoiceMutation.isPending || !invoice.customer?.email}
+                >
+                  {sendInvoiceMutation.isPending ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                  ) : (
+                    <Icon icon="solar:plain-2-bold-duotone" className="mr-2 h-4 w-4" />
+                  )}
+                  Send to customer
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
 

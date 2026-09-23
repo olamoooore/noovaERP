@@ -4,8 +4,6 @@ namespace Modules\Sales\Services;
 
 use App\Models\Warehouse;
 use App\Models\Product;
-use App\Models\ProductBatch;
-use App\Models\ProductSerial;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -24,6 +22,8 @@ class DeliveryOrderService
         private OrderLifecycleService $lifecycleService,
         private InventoryService $inventoryService,
         private StockReservationService $reservationService,
+        private \App\Services\BundleDecompositionService $bundleDecomposition,
+        private \App\Accounting\PostingEngine $postingEngine,
     ) {}
 
     // ════════════════════════════════════════════════════════════════════════
@@ -54,7 +54,45 @@ class DeliveryOrderService
             }
         }
 
-        return DB::transaction(function () use ($order, $data, $warehouseId, $quotationId, $invoiceId) {
+        $maxRetries = 5;
+        $lockKey = self::deliveryOrderNumberLockKey();
+
+        for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
+            try {
+                return DB::transaction(function () use ($order, $data, $warehouseId, $quotationId, $invoiceId, $lockKey) {
+                    DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+
+                    return $this->createDeliveryOrderInsideTransaction($order, $data, $warehouseId, $quotationId, $invoiceId);
+                });
+            } catch (\Illuminate\Database\QueryException $e) {
+                if (str_contains($e->getMessage(), 'delivery_orders_delivery_order_number_unique')) {
+                    if ($attempt < $maxRetries - 1) {
+                        cache()->forget('document_numbering_delivery_order');
+                        Log::warning('DO number collision on insert, retrying', [
+                            'attempt' => $attempt + 1,
+                        ]);
+
+                        continue;
+                    }
+                }
+                throw $e;
+            }
+        }
+
+        return DB::transaction(function () use ($order, $data, $warehouseId, $quotationId, $invoiceId, $lockKey) {
+            DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+
+            return $this->createDeliveryOrderInsideTransaction($order, $data, $warehouseId, $quotationId, $invoiceId);
+        });
+    }
+
+    /**
+     * Issue #238: transactional body of createDeliveryOrder(), executed under
+     * the tenant-scoped advisory lock (same guarantee as
+     * createStandaloneDeliveryOrder — the missed "fourth instance").
+     */
+    private function createDeliveryOrderInsideTransaction(SalesOrder $order, array $data, int $warehouseId, ?int $quotationId, ?int $invoiceId): DeliveryOrder
+    {
             $actorId = TenantUserHelper::requireTenantUserId($data['created_by'] ?? Auth::id());
 
             $deliveryOrder = DeliveryOrder::create([
@@ -100,6 +138,9 @@ class DeliveryOrderService
                     );
                 }
 
+                $lineProduct = $soLine->product_id ? \App\Models\Product::find($soLine->product_id) : null;
+                $serialNumbers = $this->resolveSerialNumbers($lineProduct, $lineData, $quantityDelivered);
+
                 DeliveryOrderLine::create([
                     'delivery_order_id' => $deliveryOrder->id,
                     'sales_order_line_id' => $soLine->id,
@@ -117,11 +158,178 @@ class DeliveryOrderService
                     'product_serial_id' => $lineData['product_serial_id'] ?? null,
                     'batch_number' => $lineData['batch_number'] ?? null,
                     'expiry_date' => $lineData['expiry_date'] ?? null,
+                    'serial_numbers' => $serialNumbers,
                 ]);
             }
 
             return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);
-        });
+    }
+
+
+    /**
+     * Issue #176: DO completion issues inventory from the ledger's perspective
+     * too — post Dr COGS / Cr Inventory at completion, independent of invoice
+     * posting (the documented no-enforced-DO/Invoice sequencing policy).
+     */
+    private function postDeliveryCogs(DeliveryOrder $deliveryOrder, int $warehouseId, int $actorId): void
+    {
+        $totalCogs = $this->deliveryCogsTotal($deliveryOrder, $warehouseId);
+
+        if ($totalCogs <= 0) {
+            return;
+        }
+
+        $result = $this->postingEngine->domainPosting(new \App\Accounting\DTOs\DomainPostingRequest(
+            postingRequestId: \App\Accounting\DTOs\DomainPostingRequest::generateRequestId(),
+            idempotencyKey: "delivery_order:{$deliveryOrder->id}:cogs",
+            tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+            entityId: '',
+            accountingBookId: '',
+            sourceCapability: 'ACC-012',
+            sourceRecordType: 'delivery_order',
+            sourceRecordId: (string) $deliveryOrder->id,
+            sourceRecordVersion: 1,
+            postingProfileCode: 'DELIVERY_ORDER_COGS',
+            transactionDate: now()->toDateString(),
+            postingDate: now()->toDateString(),
+            lines: [
+                new \App\Accounting\DTOs\DomainPostingLine(
+                    accountRole: 'cogs',
+                    amount: round($totalCogs, 2),
+                    description: "COGS - DO {$deliveryOrder->delivery_order_number}",
+                ),
+                new \App\Accounting\DTOs\DomainPostingLine(
+                    accountRole: 'inventory',
+                    amount: round($totalCogs, 2),
+                    description: "Inventory - DO {$deliveryOrder->delivery_order_number}",
+                ),
+            ],
+            userId: $actorId,
+            ledgerDescription: "Delivery Order #{$deliveryOrder->delivery_order_number} COGS",
+            reference: $deliveryOrder->delivery_order_number,
+        ));
+
+        if (! $result->success) {
+            throw new \RuntimeException(
+                "Delivery order GL posting failed for {$deliveryOrder->delivery_order_number}: ".($result->error ?? 'unknown error')
+            );
+        }
+    }
+
+    /**
+     * Issue #176: reversing a completed DO must also reverse its COGS entry.
+     * domainPosting() dedupes by source record, so the reversal goes through
+     * PostingEngine::reverse() (relation_type=reversal links to the same DO).
+     */
+    private function postDeliveryCogsReversal(DeliveryOrder $deliveryOrder, int $warehouseId, int $actorId): void
+    {
+        $link = \App\Models\JournalEntryLink::where('source_document_type', 'delivery_order')
+            ->where('source_document_id', $deliveryOrder->id)
+            ->where('relation_type', 'post')
+            ->first();
+
+        if (! $link) {
+            return; // nothing posted (e.g. zero-cost delivery)
+        }
+
+        $result = $this->postingEngine->reverse(new \App\Accounting\DTOs\ReversalRequest(
+            journalEntryId: (int) $link->journal_entry_id,
+            reversalDate: now()->toDateString(),
+            reason: 'Delivery order reversed',
+            reasonCode: 'DELIVERY_ORDER_REVERSAL',
+            actorUserId: $actorId,
+            tenantId: (string) (function_exists('tenant') && tenant() ? tenant('id') : ''),
+        ));
+
+        if (! $result->success) {
+            throw new \RuntimeException(
+                "Delivery order COGS reversal posting failed for {$deliveryOrder->delivery_order_number}: ".($result->error ?? 'unknown error')
+            );
+        }
+    }
+
+    /**
+     * FEFO layer cost when available, bundle component cost otherwise.
+     */
+    private function deliveryCogsTotal(DeliveryOrder $deliveryOrder, int $warehouseId): float
+    {
+        $batchConsumption = app(\App\Services\BatchSerialConsumptionService::class);
+        $total = 0.0;
+
+        foreach ($deliveryOrder->lines as $line) {
+            if (($line->line_type ?? 'product') !== 'product' || ! $line->product) {
+                continue;
+            }
+
+            $qty = (float) $line->quantity_delivered;
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $lineCogs = $batchConsumption->costForLine($line->product, $qty, $warehouseId)
+                ?? $this->bundleDecomposition->cost($line->product, $qty);
+
+            if ($lineCogs > 0) {
+                $total += $lineCogs;
+            }
+        }
+
+        return $total;
+    }
+
+    /**
+     * Issue #131: validate + normalise the serial numbers for a line. A
+     * serial-tracked product requires exactly one in-stock serial per unit.
+     *
+     * @return string[]|null
+     */
+    private function resolveSerialNumbers(?\App\Models\Product $product, array $lineData, float $quantity): ?array
+    {
+        $provided = $lineData['serial_numbers'] ?? null;
+
+        $isSerialTracked = $product && ($product->tracking_method ?? null) === \App\Models\Product::TRACKING_SERIAL;
+
+        if (! $isSerialTracked) {
+            return is_array($provided) && $provided !== [] ? array_values(array_unique($provided)) : null;
+        }
+
+        if (! is_array($provided) || $provided === []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'lines' => ["Serial numbers are required for serial-tracked product {$product->name}."],
+            ]);
+        }
+
+        $serials = array_values(array_unique($provided));
+
+        if (count($serials) !== (int) round($quantity)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'lines' => ['Provide exactly '.((int) round($quantity))." serial number(s) for {$product->name}."],
+            ]);
+        }
+
+        $known = \App\Models\ProductSerial::where('product_id', $product->id)
+            ->whereIn('serial_number', $serials)
+            ->pluck('status', 'serial_number');
+
+        foreach ($serials as $serial) {
+            if (! $known->has($serial)) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'lines' => ["Serial {$serial} does not belong to {$product->name}."],
+                ]);
+            }
+        }
+
+        return $serials;
+    }
+
+    /**
+     * Issue #137: advisory lock key for DO-number generation. Tenant-scoped so
+     * one tenant's delivery-order creation never blocks another tenant's on the
+     * shared Postgres database (pg_advisory locks ignore search_path).
+     */
+    public static function deliveryOrderNumberLockKey(?string $tenantId = null): int
+    {
+        return crc32('delivery_order_create:'.($tenantId ?? tenant('id') ?? ''));
     }
 
     /**
@@ -145,12 +353,13 @@ class DeliveryOrderService
         }
 
         $maxRetries = 5;
-        $lockKey = crc32('delivery_order_create');
+        $lockKey = self::deliveryOrderNumberLockKey();
 
         for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
             try {
                 return DB::transaction(function () use ($data, $customerId, $warehouseId, $lines, $lockKey) {
                     DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+
                     return $this->createStandaloneDeliveryOrderInsideTransaction($data, $customerId, $warehouseId, $lines);
                 });
             } catch (\Illuminate\Database\QueryException $e) {
@@ -160,6 +369,7 @@ class DeliveryOrderService
                         Log::warning('DO number collision on insert, retrying', [
                             'attempt' => $attempt + 1,
                         ]);
+
                         continue;
                     }
                 }
@@ -169,6 +379,7 @@ class DeliveryOrderService
 
         return DB::transaction(function () use ($data, $customerId, $warehouseId, $lines, $lockKey) {
             DB::select('SELECT pg_advisory_xact_lock(?)', [$lockKey]);
+
             return $this->createStandaloneDeliveryOrderInsideTransaction($data, $customerId, $warehouseId, $lines);
         });
     }
@@ -234,6 +445,9 @@ class DeliveryOrderService
                     }
                 }
 
+                $lineProduct = $productId ? \App\Models\Product::find($productId) : null;
+                $serialNumbers = $this->resolveSerialNumbers($lineProduct, $lineData, $quantityDelivered);
+
                 DeliveryOrderLine::create([
                     'line_type' => $lineType,
                     'sequence' => $lineData['sequence'] ?? 0,
@@ -255,6 +469,7 @@ class DeliveryOrderService
                     'product_serial_id' => $lineData['product_serial_id'] ?? null,
                     'batch_number' => $lineData['batch_number'] ?? null,
                     'expiry_date' => $lineData['expiry_date'] ?? null,
+                    'serial_numbers' => $serialNumbers,
                 ]);
             }
 
@@ -276,7 +491,15 @@ class DeliveryOrderService
      * DRAFT → CONFIRMED
      * Validates customer, warehouse, and lines. No stock effect.
      */
-    public function confirmDeliveryOrder(DeliveryOrder $deliveryOrder): DeliveryOrder
+    /**
+     * Issue #177: dual confirmation path.
+     *
+     * @param  array{method?: string, channel?: string|null, signed_document_path?: string|null}  $confirmation
+     *         method 'physical' requires an uploaded signed copy;
+     *         method 'digital' requires the channel the confirmation came
+     *         through (email/web/whatsapp/other).
+     */
+    public function confirmDeliveryOrder(DeliveryOrder $deliveryOrder, array $confirmation = []): DeliveryOrder
     {
         if (! $deliveryOrder->isDraft()) {
             throw new \Exception('Only draft delivery orders can be confirmed.');
@@ -286,11 +509,31 @@ class DeliveryOrderService
             throw new \Exception('Warehouse is required before this delivery order can be confirmed.');
         }
 
+        $method = $confirmation['method'] ?? 'digital';
+
+        if (! in_array($method, ['physical', 'digital'], true)) {
+            throw new \Exception('Confirmation method must be physical or digital.');
+        }
+
+        $channel = $confirmation['channel'] ?? null;
+        $signedDocumentPath = $confirmation['signed_document_path'] ?? $deliveryOrder->signed_document_path;
+
+        if ($method === 'physical' && ! $signedDocumentPath) {
+            throw new \Exception('Physical confirmation requires the signed delivery order document to be uploaded first.');
+        }
+
+        if ($method === 'digital' && ! $channel) {
+            $channel = 'system';
+        }
+
         $actorId = TenantUserHelper::requireTenantUserId(Auth::id());
 
         $deliveryOrder->update([
             'status' => 'confirmed',
             'confirmed_by' => $actorId,
+            'confirmation_method' => $method,
+            'confirmed_via_channel' => $method === 'digital' ? $channel : null,
+            'signed_document_path' => $method === 'physical' ? $signedDocumentPath : $deliveryOrder->signed_document_path,
         ]);
 
         return $deliveryOrder->fresh(['lines.salesOrderLine', 'lines.product', 'customer', 'salesOrder']);
@@ -337,14 +580,16 @@ class DeliveryOrderService
                 }
             }
 
-            // Deduct stock for each stock-tracked line
+            // Deduct stock for each stock-tracked line. Issue #130: a bundle
+            // sale consumes its components — decompose before mutating stock so
+            // component inventory actually moves.
             foreach ($deliveryOrder->lines as $line) {
                 if (! $line->product_id) {
                     continue;
                 }
 
                 $product = $line->product;
-                if (! $product || ! (bool) ($product->track_inventory ?? false)) {
+                if (! $product) {
                     continue;
                 }
 
@@ -353,47 +598,56 @@ class DeliveryOrderService
                     continue;
                 }
 
-                if ($product->tracking_method === Product::TRACKING_BATCH) {
-                    if (! $line->product_batch_id) {
-                        throw new \Exception("Select an available lot for {$product->name} before completing the delivery.");
+                $components = $this->bundleDecomposition->stockConsumingComponents($product, $qty);
+
+                foreach ($components as $component) {
+                    $componentQty = (int) round($component['quantity']);
+                    if ($componentQty <= 0) {
+                        continue;
                     }
-                    $batch = ProductBatch::whereKey($line->product_batch_id)->lockForUpdate()->firstOrFail();
-                    if ((int) $batch->product_id !== (int) $line->product_id || (int) $batch->warehouse_id !== $warehouseId) {
-                        throw new \Exception("The selected lot does not belong to {$product->name} in this warehouse.");
-                    }
-                    $available = (int) $batch->quantity - (int) $batch->quantity_reserved;
-                    if ($batch->status !== ProductBatch::STATUS_AVAILABLE || $batch->isExpired() || $available < $qty) {
-                        throw new \Exception("The selected lot for {$product->name} is no longer available in the required quantity.");
-                    }
-                    $batch->decrement('quantity', $qty);
+
+                    $key = ($idempotencyKey ?: "do-complete-{$deliveryOrder->id}-line-{$line->id}").
+                        ($product->is_bundle ? "-component-{$component['product']->id}" : '');
+
+                    $this->inventoryService->adjustStock(
+                        productId: $component['product']->id,
+                        warehouseId: $warehouseId,
+                        quantity: $componentQty,
+                        type: 'sale',
+                        reference: $deliveryOrder->delivery_order_number,
+                        referenceType: 'DeliveryOrder',
+                        referenceId: $deliveryOrder->id,
+                        notes: "Stock deducted for delivery order {$deliveryOrder->delivery_order_number}".
+                            ($product->is_bundle ? " (bundle: {$product->name})" : ''),
+                        batchNumber: $product->is_bundle ? null : ($line->lot_number ?? $line->batch_number),
+                        expiryDate: (! $product->is_bundle && $line->expiry_date) ? new \DateTime($line->expiry_date) : null,
+                        idempotencyKey: $key,
+                    );
                 }
 
-                if ($product->tracking_method === Product::TRACKING_SERIAL) {
-                    if ($qty !== 1 || ! $line->product_serial_id) {
-                        throw new \Exception("Select exactly one available serial number for each unit of {$product->name}.");
-                    }
-                    $serial = ProductSerial::whereKey($line->product_serial_id)->lockForUpdate()->firstOrFail();
-                    if ((int) $serial->product_id !== (int) $line->product_id || (int) $serial->warehouse_id !== $warehouseId || $serial->status !== ProductSerial::STATUS_IN_STOCK) {
-                        throw new \Exception("The selected serial number for {$product->name} is no longer available in this warehouse.");
-                    }
-                    $serial->markSold($deliveryOrder->customer_id, now(), $deliveryOrder->delivery_order_number);
+                if ($components === []) {
+                    continue;
                 }
 
-                $key = $idempotencyKey ?: "do-complete-{$deliveryOrder->id}-line-{$line->id}";
-
-                $this->inventoryService->adjustStock(
-                    productId: $line->product_id,
-                    warehouseId: $warehouseId,
-                    quantity: $qty,
-                    type: 'sale',
-                    reference: $deliveryOrder->delivery_order_number,
-                    referenceType: 'DeliveryOrder',
-                    referenceId: $deliveryOrder->id,
-                    notes: "Stock deducted for delivery order {$deliveryOrder->delivery_order_number}",
-                    batchNumber: $line->lot_number ?? $line->batch_number,
-                    expiryDate: $line->expiry_date ? new \DateTime($line->expiry_date) : null,
-                    idempotencyKey: $key,
-                );
+                // Issue #131: mark the line's serials sold (customer, date,
+                // warranty) now that stock has left for this delivery.
+                if (! empty($line->serial_numbers) && $product) {
+                    try {
+                        app(\App\Services\BatchSerialConsumptionService::class)->markSerialsSold(
+                            product: $product,
+                            serialNumbers: (array) $line->serial_numbers,
+                            customerId: (int) $deliveryOrder->customer_id,
+                            saleReference: $deliveryOrder->delivery_order_number,
+                            soldAt: now(),
+                        );
+                    } catch (\Throwable $e) {
+                        \Log::error('DeliveryOrderService: serial marking failed (delivery preserved)', [
+                            'delivery_order_id' => $deliveryOrder->id,
+                            'line_id' => $line->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
 
                 // Fulfil corresponding stock reservation (if linked to SO)
                 if ($deliveryOrder->sales_order_id && $line->salesOrderLine) {
@@ -406,6 +660,9 @@ class DeliveryOrderService
                     );
                 }
             }
+
+            // Issue #176: recognise COGS at completion time.
+            $this->postDeliveryCogs($deliveryOrder, $warehouseId, $actorId);
 
             $deliveryOrder->update([
                 'status' => 'done',
@@ -448,21 +705,6 @@ class DeliveryOrderService
                         continue;
                     }
 
-                    if ($line->product_batch_id) {
-                        ProductBatch::whereKey($line->product_batch_id)->lockForUpdate()->increment('quantity', $qty);
-                    }
-                    if ($line->product_serial_id) {
-                        $serial = ProductSerial::whereKey($line->product_serial_id)->lockForUpdate()->first();
-                        if ($serial) {
-                            $serial->update([
-                                'status' => ProductSerial::STATUS_IN_STOCK,
-                                'customer_id' => null,
-                                'sold_at' => null,
-                                'sale_reference' => null,
-                            ]);
-                        }
-                    }
-
                     // Compensating inbound movement (restock)
                     $this->inventoryService->adjustStock(
                         productId: $line->product_id,
@@ -484,6 +726,9 @@ class DeliveryOrderService
                     $soLine->update(['quantity_delivered' => $newDelivered]);
                 }
             }
+
+            // Issue #176: reverse the COGS entry that completion posted.
+            $this->postDeliveryCogsReversal($deliveryOrder, $warehouseId, $actorId);
 
             $deliveryOrder->update([
                 'status' => 'cancelled',

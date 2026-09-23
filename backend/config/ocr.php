@@ -13,6 +13,9 @@ return [
 
     'service' => [
         'url' => env('OCR_SERVICE_URL', 'http://localhost:8000'),
+        // Issue #174: shared secret for the internal OCR microservice. Must
+        // match the service's OCR_SERVICE_KEY; sent as X-OCR-Service-Key.
+        'key' => env('OCR_SERVICE_KEY'),
         'timeout' => env('OCR_SERVICE_TIMEOUT', 60),
         'max_retries' => env('OCR_MAX_RETRIES', 3),
     ],

@@ -19,11 +19,6 @@
         .info-box .value { font-size: 11px; color: #111827; }
         .info-box.attention { flex: 2; }
 
-        .customer-block { margin-bottom: 16px; }
-        .customer-block .label { font-size: 9px; font-weight: bold; color: #6b7280; text-transform: uppercase; margin-bottom: 2px; }
-        .customer-block .name { font-size: 13px; font-weight: bold; }
-        .customer-block .address { font-size: 10px; color: #374151; margin-top: 4px; line-height: 1.5; }
-
         table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
         th { background: #f3f4f6; font-weight: bold; font-size: 10px; text-transform: uppercase; padding: 8px 6px; border-bottom: 2px solid #d1d5db; text-align: left; }
         td { padding: 7px 6px; border-bottom: 1px solid #e5e7eb; font-size: 11px; }
@@ -85,19 +80,21 @@
     <div class="info-grid">
         <div class="info-box">
             <div class="label">Address</div>
-            <div class="value">{{ $payload['customer']['address'] ?? '-' }}</div>
+            <div class="value">{{ $payload['customer']['address'] ?? $payload['customer']['billing_address'] ?? '-' }}</div>
         </div>
         <div class="info-box">
             <div class="label">Currency</div>
-            <div class="value">{{ $payload['currency'] ?? 'MYR' }}</div>
+            <div class="value">{{ $currency }}</div>
         </div>
         <div class="info-box">
             <div class="label">Payment Term</div>
             <div class="value">{{ $payload['customer']['payment_terms'] ?? '-' }}</div>
         </div>
         <div class="info-box">
-            <div class="label">Date of SOA</div>
-            <div class="value">{{ $payload['as_of_date'] ?? '' }}</div>
+            <div class="label">Statement Date</div>
+            <div class="value">
+                @if($periodStart){{ $periodStart }} to {{ $asOfDate }}@else{{ $asOfDate }}@endif
+            </div>
         </div>
     </div>
 
@@ -106,12 +103,14 @@
     <table>
         <thead>
             <tr>
-                <th style="width: 14%;">Inv Date</th>
-                <th style="width: 16%;">Invoice No.</th>
-                <th style="width: 28%;">Reference</th>
-                <th style="width: 14%;">Due Date</th>
-                <th class="num" style="width: 14%;">INV Amount</th>
-                <th class="num" style="width: 14%;">Balance Amount</th>
+                <th style="width: 11%;">Date</th>
+                <th style="width: 12%;">Type</th>
+                <th style="width: 15%;">Document</th>
+                <th style="width: 24%;">Description</th>
+                <th style="width: 10%;">Due Date</th>
+                <th class="num" style="width: 9%;">Debit</th>
+                <th class="num" style="width: 9%;">Credit</th>
+                <th class="num" style="width: 10%;">Balance</th>
             </tr>
         </thead>
         <tbody>
@@ -133,7 +132,7 @@
         </tbody>
     </table>
     @else
-    <div class="no-data">No outstanding invoices as of {{ $payload['as_of_date'] ?? 'today' }}.</div>
+    <div class="no-data">No transactions for {{ $periodStart ? $periodStart.' to '.$asOfDate : 'the period ending '.$asOfDate }}.</div>
     @endif
 
     {{-- Total Amount Due --}}
@@ -142,11 +141,12 @@
     </div>
 
     {{-- Bank Info Footer --}}
-    @if(!empty($payload['bank']['name']))
+    @if(!empty($payload['bank']['bank_name']) || !empty($payload['bank']['name']))
+    @php $bankName = $payload['bank']['bank_name'] ?? $payload['bank']['name'] ?? ''; @endphp
     <div class="bank-info">
         <div class="title">Bank Details</div>
         <div class="detail">
-            <strong>Bank Name:</strong> {{ $payload['bank']['name'] }}<br/>
+            <strong>Bank Name:</strong> {{ $bankName }}<br/>
             @if(!empty($payload['bank']['account_name']))<strong>Account Name:</strong> {{ $payload['bank']['account_name'] }}<br/>@endif
             @if(!empty($payload['bank']['account_number']))<strong>Account No:</strong> {{ $payload['bank']['account_number'] }}<br/>@endif
             @if(!empty($payload['bank']['swift_code']))<strong>SWIFT Code:</strong> {{ $payload['bank']['swift_code'] }}@endif

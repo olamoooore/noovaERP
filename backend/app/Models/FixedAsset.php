@@ -16,6 +16,9 @@ class FixedAsset extends Model
     use HasFactory;
 
     protected $fillable = [
+        // Issue #163: entity scoping.
+        'legal_entity_id',
+        'entity_book_id',
         'asset_number',
         'name',
         'description',
@@ -105,6 +108,23 @@ class FixedAsset extends Model
     /**
      * Get all depreciation schedules
      */
+    /**
+     * Issue #163: scope to an explicit set of legal entities. Fail-closed when
+     * the set is empty (no accessible entities means no rows visible).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @param  int[]  $accessibleEntityIds
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeAccessibleBy($query, array $accessibleEntityIds)
+    {
+        if (empty($accessibleEntityIds)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereIn('legal_entity_id', $accessibleEntityIds);
+    }
+
     public function depreciationSchedules(): HasMany
     {
         return $this->hasMany(DepreciationSchedule::class, 'asset_id');

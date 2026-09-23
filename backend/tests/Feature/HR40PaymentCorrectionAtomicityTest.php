@@ -42,8 +42,8 @@ namespace Tests\Feature;
 
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingResult;
-use App\Models\Accounting\DocumentLifecycleService;
-use App\Models\AuditLog;
+use App\Services\DocumentLifecycleService;
+use App\Models\PostingAuditLog;
 use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
@@ -178,7 +178,15 @@ class HR40PaymentCorrectionAtomicityTest extends TenantTestCase
             'journal_entry_id' => $journal->id,
         ]);
 
-        $this->invoice->update(['amount_paid' => 500.00, 'amount_due' => 0.00, 'status' => 'paid']);
+        // Canonical subledger columns (paid_amount/balance) drive the
+        // reconciliation invariant; amount_paid/amount_due are legacy mirrors.
+        $this->invoice->update([
+            'amount_paid' => 500.00,
+            'amount_due' => 0.00,
+            'paid_amount' => 500.00,
+            'balance' => 0.00,
+            'status' => 'paid',
+        ]);
 
         // Known-reconciled pre-image (HR40-05): GL control balance on the
         // AR account (account_id-based — ChartOfAccount.code may not be the
@@ -186,7 +194,7 @@ class HR40PaymentCorrectionAtomicityTest extends TenantTestCase
         $this->arAccountId = $arAccount->id;
         $this->glControlPre = (float) DB::table('journal_entry_lines')
             ->where('account_id', $arAccount->id)->sum(DB::raw('debit - credit'));
-        $this->arSubledgerPre = (float) $this->invoice->fresh()->amount_due;
+        $this->arSubledgerPre = (float) $this->invoice->fresh()->balance;
     }
 
     private function reverseUrl(int $id, string $op): string
@@ -224,8 +232,10 @@ class HR40PaymentCorrectionAtomicityTest extends TenantTestCase
         );
         app()->instance(PostingEngineInterface::class, $stub);
 
-        $auditSuccessBefore = AuditLog::where('action', 'like', '%correction%')
-            ->where('result', 'success')->count();
+        // PostingAuditLog is the audit table the posting engine actually
+        // writes ('full_reversal'/'partial_reversal'); audit_logs has no
+        // action/result columns.
+        $auditSuccessBefore = PostingAuditLog::where('action', 'like', '%reversal%')->count();
 
         $response = $this->actingAs($this->accountant)
             ->postJson($this->reverseUrl($this->payment->id, 'reverse'), [
@@ -250,9 +260,8 @@ class HR40PaymentCorrectionAtomicityTest extends TenantTestCase
         $this->assertSame(1, Payment::count(), 'No correction payment may be created on failure.');
 
         // No successful audit effect.
-        $this->assertSame($auditSuccessBefore, AuditLog::where('action', 'like', '%correction%')
-            ->where('result', 'success')->count(),
-            'No successful correction audit may be committed on failure.');
+        $this->assertSame($auditSuccessBefore, PostingAuditLog::where('action', 'like', '%reversal%')->count(),
+            'No reversal audit row may be committed on failure.');
 
         // GL post-image = GL pre-image (zero delta) — AR control account.
         $this->assertEqualsWithDelta($this->glControlPre,
@@ -260,7 +269,7 @@ class HR40PaymentCorrectionAtomicityTest extends TenantTestCase
             0.01, 'GL control balance must be unchanged after failed reverse.');
 
         // Subledger unchanged.
-        $this->assertEqualsWithDelta($this->arSubledgerPre, (float) $this->invoice->fresh()->amount_due,
+        $this->assertEqualsWithDelta($this->arSubledgerPre, (float) $this->invoice->fresh()->balance,
             0.01, 'AR subledger must be unchanged after failed reverse.');
     }
 
@@ -289,17 +298,21 @@ class HR40PaymentCorrectionAtomicityTest extends TenantTestCase
         $preJournalId = (int) $this->payment->journal_entry_id;
         $glPre = (float) DB::table('journal_entry_lines')
             ->where('account_id', $this->arAccountId)->sum(DB::raw('debit - credit'));
-        $arPre = (float) $this->invoice->fresh()->amount_due;
+        $arPre = (float) $this->invoice->fresh()->balance;
 
         // Attempt the correction — must throw because the lifecycle step fails
         // after the PostingEngine reversal succeeds.
         try {
-            $service->reversePayment($this->payment, \App\Services\CorrectionRequest::fromArray([
+            $service->reversePayment($this->payment, \App\Services\CorrectionRequest::fromRequest([
                 'reason_code' => 'duplicate_payment',
                 'reason_text' => 'HR40 induced downstream failure',
                 'user_id' => $this->accountant->id,
             ]));
             $this->fail('Induced downstream failure must abort the outer correction.');
+        } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+            // Never swallow our own failure assertion — a silent success here
+            // previously looked like an atomicity failure.
+            throw $e;
         } catch (\RuntimeException $e) {
             $this->assertStringContainsString('Induced downstream failure', $e->getMessage());
         }
@@ -326,7 +339,7 @@ class HR40PaymentCorrectionAtomicityTest extends TenantTestCase
             0.01, 'GL control balance must be unchanged after induced failure.');
 
         // Zero subledger delta.
-        $this->assertEqualsWithDelta($arPre, (float) $this->invoice->fresh()->amount_due,
+        $this->assertEqualsWithDelta($arPre, (float) $this->invoice->fresh()->balance,
             0.01, 'AR subledger must be unchanged after induced failure.');
     }
 
@@ -340,7 +353,7 @@ class HR40PaymentCorrectionAtomicityTest extends TenantTestCase
         // No mock — let the REAL PostingEngine and lifecycle service run.
         $service = app(PaymentCorrectionService::class);
 
-        $result = $service->reversePayment($this->payment, \App\Services\CorrectionRequest::fromArray([
+        $result = $service->reversePayment($this->payment, \App\Services\CorrectionRequest::fromRequest([
             'reason_code' => 'duplicate_payment',
             'reason_text' => 'HR40 successful reverse',
             'user_id' => $this->accountant->id,
@@ -357,7 +370,9 @@ class HR40PaymentCorrectionAtomicityTest extends TenantTestCase
         $this->assertSame(1, $this->countReversalJournals((int) $original->journal_entry_id));
 
         // AR subledger restored (outstanding back on the invoice).
-        $this->assertGreaterThan($this->arSubledgerPre, (float) $this->invoice->fresh()->amount_due,
+        $fresh = $this->invoice->fresh();
+        $this->assertGreaterThan($this->arSubledgerPre, (float) $fresh->balance,
             'AR outstanding must increase after successful reverse (invoice re-opened).');
+        $this->assertSame(0.0, round((float) $fresh->paid_amount, 2), 'paid_amount must drop back to 0.');
     }
 }

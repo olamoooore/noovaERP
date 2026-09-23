@@ -9,7 +9,14 @@ Endpoints:
   GET  /health                 - Health check
 
 Environment variables:
-    OCR_ENGINE  - "tesseract" (default) or "paddle"
+    OCR_ENGINE           - "tesseract" (default) or "paddle"
+    OCR_SERVICE_KEY      - REQUIRED shared secret; callers must send it in the
+                           X-OCR-Service-Key header (issue #174). The process
+                           refuses to start without it.
+    OCR_MAX_UPLOAD_BYTES - Max accepted upload size in bytes (default 10 MiB).
+    OCR_HOST             - Bind address (default 127.0.0.1; set to 0.0.0.0
+                           explicitly for containerised deployments).
+    OCR_PORT             - Bind port (default 5050).
 """
 
 # Must be set before PaddlePaddle is imported.
@@ -26,21 +33,162 @@ if not _os.environ.get("TESSDATA_PREFIX"):
                 _os.environ["TESSDATA_PREFIX"] = _candidate
 
 import io
+import json
 import os
 import re
+import secrets
 import tempfile
 from datetime import datetime
 from pathlib import Path
 
 import pytesseract
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from PIL import Image
 
 OCR_ENGINE = os.environ.get("OCR_ENGINE", "tesseract").lower()
+
+# Issue #174 — defence in depth for the internal OCR service:
+# shared-secret authentication, an explicit upload cap independent of the
+# network perimeter, and a loopback-default bind address.
+OCR_MAX_UPLOAD_BYTES = int(os.environ.get("OCR_MAX_UPLOAD_BYTES", 10 * 1024 * 1024))
+OCR_HOST = os.environ.get("OCR_HOST", "127.0.0.1")
+OCR_PORT = int(os.environ.get("OCR_PORT", "5050"))
+
 _paddle_ocr = None
 _paddle_patched = False
 
+
+class _BodyTooLarge(Exception):
+    """Raised from the streaming receive() wrapper when the cap is exceeded."""
+
+
+class BodySizeLimitMiddleware:
+    """
+    Issue #224: enforce the upload cap at the ASGI layer.
+
+    Starlette constructs `UploadFile` (fully spooling the multipart body to
+    disk/memory) during request parsing, before the route handler — and its
+    handler-level `_read_upload_capped` check — ever runs. A handler-level cap
+    therefore cannot prevent the resource exhaustion it is meant to stop.
+
+    This middleware rejects an oversized body while it is still streaming in:
+    a declared Content-Length over the cap is rejected before any body byte is
+    read, and a missing/lying Content-Length is caught as the bytes arrive,
+    before multipart parsing can complete.
+    """
+
+    def __init__(self, app, max_bytes: int, paths: tuple[str, ...] = ("/api/bookkeeping/upload",)):
+        self.app = app
+        self.max_bytes = max_bytes
+        self.paths = paths
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http" or scope.get("path") not in self.paths:
+            await self.app(scope, receive, send)
+            return
+
+        for name, value in scope.get("headers", []):
+            if name == b"content-length" and value.isdigit() and int(value) > self.max_bytes:
+                await self._reject(send)
+                return
+
+        total = 0
+        started = False
+
+        async def limited_receive():
+            nonlocal total
+            message = await receive()
+            if message.get("type") == "http.request":
+                total += len(message.get("body", b""))
+                if total > self.max_bytes:
+                    raise _BodyTooLarge()
+            return message
+
+        async def tracked_send(message):
+            nonlocal started
+            if message.get("type") == "http.response.start":
+                started = True
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, tracked_send)
+        except _BodyTooLarge:
+            if started:
+                raise
+            await self._reject(send)
+
+    async def _reject(self, send):
+        body = json.dumps({
+            "detail": f"Upload exceeds the maximum size of {self.max_bytes} bytes.",
+        }).encode()
+        await send({
+            "type": "http.response.start",
+            "status": 413,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+        })
+        await send({"type": "http.response.body", "body": body})
+
+
 app = FastAPI(title="OCR Bookkeeping Service", version="1.0.0")
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=OCR_MAX_UPLOAD_BYTES)
+
+
+def require_service_key(x_ocr_service_key: str | None = Header(default=None)) -> None:
+    """
+    Issue #174: reject any caller that does not present the shared secret.
+
+    Reads the expected key from the environment on every call so it is never
+    baked into the process at import time, and fails closed (503) when the
+    service has not been configured with one.
+    """
+    expected = os.environ.get("OCR_SERVICE_KEY", "").strip()
+
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="OCR service authentication is not configured (OCR_SERVICE_KEY unset).",
+        )
+
+    if not x_ocr_service_key or not secrets.compare_digest(x_ocr_service_key, expected):
+        raise HTTPException(status_code=401, detail="Invalid or missing X-OCR-Service-Key")
+
+
+async def _read_upload_capped(file: UploadFile, request: Request, max_bytes: int) -> bytes:
+    """
+    Read the upload in bounded chunks and reject anything over max_bytes before
+    the whole body is resident in memory (Content-Length may be absent or lie).
+    """
+    content_length = request.headers.get("content-length")
+
+    if content_length and content_length.isdigit() and int(content_length) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Upload exceeds the maximum size of {max_bytes} bytes.",
+        )
+
+    chunks: list[bytes] = []
+    total = 0
+
+    while True:
+        chunk = await file.read(1024 * 1024)
+
+        if not chunk:
+            break
+
+        total += len(chunk)
+
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Upload exceeds the maximum size of {max_bytes} bytes.",
+            )
+
+        chunks.append(chunk)
+
+    return b"".join(chunks)
 
 
 # ---------------------------------------------------------------------------
@@ -544,11 +692,14 @@ async def health():
     return {"status": "healthy", "service": "ocr-bookkeeping", "version": "1.0.0"}
 
 
-@app.post("/api/bookkeeping/upload")
-async def upload_document(file: UploadFile = File(...)):
+@app.post("/api/bookkeeping/upload", dependencies=[Depends(require_service_key)])
+async def upload_document(request: Request, file: UploadFile = File(...)):
     """
     Accept a document upload (image or PDF), run OCR, and return
     structured financial data.
+
+    Requires the X-OCR-Service-Key shared secret (issue #174) and enforces
+    OCR_MAX_UPLOAD_BYTES.
     """
     allowed_types = {
         "image/jpeg", "image/png", "image/jpg",
@@ -560,7 +711,7 @@ async def upload_document(file: UploadFile = File(...)):
             detail=f"Unsupported file type: {file.content_type}. Allowed: JPG, PNG, PDF",
         )
 
-    contents = await file.read()
+    contents = await _read_upload_capped(file, request, OCR_MAX_UPLOAD_BYTES)
     if not contents:
         raise HTTPException(status_code=400, detail="Empty file")
 
@@ -603,5 +754,16 @@ async def upload_document(file: UploadFile = File(...)):
 
 
 if __name__ == "__main__":
+    import sys
+
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=5050)
+
+    # Issue #174: fail fast rather than silently serving unauthenticated.
+    if not os.environ.get("OCR_SERVICE_KEY", "").strip():
+        sys.exit(
+            "FATAL: OCR_SERVICE_KEY is not set. The OCR service refuses to start "
+            "without its shared secret; set OCR_SERVICE_KEY and configure the "
+            "backend with the same value."
+        )
+
+    uvicorn.run(app, host=OCR_HOST, port=OCR_PORT)

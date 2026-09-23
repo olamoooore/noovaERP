@@ -27,9 +27,11 @@ class ContactTaxonomyService
     public function ensureSystemTaxonomy(string $tenantId): void
     {
         DB::transaction(function () use ($tenantId) {
+            // Issue #123: seed the vocabulary this tenant is entitled to
+            // (healthcare only for flagged tenants; generic otherwise).
             foreach ([
-                ContactTaxonomyRegistry::TYPE_FUNCTIONAL_CATEGORY => ContactTaxonomyRegistry::FUNCTIONAL_CATEGORIES,
-                ContactTaxonomyRegistry::TYPE_PERSISTENT_ROLE => ContactTaxonomyRegistry::PERSISTENT_ROLES,
+                ContactTaxonomyRegistry::TYPE_FUNCTIONAL_CATEGORY => ContactTaxonomyRegistry::vocabularyFor(ContactTaxonomyRegistry::TYPE_FUNCTIONAL_CATEGORY, $tenantId),
+                ContactTaxonomyRegistry::TYPE_PERSISTENT_ROLE => ContactTaxonomyRegistry::vocabularyFor(ContactTaxonomyRegistry::TYPE_PERSISTENT_ROLE, $tenantId),
             ] as $type => $codes) {
                 foreach ($codes as $code => $label) {
                     ContactTaxonomy::firstOrCreate(
@@ -44,14 +46,15 @@ class ContactTaxonomyService
                 }
             }
 
-            foreach (ContactTaxonomyRegistry::CLASSIFICATIONS as $code => $label) {
+            $classifications = ContactTaxonomyRegistry::vocabularyFor(ContactTaxonomyRegistry::TYPE_CLASSIFICATION, $tenantId);
+            foreach ($classifications as $code => $label) {
                 ContactGroup::firstOrCreate(
                     ['tenant_id' => $tenantId, 'group_name' => $code],
                     [
                         'id' => Str::uuid(),
                         'group_type' => self::CLASSIFICATION_GROUP_TYPE,
                         'description' => $label,
-                        'sort_order' => array_search($code, array_keys(ContactTaxonomyRegistry::CLASSIFICATIONS)),
+                        'sort_order' => array_search($code, array_keys($classifications)),
                     ]
                 );
             }
@@ -137,11 +140,34 @@ class ContactTaxonomyService
      */
     public function assertValidCode(string $type, ?string $code): string
     {
-        $resolved = ContactTaxonomyRegistry::resolveCode($type, $code);
-        if ($resolved === null) {
+        if ($code === null || $code === '') {
             throw new \DomainException('UNKNOWN_TAXONOMY_VALUE');
         }
 
-        return $resolved;
+        $tenantId = function_exists('tenant') && tenant() ? (string) tenant()->id : null;
+
+        // Issue #123: validation is data-driven — any code the tenant actually
+        // has seeded is valid (tenants are extensible), otherwise fall back to
+        // the vocabulary the tenant is entitled to (healthcare vs generic).
+        if ($type === self::CLASSIFICATION_GROUP_TYPE) {
+            $exists = ContactGroup::where('tenant_id', $tenantId)
+                ->where('group_name', $code)
+                ->exists();
+        } else {
+            $exists = ContactTaxonomy::where('tenant_id', $tenantId)
+                ->where('taxonomy_type', $type)
+                ->where('code', $code)
+                ->exists();
+        }
+
+        if ($exists) {
+            return $code;
+        }
+
+        if (array_key_exists($code, ContactTaxonomyRegistry::vocabularyFor($type, $tenantId))) {
+            return $code;
+        }
+
+        throw new \DomainException('UNKNOWN_TAXONOMY_VALUE');
     }
 }

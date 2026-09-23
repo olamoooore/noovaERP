@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Accounting\Contracts\PostingEngineInterface;
 use App\Accounting\DTOs\PostingRequest;
+use App\Accounting\DTOs\ReversalRequest;
 use App\Accounting\DTOs\PostingRequestLine;
 use App\Models\CustomerCreditNote;
 use App\Models\Invoice;
@@ -166,6 +167,72 @@ class CustomerCreditNoteService
 
             // Atomically reduce invoice balance and update status via canonical service.
             app(InvoiceService::class)->applyRefundToInvoice($invoice, (float) $creditNote->total_amount);
+
+            DB::commit();
+
+            return $creditNote->fresh(['journalEntry', 'lines', 'customer', 'invoice']);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Issue #228: void a posted credit note — the escape hatch for the #169
+     * guard that blocks invoice cancel/reset-to-draft while a posted credit
+     * note exists.
+     *
+     * Reverses the credit note's journal entry (via the Posting Engine, so the
+     * ledger stays the single source of truth), restores the invoice balance
+     * the posting reduced, and transitions the note to 'voided'. Idempotency of
+     * the GL reversal itself is handled by PostingEngine::reverse().
+     */
+    public function voidCreditNote(CustomerCreditNote $creditNote): CustomerCreditNote
+    {
+        if ($creditNote->status !== 'posted') {
+            throw new \Exception('Only posted credit notes can be voided');
+        }
+
+        $actorId = TenantUserHelper::requireTenantUserId(Auth::id() ?? $creditNote->posted_by);
+
+        DB::beginTransaction();
+
+        try {
+            $reversalEntryId = null;
+
+            if ($creditNote->journal_entry_id) {
+                $reversal = $this->postingEngine->reverse(new ReversalRequest(
+                    journalEntryId: (int) $creditNote->journal_entry_id,
+                    reversalDate: now()->toDateString(),
+                    reason: "Void Credit Note {$creditNote->credit_note_number}",
+                    reasonCode: 'CORRECTION',
+                    actorUserId: $actorId,
+                    tenantId: tenant()->id ?? null,
+                ));
+
+                if (! $reversal->success) {
+                    throw new \Exception($reversal->error ?? 'Failed to reverse credit note journal entry');
+                }
+
+                $reversalEntryId = $reversal->journalEntryId
+                    ?? $reversal->journalEntry?->id;
+            }
+
+            // Undo the invoice balance reduction performed at posting time.
+            if ($creditNote->invoice) {
+                app(InvoiceService::class)->restoreRefundToInvoice(
+                    $creditNote->invoice,
+                    (float) $creditNote->total_amount,
+                );
+            }
+
+            $creditNote->update([
+                'status' => 'voided',
+                'voided_at' => now(),
+                'voided_by' => $actorId,
+                'reversal_journal_entry_id' => $reversalEntryId,
+            ]);
 
             DB::commit();
 

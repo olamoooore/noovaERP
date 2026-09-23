@@ -2,7 +2,11 @@
 
 namespace App\Services\Reconciliation;
 
+use App\Models\BankReconciliation;
+use App\Models\BankStatementMatch;
+use App\Models\BankStatementTransaction;
 use App\Models\JournalEntryLine;
+use App\Models\ReconciliationItem;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -113,30 +117,53 @@ class AutoMatchingService
     }
 
     /**
-     * Persist suggested match candidates against a durable BankStatementLine.
+     * Persist suggested match candidates against the live statement-import
+     * models (BankStatementTransaction/BankStatementMatch).
+     *
+     * Issue #168: this previously wrote to App\Models\BankStatementLine /
+     * MatchCandidate — a disconnected model pair that no import pipeline ever
+     * populates — so suggestions were silently discarded for every real caller.
+     * The id supplied by the caller is a BankStatementTransaction id.
      */
-    private function persistMatchCandidates(?string $statementLineId, array $matches): void
+    private function persistMatchCandidates(?string $statementTransactionId, array $matches): void
     {
-        if (! $statementLineId || ! is_numeric($statementLineId)) {
+        if (! $statementTransactionId || ! \Illuminate\Support\Str::isUuid((string) $statementTransactionId)) {
             return;
         }
 
-        $line = \App\Models\BankStatementLine::find($statementLineId);
-        if (! $line) {
+        $transaction = BankStatementTransaction::find($statementTransactionId);
+        if (! $transaction) {
             return;
         }
 
         foreach ($matches as $match) {
-            \App\Models\MatchCandidate::updateOrCreate(
+            $existing = BankStatementMatch::query()
+                ->where('bank_statement_transaction_id', $transaction->id)
+                ->where('journal_entry_line_id', $match['gl_transaction_id'])
+                ->first();
+
+            // Never downgrade a match a user already accepted.
+            if ($existing && $existing->status === 'accepted') {
+                continue;
+            }
+
+            BankStatementMatch::updateOrCreate(
                 [
-                    'bank_statement_line_id' => $line->id,
+                    'bank_statement_transaction_id' => $transaction->id,
                     'journal_entry_line_id' => $match['gl_transaction_id'],
                 ],
                 [
-                    'match_type' => $match['match_type'],
-                    'confidence' => $match['confidence'],
-                    'reason' => $match['reason'] ?? null,
-                    'accepted' => false,
+                    'matched_amount' => abs((float) ($match['gl_data']['net_amount'] ?? 0)),
+                    // The live statement pipeline stores 'suggested' proposals
+                    // with a 0..1 confidence, so auto-match suggestions land in
+                    // the same universe (and its bulk-accept rules).
+                    'match_type' => 'suggested',
+                    'confidence' => round(((float) $match['confidence']) / 100, 4),
+                    'match_reasons' => [
+                        'auto_match_type' => $match['match_type'],
+                        'reason' => $match['reason'] ?? $match['match_type'],
+                    ],
+                    'status' => 'proposed',
                 ]
             );
         }
@@ -351,17 +378,25 @@ class AutoMatchingService
      * @param  array  $acceptedMatches  Array of ['bank_transaction_id', 'gl_transaction_id', 'match_type', 'confidence']
      * @return array Results of acceptance
      */
-    public function acceptMatches(int $bankAccountId, int $reconciliationId, array $acceptedMatches): array
+    public function acceptMatches(int $bankAccountId, ?int $reconciliationId, array $acceptedMatches): array
     {
         $results = [
             'accepted' => 0,
             'failed' => 0,
             'errors' => [],
+            'reconciliation_id' => null,
         ];
 
         DB::beginTransaction();
 
         try {
+            // Issue #168: a reconciliation row is only ever created by the
+            // completion step of the other flows, so requiring one made these
+            // endpoints uncallable. Reuse the bank account's latest draft (or
+            // start one) when the caller does not supply one.
+            $reconciliation = $this->resolveDraftReconciliation($bankAccountId, $reconciliationId);
+            $results['reconciliation_id'] = $reconciliation->id;
+
             foreach ($acceptedMatches as $match) {
                 try {
                     // Validate the GL transaction exists and is unreconciled
@@ -376,13 +411,60 @@ class AutoMatchingService
                         continue;
                     }
 
+                    $bankTransactionId = $match['bank_transaction_id'] ?? null;
+
+                    // When the caller supplies a real statement transaction id,
+                    // accept the underlying statement match too so both sides of
+                    // the reconciliation agree.
+                    $statementMatch = null;
+
+                    if ($bankTransactionId
+                        && (\Illuminate\Support\Str::isUuid((string) $bankTransactionId) || is_numeric($bankTransactionId))
+                        && BankStatementTransaction::whereKey($bankTransactionId)->exists()) {
+                        $statementMatch = BankStatementMatch::updateOrCreate(
+                            [
+                                'bank_statement_transaction_id' => $bankTransactionId,
+                                'journal_entry_line_id' => $glLine->id,
+                            ],
+                            [
+                                'reconciliation_id' => $reconciliation->id,
+                                'matched_amount' => abs((float) $glLine->debit - (float) $glLine->credit),
+                                'match_type' => 'manual',
+                                'confidence' => isset($match['confidence'])
+                                    ? round(((float) $match['confidence']) / 100, 4)
+                                    : null,
+                                'match_reasons' => [
+                                    'accepted_via_auto_match' => true,
+                                    'auto_match_type' => $match['match_type'] ?? 'manual',
+                                ],
+                                'status' => 'accepted',
+                                'accepted_by' => \Modules\OCRBookkeeping\Helpers\TenantUserHelper::resolveTenantUserId(),
+                                'accepted_at' => now(),
+                            ]
+                        );
+                    }
+
                     // Create reconciliation item
-                    \App\Models\ReconciliationItem::create([
-                        'reconciliation_id' => $reconciliationId,
-                        'journal_entry_line_id' => $match['gl_transaction_id'],
-                        'bank_transaction_id' => $match['bank_transaction_id'] ?? null,
+                    ReconciliationItem::create([
+                        'reconciliation_id' => $reconciliation->id,
+                        'journal_entry_line_id' => $glLine->id,
+                        // reconciliation_items.bank_transaction_id is a legacy
+                        // bigint column; the live statement FK is a uuid.
+                        'bank_transaction_id' => is_numeric($bankTransactionId) ? (int) $bankTransactionId : null,
+                        'bank_statement_transaction_id' => $statementMatch?->bank_statement_transaction_id,
+                        'bank_statement_match_id' => $statementMatch?->id,
                         'match_type' => $match['match_type'] ?? 'manual',
                         'match_confidence' => $match['confidence'] ?? null,
+                    ]);
+
+                    // Issue #168: actually mark the GL line reconciled — this
+                    // method previously created bookkeeping rows without ever
+                    // changing journal_entry_lines, so accepted matches had no
+                    // effect on the reconciliation state.
+                    $glLine->update([
+                        'reconciliation_id' => $reconciliation->id,
+                        'reconciled' => true,
+                        'reconciliation_date' => $reconciliation->statement_date,
                     ]);
 
                     $results['accepted']++;
@@ -396,7 +478,7 @@ class AutoMatchingService
             DB::commit();
 
             Log::info('Bulk match acceptance completed', [
-                'reconciliation_id' => $reconciliationId,
+                'reconciliation_id' => $reconciliation->id,
                 'accepted' => $results['accepted'],
                 'failed' => $results['failed'],
             ]);
@@ -407,6 +489,42 @@ class AutoMatchingService
         }
 
         return $results;
+    }
+
+    /**
+     * Issue #168: resolve (or lazily start) the draft reconciliation the
+     * accepted matches belong to.
+     */
+    private function resolveDraftReconciliation(int $bankAccountId, ?int $reconciliationId): BankReconciliation
+    {
+        if ($reconciliationId !== null) {
+            $reconciliation = BankReconciliation::query()
+                ->where('id', $reconciliationId)
+                ->where('bank_account_id', $bankAccountId)
+                ->first();
+
+            if (! $reconciliation) {
+                throw new \InvalidArgumentException('The reconciliation does not belong to the given bank account.');
+            }
+
+            return $reconciliation;
+        }
+
+        $draft = BankReconciliation::query()
+            ->where('bank_account_id', $bankAccountId)
+            ->where('status', 'draft')
+            ->latest('id')
+            ->first();
+
+        return $draft ?? BankReconciliation::create([
+            'bank_account_id' => $bankAccountId,
+            'statement_date' => now()->toDateString(),
+            'statement_balance' => 0,
+            'opening_balance' => 0,
+            'closing_balance' => 0,
+            'difference' => 0,
+            'status' => 'draft',
+        ]);
     }
 
     /**

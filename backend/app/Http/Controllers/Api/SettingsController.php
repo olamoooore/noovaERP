@@ -5,29 +5,33 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
 use App\Models\Tax;
+use App\Services\MailConfigLoader;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class SettingsController extends Controller
 {
     /**
-     * Test SMTP connectivity.
-     * Tests the connection to the SMTP server using provided or stored credentials.
+     * Test the outbound mail configuration.
+     *
+     * Dispatches on `driver`:
+     *   - smtp   (default): socket + AUTH handshake against the SMTP server
+     *   - resend: validates the API key and sends a real test email
+     *
+     * Note: the historical "log mode → skip" short-circuit was removed — the
+     * test must always exercise the provided credentials so a misconfigured
+     * transport surfaces instead of silently reporting success.
      *
      * @return \Illuminate\Http\JsonResponse
      */
     public function testSmtp(Request $request)
     {
-        Log::info('Test SMTP Endpoint HIT', $request->all());
+        Log::info('Test mail endpoint hit', ['driver' => $request->input('driver', 'smtp')]);
 
-        // Skip SMTP test when mail is in log/array mode (local dev, SMTP unreachable)
-        if (in_array(config('mail.default'), ['log', 'array'])) {
-            return response()->json([
-                'success' => true,
-                'message' => 'Mail is configured in "'.config('mail.default').'" mode. SMTP test skipped. Emails are written to the log file instead.',
-                'details' => ['socket' => 'Skipped (log mode)', 'auth' => 'Skipped (log mode)'],
-            ]);
+        if (strtolower((string) $request->input('driver', 'smtp')) === MailConfigLoader::DRIVER_RESEND) {
+            return $this->testResend($request);
         }
 
         $validated = $request->validate([
@@ -113,6 +117,96 @@ class SettingsController extends Controller
         }
 
         return response()->json($result, $result['success'] ? 200 : 422);
+    }
+
+    /**
+     * Test the Resend transport: validate the API key and send a real email.
+     */
+    private function testResend(Request $request)
+    {
+        $validated = $request->validate([
+            'api_key' => 'required|string',
+            'from_address' => 'nullable|email',
+            'test_recipient' => 'nullable|email',
+        ]);
+
+        $apiKey = $validated['api_key'];
+
+        // Masked placeholder → reuse the stored key
+        if ($apiKey === '********') {
+            $stored = Setting::getValue('mail_config', []);
+            $apiKey = is_array($stored) ? ($stored['api_key'] ?? '') : '';
+        }
+
+        if (empty($apiKey) || ! str_starts_with($apiKey, 're_')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid Resend API key. Keys start with "re_".',
+                'details' => ['key' => 'Invalid format'],
+            ], 422);
+        }
+
+        $recipient = $validated['test_recipient'] ?? $validated['from_address'] ?? null;
+        if (! $recipient) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A test recipient is required. Set a From Address or provide test_recipient.',
+                'details' => ['recipient' => 'Missing'],
+            ], 422);
+        }
+
+        config([
+            'mail.default' => 'resend',
+            'mail.mailers.resend.key' => $apiKey,
+            'services.resend.key' => $apiKey,
+        ]);
+        app('mail.manager')->purge('resend');
+
+        if (! empty($validated['from_address'])) {
+            config(['mail.from.address' => $validated['from_address']]);
+        }
+
+        $startedAt = microtime(true);
+
+        try {
+            Mail::mailer('resend')->raw(
+                "NoovaERP mail test via Resend\n\nSent at ".now()->toDateTimeString()."\nFrom: ".config('mail.from.address'),
+                function ($message) use ($recipient) {
+                    $message->to($recipient)
+                        ->subject('NoovaERP — Resend connectivity test');
+                }
+            );
+
+            $elapsed = round((microtime(true) - $startedAt) * 1000, 2);
+
+            Log::info('Resend mail test succeeded', ['recipient' => $recipient]);
+
+            return response()->json([
+                'success' => true,
+                'message' => "Resend accepted the test email for {$recipient}. Check the inbox (and spam) to confirm delivery.",
+                'details' => [
+                    'driver' => 'resend',
+                    'recipient' => $recipient,
+                    'from_address' => config('mail.from.address'),
+                    'round_trip_ms' => $elapsed,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Resend mail test failed', [
+                'recipient' => $recipient,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Resend test failed: '.$e->getMessage(),
+                'details' => [
+                    'driver' => 'resend',
+                    'recipient' => $recipient,
+                    'error' => $e->getMessage(),
+                ],
+            ], 422);
+        }
     }
 
     /**
@@ -330,17 +424,19 @@ class SettingsController extends Controller
 
         $mail = Setting::getValue('mail_config', [
             'driver' => 'smtp',
-            'host' => 'smtp.gmail.com',
+            'host' => 'smtpout.secureserver.net',
             'port' => '587',
             'encryption' => 'tls',
             'username' => '',
             'password' => '',
+            'api_key' => '',
             'from_address' => 'noreply@example.com',
             'from_name' => 'NoovaERP',
         ]);
 
-        // Mask password for security
+        // Mask secrets for security
         $mail['password'] = ! empty($mail['password']) ? '********' : '';
+        $mail['api_key'] = ! empty($mail['api_key']) ? '********' : '';
 
         $defaultTax = null;
         if (! empty($tax['default_tax_id'])) {
@@ -370,12 +466,13 @@ class SettingsController extends Controller
             'tax.default_tax_id' => 'nullable|integer',
 
             'mail' => 'nullable|array',
-            'mail.driver' => 'nullable|string',
+            'mail.driver' => 'nullable|in:smtp,resend,log,array,sendmail',
             'mail.host' => 'nullable|string',
             'mail.port' => 'nullable|integer',
             'mail.encryption' => 'nullable|string',
             'mail.username' => 'nullable|string',
             'mail.password' => 'nullable|string',
+            'mail.api_key' => 'nullable|string',
             'mail.from_address' => 'nullable|email',
             'mail.from_name' => 'nullable|string',
         ]);
@@ -400,11 +497,12 @@ class SettingsController extends Controller
         if (array_key_exists('mail', $validated)) {
             $defaultMail = [
                 'driver' => 'smtp',
-                'host' => 'smtp.gmail.com',
+                'host' => 'smtpout.secureserver.net',
                 'port' => '587',
                 'encryption' => 'tls',
                 'username' => '',
                 'password' => '',
+                'api_key' => '',
                 'from_address' => 'noreply@example.com',
                 'from_name' => 'NoovaERP',
             ];
@@ -412,12 +510,15 @@ class SettingsController extends Controller
             $existingConfig = Setting::getValue('mail_config', $defaultMail);
             $inputConfig = $validated['mail'] ?? [];
 
-            // Password handling: if empty or masked, keep the old password
+            // Secret handling: if empty or masked, keep the previously stored secret
             if (empty($inputConfig['password']) || $inputConfig['password'] === '********') {
                 $inputConfig['password'] = $existingConfig['password'] ?? '';
             }
+            if (empty($inputConfig['api_key']) || $inputConfig['api_key'] === '********') {
+                $inputConfig['api_key'] = $existingConfig['api_key'] ?? '';
+            }
 
-            // Auto-correct port/encryption mismatch
+            // Auto-correct port/encryption mismatch (SMTP only)
             $port = (int) ($inputConfig['port'] ?? $existingConfig['port'] ?? 587);
             $enc = $inputConfig['encryption'] ?? $existingConfig['encryption'] ?? 'tls';
             if ($port === 465 && $enc === 'tls') {

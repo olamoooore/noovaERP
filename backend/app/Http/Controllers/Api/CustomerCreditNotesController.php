@@ -206,6 +206,36 @@ class CustomerCreditNotesController extends Controller
     }
 
     /**
+     * Void a posted credit note (reverses its GL entry, restores the invoice
+     * balance, and unblocks invoice cancel/reset-to-draft — issue #228).
+     */
+    public function void($creditNote)
+    {
+        $creditNote = CustomerCreditNote::findOrFail($creditNote);
+
+        if ($creditNote->status !== 'posted') {
+            return response()->json([
+                'message' => 'Only posted credit notes can be voided',
+            ], 403);
+        }
+
+        try {
+            $voided = $this->creditNoteService->voidCreditNote($creditNote);
+
+            return response()->json([
+                'message' => 'Credit note voided successfully',
+                'credit_note' => $voided,
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to void credit note',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Get credit notes for a specific invoice
      */
     public function getByInvoice($invoiceId)

@@ -166,10 +166,36 @@ class VendorBillService
         $receiptValue = 0.0;
 
         foreach ($grn->lines as $line) {
-            $receiptValue += (int) $line->quantity_accepted * (float) ($line->purchaseOrderItem?->unit_cost ?? 0);
+            // Issue #211: fractional accepted quantities must not be truncated
+            // (companion to the GoodsReceiptService posting fix #210).
+            $receiptValue += (float) $line->quantity_accepted * (float) ($line->purchaseOrderItem?->unit_cost ?? 0);
         }
 
-        return round(min($receiptValue, $netBeforeTax), 2);
+        // Issue #209: subtract relief already applied by prior posted bills for
+        // this GRN, otherwise partial bills over-relieve GRNI (leaving it with
+        // a stray negative balance and under-expensing the excess).
+        $alreadyRelieved = $this->postedGrniReliefForReceipt((int) $grn->id, (int) $bill->id);
+
+        $remainingReceiptValue = max($receiptValue - $alreadyRelieved, 0.0);
+
+        return round(min($remainingReceiptValue, $netBeforeTax), 2);
+    }
+
+    /**
+     * Issue #209: GRNI value already relieved by prior posted bills against the
+     * same goods receipt. Each bill's relief was min(remaining receipt value,
+     * its pre-tax net), so the sum of prior pre-tax nets is equivalent (and the
+     * caller clamps the remaining value at zero).
+     */
+    private function postedGrniReliefForReceipt(int $goodsReceiptId, int $excludeBillId): float
+    {
+        return (float) Bill::query()
+            ->where('goods_receipt_id', $goodsReceiptId)
+            ->whereKeyNot($excludeBillId)
+            ->whereNotNull('journal_entry_id')
+            ->whereNotIn('lifecycle_status', ['voided', 'reversed', 'superseded'])
+            ->get()
+            ->sum(fn (Bill $prior) => max((float) $prior->subtotal - (float) ($prior->discount_amount ?? 0), 0.0));
     }
 
     /**

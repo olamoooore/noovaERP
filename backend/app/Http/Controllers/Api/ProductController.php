@@ -600,11 +600,14 @@ class ProductController extends Controller
             $validated['customer_id'] ?? null
         );
 
-        // Apply UOM multiplier if specified
+        // Apply UOM pricing if specified. Use the canonical ProductUom::
+        // calculatePrice() (basePrice × conversion_factor × price_multiplier)
+        // — the previous `$unitPrice * price_multiplier` ignored the
+        // conversion factor entirely (issue #135).
         if (! empty($validated['uom_id'])) {
             $uom = $product->uoms()->find($validated['uom_id']);
             if ($uom) {
-                $unitPrice = $unitPrice * $uom->price_multiplier;
+                $unitPrice = $uom->calculatePrice($unitPrice);
             }
         }
 
@@ -913,18 +916,40 @@ class ProductController extends Controller
             }
 
             // Validate numeric columns — flag rows with non-numeric values
-            // (e.g. "abc") instead of silently coercing them to 0.
-            $numericColumns = ['cost', 'price', 'stock_quantity', 'shelf_life_days'];
+            // (e.g. "abc") instead of silently coercing them to 0. Negative
+            // values are also rejected explicitly (issue #136): these columns
+            // are non-negative by definition and a negative was previously
+            // accepted as valid then silently sign-stripped to positive.
+            // Issue #248: vendor_price belongs to the same min:0 set as the
+            // direct API validation and was missed by the #136 guard.
+            $numericColumns = ['cost', 'price', 'vendor_price', 'stock_quantity', 'shelf_life_days'];
             $invalidColumns = [];
+            $negativeColumns = [];
             foreach ($numericColumns as $column) {
-                if (array_key_exists($column, $row) && $this->isNonNumericImportValue($row[$column])) {
+                if (! array_key_exists($column, $row)) {
+                    continue;
+                }
+                if ($this->isNonNumericImportValue($row[$column])) {
                     $invalidColumns[] = $column;
+
+                    continue;
+                }
+                if ($this->parseNumericValue($row[$column]) < 0) {
+                    $negativeColumns[] = $column;
                 }
             }
             if (! empty($invalidColumns)) {
                 $errors[] = [
                     'row' => $index + 2,
                     'message' => 'Invalid numeric value(s) for: '.implode(', ', $invalidColumns),
+                ];
+
+                continue;
+            }
+            if (! empty($negativeColumns)) {
+                $errors[] = [
+                    'row' => $index + 2,
+                    'message' => 'Negative value(s) not allowed for: '.implode(', ', $negativeColumns),
                 ];
 
                 continue;
@@ -1112,16 +1137,19 @@ class ProductController extends Controller
     }
 
     /**
-     * Parse a numeric value from CSV, stripping currency symbols and non-numeric chars.
+     * Parse a numeric value from CSV, stripping currency symbols and
+     * non-numeric chars while preserving a leading sign (issue #136: the old
+     * regex dropped '-' and silently flipped negative values positive even
+     * though isNonNumericImportValue() accepted them).
      */
     private function parseNumericValue($value): float
     {
         if ($value === null || trim((string) $value) === '') {
             return 0;
         }
-        $cleaned = preg_replace('/[^0-9.]/', '', trim((string) $value));
+        $cleaned = preg_replace('/[^0-9.\-]/', '', trim((string) $value));
 
-        return $cleaned !== '' ? (float) $cleaned : 0;
+        return $cleaned !== '' && $cleaned !== '-' ? (float) $cleaned : 0;
     }
 
     /**
@@ -1206,12 +1234,34 @@ class ProductController extends Controller
             'ids.*' => 'integer|exists:products,id',
         ]);
 
-        $ids = $request->input('ids');
-        $deleted = Product::whereIn('id', $ids)->delete();
+        $ids = array_map('intval', $request->input('ids'));
+
+        // Issue #226: the sibling delete-all endpoint refuses to delete products
+        // referenced by live transactions — this endpoint must apply the SAME
+        // shared guard, or a Manager/Sales user can soft-delete an
+        // invoice-referenced product that delete-all would have protected.
+        $deleted = 0;
+        $skipped = [];
+
+        DB::transaction(function () use ($ids, &$deleted, &$skipped) {
+            $deletable = $this->unreferencedProductsQuery()
+                ->whereIn('id', $ids)
+                ->lockForUpdate()
+                ->get();
+
+            $deletableIds = $deletable->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $skipped = array_values(array_diff($ids, $deletableIds));
+
+            // Eloquent per-row delete keeps the ProductAuditLog 'deleted' hook.
+            $deletable->each->delete();
+            $deleted = count($deletableIds);
+        });
 
         return response()->json([
-            'message' => "{$deleted} product(s) deleted successfully",
+            'message' => "{$deleted} product(s) deleted successfully"
+                .($skipped !== [] ? '; '.count($skipped).' product(s) skipped (referenced by financial records)' : ''),
             'deleted' => $deleted,
+            'skipped_referenced' => $skipped,
         ]);
     }
 
@@ -1250,9 +1300,10 @@ class ProductController extends Controller
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
-        $tenantId = (function_exists('tenant') && tenant())
-            ? (string) tenant('id')
-            : (string) $request->header('X-Tenant-ID', '');
+        // Issue #227: use the SAME tenant resolution as RequirePermission
+        // (shared helper) rather than a drifting inline copy that omits the
+        // X-Tenant-ID fallback.
+        $tenantId = \App\Http\Middleware\RequirePermission::resolveTenantId($request) ?? '';
         $centralUserId = (int) (DB::table('public.users')->where('email', $user->email)->value('id') ?? $user->id);
 
         $isSuperAdmin = (bool) ($user->is_super_admin ?? false) || ($user->role === 'platform_super_admin');
@@ -1266,29 +1317,24 @@ class ProductController extends Controller
             ], 403);
         }
 
-        // Products referenced by immutable financial/transactional records must
-        // NOT be deleted (and we must never delete those records to make room).
-        $referencedProductIds = $this->productIdsReferencedByTransactions();
-
-        $query = Product::query();
-        if (! empty($referencedProductIds)) {
-            $query->whereNotIn('id', $referencedProductIds);
-        }
-
-        $deletable = (clone $query)->get();
-        $count = $deletable->count();
-        $skipped = count($referencedProductIds);
-
         // Audit BEFORE the destructive step so the record survives the purge.
         \Illuminate\Support\Facades\Log::warning('Product catalogue bulk purge requested', [
             'actor_user_id' => $user->id,
             'tenant_id' => function_exists('tenant') ? (tenant('id') ?? null) : null,
-            'deletable_count' => $count,
-            'skipped_referenced_count' => $skipped,
         ]);
 
         DB::beginTransaction();
         try {
+            // Issue #225: the referenced-product guard is evaluated INSIDE the
+            // transaction (WHERE NOT EXISTS at statement time) and the rows are
+            // locked, so a product referenced after any earlier check is not
+            // deleted; the reported count is the actual rows deleted.
+            $deletable = $this->unreferencedProductsQuery()
+                ->lockForUpdate()
+                ->get();
+
+            $count = $deletable->count();
+            $skipped = Product::query()->count() - $count;
             // SOFT-delete, not forceDelete (issue #127 findings #3 and #4):
             //  - product_audit_logs.product_id has ON DELETE CASCADE, so a hard
             //    delete would destroy the very audit trail this action should
@@ -1301,7 +1347,7 @@ class ProductController extends Controller
             //    the product row still exists, so the FKs stay valid and a
             //    restore brings back the full configuration. We never touch
             //    transactional/financial tables or the audit log.
-            $query->get()->each->delete();
+            $deletable->each->delete();
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -1320,31 +1366,27 @@ class ProductController extends Controller
     }
 
     /**
-     * Product IDs still referenced by immutable financial/transactional records.
-     * These must never be hard-deleted (and their referencing rows must never be
-     * wiped to make room). Issue #127.
-     *
-     * @return int[]
+     * Products NOT referenced by transactional/financial lines (issues #127,
+     * #225, #226). WHERE NOT EXISTS is evaluated by the database when the
+     * statement runs (inside the caller's transaction), so the guard cannot go
+     * stale between a check and the delete.
      */
-    private function productIdsReferencedByTransactions(): array
+    private function unreferencedProductsQuery(): \Illuminate\Database\Eloquent\Builder
     {
-        $ids = [];
-        $transactionTables = [
-            'invoice_lines' => 'product_id',
-            'purchase_order_items' => 'product_id',
-            'pos_order_items' => 'product_id',
-        ];
-        foreach ($transactionTables as $table => $column) {
+        $query = Product::query();
+
+        foreach (['invoice_lines', 'purchase_order_items', 'pos_order_items'] as $table) {
             if (\Illuminate\Support\Facades\Schema::hasTable($table)
-                && \Illuminate\Support\Facades\Schema::hasColumn($table, $column)) {
-                $ids = array_merge(
-                    $ids,
-                    DB::table($table)->whereNotNull($column)->distinct()->pluck($column)->all()
-                );
+                && \Illuminate\Support\Facades\Schema::hasColumn($table, 'product_id')) {
+                $query->whereNotExists(function ($sub) use ($table) {
+                    $sub->select(DB::raw(1))
+                        ->from($table)
+                        ->whereColumn("{$table}.product_id", 'products.id');
+                });
             }
         }
 
-        return array_values(array_unique(array_map('intval', $ids)));
+        return $query;
     }
 
     /**

@@ -61,6 +61,15 @@ Route::middleware([
     // Guest order lookup by token
     Route::get('/web-shop/orders/guest/{token}', [\Modules\Ecommerce\Http\Controllers\WebOrderController::class, 'showGuest']);
 
+    // Invoice public acceptance links (signed, expiring — no auth required)
+    Route::get('/invoice-accept/{token}', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'show']);
+    Route::post('/invoice-accept/{token}/accept', [\App\Http\Controllers\Api\InvoiceAcceptanceController::class, 'accept']);
+
+    // Issue #149: online quotation acceptance / eSignature portal.
+    Route::get('/quotation-accept/{token}', [\App\Http\Controllers\Api\SalesOrderAcceptanceController::class, 'show']);
+    Route::post('/quotation-accept/{token}/accept', [\App\Http\Controllers\Api\SalesOrderAcceptanceController::class, 'accept'])
+        ->middleware('throttle:5,1');
+
     // Web shop auth (public - no login required)
     // Pillar 2 Part 2 §2.3: dedicated brute-force throttle (5/min per IP).
     Route::post('/web-shop/auth/register', [\Modules\Ecommerce\Http\Controllers\WebAuthController::class, 'register'])->middleware('throttle:5,1');
@@ -114,10 +123,14 @@ Route::middleware([
     // Chatter (Odoo-style activity log + messages + activities + attachments)
     Route::prefix('chatter')->group(function () {
         Route::get('/{subjectType}/{subjectId}', [\App\Http\Controllers\Api\ChatterController::class, 'show']);
+        // Issue #87: polling endpoint for the real-time chatter UX. Frontend
+        // hits this every ~10s while the chatter tab is open.
+        Route::get('/{subjectType}/{subjectId}/since', [\App\Http\Controllers\Api\ChatterController::class, 'since']);
         Route::post('/{subjectType}/{subjectId}/messages', [\App\Http\Controllers\Api\ChatterController::class, 'addMessage']);
         Route::post('/{subjectType}/{subjectId}/activities', [\App\Http\Controllers\Api\ChatterController::class, 'addActivity']);
         Route::post('/{subjectType}/{subjectId}/activities/{activityId}/done', [\App\Http\Controllers\Api\ChatterController::class, 'markActivityDone']);
         Route::post('/{subjectType}/{subjectId}/attachments', [\App\Http\Controllers\Api\ChatterController::class, 'uploadAttachment']);
+        Route::get('/{subjectType}/{subjectId}/attachments/{attachmentId}/download', [\App\Http\Controllers\Api\ChatterController::class, 'downloadAttachment']);
         Route::delete('/{subjectType}/{subjectId}/attachments/{attachmentId}', [\App\Http\Controllers\Api\ChatterController::class, 'deleteAttachment']);
     });
 
@@ -173,10 +186,13 @@ Route::middleware([
 
     // ─── XBRL / Compliance Reports (optional, gated by feature flag) ──────────
     if (config('compliance.enabled', false)) {
-        Route::prefix('accounting/compliance')->group(function () {
-            Route::get('/reports/{country_code}/{report_type}', [\App\Http\Controllers\Accounting\ComplianceController::class, 'exportReport']);
-            Route::get('/reports/{country_code}/{report_type}/download', [\App\Http\Controllers\Accounting\ComplianceController::class, 'downloadReport']);
-        });
+        // Issue #100: reporting reads require accounting.view (previously ungated).
+        Route::prefix('accounting/compliance')
+            ->middleware(\App\Http\Middleware\RequirePermission::class.':accounting.view')
+            ->group(function () {
+                Route::get('/reports/{country_code}/{report_type}', [\App\Http\Controllers\Accounting\ComplianceController::class, 'exportReport']);
+                Route::get('/reports/{country_code}/{report_type}/download', [\App\Http\Controllers\Accounting\ComplianceController::class, 'downloadReport']);
+            });
     }
 
     $modules = app(\App\Modules\ModuleManager::class);
@@ -238,6 +254,16 @@ Route::middleware([
         Route::get('/{id}', [\App\Http\Controllers\ApprovalController::class, 'show']);
         Route::post('/{id}/approve', [\App\Http\Controllers\ApprovalController::class, 'approve']);
         Route::post('/{id}/reject', [\App\Http\Controllers\ApprovalController::class, 'reject']);
+    });
+
+    // Tenant-scoped user notifications (in-app inbox + actions).
+    // Requires auth:sanctum (inherited from outer middleware group).
+    Route::prefix('notifications')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\NotificationController::class, 'index']);
+        Route::get('/unread-count', [\App\Http\Controllers\Api\NotificationController::class, 'unreadCount']);
+        Route::post('/mark-all-read', [\App\Http\Controllers\Api\NotificationController::class, 'markAllRead']);
+        Route::post('/{id}/read', [\App\Http\Controllers\Api\NotificationController::class, 'markRead']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\NotificationController::class, 'destroy']);
     });
 
     // ─── ADR-005 Reversals (§15.3) ──────────────────────────────────────────

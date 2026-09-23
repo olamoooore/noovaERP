@@ -24,6 +24,15 @@ class SetTenantFromUserPreference
 
     public function handle(Request $request, Closure $next)
     {
+        // Issue #218: an active impersonation context already initialized the
+        // impersonation TARGET's tenant in ImpersonationMiddleware. Re-resolving
+        // here would override it with the swapped user's default company (the
+        // wrong tenant), and Issue #219's suspension gate would block the
+        // legitimate verified-super-admin support access to a suspended tenant.
+        if ($request->attributes->get('_impersonation')) {
+            return $next($request);
+        }
+
         $user = $request->user();
 
         if (! $user) {
