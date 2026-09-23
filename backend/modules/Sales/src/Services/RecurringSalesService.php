@@ -101,12 +101,33 @@ class RecurringSalesService
                 'order_date' => $asOf->toDateString(),
                 'currency' => $source->currency,
                 'notes' => "Recurring order (cycle ".($recurrence->cycles_generated + 1).") from {$source->sales_order_number}",
+                // Issue #151 (hostile re-review): the generated order must
+                // reproduce the source lines exactly — pricing and tax fields
+                // (discount_type, discount_value, tax_rate, tax_inclusive,
+                // variant_id, line_type, model_number, sku, product_notes,
+                // list_price, income_account_id, invoicing_policy) were being
+                // dropped, so every cycle was repriced without its discount or
+                // tax.
                 'lines' => $source->lines->map(fn ($line) => [
+                    'line_type' => $line->line_type,
+                    'sequence' => $line->sequence,
                     'product_id' => $line->product_id,
+                    'model_number' => $line->model_number,
+                    'variant_id' => $line->variant_id,
                     'description' => $line->description,
+                    'product_notes' => $line->product_notes,
+                    'sku' => $line->sku,
                     'quantity' => (float) $line->quantity,
-                    'unit_price' => (float) $line->unit_price,
                     'unit' => $line->unit,
+                    'unit_price' => (float) $line->unit_price,
+                    'list_price' => $line->list_price,
+                    'discount_type' => $line->discount_type,
+                    'discount_value' => $line->discount_value,
+                    'discount_amount' => $line->discount_amount,
+                    'tax_rate' => $line->tax_rate,
+                    'tax_inclusive' => (bool) $line->tax_inclusive,
+                    'income_account_id' => $line->income_account_id,
+                    'invoicing_policy' => $line->invoicing_policy,
                 ])->values()->all(),
             ]);
 

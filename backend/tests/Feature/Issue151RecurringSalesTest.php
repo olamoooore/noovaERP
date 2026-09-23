@@ -167,4 +167,111 @@ class Issue151RecurringSalesTest extends TenantTestCase
         $this->assertSame(0, SalesOrderRecurrence::findOrFail($recurrenceId)->cycles_generated);
         $this->assertSame(1, SalesOrder::count());
     }
+
+    /**
+     * Issue #151 (hostile re-review): the generated order dropped pricing and
+     * tax fields — every cycle was repriced without its discount or tax.
+     */
+    public function test_generated_order_preserves_pricing_and_tax_fields(): void
+    {
+        $source = SalesOrder::create([
+            'sales_order_number' => 'SO-151-'.Str::upper(Str::random(6)),
+            'customer_id' => $this->customer->id,
+            'status' => 'invoiced',
+            'order_date' => now()->subMonth()->toDateString(),
+            'currency' => 'USD',
+            'subtotal' => 180,
+            'tax_amount' => 18,
+            'discount_amount' => 20,
+            'total' => 198,
+            'created_by' => $this->user->id,
+        ]);
+
+        $sourceLine = SalesOrderLine::create([
+            'sales_order_id' => $source->id,
+            'line_type' => 'product',
+            'sequence' => 3,
+            'product_id' => $this->product->id,
+            'model_number' => 'MOD-151',
+            'description' => 'Monthly retainer with discount',
+            'product_notes' => 'Handle with care',
+            'sku' => 'SKU-151',
+            'quantity' => 2,
+            'unit' => 'box',
+            'unit_price' => 100,
+            'list_price' => 110,
+            'discount_type' => 'fixed',
+            // discount_amount is derived from discount_value when value > 0
+            // (calculateLineTotal), so the fixture must be internally
+            // consistent for a preservation assertion to be meaningful.
+            'discount_value' => 20,
+            'discount_amount' => 20,
+            'tax_rate' => 9,
+            'tax_inclusive' => false,
+            'invoicing_policy' => 'ordered_qty',
+            'line_total' => 196.2,
+        ]);
+
+        $this->actingAs($this->user)->postJson('/api/v1/sales/orders/'.$source->id.'/recurrence', [
+            'interval' => 'monthly',
+            'start_date' => now()->toDateString(),
+        ])->assertStatus(201);
+
+        app(RecurringSalesService::class)->generateDue(now());
+
+        $recurrence = SalesOrderRecurrence::firstOrFail();
+        $generated = SalesOrder::findOrFail($recurrence->generated_order_ids[0]);
+        $line = $generated->lines()->firstOrFail();
+
+        $this->assertSame('product', $line->line_type);
+        $this->assertSame(3, (int) $line->sequence);
+        $this->assertSame('MOD-151', $line->model_number);
+        $this->assertSame('SKU-151', $line->sku);
+        $this->assertSame('Handle with care', $line->product_notes);
+        $this->assertSame('box', $line->unit);
+        $this->assertSame(110.0, round((float) $line->list_price, 2), 'list_price must be preserved.');
+        $this->assertSame('fixed', $line->discount_type, 'discount_type must be preserved.');
+        $this->assertSame(20.0, round((float) $line->discount_value, 2), 'discount_value must be preserved.');
+        $this->assertSame(20.0, round((float) $line->discount_amount, 2), 'discount_amount must be preserved.');
+        $this->assertSame(9.0, round((float) $line->tax_rate, 2), 'tax_rate must be preserved.');
+        $this->assertSame('ordered_qty', $line->invoicing_policy);
+
+        // 2 x 100 - 20 discount = 180 net, + 9% tax = 196.20.
+        $this->assertSame(196.2, round((float) $line->line_total, 2), 'Discounted + taxed line total must survive generation.');
+    }
+
+    /**
+     * Issue #151 (hostile re-review): addMonth() overflows month ends —
+     * 31 Jan drifted to 3 Mar and kept drifting.
+     */
+    public function test_month_end_recurrence_does_not_overflow(): void
+    {
+        $source = $this->sourceOrder();
+
+        $recurrence = SalesOrderRecurrence::create([
+            'sales_order_id' => $source->id,
+            'customer_id' => $this->customer->id,
+            'interval' => 'monthly',
+            'start_date' => '2026-01-31',
+            'next_run_date' => '2026-01-31',
+            'status' => 'active',
+            'cycles_generated' => 0,
+            'created_by' => $this->user->id,
+        ]);
+
+        $this->assertSame('2026-02-28', $recurrence->advanceNextRunDate()->toDateString(),
+            '31 Jan + 1 month must clamp to 28 Feb, not overflow to 3 Mar.');
+
+        $recurrence->update(['next_run_date' => '2026-02-28']);
+        $this->assertSame('2026-03-28', $recurrence->fresh()->advanceNextRunDate()->toDateString(),
+            'The clamped date must not drift on the next cycle.');
+
+        $recurrence->update(['next_run_date' => '2026-01-31', 'interval' => 'quarterly']);
+        $this->assertSame('2026-04-30', $recurrence->fresh()->advanceNextRunDate()->toDateString(),
+            '31 Jan + 1 quarter must clamp to 30 Apr.');
+
+        $recurrence->update(['next_run_date' => '2024-02-29', 'interval' => 'annual']);
+        $this->assertSame('2025-02-28', $recurrence->fresh()->advanceNextRunDate()->toDateString(),
+            '29 Feb + 1 year must clamp to 28 Feb, not overflow to 1 Mar.');
+    }
 }

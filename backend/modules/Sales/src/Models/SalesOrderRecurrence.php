@@ -58,11 +58,15 @@ class SalesOrderRecurrence extends Model
     {
         $next = Carbon::parse($this->next_run_date);
 
+        // Issue #151 (hostile re-review): plain addMonth()/addYear() overflow —
+        // a 31 Jan start drifts to 3 Mar, then 3 Apr, and so on. The
+        // NoOverflow variants clamp to the last valid day of the target month
+        // (31 Jan → 28/29 Feb → 28/29 Mar) so billing dates stay anchored.
         return match ($this->interval) {
-            'monthly' => $next->addMonth(),
-            'quarterly' => $next->addMonths(3),
-            'annual' => $next->addYear(),
-            default => $next->addMonth(),
+            'monthly' => $next->addMonthsNoOverflow(1),
+            'quarterly' => $next->addMonthsNoOverflow(3),
+            'annual' => $next->addYearsNoOverflow(1),
+            default => $next->addMonthsNoOverflow(1),
         };
     }
 }

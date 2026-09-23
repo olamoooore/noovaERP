@@ -167,8 +167,12 @@ class SalesOrderService
                     'discount_value' => $lineData['discount_value'] ?? 0,
                     'discount_amount' => $lineData['discount_amount'] ?? 0,
                     'tax_rate' => $lineData['tax_rate'] ?? 0,
+                    'tax_inclusive' => (bool) ($lineData['tax_inclusive'] ?? false),
                     'tax_amount' => $lineData['tax_amount'] ?? 0,
                     'income_account_id' => $lineData['income_account_id'] ?? null,
+                    // Issue #151: preserve the line's invoicing policy through
+                    // any caller that reproduces lines (recurring orders).
+                    'invoicing_policy' => $lineData['invoicing_policy'] ?? 'ordered_qty',
                     'source_line_type' => $lineData['source_line_type'] ?? null,
                     'source_line_id' => $lineData['source_line_id'] ?? null,
                 ]);
