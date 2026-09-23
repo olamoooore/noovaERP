@@ -107,7 +107,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
     Route::post('/contacts/{contactId}/profiles/crm', [$controller, 'upsertCrm'])
         ->middleware(RequirePermission::using('contacts.profiles.manage'));
     Route::post('/contacts/{contactId}/profiles/hr', [$controller, 'upsertHr'])
-        ->middleware(RequirePermission::using('contacts.profiles.manage'));
+        ->middleware(RequirePermission::using('contacts.profiles.hr'));
     Route::post('/contacts/{contactId}/profiles/pos', [$controller, 'upsertPosLoyalty'])
         ->middleware(RequirePermission::using('contacts.profiles.manage'));
     Route::post('/contacts/{contactId}/profiles/property', [$controller, 'upsertProperty'])

@@ -111,6 +111,9 @@ class RolePermissionSeeder extends Seeder
         'contacts.methods.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'contacts.relationships.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES],
         'contacts.profiles.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::ACCOUNTANT, UserRole::SALES],
+        // Hostile re-review (#116): HR profile data (salary, bank details) is
+        // sensitive — Sales/Viewer must neither write nor read it.
+        'contacts.profiles.hr' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
         'contacts.delete' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
         'contacts.merge' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],
         'contacts.visibility.manage' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],

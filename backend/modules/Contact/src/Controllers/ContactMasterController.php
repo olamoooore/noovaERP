@@ -545,15 +545,46 @@ class ContactMasterController extends Controller
             return $this->notFound('Contact not found.');
         }
 
+        // Hostile re-review (#116): HR compensation is sensitive — only users
+        // holding contacts.profiles.hr may see salary/bank details.
+        $hrProfile = $contact->hrProfile;
+        $canViewHrCompensation = $this->canViewHrCompensation($request);
+
+        if ($hrProfile && ! $canViewHrCompensation) {
+            $hrProfile = clone $hrProfile;
+            $hrProfile->salary = null;
+            $hrProfile->bank_details = null;
+        }
+
         return $this->success([
             'accounting_customer' => $contact->accountingCustomerProfile,
             'accounting_vendor' => $contact->accountingVendorProfile,
             'crm' => $contact->crmProfile,
-            'hr' => $contact->hrProfile,
+            'hr' => $hrProfile,
             'pos_loyalty' => $contact->posLoyaltyProfile,
             'property' => $contact->propertyProfile,
             'project' => $contact->projectProfile,
         ], 'Contact profiles.');
+    }
+
+    /**
+     * Hostile re-review (#116): does the caller hold the sensitive HR-profile
+     * permission (resolved through the canonical tenant role service)?
+     */
+    private function canViewHrCompensation(Request $request): bool
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return false;
+        }
+
+        if (($user->is_super_admin ?? false) || $user->role === 'platform_super_admin') {
+            return true;
+        }
+
+        return app(\App\Services\TenantRoleService::class)
+            ->hasPermission((int) $user->id, (string) tenant()->id, 'contacts.profiles.hr');
     }
 
     public function upsertAccountingCustomer(Request $request, string $contactId): JsonResponse
