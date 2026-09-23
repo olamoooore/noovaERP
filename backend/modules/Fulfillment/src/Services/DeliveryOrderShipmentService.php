@@ -32,6 +32,25 @@ class DeliveryOrderShipmentService
      */
     public function createForDeliveryOrder(DeliveryOrder $order, ?FulfillmentProvider $provider = null): Shipment
     {
+        // Hostile re-review (#147): a cancelled/completed delivery order must
+        // never spawn a shipment.
+        if (in_array((string) $order->status, ['cancelled', 'done', 'completed'], true)) {
+            throw new \RuntimeException("A shipment cannot be created for a {$order->status} delivery order.");
+        }
+
+        // Idempotent per delivery order: reuse the live shipment if one exists
+        // instead of duplicating it on a retried request.
+        $existing = Shipment::query()
+            ->where('order_type', 'delivery_order')
+            ->where('order_id', (string) $order->id)
+            ->whereNotIn('status', [Shipment::STATUS_CANCELLED])
+            ->latest('id')
+            ->first();
+
+        if ($existing) {
+            return $existing;
+        }
+
         $provider ??= $this->fulfillmentService->getDefaultProvider((string) (tenant()->id ?? ''));
 
         if (! $provider) {

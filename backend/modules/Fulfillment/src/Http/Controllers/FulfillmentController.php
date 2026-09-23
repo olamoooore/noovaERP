@@ -43,11 +43,14 @@ class FulfillmentController extends Controller
             $shipment = app(\Modules\Fulfillment\Services\DeliveryOrderShipmentService::class)
                 ->createForDeliveryOrder($deliveryOrder, $provider);
 
+            // Idempotent: a retried request reuses the existing shipment.
+            $created = $shipment->wasRecentlyCreated;
+
             return response()->json([
-                'message' => 'Shipment created for delivery order',
+                'message' => $created ? 'Shipment created for delivery order' : 'Shipment already exists for delivery order',
                 'data' => $shipment->load('lines', 'provider'),
                 'delivery_order' => $deliveryOrder->fresh(),
-            ], 201);
+            ], $created ? 201 : 200);
         } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Failed to create shipment',
