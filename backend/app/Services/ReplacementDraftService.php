@@ -13,6 +13,7 @@ use App\Models\QuotationLine;
 use Modules\Sales\Models\DeliveryOrder;
 use Modules\Sales\Models\DeliveryOrderLine;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ReplacementDraftService
@@ -24,6 +25,14 @@ class ReplacementDraftService
     ) {}
 
     public function createInvoiceReplacementDraft(Invoice $original, CorrectionRequest $request): Invoice
+    {
+        // Hostile re-review (#178/#179): the void of the original and the
+        // creation of the replacement must be one atomic unit — a failure
+        // while cloning must not leave a cancelled original behind.
+        return DB::transaction(fn () => $this->doCreateInvoiceReplacementDraft($original, $request));
+    }
+
+    private function doCreateInvoiceReplacementDraft(Invoice $original, CorrectionRequest $request): Invoice
     {
         $correctionGroupId = $original->correction_group_id ?? Str::uuid()->toString();
 
@@ -98,12 +107,20 @@ class ReplacementDraftService
         return $replacement;
     }
 
+    public function createQuotationReplacementDraft(Quotation $original, CorrectionRequest $request): Quotation
+    {
+        // Hostile re-review (#178/#179): the void of the original and the
+        // creation of the replacement must be one atomic unit — a failure
+        // while cloning must not leave a cancelled original behind.
+        return DB::transaction(fn () => $this->doCreateQuotationReplacementDraft($original, $request));
+    }
+
     /**
      * Issue #178/#179: quotation rejection → auto-versioned replacement draft.
      * The original is voided (cancelled + superseded) and the replacement keeps
      * the same correction group with version_number+1, cloned header + lines.
      */
-    public function createQuotationReplacementDraft(Quotation $original, CorrectionRequest $request): Quotation
+    private function doCreateQuotationReplacementDraft(Quotation $original, CorrectionRequest $request): Quotation
     {
         $correctionGroupId = $original->correction_group_id ?? Str::uuid()->toString();
 
@@ -191,10 +208,34 @@ class ReplacementDraftService
         return $replacement;
     }
 
+    public function createBillReplacementDraft(Bill $original, CorrectionRequest $request): Bill
+    {
+        // Hostile re-review (#178/#179): the void of the original and the
+        // creation of the replacement must be one atomic unit — a failure
+        // while cloning must not leave a cancelled original behind.
+        return DB::transaction(fn () => $this->doCreateBillReplacementDraft($original, $request));
+    }
+
+    public function createJournalReplacementDraft(JournalEntry $original, CorrectionRequest $request): JournalEntry
+    {
+        // Hostile re-review (#178/#179): the void of the original and the
+        // creation of the replacement must be one atomic unit — a failure
+        // while cloning must not leave a cancelled original behind.
+        return DB::transaction(fn () => $this->doCreateJournalReplacementDraft($original, $request));
+    }
+
+    public function createDeliveryOrderReplacementDraft(DeliveryOrder $original, CorrectionRequest $request): DeliveryOrder
+    {
+        // Hostile re-review (#178/#179): the void of the original and the
+        // creation of the replacement must be one atomic unit — a failure
+        // while cloning must not leave a cancelled original behind.
+        return DB::transaction(fn () => $this->doCreateDeliveryOrderReplacementDraft($original, $request));
+    }
+
     /**
      * Issue #178/#179: delivery-order rejection → auto-versioned replacement.
      */
-    public function createDeliveryOrderReplacementDraft(DeliveryOrder $original, CorrectionRequest $request): DeliveryOrder
+    private function doCreateDeliveryOrderReplacementDraft(DeliveryOrder $original, CorrectionRequest $request): DeliveryOrder
     {
         $correctionGroupId = $original->correction_group_id ?? Str::uuid()->toString();
 
@@ -268,7 +309,7 @@ class ReplacementDraftService
         return $replacement;
     }
 
-    public function createBillReplacementDraft(Bill $original, CorrectionRequest $request): Bill
+    private function doCreateBillReplacementDraft(Bill $original, CorrectionRequest $request): Bill
     {
         $correctionGroupId = $original->correction_group_id ?? Str::uuid()->toString();
 
@@ -346,7 +387,7 @@ class ReplacementDraftService
         return $replacement;
     }
 
-    public function createJournalReplacementDraft(JournalEntry $original, CorrectionRequest $request): JournalEntry
+    private function doCreateJournalReplacementDraft(JournalEntry $original, CorrectionRequest $request): JournalEntry
     {
         $result = $this->postingEngine->createReplacementDraft($original, $request);
 
