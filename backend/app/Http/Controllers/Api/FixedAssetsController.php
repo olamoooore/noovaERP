@@ -422,9 +422,27 @@ class FixedAssetsController extends Controller
         }
 
         return DB::transaction(function () use ($asset, $validated, $carrying, $recoverable, $loss) {
+            // Hostile re-review (#94): the posting idempotency guard keys on
+            // (documentType, documentId). Using the asset id made every repeat
+            // impairment resolve to the FIRST journal entry, so the GL only
+            // ever carried one loss while the subledger accumulated each one.
+            // Create the record first and key the posting on it — one JE per
+            // impairment event.
+            $record = \App\Models\ImpairmentRecord::create([
+                'tenant_id' => tenant()->id,
+                'fixed_asset_id' => $asset->id,
+                'impairment_date' => $validated['impairment_date'],
+                'carrying_amount_before' => $carrying,
+                'recoverable_amount' => $recoverable,
+                'impairment_loss' => $loss,
+                'reason' => $validated['reason'] ?? null,
+                'journal_entry_id' => null,
+                'created_by' => \Modules\OCRBookkeeping\Helpers\TenantUserHelper::resolveTenantUserId(),
+            ]);
+
             $result = app(\App\Accounting\PostingEngine::class)->post(new \App\Accounting\DTOs\PostingRequest(
                 documentType: 'asset_impairment',
-                documentId: (int) $asset->id,
+                documentId: (int) $record->id,
                 postingDate: $validated['impairment_date'],
                 description: "Impairment - {$asset->name}",
                 lines: [
@@ -451,16 +469,8 @@ class FixedAssetsController extends Controller
                 throw new \RuntimeException('Impairment posting failed: '.($result->error ?? 'unknown error'));
             }
 
-            $record = \App\Models\ImpairmentRecord::create([
-                'tenant_id' => tenant()->id,
-                'fixed_asset_id' => $asset->id,
-                'impairment_date' => $validated['impairment_date'],
-                'carrying_amount_before' => $carrying,
-                'recoverable_amount' => $recoverable,
-                'impairment_loss' => $loss,
-                'reason' => $validated['reason'] ?? null,
+            $record->update([
                 'journal_entry_id' => $result->journalEntryId ?? ($result->journalEntry?->id ?? null),
-                'created_by' => \Modules\OCRBookkeeping\Helpers\TenantUserHelper::resolveTenantUserId(),
             ]);
 
             $asset->update([

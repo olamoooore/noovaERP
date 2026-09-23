@@ -159,8 +159,11 @@ class HR94FixedAssetImpairmentTest extends TenantTestCase
         $this->assertSame($loss, (float) $asset->accumulated_depreciation, 'Accumulated depreciation must absorb the loss');
 
         // The loss is in the ledger: Dr expense / Cr accumulated.
+        // Hostile re-review (#94): the posting is keyed on the impairment
+        // record (one JE per impairment event), not the asset.
+        $impairmentId = (int) $response->json('impairment.id');
         $link = \App\Models\JournalEntryLink::where('source_document_type', 'asset_impairment')
-            ->where('source_document_id', $asset->id)
+            ->where('source_document_id', $impairmentId)
             ->first();
         $this->assertNotNull($link, 'Impairment must post a journal entry');
 
