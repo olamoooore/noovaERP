@@ -40,4 +40,14 @@ interface PostingEngineInterface
      * Used for correction workflows that create replacement documents.
      */
     public function createReplacementDraft(\App\Models\JournalEntry $original, \App\Services\CorrectionRequest $request): \App\Accounting\DTOs\DraftJournalResult;
+
+    /**
+     * Issue #68 (HR68-02): ACC-002-owned retirement of a posting reference.
+     *
+     * Marks the original 'post' JournalEntryLink superseded (preserving it as
+     * history — never a physical delete) so a subsequent posting for the same
+     * source is no longer treated as a duplicate. Called by ACC-011 period
+     * reopen; the authoritative mutation is owned here, not by the caller.
+     */
+    public function retirePostingReference(int $originalJournalEntryId, ?int $reversalJournalEntryId, string $reason): void;
 }

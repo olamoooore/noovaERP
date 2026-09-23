@@ -55,6 +55,8 @@ class PostingEngine implements PostingEngineInterface
             $existingLink = JournalEntryLink::where('source_document_type', $request->documentType)
                 ->where('source_document_id', $request->documentId)
                 ->where('relation_type', 'post')
+                // Issue #68: a superseded reference is history, not a duplicate.
+                ->whereNull('superseded_at')
                 ->first();
 
             if ($existingLink) {
@@ -224,10 +226,12 @@ class PostingEngine implements PostingEngineInterface
         try {
             // ✅ ATOMIC
             return DB::transaction(function () use ($request, $resolvedLines, $totalDebit, $totalCredit) {
-                // Idempotency pre-check inside the transaction to avoid orphan postings
+                // Idempotency pre-check inside the transaction to avoid orphan postings.
+                // Issue #68: superseded references are history, not duplicates.
                 $existingLink = JournalEntryLink::where('source_document_type', $request->documentType)
                     ->where('source_document_id', $request->documentId)
                     ->where('relation_type', 'post')
+                    ->whereNull('superseded_at')
                     ->lockForUpdate()
                     ->first();
                 if ($existingLink) {
@@ -279,6 +283,7 @@ class PostingEngine implements PostingEngineInterface
                             $existingLink = JournalEntryLink::where('source_document_type', $request->documentType)
                                 ->where('source_document_id', $request->documentId)
                                 ->where('relation_type', 'post')
+                                ->whereNull('superseded_at')
                                 ->first();
                             if ($existingLink) {
                                 return PostingResult::success(JournalEntry::find($existingLink->journal_entry_id)->load('lines'), null);
@@ -525,6 +530,32 @@ class PostingEngine implements PostingEngineInterface
         }
 
         return PostingResult::failure($result->reason ?? 'Reversal failed');
+    }
+
+    /**
+     * Issue #68 (HR68-02): ACC-002-owned retirement of a source posting
+     * reference. The original link is marked superseded (never deleted) so the
+     * lineage original request -> original link -> original JE -> reversal ->
+     * reopen -> fresh posting stays reconstructable, while the idempotency
+     * guard no longer treats the retired reference as a duplicate.
+     */
+    public function retirePostingReference(int $originalJournalEntryId, ?int $reversalJournalEntryId, string $reason): void
+    {
+        $retired = JournalEntryLink::where('journal_entry_id', $originalJournalEntryId)
+            ->where('relation_type', 'post')
+            ->whereNull('superseded_at')
+            ->update([
+                'superseded_at' => now(),
+                'superseded_by_journal_entry_id' => $reversalJournalEntryId,
+            ]);
+
+        if ($retired > 0) {
+            Log::info('PostingEngine::retirePostingReference — source posting reference superseded', [
+                'original_journal_entry_id' => $originalJournalEntryId,
+                'superseded_by_journal_entry_id' => $reversalJournalEntryId,
+                'reason' => $reason,
+            ]);
+        }
     }
 
     /**

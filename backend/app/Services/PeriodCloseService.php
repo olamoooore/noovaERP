@@ -643,23 +643,18 @@ class PeriodCloseService
                 );
             }
 
-            // Reversal succeeded — now it is safe to retire the original
-            // posting reference (the link) so the engine's idempotency
-            // guard won't find a stale 'post' link on the next re-close.
-            DB::table('journal_entry_links')
-                ->where('source_document_type', 'period_close')
-                ->where('source_document_id', $period->id)
-                ->delete();
-
-            // The engine's fullReversal() creates the mirror reversal JE
-            // but does NOT mark the original as inactive. Flip the original
-            // to is_active_version=false and lifecycle_status='reversed'
-            // so it no longer resolves through the active-version guard.
-            DB::table('journal_entries')->where('id', $jeId)->update([
-                'is_active_version' => false,
-                'lifecycle_status' => 'reversed',
-                'reversed_at' => now(),
-            ]);
+            // Reversal succeeded. Issue #68 (HR68-02): ACC-011 must not
+            // directly mutate ACC-002-owned state. The reversal engine (ACC-002)
+            // has already retired the original journal entry's posting identity
+            // (is_active_version/lifecycle_status/reversed_at are set inside
+            // fullReversal), and the posting-reference retirement is delegated
+            // to the ACC-002-owned supersession API — the original link is
+            // preserved as history instead of being physically deleted.
+            $this->postingEngine->retirePostingReference(
+                (int) $jeId,
+                $result->journalEntry?->id,
+                "Period reopen for {$period->code}",
+            );
 
             $reversed++;
         }

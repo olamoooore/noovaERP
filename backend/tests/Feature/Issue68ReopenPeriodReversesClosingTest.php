@@ -109,12 +109,18 @@ class Issue68ReopenPeriodReversesClosingTest extends TenantTestCase
         $this->assertFalse((bool) $original->is_active_version, 'original closing JE is_active_version=false after reopen');
         $this->assertSame('reversed', $original->lifecycle_status, 'original closing JE marked as reversed');
 
-        // The period_close link is gone — idempotency guard won't reuse.
-        $linkExists = DB::table('journal_entry_links')
+        // Issue #68 (HR68-02): the posting reference is RETIRED, not deleted.
+        // The original period_close link survives as history, marked
+        // superseded by the reversal entry; the idempotency guard ignores
+        // superseded references so the next close generates a fresh JE.
+        $retiredLink = DB::table('journal_entry_links')
             ->where('source_document_type', 'period_close')
             ->where('source_document_id', $period->id)
-            ->exists();
-        $this->assertFalse($linkExists, 'period_close link deleted — next close will generate a fresh JE');
+            ->where('relation_type', 'post')
+            ->first();
+        $this->assertNotNull($retiredLink, 'the original posting reference must be preserved as history');
+        $this->assertNotNull($retiredLink->superseded_at, 'the original posting reference must be superseded');
+        $this->assertNotNull($retiredLink->superseded_by_journal_entry_id, 'supersession must point at the reversal entry');
 
         // The revenue/expense JEs are still active (reversal only affected
         // the period_close entry).
