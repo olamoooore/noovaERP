@@ -266,6 +266,17 @@ Route::middleware([
         Route::delete('/{id}', [\App\Http\Controllers\Api\NotificationController::class, 'destroy']);
     });
 
+    // Tags — free-form labels on invoices, quotations, sales orders, delivery
+    // orders and customers. Powers the global search tag filter.
+    Route::get('/tags', [\App\Http\Controllers\Api\TagController::class, 'index']);
+    Route::post('/tags', [\App\Http\Controllers\Api\TagController::class, 'store']);
+    Route::get('/tags/{subjectType}/{subjectId}', [\App\Http\Controllers\Api\TagController::class, 'forSubject']);
+    Route::post('/tags/{subjectType}/{subjectId}', [\App\Http\Controllers\Api\TagController::class, 'attach']);
+    Route::delete('/tags/{subjectType}/{subjectId}/{tagId}', [\App\Http\Controllers\Api\TagController::class, 'detach']);
+
+    // Global search omnibox — documents, master data and tags.
+    Route::get('/search', [\App\Http\Controllers\Api\TagController::class, 'search']);
+
     // ─── ADR-005 Reversals (§15.3) ──────────────────────────────────────────
     // Issue #90 (BLOCKER, RBAC-1): reversal routes must require
     // accounting.reverse permission — same pattern as sibling corrections

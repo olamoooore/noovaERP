@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { Link, useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Icon } from '@iconify/react'
 import { Button } from '@/components/ui/button'
@@ -11,11 +11,14 @@ import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { SalesLineColumnVisibility } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { ChatterDock } from '@/components/chatter'
+import { TagEditor } from '@/components/tags/TagEditor'
+import { PageHeader } from '@/components/layout/PageHeader'
 import api from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getDocumentSectionTotal } from '@/components/sales/DocumentTextLineRow'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 
 interface Invoice {
   id: number
@@ -79,6 +82,13 @@ interface Invoice {
   requires_approval?: boolean
   approval_status?: 'not_required' | 'pending' | 'approved' | 'rejected' | 'expired' | 'withdrawn'
   approval_request_id?: number
+  latest_rejection?: {
+    id: number
+    request_number: string
+    reason: string | null
+    reviewed_by: string | null
+    reviewed_at: string | null
+  } | null
 }
 
 interface InvoiceLine {
@@ -146,6 +156,7 @@ export function InvoiceDetailPage() {
   const location = useLocation()
   const { toast } = useToast()
   const isAcmeTenant = useAuthStore((state) => state.tenantId) === '00000000-0000-0000-0000-000000000001'
+  const role = useAuthStore((state) => state.role)
   const queryClient = useQueryClient()
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
@@ -180,37 +191,43 @@ export function InvoiceDetailPage() {
     },
   })
 
-  const submitForApprovalMutation = useMutation({
+  const deleteMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.post(`/invoices/${id}/submit-approval`)
+      const response = await api.delete(`/invoices/${id}`)
       return response.data
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoice', id] })
-      toast({ title: 'Invoice submitted for approval' })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      toast({ title: 'Invoice deleted' })
+      setDeleteDialogOpen(false)
+      navigate('/invoices')
     },
     onError: (error: any) => {
       toast({
         variant: 'destructive',
-        title: 'Failed to submit for approval',
+        title: 'Could not delete invoice',
         description: error.response?.data?.message || 'An error occurred',
       })
     },
   })
 
-  const toggleRequiresApprovalMutation = useMutation({
-    mutationFn: async (value: boolean) => {
-      const response = await api.put(`/invoices/${id}`, { requires_approval: value })
+  const resetToDraftMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post(`/invoices/${id}/reset-to-draft`)
       return response.data
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] })
-      toast({ title: 'Invoice updated' })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      toast({
+        title: 'Invoice reset to draft',
+        description: 'The ledger entry was reversed and stock restored.',
+      })
     },
     onError: (error: any) => {
       toast({
         variant: 'destructive',
-        title: 'Failed to update invoice',
+        title: 'Could not reset to draft',
         description: error.response?.data?.message || 'An error occurred',
       })
     },
@@ -243,6 +260,8 @@ export function InvoiceDetailPage() {
   })
 
   const [sendDialogOpen, setSendDialogOpen] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [sendDialogUrl, setSendDialogUrl] = useState<string | null>(null)
 
   const getStatusBadge = (status: string, approvalStatus?: string) => {
@@ -328,125 +347,153 @@ export function InvoiceDetailPage() {
     <div className="container mx-auto py-6 space-y-6">
       {/* Header */}
       <div className="print:hidden">
-        <Button variant="ghost" size="sm" onClick={() => {
-           if (location.state?.from) {
-             navigate(location.state.from);
-           } else if (window.history.length > 1) {
-             navigate(-1);
-           } else {
-             navigate('/invoices');
-           }
-        }} className="mb-3">
-          <Icon icon="solar:arrow-left-bold-duotone" className="mr-2 h-4 w-4" />
-          Back
-        </Button>
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Invoice {invoice.invoice_number}</h1>
-            <p className="text-muted-foreground text-sm">
-              Created on {formatDate(invoice.created_at)}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            {invoice.status === 'draft' && !invoice.requires_approval && (
-              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={!!invoice.requires_approval}
-                  onChange={(e) => toggleRequiresApprovalMutation.mutate(e.target.checked)}
-                  disabled={toggleRequiresApprovalMutation.isPending || invoice.approval_status === 'pending'}
-                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                />
-                <span className="text-muted-foreground">Requires Approval</span>
-              </label>
-            )}
-            {invoice.status === 'draft' && invoice.requires_approval && invoice.approval_status !== 'pending' && (
-              <Button
-                variant="outline"
-                onClick={() => submitForApprovalMutation.mutate()}
-                disabled={submitForApprovalMutation.isPending}
-              >
-                {submitForApprovalMutation.isPending ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                ) : (
-                  <Icon icon="solar:plain-2-bold-duotone" className="mr-2 h-4 w-4" />
-                )}
-                Send for Approval
-              </Button>
-            )}
+        <PageHeader
+          title={`Invoice ${invoice.invoice_number}`}
+          description={`Created on ${formatDate(invoice.created_at)}`}
+          onBack={() => {
+            if (location.state?.from) {
+              navigate(location.state.from)
+            } else if (window.history.length > 1) {
+              navigate(-1)
+            } else {
+              navigate('/invoices')
+            }
+          }}
+          actions={<>
             {invoice.status === 'draft' && (
-              <Button
+              <HeaderActionButton
+                icon="solar:check-circle-bold-duotone"
+                loading={postMutation.isPending}
                 onClick={() => postMutation.mutate()}
                 disabled={postMutation.isPending}
               >
-                {postMutation.isPending ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                ) : (
-                  <Icon icon="solar:check-circle-bold" className="mr-2 h-4 w-4" />
-                )}
                 Post Invoice
-              </Button>
+              </HeaderActionButton>
             )}
             {['posted', 'sent', 'partial', 'overdue', 'paid'].includes(invoice.status) && (
-              <Button
+              <HeaderActionButton
                 variant="outline"
+                icon="solar:letter-bold-duotone"
+                loading={sendInvoiceMutation.isPending}
                 onClick={() => {
                   setSendDialogUrl(null)
                   setSendDialogOpen(true)
                 }}
                 disabled={sendInvoiceMutation.isPending}
               >
-                {sendInvoiceMutation.isPending ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                ) : (
-                  <Icon icon="solar:letter-bold-duotone" className="mr-2 h-4 w-4" />
-                )}
                 Send Invoice
-              </Button>
+              </HeaderActionButton>
             )}
-            <Button variant="outline" onClick={handlePrint}>
-              <Icon icon="material-symbols:print" className="mr-2 h-4 w-4" />
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:printer-bold-duotone"
+              onClick={handlePrint}
+            >
               Print
-            </Button>
-            <Button variant="outline" onClick={() => setTemplateDialogOpen(true)}>
-              <Icon icon="material-symbols:download" className="mr-2 h-4 w-4" />
+            </HeaderActionButton>
+            <HeaderActionButton
+              variant="outline"
+              icon="solar:download-minimalistic-bold-duotone"
+              onClick={() => setTemplateDialogOpen(true)}
+            >
               Download PDF
-            </Button>
+            </HeaderActionButton>
             {['posted', 'sent', 'partial', 'overdue'].includes(invoice.status) && invoice.balance > 0 && (
-              <Button onClick={() => navigate(`/invoices/${id}/payment`)}>
-                <Icon icon="material-symbols:payment" className="mr-2 h-4 w-4" />
+              <HeaderActionButton
+                icon="solar:card-bold-duotone"
+                onClick={() => navigate(`/invoices/${id}/payment`)}
+              >
                 Record Payment
-              </Button>
+              </HeaderActionButton>
             )}
-          </div>
-        </div>
+            {/* Drafts and cancellations can be deleted outright. */}
+            {['draft', 'cancelled'].includes(invoice.status) && (
+              <HeaderActionButton
+                variant="outline"
+                icon="solar:trash-bin-trash-bold-duotone"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                loading={deleteMutation.isPending}
+                onClick={() => setDeleteDialogOpen(true)}
+                disabled={deleteMutation.isPending}
+              >
+                Delete
+              </HeaderActionButton>
+            )}
+
+            {/* Reverses the GL entry + restores stock — Owner/Admin only,
+                mirroring the documents.reset_to_draft permission. */}
+            {(role === 'Owner' || role === 'Admin') &&
+              ['posted', 'sent', 'partial', 'overdue', 'cancelled'].includes(invoice.status) && (
+                <HeaderActionButton
+                  variant="outline"
+                  icon="solar:undo-left-round-bold-duotone"
+                  loading={resetToDraftMutation.isPending}
+                  className="border-amber-300 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-900 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                  onClick={() => setResetDialogOpen(true)}
+                  disabled={resetToDraftMutation.isPending}
+                >
+                  Reset to Draft
+                </HeaderActionButton>
+              )}
+          </>}
+        />
       </div>
 
-      {/* Smart Buttons */}
-      <div className="flex gap-3 print:hidden">
+      {/* Rejection notice — the invoice is back to draft after a manager rejection */}
+      {invoice.status === 'draft' && invoice.latest_rejection && (
+        <div className="print:hidden flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/40">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/50">
+            <Icon icon="solar:close-circle-bold-duotone" className="h-5 w-5 text-red-600 dark:text-red-400" />
+          </div>
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold text-red-900 dark:text-red-200">
+                Approval rejected — returned to draft
+              </span>
+              <Badge variant="outline" className="border-red-300 font-mono text-[10px] text-red-700 dark:border-red-800 dark:text-red-300">
+                {invoice.latest_rejection.request_number}
+              </Badge>
+            </div>
+            <p className="text-sm text-red-800 dark:text-red-300">
+              {invoice.latest_rejection.reviewed_by && (
+                <span className="font-medium">{invoice.latest_rejection.reviewed_by}: </span>
+              )}
+              {invoice.latest_rejection.reason || 'No reason provided.'}
+            </p>
+            <p className="text-xs text-red-700/80 dark:text-red-400/80">
+              Amend the invoice, then use <span className="font-medium">Send for Approval</span> to resubmit.
+            </p>
+          </div>
+          <Icon
+            icon="solar:pen-bold-duotone"
+            className="hidden sm:block h-5 w-5 shrink-0 text-red-500/70"
+          />
+        </div>
+      )}
+
+      {/* Linked documents */}
+      <div className="flex flex-wrap gap-2 print:hidden">
         {invoice.quotation && (
           <button
+            type="button"
             onClick={() => navigate(`/quotations/${invoice.quotation!.id}`)}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-input bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           >
-            <Icon icon="solar:document-text-bold-duotone" className="h-5 w-5 text-purple-600" />
-            <div className="text-left">
-              <div className="font-bold text-foreground">{invoice.quotation.quotation_number}</div>
-              <div className="text-xs text-muted-foreground">Quotation</div>
-            </div>
+            <Icon icon="solar:document-text-bold-duotone" className="h-3.5 w-3.5" />
+            {invoice.quotation.quotation_number}
+            <span className="text-muted-foreground/70">Quotation</span>
           </button>
         )}
         {invoice.delivery_orders && invoice.delivery_orders.length > 0 && invoice.delivery_orders.map((d) => (
           <button
+            type="button"
             key={d.id}
             onClick={() => navigate(`/delivery-orders/${d.id}`)}
-            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-sm transition hover:border-primary hover:bg-primary/5 dark:border-gray-700 dark:bg-gray-800"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-input bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           >
-            <Icon icon="solar:box-bold-duotone" className="h-5 w-5 text-orange-600" />
-            <div className="text-left">
-              <div className="font-bold text-foreground">{d.delivery_order_number}</div>
-              <div className="text-xs text-muted-foreground">Delivery Order</div>
-            </div>
+            <Icon icon="solar:box-bold-duotone" className="h-3.5 w-3.5" />
+            {d.delivery_order_number}
+            <span className="text-muted-foreground/70">Delivery Order</span>
           </button>
         ))}
       </div>
@@ -484,7 +531,14 @@ export function InvoiceDetailPage() {
                   {invoice.customer.code && (
                     <p className="text-sm font-mono text-muted-foreground">{invoice.customer.code}</p>
                   )}
-                  <p className="font-semibold text-lg">{invoice.customer.name}</p>
+                  <p className="text-lg font-semibold">
+                    <Link
+                      to={`/customers/${invoice.customer.id}`}
+                      className="text-primary underline-offset-2 hover:underline"
+                    >
+                      {invoice.customer.name}
+                    </Link>
+                  </p>
                   {invoice.customer.email && (
                     <p className="text-sm text-muted-foreground flex items-center gap-1">
                       <Icon icon="material-symbols:email" className="h-4 w-4" />
@@ -542,8 +596,31 @@ export function InvoiceDetailPage() {
                 {invoice.lines?.map((line, index) => (
                   <TableRow key={line.id}>
                     {line.line_type === 'note' || line.line_type === 'section' ? <TableCell colSpan={11} className={line.line_type === 'section' ? 'bg-muted/60 font-semibold' : 'bg-muted/30 italic text-muted-foreground'}><div className="flex items-center justify-between gap-4"><span>{line.description}</span>{line.line_type === 'section' && <span className="whitespace-nowrap tabular-nums">{formatCurrency(getDocumentSectionTotal(invoice.lines || [], index, (item: any) => Number(item.line_total || 0)))}</span>}</div></TableCell> : <>
-                    <TableCell className="font-medium">{line.product?.name || '-'}</TableCell>
-                    <TableCell className="text-muted-foreground">{line.product?.sku || '-'}</TableCell>
+                    <TableCell className="font-medium">
+                      {line.product ? (
+                        <Link
+                          to={`/products/${line.product.id}`}
+                          className="text-primary underline-offset-2 hover:underline"
+                          title={`Open ${line.product.name}`}
+                        >
+                          {line.product.name}
+                        </Link>
+                      ) : (
+                        line.description || '-'
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {line.product ? (
+                        <Link
+                          to={`/products/${line.product.id}`}
+                          className="font-mono text-xs underline-offset-2 hover:text-primary hover:underline"
+                        >
+                          {line.product.sku || '-'}
+                        </Link>
+                      ) : (
+                        '-'
+                      )}
+                    </TableCell>
                     <TableCell>{line.description || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.model_number || line.product?.manufacturer_part_number || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">{line.product_notes || '-'}</TableCell>
@@ -606,6 +683,112 @@ export function InvoiceDetailPage() {
             <DialogContent><DialogHeader><DialogTitle>Download Invoice PDF</DialogTitle><DialogDescription>Select the template to use.</DialogDescription></DialogHeader>
               <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId} disabled={templatesLoading}><SelectTrigger><SelectValue placeholder={templatesLoading ? 'Loading templates...' : 'Select a template'} /></SelectTrigger><SelectContent>{pdfTemplates.map((t: any) => <SelectItem key={t.id} value={String(t.id)}>{t.name}{t.is_system_default ? ' (Default)' : ''}</SelectItem>)}</SelectContent></Select>
               <DialogFooter><Button variant="outline" onClick={() => setTemplateDialogOpen(false)}>Cancel</Button><Button onClick={handleDownload} disabled={!selectedTemplateId || isDownloadingPdf || templatesLoading}>{isDownloadingPdf ? 'Downloading...' : 'Download'}</Button></DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-950/60">
+                    <Icon icon="solar:undo-left-round-bold-duotone" className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div className="space-y-1">
+                    <DialogTitle>Reset this invoice to draft?</DialogTitle>
+                    <DialogDescription>
+                      Invoice <span className="font-medium text-foreground">{invoice.invoice_number}</span> will
+                      become editable again and must be re-posted.
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
+                <div className="font-medium text-amber-900 dark:text-amber-200">
+                  This will:
+                </div>
+                <ul className="space-y-1 text-amber-800 dark:text-amber-300">
+                  <li className="flex items-start gap-2">
+                    <Icon icon="solar:check-circle-bold" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    Reverse its general-ledger entry (compensating journal)
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Icon icon="solar:check-circle-bold" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    Restore any stock moved by the linked delivery
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Icon icon="solar:close-circle-bold" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    Be blocked if payments or posted credit notes exist
+                  </li>
+                </ul>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setResetDialogOpen(false)}>
+                  Keep posted
+                </Button>
+                <Button
+                  className="bg-amber-600 hover:bg-amber-700"
+                  onClick={() => {
+                    setResetDialogOpen(false)
+                    resetToDraftMutation.mutate()
+                  }}
+                  disabled={resetToDraftMutation.isPending}
+                >
+                  <Icon icon="solar:undo-left-round-bold-duotone" className="mr-2 h-4 w-4" />
+                  Reset to Draft
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+                    <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-5 w-5 text-destructive" />
+                  </div>
+                  <div className="space-y-1">
+                    <DialogTitle>Delete this invoice?</DialogTitle>
+                    <DialogDescription>
+                      Invoice <span className="font-medium text-foreground">{invoice.invoice_number}</span> and
+                      all of its line items will be permanently removed. This cannot be undone.
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Customer</span>
+                  <span className="font-medium">{invoice.customer?.name ?? '—'}</span>
+                </div>
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-muted-foreground">Total</span>
+                  <span className="font-semibold tabular-nums">
+                    {formatCurrency(invoice.total)}
+                  </span>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+                  Keep invoice
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => deleteMutation.mutate()}
+                  disabled={deleteMutation.isPending}
+                >
+                  {deleteMutation.isPending ? (
+                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-current" />
+                  ) : (
+                    <Icon icon="solar:trash-bin-trash-bold-duotone" className="mr-2 h-4 w-4" />
+                  )}
+                  Delete invoice
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
 

@@ -214,10 +214,19 @@ class InvoiceController extends Controller
         try {
             $invoice = $this->createInvoiceFromData($validated);
 
+            // When the tenant requires approval, submitting for review is part
+            // of the create action — the operator should never have to trigger
+            // it with a second button. Failures here must not lose the invoice.
+            $approvalError = $this->autoSubmitForApproval($invoice, $request->user());
+
             return response()->json([
-                'message' => 'Invoice created successfully',
+                'message' => $approvalError
+                    ? "Invoice created. It could not be submitted for approval: {$approvalError}"
+                    : ($invoice->fresh()->approval_status === Invoice::APPROVAL_PENDING
+                        ? 'Invoice created and sent for approval'
+                        : 'Invoice created successfully'),
                 'id' => $invoice->id,
-                'data' => $invoice,
+                'data' => $invoice->fresh(['approvalRequest', 'customer']),
             ], 201);
 
         } catch (\Exception $e) {
@@ -225,6 +234,41 @@ class InvoiceController extends Controller
                 'message' => 'Failed to create invoice',
                 'error' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Submit a freshly created invoice for approval when the tenant (or the
+     * invoice itself) requires it. Returns an error string on failure, null on
+     * success or when no approval is needed.
+     */
+    private function autoSubmitForApproval(Invoice $invoice, ?User $actor): ?string
+    {
+        try {
+            $invoice->refresh();
+
+            if (! $invoice->requires_approval || $invoice->status !== 'draft') {
+                return null;
+            }
+
+            if ($invoice->approval_status === Invoice::APPROVAL_PENDING) {
+                return null;
+            }
+
+            if (! $actor) {
+                return 'no authenticated user available to submit the request';
+            }
+
+            $this->approvalService->submit($invoice, $actor, 'Automatically submitted on creation.');
+
+            return null;
+        } catch (\Throwable $e) {
+            \Log::warning('Auto-submit for approval failed after invoice creation', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $e->getMessage();
         }
     }
 
@@ -441,6 +485,25 @@ class InvoiceController extends Controller
         // Issue #153: surface the linked DO's signed proof-of-delivery so
         // client AP teams can verify receipt + signature alongside the invoice.
         $invoice->proof_of_delivery = $invoice->proofOfDelivery();
+
+        // When the most recent approval decision was a rejection, return the
+        // invoice to the UI with the reviewer's reason so it can prompt the
+        // submitter to amend and resubmit. A subsequent (re)submission creates
+        // a newer request and this naturally stops applying.
+        $latestApproval = \App\Models\ApprovalRequest::query()
+            ->where('subject_type', Invoice::class)
+            ->where('subject_id', $invoice->id)
+            ->orderByDesc('requested_at')
+            ->with('reviewedBy')
+            ->first();
+
+        $invoice->latest_rejection = ($latestApproval && $latestApproval->status === 'rejected') ? [
+            'id' => $latestApproval->id,
+            'request_number' => $latestApproval->request_number,
+            'reason' => $latestApproval->review_notes,
+            'reviewed_by' => $latestApproval->reviewedBy?->name,
+            'reviewed_at' => $latestApproval->reviewed_at?->toIso8601String(),
+        ] : null;
 
         return response()->json($invoice);
     }
@@ -968,20 +1031,29 @@ class InvoiceController extends Controller
                 'created_at' => $log->created_at?->toIso8601String(),
             ]);
 
-        $approvals = $invoice->approvalRequest ? [
-            [
-                'id' => $invoice->approvalRequest->id,
-                'request_number' => $invoice->approvalRequest->request_number,
-                'status' => $invoice->approvalRequest->status,
-                'amount' => $invoice->approvalRequest->amount,
-                'requested_by' => $invoice->approvalRequest->requested_by,
-                'requested_at' => $invoice->approvalRequest->requested_at?->toIso8601String(),
-                'reviewed_by' => $invoice->approvalRequest->reviewed_by,
-                'reviewed_at' => $invoice->approvalRequest->reviewed_at?->toIso8601String(),
-                'review_notes' => $invoice->approvalRequest->review_notes,
-                'expires_at' => $invoice->approvalRequest->expires_at?->toIso8601String(),
-            ],
-        ] : [];
+        // Full approval history for this invoice. Deliberately queried by
+        // subject rather than via approval_request_id: a rejection unlinks the
+        // invoice from its request, and the history must survive that.
+        $approvals = \App\Models\ApprovalRequest::query()
+            ->where('subject_type', Invoice::class)
+            ->where('subject_id', $invoice->id)
+            ->orderBy('requested_at', 'asc')
+            ->get()
+            ->map(fn ($request) => [
+                'id' => $request->id,
+                'request_number' => $request->request_number,
+                'status' => $request->status,
+                'amount' => $request->amount,
+                'reason' => $request->reason,
+                'requested_by' => $request->requested_by,
+                'requested_at' => $request->requested_at?->toIso8601String(),
+                'reviewed_by' => $request->reviewed_by,
+                'reviewed_at' => $request->reviewed_at?->toIso8601String(),
+                'review_notes' => $request->review_notes,
+                'expires_at' => $request->expires_at?->toIso8601String(),
+            ])
+            ->values()
+            ->all();
 
         $deliveries = $invoice->deliveries()
             ->orderBy('created_at', 'asc')
@@ -1193,8 +1265,14 @@ class InvoiceController extends Controller
             return response()->json(['message' => 'Invoice not found'], 404);
         }
 
-        if ($invoice->status !== 'cancelled') {
-            return response()->json(['message' => 'Only cancelled invoices can be reset to draft'], 403);
+        // Admin-only route (documents.reset_to_draft). Posting wrote a GL
+        // entry and (via the delivery order) moved stock — resetting reverses
+        // both so the ledger and the warehouse stay in step with the document.
+        $resettable = ['cancelled', 'posted', 'sent', 'partial', 'overdue'];
+        if (! in_array($invoice->status, $resettable, true)) {
+            return response()->json([
+                'message' => "Only posted or cancelled invoices can be reset to draft. Current: {$invoice->status}",
+            ], 403);
         }
 
         if ($invoice->payments()->active()->exists()) {
@@ -1223,6 +1301,7 @@ class InvoiceController extends Controller
                     'journal_entry_id' => null,
                     'lifecycle_status' => 'draft',
                     'sent_at' => null,
+                    'delivery_status' => Invoice::DELIVERY_NOT_SENT,
                 ]);
             });
 

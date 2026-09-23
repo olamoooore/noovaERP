@@ -3,13 +3,13 @@ import { PaymentGatewaySettings } from './Settings/PaymentGatewaySettings'
 import { FulfillmentSettings } from './Settings/FulfillmentSettings'
 import { MailSettings } from './Settings/MailSettings'
 import { WhatsAppSettings } from './Settings/WhatsAppSettings'
-import { InventorySettingsPage } from './Inventory/InventorySettingsPage'
 import { ModulesPage } from './Modules/ModulesPage'
 import TenantUsersPage from './TenantUsersPage'
 import { useAuthStore } from '@/store/authStore'
 
 // ... existing imports ...
 import { useEffect, useMemo, useState } from 'react'
+import { Icon } from '@iconify/react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
@@ -49,6 +49,10 @@ import {
 } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { useSettingsStore, type CurrencyDisplayFormat } from '@/store/settingsStore'
+import {
+  SettingsSectionHeader,
+  SettingsSectionNav,
+} from '@/components/settings/settings-ui'
 
 type TaxType = 'gst' | 'vat' | 'sales' | 'service' | 'withholding' | 'other'
 
@@ -96,6 +100,30 @@ const taxTypeOptions: Array<{ value: TaxType; label: string }> = [
   { value: 'other', label: 'Other' },
 ]
 
+const TAX_SECTIONS = [
+  {
+    key: 'currency',
+    title: 'Currency',
+    description: 'Default currency and display format',
+    icon: 'solar:dollar-minimalistic-bold-duotone',
+    component: () => null,
+  },
+  {
+    key: 'settings',
+    title: 'Tax Settings',
+    description: 'Enable tax and choose the default rate',
+    icon: 'solar:sale-bold-duotone',
+    component: () => null,
+  },
+  {
+    key: 'rates',
+    title: 'Tax Rates',
+    description: 'Manage every available tax rate',
+    icon: 'solar:list-check-bold-duotone',
+    component: () => null,
+  },
+]
+
 export function SettingsPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -135,11 +163,22 @@ export function SettingsPage() {
   const currencyDisplayFormat = useSettingsStore((s) => s.currencyDisplayFormat)
   const taxConfig = useSettingsStore((s) => s.tax)
   const updateSettings = useSettingsStore((s) => s.updateSettings)
+  const loadSettings = useSettingsStore((s) => s.loadSettings)
+  const settingsLoaded = useSettingsStore((s) => s.isLoaded)
 
+  const [taxSection, setTaxSection] = useState('currency')
   const [selectedCurrency, setSelectedCurrency] = useState(currencyCode)
   const [selectedCurrencyDisplay, setSelectedCurrencyDisplay] = useState<CurrencyDisplayFormat>(currencyDisplayFormat)
   const [taxEnabled, setTaxEnabled] = useState<boolean>(taxConfig.enabled)
   const [defaultTaxId, setDefaultTaxId] = useState<string>(taxConfig.default_tax_id ? String(taxConfig.default_tax_id) : 'none')
+
+  // Hydrate from the server once so every tab (currency, tax, mail) shows
+  // what is actually stored instead of the persisted localStorage snapshot.
+  useEffect(() => {
+    if (!settingsLoaded) {
+      loadSettings()
+    }
+  }, [settingsLoaded, loadSettings])
 
   useEffect(() => {
     setSelectedCurrency(currencyCode)
@@ -280,7 +319,6 @@ export function SettingsPage() {
           {!isAcmeTenant && <TabsTrigger value="fulfillment">Fulfillment</TabsTrigger>}
           <TabsTrigger value="mail">Email Configuration</TabsTrigger>
           {!isAcmeTenant && <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>}
-          {!isAcmeTenant && <TabsTrigger value="inventory">Inventory</TabsTrigger>}
           <TabsTrigger value="team">Team</TabsTrigger>
           <TabsTrigger value="modules">Modules</TabsTrigger>
         </TabsList>
@@ -305,10 +343,6 @@ export function SettingsPage() {
           <FulfillmentSettings />
         </TabsContent>
 
-        <TabsContent value="inventory">
-          <InventorySettingsPage />
-        </TabsContent>
-
         <TabsContent value="team">
           <TenantUsersPage />
         </TabsContent>
@@ -318,181 +352,230 @@ export function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="tax">
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Currency</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="text-sm text-muted-foreground">Default currency used across the company.</div>
-                  <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
-                    <SelectTrigger className="w-full max-w-md">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {currencyOptions.map((c) => (
-                        <SelectItem key={c.code} value={c.code}>
-                          {c.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+            <SettingsSectionNav
+              sections={TAX_SECTIONS}
+              activeKey={taxSection}
+              onSelect={setTaxSection}
+            />
 
-                <div className="space-y-2">
-                  <Label htmlFor="currency-display-format">Company-wide display format</Label>
-                  <Select
-                    value={selectedCurrencyDisplay}
-                    onValueChange={(value) => setSelectedCurrencyDisplay(value as CurrencyDisplayFormat)}
-                  >
-                    <SelectTrigger id="currency-display-format" className="w-full max-w-md">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="narrow_symbol">
-                        {currencyDisplayPreview(selectedCurrency, 'narrow_symbol')}
-                      </SelectItem>
-                      <SelectItem value="symbol">
-                        {currencyDisplayPreview(selectedCurrency, 'symbol')}
-                      </SelectItem>
-                      <SelectItem value="code">
-                        {currencyDisplayPreview(selectedCurrency, 'code')}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-sm text-muted-foreground">
-                    This format applies to every user in this company.
-                  </p>
-                </div>
-
-                <div>
-                  <Button onClick={() => saveGeneral.mutate()} disabled={saveGeneral.isPending}>
-                    Save Currency Preferences
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Tax Settings</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Tax Enabled Toggle */}
-                <div className="flex items-center justify-between rounded-lg border p-4">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="tax-enabled" className="text-base font-medium">Enable Tax</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Apply tax calculations to POS transactions and sales
-                    </p>
-                  </div>
-                  <Switch
-                    id="tax-enabled"
-                    checked={taxEnabled}
-                    onCheckedChange={setTaxEnabled}
+            <div className="min-w-0 flex-1">
+              {taxSection === 'currency' && (
+                <Card className="overflow-hidden">
+                  <SettingsSectionHeader
+                    icon="solar:dollar-minimalistic-bold-duotone"
+                    title="Currency"
+                    description="The default currency and how amounts are displayed across the company."
                   />
-                </div>
-
-                {/* Default Tax */}
-                <div className="space-y-2">
-                  <div>
-                    <Label className="text-base font-medium">Default Tax Rate</Label>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Applied to products without a specific tax rate
-                    </p>
-                  </div>
-                  <Select value={defaultTaxId} onValueChange={setDefaultTaxId} disabled={!taxEnabled}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select default tax" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No default tax</SelectItem>
-                      {taxes.map((t) => (
-                        <SelectItem key={t.id} value={String(t.id)}>
-                          {t.name} ({t.rate}%)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {selectedDefaultTax && (
-                    <div className="text-sm text-muted-foreground">
-                      ✓ Default: <span className="font-medium">{selectedDefaultTax.name}</span> ({selectedDefaultTax.type.toUpperCase()} {selectedDefaultTax.rate}%)
+                  <CardContent className="space-y-5 py-6">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Default currency</Label>
+                      <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
+                        <SelectTrigger className="w-full max-w-md">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {currencyOptions.map((c) => (
+                            <SelectItem key={c.code} value={c.code}>
+                              {c.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Used for new documents, reports and the general ledger.
+                      </p>
                     </div>
-                  )}
-                </div>
 
-                <div className="pt-2">
-                  <Button onClick={() => saveTaxSettings.mutate()} disabled={saveTaxSettings.isPending}>
-                    Save Tax Settings
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                    <div className="space-y-2">
+                      <Label htmlFor="currency-display-format" className="text-sm font-medium">
+                        Company-wide display format
+                      </Label>
+                      <Select
+                        value={selectedCurrencyDisplay}
+                        onValueChange={(value) => setSelectedCurrencyDisplay(value as CurrencyDisplayFormat)}
+                      >
+                        <SelectTrigger id="currency-display-format" className="w-full max-w-md">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="narrow_symbol">
+                            {currencyDisplayPreview(selectedCurrency, 'narrow_symbol')}
+                          </SelectItem>
+                          <SelectItem value="symbol">
+                            {currencyDisplayPreview(selectedCurrency, 'symbol')}
+                          </SelectItem>
+                          <SelectItem value="code">
+                            {currencyDisplayPreview(selectedCurrency, 'code')}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        This format applies to every user in this company.
+                      </p>
+                    </div>
+                  </CardContent>
+                  <div className="flex items-center justify-end border-t bg-muted/20 px-6 py-3">
+                    <Button onClick={() => saveGeneral.mutate()} disabled={saveGeneral.isPending} size="sm">
+                      {saveGeneral.isPending ? (
+                        <Icon icon="eos-icons:loading" className="mr-2 h-4 w-4" />
+                      ) : (
+                        <Icon icon="solar:diskette-bold-duotone" className="mr-2 h-4 w-4" />
+                      )}
+                      Save currency preferences
+                    </Button>
+                  </div>
+                </Card>
+              )}
 
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Taxes</CardTitle>
-                  <Button onClick={openCreateTax}>Add Tax</Button>
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Rate</TableHead>
-                      <TableHead>Mode</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {taxes.map((t) => (
-                      <TableRow key={t.id}>
-                        <TableCell className="font-medium">{t.name}</TableCell>
-                        <TableCell>{t.type.toUpperCase()}</TableCell>
-                        <TableCell>{t.rate}%</TableCell>
-                        <TableCell>
-                          <Badge variant={t.is_inclusive ? 'default' : 'outline'}>
-                            {t.is_inclusive ? 'Inclusive' : 'Exclusive'}
+              {taxSection === 'settings' && (
+                <Card className="overflow-hidden">
+                  <SettingsSectionHeader
+                    icon="solar:sale-bold-duotone"
+                    title="Tax Settings"
+                    description="Turn tax calculation on and pick the rate applied when a product has no specific tax."
+                  />
+                  <CardContent className="divide-y py-0">
+                    <div className="flex items-start justify-between gap-8 py-4">
+                      <div className="flex-1 space-y-1">
+                        <div className="text-sm font-medium leading-none">Enable tax</div>
+                        <p className="text-sm leading-relaxed text-muted-foreground">
+                          Apply tax calculations to POS transactions and sales documents.
+                        </p>
+                      </div>
+                      <Switch id="tax-enabled" checked={taxEnabled} onCheckedChange={setTaxEnabled} />
+                    </div>
+
+                    <div className="space-y-2 py-4">
+                      <div className="text-sm font-medium leading-none">Default tax rate</div>
+                      <p className="text-sm leading-relaxed text-muted-foreground">
+                        Applied to products without a specific tax rate.
+                      </p>
+                      <Select value={defaultTaxId} onValueChange={setDefaultTaxId} disabled={!taxEnabled}>
+                        <SelectTrigger className="mt-1 w-full max-w-md">
+                          <SelectValue placeholder="Select default tax" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No default tax</SelectItem>
+                          {taxes.map((t) => (
+                            <SelectItem key={t.id} value={String(t.id)}>
+                              {t.name} ({t.rate}%)
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedDefaultTax && (
+                        <div className="flex items-center gap-2 pt-1 text-xs text-muted-foreground">
+                          <Icon icon="solar:check-circle-bold" className="h-3.5 w-3.5 text-emerald-600" />
+                          Default: <span className="font-medium text-foreground">{selectedDefaultTax.name}</span>
+                          <Badge variant="outline" className="text-[10px]">
+                            {selectedDefaultTax.type.toUpperCase()} {selectedDefaultTax.rate}%
                           </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={t.is_active ? 'secondary' : 'outline'}>
-                            {t.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="outline" size="sm" onClick={() => openEditTax(t)}>
-                              Edit
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => deleteTax.mutate(t.id)}
-                              disabled={deleteTax.isPending}
-                            >
-                              Delete
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {taxes.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
-                          No taxes created yet
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                  <div className="flex items-center justify-end border-t bg-muted/20 px-6 py-3">
+                    <Button onClick={() => saveTaxSettings.mutate()} disabled={saveTaxSettings.isPending} size="sm">
+                      {saveTaxSettings.isPending ? (
+                        <Icon icon="eos-icons:loading" className="mr-2 h-4 w-4" />
+                      ) : (
+                        <Icon icon="solar:diskette-bold-duotone" className="mr-2 h-4 w-4" />
+                      )}
+                      Save tax settings
+                    </Button>
+                  </div>
+                </Card>
+              )}
+
+              {taxSection === 'rates' && (
+                <Card className="overflow-hidden">
+                  <SettingsSectionHeader
+                    icon="solar:list-check-bold-duotone"
+                    title="Tax Rates"
+                    description="Every rate available on products, services and POS transactions."
+                  />
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead className="text-right">Rate</TableHead>
+                          <TableHead>Mode</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {taxes.map((t) => (
+                          <TableRow key={t.id}>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                {t.name}
+                                {selectedDefaultTax?.id === t.id && (
+                                  <Badge variant="secondary" className="text-[10px]">
+                                    Default
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">{t.type.toUpperCase()}</TableCell>
+                            <TableCell className="text-right font-mono tabular-nums">{t.rate}%</TableCell>
+                            <TableCell>
+                              <Badge variant={t.is_inclusive ? 'default' : 'outline'} className="text-[10px]">
+                                {t.is_inclusive ? 'Inclusive' : 'Exclusive'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={t.is_active ? 'secondary' : 'outline'} className="text-[10px]">
+                                {t.is_active ? 'Active' : 'Inactive'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditTax(t)}>
+                                  <Icon icon="solar:pen-bold-duotone" className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                  onClick={() => deleteTax.mutate(t.id)}
+                                  disabled={deleteTax.isPending}
+                                >
+                                  <Icon icon="solar:trash-bin-trash-bold-duotone" className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {taxes.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={6} className="py-12 text-center">
+                              <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                                <Icon icon="solar:list-check-bold-duotone" className="h-10 w-10 opacity-40" />
+                                <p className="text-sm font-medium">No tax rates yet</p>
+                                <p className="text-xs">Add your first rate to start applying tax.</p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                  <div className="flex items-center justify-between border-t bg-muted/20 px-6 py-3">
+                    <span className="text-xs text-muted-foreground">
+                      {taxes.length} rate{taxes.length === 1 ? '' : 's'} configured
+                    </span>
+                    <Button size="sm" onClick={openCreateTax}>
+                      <Icon icon="solar:add-circle-bold-duotone" className="mr-2 h-4 w-4" />
+                      Add Tax
+                    </Button>
+                  </div>
+                </Card>
+              )}
+            </div>
           </div>
         </TabsContent>
       </Tabs>

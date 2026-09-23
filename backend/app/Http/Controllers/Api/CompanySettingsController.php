@@ -568,6 +568,14 @@ class CompanySettingsController extends Controller
                     'allow_custom_number' => (bool) \App\Models\Setting::getValue('sales.invoice.allow_custom_number', true),
                     'default_requires_approval' => (bool) \App\Models\Setting::getValue('sales.invoice.default_requires_approval', false),
                     'approval_expiry_days' => (int) \App\Models\Setting::getValue('sales.invoice.approval_expiry_days', 7),
+                    'reviewer_user_ids' => array_values(array_map('intval', (array) \App\Models\Setting::getValue('sales.invoice.reviewer_user_ids', []))),
+                    'reviewer_roles' => array_values((array) \App\Models\Setting::getValue('sales.invoice.reviewer_roles', [])),
+                    'available_reviewers' => \App\Models\User::query()
+                        ->orderBy('name')
+                        ->get(['id', 'name', 'email'])
+                        ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email])
+                        ->values()
+                        ->all(),
                     'auto_send_to_customer_on_post' => (bool) \App\Models\Setting::getValue('sales.invoice.auto_send_to_customer_on_post', true),
                     'allow_partial_payments' => (bool) \App\Models\Setting::getValue('sales.invoice.allow_partial_payments', true),
                     'default_payment_terms_days' => (int) \App\Models\Setting::getValue('sales.invoice.default_payment_terms_days', 30),
@@ -600,6 +608,10 @@ class CompanySettingsController extends Controller
             'invoice.allow_custom_number' => 'nullable|boolean',
             'invoice.default_requires_approval' => 'nullable|boolean',
             'invoice.approval_expiry_days' => 'nullable|integer|min:1|max:90',
+            'invoice.reviewer_user_ids' => 'nullable|array',
+            'invoice.reviewer_user_ids.*' => 'integer|exists:users,id',
+            'invoice.reviewer_roles' => 'nullable|array',
+            'invoice.reviewer_roles.*' => 'string|in:owner,admin,manager,sales,accountant,cashier,viewer',
             'invoice.auto_send_to_customer_on_post' => 'nullable|boolean',
             'invoice.allow_partial_payments' => 'nullable|boolean',
             'invoice.default_payment_terms_days' => 'nullable|integer|min:0|max:365',
@@ -621,6 +633,8 @@ class CompanySettingsController extends Controller
             'invoice.allow_custom_number' => 'sales.invoice.allow_custom_number',
             'invoice.default_requires_approval' => 'sales.invoice.default_requires_approval',
             'invoice.approval_expiry_days' => 'sales.invoice.approval_expiry_days',
+            'invoice.reviewer_user_ids' => 'sales.invoice.reviewer_user_ids',
+            'invoice.reviewer_roles' => 'sales.invoice.reviewer_roles',
             'invoice.auto_send_to_customer_on_post' => 'sales.invoice.auto_send_to_customer_on_post',
             'invoice.allow_partial_payments' => 'sales.invoice.allow_partial_payments',
             'invoice.default_payment_terms_days' => 'sales.invoice.default_payment_terms_days',
@@ -638,9 +652,20 @@ class CompanySettingsController extends Controller
             'delivery.document_type_on_send' => 'sales.delivery.document_type_on_send',
         ];
 
-        foreach ($validated as $key => $value) {
-            if (isset($map[$key])) {
-                \App\Models\Setting::setValue($map[$key], $value);
+        // $validated arrives nested (['invoice' => ['key' => value]]), while
+        // $map is keyed in dot notation — walk the groups so every leaf is
+        // matched. (The previous flat iteration silently persisted nothing.)
+        foreach ($validated as $group => $values) {
+            if (! is_array($values)) {
+                continue;
+            }
+
+            foreach ($values as $key => $value) {
+                $dotKey = "{$group}.{$key}";
+
+                if (isset($map[$dotKey])) {
+                    \App\Models\Setting::setValue($map[$dotKey], $value);
+                }
             }
         }
 

@@ -15,6 +15,7 @@ import { INVOICE_EXPORT_COLUMNS, SalesDocumentExportMenu } from '@/components/sa
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility';
 import { useBulkSelection } from '@/hooks/use-bulk-selection';
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 /**
  * Customer Invoices Page
@@ -31,6 +32,8 @@ export const CustomerBills: React.FC = () => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleteCount, setBulkDeleteCount] = useState(0);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -194,8 +197,8 @@ export const CustomerBills: React.FC = () => {
   const handleBulkDelete = () => {
     const count = selectedIds.length;
     if (count === 0) return;
-    if (!window.confirm(`Delete ${count} selected draft invoice(s)? Posted invoices will be skipped. This cannot be undone.`)) return;
-    bulkDeleteMutation.mutateAsync(selectedIds);
+    setBulkDeleteCount(count);
+    setBulkDeleteOpen(true);
   };
 
   const handleStatusFilterChange = (value: string) => {
@@ -706,6 +709,19 @@ export const CustomerBills: React.FC = () => {
           </Card>
         </div>
       )}
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title={`Delete ${bulkDeleteCount} selected draft invoice(s)?`}
+        description="Posted invoices are skipped automatically; only drafts are removed. This cannot be undone."
+        confirmLabel="Delete drafts"
+        icon="solar:trash-bin-trash-bold-duotone"
+        isPending={bulkDeleteMutation.isPending}
+        onConfirm={() => {
+          setBulkDeleteOpen(false);
+          bulkDeleteMutation.mutateAsync(selectedIds);
+        }}
+      />
     </div>
   );
 };

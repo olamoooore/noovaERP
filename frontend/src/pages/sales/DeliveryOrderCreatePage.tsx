@@ -7,6 +7,17 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { TableCell, TableRow } from '@/components/ui/table'
 import { LineItemsTable } from '@/components/sales/LineItemsTable'
+import { PageHeader } from '@/components/layout/PageHeader'
+import {
+  LINE_CELL,
+  LINE_CELL_BOX,
+  LINE_INPUT_NUMERIC,
+  LINE_PRODUCT_WRAP,
+  LINE_TEXTAREA,
+  LINE_VALUE,
+  ProductLineActions,
+} from '@/components/sales/ProductLineTable'
+import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
@@ -124,6 +135,27 @@ export function DeliveryOrderCreatePage() {
       return res.data?.data || []
     },
   })
+
+  // Arriving from a quotation (?sales_order_id=…) — pre-fill the linked
+  // quotation/invoice so the header shows real numbers instead of "None".
+  useEffect(() => {
+    if (mode !== 'linked' || !salesOrderId) return
+
+    if (!quotationId && Array.isArray(quotationsData)) {
+      const match = (quotationsData as any[]).find(
+        (q) => String(q.sales_order_id) === String(salesOrderId),
+      )
+      if (match) setQuotationId(String(match.id))
+    }
+
+    if (!invoiceId && Array.isArray(invoicesData)) {
+      const match = (invoicesData as any[]).find(
+        (i) => String(i.sales_order_id) === String(salesOrderId),
+      )
+      if (match) setInvoiceId(String(match.id))
+    }
+  }, [mode, salesOrderId, quotationsData, invoicesData, quotationId, invoiceId])
+
 
   const createMutation = useMutation({
     mutationFn: async (payload: any) => {
@@ -296,7 +328,32 @@ export function DeliveryOrderCreatePage() {
   const addCatalogProducts = (selected: Array<{ product: any; quantity: number }>) => setStandaloneLines((prev) => [...prev, ...selected.map(({ product, quantity }) => ({ line_type: 'product' as const, product_id: product.id, product_name: product.name || '', sku: product.sku || '', model_number: product.manufacturer_part_number || '', description: product.name || '', product_notes: '', patient_name: '', quantity, unit: product.unit || 'pcs', unit_price: Number(product.price || 0), lot_number: '', expiry_date: '' }))])
 
   const removeStandaloneLine = (index: number) => {
-    setStandaloneLines((prev) => prev.filter((_, i) => i !== index))
+    setStandaloneLines((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev))
+  }
+
+  const emptyStandaloneLine = (): LineItem => ({
+    product_id: null, product_name: '', sku: '', model_number: '', description: '',
+    product_notes: '', patient_name: '', quantity: 1, unit: 'pcs', unit_price: null,
+    lot_number: '', expiry_date: '',
+  })
+
+  /** Clear a line in place — a lone row can be emptied without deleting it. */
+  const resetStandaloneLine = (index: number) => {
+    setStandaloneLines((prev) => prev.map((line, i) => (i === index ? emptyStandaloneLine() : line)))
+  }
+
+  const moveStandaloneLine = (index: number, direction: 'up' | 'down') => {
+    const target = direction === 'up' ? index - 1 : index + 1
+    setStandaloneLines((prev) => reorderDocumentLines(prev, index, target))
+  }
+
+  const duplicateStandaloneLine = (index: number) => {
+    setStandaloneLines((prev) => {
+      const copy = { ...prev[index] }
+      const next = [...prev]
+      next.splice(index + 1, 0, copy)
+      return next
+    })
   }
 
   const updateStandaloneLine = (index: number, field: keyof LineItem, value: any) => {
@@ -310,36 +367,37 @@ export function DeliveryOrderCreatePage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate('/delivery-orders')}>
-          <Icon icon="solar:arrow-left-bold-duotone" className="h-4 w-4 mr-2" />
-          Back
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold">Create Delivery Order</h1>
-          <p className="text-muted-foreground mt-1">
-            {mode === 'linked' ? 'Dispatch items from a confirmed sales order.' : 'Create a standalone delivery.'}
-          </p>
-        </div>
-      </div>
-
-      {/* Mode Toggle */}
-      {!preselectedSoId && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex gap-4">
-              <Button variant={mode === 'standalone' ? 'default' : 'outline'} onClick={() => setMode('standalone')}>
-                <Icon icon="solar:package-bold" className="h-4 w-4 mr-2" />
+      <PageHeader
+        title="Create Delivery Order"
+        description={mode === 'linked' ? 'Dispatch items from a confirmed sales order.' : 'Create a standalone delivery.'}
+        backTo="/delivery-orders"
+        actions={
+          preselectedSoId ? undefined : (
+            <div className="inline-flex rounded-lg border bg-muted/40 p-1">
+              <Button
+                type="button"
+                size="sm"
+                variant={mode === 'standalone' ? 'default' : 'ghost'}
+                className="h-8 rounded-md px-3 text-xs"
+                onClick={() => setMode('standalone')}
+              >
+                <Icon icon="solar:box-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
                 Standalone Delivery
               </Button>
-              <Button variant={mode === 'linked' ? 'default' : 'outline'} onClick={() => setMode('linked')}>
-                <Icon icon="solar:document-text-bold" className="h-4 w-4 mr-2" />
+              <Button
+                type="button"
+                size="sm"
+                variant={mode === 'linked' ? 'default' : 'ghost'}
+                className="h-8 rounded-md px-3 text-xs"
+                onClick={() => setMode('linked')}
+              >
+                <Icon icon="solar:document-text-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
                 From Sales Order
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )
+        }
+      />
 
       {/* Linked Mode: SO Input */}
       {mode === 'linked' && (
@@ -529,74 +587,120 @@ export function DeliveryOrderCreatePage() {
             <LineItemsTable
               variant="shadcn"
               columns={[
-                { key: 'product', label: 'Product', minWidth: 'min-w-[9rem]' },
-                { key: 'description', label: 'Description', minWidth: 'min-w-[18rem]' },
+                { key: 'index', label: '#', align: 'center', minWidth: 'w-10', className: 'w-10' },
+                { key: 'product', label: 'Product', minWidth: 'min-w-[14rem]' },
+                { key: 'description', label: 'Description', minWidth: 'min-w-[16rem]' },
                 { key: 'product_notes', label: 'Product Notes', minWidth: 'min-w-[10rem]' },
-                { key: 'ordered', label: 'Ordered', align: 'right', minWidth: 'min-w-[6rem]' },
-                { key: 'already_delivered', label: 'Already Delivered', align: 'right', minWidth: 'min-w-[8rem]' },
-                { key: 'remaining', label: 'Remaining', align: 'right', minWidth: 'min-w-[6rem]' },
-                { key: 'deliver_now', label: 'Deliver Now', align: 'right', minWidth: 'min-w-[7rem]' },
-                { key: 'patient_name', label: 'Patient Name', minWidth: 'min-w-[10rem]' },
-                { key: 'lot_number', label: 'Lot Number', minWidth: 'min-w-[7rem]' },
-                { key: 'expiry_date', label: 'Expiry Date', minWidth: 'min-w-[8rem]' },
+                { key: 'ordered', label: 'Ordered', align: 'right', minWidth: 'w-[5.5rem] min-w-[4.5rem]' },
+                { key: 'already_delivered', label: 'Delivered', align: 'right', minWidth: 'w-[6.5rem] min-w-[5rem]' },
+                { key: 'remaining', label: 'Remaining', align: 'right', minWidth: 'w-[5.5rem] min-w-[4.5rem]' },
+                { key: 'deliver_now', label: 'Deliver Now', align: 'right', minWidth: 'w-[6.5rem] min-w-[5rem]' },
+                { key: 'patient_name', label: 'Patient Name', minWidth: 'min-w-[9rem]' },
+                { key: 'lot_number', label: 'Lot Number', minWidth: 'min-w-[7.5rem]' },
+                { key: 'expiry_date', label: 'Expiry Date', minWidth: 'min-w-[9.5rem]' },
               ]}
             >
-                {soData.lines?.map((line: any) => {
+                {soData.lines?.map((line: any, idx: number) => {
                   const remaining = line.quantity_ordered - line.quantity_delivered
                   const currentQty = lineQuantities[line.sales_order_line_id] || 0
                   return (
-                    <TableRow key={line.sales_order_line_id}>
-                      <TableCell className="font-medium">{line.product_name || '-'}</TableCell>
-                      <TableCell className="min-w-[320px] whitespace-pre-wrap break-words align-top">{line.description || '-'}</TableCell>
-                      <TableCell>
-                        <Input
-                          type="text"
-                          value={lineProductNotes[line.sales_order_line_id] ?? line.product_notes ?? ''}
-                          onChange={(e) => setLineProductNotes((prev) => ({ ...prev, [line.sales_order_line_id]: e.target.value }))}
-                          className="w-44"
-                          placeholder="Product notes"
-                        />
+                    <TableRow key={line.sales_order_line_id} className="transition-colors hover:bg-muted/20">
+                      <TableCell className={cn(LINE_CELL, 'w-10')}>
+                        <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>
+                          {idx + 1}
+                        </div>
                       </TableCell>
-                      <TableCell className="text-right">{line.quantity_ordered}</TableCell>
-                      <TableCell className="text-right">{line.quantity_delivered}</TableCell>
-                      <TableCell className="text-right font-medium">{remaining}</TableCell>
-                      <TableCell className="text-right">
-                        <Input
-                          type="number"
-                          min="0"
-                          max={remaining}
-                          step="0.01"
-                          value={currentQty || ''}
-                          onChange={(e) => updateLineQty(line.sales_order_line_id, parseFloat(e.target.value) || 0)}
-                          className="w-24 text-right"
-                          placeholder="0"
-                        />
+
+                      <TableCell className={cn(LINE_CELL, 'min-w-[14rem]', LINE_PRODUCT_WRAP)}>
+                        <div className="text-sm font-medium leading-snug whitespace-normal break-words">
+                          {line.product_name || '—'}
+                        </div>
                       </TableCell>
-                      <TableCell>
-                        <Input
-                          type="text"
-                          value={linePatientNames[line.sales_order_line_id] || ''}
-                          onChange={(e) => updateLinePatientName(line.sales_order_line_id, e.target.value)}
-                          className="w-40"
-                          placeholder="Patient name"
-                        />
+
+                      <TableCell className={cn(LINE_CELL, 'min-w-[16rem]')}>
+                        <div className="text-sm leading-snug text-muted-foreground whitespace-pre-wrap break-words">
+                          {line.description || '—'}
+                        </div>
                       </TableCell>
-                      <TableCell>
-                        <Input
-                          type="text"
-                          value={lineLotNumbers[line.sales_order_line_id] || ''}
-                          onChange={(e) => updateLineLot(line.sales_order_line_id, e.target.value)}
-                          className="w-32"
-                          placeholder="Lot #"
-                        />
+
+                      <TableCell className={cn(LINE_CELL, 'min-w-[10rem]')}>
+                        <div className={LINE_CELL_BOX}>
+                          <Input
+                            type="text"
+                            value={lineProductNotes[line.sales_order_line_id] ?? line.product_notes ?? ''}
+                            onChange={(e) => setLineProductNotes((prev) => ({ ...prev, [line.sales_order_line_id]: e.target.value }))}
+                            className="h-9"
+                            placeholder="Product notes"
+                          />
+                        </div>
                       </TableCell>
-                      <TableCell>
-                        <Input
-                          type="date"
-                          value={lineExpiryDates[line.sales_order_line_id] || ''}
-                          onChange={(e) => setLineExpiryDates((prev) => ({ ...prev, [line.sales_order_line_id]: e.target.value }))}
-                          className="w-36"
-                        />
+
+                      <TableCell className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
+                        <div className={cn(LINE_CELL_BOX, 'justify-end text-sm tabular-nums text-muted-foreground')}>
+                          {line.quantity_ordered}
+                        </div>
+                      </TableCell>
+
+                      <TableCell className={cn(LINE_CELL, 'w-[6.5rem] min-w-[5rem]')}>
+                        <div className={cn(LINE_CELL_BOX, 'justify-end text-sm tabular-nums text-muted-foreground')}>
+                          {line.quantity_delivered}
+                        </div>
+                      </TableCell>
+
+                      <TableCell className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
+                        <div className={cn(LINE_CELL_BOX, 'justify-end text-sm font-semibold tabular-nums')}>
+                          {remaining}
+                        </div>
+                      </TableCell>
+
+                      <TableCell className={cn(LINE_CELL, 'w-[6.5rem] min-w-[5rem]')}>
+                        <div className={cn(LINE_CELL_BOX, 'justify-end')}>
+                          <Input
+                            type="number"
+                            min="0"
+                            max={remaining}
+                            step="0.01"
+                            value={currentQty || ''}
+                            onChange={(e) => updateLineQty(line.sales_order_line_id, parseFloat(e.target.value) || 0)}
+                            className={LINE_INPUT_NUMERIC}
+                            placeholder="0"
+                          />
+                        </div>
+                      </TableCell>
+
+                      <TableCell className={cn(LINE_CELL, 'min-w-[9rem]')}>
+                        <div className={LINE_CELL_BOX}>
+                          <Input
+                            type="text"
+                            value={linePatientNames[line.sales_order_line_id] || ''}
+                            onChange={(e) => updateLinePatientName(line.sales_order_line_id, e.target.value)}
+                            className="h-9"
+                            placeholder="Patient name"
+                          />
+                        </div>
+                      </TableCell>
+
+                      <TableCell className={cn(LINE_CELL, 'min-w-[7.5rem]')}>
+                        <div className={LINE_CELL_BOX}>
+                          <Input
+                            type="text"
+                            value={lineLotNumbers[line.sales_order_line_id] || ''}
+                            onChange={(e) => updateLineLot(line.sales_order_line_id, e.target.value)}
+                            className="h-9"
+                            placeholder="Lot #"
+                          />
+                        </div>
+                      </TableCell>
+
+                      <TableCell className={cn(LINE_CELL, 'min-w-[9.5rem]')}>
+                        <div className={LINE_CELL_BOX}>
+                          <Input
+                            type="date"
+                            value={lineExpiryDates[line.sales_order_line_id] || ''}
+                            onChange={(e) => setLineExpiryDates((prev) => ({ ...prev, [line.sales_order_line_id]: e.target.value }))}
+                            className="h-9"
+                          />
+                        </div>
                       </TableCell>
                     </TableRow>
                   )
@@ -620,6 +724,7 @@ export function DeliveryOrderCreatePage() {
             <LineItemsTable
               variant="shadcn"
               columns={[
+                { key: 'index', label: '#', align: 'center', minWidth: 'w-10', className: 'w-10' },
                 { key: 'product', label: 'Product', minWidth: 'min-w-[9rem]' },
                 { key: 'sku', label: 'SKU', minWidth: 'min-w-[5.5rem]' },
                 { key: 'description', label: 'Description', minWidth: 'min-w-[18rem]' },
@@ -637,8 +742,15 @@ export function DeliveryOrderCreatePage() {
                 {standaloneLines.map((line, idx) => (
                   <TableRow key={idx} draggable={(line.line_type ?? 'product') === 'product'} onDragStart={() => setDraggedLineIndex(idx)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedLineIndex !== null && draggedLineIndex !== idx) setStandaloneLines(reorderDocumentLines(standaloneLines, draggedLineIndex, idx)); setDraggedLineIndex(null); }}>
                     {line.line_type === 'note' || line.line_type === 'section' ? <DocumentTextLineRow type={line.line_type} text={line.description} colSpan={12} total={line.line_type === 'section' ? getDocumentSectionTotal(standaloneLines, idx, (item) => item.quantity * Number(item.unit_price || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : undefined} onChange={(text) => updateStandaloneLine(idx, 'description', text)} onDelete={() => removeStandaloneLine(idx)} onDragStart={() => setDraggedLineIndex(idx)} onDrop={() => { if (draggedLineIndex !== null) setStandaloneLines(reorderDocumentLines(standaloneLines, draggedLineIndex, idx)); setDraggedLineIndex(null); }} /> : <>
-                    <TableCell>
+                    <TableCell className={cn(LINE_CELL, 'w-10')}>
+                      <div className={cn(LINE_CELL_BOX, 'justify-center text-xs font-medium text-muted-foreground')}>
+                        {standaloneLines.slice(0, idx + 1).filter((item) => (item.line_type ?? 'product') === 'product').length}
+                      </div>
+                    </TableCell>
+
+                    <TableCell className={cn(LINE_CELL, 'min-w-[15rem]', LINE_PRODUCT_WRAP)}>
                       <ProductSearchCombobox
+                        wrapText
                         value={line.product_id?.toString() || ''}
                         onValueChange={(val, product) => {
                           updateStandaloneLine(idx, 'product_id', val ? parseInt(val) : null)
@@ -653,46 +765,42 @@ export function DeliveryOrderCreatePage() {
                         placeholder="Search product..."
                       />
                     </TableCell>
-                    <TableCell>
-                      <Input
-                        value={line.sku}
-                        readOnly
-                        className="bg-gray-50 dark:bg-gray-900 text-slate-500"
-                        placeholder="SKU"
-                      />
+                    <TableCell className={cn(LINE_CELL, 'min-w-[7rem]')}>
+                      <div className={LINE_VALUE}>{line.sku || <span className="opacity-60">SKU</span>}</div>
                     </TableCell>
-                    <TableCell className="min-w-[320px] align-top">
+                    <TableCell className={cn(LINE_CELL, 'min-w-[16rem]')}>
                       <textarea
                         value={line.description}
                         onChange={(e) => updateStandaloneLine(idx, 'description', e.target.value)}
                         rows={2}
-                        className="w-full whitespace-pre-wrap break-words rounded border border-gray-300 bg-white px-2 py-1 text-sm resize-y dark:border-gray-600 dark:bg-gray-800"
+                        className={LINE_TEXTAREA}
                         placeholder="Description"
                       />
                     </TableCell>
-                    <TableCell>
-                      <Input
-                        value={line.model_number}
-                        readOnly
-                        className="bg-gray-50 dark:bg-gray-900 text-slate-500"
-                        placeholder="Model #"
-                      />
+                    <TableCell className={cn(LINE_CELL, 'min-w-[7rem]')}>
+                      <div className={LINE_VALUE}>{line.model_number || <span className="opacity-60">Model #</span>}</div>
                     </TableCell>
-                    <TableCell>
-                      <Input
+                    <TableCell className={cn(LINE_CELL, 'min-w-[10rem]')}>
+                      <textarea
                         value={line.product_notes}
                         onChange={(e) => updateStandaloneLine(idx, 'product_notes', e.target.value)}
+                        rows={2}
+                        className={LINE_TEXTAREA}
                         placeholder="Product notes"
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={cn(LINE_CELL, 'min-w-[9rem]')}>
+                      <div className={LINE_CELL_BOX}>
                       <Input
                         value={line.patient_name}
                         onChange={(e) => updateStandaloneLine(idx, 'patient_name', e.target.value)}
                         placeholder="Patient name"
+                        className="h-9"
                       />
+                      </div>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className={cn(LINE_CELL, 'w-[5.5rem] min-w-[4.5rem]')}>
+                      <div className={cn(LINE_CELL_BOX, 'justify-end')}>
                       <Input
                         type="number"
                         min="0.01"
@@ -706,44 +814,64 @@ export function DeliveryOrderCreatePage() {
                           const parsed = parseFloat(raw);
                           if (!Number.isNaN(parsed) && parsed >= 0) updateStandaloneLine(idx, 'quantity', parsed);
                         }}
-                        className="w-24 text-right"
+                        className={LINE_INPUT_NUMERIC}
                       />
+                      </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={cn(LINE_CELL, 'w-[5rem] min-w-[4rem]')}>
+                      <div className={LINE_CELL_BOX}>
                       <Input
                         value={line.unit}
                         onChange={(e) => updateStandaloneLine(idx, 'unit', e.target.value)}
-                        className="w-20"
+                        className="h-9"
                       />
+                      </div>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className={cn(LINE_CELL, 'w-[7rem] min-w-[6rem]')}>
+                      <div className={cn(LINE_CELL_BOX, 'justify-end')}>
                       <Input
                         type="number"
                         min="0"
                         step="0.01"
                         value={line.unit_price ?? ''}
                         onChange={(e) => updateStandaloneLine(idx, 'unit_price', parseFloat(e.target.value) || null)}
-                        className="w-28 text-right"
+                        className={LINE_INPUT_NUMERIC}
                         placeholder="0.00"
                       />
+                      </div>
                     </TableCell>
-                    <TableCell>
-                      <Input
-                        value={line.lot_number}
-                        onChange={(e) => updateStandaloneLine(idx, 'lot_number', e.target.value)}
-                        className="w-28"
-                        placeholder="Lot #"
-                      />
+                    <TableCell className={cn(LINE_CELL, 'min-w-[7.5rem]')}>
+                      <div className={LINE_CELL_BOX}>
+                        <Input
+                          value={line.lot_number}
+                          onChange={(e) => updateStandaloneLine(idx, 'lot_number', e.target.value)}
+                          className="h-9"
+                          placeholder="Lot"
+                        />
+                      </div>
                     </TableCell>
-                    <TableCell>
-                      <Input type="date" value={line.expiry_date} onChange={(e) => updateStandaloneLine(idx, 'expiry_date', e.target.value)} className="w-36" />
+                    <TableCell className={cn(LINE_CELL, 'min-w-[9.5rem]')}>
+                      <div className={LINE_CELL_BOX}>
+                        <Input
+                          type="date"
+                          value={line.expiry_date}
+                          onChange={(e) => updateStandaloneLine(idx, 'expiry_date', e.target.value)}
+                          className="h-9"
+                        />
+                      </div>
                     </TableCell>
-                    <TableCell>
-                      {standaloneLines.length > 1 && (
-                        <Button variant="ghost" size="sm" onClick={() => removeStandaloneLine(idx)}>
-                          <Icon icon="solar:trash-bin-minimalistic-bold" className="h-4 w-4 text-destructive" />
-                        </Button>
-                      )}
+                    <TableCell className={cn(LINE_CELL, 'w-[10.5rem]')}>
+                      <div className={cn(LINE_CELL_BOX, 'justify-end')}>
+                        <ProductLineActions
+                          onMoveUp={() => moveStandaloneLine(idx, 'up')}
+                          onMoveDown={() => moveStandaloneLine(idx, 'down')}
+                          canMoveUp={idx !== 0}
+                          canMoveDown={idx !== standaloneLines.length - 1}
+                          onDuplicate={() => duplicateStandaloneLine(idx)}
+                          onReset={() => resetStandaloneLine(idx)}
+                          onDelete={() => removeStandaloneLine(idx)}
+                        />
+                      </div>
                     </TableCell>
                     </>}
                   </TableRow>

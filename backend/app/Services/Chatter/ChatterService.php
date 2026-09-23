@@ -23,9 +23,15 @@ class ChatterService
         // varchar to bigint without an explicit cast.
         $normalizedId = (int) $subjectId;
 
+        $tenantId = $this->currentTenantId();
+
         $logs = ActivityLogEntry::query()
             ->where('subject_type', $subjectType)
             ->where('subject_id', $normalizedId)
+            // Scope to this tenant — subject ids are per-tenant sequences, so
+            // without this two tenants' documents would share history.
+            // (All pre-existing rows were backfilled when tenant_id was added.)
+            ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId))
             ->with('causer')
             ->orderByDesc('created_at')
             ->limit(200)
@@ -269,16 +275,40 @@ class ChatterService
         return trim($clean);
     }
 
-    public function logEvent(string $subjectType, int|string $subjectId, string $event, string $description, array $properties = []): void
-    {
+    /**
+     * Record a lifecycle event in the chatter log.
+     *
+     * `$actorId`/`$actorType` let callers attribute the event to the user who
+     * actually performed it (e.g. an approval reviewer) instead of relying on
+     * the ambient authenticated user — which is often absent for token-authed
+     * API calls and would otherwise surface the event as "System".
+     */
+    public function logEvent(
+        string $subjectType,
+        int|string $subjectId,
+        string $event,
+        string $description,
+        array $properties = [],
+        int|string|null $actorId = null,
+        ?string $actorType = null,
+    ): void {
         try {
+            $causerType = $actorType ?? (Auth::check() ? get_class(Auth::user()) : null);
+            $causerId = $actorId ?? Auth::id();
+
+            if ($causerType === null || $causerId === null) {
+                $causerType = null;
+                $causerId = null;
+            }
+
             ActivityLogEntry::create([
                 'log_name' => 'chatter',
+                'tenant_id' => $this->currentTenantId(),
                 'description' => $description,
                 'subject_type' => $subjectType,
                 'subject_id' => (int) $subjectId,
-                'causer_type' => Auth::check() ? get_class(Auth::user()) : null,
-                'causer_id' => Auth::id(),
+                'causer_type' => $causerType,
+                'causer_id' => $causerId,
                 'event' => $event,
                 'properties' => $properties,
             ]);

@@ -296,7 +296,12 @@ export function ChatterPanel({
             className="resize-none"
           />
           <div className="mt-2 flex justify-end">
-            <Button type="submit" size="sm" disabled={!message.trim() || sendMessage.isPending}>
+            <Button
+              type="submit"
+              size="sm"
+              className="h-8 rounded-full px-3 text-xs"
+              disabled={!message.trim() || sendMessage.isPending}
+            >
               <Icon icon="solar:send-square-bold" width={16} className="mr-1" />
               {sendMessage.isPending ? 'Sending…' : 'Send'}
             </Button>
@@ -319,7 +324,7 @@ export function ChatterPanel({
             variant="outline"
             disabled={uploadAttachment.isPending}
             onClick={() => fileInputRef.current?.click()}
-            className="w-full"
+            className="h-8 w-full rounded-full text-xs"
           >
             <Icon icon="solar:upload-square-bold" width={16} className="mr-2" />
             {uploadAttachment.isPending ? 'Uploading…' : 'Upload attachment (max 25 MB)'}
@@ -350,9 +355,16 @@ function LogItem({ entry }: { entry: ChatterLogEntry }) {
     'attachment_id',
     'activity_type',
   ])
+  // Only primitive values are rendered. Objects/arrays are internal payloads
+  // (they used to render as "[object Object]") and booleans alone are noise.
   const meaningfulProps = entry.properties
     ? Object.entries(entry.properties).filter(
-        ([k, v]) => !INTERNAL_KEYS.has(k) && v !== null && v !== undefined
+        ([k, v]) =>
+          !INTERNAL_KEYS.has(k) &&
+          v !== null &&
+          v !== undefined &&
+          typeof v !== 'object' &&
+          String(v).trim() !== ''
       )
     : []
 
@@ -445,7 +457,7 @@ function AttachmentItem({
           type="button"
           size="icon"
           variant="ghost"
-          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+          className="h-7 w-7 rounded-full text-muted-foreground hover:text-destructive"
           onClick={onDelete}
         >
           <Icon icon="solar:trash-bin-trash-bold-duotone" width={16} />
@@ -530,7 +542,12 @@ function ActivitiesTab({
             </div>
           </div>
           {act.status !== 'done' && !readOnly && (
-            <Button size="sm" variant="outline" onClick={() => onMarkDone(act.id)}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-full px-3 text-xs"
+              onClick={() => onMarkDone(act.id)}
+            >
               <Icon icon="solar:check-circle-bold" width={14} className="mr-1" />
               Done
             </Button>
@@ -564,7 +581,7 @@ function ActivitiesTab({
               onChange={(e) => setDueDate(e.target.value)}
               className="h-8 w-[150px] text-sm"
             />
-            <Button size="sm" onClick={handleAdd} disabled={submitting}>
+            <Button size="sm" className="h-8 rounded-full px-3 text-xs" onClick={handleAdd} disabled={submitting}>
               <Icon icon="solar:add-circle-bold" width={14} className="mr-1" />
               {submitting ? 'Adding…' : 'Schedule'}
             </Button>

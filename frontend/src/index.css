@@ -32,7 +32,9 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    /* Base copy is text-sm (13px after the densified scale) so plain <p>
+       elements match the rest of the UI instead of falling back to 16px. */
+    @apply bg-background text-foreground text-sm;
   }
 }
 

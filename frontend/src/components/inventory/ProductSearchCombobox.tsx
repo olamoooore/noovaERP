@@ -129,19 +129,43 @@ export function ProductSearchCombobox({
             aria-expanded={open}
             disabled={disabled}
             className={cn(
-              'w-full justify-between font-normal',
-              value && 'pr-16',
+              'w-full justify-between gap-2 font-normal',
               wrapText && 'h-auto min-h-10 py-2',
               !value && 'text-muted-foreground'
             )}
           >
-            <span className={cn('min-w-0', wrapText ? 'whitespace-normal break-words text-left leading-5' : 'truncate')}>
+            <span className={cn('min-w-0 flex-1', wrapText ? 'whitespace-normal break-words text-left leading-5' : 'truncate')}>
               {getDisplayValue()}
             </span>
-            <Icon
-              icon="solar:alt-arrow-down-linear"
-              className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')}
-            />
+
+            {/* Trailing controls sit inline — no reserved right padding, no
+                absolutely-positioned clear button floating in dead space. */}
+            <span className="flex shrink-0 items-center gap-0.5">
+              {value && (
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  aria-label="Clear selected product"
+                  title="Clear selection"
+                  className="rounded-sm p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                  onPointerDown={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                  }}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    handleClear()
+                  }}
+                >
+                  <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
+                </span>
+              )}
+              <Icon
+                icon="solar:alt-arrow-down-linear"
+                className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')}
+              />
+            </span>
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[400px] p-0" align="start">
@@ -195,17 +219,6 @@ export function ProductSearchCombobox({
         </Command>
         </PopoverContent>
       </Popover>
-      {value && (
-        <button
-          type="button"
-          aria-label="Clear selected product"
-          disabled={disabled}
-          className="absolute right-8 top-1/2 z-10 -translate-y-1/2 rounded-sm p-1 text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:pointer-events-none disabled:opacity-50"
-          onClick={handleClear}
-        >
-          <Icon icon="solar:close-circle-bold" className="h-4 w-4" />
-        </button>
-      )}
     </div>
   )
 }

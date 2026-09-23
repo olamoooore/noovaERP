@@ -13,6 +13,7 @@ class ActivityLogEntry extends Model
 
     protected $fillable = [
         'log_name',
+        'tenant_id',
         'description',
         'causer_type',
         'causer_id',

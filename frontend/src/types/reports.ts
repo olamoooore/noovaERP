@@ -360,8 +360,11 @@ export interface SalesByProductData {
 
 export interface SalesByCustomerData {
   customers: Array<{
-    id: number;
-    name: string;
+    id: number | null;
+    /** Analytics API exposes the joined customer name as `customer_name`. */
+    customer_name?: string | null;
+    customer_email?: string | null;
+    name?: string;
     total_orders: number;
     total_revenue: number;
     average_order_value: number;

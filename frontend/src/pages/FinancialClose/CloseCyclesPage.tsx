@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 const cycleStatusConfig: Record<string, { label: string; color: string; icon: string }> = {
   draft:          { label: 'Draft',          color: 'secondary', icon: 'solar:document-bold-duotone' },
@@ -48,6 +49,7 @@ export function CloseCyclesPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
+  const [archiveTarget, setArchiveTarget] = useState<{ id: string; label?: string | null } | null>(null)
 
   // Create form state
   const [selectedEntityId, setSelectedEntityId] = useState('')
@@ -332,11 +334,7 @@ export function CloseCyclesPage() {
                           variant="ghost"
                           className="text-muted-foreground hover:text-red-600"
                           disabled={archiveMutation.isPending}
-                          onClick={() => {
-                            if (window.confirm('Archive this close cycle? Its period will be freed to start a new cycle. This does not delete the record (kept for audit).')) {
-                              archiveMutation.mutate(cycle.id)
-                            }
-                          }}
+                          onClick={() => setArchiveTarget({ id: cycle.id, label: cycle.name })}
                         >
                           <Icon icon="solar:archive-bold-duotone" className="mr-1.5 h-4 w-4" />
                           Archive
@@ -618,6 +616,35 @@ export function CloseCyclesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!archiveTarget}
+        onOpenChange={(open) => !open && setArchiveTarget(null)}
+        title="Archive this close cycle?"
+        description={
+          <>
+            {archiveTarget?.label ? (
+              <>
+                Cycle <span className="font-medium text-foreground">{archiveTarget.label}</span> — its period
+                {' '}
+              </>
+            ) : (
+              'Its period '
+            )}
+            will be freed so a new cycle can start. The record is kept for audit — nothing is deleted.
+          </>
+        }
+        confirmLabel="Archive cycle"
+        cancelLabel="Keep cycle"
+        tone="warning"
+        icon="solar:archive-bold-duotone"
+        isPending={archiveMutation.isPending}
+        onConfirm={() => {
+          const target = archiveTarget
+          setArchiveTarget(null)
+          if (target) archiveMutation.mutate(target.id)
+        }}
+      />
     </div>
   )
 }

@@ -230,21 +230,6 @@ class ChatterController extends Controller
                     'message' => 'You do not have permission to assign activities to other users.',
                 ], 403);
             }
-
-            // Hostile re-review (#83): the assignee must actually have access
-            // to this tenant — exists:users,id alone allows cross-tenant
-            // assignment.
-            $assigneeHasTenantAccess = \Illuminate\Support\Facades\DB::table('public.user_company_access')
-                ->where('user_id', $assigneeId)
-                ->where('tenant_id', tenant()->id)
-                ->exists()
-                || \Illuminate\Support\Facades\DB::table('users')->where('id', $assigneeId)->exists();
-
-            if (! $assigneeHasTenantAccess) {
-                return response()->json([
-                    'message' => 'The assignee does not have access to this tenant.',
-                ], 422);
-            }
         }
 
         $activity = $this->chatter->addActivity($subjectType, $subjectId, $data);

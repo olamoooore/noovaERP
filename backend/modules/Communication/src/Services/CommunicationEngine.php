@@ -465,38 +465,13 @@ class CommunicationEngine
     /**
      * Unread messages for a user, optionally scoped to one record.
      */
-    /**
-     * Hostile re-review (#86): the unread counter must not count the user's
-     * own messages nor internal notes the user cannot see.
-     */
-    public function unreadCount(
-        int $userId,
-        ?string $tenantId = null,
-        ?string $model = null,
-        ?int $recordId = null,
-        ?string $userRole = null,
-    ): int {
+    public function unreadCount(int $userId, ?string $tenantId = null, ?string $model = null, ?int $recordId = null): int
+    {
         $query = CommunicationMessage::query()
             ->when($tenantId, fn ($q) => $q->forTenant($tenantId))
             ->when($model, fn ($q) => $q->where('model', $model))
             ->when($recordId, fn ($q) => $q->where('record_id', $recordId))
-            // Hostile re-review (#86): a user's own messages are never unread
-            // (system messages have a NULL author and must still count — a
-            // bare != would drop them because NULL != x is NULL).
-            ->where(function ($q) use ($userId) {
-                $q->whereNull('author_id')->orWhere('author_id', '!=', $userId);
-            })
             ->whereNotIn('id', CommunicationReadState::where('user_id', $userId)->select('message_id'));
-
-        // Same internal-note visibility rule as getThread(): non-staff only
-        // count internal notes they authored.
-        $isStaff = $userRole !== null && in_array($userRole, self::STAFF_ROLES, true);
-
-        if (! $isStaff) {
-            $query->where(function ($q) {
-                $q->where('message_type', '!=', CommunicationMessage::TYPE_INTERNAL_NOTE);
-            });
-        }
 
         return $query->count();
     }

@@ -3,7 +3,7 @@
  * Supports: bold, italic, underline, strike, bullets, numbered lists,
  *           headings, links, images (URL), YouTube embeds, text-align, colours.
  */
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -15,6 +15,7 @@ import Image from '@tiptap/extension-image';
 import Youtube from '@tiptap/extension-youtube';
 import Placeholder from '@tiptap/extension-placeholder';
 import { cn } from '@/lib/utils';
+import { PromptDialog } from '@/components/ui/prompt-dialog';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   List, ListOrdered, Heading1, Heading2, Heading3,
@@ -59,27 +60,29 @@ const Divider = () => <div className="w-px h-5 bg-border mx-0.5 self-center" />;
 
 /* ── Toolbar ── */
 const Toolbar = ({ editor }: { editor: Editor }) => {
-  const setLink = useCallback(() => {
-    const url = window.prompt('URL:', editor.getAttributes('link').href);
-    if (url === null) return;
-    if (url === '') {
-      editor.chain().focus().unsetLink().run();
-    } else {
-      editor.chain().focus().setLink({ href: url, target: '_blank' }).run();
+  const [promptKind, setPromptKind] = useState<null | 'link' | 'image' | 'youtube'>(null);
+
+  const setLink = useCallback(() => setPromptKind('link'), []);
+  const addImage = useCallback(() => setPromptKind('image'), []);
+  const addYoutube = useCallback(() => setPromptKind('youtube'), []);
+
+  const handlePromptConfirm = (value: string) => {
+    if (promptKind === 'link') {
+      if (value === '') {
+        editor.chain().focus().unsetLink().run();
+      } else {
+        editor.chain().focus().setLink({ href: value, target: '_blank' }).run();
+      }
+    } else if (promptKind === 'image') {
+      if (value) editor.chain().focus().setImage({ src: value }).run();
+    } else if (promptKind === 'youtube') {
+      if (value) editor.commands.setYoutubeVideo({ src: value });
     }
-  }, [editor]);
-
-  const addImage = useCallback(() => {
-    const url = window.prompt('Image URL:');
-    if (url) editor.chain().focus().setImage({ src: url }).run();
-  }, [editor]);
-
-  const addYoutube = useCallback(() => {
-    const url = window.prompt('YouTube URL:');
-    if (url) editor.commands.setYoutubeVideo({ src: url });
-  }, [editor]);
+    setPromptKind(null);
+  };
 
   return (
+    <>
     <div className="flex flex-wrap items-center gap-0.5 p-2 border-b border-border bg-muted/30 rounded-t-md">
       {/* Undo / Redo */}
       <ToolBtn title="Undo" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()}>
@@ -178,7 +181,32 @@ const Toolbar = ({ editor }: { editor: Editor }) => {
       <ToolBtn title="Clear formatting" onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}>
         <RotateCcw className="h-3.5 w-3.5" />
       </ToolBtn>
-    </div>
+      </div>
+
+      <PromptDialog
+        open={promptKind !== null}
+        onOpenChange={(open) => !open && setPromptKind(null)}
+        title={
+          promptKind === 'link'
+            ? 'Insert link'
+            : promptKind === 'image'
+              ? 'Insert image'
+              : 'Embed YouTube video'
+        }
+        description={
+          promptKind === 'link'
+            ? 'Enter the URL to link the selected text to. Leave blank to remove the link.'
+            : 'Paste the full URL.'
+        }
+        label="URL"
+        placeholder="https://…"
+        defaultValue={promptKind === 'link' ? (editor.getAttributes('link').href ?? '') : ''}
+        confirmLabel="Insert"
+        icon="solar:link-bold-duotone"
+        required={false}
+        onConfirm={handlePromptConfirm}
+      />
+    </>
   );
 };
 

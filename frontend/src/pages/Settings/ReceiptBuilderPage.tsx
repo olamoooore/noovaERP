@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useReceiptBuilderStore } from '@/store/receiptBuilderStore'
 import { Button } from '@/components/ui/button'
@@ -6,10 +6,12 @@ import { Icon } from '@iconify/react'
 import { BuilderToolbar } from '@/components/receipt-builder/BuilderToolbar'
 import { BuilderSidebar } from '@/components/receipt-builder/BuilderSidebar'
 import { ReceiptCanvas } from '@/components/receipt-builder/ReceiptCanvas'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 export function ReceiptBuilderPage() {
   const navigate = useNavigate()
   const { config, createNewConfig, hasUnsavedChanges } = useReceiptBuilderStore()
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false)
 
   useEffect(() => {
     // Initialize with a new config if none exists
@@ -53,8 +55,8 @@ export function ReceiptBuilderPage() {
             className="text-zinc-400 hover:text-white hover:bg-zinc-700"
             onClick={() => {
               if (hasUnsavedChanges) {
-                const confirm = window.confirm('You have unsaved changes. Are you sure you want to leave?')
-                if (!confirm) return
+                setLeaveDialogOpen(true)
+                return
               }
               navigate('/settings')
             }}
@@ -87,6 +89,21 @@ export function ReceiptBuilderPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={leaveDialogOpen}
+        onOpenChange={setLeaveDialogOpen}
+        title="Leave the receipt builder?"
+        description="You have unsaved changes. Leaving now discards them."
+        confirmLabel="Discard and leave"
+        cancelLabel="Keep editing"
+        tone="warning"
+        icon="solar:danger-triangle-bold-duotone"
+        onConfirm={() => {
+          setLeaveDialogOpen(false)
+          navigate('/settings')
+        }}
+      />
     </div>
   )
 }

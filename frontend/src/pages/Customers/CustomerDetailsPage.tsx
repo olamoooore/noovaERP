@@ -19,6 +19,8 @@ import { Progress } from '@/components/ui/progress'
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, cn, getApiErrorMessage } from '@/lib/utils'
 import api from '@/lib/api'
+import { PageHeader } from '@/components/layout/PageHeader'
+import { HeaderActionButton } from '@/components/layout/HeaderActionButton'
 
 const numericPhoneValue = (value: string) => value.replace(/\D/g, '')
 
@@ -545,92 +547,104 @@ export function CustomerDetailsPage() {
   return (
     <div className="space-y-6 pb-10">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/customers')}>
-            <Icon icon="solar:arrow-left-linear" className="h-5 w-5" />
-          </Button>
-          <Avatar className="h-16 w-16">
-            <AvatarFallback className="text-lg bg-primary text-primary-foreground">
+      <PageHeader
+        title={customer.display_name || customer.name}
+        onBack={() => navigate('/customers')}
+        actions={<>
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:refresh-bold-duotone"
+            title="Recalculate statistics"
+            loading={recalculateStatsMutation.isPending}
+            onClick={() => recalculateStatsMutation.mutate()}
+            disabled={recalculateStatsMutation.isPending}
+          >
+            Recalculate
+          </HeaderActionButton>
+          <HeaderActionButton
+            variant="outline"
+            icon={customer.is_active ? 'solar:pause-circle-bold-duotone' : 'solar:play-circle-bold-duotone'}
+            loading={updateMutation.isPending}
+            onClick={handleToggleActive}
+            disabled={updateMutation.isPending}
+          >
+            {customer.is_active ? 'Deactivate' : 'Activate'}
+          </HeaderActionButton>
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:notes-bold-duotone"
+            onClick={() => setNoteDialogOpen(true)}
+          >
+            Notes
+          </HeaderActionButton>
+          <HeaderActionButton
+            variant="outline"
+            icon="solar:letter-bold-duotone"
+            onClick={() => setEmailDialogOpen(true)}
+            disabled={!customer.email}
+            title={!customer.email ? 'No email address' : 'Send email'}
+          >
+            Email
+          </HeaderActionButton>
+          <HeaderActionButton icon="solar:pen-bold-duotone" onClick={openEditDialog}>
+            Edit
+          </HeaderActionButton>
+        </>}
+      >
+        <div className="mt-3 flex items-start gap-4">
+          <Avatar className="h-14 w-14 shrink-0">
+            <AvatarFallback className="bg-primary text-lg text-primary-foreground">
               {getInitials(customer.display_name || customer.name)}
             </AvatarFallback>
           </Avatar>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold">{customer.display_name || customer.name}</h1>
-              {customer.is_active ? (
-                <Badge className="bg-green-100 text-green-800">Active</Badge>
-              ) : (
-                <Badge variant="secondary">Inactive</Badge>
-              )}
-            </div>
-            <div className="flex items-center gap-4 text-muted-foreground mt-1">
-              <span className="flex items-center gap-1">
-                <Icon icon="solar:tag-horizontal-bold" className="h-4 w-4" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="gap-1 font-mono text-[11px]">
+                <Icon icon="solar:tag-horizontal-bold-duotone" className="h-3 w-3" />
                 {customer.code}
-              </span>
-              <span className="flex items-center gap-1">
-                <Icon icon={customer.type === 'company' ? 'solar:buildings-bold' : 'solar:user-bold'} className="h-4 w-4" />
+              </Badge>
+              <Badge variant="outline" className="gap-1 text-[11px]">
+                <Icon
+                  icon={customer.type === 'company' ? 'solar:buildings-2-bold-duotone' : 'solar:user-bold-duotone'}
+                  className="h-3 w-3"
+                />
                 {customer.type === 'company' ? 'Company' : 'Individual'}
-              </span>
+              </Badge>
+              {customer.is_active ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Active
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
+                  Inactive
+                </span>
+              )}
               {customer.customer_since && (
-                <span className="flex items-center gap-1">
-                  <Icon icon="solar:calendar-bold" className="h-4 w-4" />
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Icon icon="solar:calendar-bold-duotone" className="h-3.5 w-3.5" />
                   Customer since {format(new Date(customer.customer_since), 'MMM yyyy')}
                 </span>
               )}
             </div>
+
             {customer.categories?.length > 0 && (
-              <div className="flex items-center gap-2 mt-2">
-                {customer.categories.map(cat => (
-                  <Badge key={cat.id} variant="outline" style={{ borderColor: cat.color, color: cat.color }}>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {customer.categories.map((cat) => (
+                  <span
+                    key={cat.id}
+                    className="rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                    style={{ borderColor: cat.color, color: cat.color }}
+                  >
                     {cat.name}
-                  </Badge>
+                  </span>
                 ))}
               </div>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="icon"
-            onClick={() => recalculateStatsMutation.mutate()}
-            disabled={recalculateStatsMutation.isPending}
-            title="Recalculate Statistics"
-          >
-            <Icon 
-              icon="solar:refresh-bold" 
-              className={cn("h-4 w-4", recalculateStatsMutation.isPending && "animate-spin")} 
-            />
-          </Button>
-          <Button 
-            variant="outline" 
-            onClick={handleToggleActive}
-            disabled={updateMutation.isPending}
-          >
-            <Icon icon={customer.is_active ? "solar:pause-bold" : "solar:play-bold"} className="h-4 w-4 mr-2" />
-            {customer.is_active ? 'Deactivate' : 'Activate'}
-          </Button>
-          <Button variant="outline" onClick={() => setNoteDialogOpen(true)}>
-            <Icon icon="solar:notes-bold" className="h-4 w-4 mr-2" />
-            Notes
-          </Button>
-          <Button 
-            variant="outline" 
-            onClick={() => setEmailDialogOpen(true)}
-            disabled={!customer.email}
-            title={!customer.email ? 'No email address' : 'Send email'}
-          >
-            <Icon icon="solar:letter-bold" className="h-4 w-4 mr-2" />
-            Email
-          </Button>
-          <Button onClick={openEditDialog}>
-            <Icon icon="solar:pen-bold" className="h-4 w-4 mr-2" />
-            Edit
-          </Button>
-        </div>
-      </div>
+      </PageHeader>
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">

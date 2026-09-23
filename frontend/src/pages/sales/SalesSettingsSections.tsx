@@ -11,6 +11,13 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
+import { cn } from '@/lib/utils'
+import {
+  SettingsLoadingCard,
+  SettingsRow,
+  SettingsSaveBar,
+  SettingsSectionHeader,
+} from '@/components/settings/settings-ui'
 
 export interface SalesSettings {
   invoice: {
@@ -22,6 +29,9 @@ export interface SalesSettings {
     default_payment_terms_days: number
     default_notes: string
     default_terms: string
+    reviewer_user_ids?: number[]
+    reviewer_roles?: string[]
+    available_reviewers?: Array<{ id: number; name: string; email: string }>
   }
   portal: {
     acceptance_enabled: boolean
@@ -105,100 +115,6 @@ function useSalesSettingsMutation<T extends Record<string, unknown>>(
       })
     },
   })
-}
-
-function LoadingCard() {
-  return (
-    <Card>
-      <CardContent className="flex items-center justify-center py-24">
-        <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <Icon icon="eos-icons:loading" className="h-8 w-8 animate-spin text-primary" />
-          <span className="text-sm">Loading settings…</span>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function SectionHeader({
-  icon,
-  title,
-  description,
-}: {
-  icon: string
-  title: string
-  description: string
-}) {
-  return (
-    <CardHeader className="border-b bg-muted/20">
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-          <Icon icon={icon} className="h-5 w-5 text-primary" />
-        </div>
-        <div className="space-y-1">
-          <CardTitle className="text-lg leading-none">{title}</CardTitle>
-          <CardDescription className="text-sm leading-relaxed">{description}</CardDescription>
-        </div>
-      </div>
-    </CardHeader>
-  )
-}
-
-function SettingRow({
-  title,
-  description,
-  children,
-}: {
-  title: string
-  description: string
-  children: ReactNode
-}) {
-  return (
-    <div className="flex items-start justify-between gap-8 py-4">
-      <div className="flex-1 space-y-1">
-        <div className="text-sm font-medium leading-none">{title}</div>
-        <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
-      </div>
-      <div className="shrink-0 pt-0.5">{children}</div>
-    </div>
-  )
-}
-
-function SaveBar({
-  hasChanges,
-  isPending,
-  onSave,
-  onCancel,
-  label,
-}: {
-  hasChanges: boolean
-  isPending: boolean
-  onSave: () => void
-  onCancel: () => void
-  label: string
-}) {
-  if (!hasChanges) return null
-  return (
-    <div className="flex items-center justify-between gap-4 border-t bg-muted/20 px-6 py-3">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Icon icon="solar:info-circle-bold-duotone" className="h-4 w-4 text-amber-500" />
-        Unsaved changes
-      </div>
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={onCancel} disabled={isPending}>
-          Discard
-        </Button>
-        <Button size="sm" onClick={onSave} disabled={isPending}>
-          {isPending ? (
-            <Icon icon="eos-icons:loading" className="mr-2 h-4 w-4" />
-          ) : (
-            <Icon icon="solar:diskette-bold-duotone" className="mr-2 h-4 w-4" />
-          )}
-          {label}
-        </Button>
-      </div>
-    </div>
-  )
 }
 
 function NumberingField({
@@ -305,11 +221,11 @@ export function NumberingSettings() {
     },
   })
 
-  if (isLoading || !formats || !initialized) return <LoadingCard />
+  if (isLoading || !formats || !initialized) return <SettingsLoadingCard />
 
   return (
     <Card className="overflow-hidden">
-      <SectionHeader
+      <SettingsSectionHeader
         icon="solar:hashtag-circle-bold-duotone"
         title="Document Numbering"
         description="Control how invoice, quotation, and delivery order numbers are generated. Use tokens to build the format."
@@ -376,7 +292,7 @@ export function NumberingSettings() {
           </Select>
         </div>
       </CardContent>
-      <SaveBar
+      <SettingsSaveBar
         hasChanges={hasChanges}
         isPending={updateMutation.isPending}
         onSave={() => updateMutation.mutate()}
@@ -389,24 +305,32 @@ export function NumberingSettings() {
 
 // ─── Approval Workflow ──────────────────────────────────────────────────────
 
+const REVIEWER_ROLES = [
+  { value: 'owner', label: 'Owner', icon: 'solar:crown-bold-duotone' },
+  { value: 'admin', label: 'Admin', icon: 'solar:shield-user-bold-duotone' },
+  { value: 'manager', label: 'Manager', icon: 'solar:user-check-bold-duotone' },
+  { value: 'accountant', label: 'Accountant', icon: 'solar:calculator-minimalistic-bold-duotone' },
+  { value: 'sales', label: 'Sales', icon: 'solar:medal-star-bold-duotone' },
+]
+
 export function ApprovalSettings() {
   const { data, isLoading } = useSalesSettings()
   const [local, setLocal] = useState<Partial<SalesSettings['invoice']>>({})
   const mutation = useSalesSettingsMutation('invoice', 'Approval settings saved', () => setLocal({}))
 
-  if (isLoading || !data) return <LoadingCard />
+  if (isLoading || !data) return <SettingsLoadingCard />
 
   const invoice = { ...data.invoice, ...local }
 
   return (
     <Card className="overflow-hidden">
-      <SectionHeader
+      <SettingsSectionHeader
         icon="solar:checklist-bold-duotone"
         title="Approval Workflow"
         description="Decide which invoices need review before posting and how long approvals remain valid."
       />
       <CardContent className="divide-y py-0">
-        <SettingRow
+        <SettingsRow
           title="Require approval by default"
           description="New invoices start with the approval requirement already enabled."
         >
@@ -414,9 +338,9 @@ export function ApprovalSettings() {
             checked={invoice.default_requires_approval}
             onCheckedChange={(v) => setLocal({ ...local, default_requires_approval: v })}
           />
-        </SettingRow>
+        </SettingsRow>
 
-        <SettingRow
+        <SettingsRow
           title="Approval expiry"
           description="Pending requests automatically expire after this many days without a decision."
         >
@@ -433,9 +357,9 @@ export function ApprovalSettings() {
             />
             <span className="text-sm text-muted-foreground">days</span>
           </div>
-        </SettingRow>
+        </SettingsRow>
 
-        <SettingRow
+        <SettingsRow
           title="Block posting without approval"
           description="When enabled, unapproved invoices cannot be posted to the general ledger."
         >
@@ -443,9 +367,122 @@ export function ApprovalSettings() {
             <Icon icon="solar:shield-check-bold-duotone" className="h-3.5 w-3.5" />
             Enforced
           </Badge>
-        </SettingRow>
+        </SettingsRow>
+
+        {/* Reviewers */}
+        <div className="space-y-4 py-4">
+          <div className="space-y-1">
+            <div className="text-sm font-medium leading-none">Invoice reviewers</div>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Who gets notified and can approve invoices. Pick specific people, roles, or both.
+              When nothing is selected, everyone with the invoice-approval permission is used.
+            </p>
+          </div>
+
+          {/* Roles */}
+          <div className="space-y-2">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">By role</div>
+            <div className="flex flex-wrap gap-2">
+              {REVIEWER_ROLES.map((role) => {
+                const active = (invoice.reviewer_roles ?? []).includes(role.value)
+                return (
+                  <button
+                    key={role.value}
+                    type="button"
+                    onClick={() => {
+                      const current = invoice.reviewer_roles ?? []
+                      setLocal({
+                        ...local,
+                        reviewer_roles: active
+                          ? current.filter((r) => r !== role.value)
+                          : [...current, role.value],
+                      })
+                    }}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all',
+                      active
+                        ? 'border-primary/40 bg-primary/10 text-primary'
+                        : 'border-border text-muted-foreground hover:border-primary/30 hover:bg-muted/60 hover:text-foreground',
+                    )}
+                  >
+                    <Icon icon={role.icon} className="h-3.5 w-3.5" />
+                    {role.label}
+                    {active && <Icon icon="solar:check-circle-bold" className="h-3.5 w-3.5" />}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* People */}
+          <div className="space-y-2">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Specific people
+            </div>
+            {(invoice.available_reviewers ?? []).length === 0 ? (
+              <p className="text-xs text-muted-foreground">No team members found.</p>
+            ) : (
+              <div className="grid max-h-60 gap-1 overflow-y-auto rounded-lg border p-2 sm:grid-cols-2">
+                {(invoice.available_reviewers ?? []).map((person) => {
+                  const active = (invoice.reviewer_user_ids ?? []).includes(person.id)
+                  return (
+                    <button
+                      key={person.id}
+                      type="button"
+                      onClick={() => {
+                        const current = invoice.reviewer_user_ids ?? []
+                        setLocal({
+                          ...local,
+                          reviewer_user_ids: active
+                            ? current.filter((id) => id !== person.id)
+                            : [...current, person.id],
+                        })
+                      }}
+                      className={cn(
+                        'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors',
+                        active ? 'bg-primary/10' : 'hover:bg-muted/60',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold',
+                          active
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted text-muted-foreground',
+                        )}
+                      >
+                        {active ? (
+                          <Icon icon="solar:check-circle-bold" className="h-4 w-4" />
+                        ) : (
+                          person.name.slice(0, 2).toUpperCase()
+                        )}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium leading-tight">
+                          {person.name}
+                        </span>
+                        <span className="block truncate text-xs leading-tight text-muted-foreground">
+                          {person.email}
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {((invoice.reviewer_user_ids ?? []).length > 0 || (invoice.reviewer_roles ?? []).length > 0) && (
+            <div className="flex items-center gap-2 rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              <Icon icon="solar:info-circle-bold-duotone" className="h-3.5 w-3.5 shrink-0 text-primary" />
+              {(invoice.reviewer_user_ids ?? []).length + (invoice.reviewer_roles ?? []).length} reviewer
+              source{(invoice.reviewer_user_ids ?? []).length + (invoice.reviewer_roles ?? []).length === 1 ? '' : 's'} selected.
+              The submitter is always excluded from approving their own invoice.
+            </div>
+          )}
+        </div>
       </CardContent>
-      <SaveBar
+      <SettingsSaveBar
         hasChanges={Object.keys(local).length > 0}
         isPending={mutation.isPending}
         onSave={() => mutation.mutate(local)}
@@ -463,19 +500,19 @@ export function InvoiceDefaultsSettings() {
   const [local, setLocal] = useState<Partial<SalesSettings['invoice']>>({})
   const mutation = useSalesSettingsMutation('invoice', 'Invoice defaults saved', () => setLocal({}))
 
-  if (isLoading || !data) return <LoadingCard />
+  if (isLoading || !data) return <SettingsLoadingCard />
 
   const invoice = { ...data.invoice, ...local }
 
   return (
     <Card className="overflow-hidden">
-      <SectionHeader
+      <SettingsSectionHeader
         icon="solar:document-add-bold-duotone"
         title="Invoice Defaults"
         description="Pre-fill new invoices with your preferred terms, notes, and posting behaviour."
       />
       <CardContent className="divide-y py-0">
-        <SettingRow
+        <SettingsRow
           title="Allow custom invoice numbers"
           description="Users may override the auto-generated number on a per-invoice basis."
         >
@@ -483,9 +520,9 @@ export function InvoiceDefaultsSettings() {
             checked={invoice.allow_custom_number}
             onCheckedChange={(v) => setLocal({ ...local, allow_custom_number: v })}
           />
-        </SettingRow>
+        </SettingsRow>
 
-        <SettingRow
+        <SettingsRow
           title="Default payment terms"
           description="Applied to the due date when no customer-specific terms exist."
         >
@@ -502,9 +539,9 @@ export function InvoiceDefaultsSettings() {
             />
             <span className="text-sm text-muted-foreground">days</span>
           </div>
-        </SettingRow>
+        </SettingsRow>
 
-        <SettingRow
+        <SettingsRow
           title="Allow partial payments"
           description="Customers and staff can record payments smaller than the full invoice balance."
         >
@@ -512,9 +549,9 @@ export function InvoiceDefaultsSettings() {
             checked={invoice.allow_partial_payments}
             onCheckedChange={(v) => setLocal({ ...local, allow_partial_payments: v })}
           />
-        </SettingRow>
+        </SettingsRow>
 
-        <SettingRow
+        <SettingsRow
           title="Auto-send on post"
           description="When an invoice is posted, automatically email the customer the PDF and acceptance link."
         >
@@ -522,7 +559,7 @@ export function InvoiceDefaultsSettings() {
             checked={invoice.auto_send_to_customer_on_post}
             onCheckedChange={(v) => setLocal({ ...local, auto_send_to_customer_on_post: v })}
           />
-        </SettingRow>
+        </SettingsRow>
 
         <div className="grid gap-6 py-4 md:grid-cols-2">
           <div className="space-y-2">
@@ -555,7 +592,7 @@ export function InvoiceDefaultsSettings() {
           </div>
         </div>
       </CardContent>
-      <SaveBar
+      <SettingsSaveBar
         hasChanges={Object.keys(local).length > 0}
         isPending={mutation.isPending}
         onSave={() => mutation.mutate(local)}
@@ -573,19 +610,19 @@ export function PaymentPortalSettings() {
   const [local, setLocal] = useState<Partial<SalesSettings['portal']>>({})
   const mutation = useSalesSettingsMutation('portal', 'Payment & portal settings saved', () => setLocal({}))
 
-  if (isLoading || !data) return <LoadingCard />
+  if (isLoading || !data) return <SettingsLoadingCard />
 
   const portal = { ...data.portal, ...local }
 
   return (
     <Card className="overflow-hidden">
-      <SectionHeader
+      <SettingsSectionHeader
         icon="solar:card-bold-duotone"
         title="Payments & Customer Portal"
         description="Control how customers accept invoices, sign digitally, and pay online."
       />
       <CardContent className="divide-y py-0">
-        <SettingRow
+        <SettingsRow
           title="Customer acceptance portal"
           description="Customers receive a secure link to review and accept invoices — no login required."
         >
@@ -593,9 +630,9 @@ export function PaymentPortalSettings() {
             checked={portal.acceptance_enabled}
             onCheckedChange={(v) => setLocal({ ...local, acceptance_enabled: v })}
           />
-        </SettingRow>
+        </SettingsRow>
 
-        <SettingRow
+        <SettingsRow
           title="Require digital signature"
           description="Customers must draw a signature before their acceptance is recorded."
         >
@@ -603,9 +640,9 @@ export function PaymentPortalSettings() {
             checked={portal.require_signature}
             onCheckedChange={(v) => setLocal({ ...local, require_signature: v })}
           />
-        </SettingRow>
+        </SettingsRow>
 
-        <SettingRow
+        <SettingsRow
           title="Acceptance link validity"
           description="How long the customer's acceptance link stays active after it is issued."
         >
@@ -622,9 +659,9 @@ export function PaymentPortalSettings() {
             />
             <span className="text-sm text-muted-foreground">days</span>
           </div>
-        </SettingRow>
+        </SettingsRow>
 
-        <SettingRow
+        <SettingsRow
           title="Payment link validity"
           description="Expiry window for online payment links generated on invoices."
         >
@@ -641,9 +678,9 @@ export function PaymentPortalSettings() {
             />
             <span className="text-sm text-muted-foreground">days</span>
           </div>
-        </SettingRow>
+        </SettingsRow>
       </CardContent>
-      <SaveBar
+      <SettingsSaveBar
         hasChanges={Object.keys(local).length > 0}
         isPending={mutation.isPending}
         onSave={() => mutation.mutate(local)}
@@ -668,19 +705,19 @@ export function TaxPricingSettings() {
   const [local, setLocal] = useState<Partial<SalesSettings['tax']>>({})
   const mutation = useSalesSettingsMutation('tax', 'Tax settings saved', () => setLocal({}))
 
-  if (isLoading || !data) return <LoadingCard />
+  if (isLoading || !data) return <SettingsLoadingCard />
 
   const tax = { ...data.tax, ...local }
 
   return (
     <Card className="overflow-hidden">
-      <SectionHeader
+      <SettingsSectionHeader
         icon="solar:sale-bold-duotone"
         title="Tax & Pricing"
         description="Default tax behaviour applied when new invoice lines are added."
       />
       <CardContent className="divide-y py-0">
-        <SettingRow
+        <SettingsRow
           title="Default tax rate"
           description="Pre-fills the tax rate field on new invoice lines. Set to 0 to start tax-free."
         >
@@ -698,9 +735,9 @@ export function TaxPricingSettings() {
             />
             <span className="text-sm text-muted-foreground">%</span>
           </div>
-        </SettingRow>
+        </SettingsRow>
 
-        <SettingRow
+        <SettingsRow
           title="Default tax treatment"
           description="Applied to invoice lines when the customer has no tax configuration."
         >
@@ -719,9 +756,9 @@ export function TaxPricingSettings() {
               ))}
             </SelectContent>
           </Select>
-        </SettingRow>
+        </SettingsRow>
 
-        <SettingRow
+        <SettingsRow
           title="Prices include tax"
           description="When enabled, unit prices entered on invoice lines are treated as tax-inclusive."
         >
@@ -729,9 +766,9 @@ export function TaxPricingSettings() {
             checked={tax.prices_include_tax}
             onCheckedChange={(v) => setLocal({ ...local, prices_include_tax: v })}
           />
-        </SettingRow>
+        </SettingsRow>
       </CardContent>
-      <SaveBar
+      <SettingsSaveBar
         hasChanges={Object.keys(local).length > 0}
         isPending={mutation.isPending}
         onSave={() => mutation.mutate(local)}
@@ -749,19 +786,19 @@ export function DeliverySettings() {
   const [local, setLocal] = useState<Partial<SalesSettings['delivery']>>({})
   const mutation = useSalesSettingsMutation('delivery', 'Delivery settings saved', () => setLocal({}))
 
-  if (isLoading || !data) return <LoadingCard />
+  if (isLoading || !data) return <SettingsLoadingCard />
 
   const delivery = { ...data.delivery, ...local }
 
   return (
     <Card className="overflow-hidden">
-      <SectionHeader
+      <SettingsSectionHeader
         icon="solar:plain-2-bold-duotone"
         title="Delivery & Sending"
         description="Control what happens when an invoice is sent to a customer."
       />
       <CardContent className="divide-y py-0">
-        <SettingRow
+        <SettingsRow
           title="Attach PDF to email"
           description="Include the invoice PDF as an attachment on outgoing customer emails."
         >
@@ -769,9 +806,9 @@ export function DeliverySettings() {
             checked={delivery.attach_pdf}
             onCheckedChange={(v) => setLocal({ ...local, attach_pdf: v })}
           />
-        </SettingRow>
+        </SettingsRow>
 
-        <SettingRow
+        <SettingsRow
           title="Document type on send"
           description="Which version of the document the customer receives."
         >
@@ -787,7 +824,7 @@ export function DeliverySettings() {
               <SelectItem value="acceptance_copy">Acceptance copy</SelectItem>
             </SelectContent>
           </Select>
-        </SettingRow>
+        </SettingsRow>
 
         <div className="space-y-2 py-4">
           <Label htmlFor="cc-email" className="text-sm font-medium">
@@ -806,7 +843,7 @@ export function DeliverySettings() {
           </p>
         </div>
       </CardContent>
-      <SaveBar
+      <SettingsSaveBar
         hasChanges={Object.keys(local).length > 0}
         isPending={mutation.isPending}
         onSave={() => mutation.mutate(local)}

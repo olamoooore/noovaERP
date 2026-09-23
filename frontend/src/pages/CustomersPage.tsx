@@ -15,10 +15,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 import { formatCurrency, formatDate, getApiErrorMessage } from '@/lib/utils'
 import api from '@/lib/api'
-import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
+import { SalesLineColumnMenu, SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
 import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu'
+import { RetractingActions } from '@/components/layout/RetractingActions'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 const CUSTOMER_EXPORT_COLUMNS = [
   { key: 'code', label: 'Customer Code', group: 'Customer', default: true }, { key: 'name', label: 'Customer Name', group: 'Customer', default: true },
@@ -143,6 +145,8 @@ export function CustomersPage() {
   const [detailOpen, setDetailOpen] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [hiddenCustomerColumns, setHiddenCustomerColumns] = useState<number[]>([])
+  const [confirmAction, setConfirmAction] = useState<{ type: 'bulk-delete' | 'delete'; id?: number } | null>(null)
   const [filterType, setFilterType] = useState<string>('all')
   const [page, setPage] = useState(1)
   const [editMode, setEditMode] = useState(false)
@@ -313,7 +317,8 @@ export function CustomersPage() {
 
   const handleBulkDelete = () => {
     if (selectedIds.length === 0) return
-    if (!window.confirm(`Delete ${selectedIds.length} customer(s)? Customers with invoices or quotations will be skipped.`)) return
+    setConfirmAction({ type: 'bulk-delete' })
+    return
     bulkDeleteMutation.mutate(selectedIds)
   }
 
@@ -370,18 +375,18 @@ export function CustomersPage() {
           <h1 className="text-3xl font-bold">Customers</h1>
           <p className="text-muted-foreground">Manage your customers, contacts and relationships</p>
         </div>
-        <div className="flex items-center gap-2">
-          <SalesDocumentExportMenu endpoint="/customers/export" filenamePrefix="customers" columns={CUSTOMER_EXPORT_COLUMNS} filters={{ search: searchTerm || undefined, type: filterType === 'all' ? undefined : filterType }} selectedIds={selectedIds} />
-          <Button variant="secondary" asChild>
+        <RetractingActions>
+          <SalesDocumentExportMenu compact endpoint="/customers/export" filenamePrefix="customers" columns={CUSTOMER_EXPORT_COLUMNS} filters={{ search: searchTerm || undefined, type: filterType === 'all' ? undefined : filterType }} selectedIds={selectedIds} />
+          <Button variant="outline" size="sm" className="h-8 rounded-full px-3 text-xs" asChild>
             <Link to="/customers/import">
-              <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
+              <Icon icon="solar:upload-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
               Import
             </Link>
           </Button>
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setFormData(initialFormData) }}>
           <DialogTrigger asChild>
-            <Button>
-              <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+            <Button size="sm" className="h-8 rounded-full px-3 text-xs">
+              <Icon icon="solar:add-circle-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
               Add Customer
             </Button>
           </DialogTrigger>
@@ -599,7 +604,7 @@ export function CustomersPage() {
             </form>
           </DialogContent>
         </Dialog>
-        </div>
+        </RetractingActions>
       </div>
 
       {/* Stats Cards */}
@@ -652,48 +657,60 @@ export function CustomersPage() {
         </Card>
       </div>
 
-      {/* Filters & Search */}
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Icon icon="solar:magnifer-linear" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search customers..."
-            className="pl-10"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="individual">Individuals</SelectItem>
-            <SelectItem value="company">Companies</SelectItem>
-          </SelectContent>
-        </Select>
-        {categories.length > 0 && (
-          <div className="flex items-center gap-2">
-            {categories.slice(0, 5).map((cat: { id: number; name: string; color: string }) => (
-              <Badge 
-                key={cat.id} 
-                variant="outline" 
-                className="cursor-pointer hover:bg-muted"
-                style={{ borderColor: cat.color, color: cat.color }}
-              >
-                {cat.name}
-              </Badge>
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* Customers Table */}
       <Card>
         <CardHeader>
-          <CardTitle>All Customers</CardTitle>
-          <CardDescription>Click on a customer to view details</CardDescription>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="mr-auto">
+              <CardTitle>All Customers</CardTitle>
+              <CardDescription>Click on a customer to view details</CardDescription>
+            </div>
+
+            <div className="relative w-full sm:w-64">
+              <Icon
+                icon="solar:magnifer-bold-duotone"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                placeholder="Search customers..."
+                className="h-9 pl-9"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="h-9 w-[160px]">
+                <SelectValue placeholder="Filter by type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="individual">Individuals</SelectItem>
+                <SelectItem value="company">Companies</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {categories.length > 0 && (
+              <div className="hidden items-center gap-2 xl:flex">
+                {categories.slice(0, 3).map((cat: { id: number; name: string; color: string }) => (
+                  <Badge
+                    key={cat.id}
+                    variant="outline"
+                    className="cursor-pointer hover:bg-muted"
+                    style={{ borderColor: cat.color, color: cat.color }}
+                  >
+                    {cat.name}
+                  </Badge>
+                ))}
+              </div>
+            )}
+
+            <SalesLineColumnMenu
+              columns={listingColumns(['Select', 'Code', 'Name', 'Type', 'Email', 'Phone', 'Created Date', 'Outstanding', 'Total Purchases', 'Status', 'Actions'])}
+              hidden={hiddenCustomerColumns}
+              setHidden={setHiddenCustomerColumns}
+            />
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -711,7 +728,13 @@ export function CustomersPage() {
                   </Button>
                 </div>
               )}
-                <SalesLineColumnVisibility tableClass="customers-listing-columns" columns={listingColumns(['Select', 'Code', 'Name', 'Type', 'Email', 'Phone', 'Created Date', 'Outstanding', 'Total Purchases', 'Status', 'Actions'])}>
+                <SalesLineColumnVisibility
+                  tableClass="customers-listing-columns"
+                  columns={listingColumns(['Select', 'Code', 'Name', 'Type', 'Email', 'Phone', 'Created Date', 'Outstanding', 'Total Purchases', 'Status', 'Actions'])}
+                  hiddenColumns={hiddenCustomerColumns}
+                  onHiddenColumnsChange={setHiddenCustomerColumns}
+                  showMenu={false}
+                >
                 <Table>
               <TableHeader>
                 <TableRow>
@@ -872,11 +895,7 @@ export function CustomersPage() {
                   <Button 
                     variant="destructive" 
                     size="sm"
-                    onClick={() => {
-                      if (confirm('Are you sure you want to delete this customer?')) {
-                        deleteMutation.mutate(customerDetail.id)
-                      }
-                    }}
+                    onClick={() => setConfirmAction({ type: 'delete', id: customerDetail.id })}
                   >
                     <Icon icon="solar:trash-bin-trash-bold" className="mr-2 h-4 w-4" />
                     Delete
@@ -1281,6 +1300,35 @@ export function CustomersPage() {
           )}
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={confirmAction?.type === 'bulk-delete'}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+        title={`Delete ${selectedIds.length} customer(s)?`}
+        description="Customers that already have invoices or quotations will be skipped automatically."
+        confirmLabel="Delete customers"
+        icon="solar:trash-bin-trash-bold-duotone"
+        isPending={bulkDeleteMutation.isPending}
+        onConfirm={() => {
+          const ids = selectedIds
+          setConfirmAction(null)
+          bulkDeleteMutation.mutate(ids)
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmAction?.type === 'delete'}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+        title="Delete this customer?"
+        description="The customer record will be permanently removed. This cannot be undone."
+        confirmLabel="Delete customer"
+        icon="solar:trash-bin-trash-bold-duotone"
+        isPending={deleteMutation.isPending}
+        onConfirm={() => {
+          const targetId = confirmAction?.id
+          setConfirmAction(null)
+          if (targetId) deleteMutation.mutate(targetId)
+        }}
+      />
     </div>
   )
 }

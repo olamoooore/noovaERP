@@ -202,6 +202,9 @@ class RolePermissionSeeder extends Seeder
         'template.asset.manage' => [UserRole::OWNER, UserRole::ADMIN],
         'template.custom_code' => [UserRole::OWNER],
         // Documents
+        // Reversing a posted document back to draft rewrites the ledger and
+        // restores stock — restricted to the two administrative roles.
+        'documents.reset_to_draft' => [UserRole::OWNER, UserRole::ADMIN],
         'document.generate' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT],
         'document.view' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER, UserRole::SALES, UserRole::ACCOUNTANT, UserRole::CASHIER, UserRole::VIEWER],
         'document.regenerate' => [UserRole::OWNER, UserRole::ADMIN, UserRole::MANAGER],

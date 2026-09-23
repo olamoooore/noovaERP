@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Accounting\Events\ApprovalDecisionEvent;
 use App\Models\ApprovalRequest;
 use App\Models\Invoice;
+use App\Models\Setting;
 use App\Models\User;
 use App\Platform\Notifications\NotificationService;
 use Illuminate\Support\Facades\DB;
@@ -227,8 +228,13 @@ class InvoiceApprovalService
         }
 
         DB::transaction(function () use ($invoice) {
+            // A rejection returns the invoice to its draft state so the
+            // submitter can amend and resubmit. The decision itself is kept on
+            // the ApprovalRequest row (status=rejected + review_notes) and in
+            // the activity log, so nothing is lost from the audit trail.
             $invoice->update([
-                'approval_status' => Invoice::APPROVAL_REJECTED,
+                'approval_status' => Invoice::APPROVAL_NOT_REQUIRED,
+                'approval_request_id' => null,
             ]);
         });
 
@@ -239,9 +245,10 @@ class InvoiceApprovalService
                 'approval_request_id' => $approvalRequest->id,
                 'reviewed_by' => $approvalRequest->reviewed_by,
                 'reason' => $reason,
+                'returned_to' => 'draft',
             ],
             Invoice::APPROVAL_PENDING,
-            Invoice::APPROVAL_REJECTED,
+            Invoice::APPROVAL_NOT_REQUIRED,
             \App\Models\InvoiceActivityLog::ACTOR_USER,
             $approvalRequest->reviewed_by,
         );
@@ -396,9 +403,7 @@ class InvoiceApprovalService
     private function notifyApprovers(Invoice $invoice, ApprovalRequest $approvalRequest, User $submitter): void
     {
         try {
-            $approvers = User::permission('invoices.approve')
-                ->where('id', '!=', $submitter->id)
-                ->get();
+            $approvers = $this->resolveReviewers($submitter);
 
             foreach ($approvers as $approver) {
                 $this->notificationService->dispatch('approval.requested', $approver, [
@@ -418,6 +423,73 @@ class InvoiceApprovalService
                 'approval_request_id' => $approvalRequest->id,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /**
+     * Users who should review invoice approvals.
+     *
+     * Prefers the reviewers configured in Sales Settings → Approval Workflow
+     * (specific people first, then everyone holding one of the chosen roles).
+     * Falls back to the `invoices.approve` permission when nothing is
+     * configured, so existing tenants keep working unchanged. The submitter is
+     * always excluded (no self-approval).
+     *
+     * @return \Illuminate\Support\Collection<int, User>
+     */
+    public function resolveReviewers(?User $submitter = null): \Illuminate\Support\Collection
+    {
+        $submitterId = $submitter?->id;
+
+        try {
+            $configuredIds = Setting::getValue('sales.invoice.reviewer_user_ids', []);
+            $configuredRoles = Setting::getValue('sales.invoice.reviewer_roles', []);
+
+            $users = collect();
+
+            if (is_array($configuredRoles) && $configuredRoles !== []) {
+                $users = $users->merge(
+                    User::role($configuredRoles)->get()
+                );
+            }
+
+            if (is_array($configuredIds) && $configuredIds !== []) {
+                $users = $users->merge(
+                    User::whereIn('id', array_map('intval', $configuredIds))->get()
+                );
+            }
+
+            $users = $users
+                ->unique('id')
+                ->reject(fn (User $u) => $submitterId !== null && $u->id === $submitterId)
+                ->values();
+
+            if ($users->isNotEmpty()) {
+                return $users;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('InvoiceApprovalService: failed to resolve configured reviewers', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // Fallback: role/permission based approvers. Guarded because the
+        // permission may not be seeded in a given tenant's schema — a missing
+        // permission must not break invoice creation.
+        try {
+            $query = User::permission('invoices.approve');
+
+            if ($submitterId !== null) {
+                $query->where('id', '!=', $submitterId);
+            }
+
+            return $query->get();
+        } catch (\Throwable $e) {
+            Log::warning('InvoiceApprovalService: no reviewers resolved (permission fallback failed)', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return collect();
         }
     }
 

@@ -32,7 +32,8 @@ Route::middleware([
             Route::post('/sales/orders/{id}/allocate', [SalesOrderController::class, 'allocate']);
             Route::post('/sales/orders/{id}/fulfil', [SalesOrderController::class, 'fulfil']);
             Route::post('/sales/orders/{id}/cancel', [SalesOrderController::class, 'cancel']);
-            Route::post('/sales/orders/{id}/reset-to-draft', [SalesOrderController::class, 'resetToDraft']);
+            Route::post('/sales/orders/{id}/reset-to-draft', [SalesOrderController::class, 'resetToDraft'])
+                ->middleware(\App\Http\Middleware\RequirePermission::using('documents.reset_to_draft'));
 
             // Linked documents (mutating)
             Route::post('/sales/orders/{id}/invoice', [SalesOrderController::class, 'createInvoice']);
@@ -101,7 +102,8 @@ Route::middleware([
             Route::post('/sales/delivery-orders/{id}/cancel', [DeliveryOrderController::class, 'cancel']);
             // Issue #178/#179: rejection with auto-versioned replacement draft.
             Route::post('/sales/delivery-orders/{id}/reject', [DeliveryOrderController::class, 'reject']);
-            Route::post('/sales/delivery-orders/{id}/reset-to-draft', [DeliveryOrderController::class, 'resetToDraft']);
+            Route::post('/sales/delivery-orders/{id}/reset-to-draft', [DeliveryOrderController::class, 'resetToDraft'])
+                ->middleware(\App\Http\Middleware\RequirePermission::using('documents.reset_to_draft'));
             Route::post('/sales/delivery-orders/bulk-delete', [DeliveryOrderController::class, 'bulkDestroy']);
             Route::post('/sales/delivery-orders/import', [DeliveryOrderController::class, 'import']);
         });

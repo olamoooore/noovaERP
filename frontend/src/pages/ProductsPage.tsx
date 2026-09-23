@@ -18,6 +18,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 import { SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { SalesDocumentExportMenu, type SalesExportColumn } from '@/components/sales/SalesDocumentExportMenu'
+import { RetractingActions } from '@/components/layout/RetractingActions'
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
 
@@ -193,21 +194,21 @@ export function ProductsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Products</h1>
-        <div className="flex items-center gap-2">
-          <SalesDocumentExportMenu endpoint="/products/export" filenamePrefix="products" columns={PRODUCT_EXPORT_COLUMNS} filters={productFilters} selectedIds={selectedIds} />
-          <Button variant="secondary" asChild>
+        <RetractingActions>
+          <SalesDocumentExportMenu compact endpoint="/products/export" filenamePrefix="products" columns={PRODUCT_EXPORT_COLUMNS} filters={productFilters} selectedIds={selectedIds} />
+          <Button variant="outline" size="sm" className="h-8 rounded-full px-3 text-xs" asChild>
             <Link to="/products/import">
-              <Icon icon="solar:import-bold" className="mr-2 h-4 w-4" />
+              <Icon icon="solar:upload-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
               Import
             </Link>
           </Button>
-          <Button asChild>
+          <Button size="sm" className="h-8 rounded-full px-3 text-xs" asChild>
             <Link to="/products/new">
-              <Icon icon="solar:add-circle-bold" className="mr-2 h-4 w-4" />
+              <Icon icon="solar:add-circle-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
               Add Product
             </Link>
           </Button>
-        </div>
+        </RetractingActions>
       </div>
 
       <Card>

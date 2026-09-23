@@ -14,6 +14,7 @@ import {
 import { useCustomerDashboard, useCancelBooking, useRefundBooking } from '@/hooks/queries/useEventManagement';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import { PromptDialog } from '@/components/ui/prompt-dialog';
 
 /* ─── Status style map ──────────────────────────────────────────────── */
 const STATUS_STYLES: Record<string, { badge: string; border: string; dot: string }> = {
@@ -154,6 +155,8 @@ const BookingDetailModal: React.FC<{ booking: any; open: boolean; onClose: () =>
 const MyBookingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [viewBooking, setViewBooking] = useState<any>(null);
+  const [cancelTarget, setCancelTarget] = useState<any>(null);
+  const [refundTarget, setRefundTarget] = useState<any>(null);
   const { toast } = useToast();
   const cancelMutation = useCancelBooking();
   const refundMutation = useRefundBooking();
@@ -162,11 +165,13 @@ const MyBookingsPage: React.FC = () => {
   const allBookings = (dashboardData?.bookings ?? []) as any[];
 
   const handleCancel = (booking: any) => {
-    const reason = window.prompt(
-      `Cancel booking ${booking.booking_reference ?? `#${booking.id}`}?\n\nEnter cancellation reason:`,
-      'Admin cancellation'
-    );
-    if (!reason) return;
+    setCancelTarget(booking);
+  };
+
+  const performCancel = (reason: string) => {
+    const booking = cancelTarget;
+    setCancelTarget(null);
+    if (!booking) return;
     cancelMutation.mutate(
       { bookingId: booking.id, reason },
       {
@@ -182,12 +187,13 @@ const MyBookingsPage: React.FC = () => {
   };
 
   const handleRefund = (booking: any) => {
-    const reason = window.prompt(
-      `Refund booking ${booking.booking_reference ?? `#${booking.id}`}?\n\nEnter refund reason:`,
-      'Customer refund requested'
-    );
-    if (!reason) return;
-    if (!window.confirm('This will cancel the booking and mark it for refund. Continue?')) return;
+    setRefundTarget(booking);
+  };
+
+  const performRefund = (reason: string) => {
+    const booking = refundTarget;
+    setRefundTarget(null);
+    if (!booking) return;
     refundMutation.mutate(
       { bookingId: booking.id, reason },
       {
@@ -380,6 +386,53 @@ const MyBookingsPage: React.FC = () => {
         booking={viewBooking}
         open={!!viewBooking}
         onClose={() => setViewBooking(null)}
+      />
+      <PromptDialog
+        open={!!cancelTarget}
+        onOpenChange={(open) => !open && setCancelTarget(null)}
+        title="Cancel this booking?"
+        description={
+          <>
+            Booking{' '}
+            <span className="font-medium text-foreground">
+              {cancelTarget?.booking_reference ?? `#${cancelTarget?.id}`}
+            </span>{' '}
+            will be cancelled. Provide a cancellation reason.
+          </>
+        }
+        label="Cancellation reason"
+        placeholder="e.g. Admin cancellation"
+        defaultValue="Admin cancellation"
+        confirmLabel="Cancel booking"
+        tone="destructive"
+        icon="solar:close-circle-bold-duotone"
+        multiline
+        isPending={cancelMutation.isPending}
+        onConfirm={performCancel}
+      />
+
+      <PromptDialog
+        open={!!refundTarget}
+        onOpenChange={(open) => !open && setRefundTarget(null)}
+        title="Refund this booking?"
+        description={
+          <>
+            Booking{' '}
+            <span className="font-medium text-foreground">
+              {refundTarget?.booking_reference ?? `#${refundTarget?.id}`}
+            </span>{' '}
+            will be cancelled and marked for refund. Provide a refund reason.
+          </>
+        }
+        label="Refund reason"
+        placeholder="e.g. Customer refund requested"
+        defaultValue="Customer refund requested"
+        confirmLabel="Refund booking"
+        tone="warning"
+        icon="solar:card-bold-duotone"
+        multiline
+        isPending={refundMutation.isPending}
+        onConfirm={performRefund}
       />
     </div>
   );

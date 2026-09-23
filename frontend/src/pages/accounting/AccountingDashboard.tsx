@@ -389,7 +389,7 @@ export const AccountingDashboard: React.FC = () => {
   }
 
   return (
-    <div className="min-h-full bg-[radial-gradient(circle_at_top_left,_rgba(15,118,110,0.08),_transparent_35%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.08),_transparent_30%)] p-6 space-y-6">
+    <div className="min-h-full p-6 space-y-6">
       <div className="rounded-3xl border border-slate-200/80 bg-white/85 backdrop-blur-sm shadow-sm overflow-hidden">
         <div className="border-b border-slate-200/80 px-6 py-5">
           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
