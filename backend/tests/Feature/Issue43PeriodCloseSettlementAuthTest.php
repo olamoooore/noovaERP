@@ -271,4 +271,155 @@ class Issue43PeriodCloseSettlementAuthTest extends TenantTestCase
         );
     }
 
+
+    /**
+     * HR43-01: reopen denial — the missing case from the hostile re-review.
+     * Real HTTP through the router with a user lacking accounting.lock.
+     */
+    public function test_user_without_permission_blocked_from_period_reopen_http(): void
+    {
+        $user = $this->createTenantUser('viewer', 'Viewer');
+
+        $period = FiscalPeriod::create([
+            'name' => 'HR43 Reopen', 'code' => 'HR43-R-'.Str::random(5),
+            'period_start' => '2026-01-01', 'period_end' => '2026-01-31',
+            'period_type' => 'monthly', 'fiscal_year' => 2026,
+            'status' => 'closed', 'created_by' => $user->id,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/accounting/periods/{$period->id}/reopen", ['reason' => 'HR43 reopen denial'])
+            ->assertStatus(403)
+            ->assertJsonPath('required_permission', 'accounting.lock');
+
+        $this->assertSame('closed', $period->fresh()->status, 'A denied reopen must not change period state.');
+    }
+
+    /**
+     * HR43-02: authorized reverse success with persisted state — the missing
+     * half of the settlement evidence.
+     */
+    public function test_authorized_reverse_persists_reversal_state(): void
+    {
+        $role = \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'Accountant', 'guard_name' => 'web']);
+        $role->syncPermissions(['accounting.reverse']);
+
+        // central role 'accountant' → Spatie 'Accountant' (UserRole::spatieName)
+        $user = $this->createTenantUser('accountant');
+        $user->assignRole('Accountant');
+
+        $settlement = new \App\Models\Settlement;
+        $settlement->tenant_id = $this->tenantUuid;
+        $settlement->settlement_number = 'STL-43R-'.Str::upper(Str::random(5));
+        $settlement->settlement_state = 'PARTIALLY_ALLOCATED';
+        $settlement->settlement_type = 'cash_application';
+        $settlement->allocated_amount = 200;
+        $settlement->unapplied_amount = 300;
+        $settlement->currency_code = 'USD';
+        $settlement->save();
+
+        $allocation = \App\Models\Allocation::create([
+            'tenant_id' => $this->tenantUuid,
+            'settlement_id' => $settlement->id,
+            'source_record_type' => 'invoice',
+            'source_record_id' => 1,
+            'allocated_amount' => 200,
+            'currency_code' => 'USD',
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/accounting/settlements/{$settlement->id}/reverse", ['reason' => 'HR43 reverse evidence']);
+
+        $response->assertOk();
+
+        $settlement->refresh();
+        $this->assertSame('REVERSED', $settlement->settlement_state, 'Settlement must persist the reversed state.');
+        $this->assertSame('0.00', (string) $settlement->allocated_amount);
+        $this->assertSame('500.00', (string) $settlement->unapplied_amount, 'Unapplied cash must be restored.');
+        $this->assertNotNull($allocation->fresh()->reversed_at, 'The allocation must be marked reversed.');
+    }
+
+    /**
+     * HR43-03: correct permission but wrong legal entity is denied on all
+     * four routes (real HTTP through ResolveEntityContext + EnsureEntityAccess).
+     */
+    public function test_wrong_legal_entity_is_denied_on_all_four_routes(): void
+    {
+        $groupId = DB::table('entity_groups')->insertGetId([
+            'name' => 'HR43 Group', 'code' => 'HR43G-'.Str::upper(Str::random(4)),
+            'base_currency' => 'USD', 'fiscal_year_start' => '01-01',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $entityA = DB::table('legal_entities')->insertGetId([
+            'group_id' => $groupId, 'name' => 'HR43 A', 'code' => 'HR43A-'.Str::upper(Str::random(4)),
+            'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $entityB = DB::table('legal_entities')->insertGetId([
+            'group_id' => $groupId, 'name' => 'HR43 B', 'code' => 'HR43B-'.Str::upper(Str::random(4)),
+            'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $role = \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'Accountant', 'guard_name' => 'web']);
+        $role->syncPermissions(['accounting.lock', 'accounting.write', 'accounting.reverse']);
+
+        $user = $this->createTenantUser('accountant');
+        $user->assignRole('Accountant');
+
+        // Access to entity A only.
+        DB::table('user_entity_access')->insert([
+            'user_id' => $user->id,
+            'legal_entity_id' => $entityA,
+            'role' => 'viewer',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $period = FiscalPeriod::create([
+            'name' => 'HR43 Entity', 'code' => 'HR43-E-'.Str::random(5),
+            'period_start' => '2026-02-01', 'period_end' => '2026-02-28',
+            'period_type' => 'monthly', 'fiscal_year' => 2026,
+            'status' => 'open', 'created_by' => $user->id,
+        ]);
+
+        $settlement = new \App\Models\Settlement;
+        $settlement->tenant_id = $this->tenantUuid;
+        $settlement->settlement_number = 'STL-43E-'.Str::upper(Str::random(5));
+        $settlement->settlement_state = 'UNALLOCATED';
+        $settlement->settlement_type = 'cash_application';
+        $settlement->allocated_amount = 0;
+        $settlement->unapplied_amount = 100;
+        $settlement->currency_code = 'USD';
+        $settlement->save();
+
+        $headers = ['X-Entity-Id' => (string) $entityB];
+
+        // close
+        $this->actingAs($user, 'sanctum')
+            ->withHeaders($headers)
+            ->postJson("/api/v1/accounting/periods/{$period->id}/close")
+            ->assertStatus(403);
+
+        // reopen
+        $this->actingAs($user, 'sanctum')
+            ->withHeaders($headers)
+            ->postJson("/api/v1/accounting/periods/{$period->id}/reopen", ['reason' => 'wrong entity'])
+            ->assertStatus(403);
+
+        // allocate
+        $this->actingAs($user, 'sanctum')
+            ->withHeaders($headers)
+            ->postJson('/api/v1/accounting/settlements/allocate', [
+                'settlement_id' => $settlement->id,
+                'allocations' => [['source_record_type' => 'invoice', 'source_record_id' => 1, 'amount' => 10]],
+            ])
+            ->assertStatus(403);
+
+        // reverse
+        $this->actingAs($user, 'sanctum')
+            ->withHeaders($headers)
+            ->postJson("/api/v1/accounting/settlements/{$settlement->id}/reverse", ['reason' => 'wrong entity'])
+            ->assertStatus(403);
+    }
+
 }
