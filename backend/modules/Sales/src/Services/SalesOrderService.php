@@ -464,8 +464,44 @@ class SalesOrderService
                 $line->update(['quantity_cancelled' => $line->quantity - $line->quantity_fulfilled]);
             }
 
+            // Issue #152 (hostile re-review): a release order from a blanket
+            // agreement consumed committed quantity. Cancelling it must give
+            // the commitment back, otherwise cancelled releases permanently
+            // burn the agreement's remaining quantity.
+            $this->restoreBlanketCommitments($order);
+
             return $order->fresh(['customer', 'lines.product', 'statusHistory']);
         });
+    }
+
+    /**
+     * Issue #152: decrement the blanket lines a cancelled release order
+     * consumed, then clear the consumption ledger so a reset-and-release of
+     * the same order can record again.
+     */
+    private function restoreBlanketCommitments(SalesOrder $order): void
+    {
+        if (! class_exists(\Modules\Sales\Models\SalesBlanketOrderRelease::class)) {
+            return;
+        }
+
+        $releases = \Modules\Sales\Models\SalesBlanketOrderRelease::where('sales_order_id', $order->id)
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($releases as $release) {
+            $line = \Modules\Sales\Models\SalesBlanketOrderLine::whereKey($release->blanket_order_line_id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($line !== null) {
+                $line->update([
+                    'released_qty' => max(0, round((float) $line->released_qty - (float) $release->quantity, 4)),
+                ]);
+            }
+        }
+
+        \Modules\Sales\Models\SalesBlanketOrderRelease::where('sales_order_id', $order->id)->delete();
     }
 
     public function createFromPosOrder(\Modules\POS\Models\PosOrder $posOrder, ?string $idempotencyKey = null): SalesOrder

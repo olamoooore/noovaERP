@@ -6,6 +6,7 @@ use App\Models\Customer;
 use Illuminate\Support\Facades\DB;
 use Modules\Sales\Models\SalesBlanketOrder;
 use Modules\Sales\Models\SalesBlanketOrderLine;
+use Modules\Sales\Models\SalesBlanketOrderRelease;
 use Modules\Sales\Models\SalesOrder;
 
 /**
@@ -32,6 +33,13 @@ class SalesBlanketOrderService
 
             $data['blanket_number'] = $data['blanket_number'] ?? SalesBlanketOrder::generateNumber();
             $data['status'] = $data['status'] ?? 'active';
+
+            // Issue #152: stamp the legal entity from the customer (explicit
+            // caller-supplied value wins) so agreements are entity-scopable.
+            if (empty($data['legal_entity_id']) && ! empty($data['customer_id'])) {
+                $data['legal_entity_id'] = \App\Models\Customer::whereKey($data['customer_id'])
+                    ->value('legal_entity_id');
+            }
 
             $blanket = SalesBlanketOrder::create($data);
 
@@ -67,12 +75,21 @@ class SalesBlanketOrderService
         }
 
         return DB::transaction(function () use ($blanket, $releaseLines, $allowPriceOverride, $notes) {
-            $blanket->loadMissing('lines');
+            // Issue #152 (hostile re-review): lock the blanket lines before
+            // reading remainingQty() so two concurrent releases cannot both
+            // pass the availability check and exceed the committed quantity.
+            $lineIds = collect($releaseLines)->pluck('blanket_line_id')->unique()->values()->all();
+            $lockedLines = SalesBlanketOrderLine::whereIn('id', $lineIds)
+                ->where('blanket_order_id', $blanket->id)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
 
             $orderLines = [];
+            $consumed = [];
 
             foreach ($releaseLines as $release) {
-                $line = $blanket->lines->firstWhere('id', $release['blanket_line_id']);
+                $line = $lockedLines->get($release['blanket_line_id']);
 
                 if (! $line) {
                     throw new \RuntimeException("Blanket line {$release['blanket_line_id']} does not belong to this agreement.");
@@ -106,6 +123,7 @@ class SalesBlanketOrderService
                 }
 
                 $line->update(['released_qty' => round((float) $line->released_qty + $quantity, 4)]);
+                $consumed[$line->id] = ($consumed[$line->id] ?? 0) + $quantity;
 
                 $orderLines[] = [
                     'product_id' => $line->product_id,
@@ -125,6 +143,16 @@ class SalesBlanketOrderService
                 'notes' => trim("Release from blanket order {$blanket->blanket_number}. ".($notes ?? '')),
                 'lines' => $orderLines,
             ]);
+
+            // Issue #152: record what this order consumed so cancelling it can
+            // restore the commitment.
+            foreach ($consumed as $lineId => $qty) {
+                SalesBlanketOrderRelease::create([
+                    'sales_order_id' => $order->id,
+                    'blanket_order_line_id' => $lineId,
+                    'quantity' => $qty,
+                ]);
+            }
 
             return $order->fresh(['lines.product']);
         });

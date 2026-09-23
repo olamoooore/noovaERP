@@ -22,6 +22,10 @@ class SalesBlanketOrderController extends Controller
         $query = SalesBlanketOrder::with(['customer:id,name', 'lines'])
             ->orderByDesc('id');
 
+        // Issue #152: same entity-scoping contract as SalesOrder — an
+        // entity-scoped user must not see another entity's agreements.
+        $this->applyEntityScope($request, $query);
+
         if ($request->filled('customer_id')) {
             $query->where('customer_id', (int) $request->input('customer_id'));
         }
@@ -31,6 +35,36 @@ class SalesBlanketOrderController extends Controller
         }
 
         return response()->json($query->paginate($request->integer('per_page', 25)));
+    }
+
+    /**
+     * Issue #152: resolve the requester's accessible entity ids and narrow the
+     * query. Mirrors SalesOrderController::applyEntityScope.
+     */
+    private function applyEntityScope(Request $request, $query): void
+    {
+        $user = $request->user();
+
+        if (! $user) {
+            return;
+        }
+
+        $entityIds = app(\App\Services\EntityAccessService::class)->accessibleEntityIds((int) $user->id);
+
+        if ($entityIds !== []) {
+            $query->accessibleBy($entityIds);
+        }
+    }
+
+    /**
+     * Issue #152: find a blanket order inside the requester's entity scope.
+     */
+    private function findScopedBlanket(Request $request, int $id): ?SalesBlanketOrder
+    {
+        $query = SalesBlanketOrder::query();
+        $this->applyEntityScope($request, $query);
+
+        return $query->find($id);
     }
 
     public function store(Request $request): JsonResponse
@@ -58,20 +92,22 @@ class SalesBlanketOrderController extends Controller
         ], 201);
     }
 
-    public function show(int $blanketOrder): JsonResponse
+    public function show(Request $request, int $blanketOrder): JsonResponse
     {
-        $blanket = SalesBlanketOrder::with(['customer:id,name', 'lines.product'])->find($blanketOrder);
+        $blanket = $this->findScopedBlanket($request, $blanketOrder);
 
         if (! $blanket) {
             return response()->json(['message' => 'Blanket order not found'], 404);
         }
+
+        $blanket->load(['customer:id,name', 'lines.product']);
 
         return response()->json(['data' => $this->service->summary($blanket)]);
     }
 
     public function release(Request $request, int $blanketOrder): JsonResponse
     {
-        $blanket = SalesBlanketOrder::find($blanketOrder);
+        $blanket = $this->findScopedBlanket($request, $blanketOrder);
 
         if (! $blanket) {
             return response()->json(['message' => 'Blanket order not found'], 404);
