@@ -20,10 +20,14 @@ class ContactGroup extends Model
     protected $fillable = [
         'id', 'tenant_id', 'group_name', 'group_type',
         'description', 'parent_group_id', 'sort_order',
+        // Issue #123: reserved taxonomy codes are system rows; codes added
+        // via the tenant API are not.
+        'is_system',
     ];
 
     protected $casts = [
         'sort_order' => 'integer',
+        'is_system' => 'boolean',
     ];
 
     public function members()

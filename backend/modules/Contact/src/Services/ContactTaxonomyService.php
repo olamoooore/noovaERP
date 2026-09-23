@@ -92,12 +92,92 @@ class ContactTaxonomyService
                     'taxonomy_type' => ContactTaxonomyRegistry::TYPE_CLASSIFICATION,
                     'code' => $group->group_name,
                     'display_label' => $group->description ?: $group->group_name,
-                    'is_system' => true,
+                    'is_system' => (bool) ($group->is_system ?? true),
                 ];
             }
         }
 
         return $entries;
+    }
+
+    /**
+     * Issue #123 (hostile re-review): a real API to add a tenant-owned
+     * taxonomy code. Validation is explicit — code shape, non-empty label,
+     * no collision with reserved or existing tenant codes.
+     *
+     * @return array{taxonomy_type: string, code: string, display_label: string, is_system: bool}
+     */
+    public function addCode(string $tenantId, string $type, string $code, string $label): array
+    {
+        $this->ensureSystemTaxonomy($tenantId);
+
+        $allowedTypes = [
+            ContactTaxonomyRegistry::TYPE_FUNCTIONAL_CATEGORY,
+            ContactTaxonomyRegistry::TYPE_PERSISTENT_ROLE,
+            ContactTaxonomyRegistry::TYPE_CLASSIFICATION,
+        ];
+
+        if (! in_array($type, $allowedTypes, true)) {
+            throw new \DomainException('TAXONOMY_TYPE_INVALID');
+        }
+
+        $code = strtoupper(trim($code));
+        if (! preg_match('/^[A-Z][A-Z0-9_]{1,49}$/', $code)) {
+            throw new \DomainException('TAXONOMY_CODE_INVALID');
+        }
+
+        $label = trim($label);
+        if ($label === '') {
+            throw new \DomainException('TAXONOMY_LABEL_EMPTY');
+        }
+
+        return DB::transaction(function () use ($tenantId, $type, $code, $label) {
+            if ($type === ContactTaxonomyRegistry::TYPE_CLASSIFICATION) {
+                $exists = ContactGroup::where('tenant_id', $tenantId)
+                    ->where('group_name', $code)
+                    ->exists();
+
+                if ($exists) {
+                    throw new \DomainException('TAXONOMY_CODE_EXISTS');
+                }
+
+                ContactGroup::create([
+                    'id' => Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'group_name' => $code,
+                    'group_type' => self::CLASSIFICATION_GROUP_TYPE,
+                    'description' => $label,
+                    'sort_order' => 999,
+                    'is_system' => false,
+                ]);
+            } else {
+                $exists = ContactTaxonomy::where('tenant_id', $tenantId)
+                    ->where('taxonomy_type', $type)
+                    ->where('code', $code)
+                    ->exists();
+
+                if ($exists) {
+                    throw new \DomainException('TAXONOMY_CODE_EXISTS');
+                }
+
+                ContactTaxonomy::create([
+                    'id' => Str::uuid(),
+                    'tenant_id' => $tenantId,
+                    'taxonomy_type' => $type,
+                    'code' => $code,
+                    'display_label' => $label,
+                    'is_system' => false,
+                    'sort_order' => 999,
+                ]);
+            }
+
+            return [
+                'taxonomy_type' => $type,
+                'code' => $code,
+                'display_label' => $label,
+                'is_system' => false,
+            ];
+        });
     }
 
     /**
