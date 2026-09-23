@@ -123,6 +123,9 @@ Route::middleware([
     // Chatter (Odoo-style activity log + messages + activities + attachments)
     Route::prefix('chatter')->group(function () {
         Route::get('/{subjectType}/{subjectId}', [\App\Http\Controllers\Api\ChatterController::class, 'show']);
+        // Issue #87: polling endpoint for the real-time chatter UX. Frontend
+        // hits this every ~10s while the chatter tab is open.
+        Route::get('/{subjectType}/{subjectId}/since', [\App\Http\Controllers\Api\ChatterController::class, 'since']);
         Route::post('/{subjectType}/{subjectId}/messages', [\App\Http\Controllers\Api\ChatterController::class, 'addMessage']);
         Route::post('/{subjectType}/{subjectId}/activities', [\App\Http\Controllers\Api\ChatterController::class, 'addActivity']);
         Route::post('/{subjectType}/{subjectId}/activities/{activityId}/done', [\App\Http\Controllers\Api\ChatterController::class, 'markActivityDone']);

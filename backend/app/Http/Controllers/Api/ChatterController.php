@@ -76,6 +76,86 @@ class ChatterController extends Controller
         return response()->json(['data' => $bundle]);
     }
 
+    /**
+     * Issue #87: lightweight polling endpoint for the chatter panel.
+     *
+     * The platform does not yet deploy a WebSocket server, so the frontend
+     * polls this endpoint every ~10s while the chatter tab is open. Returns
+     * only the messages + activities + attachments newer than the
+     * `since` ISO-8601 timestamp so the payload stays small.
+     *
+     * When a WebSocket / Laravel Echo server is wired up, the same channel
+     * (`chatter.{tenant}.{subjectType}.{subjectId}`) can replace this polling
+     * with no frontend change beyond a transport switch.
+     */
+    public function since(Request $request, string $subjectType, int|string $subjectId): JsonResponse
+    {
+        // Accept any parseable datetime; ISO-8601 with timezone is the
+        // canonical wire format from the frontend's \`toIso8601String\`.
+        $since = null;
+        if ($raw = $request->query('since')) {
+            try {
+                $since = \Carbon\Carbon::parse($raw)->toDateTimeString();
+            } catch (\Throwable) {
+                return response()->json([
+                    'message' => 'The since field must be a valid date.',
+                ], 422);
+            }
+        }
+
+        $this->validateSubject($subjectType, $subjectId);
+        $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
+
+        // Accept any parseable datetime; ISO-8601 with timezone is the
+        // canonical wire format from the frontend's \`toIso8601String\`.
+        $since = null;
+        if ($raw = $request->query('since')) {
+            try {
+                $since = \Carbon\Carbon::parse($raw)->toDateTimeString();
+            } catch (\Throwable) {
+                return response()->json([
+                    'message' => 'The since field must be a valid date.',
+                ], 422);
+            }
+        }
+
+        $tenantId = (string) tenant()?->id;
+        $query = CommunicationMessage::query()
+            ->where('model', $subjectType)
+            ->where('record_id', (int) $subjectId)
+            ->when($tenantId !== '', fn ($q) => $q->where('tenant_id', $tenantId))
+            ->when($since, fn ($q) => $q->where('created_at', '>', $since))
+            ->with('author')
+            ->orderBy('created_at');
+
+        $messages = $query->get()
+            ->map(function (CommunicationMessage $m) {
+                $author = $m->author;
+                return [
+                    'id' => $m->id,
+                    'body' => $m->body,
+                    'mentions' => [],
+                    'is_internal_note' => $m->message_type === CommunicationMessage::TYPE_INTERNAL_NOTE,
+                    'created_at' => optional($m->created_at)->toIso8601String(),
+                    'source' => 'communication',
+                    'actor' => $author ? [
+                        'id' => $author->id,
+                        'name' => $author->name,
+                        'email' => $author->email,
+                        'avatar' => $author->avatar ?? null,
+                    ] : null,
+                ];
+            })
+            ->all();
+
+        return response()->json([
+            'data' => [
+                'messages' => $messages,
+                'since' => $messages ? end($messages)['created_at'] : $since,
+            ],
+        ]);
+    }
+
     public function addMessage(Request $request, string $subjectType, int|string $subjectId): JsonResponse
     {
         $this->validateSubject($subjectType, $subjectId);

@@ -124,6 +124,10 @@ export function ChatterPanel({
   const { data, isLoading, error } = useQuery({
     queryKey,
     queryFn: () => chatterApi.list(subjectType, subjectId),
+    // Issue #87: poll every 10s so newly posted messages from other users
+    // appear without a manual refresh. Pauses while the tab is hidden.
+    refetchInterval: () => (typeof document !== 'undefined' && document.hidden ? false : 10_000),
+    refetchIntervalInBackground: false,
   })
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey })
