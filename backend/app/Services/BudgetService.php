@@ -92,9 +92,30 @@ class BudgetService
             ->selectRaw('jel.account_id, SUM(jel.debit - jel.credit) as actual_amount')
             ->pluck('actual_amount', 'jel.account_id');
 
-        $lines = $budget->lines->map(function (BudgetLine $line) use ($actuals) {
+        // Hostile re-review (#92): actuals are per ACCOUNT while lines are per
+        // account AND cost centre — a shared account must not have its actual
+        // counted (or displayed) once per cost-centre line. The account's
+        // natural balance direction depends on its type.
+        $accountTypes = \App\Models\ChartOfAccount::whereIn('id', $accountIds->all())
+            ->pluck('type', 'id');
+
+        $seenAccounts = [];
+
+        $lines = $budget->lines->map(function (BudgetLine $line) use ($actuals, $accountTypes, &$seenAccounts) {
             $budgetAmount = round((float) $line->amount, 2);
-            $actualAmount = round((float) ($actuals[$line->account_id] ?? 0), 2);
+
+            $raw = (float) ($actuals[$line->account_id] ?? 0);
+            $type = (string) ($accountTypes[$line->account_id] ?? '');
+
+            // Revenue/liability/equity are credit-normal: report the actual in
+            // their natural (positive-earned) direction.
+            $actualAmount = in_array($type, ['revenue', 'liability', 'equity'], true)
+                ? round(-$raw, 2)
+                : round($raw, 2);
+
+            $isFirstLineForAccount = ! isset($seenAccounts[$line->account_id]);
+            $seenAccounts[$line->account_id] = true;
+
             $variance = round($budgetAmount - $actualAmount, 2);
 
             return [
@@ -103,7 +124,9 @@ class BudgetService
                 'account_name' => $line->account?->name,
                 'cost_center_id' => $line->cost_center_id,
                 'budget_amount' => $budgetAmount,
-                'actual_amount' => $actualAmount,
+                // Only the first line per account carries the actual (avoids
+                // double-counting a shared account's GL balance).
+                'actual_amount' => $isFirstLineForAccount ? $actualAmount : null,
                 'variance' => $variance,
                 'variance_pct' => $budgetAmount != 0.0
                     ? round(($variance / $budgetAmount) * 100, 1)
@@ -112,7 +135,9 @@ class BudgetService
         })->values()->all();
 
         $totalBudget = round(array_sum(array_column($lines, 'budget_amount')), 2);
-        $totalActual = round(array_sum(array_column($lines, 'actual_amount')), 2);
+        // Actual totals come from the per-account actuals once (nulls are the
+        // duplicate cost-centre lines).
+        $totalActual = round(array_sum(array_filter(array_column($lines, 'actual_amount'), fn ($v) => $v !== null)), 2);
 
         return [
             'budget' => [

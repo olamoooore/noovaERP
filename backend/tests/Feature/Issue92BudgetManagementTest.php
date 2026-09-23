@@ -137,6 +137,23 @@ class Issue92BudgetManagementTest extends TenantTestCase
         $this->actingAs($this->user)->postJson('/api/v1/accounting/budgets', $payload)->assertStatus(422);
     }
 
+    public function test_an_approved_budget_can_be_archived_instead_of_deleted(): void
+    {
+        // Hostile re-review (#92): delete says "Archive it instead" — that
+        // endpoint now exists.
+        $create = $this->actingAs($this->user)->postJson('/api/v1/accounting/budgets', $this->budgetPayload());
+        $budgetId = $create->json('data.id');
+
+        $this->actingAs($this->user)->postJson("/api/v1/accounting/budgets/{$budgetId}/approve")->assertOk();
+
+        $archive = $this->actingAs($this->user)->postJson("/api/v1/accounting/budgets/{$budgetId}/archive");
+        $archive->assertOk();
+        $this->assertSame('archived', $archive->json('data.status'));
+
+        // Re-archiving is rejected.
+        $this->actingAs($this->user)->postJson("/api/v1/accounting/budgets/{$budgetId}/archive")->assertStatus(422);
+    }
+
     public function test_budgets_can_be_filtered_by_year_and_status(): void
     {
         $this->actingAs($this->user)->postJson('/api/v1/accounting/budgets', $this->budgetPayload())->assertStatus(201);
