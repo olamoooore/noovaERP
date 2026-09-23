@@ -10,13 +10,17 @@ use App\Services\TenantRoleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Modules\Communication\Models\CommunicationMessage;
+use Modules\Communication\Services\CommunicationEngine;
 
 class ChatterController extends Controller
 {
     public function __construct(
         private readonly ChatterService $chatter,
         private readonly TenantRoleService $roleService,
+        private readonly CommunicationEngine $communication,
     ) {}
 
     public function show(Request $request, string $subjectType, int|string $subjectId): JsonResponse
@@ -25,6 +29,49 @@ class ChatterController extends Controller
         $this->authorizeSubjectAccess($request, $subjectType, $subjectId);
 
         $bundle = $this->chatter->bundle($subjectType, $subjectId);
+
+        // Issue #81: merge canonical Communication messages with any legacy
+        // chatter_messages rows that pre-date the cutover, sorted by created_at
+        // so the chronological timeline is preserved. CommunicationMessage is
+        // now the source of truth for new posts.
+        $tenantId = (string) tenant()?->id;
+        $communicationMessages = CommunicationMessage::query()
+            ->where('model', $subjectType)
+            ->where('record_id', (int) $subjectId)
+            ->when($tenantId !== '', fn ($q) => $q->where('tenant_id', $tenantId))
+            ->with('author')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function (CommunicationMessage $m) {
+                $author = $m->author;
+                return [
+                    'id' => $m->id,
+                    'body' => $m->body,
+                    'mentions' => [],
+                    'is_internal_note' => $m->message_type === CommunicationMessage::TYPE_INTERNAL_NOTE,
+                    'created_at' => optional($m->created_at)->toIso8601String(),
+                    'source' => 'communication',
+                    'actor' => $author ? [
+                        'id' => $author->id,
+                        'name' => $author->name,
+                        'email' => $author->email,
+                        'avatar' => $author->avatar ?? null,
+                    ] : null,
+                ];
+            })
+            ->all();
+
+        $legacyMessages = $bundle['messages'] ?? [];
+        $mergedMessages = collect($communicationMessages)
+            ->concat(array_map(
+                fn ($m) => array_merge($m, ['source' => 'chatter']),
+                $legacyMessages,
+            ))
+            ->sortByDesc(fn ($m) => $m['created_at'] ?? '')
+            ->values()
+            ->all();
+
+        $bundle['messages'] = $mergedMessages;
 
         return response()->json(['data' => $bundle]);
     }
@@ -37,18 +84,43 @@ class ChatterController extends Controller
             'body' => 'required|string|min:1|max:10000',
         ]);
 
-        $message = $this->chatter->addMessage($subjectType, $subjectId, $data['body']);
+        // Issue #81: write through the canonical Communication engine so the
+        // two competing chatter implementations reconcile. The legacy
+        // ChatterService is retained for activity scheduling (different
+        // semantics) and for reading any historical chatter_messages rows
+        // that pre-date the cutover.
+        try {
+            $message = $this->communication->postComment(
+                model: $subjectType,
+                recordId: (int) $subjectId,
+                body: $data['body'],
+                authorId: (int) $request->user()->id,
+                tenantId: (string) tenant()?->id,
+            );
+        } catch (\Throwable $e) {
+            // Fallback: if the Communication subscriber throws (queue down,
+            // tenant binding edge case), fall back to the legacy store so
+            // the operator never loses a customer note.
+            Log::warning('Chatter: Communication post failed, falling back to legacy', [
+                'error' => $e->getMessage(),
+                'subject_type' => $subjectType,
+                'subject_id' => $subjectId,
+            ]);
+            $message = $this->chatter->addMessage($subjectType, $subjectId, $data['body']);
+        }
+
+        $author = $message->author ?? null;
 
         return response()->json(['data' => [
             'id' => $message->id,
             'body' => $message->body,
             'mentions' => $message->mentions ?? [],
             'created_at' => optional($message->created_at)->toIso8601String(),
-            'actor' => $message->author ? [
-                'id' => $message->author->id,
-                'name' => $message->author->name,
-                'email' => $message->author->email,
-                'avatar' => $message->author->avatar ?? null,
+            'actor' => $author ? [
+                'id' => $author->id,
+                'name' => $author->name,
+                'email' => $author->email,
+                'avatar' => $author->avatar ?? null,
             ] : null,
         ]], 201);
     }
