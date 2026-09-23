@@ -12,7 +12,31 @@ class CommunicationController extends Controller
 {
     public function __construct(
         protected CommunicationEngine $engine,
+        protected \App\Services\ChatterSubjectAuthorization $subjectAuthorization,
     ) {}
+
+    /**
+     * Issue #74 (B1): record-type authorization for id-addressed endpoints.
+     * The message's own subject must be one the caller may access — the same
+     * platform contract enforced for model+record_id requests.
+     */
+    private function authorizeMessageSubject(Request $request, ?CommunicationMessage $message): ?JsonResponse
+    {
+        if (! $message) {
+            return null;
+        }
+
+        $subject = (string) ($message->model ?? '');
+        if ($subject === '' || $this->subjectAuthorization->allows($request, $subject)) {
+            return null;
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'You do not have permission to access this record\'s communication.',
+            'required_permission' => $this->subjectAuthorization->permissionFor($subject),
+        ], 403);
+    }
 
     /**
      * Issue #77 (CRITICAL): resolve the current user's role for internal-note
@@ -143,6 +167,10 @@ class CommunicationController extends Controller
             })
             ->findOrFail($messageId);
 
+        if ($denied = $this->authorizeMessageSubject($request, $message)) {
+            return $denied;
+        }
+
         // Issue #88/#77: stamp the attachment with the ACTIVE tenant context
         // (the header is only a fallback) so upload and download agree on the
         // owning tenant.
@@ -174,6 +202,10 @@ class CommunicationController extends Controller
             ->findOrFail($attachmentId);
 
         $message = $attachment->message;
+
+        if ($denied = $this->authorizeMessageSubject($request, $message)) {
+            return $denied;
+        }
 
         if ($message && $message->message_type === CommunicationMessage::TYPE_INTERNAL_NOTE) {
             $user = $request->user();
@@ -210,6 +242,10 @@ class CommunicationController extends Controller
                 $query->where('tenant_id', tenant()->id)->orWhereNull('tenant_id');
             })
             ->findOrFail($messageId);
+
+        if ($denied = $this->authorizeMessageSubject($request, $message)) {
+            return $denied;
+        }
 
         $state = $this->engine->markAsRead(
             (int) $message->id,
@@ -258,7 +294,6 @@ class CommunicationController extends Controller
             $request->header('X-Tenant-ID'),
             $validated['model'] ?? null,
             isset($validated['record_id']) ? (int) $validated['record_id'] : null,
-            $this->resolveUserRole($request->user()),
         );
 
         return response()->json(['success' => true, 'data' => ['unread_count' => $count]]);
@@ -429,7 +464,7 @@ class CommunicationController extends Controller
     /**
      * GET /api/communication/outbox/{messageId}
      */
-    public function getOutboxStatus(int $messageId): JsonResponse
+    public function getOutboxStatus(Request $request, int $messageId): JsonResponse
     {
         // Hostile re-review (#76 B2): unscoped outbox lookup.
         $message = CommunicationMessage::with('outboxItems')
@@ -437,6 +472,10 @@ class CommunicationController extends Controller
                 $query->where('tenant_id', tenant()->id)->orWhereNull('tenant_id');
             })
             ->findOrFail($messageId);
+
+        if ($denied = $this->authorizeMessageSubject($request, $message)) {
+            return $denied;
+        }
 
         return response()->json([
             'success' => true,

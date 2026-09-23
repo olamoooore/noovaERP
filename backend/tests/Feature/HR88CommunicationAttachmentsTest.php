@@ -38,7 +38,29 @@ class HR88CommunicationAttachmentsTest extends TenantTestCase
 
         Storage::fake('local');
 
+        // Issue #74 (B1): record-level authorization now applies to the
+        // id-addressed endpoints; the acting user must hold the mapped
+        // subject permission (accounting.view for the Invoice subject).
         $this->user = User::factory()->create();
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'Admin', 'guard_name' => 'web']);
+        $this->user->assignRole('Admin');
+        \Illuminate\Support\Facades\DB::table('public.tenants')->updateOrInsert(
+            ['id' => $this->tenantId],
+            [
+                'name' => 'HR88 Tenant',
+                'email' => 'hr88-'.\Illuminate\Support\Str::random(6).'@example.test',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        );
+        \Illuminate\Support\Facades\DB::table('user_company_access')->insert([
+            'user_id' => $this->user->id,
+            'tenant_id' => $this->tenantId,
+            'role' => 'admin',
+            'is_default' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $this->actingAs($this->user);
 
         $message = app(CommunicationEngine::class)->logSystem(
