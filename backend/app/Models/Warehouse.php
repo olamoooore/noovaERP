@@ -81,11 +81,15 @@ class Warehouse extends Model
      */
     public function setAsDefault(): void
     {
-        // Remove default from other warehouses
-        static::where('is_default', true)->update(['is_default' => false]);
+        // Do not clear this row in the bulk update. If the in-memory model
+        // already contains true, Eloquent otherwise considers the following
+        // save clean and leaves the database value set to false.
+        static::whereKeyNot($this->getKey())
+            ->where('is_default', true)
+            ->update(['is_default' => false]);
 
-        $this->is_default = true;
-        $this->save();
+        static::whereKey($this->getKey())->update(['is_default' => true]);
+        $this->refresh();
     }
 
     /**

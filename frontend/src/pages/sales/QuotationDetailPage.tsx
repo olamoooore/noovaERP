@@ -280,7 +280,7 @@ export function QuotationDetailPage() {
               {quotation.sales_order && (
                 <Button
                   variant="outline"
-                  onClick={() => navigate(`/delivery-orders/create?sales_order_id=${quotation.sales_order.id}`)}
+                  onClick={() => navigate(`/delivery-orders/create?sales_order_id=${quotation.sales_order.id}&quotation_id=${quotation.id}`)}
                 >
                   <Icon icon="solar:package-bold" className="mr-2 h-4 w-4" />
                   Create Delivery Order

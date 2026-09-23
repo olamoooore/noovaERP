@@ -42,6 +42,7 @@ export function DeliveryOrderCreatePage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const preselectedSoId = searchParams.get('sales_order_id')
+  const preselectedQuotationId = searchParams.get('quotation_id')
   const queryClient = useQueryClient()
   const { toast } = useToast()
 
@@ -53,7 +54,7 @@ export function DeliveryOrderCreatePage() {
   const [expectedDate, setExpectedDate] = useState('')
   const [paymentTerms, setPaymentTerms] = useState('')
   const [invoiceId, setInvoiceId] = useState('')
-  const [quotationId, setQuotationId] = useState('')
+  const [quotationId, setQuotationId] = useState(preselectedQuotationId || '')
   const [carrier, setCarrier] = useState('')
   const [trackingNumber, setTrackingNumber] = useState('')
   const [shippingAddress, setShippingAddress] = useState('')
@@ -189,11 +190,30 @@ export function DeliveryOrderCreatePage() {
       return
     }
 
+    const hasDeliverableProduct = (soData?.lines || []).some((line: any) => {
+      const lineType = line.line_type || 'product'
+      return lineType === 'product' && (lineQuantities[line.sales_order_line_id] || 0) > 0
+    })
+
+    if (!hasDeliverableProduct) {
+      toast({
+        variant: 'destructive',
+        title: 'Enter a Deliver Now quantity',
+        description: 'Set Deliver Now greater than 0 for at least one product before creating the delivery order.',
+      })
+      return
+    }
+
     const lines = (soData?.lines || [])
-      .filter((line: any) => (lineQuantities[line.sales_order_line_id] || 0) > 0)
+      .filter((line: any) => (line.line_type === 'note' || line.line_type === 'section') || (lineQuantities[line.sales_order_line_id] || 0) > 0)
       .map((line: any) => ({
+        line_type: line.line_type || 'product',
+        sequence: line.sequence || 0,
         sales_order_line_id: line.sales_order_line_id,
-        quantity_delivered: lineQuantities[line.sales_order_line_id] || 0,
+        quantity_delivered: line.line_type === 'note' || line.line_type === 'section' ? 0 : (lineQuantities[line.sales_order_line_id] || 0),
+        description: line.description || undefined,
+        unit: line.unit || undefined,
+        unit_price: line.unit_price ?? undefined,
         lot_number: lineLotNumbers[line.sales_order_line_id] || undefined,
         serial_number: lineTrackingSelections[line.sales_order_line_id]?.serial_number || undefined,
         product_batch_id: lineTrackingSelections[line.sales_order_line_id]?.product_batch_id || undefined,
@@ -202,11 +222,6 @@ export function DeliveryOrderCreatePage() {
         patient_name: linePatientNames[line.sales_order_line_id] || undefined,
         product_notes: lineProductNotes[line.sales_order_line_id] ?? line.product_notes ?? undefined,
       }))
-
-    if (lines.length === 0) {
-      toast({ variant: 'destructive', title: 'Please set quantity for at least one line' })
-      return
-    }
 
     createMutation.mutate({
       sales_order_id: parseInt(salesOrderId),
@@ -357,30 +372,33 @@ export function DeliveryOrderCreatePage() {
       {mode === 'linked' && (
         <Card>
           <CardHeader>
-            <CardTitle>Sales Order</CardTitle>
+            <CardTitle>{preselectedSoId ? 'Warehouse' : 'Sales Order'}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex gap-3 items-end">
-              <div className="flex-1">
-                <Label>Sales Order ID</Label>
-                <Input
-                  type="number"
-                  value={salesOrderId}
-                  onChange={(e) => setSalesOrderId(e.target.value)}
-                  placeholder="Enter sales order ID"
-                  disabled={!!preselectedSoId}
-                />
-              </div>
-              <Button onClick={() => fetchSO()} disabled={!salesOrderId || soLoading}>
-                {soLoading ? 'Loading...' : 'Load Order'}
-              </Button>
-            </div>
-            {soData && (
-              <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm">
-                <span className="font-medium">{soData.sales_order?.sales_order_number}</span>
-                {' — '}
-                <span className="text-muted-foreground">Status: {soData.sales_order?.status}</span>
-              </div>
+            {!preselectedSoId && (
+              <>
+                <div className="flex gap-3 items-end">
+                  <div className="flex-1">
+                    <Label>Sales Order ID</Label>
+                    <Input
+                      type="number"
+                      value={salesOrderId}
+                      onChange={(e) => setSalesOrderId(e.target.value)}
+                      placeholder="Enter sales order ID"
+                    />
+                  </div>
+                  <Button onClick={() => fetchSO()} disabled={!salesOrderId || soLoading}>
+                    {soLoading ? 'Loading...' : 'Load Order'}
+                  </Button>
+                </div>
+                {soData && (
+                  <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm">
+                    <span className="font-medium">{soData.sales_order?.sales_order_number}</span>
+                    {' — '}
+                    <span className="text-muted-foreground">Status: {soData.sales_order?.status}</span>
+                  </div>
+                )}
+              </>
             )}
             <div>
               <Label>Warehouse <span className="text-destructive">*</span></Label>
@@ -536,7 +554,7 @@ export function DeliveryOrderCreatePage() {
           </CardHeader>
           <CardContent>
             <DeliveryOrderColumnVisibility tableClass="do-create-linked-columns" columns={[
-              'Product', 'Description', 'Product Notes', 'Ordered', 'Already Delivered', 'Remaining', 'Deliver Now', 'Patient Name', 'Lot Number', 'Expiry Date',
+              'Product', 'Description', 'Product Notes', 'Unit Price', 'Ordered', 'Already Delivered', 'Remaining', 'Deliver Now', 'Patient Name', 'Lot Number', 'Expiry Date',
             ].map((label, index) => ({ label, index: index + 1 }))}>
             <LineItemsTable
               variant="shadcn"
@@ -544,6 +562,7 @@ export function DeliveryOrderCreatePage() {
                 { key: 'product', label: 'Product', minWidth: 'min-w-[9rem]' },
                 { key: 'description', label: 'Description', minWidth: 'min-w-[18rem]' },
                 { key: 'product_notes', label: 'Product Notes', minWidth: 'min-w-[10rem]' },
+                { key: 'unit_price', label: 'Unit Price', align: 'right', minWidth: 'min-w-[7rem]' },
                 { key: 'ordered', label: 'Ordered', align: 'right', minWidth: 'min-w-[6rem]' },
                 { key: 'already_delivered', label: 'Already Delivered', align: 'right', minWidth: 'min-w-[8rem]' },
                 { key: 'remaining', label: 'Remaining', align: 'right', minWidth: 'min-w-[6rem]' },
@@ -554,6 +573,21 @@ export function DeliveryOrderCreatePage() {
               ]}
             >
                 {soData.lines?.map((line: any) => {
+                  const lineType = line.line_type || 'product'
+                  if (lineType === 'section' || lineType === 'note') {
+                    return (
+                      <TableRow key={line.sales_order_line_id}>
+                        <TableCell
+                          colSpan={11}
+                          className={lineType === 'section'
+                            ? 'bg-muted/60 px-4 py-3 font-semibold'
+                            : 'bg-muted/30 px-4 py-3 italic text-muted-foreground'}
+                        >
+                          {line.description}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  }
                   const remaining = line.quantity_ordered - line.quantity_delivered
                   const currentQty = lineQuantities[line.sales_order_line_id] || 0
                   return (
@@ -569,6 +603,7 @@ export function DeliveryOrderCreatePage() {
                           placeholder="Product notes"
                         />
                       </TableCell>
+                      <TableCell className="text-right tabular-nums">{Number(line.unit_price || 0).toFixed(2)}</TableCell>
                       <TableCell className="text-right">{line.quantity_ordered}</TableCell>
                       <TableCell className="text-right">{line.quantity_delivered}</TableCell>
                       <TableCell className="text-right font-medium">{remaining}</TableCell>

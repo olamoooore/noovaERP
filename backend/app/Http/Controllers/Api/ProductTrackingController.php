@@ -58,7 +58,9 @@ class ProductTrackingController extends Controller
                 ->map(fn (ProductBatch $batch) => [
                     'id' => $batch->id,
                     'batch_number' => $batch->batch_number,
-                    'lot_number' => $batch->lot_number ?: $batch->batch_number,
+                    // batch_number is the canonical user-entered lot/batch ID.
+                    // lot_number may contain legacy imported values.
+                    'lot_number' => $batch->batch_number ?: $batch->lot_number,
                     'expiry_date' => $batch->expiry_date?->toDateString(),
                     'available_quantity' => max(0, (int) $batch->quantity - (int) $batch->quantity_reserved),
                     'status' => $batch->status,
@@ -87,7 +89,8 @@ class ProductTrackingController extends Controller
                     'id' => $serial->id,
                     'serial_number' => $serial->serial_number,
                     'batch_id' => $serial->batch_id,
-                    'lot_number' => $serial->batch?->lot_number ?: $serial->batch?->batch_number,
+                    'batch_number' => $serial->batch?->batch_number,
+                    'lot_number' => $serial->batch?->batch_number ?: $serial->batch?->lot_number,
                     'expiry_date' => $serial->batch?->expiry_date?->toDateString(),
                     'status' => $serial->status,
                 ])->values();

@@ -45,7 +45,7 @@ class DeliveryOrderService
         }
 
         // Auto-resolve quotation_id from the linked invoice if not provided
-        $quotationId = $data['quotation_id'] ?? null;
+        $quotationId = $data['quotation_id'] ?? $order->quotation?->id;
         $invoiceId = $data['invoice_id'] ?? null;
         if ($quotationId === null && $invoiceId !== null) {
             $invoice = \App\Models\Invoice::find($invoiceId);
@@ -118,15 +118,23 @@ class DeliveryOrderService
             ]);
 
             $lines = $data['lines'] ?? [];
+            $hasDeliverableProduct = false;
             foreach ($lines as $lineData) {
                 $soLineId = $lineData['sales_order_line_id'];
                 $soLine = SalesOrderLine::findOrFail($soLineId);
+                $lineType = $soLine->line_type ?? $lineData['line_type'] ?? 'product';
 
                 if ((int) $soLine->sales_order_id !== (int) $order->id) {
                     throw new \Exception("Sales order line {$soLineId} does not belong to order #{$order->id}.");
                 }
 
                 $quantityDelivered = (float) ($lineData['quantity_delivered'] ?? 0);
+                if ($lineType === 'product' && $quantityDelivered <= 0) {
+                    throw new \Exception("Delivery quantity must be greater than zero for sales order line #{$soLineId}.");
+                }
+                if ($lineType === 'product') {
+                    $hasDeliverableProduct = true;
+                }
                 $remainingForThisLine = (float) $soLine->quantity
                     - (float) $soLine->quantity_delivered
                     - (float) $soLine->quantity_cancelled;
@@ -138,10 +146,16 @@ class DeliveryOrderService
                     );
                 }
 
-                $lineProduct = $soLine->product_id ? \App\Models\Product::find($soLine->product_id) : null;
-                $serialNumbers = $this->resolveSerialNumbers($lineProduct, $lineData, $quantityDelivered);
+                $lineProduct = $lineType === 'product' && $soLine->product_id
+                    ? \App\Models\Product::find($soLine->product_id)
+                    : null;
+                $serialNumbers = $lineType === 'product'
+                    ? $this->resolveSerialNumbers($lineProduct, $lineData, $quantityDelivered)
+                    : [];
 
                 DeliveryOrderLine::create([
+                    'line_type' => $lineType,
+                    'sequence' => $lineData['sequence'] ?? $soLine->sequence ?? 0,
                     'delivery_order_id' => $deliveryOrder->id,
                     'sales_order_line_id' => $soLine->id,
                     'product_id' => $soLine->product_id,
@@ -149,9 +163,13 @@ class DeliveryOrderService
                     'description' => $lineData['description'] ?? $soLine->description,
                     'product_notes' => $lineData['product_notes'] ?? $soLine->product_notes ?? null,
                     'patient_name' => $lineData['patient_name'] ?? null,
-                    'quantity_ordered' => (float) $soLine->quantity,
-                    'quantity_delivered' => $quantityDelivered,
+                    'quantity_ordered' => $lineType === 'product' ? (float) $soLine->quantity : 0,
+                    'quantity_delivered' => $lineType === 'product' ? $quantityDelivered : 0,
                     'unit' => $lineData['unit'] ?? $soLine->unit,
+                    'unit_price' => $lineType === 'product' ? (float) ($lineData['unit_price'] ?? $soLine->unit_price ?? 0) : null,
+                    'line_total' => $lineType === 'product'
+                        ? round((float) ($lineData['unit_price'] ?? $soLine->unit_price ?? 0) * $quantityDelivered, 2)
+                        : null,
                     'lot_number' => $lineData['lot_number'] ?? null,
                     'serial_number' => $lineData['serial_number'] ?? null,
                     'product_batch_id' => $lineData['product_batch_id'] ?? null,
@@ -160,6 +178,10 @@ class DeliveryOrderService
                     'expiry_date' => $lineData['expiry_date'] ?? null,
                     'serial_numbers' => $serialNumbers,
                 ]);
+            }
+
+            if (! $hasDeliverableProduct) {
+                throw new \Exception('Set Deliver Now greater than zero for at least one product before creating the delivery order.');
             }
 
             return $deliveryOrder->fresh(['lines.salesOrderLine', 'customer', 'salesOrder']);

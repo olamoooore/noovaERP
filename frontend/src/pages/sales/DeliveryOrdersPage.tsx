@@ -233,7 +233,7 @@ export function DeliveryOrdersPage() {
             </div>
           ) : (
             <>
-              <SalesLineColumnVisibility tableClass="delivery-orders-listing-columns" columns={listingColumns(['Select', 'Delivery #', 'Type', 'Sales Order', 'Customer', 'Delivery Date', 'Created Date', 'Lines', 'Status', 'Actions'])}>
+              <SalesLineColumnVisibility tableClass="delivery-orders-listing-columns" columns={listingColumns(['Select', 'Delivery #', 'Type', 'Customer', 'Delivery Date', 'Created Date', 'Lines', 'Status', 'Actions'])}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -247,7 +247,6 @@ export function DeliveryOrdersPage() {
                     </TableHead>
                     <TableHead>Delivery #</TableHead>
                     <TableHead>Type</TableHead>
-                    <TableHead>Sales Order</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Delivery Date</TableHead>
                     <TableHead>Created Date</TableHead>
@@ -272,7 +271,6 @@ export function DeliveryOrdersPage() {
                           {do_.sales_order_id ? 'Linked' : 'Standalone'}
                         </Badge>
                       </TableCell>
-                      <TableCell>{do_.sales_order?.sales_order_number || '-'}</TableCell>
                       <TableCell>{do_.customer?.name || '-'}</TableCell>
                       <TableCell>{do_.delivery_date ? formatDate(do_.delivery_date) : '-'}</TableCell>
                       <TableCell>{formatDate(do_.created_at)}</TableCell>
@@ -284,12 +282,12 @@ export function DeliveryOrdersPage() {
                       </TableCell>
                       <TableCell onClick={(event) => event.stopPropagation()}>
                         <div className="flex gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => navigate(`/delivery-orders/${do_.id}`)}>
-                            View
+                          <Button variant="outline" size="sm" onClick={() => navigate(`/delivery-orders/${do_.id}`)} title="View" aria-label="View delivery order">
+                            <Icon icon="solar:eye-bold" className="h-3 w-3" />
                           </Button>
                           {do_.status === 'draft' && (
-                            <Button variant="ghost" size="sm" onClick={() => confirmMutation.mutate(do_.id)}>
-                              Confirm
+                            <Button variant="outline" size="sm" onClick={() => confirmMutation.mutate(do_.id)} title="Confirm" aria-label="Confirm delivery order">
+                              <Icon icon="solar:check-circle-bold" className="h-3 w-3" />
                             </Button>
                           )}
                         </div>

@@ -351,6 +351,8 @@ class InvoiceController extends Controller
                 ->where('track_inventory', true)
                 ->exists();
             if ($hasStockTracked) {
+                // Preselect the tenant default in the UI, while respecting a
+                // different warehouse explicitly chosen by the user.
                 $warehouse = isset($data['warehouse_id'])
                     ? Warehouse::find($data['warehouse_id'])
                     : (Warehouse::getDefault() ?? Warehouse::first());

@@ -66,7 +66,7 @@ export function ProductTrackingSelector({
           onChange(batch ? {
             product_batch_id: Number(batch.id),
             product_serial_id: null,
-            lot_number: batch.lot_number || batch.batch_number,
+            lot_number: batch.batch_number || batch.lot_number,
             serial_number: '',
             expiry_date: batch.expiry_date || '',
           } : emptySelection)
@@ -75,7 +75,7 @@ export function ProductTrackingSelector({
         <option value="">{batches.length ? 'Select available lot' : 'No available lots'}</option>
         {batches.map((batch: any) => (
           <option key={batch.id} value={batch.id}>
-            {batch.lot_number || batch.batch_number} · {batch.available_quantity} available{batch.expiry_date ? ` · Exp ${batch.expiry_date}` : ''}
+            {batch.batch_number || batch.lot_number} · {batch.available_quantity} available{batch.expiry_date ? ` · Exp ${batch.expiry_date}` : ''}
           </option>
         ))}
       </select>
@@ -94,7 +94,7 @@ export function ProductTrackingSelector({
           onChange(serial ? {
             product_batch_id: serial.batch_id ? Number(serial.batch_id) : null,
             product_serial_id: Number(serial.id),
-            lot_number: serial.lot_number || '',
+            lot_number: serial.batch_number || serial.lot_number || '',
             serial_number: serial.serial_number,
             expiry_date: serial.expiry_date || '',
           } : emptySelection)
@@ -103,7 +103,7 @@ export function ProductTrackingSelector({
         <option value="">{serials.length ? 'Select available serial' : 'No available serials'}</option>
         {serials.map((serial: any) => (
           <option key={serial.id} value={serial.id}>
-            {serial.serial_number}{serial.lot_number ? ` · Lot ${serial.lot_number}` : ''}{serial.expiry_date ? ` · Exp ${serial.expiry_date}` : ''}
+            {serial.serial_number}{(serial.batch_number || serial.lot_number) ? ` · Lot ${serial.batch_number || serial.lot_number}` : ''}{serial.expiry_date ? ` · Exp ${serial.expiry_date}` : ''}
           </option>
         ))}
       </select>

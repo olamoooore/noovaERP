@@ -1011,7 +1011,7 @@ export const CreateInvoicePage: React.FC = () => {
                     <label className="block text-sm font-medium mb-1">Warehouse *</label>
                     <select value={warehouseId} onChange={(event) => { setWarehouseId(event.target.value); setLines((current) => current.map((line) => ({ ...line, product_batch_id: null, product_serial_id: null, lot_number: '', serial_number: '', expiry_date: '' }))); }} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-sm">
                       <option value="">Select warehouse</option>
-                      {warehouses.map((warehouse: any) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
+                      {warehouses.map((warehouse: any) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}{warehouse.is_default ? ' (Default)' : ''}</option>)}
                     </select>
                   </div>
                 )}
