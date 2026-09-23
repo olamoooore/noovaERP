@@ -441,36 +441,58 @@ class InvoiceApprovalService
     {
         $submitterId = $submitter?->id;
 
+        $users = collect();
+
+        // ── Explicit users ────────────────────────────────────────────────
         try {
             $configuredIds = Setting::getValue('sales.invoice.reviewer_user_ids', []);
-            $configuredRoles = Setting::getValue('sales.invoice.reviewer_roles', []);
-
-            $users = collect();
-
-            if (is_array($configuredRoles) && $configuredRoles !== []) {
-                $users = $users->merge(
-                    User::role($configuredRoles)->get()
-                );
-            }
 
             if (is_array($configuredIds) && $configuredIds !== []) {
                 $users = $users->merge(
                     User::whereIn('id', array_map('intval', $configuredIds))->get()
                 );
             }
-
-            $users = $users
-                ->unique('id')
-                ->reject(fn (User $u) => $submitterId !== null && $u->id === $submitterId)
-                ->values();
-
-            if ($users->isNotEmpty()) {
-                return $users;
-            }
         } catch (\Throwable $e) {
-            Log::warning('InvoiceApprovalService: failed to resolve configured reviewers', [
+            Log::warning('InvoiceApprovalService: failed to resolve explicit reviewers', [
                 'error' => $e->getMessage(),
             ]);
+        }
+
+        // ── Role-based reviewers ──────────────────────────────────────────
+        // Settings store lowercase role slugs (owner, admin, sales, …) but the
+        // Spatie role names are Title Case ("Owner", "Sales", …). Passing the
+        // slug straight into User::role() throws RoleDoesNotExist and aborted
+        // the whole resolution — which silently dropped the *configured*
+        // approvers and fell back to the invoices.approve permission instead.
+        try {
+            $configuredRoles = Setting::getValue('sales.invoice.reviewer_roles', []);
+
+            if (is_array($configuredRoles) && $configuredRoles !== []) {
+                $spatieNames = collect($configuredRoles)
+                    ->map(fn ($role) => \App\Enums\UserRole::tryFrom(strtolower((string) $role))?->spatieName())
+                    ->filter()
+                    ->values()
+                    ->all();
+
+                if ($spatieNames !== []) {
+                    $users = $users->merge(
+                        User::role($spatieNames)->get()
+                    );
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('InvoiceApprovalService: failed to resolve role reviewers', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $users = $users
+            ->unique('id')
+            ->reject(fn (User $u) => $submitterId !== null && $u->id === $submitterId)
+            ->values();
+
+        if ($users->isNotEmpty()) {
+            return $users;
         }
 
         // Fallback: role/permission based approvers. Guarded because the

@@ -747,16 +747,16 @@ export function CustomersPage() {
                       className="h-4 w-4 rounded border-gray-300"
                     />
                   </TableHead>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Created Date</TableHead>
-                  <TableHead className="text-right">Outstanding</TableHead>
-                  <TableHead className="text-right">Total Purchases</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="w-[92px]">Code</TableHead>
+                  <TableHead className="min-w-[260px]">Name</TableHead>
+                  <TableHead className="w-[110px]">Type</TableHead>
+                  <TableHead className="w-[180px]">Email</TableHead>
+                  <TableHead className="w-[125px]">Phone</TableHead>
+                  <TableHead className="w-[110px]">Created Date</TableHead>
+                  <TableHead className="w-[110px] text-right">Outstanding</TableHead>
+                  <TableHead className="w-[120px] text-right">Total Purchases</TableHead>
+                  <TableHead className="w-[90px]">Status</TableHead>
+                  <TableHead className="w-[70px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -795,7 +795,15 @@ export function CustomersPage() {
                           {customer.type === 'company' ? 'Company' : 'Individual'}
                         </Badge>
                       </TableCell>
-                      <TableCell>{customer.email || '-'}</TableCell>
+                      <TableCell>
+                        {customer.email ? (
+                          <span className="block w-[150px] truncate" title={customer.email}>
+                            {customer.email}
+                          </span>
+                        ) : (
+                          '-'
+                        )}
+                      </TableCell>
                       <TableCell>{customer.phone || customer.mobile || '-'}</TableCell>
                       <TableCell>{formatDate(customer.created_at)}</TableCell>
                       <TableCell className="text-right">

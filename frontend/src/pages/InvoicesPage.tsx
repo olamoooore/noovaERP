@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useToast } from '@/hooks/use-toast'
-import { cn, formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 import { useNavigate } from 'react-router-dom'
 import { CustomerSearchCombobox } from '@/components/ui/CustomerSearchCombobox'
@@ -25,7 +25,6 @@ export function InvoicesPage() {
 
   const [searchQuery, setSearchQuery] = useState('')
   const [hiddenInvoiceColumns, setHiddenInvoiceColumns] = useState<number[]>([])
-  const [actionsPinned, setActionsPinned] = useState(false)
   const [bulkAction, setBulkAction] = useState<'post' | 'delete' | null>(null)
   const [statusFilter, setStatusFilter] = useState('all')
   const [customerFilter, setCustomerFilter] = useState('')
@@ -165,63 +164,32 @@ export function InvoicesPage() {
           <h1 className="text-3xl font-bold">Invoices</h1>
           <p className="text-muted-foreground mt-1">All invoices — created from Sales Orders or directly.</p>
         </div>
-        <div className="group/actions flex items-center justify-end">
-          <div
-            className={cn(
-              'flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out',
-              actionsPinned ? 'max-w-[640px] translate-x-0 opacity-100' : 'max-w-0 translate-x-3 opacity-0',
-              !actionsPinned &&
-                'group-hover/actions:max-w-[640px] group-hover/actions:translate-x-0 group-hover/actions:opacity-100',
-              !actionsPinned &&
-                'group-focus-within/actions:max-w-[640px] group-focus-within/actions:translate-x-0 group-focus-within/actions:opacity-100',
-            )}
+        <div className="flex items-center justify-end gap-2">
+          <SalesDocumentExportMenu
+            compact
+            endpoint="/invoices/export"
+            filenamePrefix="invoices"
+            columns={INVOICE_EXPORT_COLUMNS}
+            filters={activeFilterParams()}
+            selectedIds={selectedIds}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs"
+            onClick={() => navigate('/invoices/import')}
           >
-            <SalesDocumentExportMenu
-              compact
-              endpoint="/invoices/export"
-              filenamePrefix="invoices"
-              columns={INVOICE_EXPORT_COLUMNS}
-              filters={activeFilterParams()}
-              selectedIds={selectedIds}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 rounded-full px-3 text-xs"
-              onClick={() => navigate('/invoices/import')}
-            >
-              <Icon icon="solar:upload-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
-              Import
-            </Button>
-            <Button
-              size="sm"
-              className="h-8 rounded-full px-3 text-xs"
-              onClick={() => navigate('/invoices/create')}
-            >
-              <Icon icon="solar:add-circle-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
-              Create Invoice
-            </Button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setActionsPinned((v) => !v)}
-            aria-expanded={actionsPinned}
-            title={actionsPinned ? 'Collapse actions' : 'Show actions'}
-            className={cn(
-              'ml-2 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-              actionsPinned
-                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                : 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
-            )}
+            <Icon icon="solar:upload-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+            Import
+          </Button>
+          <Button
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs"
+            onClick={() => navigate('/invoices/create')}
           >
-            <Icon
-              icon={actionsPinned ? 'solar:close-circle-bold-duotone' : 'solar:bolt-circle-bold-duotone'}
-              className="h-3.5 w-3.5"
-            />
-            Actions
-          </button>
+            <Icon icon="solar:add-circle-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+            Create Invoice
+          </Button>
         </div>
       </div>
 

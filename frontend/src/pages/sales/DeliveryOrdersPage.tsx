@@ -8,7 +8,7 @@ import { useToast } from '@/hooks/use-toast'
 import api from '@/lib/api'
 import { Icon } from '@iconify/react'
 import { useNavigate } from 'react-router-dom'
-import { cn, formatDate } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
 import { SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportMenu'
 import { SalesLineColumnMenu, SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { Input } from '@/components/ui/input'
@@ -62,7 +62,6 @@ export function DeliveryOrdersPage() {
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [page, setPage] = useState(1)
   const [perPage] = useState(20)
-  const [actionsPinned, setActionsPinned] = useState(false)
   const [hiddenDoColumns, setHiddenDoColumns] = useState<number[]>([])
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
 
@@ -163,72 +162,35 @@ export function DeliveryOrdersPage() {
           <p className="text-muted-foreground">Track shipments dispatched from sales orders or standalone.</p>
         </div>
 
-        {/* Retracting actions: collapsed to an "Actions" pill, slides out on
-            hover / focus, or stays open when pinned by click (touch + keyboard). */}
-        <div className="group/actions flex items-center justify-end">
-          <div
-            className={cn(
-              'flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out',
-              actionsPinned
-                ? 'max-w-[640px] translate-x-0 opacity-100'
-                : 'max-w-0 translate-x-3 opacity-0',
-              !actionsPinned &&
-                'group-hover/actions:max-w-[640px] group-hover/actions:translate-x-0 group-hover/actions:opacity-100',
-              !actionsPinned &&
-                'group-focus-within/actions:max-w-[640px] group-focus-within/actions:translate-x-0 group-focus-within/actions:opacity-100',
-            )}
-            aria-hidden={!actionsPinned}
+        <div className="flex items-center justify-end gap-2">
+          <SalesDocumentExportMenu
+            compact
+            endpoint="/sales/delivery-orders/export"
+            filenamePrefix="delivery_orders"
+            columns={DELIVERY_ORDER_EXPORT_COLUMNS}
+            filters={{
+              search: searchQuery.trim() || undefined,
+              type: typeFilter !== 'all' ? typeFilter : undefined,
+            }}
+            selectedIds={selectedIds}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs"
+            onClick={() => navigate('/delivery-orders/import')}
           >
-            <SalesDocumentExportMenu
-              compact
-              endpoint="/sales/delivery-orders/export"
-              filenamePrefix="delivery_orders"
-              columns={DELIVERY_ORDER_EXPORT_COLUMNS}
-              filters={{
-                search: searchQuery.trim() || undefined,
-                type: typeFilter !== 'all' ? typeFilter : undefined,
-              }}
-              selectedIds={selectedIds}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 rounded-full px-3 text-xs"
-              onClick={() => navigate('/delivery-orders/import')}
-            >
-              <Icon icon="solar:upload-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
-              Import
-            </Button>
-            <Button
-              size="sm"
-              className="h-8 rounded-full px-3 text-xs"
-              onClick={() => navigate('/delivery-orders/create')}
-            >
-              <Icon icon="solar:add-circle-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
-              Create Delivery Order
-            </Button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setActionsPinned((v) => !v)}
-            aria-expanded={actionsPinned}
-            title={actionsPinned ? 'Collapse actions' : 'Show actions'}
-            className={cn(
-              // Compact pill matching the revealed actions
-              'ml-2 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-              actionsPinned
-                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                : 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
-            )}
+            <Icon icon="solar:upload-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+            Import
+          </Button>
+          <Button
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs"
+            onClick={() => navigate('/delivery-orders/create')}
           >
-            <Icon
-              icon={actionsPinned ? 'solar:close-circle-bold-duotone' : 'solar:bolt-circle-bold-duotone'}
-              className="h-3.5 w-3.5"
-            />
-            Actions
-          </button>
+            <Icon icon="solar:add-circle-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+            Create Delivery Order
+          </Button>
         </div>
       </div>
 

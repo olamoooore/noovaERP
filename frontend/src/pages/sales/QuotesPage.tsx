@@ -23,7 +23,7 @@ import { SalesDocumentExportMenu } from '@/components/sales/SalesDocumentExportM
 import { SalesLineColumnMenu, SalesLineColumnVisibility, listingColumns } from '@/components/sales/DeliveryOrderColumnVisibility'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { cn } from '@/lib/utils'
+
 import { useBulkSelection } from '@/hooks/use-bulk-selection'
 import { BulkSelectionNotice } from '@/components/ui/bulk-selection-notice'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -200,7 +200,7 @@ export function QuotesPage() {
     setPage(1)
   }
 
-  const [actionsPinned, setActionsPinned] = useState(false)
+
   const [hiddenQuoteColumns, setHiddenQuoteColumns] = useState<number[]>([])
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; number: string } | null>(null)
 
@@ -217,66 +217,35 @@ export function QuotesPage() {
           <p className="text-muted-foreground">Create and manage quotations. Confirm to create Sales Orders, then invoice from orders.</p>
         </div>
 
-        <div className="group/actions flex items-center justify-end">
-          <div
-            className={cn(
-              'flex items-center gap-2 overflow-hidden transition-all duration-300 ease-out',
-              actionsPinned ? 'max-w-[640px] translate-x-0 opacity-100' : 'max-w-0 translate-x-3 opacity-0',
-              !actionsPinned &&
-                'group-hover/actions:max-w-[640px] group-hover/actions:translate-x-0 group-hover/actions:opacity-100',
-              !actionsPinned &&
-                'group-focus-within/actions:max-w-[640px] group-focus-within/actions:translate-x-0 group-focus-within/actions:opacity-100',
-            )}
+        <div className="flex items-center justify-end gap-2">
+          <SalesDocumentExportMenu
+            compact
+            endpoint="/quotations/export"
+            filenamePrefix="quotations"
+            columns={QUOTATION_EXPORT_COLUMNS}
+            filters={{
+              search: searchQuery.trim() || undefined,
+              status: statusFilter !== 'all' ? statusFilter : undefined,
+            }}
+            selectedIds={selectedIds}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs"
+            onClick={() => navigate('/quotations/import')}
           >
-            <SalesDocumentExportMenu
-              compact
-              endpoint="/quotations/export"
-              filenamePrefix="quotations"
-              columns={QUOTATION_EXPORT_COLUMNS}
-              filters={{
-                search: searchQuery.trim() || undefined,
-                status: statusFilter !== 'all' ? statusFilter : undefined,
-              }}
-              selectedIds={selectedIds}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 rounded-full px-3 text-xs"
-              onClick={() => navigate('/quotations/import')}
-            >
-              <Icon icon="solar:upload-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
-              Import
-            </Button>
-            <Button
-              size="sm"
-              className="h-8 rounded-full px-3 text-xs"
-              onClick={() => navigate('/quotations/create')}
-            >
-              <Icon icon="solar:add-circle-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
-              Create Quotation
-            </Button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setActionsPinned((v) => !v)}
-            aria-expanded={actionsPinned}
-            title={actionsPinned ? 'Collapse actions' : 'Show actions'}
-            className={cn(
-              'ml-2 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-              actionsPinned
-                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                : 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
-            )}
+            <Icon icon="solar:upload-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+            Import
+          </Button>
+          <Button
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs"
+            onClick={() => navigate('/quotations/create')}
           >
-            <Icon
-              icon={actionsPinned ? 'solar:close-circle-bold-duotone' : 'solar:bolt-circle-bold-duotone'}
-              className="h-3.5 w-3.5"
-            />
-            Actions
-          </button>
+            <Icon icon="solar:add-circle-bold-duotone" className="mr-1.5 h-3.5 w-3.5" />
+            Create Quotation
+          </Button>
         </div>
       </div>
 

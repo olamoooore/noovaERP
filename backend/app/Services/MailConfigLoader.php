@@ -33,11 +33,16 @@ class MailConfigLoader
      */
     public function apply(?array $mail, bool $purgeMailer = false): void
     {
-        if (! $mail || ! is_array($mail)) {
-            return;
-        }
+        $mail = is_array($mail) ? $mail : [];
 
-        $driver = strtolower((string) ($mail['driver'] ?? self::DRIVER_SMTP));
+        $driver = strtolower((string) ($mail['driver'] ?? ''));
+
+        // Resend is the platform default: when no driver is configured (or the
+        // stored record is missing), fall back to Resend whenever a key is
+        // available — falling back to SMTP only when no Resend key exists.
+        if ($driver === '') {
+            $driver = $this->resendKeyFrom($mail) ? self::DRIVER_RESEND : self::DRIVER_SMTP;
+        }
 
         if ($driver === self::DRIVER_RESEND) {
             $this->applyResend($mail);
@@ -55,6 +60,17 @@ class MailConfigLoader
         if ($purgeMailer) {
             $this->purge($driver);
         }
+    }
+
+    /**
+     * The Resend API key for a given config, falling back to the platform-wide
+     * RESEND_KEY environment value.
+     */
+    private function resendKeyFrom(array $mail): ?string
+    {
+        $key = $mail['api_key'] ?? $mail['key'] ?? null;
+
+        return $key ?: (env('RESEND_KEY') ?: null);
     }
 
     private function applySmtp(array $mail): void
@@ -78,7 +94,7 @@ class MailConfigLoader
 
     private function applyResend(array $mail): void
     {
-        $key = $mail['api_key'] ?? $mail['key'] ?? null;
+        $key = $this->resendKeyFrom($mail);
 
         if (empty($key)) {
             Log::warning('MailConfigLoader: resend driver selected without an API key');
