@@ -109,10 +109,17 @@ class ReplacementDraftService
 
     public function createQuotationReplacementDraft(Quotation $original, CorrectionRequest $request): Quotation
     {
-        // Hostile re-review (#178/#179): the void of the original and the
-        // creation of the replacement must be one atomic unit — a failure
-        // while cloning must not leave a cancelled original behind.
-        return DB::transaction(fn () => $this->doCreateQuotationReplacementDraft($original, $request));
+        // Hostile re-review (#178/#179): atomic AND serialized — the original
+        // is row-locked so concurrent rejects cannot both create a v2 draft.
+        return DB::transaction(function () use ($original, $request) {
+            $locked = Quotation::whereKey($original->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->status === 'cancelled' || $locked->is_active_version === false) {
+                throw new \RuntimeException('This quotation has already been rejected or superseded.');
+            }
+
+            return $this->doCreateQuotationReplacementDraft($locked, $request);
+        });
     }
 
     /**
@@ -226,10 +233,17 @@ class ReplacementDraftService
 
     public function createDeliveryOrderReplacementDraft(DeliveryOrder $original, CorrectionRequest $request): DeliveryOrder
     {
-        // Hostile re-review (#178/#179): the void of the original and the
-        // creation of the replacement must be one atomic unit — a failure
-        // while cloning must not leave a cancelled original behind.
-        return DB::transaction(fn () => $this->doCreateDeliveryOrderReplacementDraft($original, $request));
+        // Hostile re-review (#178/#179): atomic AND serialized — the original
+        // is row-locked so concurrent rejects cannot both create a v2 draft.
+        return DB::transaction(function () use ($original, $request) {
+            $locked = DeliveryOrder::whereKey($original->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->status === 'cancelled' || $locked->is_active_version === false) {
+                throw new \RuntimeException('This delivery order has already been rejected or superseded.');
+            }
+
+            return $this->doCreateDeliveryOrderReplacementDraft($locked, $request);
+        });
     }
 
     /**
