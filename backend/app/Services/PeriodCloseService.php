@@ -274,22 +274,23 @@ class PeriodCloseService
         }
 
         try {
-            $fxGainsLosses = $this->computeUnrealisedFxForPeriod($period);
+            // Hostile re-review C-5 (#102): the previous implementation was a
+            // placeholder that always returned zero. Delegate to the canonical
+            // FxRevaluationService, which resolves period-end rates and posts
+            // the unrealised gain/loss through PostingEngine.
+            $baseCurrency = (string) (DB::table('company_settings')->value('base_currency') ?: 'USD');
 
-            foreach ($fxGainsLosses as $accountId => $netUnrealised) {
-                if (abs($netUnrealised) < 0.01) {
-                    continue;
-                }
+            $fxResults = app(\App\Accounting\Services\FxRevaluationService::class)
+                ->revalue($period->period_end->toDateString(), $baseCurrency);
 
-                $adjustment = $this->postFxRevaluationEntry(
-                    $period,
-                    (int) $accountId,
-                    (float) $netUnrealised,
-                );
-
-                if ($adjustment) {
-                    $adjustments[] = $adjustment;
-                }
+            foreach ($fxResults as $fxResult) {
+                // FxRevaluationService returns PostingResult objects (one per
+                // currency with a material revaluation).
+                $adjustments[] = [
+                    'type' => 'fx_revaluation',
+                    'journal_entry_id' => $fxResult->journalEntryId ?? null,
+                    'posted' => (bool) ($fxResult->success ?? false),
+                ];
             }
         } catch (\Exception $e) {
             Log::error('PeriodCloseService::runAutomaticAdjustments failed', [
@@ -447,25 +448,23 @@ class PeriodCloseService
 
             $plNet += $netBalance;
 
-            // We need to determine the account type (revenue vs expense) to
-            // decide debit vs credit. For revenue (positive net), debit it.
-            // For expense (negative net), credit it.
-            $accountType = DB::table('chart_of_accounts')->where('id', $accountId)->value('type');
-
-            if ($accountType === 'revenue') {
+            // Close by the account's net balance DIRECTION (credit - debit),
+            // not by its type: a contra-sign balance (e.g. an FX gain booked
+            // to an expense account) would otherwise be closed the wrong way
+            // and leave the closing entry unbalanced.
+            if ($netBalance > 0) {
                 $lines[] = [
                     'account_id' => $accountId,
-                    'description' => "Close revenue account for period {$period->code}",
+                    'description' => "Close account for period {$period->code}",
                     'debit' => $netBalance,
                     'credit' => 0,
                 ];
                 $totalDebit += $netBalance;
             } else {
-                // expense: net_balance is negative (debit > credit). Close by crediting.
                 $creditAmount = abs($netBalance);
                 $lines[] = [
                     'account_id' => $accountId,
-                    'description' => "Close expense account for period {$period->code}",
+                    'description' => "Close account for period {$period->code}",
                     'debit' => 0,
                     'credit' => $creditAmount,
                 ];
@@ -572,69 +571,6 @@ class PeriodCloseService
         });
     }
 
-    /**
-     * Compute unrealised FX gains/losses for multi-currency GL balances
-     * within the period. Looks for journal_entry_lines whose account is a
-     * foreign-currency AR/AP/cash account with a balance in a non-base
-     * currency, and produces a revaluation amount using the period-end rate
-     * vs the historical rate.
-     */
-    private function computeUnrealisedFxForPeriod(FiscalPeriod $period): array
-    {
-        // Placeholder: in production this would query FX rates for the
-        // period_end date vs the transaction date. For now we return an
-        // empty array, which is functionally identical to the prior stub
-        // but is structurally non-trivial so reviewers can verify the
-        // pipeline is wired.
-        $out = [];
-
-        try {
-            $fxRateTable = Schema::hasTable('exchange_rates') ? 'exchange_rates' : null;
-            if (! $fxRateTable) {
-                return $out;
-            }
-
-            // Aggregate by (account_id, currency) where original_currency is
-            // not the base currency. In practice this would join to FX rates
-            // and compute period-end vs original amounts. Returned as
-            // [account_id => net_unrealised_delta] — empty until the
-            // multi-currency close calculation is configured.
-            if (! $this->columnExists('journal_entry_lines', 'original_currency')) {
-                return $out;
-            }
-
-            $multiCurrencyBalances = DB::table('journal_entry_lines as jel')
-                ->join('journal_entries as je', 'je.id', '=', 'jel.journal_entry_id')
-                ->whereBetween('je.entry_date', [$period->period_start->toDateString(), $period->period_end->toDateString()])
-                ->whereNotNull('jel.original_currency')
-                ->where('jel.original_currency', '!=', 'USD') // base currency
-                ->groupBy('jel.account_id')
-                ->selectRaw('jel.account_id, SUM(COALESCE(jel.original_amount, jel.debit - jel.credit)) as foreign_net')
-                ->get();
-
-            foreach ($multiCurrencyBalances as $row) {
-                $out[(int) $row->account_id] = 0.0; // Until rate lookup is configured.
-            }
-        } catch (\Exception $e) {
-            Log::warning('PeriodCloseService::computeUnrealisedFxForPeriod failed', [
-                'period_id' => $period->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        return $out;
-    }
-
-    /**
-     * Post a single FX revaluation entry for an account's unrealised gain or loss.
-     */
-    private function postFxRevaluationEntry(FiscalPeriod $period, int $accountId, float $amount): ?array
-    {
-        // No-op for now — wired into the pipeline so the structure is in
-        // place once multi-currency revaluation is enabled.
-        return null;
-    }
-
     private function createCloseRecord(FiscalPeriod $period, string $userId, array $adjustments, array $closingEntries): array
     {
         $record = [
@@ -707,23 +643,18 @@ class PeriodCloseService
                 );
             }
 
-            // Reversal succeeded — now it is safe to retire the original
-            // posting reference (the link) so the engine's idempotency
-            // guard won't find a stale 'post' link on the next re-close.
-            DB::table('journal_entry_links')
-                ->where('source_document_type', 'period_close')
-                ->where('source_document_id', $period->id)
-                ->delete();
-
-            // The engine's fullReversal() creates the mirror reversal JE
-            // but does NOT mark the original as inactive. Flip the original
-            // to is_active_version=false and lifecycle_status='reversed'
-            // so it no longer resolves through the active-version guard.
-            DB::table('journal_entries')->where('id', $jeId)->update([
-                'is_active_version' => false,
-                'lifecycle_status' => 'reversed',
-                'reversed_at' => now(),
-            ]);
+            // Reversal succeeded. Issue #68 (HR68-02): ACC-011 must not
+            // directly mutate ACC-002-owned state. The reversal engine (ACC-002)
+            // has already retired the original journal entry's posting identity
+            // (is_active_version/lifecycle_status/reversed_at are set inside
+            // fullReversal), and the posting-reference retirement is delegated
+            // to the ACC-002-owned supersession API — the original link is
+            // preserved as history instead of being physically deleted.
+            $this->postingEngine->retirePostingReference(
+                (int) $jeId,
+                $result->journalEntry?->id,
+                "Period reopen for {$period->code}",
+            );
 
             $reversed++;
         }
@@ -732,15 +663,46 @@ class PeriodCloseService
     }
 
     /**
-     * Reverse any auto-adjustment JEs (currently FX revaluation) tied to
-     * this period via PostingEngine.reverse(). Today the revaluation
-     * path itself is a no-op (postFxRevaluationEntry returns null), so
-     * there is typically nothing to reverse; this method stays a no-op
-     * until FX revaluation produces entries.
+     * Reverse any auto-adjustment JEs (FX revaluation) tied to this period via
+     * PostingEngine.reverse(). Hostile re-review C-5 (#102): FX revaluation
+     * now really posts, so reopening a period must undo those entries.
      */
     private function removeAutomaticAdjustments(FiscalPeriod $period): int
     {
-        return 0;
+        $reversed = 0;
+
+        $entries = \App\Models\JournalEntry::query()
+            ->where('status', 'posted')
+            ->where('reference', 'like', 'FXREVAL-%')
+            ->whereBetween('entry_date', [
+                $period->period_start->toDateString(),
+                $period->period_end->toDateString(),
+            ])
+            ->get();
+
+        foreach ($entries as $entry) {
+            $result = app(\App\Accounting\Contracts\PostingEngineInterface::class)
+                ->reverse(new \App\Accounting\DTOs\ReversalRequest(
+                    journalEntryId: (int) $entry->id,
+                    reversalDate: now()->toDateString(),
+                    reason: "Reopen period {$period->code}: reverse FX revaluation",
+                    reasonCode: 'PERIOD_REOPEN',
+                    actorUserId: \Modules\OCRBookkeeping\Helpers\TenantUserHelper::resolveTenantUserId(),
+                    tenantId: tenant()->id ?? null,
+                ));
+
+            if ($result->success) {
+                $reversed++;
+            } else {
+                Log::warning('PeriodCloseService: FX revaluation reversal failed', [
+                    'period_id' => $period->id,
+                    'journal_entry_id' => $entry->id,
+                    'error' => $result->error,
+                ]);
+            }
+        }
+
+        return $reversed;
     }
 
     private function getJournalSummary(FiscalPeriod $period): array

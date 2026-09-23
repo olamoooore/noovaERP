@@ -535,6 +535,14 @@ class DeliveryOrderController extends Controller
             return response()->json(['message' => 'This delivery order cannot be rejected in its current status'], 422);
         }
 
+        // Hostile re-review (#178/#179): mirror resetToDraft()'s guard — an
+        // order with a linked invoice cannot be rejected out from under it.
+        if ($deliveryOrder->invoice_id) {
+            return response()->json([
+                'message' => 'Cannot reject a delivery order that has a linked invoice. Correct the invoice instead.',
+            ], 422);
+        }
+
         $validated = $request->validate([
             'reason_code' => 'nullable|string|max:50',
             'reason_text' => 'nullable|string|max:500',

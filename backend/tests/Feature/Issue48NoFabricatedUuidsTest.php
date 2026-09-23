@@ -200,4 +200,34 @@ class Issue48NoFabricatedUuidsTest extends TenantTestCase
             'No outbox event may be fabricated for a failed tenant-less posting.'
         );
     }
+
+    /**
+     * HR48-02 (hostile re-review): the required case — tenant present, actor
+     * missing, requireSnapshot=true — must BLOCK and persist no snapshot
+     * (no fabricated actor UUID).
+     */
+    public function test_missing_actor_with_tenant_present_blocks_and_persists_no_snapshot(): void
+    {
+        $evaluator = app(\App\Accounting\Services\ActionEligibilityEvaluator::class);
+
+        $snapshotsBefore = AuthorityEvaluationSnapshot::count();
+
+        $result = $evaluator->evaluate(
+            action: 'POST_JOURNAL',
+            recordType: 'JournalEntry',
+            recordId: 'test-hr48-02',
+            context: [
+                'tenant_id' => $this->tenantUuid,
+                'actor_id' => null,
+                'required_permission' => 'accounting.post',
+            ],
+            requireSnapshot: true,
+        );
+
+        $this->assertTrue($result->isBlocked(), 'A missing actor must BLOCK even when the tenant is present.');
+        $this->assertSame('MISSING_PERMISSION_CONTEXT', $result->blockingReason?->value);
+        $this->assertNull($result->snapshotId, 'No snapshot may be persisted without an actor identity.');
+        $this->assertSame($snapshotsBefore, AuthorityEvaluationSnapshot::count(),
+            'No fabricated-actor snapshot may survive.');
+    }
 }

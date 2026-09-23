@@ -14,12 +14,13 @@ use Illuminate\Support\Str;
 use Tests\TenantTestCase;
 
 /**
- * Runtime tests for issue #47 — deleting a source document must NOT delete a
- * valid (non-orphaned) JournalEntryLink just because the parent's own
- * journal_entry_id column is null. A link is cleaned only when its referenced
- * JournalEntry is physically gone (genuinely orphaned).
+ * Runtime tests for issue #47 (hostile re-review HR47-01) — deleting a source
+ * document when its own journal_entry_id column is null but a valid
+ * JournalEntryLink points at a live ledger posting must BLOCK (the rejected
+ * "third behaviour" was: preserve the link and delete the document anyway).
+ * Only genuinely orphaned links are cleaned up on delete.
  *
- * Verifies the identical fix across all four affected models:
+ * Verifies the identical behaviour across all four affected models:
  * Invoice, Bill, Payment, BillPayment.
  */
 class Issue47JournalEntryLinkTraceabilityTest extends TenantTestCase
@@ -101,10 +102,11 @@ class Issue47JournalEntryLinkTraceabilityTest extends TenantTestCase
     }
 
     /**
-     * AC1: valid link (parent pointer null, referenced JE exists) survives
-     * parent deletion. Verified identically for all four models.
+     * AC1 (block): valid link (parent pointer null, referenced JE exists)
+     * blocks the parent deletion; both the document and the link survive.
+     * Verified identically for all four models.
      */
-    public function test_valid_link_survives_deletion_across_all_models(): void
+    public function test_valid_link_blocks_deletion_across_all_models(): void
     {
         foreach ($this->docSpecs() as $label => [$modelClass, $docType, $numberCol]) {
             $doc = $this->createDoc($modelClass, $numberCol);
@@ -117,8 +119,16 @@ class Issue47JournalEntryLinkTraceabilityTest extends TenantTestCase
                 'relation_type' => 'post',
             ]);
 
-            $doc->delete();
+            $blocked = false;
+            try {
+                $doc->delete();
+            } catch (\RuntimeException $e) {
+                $blocked = true;
+                $this->assertStringContainsString('live ledger posting', $e->getMessage());
+            }
 
+            $this->assertTrue($blocked, "{$label} deletion must be blocked while a live JE link exists.");
+            $this->assertNotNull($modelClass::find($doc->id), "{$label} must survive the blocked delete.");
             $this->assertDatabaseHas('journal_entry_links', [
                 'id' => $link->id,
                 'source_document_type' => $docType,
@@ -126,6 +136,28 @@ class Issue47JournalEntryLinkTraceabilityTest extends TenantTestCase
                 'journal_entry_id' => $jeId,
             ]);
         }
+    }
+
+    /**
+     * AC1b: a SOFT-DELETED journal entry still counts as authoritative
+     * traceability and blocks deletion (withTrashed semantics).
+     */
+    public function test_soft_deleted_journal_entry_still_blocks_deletion(): void
+    {
+        $doc = $this->createDoc(Invoice::class, 'invoice_number');
+        $jeId = $this->makeJournalEntry();
+
+        \App\Models\JournalEntry::whereKey($jeId)->firstOrFail()->delete();
+
+        JournalEntryLink::create([
+            'source_document_type' => 'invoice',
+            'source_document_id' => $doc->id,
+            'journal_entry_id' => $jeId,
+            'relation_type' => 'post',
+        ]);
+
+        $this->expectException(\RuntimeException::class);
+        $doc->delete();
     }
 
     /**

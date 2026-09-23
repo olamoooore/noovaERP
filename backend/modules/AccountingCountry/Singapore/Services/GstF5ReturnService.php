@@ -17,9 +17,13 @@ class GstF5ReturnService
         private readonly TaxReturnAggregator $aggregator,
     ) {}
 
-    public function generate(string $period): array
+    /**
+     * @param  string  $period  YYYY-MM or YYYY-Qn (F5 is normally quarterly).
+     * @param  int|null  $legalEntityId  Scope the return to one legal entity.
+     */
+    public function generate(string $period, ?int $legalEntityId = null): array
     {
-        $taxes = $this->aggregator->aggregate($period);
+        $taxes = $this->aggregator->aggregate($period, $legalEntityId);
 
         $sumBy = function (array $rows, string $field, ?string $category = null): float {
             return round(array_sum(array_map(
@@ -31,7 +35,9 @@ class GstF5ReturnService
         $standardRatedSupplies = $sumBy($taxes['output'], 'taxable_amount', 'standard_rated');
         $zeroRatedSupplies = $sumBy($taxes['output'], 'taxable_amount', 'zero_rated');
         $exemptSupplies = $sumBy($taxes['output'], 'taxable_amount', 'exempt');
-        $outOfScopeSupplies = $sumBy($taxes['output'], 'taxable_amount', 'out_of_scope');
+        // IRAS F5 Box 4 is "Total supplies (1)+(2)+(3)" — not out-of-scope.
+        // Hostile re-review C-4.
+        $totalSupplies = round($standardRatedSupplies + $zeroRatedSupplies + $exemptSupplies, 2);
 
         $taxablePurchases = round(array_sum(array_map(
             fn (array $row) => in_array($row['category'], ['standard_rated', 'zero_rated'], true)
@@ -53,13 +59,13 @@ class GstF5ReturnService
                 'box_1_standard_rated_supplies' => $standardRatedSupplies,
                 'box_2_zero_rated_supplies' => $zeroRatedSupplies,
                 'box_3_exempt_supplies' => $exemptSupplies,
-                'box_4_out_of_scope_supplies' => $outOfScopeSupplies,
+                'box_4_total_supplies' => $totalSupplies,
                 'box_5_taxable_purchases' => $taxablePurchases,
                 'box_6_output_tax_due' => $outputTax,
                 'box_7_input_tax_and_refunds' => $inputTax,
                 'box_8_net_gst_payable' => round($outputTax - $inputTax, 2),
             ],
-            'total_supplies' => round($standardRatedSupplies + $zeroRatedSupplies + $exemptSupplies, 2),
+            'total_supplies' => $totalSupplies,
         ];
     }
 }

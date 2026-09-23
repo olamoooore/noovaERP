@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Services\ChatterModelRegistry;
+use App\Services\ChatterSubjectAuthorization;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -18,7 +19,10 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class EnsureCommunicationAccess
 {
-    public function __construct(protected ChatterModelRegistry $registry) {}
+    public function __construct(
+        protected ChatterModelRegistry $registry,
+        protected ChatterSubjectAuthorization $authorization,
+    ) {}
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -47,7 +51,19 @@ class EnsureCommunicationAccess
             ], 404);
         }
 
-        // Attach the resolved record to the request for downstream authorization.
+        // Issue #74 (hostile re-review B1): record-level authorization. The
+        // subject's mapped domain permission gates access; unmapped subjects
+        // fail closed. Previously the resolved record was attached but never
+        // checked, so any entitled user could reach any registry record.
+        if (! $this->authorization->allows($request, (string) $model)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You do not have permission to access this record\'s communication.',
+                'required_permission' => $this->authorization->permissionFor((string) $model),
+            ], 403);
+        }
+
+        // Attach the resolved record to the request for downstream use.
         $request->attributes->set('chatter_record', $record);
 
         return $next($request);

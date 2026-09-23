@@ -87,6 +87,17 @@ class ReversalCorrectionEngine
             // ── Audit log ──────────────────────────────────────
             $this->createAuditLog($original, $reversalEntry, $request, 'full_reversal');
 
+            // ── Retire the original posting identity ───────────
+            // Issue #68 (HR68-02): a full reversal's authoritative effect
+            // includes deactivating the original entry; ACC-002 owns this,
+            // so callers (e.g. ACC-011 period reopen) no longer mutate
+            // journal_entries flags directly.
+            $original->update([
+                'is_active_version' => false,
+                'lifecycle_status' => 'reversed',
+                'reversed_at' => now(),
+            ]);
+
             // ── State transition ────────────────────────────────
             $this->transitionService->recordTransition(
                 aggregateType: 'JournalEntry',

@@ -361,6 +361,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\ImpersonationMiddleware:
             Route::put('/accounting/budgets/{budget}', [\App\Http\Controllers\Api\BudgetController::class, 'update']);
             Route::delete('/accounting/budgets/{budget}', [\App\Http\Controllers\Api\BudgetController::class, 'destroy']);
             Route::post('/accounting/budgets/{budget}/approve', [\App\Http\Controllers\Api\BudgetController::class, 'approve']);
+            Route::post('/accounting/budgets/{budget}/archive', [\App\Http\Controllers\Api\BudgetController::class, 'archive']);
         });
 
         // Quotations

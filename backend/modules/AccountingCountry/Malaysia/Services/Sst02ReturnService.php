@@ -17,9 +17,13 @@ class Sst02ReturnService
         private readonly TaxReturnAggregator $aggregator,
     ) {}
 
-    public function generate(string $period): array
+    /**
+     * @param  string  $period  YYYY-MM or YYYY-Qn.
+     * @param  int|null  $legalEntityId  Scope the return to one legal entity.
+     */
+    public function generate(string $period, ?int $legalEntityId = null): array
     {
-        $taxes = $this->aggregator->aggregate($period);
+        $taxes = $this->aggregator->aggregate($period, $legalEntityId);
 
         // MY SST is a single-stage tax: output-side rows only (no input credit).
         $salesTaxRows = [];

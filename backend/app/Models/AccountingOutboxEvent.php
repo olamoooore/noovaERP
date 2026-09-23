@@ -30,12 +30,21 @@ class AccountingOutboxEvent extends Model
         'published_at',
         'publish_attempts',
         'last_publish_error',
+        // Issue #62 (HR62-01): explicit dead-letter disposition + recovery provenance.
+        'dead_lettered_at',
+        'requeued_at',
+        'requeue_count',
+        'publish_failure_history',
     ];
 
     protected $casts = [
         'event_payload' => 'array',
         'published_at' => 'datetime',
         'publish_attempts' => 'integer',
+        'dead_lettered_at' => 'datetime',
+        'requeued_at' => 'datetime',
+        'requeue_count' => 'integer',
+        'publish_failure_history' => 'array',
     ];
 
     // ── Scopes ────────────────────────────────────────
@@ -49,6 +58,23 @@ class AccountingOutboxEvent extends Model
     {
         return $query->whereNotNull('last_publish_error')
             ->where('publish_attempts', '>=', 3);
+    }
+
+    /**
+     * Issue #62 (HR62-01): explicitly dead-lettered rows are queryable
+     * (operational visibility) instead of being silently excluded.
+     */
+    public function scopeDeadLettered($query)
+    {
+        return $query->whereNotNull('dead_lettered_at');
+    }
+
+    /**
+     * Rows eligible for the publisher: unpublished and not dead-lettered.
+     */
+    public function scopePending($query)
+    {
+        return $query->whereNull('published_at')->whereNull('dead_lettered_at');
     }
 
     public function scopeForTenant($query, string $tenantId)
@@ -73,10 +99,48 @@ class AccountingOutboxEvent extends Model
 
     public function markFailed(string $error): void
     {
+        $history = $this->publish_failure_history ?? [];
+        $history[] = [
+            'attempt' => $this->publish_attempts + 1,
+            'error' => $error,
+            'at' => now()->toIso8601String(),
+        ];
+
         $this->update([
             'publish_attempts' => $this->publish_attempts + 1,
             'last_publish_error' => $error,
+            'publish_failure_history' => $history,
         ]);
+    }
+
+    /**
+     * Issue #62 (HR62-01): terminal publisher-failure disposition.
+     */
+    public function markDeadLettered(): void
+    {
+        $this->update([
+            'dead_lettered_at' => now(),
+        ]);
+    }
+
+    /**
+     * Issue #62 (HR62-01): governed requeue of a dead-lettered row. Attempts
+     * reset so the publisher picks it up again; the attempt/error history and
+     * the requeue provenance stay recorded.
+     */
+    public function requeue(): void
+    {
+        $this->update([
+            'dead_lettered_at' => null,
+            'requeued_at' => now(),
+            'requeue_count' => $this->requeue_count + 1,
+            'publish_attempts' => 0,
+        ]);
+    }
+
+    public function isDeadLettered(): bool
+    {
+        return $this->dead_lettered_at !== null;
     }
 
     public function isPublished(): bool

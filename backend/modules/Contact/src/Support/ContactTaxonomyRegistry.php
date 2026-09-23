@@ -60,8 +60,11 @@ class ContactTaxonomyRegistry
     ];
 
     /**
-     * Issue #123: only the tenants listed in config('contact.healthcare_tenant_ids')
-     * receive the healthcare vocabulary; everyone else gets the generic set.
+     * Issue #123 (hostile re-review 2026-09-23): gating is now tenant state,
+     * not a hard-coded UUID list in config. The per-tenant setting
+     * `contacts.healthcare_taxonomy` (stamped for existing tenants by
+     * migration 2026_09_23_000007 from the old config) is authoritative;
+     * a missing setting means the generic business vocabulary.
      */
     public static function usesHealthcareVocabulary(?string $tenantId): bool
     {
@@ -69,7 +72,30 @@ class ContactTaxonomyRegistry
             return false;
         }
 
-        return in_array($tenantId, (array) config('contact.healthcare_tenant_ids', []), true);
+        try {
+            return (bool) \App\Models\Setting::getValue(self::HEALTHCARE_SETTING_KEY, false);
+        } catch (\Throwable) {
+            // Settings table missing (pre-migration schema) — generic.
+            return false;
+        }
+    }
+
+    public const HEALTHCARE_SETTING_KEY = 'contacts.healthcare_taxonomy';
+
+    /**
+     * Issue #123: codes that exist only in the healthcare vocabulary — the
+     * treatment target for non-healthcare tenants that were seeded before
+     * gating existed.
+     *
+     * @return array<string, array<int, string>>  taxonomy_type => codes
+     */
+    public static function healthcareOnlyCodes(): array
+    {
+        return [
+            self::TYPE_FUNCTIONAL_CATEGORY => ['CLINICAL'],
+            self::TYPE_PERSISTENT_ROLE => ['CLINICAL_CONTACT', 'OT_CONTACT'],
+            self::TYPE_CLASSIFICATION => ['DOCTOR', 'NURSE'],
+        ];
     }
 
     /**

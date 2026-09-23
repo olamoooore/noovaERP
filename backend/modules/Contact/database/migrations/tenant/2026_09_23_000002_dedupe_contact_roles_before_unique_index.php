@@ -10,14 +10,25 @@ use Illuminate\Support\Facades\Schema;
  * duplicates of the new key (the commit message itself admitted they could
  * exist) fails CREATE UNIQUE INDEX — blocking tenants:migrate.
  *
- * Dedupe first (keep the lowest id per key), then re-assert the index so the
- * migration is safe on dirty data and idempotent on clean data.
+ * 2026_09_22_000016 was subsequently fixed to merge duplicates before creating
+ * the index, which is the canonical path (it runs first). This migration is
+ * kept as a safety net for schemas where 000016 already ran (index present →
+ * no-op) or where it failed part-way (index missing → dedupe then re-assert).
  */
 return new class extends Migration
 {
     public function up(): void
     {
         if (! Schema::hasTable('contact_roles')) {
+            return;
+        }
+
+        $indexExists = DB::selectOne(
+            "SELECT 1 AS present FROM pg_indexes WHERE tablename = 'contact_roles' AND indexname = 'contact_role_unique'"
+        );
+        if ($indexExists) {
+            // 000016 already created the widened index (and deduped). Nothing
+            // to do — avoid a pointless drop/recreate on every tenant.
             return;
         }
 

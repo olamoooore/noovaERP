@@ -40,13 +40,32 @@ class PublishAccountingOutboxEvents extends Command
         $maxAttempts = max(1, (int) $this->option('max-attempts'));
 
         // Candidate ids grouped by tenant BEFORE touching tenancy context.
+        // Issue #62 (HR62-01): dead-lettered rows are excluded explicitly
+        // (they are queryable for operations and recovered via requeue).
         $candidates = AccountingOutboxEvent::query()
-            ->unpublished()
+            ->pending()
             ->where('publish_attempts', '<', $maxAttempts)
             ->select('id', 'tenant_id')
             ->orderBy('id')
             ->get()
             ->groupBy('tenant_id');
+
+        // Issue #62 (HR62-01): sweep rows already past the attempt budget
+        // (legacy backlog predating the explicit dead-letter state) into the
+        // terminal disposition instead of silently stranding them behind the
+        // candidate filter.
+        $stranded = AccountingOutboxEvent::query()
+            ->pending()
+            ->where('publish_attempts', '>=', $maxAttempts)
+            ->get();
+
+        foreach ($stranded as $row) {
+            $row->markDeadLettered();
+        }
+
+        if ($stranded->isNotEmpty()) {
+            $this->warn("Dead-lettered {$stranded->count()} exhausted outbox row(s); requeue with accounting:requeue-outbox.");
+        }
 
         $published = 0;
         $failed = 0;
@@ -62,7 +81,7 @@ class PublishAccountingOutboxEvents extends Command
                 // Per-tenant transaction with FOR UPDATE SKIP LOCKED so
                 // overlapping runs never double-publish and a mid-batch
                 // crash rolls the published flags back (at-least-once).
-                DB::transaction(function () use ($pairs, $dispatcher, $batchSize, &$published, &$failed) {
+                DB::transaction(function () use ($pairs, $dispatcher, $batchSize, $maxAttempts, &$published, &$failed) {
                     $ids = $pairs->pluck('id')->all();
 
                     $rows = AccountingOutboxEvent::query()
@@ -81,9 +100,19 @@ class PublishAccountingOutboxEvents extends Command
                         } catch (\Throwable $e) {
                             $row->markFailed($e->getMessage());
                             $failed++;
+
+                            // Issue #62 (HR62-01): transition to an explicit
+                            // terminal state once the attempt budget is spent —
+                            // never leave the row silently stranded by the
+                            // query filter alone.
+                            if ($row->publish_attempts >= $maxAttempts) {
+                                $row->markDeadLettered();
+                            }
+
                             Log::warning('Accounting outbox publish failed; row retained for retry', [
                                 'outbox_event_id' => $row->id,
                                 'attempt' => $row->publish_attempts,
+                                'dead_lettered' => $row->isDeadLettered(),
                                 'error' => $e->getMessage(),
                             ]);
                         }

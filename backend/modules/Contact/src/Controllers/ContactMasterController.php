@@ -481,6 +481,34 @@ class ContactMasterController extends Controller
     }
 
     /**
+     * Issue #123 (hostile re-review): a real API for tenant-owned taxonomy
+     * codes. Validation lives in ContactTaxonomyService::addCode — code
+     * shape, non-empty label, no collision with reserved or existing codes.
+     * Reserved system codes are still protected from creation/repurposing.
+     */
+    public function addTaxonomyCode(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'taxonomy_type' => 'required|string|in:functional_category,classification,persistent_role',
+            'code' => 'required|string|max:50',
+            'display_label' => 'required|string|max:100',
+        ]);
+
+        try {
+            $entry = app(ContactTaxonomyService::class)->addCode(
+                tenant()->id,
+                $validated['taxonomy_type'],
+                $validated['code'],
+                $validated['display_label']
+            );
+
+            return $this->success($entry, 'Taxonomy code added.', 201);
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), 422);
+        }
+    }
+
+    /**
      * ADR-003A CT-VEN-015: tenant admins may change display labels of
      * reserved system codes; creating/renaming/repurposing codes is rejected.
      */

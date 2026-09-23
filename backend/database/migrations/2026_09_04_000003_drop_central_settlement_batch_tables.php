@@ -71,20 +71,24 @@ return new class extends Migration
     }
 
     /**
-     * Active tenant schema names = tenant ids with the canonical
-     * Stancl mapping (currently uuid with dashes; suffix/`tenant_`
-     * prefix is configurable but not used here). When tenants add a
-     * deactivation flag, extend this to filter on it.
+     * Active tenant schema names, resolved through the canonical tenancy
+     * resolver — `Tenant::getSchemaName()` (`$tenant->schema_name` when set,
+     * else the tenant key). This is the exact function registered with
+     * Stancl's DatabaseConfig (`TenancyServiceProvider::
+     * configureTenantDatabaseNames()`), so `id == schema` is NOT assumed
+     * (hostile re-review HR67-01: tenants provisioned with a custom
+     * schema_name were being checked against their id-named schema).
      *
      * @return string[]
      */
     private function expectedTenantSchemas(): array
     {
-        return DB::table('public.tenants')
-            ->whereNotNull('id')
-            ->pluck('id')
-            ->map(fn ($id) => trim((string) $id))
+        return \App\Models\Tenant::query()
+            ->get()
+            ->map(fn ($tenant) => trim((string) $tenant->getSchemaName()))
             ->filter()
+            ->unique()
+            ->values()
             ->all();
     }
 

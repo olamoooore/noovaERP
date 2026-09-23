@@ -18,6 +18,9 @@ class SalesBlanketOrder extends Model
         'tenant_id',
         'blanket_number',
         'customer_id',
+        // Issue #152: legal entity the agreement belongs to (stamped from the
+        // customer at creation) so the endpoint can entity-scope.
+        'legal_entity_id',
         'name',
         'status',
         'valid_from',
@@ -35,6 +38,18 @@ class SalesBlanketOrder extends Model
     public function lines(): HasMany
     {
         return $this->hasMany(SalesBlanketOrderLine::class, 'blanket_order_id');
+    }
+
+    /**
+     * Issue #152: same entity-scoping contract as SalesOrder.
+     */
+    public function scopeAccessibleBy($query, array $accessibleEntityIds)
+    {
+        if (empty($accessibleEntityIds)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereIn('legal_entity_id', $accessibleEntityIds);
     }
 
     public function customer(): BelongsTo

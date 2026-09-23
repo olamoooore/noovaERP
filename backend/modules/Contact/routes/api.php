@@ -33,6 +33,10 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\SetTenantFromUserPrefere
         ->middleware(RequirePermission::using('contacts.view'));
     Route::get('/contacts/taxonomy', [$controller, 'taxonomy'])
         ->middleware(RequirePermission::using('contacts.view'));
+    // Issue #123: add a tenant-owned taxonomy code (reserved codes stay
+    // protected — see updateTaxonomyLabel).
+    Route::post('/contacts/taxonomy', [$controller, 'addTaxonomyCode'])
+        ->middleware(RequirePermission::using('contacts.edit'));
     Route::put('/contacts/taxonomy/label', [$controller, 'updateTaxonomyLabel'])
         ->middleware(RequirePermission::using('contacts.edit'));
     Route::post('/contacts/merge', [$controller, 'merge'])

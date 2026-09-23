@@ -12,7 +12,31 @@ class CommunicationController extends Controller
 {
     public function __construct(
         protected CommunicationEngine $engine,
+        protected \App\Services\ChatterSubjectAuthorization $subjectAuthorization,
     ) {}
+
+    /**
+     * Issue #74 (B1): record-type authorization for id-addressed endpoints.
+     * The message's own subject must be one the caller may access — the same
+     * platform contract enforced for model+record_id requests.
+     */
+    private function authorizeMessageSubject(Request $request, ?CommunicationMessage $message): ?JsonResponse
+    {
+        if (! $message) {
+            return null;
+        }
+
+        $subject = (string) ($message->model ?? '');
+        if ($subject === '' || $this->subjectAuthorization->allows($request, $subject)) {
+            return null;
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'You do not have permission to access this record\'s communication.',
+            'required_permission' => $this->subjectAuthorization->permissionFor($subject),
+        ], 403);
+    }
 
     /**
      * Issue #77 (CRITICAL): resolve the current user's role for internal-note
@@ -135,7 +159,17 @@ class CommunicationController extends Controller
             'is_inline' => 'nullable|boolean',
         ]);
 
-        $message = \Modules\Communication\Models\CommunicationMessage::findOrFail($messageId);
+        // Hostile re-review (C-1): message lookups must be tenant-scoped —
+        // an unscoped findOrFail lets any tenant address another's message.
+        $message = \Modules\Communication\Models\CommunicationMessage::query()
+            ->where(function ($query) {
+                $query->where('tenant_id', tenant()->id)->orWhereNull('tenant_id');
+            })
+            ->findOrFail($messageId);
+
+        if ($denied = $this->authorizeMessageSubject($request, $message)) {
+            return $denied;
+        }
 
         // Issue #88/#77: stamp the attachment with the ACTIVE tenant context
         // (the header is only a fallback) so upload and download agree on the
@@ -169,6 +203,10 @@ class CommunicationController extends Controller
 
         $message = $attachment->message;
 
+        if ($denied = $this->authorizeMessageSubject($request, $message)) {
+            return $denied;
+        }
+
         if ($message && $message->message_type === CommunicationMessage::TYPE_INTERNAL_NOTE) {
             $user = $request->user();
             $role = $this->resolveUserRole($user);
@@ -197,7 +235,17 @@ class CommunicationController extends Controller
      */
     public function markMessageRead(Request $request, int $messageId): JsonResponse
     {
-        $message = \Modules\Communication\Models\CommunicationMessage::findOrFail($messageId);
+        // Hostile re-review (C-1): message lookups must be tenant-scoped —
+        // an unscoped findOrFail lets any tenant address another's message.
+        $message = \Modules\Communication\Models\CommunicationMessage::query()
+            ->where(function ($query) {
+                $query->where('tenant_id', tenant()->id)->orWhereNull('tenant_id');
+            })
+            ->findOrFail($messageId);
+
+        if ($denied = $this->authorizeMessageSubject($request, $message)) {
+            return $denied;
+        }
 
         $state = $this->engine->markAsRead(
             (int) $message->id,
@@ -416,9 +464,18 @@ class CommunicationController extends Controller
     /**
      * GET /api/communication/outbox/{messageId}
      */
-    public function getOutboxStatus(int $messageId): JsonResponse
+    public function getOutboxStatus(Request $request, int $messageId): JsonResponse
     {
-        $message = CommunicationMessage::with('outboxItems')->findOrFail($messageId);
+        // Hostile re-review (#76 B2): unscoped outbox lookup.
+        $message = CommunicationMessage::with('outboxItems')
+            ->where(function ($query) {
+                $query->where('tenant_id', tenant()->id)->orWhereNull('tenant_id');
+            })
+            ->findOrFail($messageId);
+
+        if ($denied = $this->authorizeMessageSubject($request, $message)) {
+            return $denied;
+        }
 
         return response()->json([
             'success' => true,

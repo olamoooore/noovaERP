@@ -19,12 +19,14 @@ class PaymentApplication extends Model
         'payment_id',
         'invoice_id',
         'applied_amount',
+        'reversed_at',
         'currency_code',
         'created_by',
     ];
 
     protected $casts = [
         'applied_amount' => 'decimal:2',
+        'reversed_at' => 'datetime',
     ];
 
     public function payment(): BelongsTo

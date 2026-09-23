@@ -333,7 +333,11 @@ class ContactMasterService
 
         // Issue #121: only one primary / default-billing / default-shipping
         // address per contact — unset the flag on any existing row first.
+        // The contact row is locked so concurrent addAddress calls serialize
+        // (the partial unique indexes back this up at the DB level).
         return DB::transaction(function () use ($contactId, $data, $tenantId) {
+            CoreContact::whereKey($contactId)->lockForUpdate()->first();
+
             if (! empty($data['is_primary'])) {
                 ContactAddress::where('contact_id', $contactId)->update(['is_primary' => false]);
             }
@@ -377,7 +381,11 @@ class ContactMasterService
         }
 
         return DB::transaction(function () use ($contactId, $data, $tenantId) {
-            // Issue #121: only one primary method per contact.
+            // Issue #121: only one primary method per contact. Lock the
+            // contact row so concurrent addMethod calls serialize; the
+            // partial unique index is the DB-level backstop.
+            CoreContact::whereKey($contactId)->lockForUpdate()->first();
+
             if (! empty($data['is_primary'])) {
                 ContactMethod::where('contact_id', $contactId)->update(['is_primary' => false]);
             }
