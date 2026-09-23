@@ -137,11 +137,16 @@ class CommunicationController extends Controller
 
         $message = \Modules\Communication\Models\CommunicationMessage::findOrFail($messageId);
 
+        // Issue #88/#77: stamp the attachment with the ACTIVE tenant context
+        // (the header is only a fallback) so upload and download agree on the
+        // owning tenant.
+        $tenantId = tenant()->id ?? $request->header('X-Tenant-ID');
+
         $attachment = $this->engine->attachToMessage(
             (int) $message->id,
             $request->file('file'),
             $request->user()?->id,
-            $request->header('X-Tenant-ID'),
+            $tenantId,
             (bool) $request->boolean('is_inline'),
         );
 
@@ -153,7 +158,30 @@ class CommunicationController extends Controller
      */
     public function downloadAttachment(Request $request, int $attachmentId): \Symfony\Component\HttpFoundation\StreamedResponse|JsonResponse
     {
-        $attachment = \Modules\Communication\Models\CommunicationAttachment::findOrFail($attachmentId);
+        // Hostile re-review (#88/#77): the lookup was unscoped — any tenant's
+        // user could download any attachment by id. Scope to the active tenant
+        // and enforce the internal-note visibility rule for the parent message.
+        $attachment = \Modules\Communication\Models\CommunicationAttachment::query()
+            ->where(function ($query) {
+                $query->where('tenant_id', tenant()->id)->orWhereNull('tenant_id');
+            })
+            ->findOrFail($attachmentId);
+
+        $message = $attachment->message;
+
+        if ($message && $message->message_type === CommunicationMessage::TYPE_INTERNAL_NOTE) {
+            $user = $request->user();
+            $role = $this->resolveUserRole($user);
+            $isStaff = $role !== null && in_array($role, CommunicationEngine::STAFF_ROLES, true);
+            $isAuthor = $user && (int) $message->author_id === (int) $user->id;
+
+            if (! $isStaff && ! $isAuthor) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You are not authorised to download this attachment.',
+                ], 403);
+            }
+        }
 
         $disk = \Illuminate\Support\Facades\Storage::disk($attachment->storage_disk);
 
