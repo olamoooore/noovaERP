@@ -13,11 +13,38 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { NotificationBell } from '@/components/layout/NotificationBell'
 import { GlobalSearch } from '@/components/search/GlobalSearch'
+import goodMorningIcon from '@/assets/greeting/good-morning.png'
+import goodAfternoonIcon from '@/assets/greeting/good-afternoon.png'
+import goodEveningIcon from '@/assets/greeting/good-evening.png'
 
 function greetingFor(hour: number): { label: string; icon: string } {
-  if (hour < 12) return { label: 'Good morning', icon: 'solar:sun-2-bold-duotone' }
-  if (hour < 17) return { label: 'Good afternoon', icon: 'solar:sun-bold-duotone' }
-  return { label: 'Good evening', icon: 'solar:moon-stars-bold-duotone' }
+  if (hour < 12) return { label: 'Good morning', icon: goodMorningIcon }
+  if (hour < 17) return { label: 'Good afternoon', icon: goodAfternoonIcon }
+  return { label: 'Good evening', icon: goodEveningIcon }
+}
+
+/**
+ * The greeting artwork is a PNG alpha mask, tinted with the theme primary colour
+ * so it stays legible in both light and dark mode.
+ */
+function GreetingIcon({ src, label }: { src: string; label: string }) {
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      className="h-5 w-5 bg-primary"
+      style={{
+        maskImage: `url("${src}")`,
+        WebkitMaskImage: `url("${src}")`,
+        maskSize: 'contain',
+        WebkitMaskSize: 'contain',
+        maskRepeat: 'no-repeat',
+        WebkitMaskRepeat: 'no-repeat',
+        maskPosition: 'center',
+        WebkitMaskPosition: 'center',
+      }}
+    />
+  )
 }
 
 function useNow(intervalMs = 10000) {
@@ -56,7 +83,7 @@ export function TopBar() {
     <div className="flex h-16 items-center justify-between border-b bg-card px-6">
       <div className="flex items-center gap-4">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
-          <Icon icon={greeting.icon} className="h-5 w-5 text-primary" />
+          <GreetingIcon src={greeting.icon} label={greeting.label} />
         </div>
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold leading-tight">
